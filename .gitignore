@@ -1,0 +1,71 @@
+*.pyc
+*.pth
+backend/*.sqlite3
+.DS_Store
+.env
+.env.*
+backend/baseten/settings/local.py
+/staticfiles/*
+/mediafiles/*
+__pycache__/
+/.vscode/
+
+# coverage result
+.coverage
+/coverage/
+
+# pycharm
+.idea
+
+# data
+*.dump
+
+# npm
+node_modules/
+npm-debug.log
+
+#Folders
+.DS_Store
+
+# Webpack
+/frontend/bundles/*
+/frontend/webpack_bundles/*
+/webpack-stats.json
+/webpack-stats.dev.json
+
+# Cypress
+/cypress/screenshots/
+/cypress/videos/
+__diff_output__
+
+# Sass
+.sass-cache
+*.map
+
+# General
+/venv/
+/env/
+/output/
+/cache/
+/dist/
+
+# Spritesmith
+spritesmith-generated/
+spritesmith.scss
+
+# templated email
+tmp_email/
+
+# process ids
+*.pid
+backend/celerybeat-schedule
+
+backend/staticfiles/**/*
+
+backend/cov_html/*
+k8s/on-prem/deps/*
+
+# yarn lock file
+yarn.lock
+
+.eslintcache

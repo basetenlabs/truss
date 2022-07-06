@@ -1,0 +1,374 @@
+import time
+
+import pytest
+
+from truss.build import kill_all
+from truss.constants import TRUSS
+from truss.docker import Docker, get_containers
+from truss.local.local_config_handler import LocalConfigHandler
+from truss.truss_handle import TrussHandle
+
+
+def test_spec(custom_model_truss_dir_with_pre_and_post):
+    dir_path = custom_model_truss_dir_with_pre_and_post
+    sc = TrussHandle(dir_path)
+    spec = sc.spec
+    assert spec.truss_dir == dir_path
+
+
+def test_server_predict(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    resp = sc.server_predict({
+        'inputs': [1, 2, 3, 4],
+    })
+    assert resp == {'predictions': [4, 5, 6, 7]}
+
+
+@pytest.mark.integration
+def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    tag = 'test-build-image-tag:0.0.1'
+    image = sc.build_docker_image(tag=tag)
+    assert image.repo_tags[0] == tag
+
+
+@pytest.mark.integration
+def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
+    sc = TrussHandle(custom_model_truss_dir_for_gpu)
+    tag = 'test-build-image-gpu-tag:0.0.1'
+    build_dir = tmp_path / 'scaffold_build_dir'
+    image = sc.build_docker_image(tag=tag, build_dir=build_dir)
+    assert image.repo_tags[0] == tag
+
+
+@pytest.mark.integration
+def test_docker_run(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    tag = 'test-docker-run-tag:0.0.1'
+    container = sc.docker_run(tag=tag)
+    try:
+        assert _container_exists(container)
+    finally:
+        Docker.client().kill(container)
+
+
+@pytest.mark.integration
+def test_docker_run_gpu(custom_model_truss_dir_for_gpu):
+    sc = TrussHandle(custom_model_truss_dir_for_gpu)
+    tag = 'test-docker-run-gpu-tag:0.0.1'
+    container = sc.docker_run(tag=tag)
+    try:
+        assert _container_exists(container)
+    finally:
+        Docker.client().kill(container)
+
+
+@pytest.mark.integration
+def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    container = sc.docker_run()
+    try:
+        assert _container_exists(container)
+    finally:
+        Docker.client().kill(container)
+
+
+@pytest.mark.integration
+def get_docker_containers_from_labels(
+    custom_model_truss_dir_with_pre_and_post
+):
+    try:
+        t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+        assert(len(t1.get_docker_containers_from_labels()) == 0)
+        t1.docker_run()
+        assert(len(t1.get_docker_containers_from_labels()) == 1)
+        t1.docker_run(port=3000)
+        assert(len(t1.get_docker_containers_from_labels()) == 2)
+        t1.kill_container()
+        assert(len(t1.get_docker_containers_from_labels()) == 0)
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    tag = 'test-docker-predict-tag:0.0.1'
+    try:
+        result = sc.docker_predict({'inputs': [1, 2]}, tag=tag)
+        assert result == {'predictions': [4, 5]}
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    tag = 'test-docker-predict-tag:0.0.1'
+    try:
+        r1 = sc.docker_predict({'inputs': [1, 2]}, tag=tag)
+        r2 = sc.docker_predict({'inputs': [3, 4]}, tag=tag)
+        assert r1 == {'predictions': [4, 5]}
+        assert r2 == {'predictions': [6, 7]}
+        assert(len(sc.get_docker_containers_from_labels()) == 1)
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_post):
+    t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    t2 = TrussHandle(custom_model_truss_dir)
+    try:
+        t1.docker_run()
+        assert(len(t1.get_docker_containers_from_labels()) == 1)
+        t2.docker_run(local_port=3000)
+        assert(len(t2.get_docker_containers_from_labels()) == 1)
+        _ensure_kill_all()
+        assert(len(t1.get_docker_containers_from_labels()) == 0)
+        assert(len(t2.get_docker_containers_from_labels()) == 0)
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
+    sc = TrussHandle(custom_model_truss_dir_for_gpu)
+    tag = 'test-docker-predict-gpu-tag:0.0.1'
+    try:
+        result = sc.docker_predict({'inputs': [1]}, tag=tag)
+        assert result['predictions'][0]['cuda_version'].startswith('11')
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
+    sc = TrussHandle(custom_model_truss_dir_for_secrets)
+    tag = 'test-docker-predict-secrets-tag:0.0.1'
+    LocalConfigHandler.set_secret('secret_name', 'secret_value')
+    try:
+        result = sc.docker_predict({'inputs': ['secret_name']}, tag=tag)
+        assert result['predictions'][0] == 'secret_value'
+    finally:
+        LocalConfigHandler.remove_secret('secret_name')
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    sc.add_python_requirement('theano')
+    sc.add_python_requirement('scipy')
+    tag = 'test-custom-python-req-tag:0.0.1'
+    container = sc.docker_run(tag=tag)
+    try:
+        _verify_python_requirement_installed_on_container(tag, 'theano')
+        _verify_python_requirement_installed_on_container(tag, 'scipy')
+    finally:
+        Docker.client().kill(container)
+
+
+@pytest.mark.integration
+def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    sc.add_system_package('jq')
+    sc.add_system_package('fzf')
+    tag = 'test-custom-system-package-tag:0.0.1'
+    container = sc.docker_run(tag=tag)
+    try:
+        _verify_system_package_installed_on_container(tag, 'jq')
+        _verify_system_package_installed_on_container(tag, 'fzf')
+    finally:
+        Docker.client().kill(container)
+
+
+def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    sc.enable_gpu()
+    assert sc.spec.config.resources.use_gpu
+
+
+def test_update_requirements(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    requirements = [
+        'tensorflow==2.3.1',
+        'uvicorn==0.12.2',
+    ]
+    sc.update_requirements(requirements)
+    sc_requirements = sc.spec.requirements
+    assert sc_requirements == requirements
+
+
+def test_update_requirements_from_file(custom_model_truss_dir_with_pre_and_post, tmp_path):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    requirements = [
+        'tensorflow==2.3.1',
+        'uvicorn==0.12.2',
+    ]
+    req_file_path = tmp_path / 'requirements.txt'
+    with req_file_path.open('w') as req_file:
+        for req in requirements:
+            req_file.write(f'{req}\n')
+    sc.update_requirements_from_file(str(req_file_path))
+    sc_requirements = sc.spec.requirements
+    assert sc_requirements == requirements
+
+
+@pytest.mark.integration
+def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    sc.add_environment_variable('test_env', 'test_value')
+    tag = 'test-add-env-var-tag:0.0.1'
+    container = sc.docker_run(tag=tag)
+    try:
+        _verify_environment_variable_on_container(tag, 'test_env', 'test_value')
+    finally:
+        Docker.client().kill(container)
+
+
+def test_add_data_file(custom_model_truss_dir_with_pre_and_post, tmp_path):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    data_filepath = tmp_path / 'test_data.txt'
+    with data_filepath.open('w') as data_file:
+        data_file.write('test')
+
+    sc.add_data(str(data_filepath))
+
+    scaf_data_filepath = sc.spec.data_dir / 'test_data.txt'
+    assert scaf_data_filepath.exists()
+    with scaf_data_filepath.open() as data_file:
+        assert data_file.read() == 'test'
+
+
+def test_add_data_fileglob(custom_model_truss_dir_with_pre_and_post, tmp_path):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    file1_path = tmp_path / 'test_data1.txt'
+    with file1_path.open('w') as data_file:
+        data_file.write('test1')
+
+    file2_path = tmp_path / 'test_data2.txt'
+    with file2_path.open('w') as data_file:
+        data_file.write('test2')
+
+    file2_path = tmp_path / 'test_data3.json'
+    with file2_path.open('w') as data_file:
+        data_file.write('{}')
+
+    sc.add_data(f'{str(tmp_path)}/*.txt')
+
+    assert (sc.spec.data_dir / 'test_data1.txt').exists()
+    assert (sc.spec.data_dir / 'test_data2.txt').exists()
+    assert not (sc.spec.data_dir / 'test_data2.json').exists()
+
+
+def test_add_data_dir(custom_model_truss_dir_with_pre_and_post, tmp_path):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    sub_dir = tmp_path / 'sub'
+    sub_sub_dir = sub_dir / 'sub'
+    sub_sub_dir.mkdir(parents=True)
+
+    file_path = sub_sub_dir / 'test_file.txt'
+    with file_path.open('w') as data_file:
+        data_file.write('test')
+
+    sc.add_data(str(sub_dir))
+
+    scaf_file_path = sc.spec.data_dir / 'sub' / 'sub' / 'test_file.txt'
+    assert scaf_file_path.exists()
+    with scaf_file_path.open() as data_file:
+        assert data_file.read() == 'test'
+
+
+def test_examples(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    examples = sc.examples()
+    assert 'example1' in examples
+
+
+def test_example(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    assert 'inputs' in sc.example('example1')
+
+
+def test_example_index(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    assert 'inputs' in sc.example(0)
+
+
+def test_add_example_new(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    orig_examples = sc.examples()
+    sc.add_example('example2', {'inputs': [[1]]})
+    assert sc.examples() == {
+        **orig_examples,
+        'example2': {'inputs': [[1]]},
+    }
+
+
+def test_add_example_update(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    sc.add_example('example1', {'inputs': [[1]]})
+    assert sc.examples() == {
+        'example1': {'inputs': [[1]]},
+    }
+
+
+def test_model_without_pre_post(custom_model_truss_dir):
+    sc = TrussHandle(custom_model_truss_dir)
+    resp = sc.server_predict({
+        'inputs': [1, 2, 3, 4],
+    })
+    assert resp == [1, 1, 1, 1]
+
+
+@pytest.mark.integration
+def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
+    sc = TrussHandle(custom_model_truss_dir)
+    try:
+        resp = sc.docker_predict({
+            'inputs': [1, 2, 3, 4],
+        })
+        assert resp == [1, 1, 1, 1]
+    finally:
+        _ensure_kill_all()
+
+
+def _container_exists(container) -> bool:
+    for row in Docker.client().ps():
+        if row.id.startswith(container.id):
+            return True
+    return False
+
+
+def _verify_system_package_installed_on_container(tag: str, cmd: str):
+    resp = Docker.client().run(tag, ['which', cmd])
+    assert resp.strip() == f'/usr/bin/{cmd}'
+
+
+def _verify_python_requirement_installed_on_container(tag: str, cmd: str):
+    resp = Docker.client().run(tag, ['pip', 'show', cmd])
+    assert resp.splitlines()[0].lower() == f'Name: {cmd}'.lower()
+
+
+def _verify_environment_variable_on_container(
+    tag: str,
+    env_var_name: str,
+    env_var_value: str,
+):
+    resp = Docker.client().run(tag, ['env'])
+    needle = f'{env_var_name}={env_var_value}'
+    assert needle in resp.splitlines()
+
+
+def _ensure_kill_all():
+    kill_all()
+    attempts = 0
+    while attempts < 10:
+        containers = get_containers({
+            TRUSS: True
+        })
+        if len(containers) == 0:
+            return
+        attempts += 1
+        time.sleep(1)

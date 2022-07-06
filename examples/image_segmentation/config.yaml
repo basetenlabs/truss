@@ -1,0 +1,16 @@
+data_dir: data
+input_type: Any
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_type: custom
+model_metadata: {}
+model_module_dir: model
+python_version: py39
+requirements:
+  - torchvision==0.9.1
+resources:
+  cpu: 500m
+  memory: 8Gi
+  use_gpu: false
+system_packages: []

@@ -1,0 +1,27 @@
+data_dir: data
+environment_variables: {}
+examples_filename: examples.yaml
+input_type: Any
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: null
+model_type: custom
+python_version: py39
+requirements:
+- --extra-index-url https://download.pytorch.org/whl/cu113
+- torch==1.8.0
+- jax[cuda11]==0.3.10
+- jaxlib==0.3.10
+- transformers==4.18.0
+- git+https://github.com/patil-suraj/vqgan-jax.git@e9bdbbc095fd0ae74957eff217d495725bccf047
+- git+https://github.com/borisdayma/dalle-mini.git@20a36267d188691ff92273f7048abb0c8339d6b2
+- ipywidgets==7.7.0
+resources:
+  cpu: 500m
+  memory: 512m
+  use_gpu: false
+secrets: {}
+system_packages: []
