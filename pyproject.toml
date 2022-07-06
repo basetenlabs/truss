@@ -6,8 +6,8 @@ authors = ["Alex Gillmor <alex@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
 
 [tool.poetry.dependencies]
-python = ">=3.7,<3.11"
-numpy = "^1.18"
+python = ">=3.8,<3.11"
+numpy = ">=1.22"
 msgpack = "1.0.2"
 msgpack-numpy = "0.4.7.1"
 packaging = "20.9"
