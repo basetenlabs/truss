@@ -86,13 +86,9 @@ class ImageBuilder:
         with readme_template_path.open() as readme_template_file:
             readme_template = Template(readme_template_file.read())
             # examples.yaml may not exist
-            try:
-                examples_raw = self._spec.examples
-            except FileNotFoundError:
-                examples_raw = None
-            # examples.yaml may be empty
-            examples_config = dict(examples_raw) if examples_raw else None
-            readme_contents = readme_template.render(config=self._spec.config, examples=examples_config)
+            # if examples.yaml does exist, but it's empty, examples_raw is None
+            examples_raw = self._spec.examples if self._spec.examples_path.exists() else None
+            readme_contents = readme_template.render(config=self._spec.config, examples=examples_raw)
             readme_file_path = build_dir / MODEL_README_NAME
             with readme_file_path.open('w') as readme_file:
                 readme_file.write(readme_contents)
