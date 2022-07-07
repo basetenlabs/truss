@@ -2,6 +2,7 @@ import logging
 from typing import Dict
 
 from truss.constants import TRUSS_DIR
+from truss.local.local_config_handler import LocalConfigHandler
 
 
 class Docker:
@@ -10,8 +11,11 @@ class Docker:
     @staticmethod
     def client():
         if Docker._client is None:
-            from python_on_whales import docker
-            Docker._client = docker
+            from python_on_whales import DockerClient, docker
+            if LocalConfigHandler.get_config().use_sudo:
+                Docker._client = DockerClient(client_call=['sudo', 'docker'])
+            else:
+                Docker._client = docker
         return Docker._client
 
 
