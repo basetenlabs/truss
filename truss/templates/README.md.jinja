@@ -42,7 +42,7 @@ curl -H 'Content-Type: application/json' \
     {%- for first_key, first_value in examples.items() %}
         {%- for second_key, second_value in first_value.items() %}
 curl -H 'Content-Type: application/json' \
--d '{"inputs": {{ second_value[0] }} \
+-d '{"inputs": {{ second_value[0] }} }' \
 -X POST http://localhost:8080/v1/models/model:predict
         {%- endfor %}
     {%- endfor %}
