@@ -91,8 +91,8 @@ class ImageBuilder:
             except FileNotFoundError:
                 examples_raw = None
             # examples.yaml may be empty
-            examples = dict(examples_raw) if examples_raw else None
-            readme_contents = readme_template.render(config=self._spec.config, examples=examples)
+            examples_config = dict(examples_raw) if examples_raw else None
+            readme_contents = readme_template.render(config=self._spec.config, examples=examples_config)
             readme_file_path = build_dir / MODEL_README_NAME
             with readme_file_path.open('w') as readme_file:
                 readme_file.write(readme_contents)
