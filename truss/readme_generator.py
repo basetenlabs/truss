@@ -11,7 +11,5 @@ def generate_readme(_spec: TrussSpec) -> str:
         # examples.yaml may not exist
         # if examples.yaml does exist, but it's empty, examples_raw is None
         examples_raw = _spec.examples if _spec.examples_path.exists() else None
-        print("asdfasdfasdfasdfs")
-        print(examples_raw)
         readme_contents = readme_template.render(config=_spec.config, examples=examples_raw)
     return readme_contents
