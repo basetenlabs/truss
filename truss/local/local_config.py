@@ -8,11 +8,13 @@ import yaml
 @dataclass
 class LocalConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
+    use_sudo: bool = False
 
     @staticmethod
     def from_dict(d):
         return LocalConfig(
             secrets=d.get('secrets', {}),
+            use_sudo=d.get('use_sudo', False),
         )
 
     @staticmethod
@@ -23,6 +25,7 @@ class LocalConfig:
     def to_dict(self):
         return {
             'secrets': self.secrets,
+            'use_sudo': self.use_sudo,
         }
 
     def write_to_yaml_file(self, path: Path):
