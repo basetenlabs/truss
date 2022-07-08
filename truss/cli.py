@@ -209,6 +209,7 @@ def kill_all():
     "Kills all truss containers that are not manually persisted"
     truss.kill_all()
 
+
 @cli_group.command()
 @error_handling
 def cleanup() -> None:
@@ -224,6 +225,7 @@ def cleanup() -> None:
             if (not obj.name == 'config.yaml') and (obj.is_file()):
                 os.remove(obj)
     return
+
 
 def _get_truss_from_directory(target_directory: str = None):
     """Gets Truss from directory. If none, use the current directory"""
