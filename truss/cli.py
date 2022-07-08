@@ -217,13 +217,13 @@ def cleanup() -> None:
     """
     build_folder_path = Path(
         Path.home(),
-        '.truss' 
+        '.truss'
     )
     if (build_folder_path.exists()):
         for obj in build_folder_path.glob('**/*'):
             if (not obj.name == 'config.yaml') and (obj.is_file()):
                 os.remove(obj)
-    return 
+    return
 
 def _get_truss_from_directory(target_directory: str = None):
     """Gets Truss from directory. If none, use the current directory"""
