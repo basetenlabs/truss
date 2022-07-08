@@ -1,4 +1,6 @@
+import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +24,32 @@ def test_server_predict(custom_model_truss_dir_with_pre_and_post):
         'inputs': [1, 2, 3, 4],
     })
     assert resp == {'predictions': [4, 5, 6, 7]}
+
+
+def test_readme_generation_int_example(custom_model_truss_dir_with_pre_and_post):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    readme_contents = sc.generate_readme()
+    readme_contents = readme_contents.replace('\n', '')
+    correct_readme_contents = _read_readme('readme_int_example.md')
+    assert readme_contents == correct_readme_contents
+
+
+def test_readme_generation_no_example(custom_model_truss_dir_with_pre_and_post_no_example):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post_no_example)
+    # Remove the examples file
+    os.remove(sc._spec.examples_path)
+    readme_contents = sc.generate_readme()
+    readme_contents = readme_contents.replace('\n', '')
+    correct_readme_contents = _read_readme('readme_no_example.md')
+    assert readme_contents == correct_readme_contents
+
+
+def test_readme_generation_str_example(custom_model_truss_dir_with_pre_and_post_str_example):
+    sc = TrussHandle(custom_model_truss_dir_with_pre_and_post_str_example)
+    readme_contents = sc.generate_readme()
+    readme_contents = readme_contents.replace('\n', '')
+    correct_readme_contents = _read_readme('readme_str_example.md')
+    assert readme_contents == correct_readme_contents
 
 
 @pytest.mark.integration
@@ -372,3 +400,9 @@ def _ensure_kill_all():
             return
         attempts += 1
         time.sleep(1)
+
+
+def _read_readme(filename: str) -> str:
+    readme_correct_path = Path(__file__).parent.parent / 'test_data' / filename
+    readme_contents = readme_correct_path.open().read().replace('\n', '')
+    return readme_contents

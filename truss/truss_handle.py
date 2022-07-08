@@ -16,6 +16,7 @@ from truss.contexts.local_loader.load_local import LoadLocal
 from truss.docker import (Docker, get_container_logs, get_containers,
                           get_images, get_urls_from_container, kill_containers)
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.readme_generator import generate_readme
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.utils import (copy_file_path, copy_tree_path,
@@ -273,6 +274,9 @@ class TrussHandle:
         for container in containers:
             urls.extend(get_urls_from_container(container))
         return urls
+
+    def generate_readme(self):
+        return generate_readme(self._spec)
 
 
 def _prediction_flow(model, request: dict):

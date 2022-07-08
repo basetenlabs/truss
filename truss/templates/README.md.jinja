@@ -1,0 +1,81 @@
+{% if config.model_name == None %}
+# Model how-to
+{% else %}
+# {{ config.model_name }} how-to
+{% endif %}
+Welcome to your {{ config.model_framework.value }} model's Truss. Below are some useful commands to work with this Truss. For all the commands below, make sure you're in this directory when you run them. You can find the docs for Truss [here](https://truss.baseten.co).
+
+### Build a Docker image from your Truss
+```
+truss build-image
+```
+
+### Run the Docker image from your Truss
+```
+# We assume you've built the image first.
+truss run-image
+```
+
+### Run inference on your Truss
+There are two ways to run inference on your Truss model.
+#### Via Truss CLI
+```
+{%- if examples == None %}
+truss predict --target_directory ./  --request '{"inputs": YOUR_INPUT}'
+{% else %}
+    {%- for first_key, first_value in examples.items() %}
+        {%- for second_key, second_value in first_value.items() %}
+truss predict --target_directory ./  --request '{"inputs": {{ second_value[0] }}}'
+        {%- endfor %}
+    {%- endfor %}
+{%- endif %}
+```
+
+#### Via CURL
+In order to run inference via CURL, we assume you've built and run the Docker image generated from your Truss. Refer above for more instructions on how to do this.
+```
+{%- if examples == None %}
+curl -H 'Content-Type: application/json' \
+-d '{"inputs": YOUR_INPUT}' \
+-X POST http://localhost:8080/v1/models/model:predict
+{% else %}
+    {%- for first_key, first_value in examples.items() %}
+        {%- for second_key, second_value in first_value.items() %}
+curl -H 'Content-Type: application/json' \
+-d '{"inputs": {{ second_value[0] }} }' \
+-X POST http://localhost:8080/v1/models/model:predict
+        {%- endfor %}
+    {%- endfor %}
+{%- endif %}
+
+```
+
+### Running all of the example inputs on your Truss
+```
+truss run-example
+```
+
+### Run a specific example input on your Truss
+```
+{%- if examples == None %}
+truss run-example --name EXAMPLE_NAME
+{% else %}
+    {%- for key, value in examples.items() %}
+truss run-example --name {{ key }}
+    {%- endfor %}
+{%- endif %}
+```
+
+### Adding pre/postprocessing code
+You may find that you'd like to preprocess the inputs to your model or postprocess the outputs of your model.
+1. Navigate to `model/{{ config.model_class_filename }}`. This is where your preprocessing/postprocessing logic will live.
+2. Define a `preprocess` or `postprocess` function as such.
+```
+def preprocess(self, request: Dict) -> Dict:
+    # Code that runs before inference
+    return request
+
+def postprocess(self, request: Dict) -> Dict:
+    # Code that runs after inference
+    return request
+```

@@ -24,6 +24,9 @@ SYSTEM_PACKAGES_TXT_FILENAME = 'system_packages.txt'
 SERVER_DOCKERFILE_TEMPLATE_NAME = 'server.Dockerfile.jinja'
 MODEL_DOCKERFILE_NAME = 'Dockerfile'
 
+README_TEMPLATE_NAME = 'README.md.jinja'
+MODEL_README_NAME = 'README.md'
+
 CONFIG_FILE = 'config.yaml'
 DOCKERFILE = "Dockerfile"
 # Used to indicate whether to associate a container with Truss

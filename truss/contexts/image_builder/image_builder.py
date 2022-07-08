@@ -2,12 +2,14 @@ from pathlib import Path
 
 from jinja2 import Template
 
-from truss.constants import (MODEL_DOCKERFILE_NAME, REQUIREMENTS_TXT_FILENAME,
-                             SERVER_CODE_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME,
+from truss.constants import (MODEL_DOCKERFILE_NAME, MODEL_README_NAME,
+                             REQUIREMENTS_TXT_FILENAME, SERVER_CODE_DIR,
+                             SERVER_DOCKERFILE_TEMPLATE_NAME,
                              SERVER_REQUIREMENTS_TXT_FILENAME,
                              SYSTEM_PACKAGES_TXT_FILENAME, TEMPLATES_DIR)
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
+from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
 from truss.utils import (build_truss_target_directory, copy_file_path,
                          copy_tree_path, given_or_temporary_dir)
@@ -79,6 +81,11 @@ class ImageBuilder:
             docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
             with docker_file_path.open('w') as docker_file:
                 docker_file.write(dockerfile_contents)
+
+        readme_file_path = build_dir / MODEL_README_NAME
+        readme_contents = generate_readme(self._spec)
+        with readme_file_path.open('w') as readme_file:
+            readme_file.write(readme_contents)
 
     def docker_build_command(self, build_dir) -> str:
         return f'docker build {build_dir} -t {self.default_tag}'

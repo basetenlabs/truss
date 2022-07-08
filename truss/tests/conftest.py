@@ -308,6 +308,15 @@ def huggingface_transformer_t5_small_model():
 
 
 @pytest.fixture
+def custom_model_truss_dir_with_pre_and_post_no_example(tmp_path):
+    dir_path = tmp_path / 'custom_truss_with_pre_post_no_example'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    yield dir_path
+
+
+@pytest.fixture
 def custom_model_truss_dir_with_pre_and_post(tmp_path):
     dir_path = tmp_path / 'custom_truss_with_pre_post'
     sc = init(str(dir_path))
@@ -316,6 +325,22 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
     sc.update_examples({
         'example1': {
             'inputs': [[0]]
+        }
+    })
+    yield dir_path
+
+
+@pytest.fixture
+def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
+    dir_path = tmp_path / 'custom_truss_with_pre_post_str_example'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    sc.update_examples({
+        'example1': {
+            'inputs': [{
+                'image_url' : 'https://github.com/pytorch/hub/raw/master/images/dog.jpg'
+            }]
         }
     })
     yield dir_path
