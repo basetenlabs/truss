@@ -1,3 +1,4 @@
+import os
 from distutils.dir_util import remove_tree
 from pathlib import Path
 from typing import Any, List
@@ -105,11 +106,17 @@ def from_directory(truss_directory: str) -> TrussHandle:
 
 def cleanup():
     """
-    Cleans up .baseten directory.
+    Cleans up .truss directory.
     """
-    baseten_dir = Path.home() / '.baseten'
-    remove_tree(baseten_dir)
-    baseten_dir.mkdir(exist_ok=True)
+    build_folder_path = Path(
+        Path.home(),
+        '.truss'
+    )
+    if (build_folder_path.exists()):
+        for obj in build_folder_path.glob('**/*'):
+            if (not obj.name == 'config.yaml') and (obj.is_file()):
+                os.remove(obj)
+    return
 
 
 def _update_truss_props(
