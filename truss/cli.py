@@ -216,7 +216,9 @@ def cleanup() -> None:
     """
     Clean up truss data.
 
-    Truss creates temporary directories for various operations such as for building docker images. This command clears that data to free up disk space.
+    Truss creates temporary directories for various operations
+    such as for building docker images. This command clears
+    that data to free up disk space.
     """
     truss.build.cleanup()
 
