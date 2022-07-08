@@ -1,0 +1,21 @@
+data_dir: data
+environment_variables: {}
+examples_filename: examples.yaml
+input_type: Any
+model_class_filename: model.py
+model_class_name: Wav2VecTransformerModel
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: null
+model_type: custom
+python_version: py39
+requirements:
+  - torch==1.10.1
+  - transformers==4.4.2
+resources:
+  cpu: 1000m
+  memory: 3000m
+  use_gpu: false
+secrets: {}
+system_packages: []
