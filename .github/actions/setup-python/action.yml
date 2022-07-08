@@ -1,0 +1,34 @@
+name: "Setup Python"
+description: "setups python, poetry and associated cache"
+
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.9.9'
+
+    - name: Get full Python version
+      id: full-python-version
+      shell: bash
+      run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
+
+    - run: curl -sSL https://install.python-poetry.org | python3 -
+      shell: bash
+
+    - name: Configure poetry
+      run: poetry config virtualenvs.in-project true
+      shell: bash
+
+    - name: Set up cache
+      uses: actions/cache@v2
+      id: cache
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
+
+    - name: Ensure cache is healthy
+      if: steps.cache.outputs.cache-hit == 'true'
+      run: timeout 10s poetry run pip --version || rm -rf .venv
+      shell: bash
