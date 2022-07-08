@@ -214,17 +214,11 @@ def kill_all():
 @error_handling
 def cleanup() -> None:
     """
-    Cleans up .truss folder
+    Clean up truss data.
+
+    Truss creates temporary directories for various operations such as for building docker images. This command clears that data to free up disk space.
     """
-    build_folder_path = Path(
-        Path.home(),
-        '.truss'
-    )
-    if (build_folder_path.exists()):
-        for obj in build_folder_path.glob('**/*'):
-            if (not obj.name == 'config.yaml') and (obj.is_file()):
-                os.remove(obj)
-    return
+    truss.build.cleanup()
 
 
 def _get_truss_from_directory(target_directory: str = None):
