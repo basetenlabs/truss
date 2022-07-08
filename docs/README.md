@@ -1,12 +1,27 @@
----
-description: Containers for serving Machine Learning Models
----
+# Truss documentation
 
-# What is a Truss?
+Copy in existing docs
 
-A Truss is a context for building a container for serving predictions from a
-model. Trusses are designed to work seamlessly with in-memory models from
-supported model frameworks while maintaining the ability to serve predictions
-for more complex scenarios. Trusses can be created local to the environment of
-the client for introspection and any required debugging and then when ready,
-uploaded in our serving environment or onto another container serving platform
+Axis along which to organize the documentation:
+
+* Commands (6)
+* Stages (2)
+* Modeling Libraries (N)
+* Deployment environments (N)
+
+Create a Truss from an in-memory model:
+
+
+
+Create a Truss from scratch
+
+
+2 stages of abstraction:
+
+* Model to Truss
+* Deploy Truss to AWS
+
+
+Deploy to Docker
+
+Build Flask API

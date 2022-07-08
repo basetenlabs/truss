@@ -1,21 +1,15 @@
 # Table of contents
 
-* [What is a Truss?](README.md)
-
-## Truss
-
-* [Getting Started](truss/getting-started.md)
+* [Introducing Truss](README.md)
 
 ## Tutorials
 
-* [Creating a Simple Truss](tutorials/creating-a-simple-truss.md)
-* [Extending a Truss](tutorials/extending-a-truss.md)
+* [Create a Truss](tutorials/create.md)
+* [Local use](tutorials/use.md)
+* [Deployment](tutorials/deploy.md)
 
-## Discussion
+## Reference
 
-* [Truss Architecture](discussion/truss-architecture.md)
-* [Truss Structure](discussion/truss-structure.md)
-* [Environment Replication](discussion/environment-replication.md)
-* [Model Serialization](discussion/model-serialization.md)
-* [Baseten Model](discussion/baseten-model.md)
-* [Request & Response Serialization](discussion/request-and-response-serialization.md)
+* [Command-line interface](reference/cli.md)
+* [Python client](reference/client.md)
+* [Truss structure](reference/structure.md)
