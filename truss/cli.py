@@ -210,6 +210,19 @@ def kill_all():
     truss.kill_all()
 
 
+@cli_group.command()
+@error_handling
+def cleanup() -> None:
+    """
+    Clean up truss data.
+
+    Truss creates temporary directories for various operations
+    such as for building docker images. This command clears
+    that data to free up disk space.
+    """
+    truss.build.cleanup()
+
+
 def _get_truss_from_directory(target_directory: str = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
