@@ -1,0 +1,21 @@
+name: PR
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: main-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  integration_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss/tests -m 'integration'
