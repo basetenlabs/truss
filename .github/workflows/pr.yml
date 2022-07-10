@@ -6,7 +6,7 @@ on:
       - main
   pull_request:
     paths:
-      - 'truss/**'
+      - "truss/**"
       - .github/workflows/pr.yml
 
 concurrency:
@@ -27,7 +27,7 @@ jobs:
           SKIP: isort,flake8
       - run: poetry run isort **/*.py --check-only
       - run: poetry run flake8 truss
-  
+
   test:
     timeout-minutes: 30
     runs-on: ubuntu-latest
