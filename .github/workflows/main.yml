@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-  # temporary
-  pull_request:
 
 concurrency:
   group: main-${{ github.ref_name }}
