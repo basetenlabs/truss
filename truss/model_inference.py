@@ -38,7 +38,6 @@ PYTORCH_REQ_MODULE_NAME = {
 }
 
 HUGGINGFACE_TRANSFORMER_MODULE_NAME = {
-    'transformers'
 }
 
 # lists of versions supported by the truss+base_images
