@@ -15,7 +15,7 @@ jobs:
         id: version
         run: |
           # Check if branch is release
-          if [[ ${{github.ref_name}} == "ph/docker-build-ci" ]]; then
+          if [[ ${{github.ref_name}} == "release" ]]; then
             # Get version from pyproject
             version=$(cat pyproject.toml | grep 'version = ' | awk '{print $3}' | sed 's/"//g')
           else
