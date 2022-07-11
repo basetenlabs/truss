@@ -14,7 +14,7 @@ If you're using a Jupyter notebook, add a line to install the `torch`, `torchvis
 
 This is the part you want to replace with your own code. Using PyTorch, build a machine learning model and keep it in-memory. The PyTorch model example is a bit more involved code-wise, here it is in a couple of chunks.
 
-Create MNIST class:
+First, create a file `model.py` and add the following:
 
 ```python
 import torch
@@ -47,7 +47,7 @@ class MNISTNet(nn.Module):
         return output
 ```
 
-Train the model:
+Then, you can add the following functions in the notebook:
 
 ```python
 import torch.optim as optim
@@ -125,7 +125,12 @@ def train_the_model():
         test(model, device, test_loader)
         scheduler.step()
     return model, train_loader, test_loader
+```
 
+Finally, you can train your model:
+
+```python
+from model import train_the_model
 
 model, _ , _ = train_the_model()
 ```
