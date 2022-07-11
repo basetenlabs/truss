@@ -28,10 +28,12 @@ model = tf.keras.applications.ResNet50V2(
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a 
+Use the `mk_truss` command to package your model into a Truss.
 
 ```python
 from truss import mk_truss
 
 mk_truss(model, target_directory="tensorflow_truss")
 ```
+
+Check the target directory to see your new Truss!

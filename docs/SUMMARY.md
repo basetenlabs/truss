@@ -5,7 +5,7 @@
 * [Local model evaluation](tutorials/model-evaluation.md)
 * [Release notes](CHANGELOG.md)
 
-## Create a Truss
+## Create
 
 * [Hugging Face](create/huggingface.md)
 * [PyTorch](create/pytorch.md)
@@ -14,14 +14,14 @@
 * [XGBoost](create/xgboost.md)
 * [Manually](create/manual.md)
 
-## Develop a Truss
+## Develop
 
 * [Local model serving](develop/local-serving.md)
 * [Truss configuration](develop/configuration.md)
 * [Pre- and post-processing](develop/processing.md)
 * [Sample inputs](develop/sample-inputs.md)
 
-## Deploy a Truss
+## Deploy
 
 * [AWS](deploy/aws.md)
 * [Baseten](deploy/baseten.md)
