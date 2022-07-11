@@ -1,21 +1,23 @@
 ## Contributing
 
-We are looking to grow this project, get more contributors, and extend functionality for more model frameworks. We are
-also looking for user feedback on the mechanisms of the library.
+Truss was first created at [Baseten](https://baseten.co), but as an open and living project eagerly accepts contributions of all kinds from the broader developer community. Please note that all participation with Truss falls under our [code of conduct](CODE_OF_CONDUCT.md).
 
-Kindly submit any bugs and feature requests as issues on Github. Please feel free to submit any pull requests with a
-reference to a Github issue.
+We use GitHub features for project management on Truss:
 
-## Getting help
-
-Please contact us on our channel here (some link)
+* For bugs and feature requests, file an issue.
+* For changes and updates, create a pull request.
+* To view and comment on the roadmap, check the projects tab.
 
 ## Local development
+
 To get started contributing to the library, all you have to do is clone this repository!
+
 ### Setup
+
 We use `asdf` to manage Python binaries and `poetry` to manage Python dependencies.
 
 For development in a macOS environment, we use `brew` to manage system packages.
+
 ```
 # Install asdf (or use another method https://asdf-vm.com/)
 brew install asdf
@@ -32,15 +34,25 @@ poetry run pre-commit install
 ```
 
 Then to run the entire test suite
+
 ```
 poetry run pytest truss/tests
 ```
 
 ## Documentation
 
-For more information see the [official documentation](https://baseten.gitbook.io/baseten-scaffolds/)
+To learn about Truss see the [official documentation](https://truss.baseten.co).
+
+Contributions to documentation are very welcome! Simply edit the appropriate markdown files in the `docs/` folder and make a pull request. For larger changes, tutorials, or any questions please contact [philip.kiely@baseten.co](mailto:philip.kiely@baseten.co)
 
 ## Contributors
-* created by [Baseten Labs, Inc](http://baseten.co)
-* main developers: Phil Howes, Alex Gillmor
-* and user's like you!
+
+Truss was made possible by:
+
+* [Baseten Labs, Inc](http://baseten.co)
+* Phil Howes, developer
+* Alex Gillmor, developer
+* Pankaj Gupta, developer
+* Philip Kiely, documentation
+* Nish Singaraju, documentation
+* and users like you!
