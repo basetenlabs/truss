@@ -43,7 +43,7 @@ jobs:
       with:
         context: ./
         file: ./Dockerfile
-        push: false
+        push: true
         tags: |
           baseten/truss:${{ needs.version.outputs.version }}
           baseten/truss:latest
@@ -71,4 +71,4 @@ jobs:
     - name: Build and push
       run: |
         poetry build
-        poetry publish -u secrets.PYPI_USERNAME -p secrets.PYPI_PASSWORD
+        poetry publish -u ${{ secrets.PYPI_USERNAME }} -p ${{ secrets.PYPI_PASSWORD }}
