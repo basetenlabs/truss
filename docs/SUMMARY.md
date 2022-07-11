@@ -13,3 +13,4 @@
 * [Command-line interface](reference/cli.md)
 * [Python client](reference/client.md)
 * [Truss structure](reference/structure.md)
+* [Release notes](CHANGELOG.md)
