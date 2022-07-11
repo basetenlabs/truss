@@ -1,19 +1,15 @@
 # Table of contents
 
 * [Introducing Truss](README.md)
-* [Release notes](CHANGELOG.md)
-
-## Tutorials
-
 * [End-to-end deployment](tutorials/e2e.md)
 * [Local model evaluation](tutorials/model-evaluation.md)
+* [Release notes](CHANGELOG.md)
 
 ## Create a Truss
 
-* [Huggingface](create/huggingface.md)
-* [Keras](create/keras.md)
-* [Pytorch](create/pytorch.md)
-* [SKlearn](create/sklearn.md)
+* [Hugging Face](create/huggingface.md)
+* [PyTorch](create/pytorch.md)
+* [scikit-learn](create/sklearn.md)
 * [TensorFlow](create/tensorflow.md)
 * [XGBoost](create/xgboost.md)
 * [Manually](create/manual.md)
