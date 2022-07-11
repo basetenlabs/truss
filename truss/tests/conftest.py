@@ -13,6 +13,7 @@ from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
+from xgboost import XGBClassifier
 
 from truss.build import init
 
@@ -231,6 +232,17 @@ def temp_dir(directory):
         yield
     finally:
         os.chdir(current_dir)
+
+
+@pytest.fixture(scope="session")
+def xgboost_pima_model():
+    pima_dataset_path = Path(__file__).parent.parent / 'test_data' / 'pima-indians-diabetes.csv'
+    dataset = np.loadtxt(pima_dataset_path, delimiter=",")
+    model = XGBClassifier()
+    X = dataset[:, 0:8]
+    Y = dataset[:, 8]
+    model.fit(X, Y)
+    return model
 
 
 @pytest.fixture(scope="session")
