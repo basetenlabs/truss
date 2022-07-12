@@ -4,6 +4,7 @@ ARG PYVERSION={{config.python_version}}
     {% if config.resources.use_gpu %}
 FROM baseten/baseten-huggingface-transformer-server-gpu-base:latest
     {% else %}
+# TODO(pankaj): Use baseten wrapper, to be consistent with gpu case
 FROM huggingface/transformers-cpu:4.18.0
     {% endif %}
 {% else %}
@@ -70,7 +71,7 @@ COPY ./server_requirements.txt server_requirements.txt
 RUN pip install -r server_requirements.txt
 
 COPY ./requirements.txt requirements.txt
-RUN pip install -r requirements.txt -vvv
+RUN pip install -r requirements.txt
 
 ENV PORT 8080
 
