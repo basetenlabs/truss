@@ -16,7 +16,6 @@ PyYAML = "^6.0"
 Jinja2 = "^3.1.2"
 python-on-whales = "^0.46.0"
 tenacity = "^8.0.1"
-lightgbm = "^3.3.2"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"
@@ -34,6 +33,7 @@ flake8 = "^4.0.1"
 ipdb = "^0.13.9"
 coverage = "^6.4.1"
 pytest-cov = "^3.0.0"
+lightgbm = "^3.3.2"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'

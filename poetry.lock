@@ -590,7 +590,7 @@ i18n = ["Babel (>=2.7)"]
 name = "joblib"
 version = "1.1.0"
 description = "Lightweight pipelining with Python functions"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.6"
 
@@ -674,22 +674,6 @@ description = "Clang Python Bindings, mirrored from the official LLVM repo: http
 category = "dev"
 optional = false
 python-versions = "*"
-
-[[package]]
-name = "lightgbm"
-version = "3.3.2"
-description = "LightGBM Python Package"
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-numpy = "*"
-scikit-learn = "!=0.22.0"
-scipy = "*"
-
-[package.extras]
-dask = ["dask[array] (>=2.0.0)", "dask[dataframe] (>=2.0.0)", "dask[distributed] (>=2.0.0)", "pandas"]
 
 [[package]]
 name = "markdown"
@@ -1190,7 +1174,7 @@ tqdm = "*"
 name = "scikit-learn"
 version = "1.0.2"
 description = "A set of python modules for machine learning and data mining"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 
@@ -1210,7 +1194,7 @@ tests = ["matplotlib (>=2.2.3)", "scikit-image (>=0.14.5)", "pandas (>=0.25.0)",
 name = "scipy"
 version = "1.7.3"
 description = "SciPy: Scientific Library for Python"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7,<3.11"
 
@@ -1366,7 +1350,7 @@ python-versions = "*"
 name = "threadpoolctl"
 version = "3.1.0"
 description = "threadpoolctl"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.6"
 
@@ -1618,7 +1602,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<3.11"
-content-hash = "5d843c47d3095e90674642def4e36dec10afc3717c794da26269497c80e09a61"
+content-hash = "a03aa692653ceaee993c19ef56c9140a8c374fe3a73cd6192f82f41aceddded7"
 
 [metadata.files]
 absl-py = []
@@ -1674,7 +1658,6 @@ keras-preprocessing = []
 kfserving = []
 kubernetes = []
 libclang = []
-lightgbm = []
 markdown = []
 markupsafe = []
 matplotlib-inline = []
