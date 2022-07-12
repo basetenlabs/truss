@@ -27,7 +27,7 @@ def test_to_truss(huggingface_transformer_t5_small_model):
         assert config.model_class_name == 'Model'
         assert config.model_framework == framework.typ()
         assert config.model_type == 'text2text-generation'
-        assert len(config.requirements) != 0
+        assert len(config.requirements) == 0
 
         assert config.python_version.startswith('py3')
         model_metadata = config.model_metadata

@@ -77,7 +77,8 @@ class TrussHandle:
                 'type=bind',
                 f'src={str(secrets_mount_dir_path)}',
                 'target=/secrets',
-            ]]
+            ]],
+            gpus='all' if self._spec.config.resources.use_gpu else None,
         )
         model_base_url = f'http://localhost:{local_port}/'
         try:

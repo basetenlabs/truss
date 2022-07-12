@@ -139,9 +139,17 @@ class Model:
 
 # Doesn't implement load
 NO_LOAD_CUSTOM_MODEL_CODE = """
-class MyModel:
-    def predict(self, inputs):
-        return 1
+class Model:
+    def preprocess(self, request):
+        return request
+
+    def postprocess(self, request):
+        return request
+
+    def predict(self, request):
+        return {
+            'predictions': [1]
+        }
 """
 
 
@@ -150,6 +158,61 @@ NO_PREDICT_CUSTOM_MODEL_CODE = """
 class MyModel:
     def load(self):
         pass
+"""
+
+# Doesn't implement preprocess
+NO_PREPROCESS_CUSTOM_MODEL_CODE = """
+class Model:
+     def load(*args, **kwargs):
+        pass
+
+     def postprocess(self, request):
+        # Adds 1 to all
+        return {
+            'predictions': [value + 1 for value in request['predictions']],
+        }
+
+     def predict(self, request):
+        return {
+            'predictions': request['inputs'],
+        }
+"""
+
+
+# Doesn't implement postprocess
+NO_POSTPROCESS_CUSTOM_MODEL_CODE = """
+class Model:
+     def load(*args, **kwargs):
+        pass
+
+     def preprocess(self, request):
+        # Adds 1 to all
+        return {
+            'inputs': [value + 1 for value in request['inputs']],
+        }
+
+     def predict(self, request):
+        return {
+            'predictions': request['inputs'],
+        }
+"""
+
+# Implements no params for init
+NO_PARAMS_INIT_CUSTOM_MODEL_CODE = """
+class Model:
+     def __init__(self):
+        pass
+
+     def preprocess(self, request):
+        return request
+
+     def postporcess(self, request):
+        return request
+
+     def predict(self, request):
+        return {
+            'predictions': request['inputs'],
+        }
 """
 
 
@@ -200,17 +263,39 @@ def custom_model_truss_dir(tmp_path):
 
 
 @pytest.fixture
-def no_load_custom_model(tmp_path):
-    f = tmp_path / 'my_no_load_model.py'
-    f.write_text(NO_LOAD_CUSTOM_MODEL_CODE)
-    return 'MyModel', f
+def no_preprocess_custom_model(tmp_path):
+    dir_path = tmp_path / 'my_no_preprocess_model'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(NO_PREPROCESS_CUSTOM_MODEL_CODE)
+    yield dir_path
 
 
 @pytest.fixture
-def no_predict_custom_model(tmp_path):
-    f = tmp_path / 'my_no_predict_model.py'
-    f.write_text(NO_PREDICT_CUSTOM_MODEL_CODE)
-    return 'MyModel', f
+def no_postprocess_custom_model(tmp_path):
+    dir_path = tmp_path / 'my_no_postprocess_model'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(NO_POSTPROCESS_CUSTOM_MODEL_CODE)
+    yield dir_path
+
+
+@pytest.fixture
+def no_load_custom_model(tmp_path):
+    dir_path = tmp_path / 'my_no_load_model'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(NO_LOAD_CUSTOM_MODEL_CODE)
+    yield dir_path
+
+
+@pytest.fixture
+def no_params_init_custom_model(tmp_path):
+    dir_path = tmp_path / 'my_no_params_init_load_model'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(NO_PARAMS_INIT_CUSTOM_MODEL_CODE)
+    yield dir_path
 
 
 @pytest.fixture
