@@ -39,13 +39,12 @@ def mk_truss(
     """
     model_framework = model_framework_from_model(model)
     if (model_framework.typ() == ModelFrameworkType.XGBOOST):
-        click.echo
-        (
+        click.echo(
             click.style
             (
-                "WARNING: Truss uses XGBoost save/load which has a \
-                different interface during inference than the class \
-                you used to train this model.", fg='yellow'
+                '''WARNING: Truss uses XGBoost save/load which has a
+                different interface during inference than the class
+                you used to train this model.''', fg='yellow'
             )
         )
     if target_directory is None:
