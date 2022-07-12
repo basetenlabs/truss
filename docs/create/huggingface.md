@@ -14,6 +14,10 @@ If you're using a Jupyter notebook, add a line to install the `transformers` and
 
 This is the part you want to replace with your own code. Using a Hugging Face transformer, build a machine learning model and keep it in-memory.
 
+{% hint style="warning" %}
+All Hugging Face models must be wrapped as a pipeline.
+{% endhint %}
+
 ```python
 from transformers import pipeline
 

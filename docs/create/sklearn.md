@@ -12,7 +12,7 @@ If you're using a Jupyter notebook, add a line to install the `sklearn` and `tru
 
 ### Create an in-memory model
 
-This is the part you want to replace with your own code. Using a Hugging Face transformer, build a machine learning model and keep it in-memory.
+This is the part you want to replace with your own code. Using scikit-learn, build a machine learning model and keep it in-memory.
 
 ```python
 from sklearn.ensemble import RandomForestClassifier
