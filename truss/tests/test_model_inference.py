@@ -1,9 +1,11 @@
 import pytest
 
 from truss.constants import PYTORCH
-from truss.model_inference import (PYTORCH_REQ_MODULE_NAME, TENSORFLOW_REQ_MODULE_NAME, _get_entries_for_packages, infer_model_information,
+from truss.model_inference import (PYTORCH_REQ_MODULE_NAME,
+                                   TENSORFLOW_REQ_MODULE_NAME,
+                                   _get_entries_for_packages,
+                                   infer_model_information,
                                    validate_provided_parameters_with_model)
-
 
 SAMPLE_PIP_FREEZE_OUTPUT = [
     'tensorflow==2.9.1',
