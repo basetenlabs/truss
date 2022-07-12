@@ -7,6 +7,7 @@ KERAS = 'keras'
 PYTORCH = 'pytorch'
 CUSTOM = 'custom'
 HUGGINGFACE_TRANSFORMER = 'huggingface_transformer'
+LIGHTGBM = 'lightgbm'
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODE_DIR = pathlib.Path(BASE_DIR, 'truss')
