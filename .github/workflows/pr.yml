@@ -6,6 +6,8 @@ on:
       - main
   pull_request:
     paths:
+      - poetry.lock
+      - pyproject.yaml
       - "truss/**"
       - .github/workflows/pr.yml
 
