@@ -134,8 +134,6 @@ def train_the_model():
 Finally, you can train your model:
 
 ```python
-from model import train_the_model
-
 model, _ , _ = train_the_model()
 ```
 
