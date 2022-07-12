@@ -15,7 +15,7 @@ If you want to explore Truss end-to-end before using it for your own projects, f
 Truss is useful after you have a trained machine learning model that you are happy with and want to deploy. You can build a Truss from a pickled or otherwise saved model, or from an in-memory model. So to follow this guide, you will need **one** of the following:
 
 * An in-memory machine learning model (most useful for supported frameworks listed below), or
-* A picked model, or
+* A serialized model, or
 * A script to download, create, or otherwise generate one of the previous options
 
 {% hint style="info" %}

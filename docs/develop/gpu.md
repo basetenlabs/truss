@@ -1,0 +1,1 @@
+Use GPU, tell it to run the model on GPU. Right now we support CUDA. Create a special docker image that has access to CUDA. Not well supported on devices that don't have CUDA. (Beta/limited features) We use a limited set in production. 

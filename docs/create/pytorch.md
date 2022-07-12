@@ -50,10 +50,14 @@ class MNISTNet(nn.Module):
 Then, you can add the following functions in the notebook:
 
 ```python
+import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torchvision import datasets, transforms
+import torch.nn.functional as F
 
+#pytorch model class must be in a python file
+from model import MNISTNet
 
 def train(model, device, train_loader, optimizer, epoch, log_interval=10):
     model.train()
