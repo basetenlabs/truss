@@ -9,7 +9,8 @@ class Model:
         self._data_dir = kwargs['data_dir']
         config = kwargs['config']
         model_metadata = config['model_metadata']
-        self._supports_predict_proba = model_metadata['supports_predict_proba']
+        # LightGBM does not implement a `predict_proba` function
+        self._supports_predict_proba = False
         self._model_binary_dir = model_metadata['model_binary_dir']
         self._model = None
 

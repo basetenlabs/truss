@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import pytest
@@ -331,6 +332,29 @@ def sklearn_rfc_model(iris_dataset):
     rfc_model = RandomForestClassifier()
     rfc_model.fit(data_x, data_y)
     return rfc_model
+
+
+@pytest.fixture(scope="session")
+def lgb_pima_model():
+    pima_dataset_path = Path(__file__).parent.parent / 'test_data' / 'pima-indians-diabetes.csv'
+    params = {
+        'boosting_type': 'gbdt',
+        'objective': 'softmax',
+        'metric': 'multi_logloss',
+        'num_leaves': 31,
+        'num_classes': 2,
+        'learning_rate': 0.05,
+        'feature_fraction': 0.9,
+        'bagging_fraction': 0.8,
+        'bagging_freq': 5,
+        'verbose': 0
+    }
+    dataset = pd.read_csv(pima_dataset_path, header=None)
+    Y = dataset[8]
+    X = dataset.drop(8, axis=1)
+    train = lgb.Dataset(X, Y)
+    model = lgb.train(params=params, train_set=train)
+    return model
 
 
 @pytest.fixture(scope="session")
