@@ -1,7 +1,9 @@
 from typing import Dict, List
 
+import xgboost as xgb
+
 MODEL_BASENAME = 'model'
-MODEL_EXTENSIONS = ['.joblib', '.pkl', '.pickle']
+MODEL_EXTENSIONS = ['.ubj']
 
 
 class Model:
@@ -14,12 +16,12 @@ class Model:
         self._model = None
 
     def load(self):
-        import joblib
         model_binary_dir_path = self._data_dir / self._model_binary_dir
         paths = [(model_binary_dir_path / MODEL_BASENAME).with_suffix(model_extension)
                  for model_extension in MODEL_EXTENSIONS]
         model_file_path = next(path for path in paths if path.exists())
-        self._model = joblib.load(model_file_path)
+        self._model = xgb.Booster()
+        self._model.load_model(model_file_path)
 
     def preprocess(self, request: Dict) -> Dict:
         """
@@ -38,8 +40,7 @@ class Model:
     def predict(self, request: Dict) -> Dict[str, List]:
         response = {}
         inputs = request['inputs']
-        result = self._model.predict(inputs)
+        dmatrix_inputs = xgb.DMatrix(inputs)
+        result = self._model.predict(dmatrix_inputs)
         response['predictions'] = result
-        if self._supports_predict_proba:
-            response['probabilities'] = self._model.predict_proba(inputs).tolist()
         return response

@@ -6,7 +6,7 @@ from truss.model_inference import infer_xgboost_packages
 from truss.templates.server.common.util import model_supports_predict_proba
 from truss.types import ModelFrameworkType
 
-MODEL_FILENAME = 'model.joblib'
+MODEL_FILENAME = 'model.ubj'
 
 
 class XGBoost(ModelFramework):
@@ -18,10 +18,9 @@ class XGBoost(ModelFramework):
         return infer_xgboost_packages()
 
     def serialize_model_to_directory(self, model, target_directory: Path):
-        import joblib
         model_filename = MODEL_FILENAME
         model_filepath = target_directory / model_filename
-        joblib.dump(model, model_filepath, compress=True)
+        model.save_model(model_filepath)
 
     def model_metadata(self, model) -> Dict[str, str]:
         supports_predict_proba = model_supports_predict_proba(model)
