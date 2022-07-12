@@ -4,7 +4,8 @@ ARG PYVERSION={{config.python_version}}
     {% if config.resources.use_gpu %}
 FROM baseten/baseten-huggingface-transformer-server-gpu-base:latest
     {% else %}
-FROM baseten/baseten-huggingface-transformer-server-base:latest
+# TODO(pankaj): Use baseten wrapper, to be consistent with gpu case
+FROM huggingface/transformers-cpu:4.18.0
     {% endif %}
 {% else %}
     {% if config.resources.use_gpu %}
