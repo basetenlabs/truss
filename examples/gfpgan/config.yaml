@@ -71,7 +71,11 @@ resources:
   cpu: 500m
   memory: 512m
   use_gpu: false
-secrets: {}
+secrets:
+  gfpgan_aws_access_key_id: null
+  gfpgan_aws_secret_access_key: null
+  gfpgan_aws_region: null # e.g. us-east-1
+  gfpgan_aws_bucket: null
 system_packages:
 - ffmpeg
 - libsm6
