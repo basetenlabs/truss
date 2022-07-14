@@ -184,6 +184,78 @@ def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
 
 
 @pytest.mark.integration
+def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
+    sc = TrussHandle(no_preprocess_custom_model)
+    tag = 'test-docker-no-preprocess-tag:0.0.1'
+    try:
+        result = sc.docker_predict({'inputs': [1]}, tag=tag)
+        assert result['predictions'][0] == 2
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_local_no_preprocess_custom_model(no_preprocess_custom_model):
+    sc = TrussHandle(no_preprocess_custom_model)
+    result = sc.server_predict({'inputs': [1]})
+    assert result['predictions'][0] == 2
+
+
+@pytest.mark.integration
+def test_docker_no_postprocess_custom_model(no_postprocess_custom_model):
+    sc = TrussHandle(no_postprocess_custom_model)
+    tag = 'test-docker-no-postprocess-tag:0.0.1'
+    try:
+        result = sc.docker_predict({'inputs': [1]}, tag=tag)
+        assert result['predictions'][0] == 2
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_local_no_postprocess_custom_model(no_postprocess_custom_model):
+    sc = TrussHandle(no_postprocess_custom_model)
+    result = sc.server_predict({'inputs': [1]})
+    assert result['predictions'][0] == 2
+
+
+@pytest.mark.integration
+def test_docker_no_load_custom_model(no_load_custom_model):
+    sc = TrussHandle(no_load_custom_model)
+    tag = 'test-docker-no-load-tag:0.0.1'
+    try:
+        result = sc.docker_predict({'inputs': [1]}, tag=tag)
+        assert result['predictions'][0] == 1
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_local_no_load_custom_model(no_load_custom_model):
+    sc = TrussHandle(no_load_custom_model)
+    result = sc.server_predict({'inputs': [1]})
+    assert result['predictions'][0] == 1
+
+
+@pytest.mark.integration
+def test_docker_no_params_init_custom_model(no_params_init_custom_model):
+    sc = TrussHandle(no_params_init_custom_model)
+    tag = 'test-docker-no-params-init-tag:0.0.1'
+    try:
+        result = sc.docker_predict({'inputs': [1]}, tag=tag)
+        assert result['predictions'][0] == 1
+    finally:
+        _ensure_kill_all()
+
+
+@pytest.mark.integration
+def test_local_no_params_init_custom_model(no_params_init_custom_model):
+    sc = TrussHandle(no_params_init_custom_model)
+    result = sc.server_predict({'inputs': [1]})
+    assert result['predictions'][0] == 1
+
+
+@pytest.mark.integration
 def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
     sc = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     sc.add_python_requirement('theano')
