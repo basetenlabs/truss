@@ -29,9 +29,9 @@ def test_to_truss(xgboost_pima_model):
 
         model_metadata = config.model_metadata
         assert model_metadata['model_binary_dir'] == 'model'
-        assert model_metadata['supports_predict_proba']
+        assert not model_metadata['supports_predict_proba']
 
-        assert (truss_dir / 'data' / 'model' / 'model.joblib').exists()
+        assert (truss_dir / 'data' / 'model' / 'model.ubj').exists()
         assert (truss_dir / 'model' / 'model.py').exists()
 
 
@@ -42,8 +42,8 @@ def test_run_truss(xgboost_pima_model):
         xgboost_framework.to_truss(xgboost_pima_model, truss_dir)
         model = LoadLocal.run(truss_dir)
         predictions = model.predict({'inputs': [[0, 0, 0, 0, 0, 0, 0, 0]]})
-        assert len(predictions['probabilities']) == 1
-        assert len(predictions['probabilities'][0]) == 2
+        assert 'predictions' in predictions
+        assert len(predictions['predictions']) == 1
 
 
 @pytest.mark.integration
@@ -57,5 +57,5 @@ def test_run_image(xgboost_pima_model):
             {'inputs': [[0, 0, 0, 0, 0, 0, 0, 0]]},
             local_port=8080,
         )
-        assert len(predictions['probabilities']) == 1
-        assert np.shape(predictions['probabilities']) == (1, 2)
+        assert len(predictions['predictions']) == 1
+        assert np.shape(predictions['predictions']) == (1,)

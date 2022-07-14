@@ -11,7 +11,13 @@ class Model:
         self._data_dir = kwargs['data_dir']
         config = kwargs['config']
         model_metadata = config['model_metadata']
-        self._supports_predict_proba = model_metadata['supports_predict_proba']
+        # XGBoost models, saved and loaded via the native save/load
+        # in XGBoost do not support predicting probabilities unless
+        # they are a multi-class classification problem.
+        # TODO: Integrate model_metadata field to determine model
+        # objective function to determine if an XGBoost model
+        # supports predicting probabilities.
+        self._supports_predict_proba = False
         self._model_binary_dir = model_metadata['model_binary_dir']
         self._model = None
 
