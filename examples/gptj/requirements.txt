@@ -1,5 +1,0 @@
--i https://pypi.org/simple
-
-torch==1.11.0
-transformers==4.18.0
-accelerate==0.10.0
