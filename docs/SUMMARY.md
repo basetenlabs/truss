@@ -2,7 +2,6 @@
 
 * [Introducing Truss](../README.md)
 * [End-to-end deployment](tutorials/e2e.md)
-* [Local model evaluation](tutorials/model-evaluation.md)
 * [Release notes](CHANGELOG.md)
 
 ## Create
@@ -16,10 +15,10 @@
 
 ## Develop
 
-* [Local model serving](develop/local-serving.md)
+* [](develop/local-serving.md)
 * [Truss configuration](develop/configuration.md)
 * [Pre- and post-processing](develop/processing.md)
-* [Sample inputs](develop/sample-inputs.md)
+* [Sample inputs](develop/examples.md)
 * [GPU support](develop/gpu.md)
 * [Secret management](develop/secrets.md)
 
@@ -32,6 +31,6 @@
 
 ## Reference
 
-* [Command-line interface](reference/cli.md)
 * [Python client](reference/client.md)
+* [Command-line interface](reference/cli.md)
 * [Truss structure](reference/structure.md)

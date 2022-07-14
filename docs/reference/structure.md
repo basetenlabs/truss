@@ -19,7 +19,7 @@ This file specifies the [configuration options](../develop/configuration.md) to 
 
 ### examples.yaml
 
-This file provides [sample inputs](../develop/sample-inputs.md) for running your model.
+This file provides [sample inputs](../develop/examples.md) for running your model.
 
 ### data/
 
