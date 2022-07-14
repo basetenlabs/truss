@@ -10,7 +10,7 @@ model_module_dir: model
 model_name: null
 model_type: custom
 python_version: py39
-requirements: 
+requirements:
   - cachetools==4.2.2
   - certifi==2020.12.5
   - chardet==4.0.0
@@ -36,4 +36,14 @@ resources:
   memory: 512m
   use_gpu: false
 secrets:
+    type: samplevalue
+    project_id: samplevalue
+    private_key_id: samplevalue
+    private_key: samplevalue
+    client_email: samplevalue
+    client_id: samplevalue
+    auth_uri: samplevalue
+    token_uri: samplevalue
+    auth_provider_x509_cert_url: samplevalue
+    client_x509_cert_url: samplevalue
 system_packages: []

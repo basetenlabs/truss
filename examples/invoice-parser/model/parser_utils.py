@@ -3,10 +3,10 @@ import requests
 from google.cloud import documentai_v1 as documentai
 from google.oauth2 import service_account
 
-
-PROJECT_ID = ""
-LOCATION = ""
-PROCESSOR_ID = ""
+# These values must be provided for this service to run.
+PROJECT_ID = 'sample'
+LOCATION = 'sample'
+PROCESSOR_ID = 'sample'
 CONFIDENCE_THRESHOLD = 0.5
 
 
