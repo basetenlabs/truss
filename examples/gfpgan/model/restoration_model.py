@@ -6,9 +6,9 @@ import numpy as np
 import requests
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from gfpgan import GFPGANer
+from model.utils import upload_file_to_s3
 from PIL import Image
 from realesrgan import RealESRGANer
-from utils import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +31,13 @@ RESIZE_DEFAULT_MAX = 1400
 
 class RestorationModel:
     def __init__(self, **kwargs) -> None:
-        self._config = kwargs['config']
+        self._config = kwargs.get('config')
         self.s3_config = {
             'aws_access_key_id': self._config['secrets']['gfpgan_aws_access_key_id'],
             'aws_secret_access_key': self._config['secrets']['gfpgan_aws_secret_access_key'],
             'aws_region': self._config['secrets']['gfpgan_aws_region'],
-        }
-        self.s3_bucket = self._config['secrets']['gfpgan_aws_bucket']
+        } if self._config else {}
+        self.s3_bucket = self._config['secrets']['gfpgan_aws_bucket'] if self._config else None
 
     def load(self):
         self.model = RRDBNet(
@@ -96,12 +96,12 @@ class RestorationModel:
         return input_img, cropped_faces, restored_faces, restored_img
 
 
-def upload_image(image, bucket=None, aws_config=None):
+def upload_image(image, bucket=None, aws_credentials=None):
     temp_file = tempfile.NamedTemporaryFile(suffix='.png')
     image = Image.fromarray(image)
     image.save(temp_file.name, format='png')
     temp_file.seek(0)
-    return upload_file_to_s3(temp_file.name, bucket=bucket, aws_config=aws_config)
+    return upload_file_to_s3(temp_file.name, bucket=bucket, aws_credentials=aws_credentials)
 
 
 def load_img_from_url(img_url: str):

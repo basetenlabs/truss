@@ -1,17 +1,15 @@
-from typing import Dict
 import uuid
+from typing import Dict
 
 import boto3
 
-REGION_NAME = 'us-west-2'
-
 
 def upload_file_to_s3(
-    file_name, bucket: str = BUCKET_NAME, object_name: str = None, aws_credentials: Dict = None
+    file_name, bucket: str = None, object_name: str = None, aws_credentials: Dict = None
 ) -> str:
-    aws_secret_access_key = aws_credentials['secret_access_key']
-    aws_access_key_id = aws_credentials['access_key_id']
-    aws_region = aws_credentials.get('region', REGION_NAME)
+    aws_secret_access_key = aws_credentials['aws_secret_access_key']
+    aws_access_key_id = aws_credentials['aws_access_key_id']
+    aws_region = aws_credentials['aws_region']
     s3 = boto3.client(
         's3',
         aws_access_key_id=aws_access_key_id,
