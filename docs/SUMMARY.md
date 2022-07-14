@@ -1,6 +1,6 @@
 # Table of contents
 
-* [Introducing Truss](README.md)
+* [Introducing Truss](../README.md)
 * [End-to-end deployment](tutorials/e2e.md)
 * [Local model evaluation](tutorials/model-evaluation.md)
 * [Release notes](CHANGELOG.md)
@@ -20,6 +20,8 @@
 * [Truss configuration](develop/configuration.md)
 * [Pre- and post-processing](develop/processing.md)
 * [Sample inputs](develop/sample-inputs.md)
+* [GPU support](develop/gpu.md)
+* [Secret management](develop/secrets.md)
 
 ## Deploy
 
