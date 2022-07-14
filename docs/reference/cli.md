@@ -1,6 +1,16 @@
 # Truss command line reference
 
+Use the Truss package via the command line to package and serve models.
+
+Usage: `truss [OPTIONS] COMMAND [ARGS]`
+
+## Options
+
+#### --help
+
 You can always review these commands with `python -m truss --help`, which will print a complete list of commands.
+
+## Commands
 
 #### build_context
 
