@@ -8,4 +8,5 @@ class ModelFrameworkType(Enum):
     PYTORCH = 'pytorch'
     HUGGINGFACE_TRANSFORMER = 'huggingface_transformer'
     XGBOOST = 'xgboost'
+    LIGHTGBM = 'lightgbm'
     CUSTOM = 'custom'

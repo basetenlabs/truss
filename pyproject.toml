@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.0.22"
+version = "0.0.25"
 description = ""
 authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
@@ -23,7 +23,6 @@ ipython = "^7.16"
 pytest = "6.2.4"
 tensorflow = "^2.4.0"
 pre-commit = "^2.18.1"
-transformers = "<=4.18.0"
 scikit-learn = "1.0.2"
 pandas = "1.1.5"
 tensorflow-hub = "^0.12.0"
@@ -34,6 +33,8 @@ ipdb = "^0.13.9"
 coverage = "^6.4.1"
 pytest-cov = "^3.0.0"
 xgboost = "^1.6.1"
+lightgbm = "^3.3.2"
+transformers = "^4.20.1"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'
