@@ -2,43 +2,72 @@
 
 You can always review these commands with `python -m truss --help`, which will print a complete list of commands.
 
-### build-context
+#### build_context
 
-Create a docker build context for a scaffold.
+Create a docker build context for a Truss.
 
-### build-image
+Args:
+* BUILD_DIR: Folder where image context is built for Truss
+* TARGET DIRECTORY: A Truss directory. If none, use current directory.
 
-Builds the docker image for a scaffold.
+#### build_image
 
-### init
+Builds the docker image for a Truss.
 
-Initializes a empty scaffold directory
+Args: 
+* TARGET DIRECTORY: A Truss directory. If none, use current directory.
+* BUILD_DIR: Image context. If none, a temp directory is created.
 
-#### Args:
+#### cleanup
 
-**dir** (required): A new directory to create the Truss in
+Clean up truss data.
+    
+Truss creates temporary directories for various operations
+such as for building docker images. This command clears
+that data to free up disk space.
 
+#### cli_group
 
-#### Examples:
+#### get_container_logs
 
-```bash
-python -m truss init my_model
-```
+Get logs in a container is running for a truss
 
-```bash
-python -m truss init iris_rfc
-```
+Args:
+* TARGET DIRECTORY: A Truss directory. If none, use current directory.
 
-### predict
+#### init
 
-Runs prediction for a scaffold in a docker image or locally
+Initializes an empty Truss directory.
 
+Args:
+* TARGET_DIRECTORY: A Truss is created in this directory
 
-### run-example
+#### kill
 
-Runs examples specified in the scaffold over docker.
+Kills containers related to truss.
 
+Args:
+* TARGET DIRECTORY: A Truss directory. If none, use current directory.
 
-### run-image
+#### kill_all
 
-Runs the docker image for a scaffold.
+Kills all truss containers that are not manually persisted
+
+#### predict
+
+Runs prediction for a Truss in a docker image or locally
+
+#### run_example
+
+Runs examples specified in the Truss, over docker.
+
+Args:
+* TARGET DIRECTORY: A Truss directory. If none, use current directory.
+
+#### run_image
+
+Runs the docker image for a Truss.
+
+Args:
+* TARGET DIRECTORY: A Truss directory. If none, use current directory.
+* BUILD_DIR: Image context. If none, a temp directory is created.

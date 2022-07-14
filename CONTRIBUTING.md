@@ -49,10 +49,9 @@ Contributions to documentation are very welcome! Simply edit the appropriate mar
 
 Truss was made possible by:
 
-* [Baseten Labs, Inc](http://baseten.co)
+Alex Gillmor, [Baseten Labs, Inc](http://baseten.co), Pankaj Gupta,
 * Phil Howes, developer
-* Alex Gillmor, developer
-* Pankaj Gupta, developer
 * Philip Kiely, documentation
 * Nish Singaraju, documentation
+* Abu Qadar, documentation
 * and users like you!
