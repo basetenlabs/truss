@@ -4,6 +4,7 @@ import pathlib
 SKLEARN = 'sklearn'
 TENSORFLOW = 'tensorflow'
 KERAS = 'keras'
+XGBOOST = 'xgboost'
 PYTORCH = 'pytorch'
 CUSTOM = 'custom'
 HUGGINGFACE_TRANSFORMER = 'huggingface_transformer'

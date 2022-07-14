@@ -7,5 +7,6 @@ class ModelFrameworkType(Enum):
     KERAS = 'keras'
     PYTORCH = 'pytorch'
     HUGGINGFACE_TRANSFORMER = 'huggingface_transformer'
+    XGBOOST = 'xgboost'
     LIGHTGBM = 'lightgbm'
     CUSTOM = 'custom'
