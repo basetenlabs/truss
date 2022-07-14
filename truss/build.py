@@ -44,7 +44,10 @@ def mk_truss(
             (
                 '''WARNING: Truss uses XGBoost save/load which has a
                 different interface during inference than the class
-                you used to train this model.''', fg='yellow'
+                you used to train this model. You can learn more about
+                these differences at
+                https://xgboost.readthedocs.io/en/stable/tutorials/saving_model.html
+                ''', fg='yellow'
             )
         )
     if target_directory is None:
