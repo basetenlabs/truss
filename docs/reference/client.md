@@ -1,13 +1,9 @@
 # Truss Python client reference
 
-A list of the functions available with `import truss` and their arguments and properties
+A list of the functions available with `import truss` and their arguments and properties.
 
-Help on module truss.build in truss:
+### Truss creation
 
-NAME
-    truss.build
-
-FUNCTIONS
     cleanup()
         Cleans up .truss directory.
     
@@ -48,39 +44,8 @@ FUNCTIONS
         Returns:
             TrussHandle: A handle to the generated Truss that provides easy access to content inside.
 
-DATA
-    Any = typing.Any
-        Special type indicating an unconstrained type.
-        
-        - Any is compatible with every type.
-        - Any assumed to have all methods.
-        - All values assumed to be instances of Any.
-        
-        Note that all the above statements are true from the point of view of
-        static type checkers. At runtime, Any should not be used with instance
-        or class checks.
-    
-    CONFIG_FILE = 'config.yaml'
-    DEFAULT_EXAMPLES_FILENAME = 'examples.yaml'
-    List = typing.List
-        A generic version of list.
-    
-    TEMPLATES_DIR = PosixPath('/workspaces/truss/truss/templates')
-    TRUSS = 'truss'
+### Truss Use
 
-FILE
-    /workspaces/truss/truss/build.py
-
-
-Help on module truss.truss_handle in truss:
-
-NAME
-    truss.truss_handle
-
-CLASSES
-    builtins.object
-        TrussHandle
-    
     class TrussHandle(builtins.object)
      |  TrussHandle(truss_dir: pathlib.Path) -> None
      |  
@@ -195,56 +160,4 @@ CLASSES
      |  
      |  __weakref__
      |      list of weak references to the object (if defined)
-
-DATA
-    Callable = typing.Callable
-        Callable type; Callable[[int], str] is a function of (int) -> str.
-        
-        The subscription syntax must always be used with exactly two
-        values: the argument list and the return type.  The argument list
-        must be a list of types or ellipsis; the return type must be a single type.
-        
-        There is no syntax to indicate optional or keyword arguments,
-        such function types are rarely used as callback types.
-    
-    Dict = typing.Dict
-        A generic version of dict.
-    
-    List = typing.List
-        A generic version of list.
-    
-    TRUSS = 'truss'
-    TRUSS_DIR = 'truss_dir'
-    TRUSS_MODIFIED_TIME = 'truss_modified_time'
-    Union = typing.Union
-        Union type; Union[X, Y] means either X or Y.
-        
-        To define a union, use e.g. Union[int, str].  Details:
-        - The arguments must be types and there must be at least one.
-        - None as an argument is a special case and is replaced by
-          type(None).
-        - Unions of unions are flattened, e.g.::
-        
-            Union[Union[int, str], float] == Union[int, str, float]
-        
-        - Unions of a single argument vanish, e.g.::
-        
-            Union[int] == int  # The constructor actually returns int
-        
-        - Redundant arguments are skipped, e.g.::
-        
-            Union[int, str, int] == Union[int, str]
-        
-        - When comparing unions, the argument order is ignored, e.g.::
-        
-            Union[int, str] == Union[str, int]
-        
-        - You cannot subclass or instantiate a union.
-        - You can use Optional[X] as a shorthand for Union[X, None].
-    
-    logger = <Logger truss.truss_handle (WARNING)>
-
-FILE
-    /workspaces/truss/truss/truss_handle.py
-
 
