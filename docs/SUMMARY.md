@@ -15,7 +15,7 @@
 
 ## Develop
 
-* [](develop/local-serving.md)
+* [Localhost workflow](develop/localhost.md)
 * [Truss configuration](develop/configuration.md)
 * [Pre- and post-processing](develop/processing.md)
 * [Sample inputs](develop/examples.md)
