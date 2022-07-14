@@ -15,8 +15,7 @@ def _run_gpt3(gpt3_input: dict):
 class GPT3Model(object):
     def __init__(self, **kwargs) -> None:
         self._config = kwargs['config']
-        print(self._config)
-        openai.api_key = self._config['secrets']['api_key']
+        openai.api_key = self._config['secrets']['openai_api_key']
 
     def predict(self, request: Dict) -> Dict[str, List]:
         """

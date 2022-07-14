@@ -17,5 +17,5 @@ resources:
   memory: 512m
   use_gpu: false
 secrets:
-  api_key:
+  openai_api_key:
 system_packages: []
