@@ -15,7 +15,7 @@ requirements:
   - transformers==4.4.2
 resources:
   cpu: 1000m
-  memory: 3000m
+  memory: 3000Mi
   use_gpu: false
 secrets: {}
 system_packages: []

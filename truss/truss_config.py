@@ -32,9 +32,9 @@ class Resources:
 
     @staticmethod
     def from_dict(d):
-        cpu = d.get('cpu', DEFAULT_CPU),
+        cpu = d.get('cpu', DEFAULT_CPU)
         validate_cpu_spec(cpu)
-        memory = d.get('memory', DEFAULT_MEMORY),
+        memory = d.get('memory', DEFAULT_MEMORY)
         validate_memory_spec(memory)
 
         return Resources(
