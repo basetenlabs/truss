@@ -23,8 +23,8 @@ There are two ways to run inference on your Truss model.
 {%- if examples == None %}
 truss predict --target_directory ./  --request '{"inputs": YOUR_INPUT}'
 {% else %}
-    {%- for first_key, first_value in examples.items() %}
-        {%- for second_key, second_value in first_value.items() %}
+    {%- for example in examples %}
+        {%- for second_key, second_value in example.input.items() %}
 truss predict --target_directory ./  --request '{"inputs": {{ second_value[0] }}}'
         {%- endfor %}
     {%- endfor %}
@@ -39,8 +39,8 @@ curl -H 'Content-Type: application/json' \
 -d '{"inputs": YOUR_INPUT}' \
 -X POST http://localhost:8080/v1/models/model:predict
 {% else %}
-    {%- for first_key, first_value in examples.items() %}
-        {%- for second_key, second_value in first_value.items() %}
+    {%- for example in examples %}
+        {%- for second_key, second_value in example.input.items() %}
 curl -H 'Content-Type: application/json' \
 -d '{"inputs": {{ second_value[0] }} }' \
 -X POST http://localhost:8080/v1/models/model:predict
@@ -60,8 +60,8 @@ truss run-example
 {%- if examples == None %}
 truss run-example --name EXAMPLE_NAME
 {% else %}
-    {%- for key, value in examples.items() %}
-truss run-example --name {{ key }}
+    {%- for example in examples %}
+truss run-example --name {{ example.name }}
     {%- endfor %}
 {%- endif %}
 ```

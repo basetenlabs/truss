@@ -17,6 +17,7 @@ from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
 from xgboost import XGBClassifier
 
 from truss.build import init
+from truss.types import Example
 
 PYTORCH_MODEL_FILE_CONTENTS = """
 import torch
@@ -443,11 +444,14 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
     sc = init(str(dir_path))
     with sc.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    sc.update_examples({
-        'example1': {
-            'inputs': [[0]]
-        }
-    })
+    sc.update_examples([
+        Example(
+            'example1',
+            {
+                'inputs': [[0]]
+            }
+        )
+    ])
     yield dir_path
 
 
@@ -457,13 +461,16 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
     sc = init(str(dir_path))
     with sc.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    sc.update_examples({
-        'example1': {
-            'inputs': [{
-                'image_url' : 'https://github.com/pytorch/hub/raw/master/images/dog.jpg'
-            }]
-        }
-    })
+    sc.update_examples([
+        Example(
+            'example1',
+            {
+                'inputs': [{
+                    'image_url' : 'https://github.com/pytorch/hub/raw/master/images/dog.jpg'
+                }]
+            }
+        )
+    ])
     yield dir_path
 
 

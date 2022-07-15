@@ -5,8 +5,9 @@ from typing import Dict, List
 import yaml
 
 from truss.constants import CONFIG_FILE
+from truss.errors import ValidationError
 from truss.truss_config import TrussConfig
-from truss.types import ModelFrameworkType
+from truss.types import Example, ModelFrameworkType
 
 
 class TrussSpec:
@@ -105,9 +106,13 @@ class TrussSpec:
         return self._truss_dir / self._config.examples_filename
 
     @property
-    def examples(self) -> Dict[str, Dict]:
+    def examples(self) -> List[Example]:
         with self.examples_path.open() as yaml_file:
-            return yaml.safe_load(yaml_file)
+            examples = yaml.safe_load(yaml_file)
+            if not isinstance(examples, list):
+                raise ValidationError(
+                    f'Examples should be provided as a list but found to be {type(examples)}')
+            return [Example.from_dict(example) for example in examples]
 
     @property
     def yaml_string(self) -> str:

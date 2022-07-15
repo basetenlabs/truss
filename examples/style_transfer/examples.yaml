@@ -1,4 +1,5 @@
-example1:
-  inputs:
+- input:
+    inputs:
     - content_image_url: https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Golden_Gate_Bridge%2C_North_view.jpg/2880px-Golden_Gate_Bridge%2C_North_view.jpg
       style_image_url: https://upload.wikimedia.org/wikipedia/commons/0/0a/The_Great_Wave_off_Kanagawa.jpg
+  name: example1

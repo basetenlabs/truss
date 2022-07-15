@@ -1,3 +1,4 @@
-example1:
-  inputs:
-    - prompt: "Hello world"
+- input:
+    inputs:
+    - prompt: Hello world
+  name: example1
