@@ -1,6 +1,11 @@
 import re
 
+from truss.errors import ValidationError
+
 SECRET_NAME_MATCH_REGEX = re.compile(r'^[-._a-zA-Z0-9]+$')
+MILLI_CPU_REGEX = re.compile(r'^\d*m$')
+MEMORY_REGEX = re.compile(r'^\d*(\w*)$')
+MEMORY_UNITS = set(['k', 'M', 'G', 'T', 'P', 'E', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei'])
 
 
 def validate_secret_name(secret_name: str):
@@ -21,3 +26,32 @@ def validate_secret_name(secret_name: str):
 
     if secret_name == '..':
         raise ValueError(constraint_violation_msg() + ', secret name cannot be `..`')
+
+
+def validate_cpu_spec(cpu_spec: str):
+    if not isinstance(cpu_spec, str):
+        raise ValidationError(f'{cpu_spec} needs to be a string, but is {type(cpu_spec)}')
+
+    is_numeric = cpu_spec.isnumeric()
+    if is_numeric:
+        return
+
+    is_milli_cpu_format = MILLI_CPU_REGEX.search(cpu_spec) is not None
+    if not is_milli_cpu_format:
+        raise ValidationError(f'Invalid cpu specification {cpu_spec}')
+
+
+def validate_memory_spec(mem_spec: str):
+    if not isinstance(mem_spec, str):
+        raise ValidationError(f'{mem_spec} needs to be a string, but is {type(mem_spec)}')
+    is_numeric = mem_spec.isnumeric()
+    if is_numeric:
+        return
+
+    match = MEMORY_REGEX.search(mem_spec)
+    if match is None:
+        raise ValidationError(f'Invalid memory specification {mem_spec}')
+
+    unit = match.group(1)
+    if unit not in MEMORY_UNITS:
+        raise ValidationError(f'Invalid memory unit {unit} in {mem_spec}')

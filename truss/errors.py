@@ -20,3 +20,7 @@ class ModelClassImplementationError(Error):
 
 class InvalidConfigurationError(Error):
     pass
+
+
+class ValidationError(Error):
+    pass
