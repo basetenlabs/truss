@@ -1,3 +1,4 @@
-example1:
-  inputs:
-     - prompt: Surfing Astronaut!
+- input:
+    inputs:
+    - prompt: Surfing Astronaut!
+  name: example1
