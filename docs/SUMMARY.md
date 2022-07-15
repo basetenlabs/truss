@@ -1,21 +1,36 @@
 # Table of contents
 
-* [What is a Truss?](README.md)
+* [Introducing Truss](../README.md)
+* [End-to-end deployment](tutorials/e2e.md)
+* [Release notes](CHANGELOG.md)
 
-## Truss
+## Create
 
-* [Getting Started](truss/getting-started.md)
+* [Hugging Face](create/huggingface.md)
+* [PyTorch](create/pytorch.md)
+* [scikit-learn](create/sklearn.md)
+* [TensorFlow](create/tensorflow.md)
+* [XGBoost](create/xgboost.md)
+* [Manually](create/manual.md)
 
-## Tutorials
+## Develop
 
-* [Creating a Simple Truss](tutorials/creating-a-simple-truss.md)
-* [Extending a Truss](tutorials/extending-a-truss.md)
+* [Localhost workflow](develop/localhost.md)
+* [Truss configuration](develop/configuration.md)
+* [Pre- and post-processing](develop/processing.md)
+* [Sample inputs](develop/examples.md)
+* [GPU support](develop/gpu.md)
+* [Secret management](develop/secrets.md)
 
-## Discussion
+## Deploy
 
-* [Truss Architecture](discussion/truss-architecture.md)
-* [Truss Structure](discussion/truss-structure.md)
-* [Environment Replication](discussion/environment-replication.md)
-* [Model Serialization](discussion/model-serialization.md)
-* [Baseten Model](discussion/baseten-model.md)
-* [Request & Response Serialization](discussion/request-and-response-serialization.md)
+* [AWS](deploy/aws.md)
+* [Baseten](deploy/baseten.md)
+* [Docker](deploy/docker.md)
+* [GCP](deploy/gcp.md)
+
+## Reference
+
+* [Python client](reference/client.md)
+* [Command-line interface](reference/cli.md)
+* [Truss structure](reference/structure.md)

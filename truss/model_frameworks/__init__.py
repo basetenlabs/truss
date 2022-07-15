@@ -5,8 +5,10 @@ from truss.model_framework import ModelFramework
 from truss.model_frameworks.huggingface_transformer import \
     HuggingfaceTransformer
 from truss.model_frameworks.keras import Keras
+from truss.model_frameworks.lightgbm import LightGBM
 from truss.model_frameworks.pytorch import PyTorch
 from truss.model_frameworks.sklearn import SKLearn
+from truss.model_frameworks.xgboost import XGBoost
 from truss.types import ModelFrameworkType
 
 MODEL_FRAMEWORKS_BY_TYPE = {
@@ -14,6 +16,8 @@ MODEL_FRAMEWORKS_BY_TYPE = {
     ModelFrameworkType.KERAS: Keras(),
     ModelFrameworkType.HUGGINGFACE_TRANSFORMER: HuggingfaceTransformer(),
     ModelFrameworkType.PYTORCH: PyTorch(),
+    ModelFrameworkType.XGBOOST: XGBoost(),
+    ModelFrameworkType.LIGHTGBM: LightGBM()
 }
 
 
@@ -22,6 +26,8 @@ SUPPORTED_MODEL_FRAMEWORKS = [
     ModelFrameworkType.KERAS,
     ModelFrameworkType.TENSORFLOW,
     ModelFrameworkType.HUGGINGFACE_TRANSFORMER,
+    ModelFrameworkType.XGBOOST,
+    ModelFrameworkType.LIGHTGBM
 ]
 
 

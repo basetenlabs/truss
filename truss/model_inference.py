@@ -10,8 +10,8 @@ import pkg_resources
 from packaging import version
 from pkg_resources.extern.packaging.requirements import InvalidRequirement
 
-from truss.constants import (HUGGINGFACE_TRANSFORMER, KERAS, PYTORCH, SKLEARN,
-                             TENSORFLOW)
+from truss.constants import (HUGGINGFACE_TRANSFORMER, KERAS, LIGHTGBM, PYTORCH,
+                             SKLEARN, TENSORFLOW, XGBOOST)
 from truss.errors import FrameworkNotSupportedError
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
@@ -23,12 +23,19 @@ SKLEARN_REQ_MODULE_NAME = {
     'threadpoolctl',
 }
 
+XGBOOST_REQ_MODULE_NAME = {
+    'xgboost'
+}
+
 # list from https://www.tensorflow.org/install/pip
 # if problematic, lets look to https://www.tensorflow.org/install/source
 TENSORFLOW_REQ_MODULE_NAME = {
     'tensorflow',
 }
 
+LIGHTGBM_REQ_MODULE_NAME = {
+    'lightgbm',
+}
 
 # list from https://pytorch.org/get-started/locally/
 PYTORCH_REQ_MODULE_NAME = {
@@ -80,6 +87,10 @@ def infer_sklearn_packages():
     return _get_entries_for_packages(pip_freeze(), SKLEARN_REQ_MODULE_NAME)
 
 
+def infer_lightgbm_packages():
+    return _get_entries_for_packages(pip_freeze(), LIGHTGBM_REQ_MODULE_NAME)
+
+
 def infer_tensorflow_packages():
     return _get_entries_for_packages(pip_freeze(), TENSORFLOW_REQ_MODULE_NAME)
 
@@ -96,21 +107,29 @@ def infer_huggingface_packages():
     return _get_entries_for_packages(pip_freeze(), HUGGINGFACE_TRANSFORMER_MODULE_NAME)
 
 
+def infer_xgboost_packages():
+    return _get_entries_for_packages(pip_freeze(), XGBOOST_REQ_MODULE_NAME)
+
+
 def _infer_model_framework(model_class: str):
     model_framework, _, _ = model_class.__module__.partition('.')
     if model_framework == 'transformers':
         return HUGGINGFACE_TRANSFORMER
-    if model_framework not in {SKLEARN, TENSORFLOW, KERAS}:
+    if model_framework not in {SKLEARN, TENSORFLOW, KERAS, LIGHTGBM, XGBOOST}:
         try:
             import torch
             if issubclass(model_class, torch.nn.Module):
                 model_framework = PYTORCH
             else:
                 raise FrameworkNotSupportedError(f'Models must be one of '
-                                                 f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, {TENSORFLOW}, or {PYTORCH}.')
+                                                 f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, '
+                                                 f'{XGBOOST}, {TENSORFLOW}, {PYTORCH} or '
+                                                 f'{LIGHTGBM} ')
         except ModuleNotFoundError:
             raise FrameworkNotSupportedError(f'Models must be one of '
-                                             f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, {TENSORFLOW}, or {PYTORCH}.')
+                                             f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}'
+                                             f'{XGBOOST}, {TENSORFLOW}, or {PYTORCH}. '
+                                             f'{LIGHTGBM} ')
 
     return model_framework
 

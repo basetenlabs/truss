@@ -5,7 +5,8 @@ from typing import Any, Dict, List
 import yaml
 
 from truss.types import ModelFrameworkType
-from truss.validation import validate_secret_name
+from truss.validation import (validate_cpu_spec, validate_memory_spec,
+                              validate_secret_name)
 
 DEFAULT_MODEL_FRAMEWORK_TYPE = ModelFrameworkType.CUSTOM
 DEFAULT_MODEL_TYPE = 'Model'
@@ -19,7 +20,7 @@ DEFAULT_DATA_DIRECTORY = 'data'
 DEFAULT_EXAMPLES_FILENAME = 'examples.yaml'
 
 DEFAULT_CPU = '500m'
-DEFAULT_MEMORY = '512m'
+DEFAULT_MEMORY = '512Mi'
 DEFAULT_USE_GPU = False
 
 
@@ -31,9 +32,14 @@ class Resources:
 
     @staticmethod
     def from_dict(d):
+        cpu = d.get('cpu', DEFAULT_CPU)
+        validate_cpu_spec(cpu)
+        memory = d.get('memory', DEFAULT_MEMORY)
+        validate_memory_spec(memory)
+
         return Resources(
-            cpu=d.get('cpu', DEFAULT_CPU),
-            memory=d.get('memory', DEFAULT_MEMORY),
+            cpu=cpu,
+            memory=memory,
             use_gpu=d.get('use_gpu', DEFAULT_USE_GPU),
         )
 

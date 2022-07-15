@@ -1,7 +1,8 @@
-cat:
-  instances:
-    - image_url: 'https://source.unsplash.com/gKXKBY-C-Dk/300x300'
+- input:
+    instances:
+    - image_url: https://source.unsplash.com/gKXKBY-C-Dk/300x300
       labels:
-        - small cat
-        - not cat
-        - big cat
+      - small cat
+      - not cat
+      - big cat
+  name: cat

@@ -21,7 +21,7 @@ requirements:
 - ipywidgets==7.7.0
 resources:
   cpu: 500m
-  memory: 512m
+  memory: 512Mi
   use_gpu: false
 secrets: {}
 system_packages: []

@@ -3,7 +3,7 @@ import glob
 import logging
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, Dict, List, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import requests
@@ -19,6 +19,7 @@ from truss.local.local_config_handler import LocalConfigHandler
 from truss.readme_generator import generate_readme
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
+from truss.types import Example
 from truss.utils import (copy_file_path, copy_tree_path,
                          get_max_modified_time_of_dir)
 from truss.validation import validate_secret_name
@@ -192,37 +193,47 @@ class TrussHandle:
                 filepath = Path(filename)
                 copy_file_path(filepath, self._spec.data_dir / filepath.name)
 
-    def examples(self) -> Dict[str, Dict]:
+    def examples(self) -> List[Example]:
         """List truss model's examples.
 
         Examples are a simple `name to input` dictionary.
         """
         return self._spec.examples
 
-    def update_examples(self, examples: Dict[str, Dict]):
+    def update_examples(self, examples: List[Example]):
         """Update truss model's examples.
 
         Existing examples are replaced whole with the given ones.
         """
         with self._spec.examples_path.open('w') as examples_file:
-            examples_file.write(yaml.dump(examples))
+            examples_to_write = [example.to_dict() for example in examples]
+            examples_file.write(yaml.dump(examples_to_write))
 
-    def example(self, name_or_index: Union[str, int]) -> Dict:
+    def example(self, name_or_index: Union[str, int]) -> Example:
         """Return lookup an example by name or index.
 
         Index is 0 based. e.g. example(0) returns the first example.
         """
+        examples = self.examples()
         if isinstance(name_or_index, str):
-            return self.examples()[name_or_index]
-        return list(self.examples().values())[name_or_index]
+            example_name = name_or_index
+            index = _find_example_by_name(examples, example_name)
+            if index is None:
+                raise ValueError(f'No example named {example_name} was found.')
+            return examples[index]
+        return self.examples()[name_or_index]
 
-    def add_example(self, example_name: str, example: dict):
+    def add_example(self, example_name: str, example_input: dict):
         """Add example for truss model.
 
         If the example with the given name already exists then it is overwritten.
         """
         examples = copy.deepcopy(self.examples())
-        examples[example_name] = example
+        index = _find_example_by_name(self.examples(), example_name)
+        if index is None:
+            examples.append(Example(example_name, example_input))
+        else:
+            examples[index] = Example(example_name, example_input)
         self.update_examples(examples)
 
     def get_docker_images_from_label(self):
@@ -328,3 +339,9 @@ def _wait_for_model_server(url: str):
 def _prepare_secrets_mount_dir() -> Path:
     LocalConfigHandler.sync_secrets_mount_dir()
     return LocalConfigHandler.secrets_dir_path()
+
+
+def _find_example_by_name(examples: List[Example], example_name: str) -> Optional[int]:
+    for index, example in enumerate(examples):
+        if example.name == example_name:
+            return index
