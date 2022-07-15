@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.0.25"
+version = "0.0.26"
 description = ""
 authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
