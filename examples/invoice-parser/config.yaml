@@ -33,7 +33,7 @@ requirements:
   - urllib3==1.26.5
 resources:
   cpu: 500m
-  memory: 512m
+  memory: 512Mi
   use_gpu: false
 secrets:
     type: samplevalue

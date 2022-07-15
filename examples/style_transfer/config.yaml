@@ -16,6 +16,6 @@ requirements:
   - pillow==9.0.1
 resources:
   cpu: 500m
-  memory: 512m
+  memory: 512Mi
   use_gpu: false
 system_packages: []
