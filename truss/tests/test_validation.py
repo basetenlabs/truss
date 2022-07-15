@@ -39,6 +39,8 @@ def test_validate_secret_name(secret_name, should_error):
     (None, False),
     ('', False),
     ('1', True),
+    ('1.5', True),
+    ('1.5m', True),
     (1, False),
     ('1m', True),
     ('1M', False),
@@ -60,6 +62,7 @@ def test_validate_cpu_spec(cpu_spec, expected_valid):
     ('1k', True),
     ('512k', True),
     ('512M', True),
+    ('1.5Gi', True),
     ('abc', False),
 ])
 def test_validate_mem_spec(mem_spec, expected_valid):

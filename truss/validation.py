@@ -3,8 +3,8 @@ import re
 from truss.errors import ValidationError
 
 SECRET_NAME_MATCH_REGEX = re.compile(r'^[-._a-zA-Z0-9]+$')
-MILLI_CPU_REGEX = re.compile(r'^\d*m$')
-MEMORY_REGEX = re.compile(r'^\d*(\w*)$')
+MILLI_CPU_REGEX = re.compile(r'^[0-9.]*m$')
+MEMORY_REGEX = re.compile(r'^[0-9.]*(\w*)$')
 MEMORY_UNITS = set(['k', 'M', 'G', 'T', 'P', 'E', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei'])
 
 
@@ -32,8 +32,7 @@ def validate_cpu_spec(cpu_spec: str):
     if not isinstance(cpu_spec, str):
         raise ValidationError(f'{cpu_spec} needs to be a string, but is {type(cpu_spec)}')
 
-    is_numeric = cpu_spec.isnumeric()
-    if is_numeric:
+    if _is_numeric(cpu_spec):
         return
 
     is_milli_cpu_format = MILLI_CPU_REGEX.search(cpu_spec) is not None
@@ -44,8 +43,7 @@ def validate_cpu_spec(cpu_spec: str):
 def validate_memory_spec(mem_spec: str):
     if not isinstance(mem_spec, str):
         raise ValidationError(f'{mem_spec} needs to be a string, but is {type(mem_spec)}')
-    is_numeric = mem_spec.isnumeric()
-    if is_numeric:
+    if _is_numeric(mem_spec):
         return
 
     match = MEMORY_REGEX.search(mem_spec)
@@ -55,3 +53,11 @@ def validate_memory_spec(mem_spec: str):
     unit = match.group(1)
     if unit not in MEMORY_UNITS:
         raise ValidationError(f'Invalid memory unit {unit} in {mem_spec}')
+
+
+def _is_numeric(number_like: str) -> bool:
+    try:
+        float(number_like)
+        return True
+    except ValueError:
+        return False
