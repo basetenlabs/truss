@@ -11,7 +11,7 @@ from packaging import version
 from pkg_resources.extern.packaging.requirements import InvalidRequirement
 
 from truss.constants import (HUGGINGFACE_TRANSFORMER, KERAS, LIGHTGBM, PYTORCH,
-                             SKLEARN, TENSORFLOW)
+                             SKLEARN, TENSORFLOW, XGBOOST)
 from truss.errors import FrameworkNotSupportedError
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
@@ -21,6 +21,10 @@ SKLEARN_REQ_MODULE_NAME = {
     'joblib',
     'scikit-learn',
     'threadpoolctl',
+}
+
+XGBOOST_REQ_MODULE_NAME = {
+    'xgboost'
 }
 
 # list from https://www.tensorflow.org/install/pip
@@ -103,23 +107,29 @@ def infer_huggingface_packages():
     return _get_entries_for_packages(pip_freeze(), HUGGINGFACE_TRANSFORMER_MODULE_NAME)
 
 
+def infer_xgboost_packages():
+    return _get_entries_for_packages(pip_freeze(), XGBOOST_REQ_MODULE_NAME)
+
+
 def _infer_model_framework(model_class: str):
     model_framework, _, _ = model_class.__module__.partition('.')
     if model_framework == 'transformers':
         return HUGGINGFACE_TRANSFORMER
-    if model_framework not in {SKLEARN, TENSORFLOW, KERAS, LIGHTGBM}:
+    if model_framework not in {SKLEARN, TENSORFLOW, KERAS, LIGHTGBM, XGBOOST}:
         try:
             import torch
             if issubclass(model_class, torch.nn.Module):
                 model_framework = PYTORCH
             else:
                 raise FrameworkNotSupportedError(f'Models must be one of '
-                                                 f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}'
-                                                 f'{LIGHTGBM}, {TENSORFLOW}, or {PYTORCH}.')
+                                                 f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, '
+                                                 f'{XGBOOST}, {TENSORFLOW}, {PYTORCH} or '
+                                                 f'{LIGHTGBM} ')
         except ModuleNotFoundError:
             raise FrameworkNotSupportedError(f'Models must be one of '
                                              f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}'
-                                             f'{LIGHTGBM}, {TENSORFLOW}, or {PYTORCH}.')
+                                             f'{XGBOOST}, {TENSORFLOW}, or {PYTORCH}. '
+                                             f'{LIGHTGBM} ')
 
     return model_framework
 

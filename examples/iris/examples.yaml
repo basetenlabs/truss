@@ -1,3 +1,7 @@
-zero:
-  instances:
-    - [0, 0, 0, 0]
+- input:
+    instances:
+    - - 0
+      - 0
+      - 0
+      - 0
+  name: zero

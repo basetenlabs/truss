@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, List
 
+import click
 import yaml
 
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
@@ -37,6 +38,18 @@ def mk_truss(
         TrussHandle: A handle to the generated Truss that provides easy access to content inside.
     """
     model_framework = model_framework_from_model(model)
+    if (model_framework.typ() == ModelFrameworkType.XGBOOST):
+        click.echo(
+            click.style
+            (
+                '''WARNING: Truss uses XGBoost save/load which has a
+                different interface during inference than the class
+                you used to train this model. You can learn more about
+                these differences at
+                https://xgboost.readthedocs.io/en/stable/tutorials/saving_model.html
+                ''', fg='yellow'
+            )
+        )
     if target_directory is None:
         target_directory_path = build_truss_target_directory(model_framework.typ().value)
     else:

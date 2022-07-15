@@ -1,0 +1,4 @@
+- input:
+    inputs:
+    - - https://slicedinvoices.com/pdf/wordpress-pdf-invoice-plugin-sample.pdf
+  name: example1
