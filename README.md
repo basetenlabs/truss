@@ -29,40 +29,35 @@ truss.mk_truss(rfc, target_directory="iris_rfc")
 
 ## Use cases
 
-Truss exposes just the right amount of complexity around things like Docker and APIs without you really having to think about them. 
+Truss exposes just the right amount of complexity around things like Docker and APIs without you really having to think about them. Here's some of the things Truss does:
 
-* Freezes dependencies via Docker to make your training environment portable
-* Turns your Python model into a microservice with a production-ready API endpoint, no need for Flask or Django
-* For most popular frameworks, automatic model serialization and deserialization
-* Rapid iteration with local development that matches your production environment
-* Ship parsing and even business logic alongside your model with integrated pre- and post-processing functions
-* GPU support (currently limited to certain hardware, more coming soon)
-* Secret management to securely give your model access to API keys
+* 🏎 Turns your Python model into a microservice with a production-ready API endpoint, no need for Flask or Django.
+* 🎚 For most popular frameworks, includes automatic model serialization and deserialization.
+* 🛍 Freezes dependencies via Docker to make your training environment portable.
+* 🕰 Enables rapid iteration with local development that matches your production environment.
+* 🗃 Encourages shipping parsing and even business logic alongside your model with integrated pre- and post-processing functions.
+* 🤖 Supports running predictions on GPUs. (Currently limited to certain hardware, more coming soon)
+* 🙉 Bundles secret management to securely give your model access to API keys.
 
 ### Model as an API
 
+Truss turns your ML model into a backend for web, no Django or Flask needed. This "model as a microservice" approach saves time writing and maintaining web server code, and makes the model a single unit within your application.
 
-Truss = Model backend
+Every model runs in its own environment. This is a different intuition than most APIs, where endpoints share the same dependencies and resources. But two different machine learning models might depend on different frameworks, packages, and hardware. So Truss keeps everything separate, preventing tangled configurations or repeated model serving work.
 
-Model as a microservice
-
-Every model runs in its own environment (different intuition than 5 CRUD API endpoints)
-
-Truss makes your ML model "atomic" ... it makes the ML model a single block within your system... MaaM
-
-Truss is a single-celled organism. Is it a Prokaryote or Eucaryote? 
-
-
+And with your model behind an API, you can do end-to-end tests locally with your front-end or other systems. Turning a Python-first object into a web-first object unlocks workflows for all kinds of software developers.
 
 ### Model as a sharable artifact
 
-New model, in whatever framework, and I should just be able to run it on some web server. Model exists and I can run it are equivalent statements. Reliably work to package this thing so it is ready for the web and all the different ways people want to interface with it.
+Running a model that someone else has created is non-trivial. Sometimes it even requires re-creating their training environment and training it yourself, but at minimum requires setting up an environment, deserializing the model, and creating a model server.
 
-Models take numbers. Embedding is a function that turns text to numbers
+With Truss, "a model exists" and "I can run the model on any machine" are equivalent statements. Truss reliably packages models to be ready for the web and any other ways people want to interface with it. Package your model as a Truss and share it within your team or with the world, and the "setup" portion of your README will be shorter than ever.
 
-React-like iterative functionality. Right now Truss is 0-1. Eventual iterative features around anomoly detection, drift, etc. Or have multiple trusses talk to each other. Separate model explains output.
+### Model as a component
 
-Truss's use cases are expanding quickly, ROADMAP
+A model embedding factorizes inputs to make them understandable to a model. This is a form of pre-processing input. But pre- and post-processing can be more powerful and flexible. So Truss bundles these functions in the `model.py` file. By writing custom pre- and post-processing code, you can make your model a drop-in component to a larger system and use the same formats to pass around information, be that JSON, XML, video, natural language, or any other structured or unstructured data.
+
+Over time, we aim to add features for iterative development, helping with detecting anomalies, drift, and more. And by composing multiple models, each with their own Truss, you'll be able to build more powerful, capable systems with just a few lines of pre- and post-processing code, conveniently bundled with your model. Truss' use cases are expanding quickly, and you can [review and contribute to the roadmap here]().
 
 ## Installation
 
@@ -86,7 +81,7 @@ Though Truss is in beta, we do care about backward compatibility. Review the [re
 
 ## Our vision for Truss
 
-Data Scientists and machine learning engineers spend a lot of time building models that solve specific problems: sentiment classification, facial recognition, anomaly detection. Generally, this exploratory, experimental work is done using an interactive environment like a Jupyter notebook. To match the wide variety of use cases for ML models, there are a number of popular frameworks to build in, like PyTorch, TensorFlow, and scikit-learn. Each framework specializes in different kinds of models, so a data scientist will pick the framework based on the type of problem they are solving.
+Data scientists and machine learning engineers spend a lot of time building models that solve specific problems: sentiment classification, facial recognition, anomaly detection. Generally, this exploratory, experimental work is done using an interactive environment like a Jupyter notebook. To match the wide variety of use cases for ML models, there are a number of popular frameworks to build in, like PyTorch, TensorFlow, and scikit-learn. Each framework specializes in different kinds of models, so a data scientist will pick the framework based on the type of problem they are solving.
 
 As such, the data scientist's development environment needs to be flexible and permissive. Jupyter notebooks are a great tool for training models, but as a impermanent and development-oriented environment they aren't great for model serving. Model serving, or making a model available to other systems, is critical; a model is not very useful unless it can operate in the real world.
 
