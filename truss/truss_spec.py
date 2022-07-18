@@ -123,10 +123,6 @@ class TrussSpec:
     def secrets(self) -> Dict[str, str]:
         return self._config.secrets
 
-    @property
-    def description(self) -> str:
-        return self._config.description
-
 
 def _join_lines(lines: List[str]) -> str:
     return '\n'.join(lines) + '\n'

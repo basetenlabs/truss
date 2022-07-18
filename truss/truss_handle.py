@@ -290,11 +290,6 @@ class TrussHandle:
     def generate_readme(self):
         return generate_readme(self._spec)
 
-    def update_description(self, description: str):
-        self._update_config(lambda conf: replace(
-            conf,
-            description=description))
-
 
 def _prediction_flow(model, request: dict):
     """This flow attempts to mimic the request life-cycle of a kfserving server"""
