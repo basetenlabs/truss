@@ -36,7 +36,7 @@ def test_server_predict(custom_model_truss_dir_with_pre_and_post):
 
 def test_readme_generation_description(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th._spec.update_description("This model adds 3 to all inputs")
+    th.update_description("This model adds 3 to all inputs")
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace('\n', '')
     correct_readme_contents = _read_readme('readme_description.md')
