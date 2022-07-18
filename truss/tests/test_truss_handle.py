@@ -27,6 +27,15 @@ def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     assert resp == {'predictions': [4, 5, 6, 7]}
 
 
+def test_readme_generation_description(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    th._spec.update_description("This model adds 3 to all inputs")
+    readme_contents = th.generate_readme()
+    readme_contents = readme_contents.replace('\n', '')
+    correct_readme_contents = _read_readme('readme_description.md')
+    assert readme_contents == correct_readme_contents
+
+
 def test_readme_generation_int_example(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     readme_contents = th.generate_readme()

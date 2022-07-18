@@ -223,6 +223,23 @@ def cleanup() -> None:
     truss.build.cleanup()
 
 
+@cli_group.command()
+@click.argument("target_directory", required=False)
+@error_handling
+def generate_readme(target_directory: str = None) -> None:
+    """
+    Generates a readme automatically from a Truss
+    """
+    if target_directory is None:
+        target_directory = os.getcwd()
+    target_directory = Path(target_directory)
+    tr = truss.from_directory(target_directory)
+    readme_contents = tr.generate_readme()
+    readme_file_path = target_directory / truss.constants.MODEL_README_NAME
+    with readme_file_path.open('w') as readme_file:
+        readme_file.write(readme_contents)
+
+
 def _get_truss_from_directory(target_directory: str = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
