@@ -124,7 +124,7 @@ class TrussConfig:
             'python_version': self.python_version,
             'model_name': self.model_name,
             'examples_filename': self.examples_filename,
-            'secrets': self.secrets
+            'secrets': self.secrets,
         }
 
     def clone(self):

@@ -19,13 +19,6 @@ def test_spec(custom_model_truss_dir_with_pre_and_post):
     assert spec.truss_dir == dir_path
 
 
-def test_description(custom_model_truss_dir_with_pre_and_post_description):
-    dir_path = custom_model_truss_dir_with_pre_and_post_description
-    th = TrussHandle(dir_path)
-    spec = th.spec
-    assert spec.description == "This model adds 3 to all inputs"
-
-
 def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     resp = th.server_predict({
