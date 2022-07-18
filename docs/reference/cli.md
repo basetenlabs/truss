@@ -24,14 +24,14 @@ Args:
 
 Builds the docker image for a Truss.
 
-Args: 
+Args:
 * TARGET DIRECTORY: A Truss directory. If none, use current directory.
 * BUILD_DIR: Image context. If none, a temp directory is created.
 
 #### cleanup
 
 Clean up truss data.
-    
+
 Truss creates temporary directories for various operations
 such as for building docker images. This command clears
 that data to free up disk space.
