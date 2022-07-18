@@ -475,6 +475,16 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
 
 
 @pytest.fixture
+def custom_model_truss_dir_with_pre_and_post_description(tmp_path):
+    dir_path = tmp_path / 'custom_truss_with_pre_post'
+    sc = init(str(dir_path))
+    with sc.spec.model_class_filepath.open('w') as file:
+        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    sc.update_description("This model adds 3 to all inputs")
+    yield dir_path
+
+
+@pytest.fixture
 def custom_model_truss_dir_for_gpu(tmp_path):
     dir_path = tmp_path / 'custom_truss'
     sc = init(str(dir_path))
