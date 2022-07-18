@@ -1,9 +1,19 @@
 # Sample inputs
 
-Examples make your model easy to use for yourself and others. Easy to forget the exact inputs it needs, makes it better documented and more accessible. Also it gives you a way of testing your model because you know what a reasonable output would be for the input.
+When you test your model locally, you likely have a go-to set of inputs to make sure everything is working. To improve the developer experience and document the input format, the `examples.yaml` file stores sample inputs. No more forgetting if your model takes a list or a dictionary, and no more copying inputs between model invocation tests. 
 
-What is the examples file
+Format each example as follows:
 
-How to format
+```yaml
+example_name:
+  inputs:
+    - [10, 20, 30]
+```
 
-How to use
+Now, in your terminal you can run:
+
+```
+scaffold run-example test_model --local
+```
+
+This will invoke your model locally and pass the examples as input.
