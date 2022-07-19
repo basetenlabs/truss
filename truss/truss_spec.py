@@ -109,6 +109,8 @@ class TrussSpec:
     def examples(self) -> List[Example]:
         with self.examples_path.open() as yaml_file:
             examples = yaml.safe_load(yaml_file)
+            if examples is None:
+                examples = []
             if not isinstance(examples, list):
                 raise ValidationError(
                     f'Examples should be provided as a list but found to be {type(examples)}')

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import click
 from jinja2 import Template
 
 from truss.constants import (MODEL_DOCKERFILE_NAME, MODEL_README_NAME,
@@ -87,9 +88,21 @@ class ImageBuilder:
                 docker_file.write(dockerfile_contents)
 
         readme_file_path = build_dir / MODEL_README_NAME
-        readme_contents = generate_readme(self._spec)
-        with readme_file_path.open('w') as readme_file:
-            readme_file.write(readme_contents)
+        try:
+            readme_contents = generate_readme(self._spec)
+            with readme_file_path.open('w') as readme_file:
+                readme_file.write(readme_contents)
+        except Exception as e:
+            click.echo(
+                click.style
+                (
+                    f'''WARNING: Auto-readme generation has failed.
+                    This is probably due to a malformed config.yaml or
+                    malformed examples.yaml. Error is:
+                    {e}
+                    ''', fg='yellow'
+                )
+            )
 
     def docker_build_command(self, build_dir) -> str:
         return f'docker build {build_dir} -t {self.default_tag}'
