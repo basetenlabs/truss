@@ -7,6 +7,7 @@ import pytest
 from truss.constants import CONFIG_FILE
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.model_frameworks.lightgbm import LightGBM
+from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
@@ -48,7 +49,7 @@ def test_run_truss(lgb_pima_model):
 
 @pytest.mark.integration
 def test_run_image(lgb_pima_model):
-    with tempfile.TemporaryDirectory(dir='.') as tmp_work_dir:
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir='.') as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, 'truss')
         lgb_framework = LightGBM()
         lgb_framework.to_truss(lgb_pima_model, truss_dir)

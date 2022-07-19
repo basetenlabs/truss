@@ -11,6 +11,7 @@ from truss.contexts.image_builder.image_builder import ImageBuilderContext
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.model_frameworks.huggingface_transformer import \
     HuggingfaceTransformer
+from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import TrussConfig
 
 
@@ -54,7 +55,7 @@ def test_run_truss(huggingface_transformer_t5_small_model):
 
 @pytest.mark.integration
 def test_run_image(huggingface_transformer_t5_small_model):
-    with tempfile.TemporaryDirectory(dir='.') as tmp_work_dir:
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir='.') as tmp_work_dir:
         model = huggingface_transformer_t5_small_model
         truss_dir = Path(tmp_work_dir, 'truss')
         framework = HuggingfaceTransformer()
