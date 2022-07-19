@@ -78,8 +78,10 @@ ENV PORT 8080
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 COPY ./server /app
-COPY ./model /app/model
-COPY ./data* /app/data
+COPY ./{{ config.model_module_dir }} /app/model
+{% if data_dir_exists %}
+COPY ./{{config.data_dir}} /app/data
+{% endif %}
 COPY ./config.yaml /app/config.yaml
 
 {% for env_var_name, env_var_value in config.environment_variables.items() %}
