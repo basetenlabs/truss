@@ -1,5 +1,6 @@
 *.pyc
 *.pth
+*.code-workspace
 backend/*.sqlite3
 .DS_Store
 .env

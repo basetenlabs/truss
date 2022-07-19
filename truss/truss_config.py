@@ -74,6 +74,7 @@ class TrussConfig:
     python_version: str = DEFAULT_PYTHON_VERSION
     examples_filename: str = DEFAULT_EXAMPLES_FILENAME
     secrets: Dict[str, str] = field(default_factory=dict)
+    description: str = None
 
     @staticmethod
     def from_dict(d):
@@ -94,6 +95,7 @@ class TrussConfig:
             model_name=d.get('model_name', None),
             examples_filename=d.get('examples_filename', DEFAULT_EXAMPLES_FILENAME),
             secrets=d.get('secrets', {}),
+            description=d.get('description', None),
         )
         config.validate()
         return config
@@ -125,6 +127,7 @@ class TrussConfig:
             'model_name': self.model_name,
             'examples_filename': self.examples_filename,
             'secrets': self.secrets,
+            'description': self.description,
         }
 
     def clone(self):

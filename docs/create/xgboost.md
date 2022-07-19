@@ -17,10 +17,10 @@ This is the part you want to replace with your own code. Using a Hugging Face tr
 ```python
 import xgboost as xgb
 from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split    
+from sklearn.model_selection import train_test_split
 
 def create_data():
-    X, y = make_classification(n_samples=100, 
+    X, y = make_classification(n_samples=100,
                            n_informative=5,
                            n_classes=2)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
@@ -28,14 +28,14 @@ def create_data():
     test = xgb.DMatrix(X_test, y_test)
     return train, test
 
-train, test = create_data()   
+train, test = create_data()
 params = {
     "learning_rate": 0.01,
     "max_depth": 3
 }
 # training, we set the early stopping rounds parameter
-model = xgb.train(params, 
-        train, evals=[(train, "train"), (test, "validation")], 
+model = xgb.train(params,
+        train, evals=[(train, "train"), (test, "validation")],
         num_boost_round=100, early_stopping_rounds=20)
 ```
 
