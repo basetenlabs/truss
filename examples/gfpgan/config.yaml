@@ -70,7 +70,7 @@ requirements:
 - realesrgan==0.2.5.0
 resources:
   cpu: 500m
-  memory: 512m
+  memory: 512Mi
   use_gpu: false
 secrets:
   gfpgan_aws_access_key_id: null
