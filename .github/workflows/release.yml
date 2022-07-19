@@ -66,4 +66,4 @@ jobs:
 
     - name: Publish to PyPI
       if: ${{ github.event_name != 'pull_request' }}
-      run: poetry publish -u ${{ secrets.PYPI_USERNAME }} -p ${{ secrets.PYPI_PASSWORD }}
+      run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
