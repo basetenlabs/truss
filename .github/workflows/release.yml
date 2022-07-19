@@ -32,7 +32,7 @@ jobs:
         context: ./
         file: ./Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }} 
+        tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: |
           type=gha, scope=${{ github.workflow }}-${{ github.ref_name }}
