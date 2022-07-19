@@ -77,7 +77,11 @@ class ImageBuilder:
 
         with dockerfile_template_path.open() as dockerfile_template_file:
             dockerfile_template = Template(dockerfile_template_file.read())
-            dockerfile_contents = dockerfile_template.render(config=self._spec.config)
+            data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
+            dockerfile_contents = dockerfile_template.render(
+                config=self._spec.config,
+                data_dir_exists=data_dir_exists,
+            )
             docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
             with docker_file_path.open('w') as docker_file:
                 docker_file.write(dockerfile_contents)
