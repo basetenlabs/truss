@@ -6,7 +6,7 @@ Model deployment works in three stages:
 2. Configure the Truss to serve your model
 3. Deploy the Truss, containing your packaged model, on the platform of your choice
 
-![Truss is a seamless bridge between model development and model deployment](../assets/truss_unify.png)
+![Truss is a seamless bridge between model development and model deployment](assets/truss_unify.png)
 
 If you want to explore Truss end-to-end before using it for your own projects, follow along using [this notebook for deploying a Tensorflow model on AWS ECS](), which you can run locally or on Google Colab.
 
