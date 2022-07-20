@@ -2,7 +2,7 @@
 
 **Serve any model without boilerplate code**
 
-![Truss logo](docs/assets/logo.png)
+![Truss logo](docs/assets/truss_logo_horizontal.png)
 
 Meet Truss, a seamless bridge from model development to model delivery. Truss presents an open-source standard for packaging models built in any framework for sharing and deployment in any environment, local or production.
 
