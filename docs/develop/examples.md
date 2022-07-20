@@ -5,15 +5,16 @@ When you test your model locally, you likely have a go-to set of inputs to make 
 Format each example as follows:
 
 ```yaml
-example_name:
-  inputs:
-    - [10, 20, 30]
+- name: example_name
+  input: 
+	inputs:
+		- [10, 20, 30]
 ```
 
 Now, in your terminal you can run:
 
 ```
-scaffold run-example test_model --local
+truss run-example test_model --local
 ```
 
 This will invoke your model locally and pass the examples as input.

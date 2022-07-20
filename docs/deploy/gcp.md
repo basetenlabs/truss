@@ -9,11 +9,7 @@ Prerequisites:
 
 In this example, we'll be deploying the [TensorFlow Truss](../create/tensorflow.md) from an earlier tutorial. If you don't already have your Truss, use that tutorial to make one.
 
-<<<<<<< HEAD
-1. Set up
-=======
 First, we'll set a couple of important values for the Docker container.
->>>>>>> fd60a95 (flesh out docs)
 
 ```python
 from pathlib import Path
@@ -21,15 +17,6 @@ SERVICE_NAME = "tensorflow-truss-model"
 TARGET_TRUSS_BUILD_DIRECTORY = Path("tensorflow_truss_build")
 ```
 
-<<<<<<< HEAD
-    1) Cloud Run API
-    2) Artifact Registry API
-    3) Cloud Build API. Wait a few minutes, if you get:
-
-        INVALID_ARGUMENT: could not resolve source: googleapi: Error 403: XXXXXXXXXXX@cloudbuild.gserviceaccount.com does not have storage.objects.get access to the Google Cloud Storage object
-
-    in your GCP Project. Runing the command below, also gives you the option to enable these APIs through the command line! (https://cloud.google.com/endpoints/docs/openapi/enable-api)
-=======
 Then, we build the Docker container.
 
 ```python
@@ -59,4 +46,3 @@ INVALID_ARGUMENT: could not resolve source: googleapi: Error 403: XXXXXXXXXXX@cl
 ```
 
 Re-run the command and enable the APIs through the command line following [this GCP tutorial](https://cloud.google.com/endpoints/docs/openapi/enable-api).
->>>>>>> fd60a95 (flesh out docs)

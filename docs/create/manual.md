@@ -5,14 +5,14 @@ Creating a Truss manually, from a serialized model, works with any model-buildin
 To get started, initialize the Truss with the following command:
 
 ```
-truss init
+truss init my_truss
 ```
 
 ### Truss structure
 
-To build a Truss manually, you have to understand the package in much more detail than using it with a supported framework. Fortunately, that's why we wrote this doc.
+To build a Truss manually, you have to understand the package in much more detail than using it with a supported framework. Fortunately, that's what this doc is for!
 
-To familiarize yourself with the structure of Truss, review the [structure reference](../reference/structure.md). A Truss only has three files that you need to interact with, and this tutorial is an opinionated guide to working through them.
+To familiarize yourself with the structure of Truss, review the [structure reference](../reference/structure.md). A Truss only has a few files that you need to interact with, and this tutorial is an opinionated guide to working through them.
 
 ### Adding the model binary
 
@@ -31,13 +31,19 @@ This model binary must be de-serialized in the model class.
 The model file implements the following functions, in order of execution:
 
 * A constructor `__init__` to initiate the class
-* A function called `load`, called once before any predictions
-* A function `preprocess`, called once before each prediction
-* A function `predict` that actually runs the model
-* A function `postprocess`, called once after each prediction
+* A function called `load`, called **only** once, and that call is guaranteed to happen before **any** predictions are run
+* A function `preprocess`, called once before **each** prediction
+* A function `predict` that actually runs the model to make a prediction
+* A function `postprocess`, called once after **each** prediction
 
-Having both a constructor and a load function means you have flexibility on when you download and/or deserialize your model. Put these steps in the load function to run them on-demand on first prediction (though note that will cause a sort of "cold start" in your model service).
 
-Also, your model gets access to certain values, including the `config.yaml` and `examples.yaml` file for configuration and sample input, respectively, as well as the `data` folder where you previously put the serialized model.
+
+Having both a constructor and a load function means you have flexibility on when you download and/or deserialize your model. There are three possibilities here, and we strongly recommend the second one:
+
+1. Load model in the constructor, but it's not a good idea to block constructor
+2. Load in the load function.
+3. Load lazily on first prediction, but this gives your model service a cold start issue
+
+Also, your model gets access to certain values, including the `config.yaml` file for configuration and the `data` folder where you previously put the serialized model.
 
 Once your model is created, you'll likely need to develop it further, see the next section for everything you need to know about local development!

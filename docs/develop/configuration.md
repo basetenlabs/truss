@@ -137,7 +137,7 @@ system_packages:
 ### environment_variables
 
 {% hint style="danger" %}
-Do not store secret values directly in environment variables (or anywhere in the config file). See the section on secrets below for information in properly managing secrets.
+Do not store secret values directly in environment variables (or anywhere in the config file). See the section on secrets below for information on properly managing secrets.
 {% endhint %}
 
 Any environment variables can be provided here as key value pairs and are

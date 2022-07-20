@@ -1,6 +1,6 @@
 # Local model serving
 
-Even with Truss, deploying a model to test changes creates a loop that is too slow for development. So instead we use Docker to create a fast local iteration loop that closely matches the production environment.
+Even with the simplified experience of deploying a Truss, deploying anything to production to test changes creates a loop that is too slow for development. So instead we use Docker to create a fast local iteration loop that closely matches the production environment.
 
 {% hint style="warning" %}
 Make sure you have [Docker installed](https://docs.docker.com/get-docker/) before running a Truss locally.
@@ -42,7 +42,7 @@ You can also specify examples for the model and run them instead. It's much easi
 
 ### On using Docker
 
-Testing through a Docker image closely simulates the production serving environment and is great for final testing. But it could be too slow for a tight dev loop. For a faster dev loop you can run prediction on the scaffold directory directly.
+Testing through a Docker image closely simulates the production serving environment and is great for final testing. But it could be too slow for a tight dev loop. For a faster dev loop you can run prediction on the Truss directory directly.
 
 Unlike Docker image, this mechanism requires that you already have the right Python requirements and system packages installed.
 

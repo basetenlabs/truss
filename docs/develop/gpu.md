@@ -15,4 +15,4 @@ resources:
   use_gpu: true
 ```
 
-This will ensure the Docker image created to serve your Truss includes CUDA and accesses the system's GPU, if available. This Docker image will run on many, but not all, devices that don't support CUDA with a substantial reduction in performance.
+This will ensure the Docker image created to serve your Truss includes CUDA and accesses the system's GPU, if available. If you try to run a CUDA-requiring Docker image on a device without the necessary GPU hardware, it may not work, and if it does, model predictions will likely be quite slow.

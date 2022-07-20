@@ -10,7 +10,7 @@ Cleans up .truss directory.
     
 #### from_directory(truss_directory: str) -> truss.truss_handle.TrussHandle
 
-Get a handle to a Truss. A Truss is a build context designed to be built as a container locally or uploaded into a baseten serving environment.
+Get a handle to a Truss. A Truss is a build context designed to be built as a container locally or uploaded into a model serving environment.
         
 Args:
 * truss_directory (str): The local directory of an existing Truss
@@ -21,7 +21,7 @@ Returns:
 #### init(target_directory: str, data_files: List[str] = None, requirements_file: str = None) -> truss.truss_handle.TrussHandle
 
 Initialize an empty placeholder Truss. A Truss is a build context designed
-to be built as a container locally or uploaded into a baseten serving
+to be built as a container locally or uploaded into a model serving
 environment. This placeholder structure can be filled to represent ML
 models.
         
@@ -34,7 +34,7 @@ Args:
 #### mk_truss(model: Any, target_directory: str = None, data_files: List[str] = None, requirements_file: str = None) -> truss.truss_handle.TrussHandle
 
 Create a Truss with the given model. A Truss is a build context designed to
-be built as a container locally or uploaded into a baseten serving environment.
+be built as a container locally or uploaded into a model serving environment.
         
 Args:
 
