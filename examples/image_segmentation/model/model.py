@@ -6,8 +6,9 @@ from typing import Dict, List
 
 import numpy as np
 import torch
-import torchvision.transforms as T
 from PIL import Image
+
+import torchvision.transforms as T
 from torchvision import models
 
 logger = logging.getLogger(__name__)
