@@ -1,4 +1,4 @@
-# End-to-end model deployment
+# End-to-end model tutorial
 
 Model deployment works in three stages:
 
@@ -6,7 +6,7 @@ Model deployment works in three stages:
 2. Configure the Truss to serve your model
 3. Deploy the Truss, containing your packaged model, on the platform of your choice
 
-Graphic: Packages to Platforms, from TDS post!
+![Truss is a seamless bridge between model development and model deployment](assets/truss_unify.png)
 
 If you want to explore Truss end-to-end before using it for your own projects, follow along using [this notebook for deploying a Tensorflow model on AWS ECS](), which you can run locally or on Google Colab.
 
@@ -61,16 +61,6 @@ Before deploying your model in its Truss, try [serving it locally](../develop/lo
 * [Configuring the Truss](../develop/configuration.md)
 * [Adding GPU support](../develop/gpu.md)
 * [Managing secrets and passwords](../develop/secrets.md)
-
-While this process varies model to model, as an illustrative example, consider the following configuration steps required for our TensorFlow model.
-
-### Pre- and post-processing
-
-Todo
-
-### Truss configuration
-
-Todo
 
 ## Step 3: Deploy your model
 

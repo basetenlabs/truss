@@ -23,7 +23,7 @@ def mk_truss(
     requirements_file: str = None,
 ) -> TrussHandle:
     """Create a Truss with the given model. A Truss is a build context designed to
-    be built as a container locally or uploaded into a baseten serving environment.
+    be built as a container locally or uploaded into a model serving environment.
 
     Args:
         model (an in-memory model object): A model object to be deployed (e.g. a keras, sklearn, or pytorch model
@@ -106,7 +106,7 @@ def init(
 
 def from_directory(truss_directory: str) -> TrussHandle:
     """Get a handle to a Truss. A Truss is a build context designed to be built
-       as a container locally or uploaded into a baseten serving environment.
+       as a container locally or uploaded into a model serving environment.
 
        Args:
            truss_directory (str): The local directory of an existing Truss

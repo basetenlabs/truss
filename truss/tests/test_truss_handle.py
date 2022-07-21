@@ -1,13 +1,12 @@
 import os
-import time
 from pathlib import Path
 
 import pytest
 
-from truss.build import kill_all
-from truss.constants import TRUSS
-from truss.docker import Docker, get_containers
+from truss.docker import Docker
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.tests.test_testing_utilities_for_other_tests import (
+    ensure_kill_all, kill_all_with_retries)
 from truss.truss_handle import TrussHandle
 from truss.types import Example
 
@@ -114,7 +113,7 @@ def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post):
 def get_docker_containers_from_labels(
     custom_model_truss_dir_with_pre_and_post
 ):
-    try:
+    with ensure_kill_all():
         t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
         assert(len(t1.get_docker_containers_from_labels()) == 0)
         t1.docker_run()
@@ -123,49 +122,41 @@ def get_docker_containers_from_labels(
         assert(len(t1.get_docker_containers_from_labels()) == 2)
         t1.kill_container()
         assert(len(t1.get_docker_containers_from_labels()) == 0)
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
 def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = 'test-docker-predict-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         result = th.docker_predict({'inputs': [1, 2]}, tag=tag)
         assert result == {'predictions': [4, 5]}
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
 def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = 'test-docker-predict-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         r1 = th.docker_predict({'inputs': [1, 2]}, tag=tag)
         r2 = th.docker_predict({'inputs': [3, 4]}, tag=tag)
         assert r1 == {'predictions': [4, 5]}
         assert r2 == {'predictions': [6, 7]}
         assert(len(th.get_docker_containers_from_labels()) == 1)
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
 def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_post):
     t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     t2 = TrussHandle(custom_model_truss_dir)
-    try:
+    with ensure_kill_all():
         t1.docker_run()
         assert(len(t1.get_docker_containers_from_labels()) == 1)
         t2.docker_run(local_port=3000)
         assert(len(t2.get_docker_containers_from_labels()) == 1)
-        _ensure_kill_all()
+        kill_all_with_retries()
         assert(len(t1.get_docker_containers_from_labels()) == 0)
         assert(len(t2.get_docker_containers_from_labels()) == 0)
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.skip(reason='Needs gpu')
@@ -173,11 +164,9 @@ def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_po
 def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = 'test-docker-predict-gpu-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         result = th.docker_predict({'inputs': [1]}, tag=tag)
         assert result['predictions'][0]['cuda_version'].startswith('11')
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
@@ -185,23 +174,21 @@ def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
     th = TrussHandle(custom_model_truss_dir_for_secrets)
     tag = 'test-docker-predict-secrets-tag:0.0.1'
     LocalConfigHandler.set_secret('secret_name', 'secret_value')
-    try:
-        result = th.docker_predict({'inputs': ['secret_name']}, tag=tag)
-        assert result['predictions'][0] == 'secret_value'
-    finally:
-        LocalConfigHandler.remove_secret('secret_name')
-        _ensure_kill_all()
+    with ensure_kill_all():
+        try:
+            result = th.docker_predict({'inputs': ['secret_name']}, tag=tag)
+            assert result['predictions'][0] == 'secret_value'
+        finally:
+            LocalConfigHandler.remove_secret('secret_name')
 
 
 @pytest.mark.integration
 def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
     th = TrussHandle(no_preprocess_custom_model)
     tag = 'test-docker-no-preprocess-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         result = th.docker_predict({'inputs': [1]}, tag=tag)
         assert result['predictions'][0] == 2
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
@@ -215,11 +202,9 @@ def test_local_no_preprocess_custom_model(no_preprocess_custom_model):
 def test_docker_no_postprocess_custom_model(no_postprocess_custom_model):
     th = TrussHandle(no_postprocess_custom_model)
     tag = 'test-docker-no-postprocess-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         result = th.docker_predict({'inputs': [1]}, tag=tag)
         assert result['predictions'][0] == 2
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
@@ -233,11 +218,9 @@ def test_local_no_postprocess_custom_model(no_postprocess_custom_model):
 def test_docker_no_load_custom_model(no_load_custom_model):
     th = TrussHandle(no_load_custom_model)
     tag = 'test-docker-no-load-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         result = th.docker_predict({'inputs': [1]}, tag=tag)
         assert result['predictions'][0] == 1
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
@@ -251,11 +234,9 @@ def test_local_no_load_custom_model(no_load_custom_model):
 def test_docker_no_params_init_custom_model(no_params_init_custom_model):
     th = TrussHandle(no_params_init_custom_model)
     tag = 'test-docker-no-params-init-tag:0.0.1'
-    try:
+    with ensure_kill_all():
         result = th.docker_predict({'inputs': [1]}, tag=tag)
         assert result['predictions'][0] == 1
-    finally:
-        _ensure_kill_all()
 
 
 @pytest.mark.integration
@@ -435,13 +416,11 @@ def test_model_without_pre_post(custom_model_truss_dir):
 @pytest.mark.integration
 def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
-    try:
+    with ensure_kill_all():
         resp = th.docker_predict({
             'inputs': [1, 2, 3, 4],
         })
         assert resp == [1, 1, 1, 1]
-    finally:
-        _ensure_kill_all()
 
 
 def _container_exists(container) -> bool:
@@ -469,19 +448,6 @@ def _verify_environment_variable_on_container(
     resp = Docker.client().run(tag, ['env'])
     needle = f'{env_var_name}={env_var_value}'
     assert needle in resp.splitlines()
-
-
-def _ensure_kill_all():
-    kill_all()
-    attempts = 0
-    while attempts < 10:
-        containers = get_containers({
-            TRUSS: True
-        })
-        if len(containers) == 0:
-            return
-        attempts += 1
-        time.sleep(1)
 
 
 def _read_readme(filename: str) -> str:

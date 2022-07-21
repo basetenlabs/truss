@@ -1,0 +1,69 @@
+name: Release CI
+
+on:
+  push:
+    tags: [ "v*" ]
+
+jobs:
+  build-n-push-image:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v3
+      with:
+        images: baseten/truss
+
+    - name: Docker Build
+      id: docker_build
+      uses: docker/build-push-action@v2
+      with:
+        context: ./
+        file: ./Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: |
+          type=gha, scope=${{ github.workflow }}-${{ github.ref_name }}
+        cache-to: type=gha, mode=max, scope=${{ github.workflow }}-${{ github.ref_name }}
+
+  publish-to-pypi:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: ./.github/actions/setup-python/
+
+    - name: Install poetry packages
+      run: poetry install --no-dev
+
+    - name: Prep version
+      id: prep_version # removes starting v from tag_name and sets it as version in poetry
+      run: |
+        if [[ $(echo ${{github.ref_name}} | grep -e '^v') != "" ]]; then
+          version=$(echo ${{ github.ref_name }} |  sed 's/^v//g')
+        else
+          version=$(poetry version | awk '{print $2}')+${{ github.ref_name }}
+        fi
+        echo ::set-output name=version::$version
+
+    - name: Set version
+      run: poetry version ${{ steps.prep_version.outputs.version }}
+
+    - name: Build
+      run: poetry build
+
+    - name: Publish to PyPI
+      if: ${{ github.event_name != 'pull_request' }}
+      run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"

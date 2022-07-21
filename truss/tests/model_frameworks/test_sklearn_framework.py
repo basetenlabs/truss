@@ -7,6 +7,7 @@ import pytest
 from truss.constants import CONFIG_FILE
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.model_frameworks.sklearn import SKLearn
+from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
@@ -48,7 +49,7 @@ def test_run_truss(sklearn_rfc_model):
 
 @pytest.mark.integration
 def test_run_image(sklearn_rfc_model):
-    with tempfile.TemporaryDirectory(dir='.') as tmp_work_dir:
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir='.') as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, 'truss')
         sklearn_framework = SKLearn()
         sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)

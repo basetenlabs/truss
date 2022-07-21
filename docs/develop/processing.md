@@ -10,18 +10,32 @@ ML models are picky eaters. One of the difficulties of using a model in a produc
 
 Truss allows you to instead bundle pre-processing Python code with the model itself. This code is run on every call to the model before the model itself is run, giving you the chance to define your own input format.
 
-Here is a pre-processing function that...
+Here is a pre-processing function from the [clip example](../../examples/clip/model/model.py) that runs a helper function to turn an image URL into an image.
 
 ```python
-Code sample
+def preprocess(self, request: Dict) -> Dict:
+    for instance in request['instances']:
+        self._map_image_url_to_array_in_instance(instance)
+    return request
+
+# For completeness, here's the helper function it's calling
+def _map_image_url_to_array_in_instance(self, instance: Dict) -> Dict:
+    if 'image' not in instance and 'image_url' in instance:
+        image_url = instance['image_url']
+        response = requests.get(image_url)
+        image = Image.open(BytesIO(response.content))
+        instance['image'] = np.asarray(image)
 ```
 
 ## Post-processing
 
 Similarly, the output of a ML model can be messy or cryptic. Demystify the model results for your end user or format a web-friendly response in the post-processing function.
 
-Here is a post-processing function that...
+Here is a contrived post-processing function that calls a validation function before returning the model result.
 
 ```python
-Code sample
+def postprocess(self, request: Dict) -> Dict:
+    if self._validate_output(request):
+        return {"Error": "Validation failed"}
+    return request
 ```

@@ -1,7 +1,7 @@
 # Table of contents
 
 * [Introducing Truss](../README.md)
-* [End-to-end deployment](tutorials/e2e.md)
+* [End-to-end tutorial](e2e.md)
 * [Release notes](CHANGELOG.md)
 
 ## Create
@@ -26,7 +26,6 @@
 
 * [AWS](deploy/aws.md)
 * [Baseten](deploy/baseten.md)
-* [Docker](deploy/docker.md)
 * [GCP](deploy/gcp.md)
 
 ## Reference
