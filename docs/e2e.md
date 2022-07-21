@@ -50,8 +50,6 @@ A model built in framework not listed, or built without a framework, can still b
 
 ## Step 2: Local development and testing
 
-For an in-depth guide to Truss configuration, see [Truss for model development](model-evaluation.md).
-
 In the most straightforward cases, you can skip this step entirely. For example, the Truss created from the [scikit-learn tutorial model](create/sklearn.md), a simple random forest classifier on the Iris data set, is ready to deploy as-is. For more complex use cases, some configuration is required, but don't worry, we're not dropping you off the deep end to do your own MLOps. Truss configuration should take little time and use familiar tools.
 
 Before deploying your model in its Truss, try [serving it locally](develop/localhost.md) to make sure everything is working as expected. If not, work through the following brief configuration guides as needed:
@@ -70,5 +68,4 @@ Once your Truss is configured, it doesn't matter what framework your model was w
 
 * [AWS ECS](deploy/aws.md)
 * [Baseten](deploy/baseten.md)
-* [Docker on bare metal](deploy/docker.md)
 * [GCP Cloud Run](deploy/gcp.md)
