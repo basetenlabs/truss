@@ -42,7 +42,7 @@ jobs:
       - run: poetry install
       - name: run tests (poetry run pytest...)
         run: poetry run pytest -v --cov=truss -m 'not integration'
-    
+
   markdown-link-check:
     runs-on: ubuntu-latest
     steps:

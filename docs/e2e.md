@@ -36,15 +36,15 @@ mk_truss(model, target_directory="my_truss")
 
 Supported frameworks:
 
-* [Hugging Face](../create/huggingface.md)
-* [PyTorch](../create/pytorch.md)
-* [scikit-learn](../create/sklearn.md)
-* [Tensorflow](../create/tensorflow.md)
+* [Hugging Face](./create/huggingface.md)
+* [PyTorch](./create/pytorch.md)
+* [scikit-learn](./create/sklearn.md)
+* [Tensorflow](./create/tensorflow.md)
 
 The following frameworks will soon be supported by the `mk_truss` command and in the meantime can be created manually:
 
-* [XGBoost](../create/xgboost.md)
-* [LightGBM](../create/manual.md)
+* [XGBoost](./create/xgboost.md)
+* [LightGBM](./create/manual.md)
 
 A model built in framework not listed, or built without a framework, can still be packaged and used as a Truss. You'll just need to [build the Truss manually](../create/manual.md).
 

@@ -29,7 +29,7 @@ truss.docker_build_setup(build_dir=TARGET_TRUSS_BUILD_DIRECTORY)
 
 Enable the following three APIs:
 
-1. Cloud Run API 
+1. Cloud Run API
 2. Artifact Registry API
 3. Cloud Build API
 
@@ -39,9 +39,9 @@ Then deploy your model from the terminal!
 gcloud run deploy tensorflow-truss-model --source tensorflow_truss_build --allow-unauthenticated --memory 8GiB
 ```
 
-If you get the following error: 
+If you get the following error:
 
-```    
+```
 INVALID_ARGUMENT: could not resolve source: googleapi: Error 403: XXXXXXXXXXX@cloudbuild.gserviceaccount.com does not have storage.objects.get access to the Google Cloud Storage object
 ```
 
