@@ -1,11 +1,12 @@
 from io import BytesIO
 from typing import Dict, List
 
-import clip
 import numpy as np
 import requests
 import torch
 from PIL import Image
+
+import clip
 
 DEFAULT_CLIP_MODEL = "ViT-B/32"
 

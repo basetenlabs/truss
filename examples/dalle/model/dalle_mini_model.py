@@ -3,15 +3,16 @@ import random
 from functools import partial
 from io import BytesIO
 
+import numpy as np
+from PIL import Image
+from tqdm.notebook import trange
+
 import jax
 import jax.numpy as jnp
-import numpy as np
 import wandb
 from dalle_mini import DalleBart, DalleBartProcessor
 from flax.jax_utils import replicate
 from flax.training.common_utils import shard_prng_key
-from PIL import Image
-from tqdm.notebook import trange
 from vqgan_jax.modeling_flax_vqgan import VQModel
 
 # dalle-mini
