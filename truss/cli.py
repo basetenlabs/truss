@@ -43,15 +43,15 @@ def cli_group():
 
 @cli_group.command()
 @click.argument("target_directory", required=True)
-@click.option("-y", is_flag=True, show_default=True, default=False, help="Skip confirmation prompt.")
+@click.option("-s", "--skip-confirm", is_flag=True, show_default=True, default=False, help="Skip confirmation prompt.")
 @error_handling
-def init(target_directory, y):
+def init(target_directory, skip_confirm):
     """ Initializes an empty Truss directory.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     tr_path = Path(target_directory)
-    if y or click.confirm(f'A Truss will be created at {tr_path}'):
+    if skip_confirm or click.confirm(f'A Truss will be created at {tr_path}'):
         truss.init(target_directory=target_directory)
         click.echo(f"Truss was created in {tr_path}")
 
@@ -113,7 +113,8 @@ def run_image(target_directory, build_dir, tag, port, detach):
         build_dir = Path(build_dir)
     urls = tr.get_urls_from_truss()
     if urls:
-        click.confirm(f"Container already exists at {urls}. Are you sure you want to continue?")
+        click.confirm(
+            f"Container already exists at {urls}. Are you sure you want to continue?")
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=detach)
 
 
@@ -135,7 +136,8 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
         with open(request_file) as json_file:
             request_data = json.load(json_file)
     else:
-        raise ValueError("At least one of request or request-file must be supplied.")
+        raise ValueError(
+            "At least one of request or request-file must be supplied.")
 
     tr = _get_truss_from_directory(target_directory=target_directory)
     if run_local:
