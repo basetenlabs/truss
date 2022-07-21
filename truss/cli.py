@@ -43,14 +43,15 @@ def cli_group():
 
 @cli_group.command()
 @click.argument("target_directory", required=True)
+@click.option("-y", is_flag=True, show_default=True, default=False, help="Skip confirmation prompt.")
 @error_handling
-def init(target_directory):
+def init(target_directory, y):
     """ Initializes an empty Truss directory.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     tr_path = Path(target_directory)
-    if click.confirm(f'A Truss will be created at {tr_path}'):
+    if y or click.confirm(f'A Truss will be created at {tr_path}'):
         truss.init(target_directory=target_directory)
         click.echo(f"Truss was created in {tr_path}")
 
