@@ -68,7 +68,7 @@ You can deploy a Truss anywhere that can run a Docker image, as well as purpose-
 
 Once your Truss is configured, it doesn't matter what framework your model was written in, only that you are deploying to a platform that can provision the resources your model needs. We have step-by-step deployment guides for the following platforms:
 
-* [AWS ECS](../deploy/aws.md)
-* [Baseten](../deploy/baseten.md)
-* [Docker on bare metal](../deploy/docker.md)
-* [GCP Cloud Run](../deploy/gcp.md)
+* [AWS ECS](./deploy/aws.md)
+* [Baseten](./deploy/baseten.md)
+* [Docker on bare metal](./deploy/docker.md)
+* [GCP Cloud Run](./deploy/gcp.md)
