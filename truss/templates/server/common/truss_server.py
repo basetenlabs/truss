@@ -1,23 +1,24 @@
-from common.lib_support import ensure_kfserving_installed
-
-ensure_kfserving_installed()
-
 import json  # noqa: E402
 import logging  # noqa: E402
 from http import HTTPStatus  # noqa: E402
 
 import numpy as np  # noqa: E402
 import tornado.web  # noqa: E402
+from kfserving.handlers.http import HTTPHandler  # noqa: E402
+from kfserving.kfserver import HealthHandler, KFServer, ListHandler
+from pythonjsonlogger import jsonlogger  # noqa: E402
+
+from common.lib_support import ensure_kfserving_installed
 from common.serialization import DeepNumpyEncoder  # noqa: E402
 from common.serialization import truss_msgpack_deserialize  # noqa: E402
 from common.serialization import truss_msgpack_serialize  # noqa: E402
 from common.util import \
     assign_request_to_inputs_instances_after_validation  # noqa: E402
-from kfserving.handlers.http import HTTPHandler  # noqa: E402
-from kfserving.kfserver import LivenessHandler  # noqa: E402
-from kfserving.kfserver import (HealthHandler, KFServer,  # noqa: E402
-                                ListHandler)
-from pythonjsonlogger import jsonlogger  # noqa: E402
+
+from kfserving.kfserver import LivenessHandler  # noqa: E402; noqa: E402
+
+
+ensure_kfserving_installed()
 
 
 def _configure_logging():

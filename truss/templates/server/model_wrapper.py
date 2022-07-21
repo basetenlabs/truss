@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import kfserving
+
 from secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = 'model'

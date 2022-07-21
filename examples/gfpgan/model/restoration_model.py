@@ -1,13 +1,14 @@
 import logging
 import tempfile
 
-import cv2
 import numpy as np
 import requests
+from PIL import Image
+
+import cv2
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from gfpgan import GFPGANer
 from model.utils import upload_file_to_s3
-from PIL import Image
 from realesrgan import RealESRGANer
 
 logger = logging.getLogger(__name__)
