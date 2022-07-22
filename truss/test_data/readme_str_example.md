@@ -1,6 +1,7 @@
 # Model how-to
 
 Welcome to your custom model's Truss. Below are some useful commands to work with this Truss. For all the commands below, make sure you're in this directory when you run them. You can find the docs for Truss [here](https://truss.baseten.co).
+Note, this is an __auto-generated README__, do not modify this file manually and instead utilize the `config.yaml` and `example.yaml` files to make changes. To re-run README generation, run `truss generate-readme` inside this directory.
 
 ### Build a Docker image from your Truss
 ```
