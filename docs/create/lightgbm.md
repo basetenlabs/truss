@@ -1,6 +1,6 @@
 # Create a Truss of a LightGBM model
 
-[LightGBM](https://lightgbm.readthedocs.io/en/v3.3.2/) is a supported framework on Truss. To package a LightGBM model, follow the steps below. 
+[LightGBM](https://lightgbm.readthedocs.io/en/v3.3.2/) is a supported framework on Truss. To package a LightGBM model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/lightgbm_example.ipynb).
 
 ### Install packages
 
@@ -21,14 +21,16 @@ from sklearn.model_selection import train_test_split
 
 def create_data():
     X, y = make_classification(n_samples=100,
-                           n_informative=5,
-                           n_classes=2)
+                           n_informative=2,
+                           n_classes=2,
+                           n_features=6)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
     train = lgb.Dataset(X_train, y_train)
     test = lgb.Dataset(X_test, y_test)
     return train, test
 
-tparams = {
+train, test = create_data()
+params = {
         'boosting_type': 'gbdt',
         'objective': 'softmax',
         'metric': 'multi_logloss',
@@ -45,12 +47,22 @@ model = lgb.train(params=params, train_set=train, valid_sets=test)
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss. 
+Use the `mk_truss` command to package your model into a Truss.
 
 ```python
 from truss import mk_truss
 
-mk_truss(model, target_directory="lightgbm_truss")
+tr = mk_truss(model, target_directory="lightgbm_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+### Serve the model
+
+To get a prediction from the Truss, try running:
+
+```python
+tr.docker_predict({"inputs": [[0, 0, 0, 0, 0, 0]]})
+```
+
+For more on running the Truss locally, see [local development](../develop/localhost.md).

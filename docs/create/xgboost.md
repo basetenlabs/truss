@@ -1,6 +1,6 @@
 # Create a Truss of a XGBoost model
 
-[XGBoost](https://xgboost.readthedocs.io/en/stable/) is a supported framework on Truss. To package a XGBoost model, follow the steps below or run [this colab notebook]().
+[XGBoost](https://xgboost.readthedocs.io/en/stable/) is a supported framework on Truss. To package a XGBoost model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/xgboost_example.ipynb).
 
 ### Install packages
 
@@ -21,8 +21,9 @@ from sklearn.model_selection import train_test_split
 
 def create_data():
     X, y = make_classification(n_samples=100,
-                           n_informative=5,
-                           n_classes=2)
+                           n_informative=2,
+                           n_classes=2,
+                           n_features=6)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
     train = xgb.DMatrix(X_train, y_train)
     test = xgb.DMatrix(X_test, y_test)
@@ -41,12 +42,22 @@ model = xgb.train(params,
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss. 
+Use the `mk_truss` command to package your model into a Truss.
 
 ```python
 from truss import mk_truss
 
-mk_truss(model, target_directory="xgboost_truss")
+tr = mk_truss(model, target_directory="xgboost_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+### Serve the model
+
+To get a prediction from the Truss, try running:
+
+```python
+tr.docker_predict({"inputs": [[0, 0, 0, 0, 0, 0]]})
+```
+
+For more on running the Truss locally, see [local development](../develop/localhost.md).
