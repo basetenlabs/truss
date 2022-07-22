@@ -1,6 +1,6 @@
 # Create a Truss of a TensorFlow model
 
-[TensorFlow](https://www.tensorflow.org/) is a supported framework on Truss. To package a TensorFlow model, follow the steps below or run [this colab notebook]().
+[TensorFlow](https://www.tensorflow.org/) is a supported framework on Truss. To package a TensorFlow model, follow the steps below or run [this Google Colab notebook]().
 
 ### Install packages
 
