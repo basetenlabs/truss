@@ -17,6 +17,7 @@ from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
 from xgboost import XGBClassifier
 
 from truss.build import init
+from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.types import Example
 
 PYTORCH_MODEL_FILE_CONTENTS = """
@@ -110,6 +111,18 @@ class Model:
         return {
             'predictions': [value + 2 for value in request['predictions']],
         }
+'''
+
+CUSTOM_MODEL_CODE_USING_BUNDLED_PACKAGE = '''
+from test_package import test
+
+class Model:
+    def predict(self, request):
+        # Returns inputs as predictions
+        return {
+            'predictions': [test.X],
+        }
+
 '''
 
 CUSTOM_MODEL_CODE_FOR_GPU_TESTING = '''
@@ -259,8 +272,8 @@ def pytorch_model_with_init_args(tmp_path, pytorch_model_init_args):
 @pytest.fixture
 def custom_model_truss_dir(tmp_path):
     dir_path = tmp_path / 'custom_truss'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE)
     return dir_path
 
@@ -268,8 +281,8 @@ def custom_model_truss_dir(tmp_path):
 @pytest.fixture
 def no_preprocess_custom_model(tmp_path):
     dir_path = tmp_path / 'my_no_preprocess_model'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(NO_PREPROCESS_CUSTOM_MODEL_CODE)
     yield dir_path
 
@@ -277,8 +290,8 @@ def no_preprocess_custom_model(tmp_path):
 @pytest.fixture
 def no_postprocess_custom_model(tmp_path):
     dir_path = tmp_path / 'my_no_postprocess_model'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(NO_POSTPROCESS_CUSTOM_MODEL_CODE)
     yield dir_path
 
@@ -286,8 +299,8 @@ def no_postprocess_custom_model(tmp_path):
 @pytest.fixture
 def no_load_custom_model(tmp_path):
     dir_path = tmp_path / 'my_no_load_model'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(NO_LOAD_CUSTOM_MODEL_CODE)
     yield dir_path
 
@@ -295,8 +308,8 @@ def no_load_custom_model(tmp_path):
 @pytest.fixture
 def no_params_init_custom_model(tmp_path):
     dir_path = tmp_path / 'my_no_params_init_load_model'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(NO_PARAMS_INIT_CUSTOM_MODEL_CODE)
     yield dir_path
 
@@ -432,8 +445,8 @@ def huggingface_transformer_t5_small_model():
 @pytest.fixture
 def custom_model_truss_dir_with_pre_and_post_no_example(tmp_path):
     dir_path = tmp_path / 'custom_truss_with_pre_post_no_example'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
     yield dir_path
 
@@ -441,10 +454,10 @@ def custom_model_truss_dir_with_pre_and_post_no_example(tmp_path):
 @pytest.fixture
 def custom_model_truss_dir_with_pre_and_post(tmp_path):
     dir_path = tmp_path / 'custom_truss_with_pre_post'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    sc.update_examples([
+    handle.update_examples([
         Example(
             'example1',
             {
@@ -456,12 +469,25 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
 
 
 @pytest.fixture
+def custom_model_truss_dir_with_bundled_packages(tmp_path):
+    truss_dir_path: Path = tmp_path / 'custom_model_truss_dir_with_bundled_packages'
+    handle = init(str(truss_dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
+        file.write(CUSTOM_MODEL_CODE_USING_BUNDLED_PACKAGE)
+    packages_path = truss_dir_path / DEFAULT_BUNDLED_PACKAGES_DIR / 'test_package'
+    packages_path.mkdir(parents=True)
+    with (packages_path / 'test.py').open('w') as file:
+        file.write('''X = 1''')
+    yield truss_dir_path
+
+
+@pytest.fixture
 def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
     dir_path = tmp_path / 'custom_truss_with_pre_post_str_example'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    sc.update_examples([
+    handle.update_examples([
         Example(
             'example1',
             {
@@ -477,19 +503,19 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
 @pytest.fixture
 def custom_model_truss_dir_with_pre_and_post_description(tmp_path):
     dir_path = tmp_path / 'custom_truss_with_pre_post'
-    sc = init(str(dir_path))
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    sc.update_description("This model adds 3 to all inputs")
+    handle.update_description("This model adds 3 to all inputs")
     yield dir_path
 
 
 @pytest.fixture
 def custom_model_truss_dir_for_gpu(tmp_path):
     dir_path = tmp_path / 'custom_truss'
-    sc = init(str(dir_path))
-    sc.enable_gpu()
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    handle.enable_gpu()
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_FOR_GPU_TESTING)
     yield dir_path
 
@@ -497,9 +523,9 @@ def custom_model_truss_dir_for_gpu(tmp_path):
 @pytest.fixture
 def custom_model_truss_dir_for_secrets(tmp_path):
     dir_path = tmp_path / 'custom_truss'
-    sc = init(str(dir_path))
-    sc.add_secret('secret_name', 'default_secret_value')
-    with sc.spec.model_class_filepath.open('w') as file:
+    handle = init(str(dir_path))
+    handle.add_secret('secret_name', 'default_secret_value')
+    with handle.spec.model_class_filepath.open('w') as file:
         file.write(CUSTOM_MODEL_CODE_FOR_SECRETS_TESTING)
     yield dir_path
 
