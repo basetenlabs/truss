@@ -15,14 +15,14 @@ import numpy as np
 ##############################################################################
 import pandas as pd
 import tensorflow as tf
+from my_pytorch_model import MyModel, MyModelWithArgs
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
-
-from my_pytorch_model import MyModel, MyModelWithArgs
 # Create a fake dataset to include with the deployment
 from test_folder.utils.embedding_util import create_reference_embeddings
+
 from truss.build import mk_truss, scaffold, scaffold_custom
 from truss.constants import HUGGINGFACE_TRANSFORMER
 from truss.definitions.base import build_scaffold_directory
