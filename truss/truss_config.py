@@ -11,6 +11,7 @@ from truss.validation import (validate_cpu_spec, validate_memory_spec,
 DEFAULT_MODEL_FRAMEWORK_TYPE = ModelFrameworkType.CUSTOM
 DEFAULT_MODEL_TYPE = 'Model'
 DEFAULT_MODEL_MODULE_DIR = 'model'
+DEFAULT_BUNDLED_PACKAGES_DIR = 'packages'
 DEFAULT_MODEL_CLASS_FILENAME = 'model.py'
 DEFAULT_MODEL_CLASS_NAME = 'Model'
 DEFAULT_TRUSS_STRUCTURE_VERSION = '2.0'
@@ -55,7 +56,6 @@ class Resources:
 class TrussConfig:
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
-    # todo document model_name - ask phil
     model_name: str = None
 
     model_module_dir: str = DEFAULT_MODEL_MODULE_DIR
@@ -75,6 +75,7 @@ class TrussConfig:
     examples_filename: str = DEFAULT_EXAMPLES_FILENAME
     secrets: Dict[str, str] = field(default_factory=dict)
     description: str = None
+    bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
 
     @staticmethod
     def from_dict(d):
@@ -96,6 +97,7 @@ class TrussConfig:
             examples_filename=d.get('examples_filename', DEFAULT_EXAMPLES_FILENAME),
             secrets=d.get('secrets', {}),
             description=d.get('description', None),
+            bundled_packages_dir=d.get('bundled_packages_dir', DEFAULT_BUNDLED_PACKAGES_DIR),
         )
         config.validate()
         return config
@@ -128,6 +130,7 @@ class TrussConfig:
             'examples_filename': self.examples_filename,
             'secrets': self.secrets,
             'description': self.description,
+            'bundled_packages_dir': self.bundled_packages_dir,
         }
 
     def clone(self):

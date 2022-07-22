@@ -76,10 +76,14 @@ def _get_entries_for_packages(list_of_requirements, desired_requirements):
     name_to_req_str = {}
     for req_name in desired_requirements:
         for req_spec_full_str in list_of_requirements:
-            req_spec_name, req_version = req_spec_full_str.split('==')
-            req_version_base = req_version.split('+')[0]
-            if req_name == req_spec_name:
-                name_to_req_str[req_name] = f'{req_name}=={req_version_base}'
+            if '==' in req_spec_full_str:
+                req_spec_name, req_version = req_spec_full_str.split('==')
+                req_version_base = req_version.split('+')[0]
+                if req_name == req_spec_name:
+                    name_to_req_str[req_name] = f'{req_name}=={req_version_base}'
+            else:
+                name_to_req_str[req_name] = req_spec_full_str
+
     return name_to_req_str
 
 
