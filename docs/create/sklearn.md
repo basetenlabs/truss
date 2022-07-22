@@ -1,6 +1,6 @@
 # Create a Truss of a scikit-learn model
 
-[scikit-learn](https://scikit-learn.org/stable/) is a supported framework on Truss. To package a scikit-learn model, follow the steps below or run [this colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/sklearn_example.ipynb).
+[scikit-learn](https://scikit-learn.org/stable/) is a supported framework on Truss. To package a scikit-learn model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/sklearn_example.ipynb).
 
 ### Install packages
 
