@@ -1,6 +1,6 @@
 # Create a Truss of a PyTorch model
 
-[PyTorch](https://pytorch.org/) is a supported framework on Truss. To package a PyTorch model, follow the steps below or run [this colab notebook]().
+[PyTorch](https://pytorch.org/) is a supported framework on Truss. To package a PyTorch model, follow the steps below.
 
 ### Install packages
 
@@ -149,12 +149,4 @@ tr = mk_truss(model, target_directory="pytorch_truss")
 
 Check the target directory to see your new Truss!
 
-### Serve the model
-
-To get a prediction from the Truss, try running:
-
-```python
-tr.docker_predict({"inputs": "TODO"})
-```
-
-For more on running the Truss locally, see [local development](../develop/localhost.md).
+For information on running the Truss locally, see [local development](../develop/localhost.md).

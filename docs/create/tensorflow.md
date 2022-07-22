@@ -1,6 +1,6 @@
 # Create a Truss of a TensorFlow model
 
-[TensorFlow](https://www.tensorflow.org/) is a supported framework on Truss. To package a TensorFlow model, follow the steps below or run [this colab notebook]().
+[TensorFlow](https://www.tensorflow.org/) is a supported framework on Truss. To package a TensorFlow model, follow the steps below.
 
 ### Install packages
 
@@ -38,12 +38,4 @@ tr = mk_truss(model, target_directory="tensorflow_truss")
 
 Check the target directory to see your new Truss!
 
-### Serve the model
-
-To get a prediction from the Truss, try running:
-
-```python
-tr.docker_predict({"inputs": "TODO"})
-```
-
-For more on running the Truss locally, see [local development](../develop/localhost.md).
+For information on running the Truss locally, see [local development](../develop/localhost.md).
