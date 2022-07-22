@@ -10,21 +10,27 @@ Meet Truss, a seamless bridge from model development to model delivery. Truss pr
 
 Generate and serve predictions from a Truss with [this Jupyter notebook]().
 
-```
+```python
 !pip install scikit-learn
 !pip install truss
 import truss
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import load_iris
 
+# Load the iris data set
 iris = load_iris()
 data_x = iris['data']
 data_y = iris['target']
+
+# Train the model
 rfc = RandomForestClassifier()
 rfc.fit(data_x, data_y)
 
-truss.mk_truss(rfc, target_directory="iris_rfc")
-# TRUSS PREDICT
+# Create the Truss (serializing & packaging model)
+tr = truss.mk_truss(rfc, target_directory="iris_rfc")
+
+# Serve a prediction from the model
+tr.server_predict({"inputs": [[0, 0, 0, 0]]})
 ```
 
 ## Use cases
