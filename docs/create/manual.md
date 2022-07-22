@@ -36,12 +36,10 @@ The model file implements the following functions, in order of execution:
 * A function `predict` that actually runs the model to make a prediction
 * A function `postprocess`, called once after **each** prediction
 
+Having both a constructor and a load function means you have flexibility on when you download and/or deserialize your model. There are three possibilities here, and we strongly recommend the first one:
 
-
-Having both a constructor and a load function means you have flexibility on when you download and/or deserialize your model. There are three possibilities here, and we strongly recommend the second one:
-
-1. Load model in the constructor, but it's not a good idea to block constructor
-2. Load in the load function.
+1. Load in the load function
+2. Load model in the constructor, but it's not a good idea to block constructor
 3. Load lazily on first prediction, but this gives your model service a cold start issue
 
 Also, your model gets access to certain values, including the `config.yaml` file for configuration and the `data` folder where you previously put the serialized model.
