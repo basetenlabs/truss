@@ -1,6 +1,6 @@
 # Create a Truss of a Hugging Face model
 
-[Hugging Face](https://huggingface.co/) is a supported framework on Truss. To package a Hugging Face model, follow the steps below or run [this colab notebook]().
+[Hugging Face](https://huggingface.co/) is a supported framework on Truss. To package a Hugging Face model, follow the steps below or run [this Google Colab notebook]().
 
 ### Install packages
 
@@ -31,7 +31,17 @@ Use the `mk_truss` command to package your model into a Truss.
 ```python
 from truss import mk_truss
 
-mk_truss(model, target_directory="huggingface_truss")
+tr = mk_truss(model, target_directory="huggingface_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+### Serve the model
+
+To get a prediction from the Truss, try running:
+
+```python
+tr.docker_predict({"inputs": "TODO"})
+```
+
+For more on running the Truss locally, see [local development](../develop/localhost.md).

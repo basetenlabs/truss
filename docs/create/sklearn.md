@@ -1,6 +1,6 @@
 # Create a Truss of a scikit-learn model
 
-[scikit-learn](https://scikit-learn.org/stable/) is a supported framework on Truss. To package a scikit-learn model, follow the steps below or run [this colab notebook]().
+[scikit-learn](https://scikit-learn.org/stable/) is a supported framework on Truss. To package a scikit-learn model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/sklearn_example.ipynb).
 
 ### Install packages
 
@@ -32,7 +32,17 @@ Use the `mk_truss` command to package your model into a Truss.
 ```python
 from truss import mk_truss
 
-mk_truss(model, target_directory="sklearn_truss")
+tr = mk_truss(model, target_directory="sklearn_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+### Serve the model
+
+To get a prediction from the Truss, try running:
+
+```python
+tr.docker_predict({"inputs": [[0, 0, 0, 0]]})
+```
+
+For more on running the Truss locally, see [local development](../develop/localhost.md).
