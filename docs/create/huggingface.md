@@ -1,6 +1,6 @@
 # Create a Truss of a Hugging Face model
 
-[Hugging Face](https://huggingface.co/) is a supported framework on Truss. To package a Hugging Face model, follow the steps below or run [this Google Colab notebook]().
+[Hugging Face](https://huggingface.co/) is a supported framework on Truss. To package a Hugging Face model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/huggingface_example.ipynb).
 
 ### Install packages
 
@@ -12,7 +12,7 @@ If you're using a Jupyter notebook, add a line to install the `transformers` and
 
 ### Create an in-memory model
 
-This is the part you want to replace with your own code. Using a Hugging Face transformer, build a machine learning model and keep it in-memory.
+This is the part you want to replace with your own code. Using a Hugging Face transformer, build a machine learning model and keep it in-memory. In this example we're using [bert-base-uncased](https://huggingface.co/bert-base-uncased), which will fill in the missing word in a sentence.
 
 {% hint style="warning" %}
 All Hugging Face models must be wrapped as a pipeline.
@@ -41,7 +41,7 @@ Check the target directory to see your new Truss!
 To get a prediction from the Truss, try running:
 
 ```python
-tr.docker_predict({"inputs": "TODO"})
+tr.docker_predict({"inputs": ["Donatello is a teenage mutant [MASK] turtle"]})
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).
