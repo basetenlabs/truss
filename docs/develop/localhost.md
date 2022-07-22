@@ -14,7 +14,7 @@ In local development, you can test and iterate on aspects of your model and envi
 * Pre- and post-processing functions: Is your model accepting and outputting well-formatted data?
 * Examples: Does your model perform as expected on sample inputs?
 
-There are two ways to interface with a Truss locally. The first is via [the Python Truss object interface](../reference/client.md#truss-use), and the second via [the command line](../reference/cli.md). 
+There are two ways to interface with a Truss locally. The first is via [the Python Truss object interface](../reference/client.md#truss-use), and the second via [the command line](../reference/cli.md).
 
 ### Python client
 
@@ -32,7 +32,7 @@ tr.docker_predict({"inputs": [0, 0, 0, 0]})
 
 ### Command line interface
 
-Alternately, you can run your Truss from the command line. 
+Alternately, you can run your Truss from the command line.
 
 ```
 truss predict path_to_my_truss '{"inputs": [0, 0, 0, 0]}'

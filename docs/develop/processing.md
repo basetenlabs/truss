@@ -35,7 +35,7 @@ Here is a contrived post-processing function that calls a validation function be
 
 ```python
 def postprocess(self, request: Dict) -> Dict:
-    if self._validate_output(request): 
+    if self._validate_output(request):
         return {"Error": "Validation failed"}
     return request
 ```
