@@ -7,6 +7,7 @@
 ## Create
 
 * [Hugging Face](create/huggingface.md)
+* [LightGBM](create/lightgbm.md)
 * [PyTorch](create/pytorch.md)
 * [scikit-learn](create/sklearn.md)
 * [TensorFlow](create/tensorflow.md)
