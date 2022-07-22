@@ -1,6 +1,6 @@
 # Create a Truss of a XGBoost model
 
-[XGBoost](https://xgboost.readthedocs.io/en/stable/) will soon be a supported framework on Truss, but for now it is still easy to create a XGBoost Truss with a manual export. To package a XGBoost model, follow the steps below or run [this colab notebook]().
+[XGBoost](https://xgboost.readthedocs.io/en/stable/) is a supported framework on Truss. To package a XGBoost model, follow the steps below or run [this colab notebook]().
 
 ### Install packages
 
@@ -41,19 +41,12 @@ model = xgb.train(params,
 
 ### Create a Truss
 
-The `mk_truss` command doesn't yet support XGBoost models (it will soon!). But you can export your XGBoost model to a custom Truss.
-
-Run:
-
-```
-truss init xgboost_truss
-```
-
-Then:
+Use the `mk_truss` command to package your model into a Truss. 
 
 ```python
-import os
-model.save_model(os.path.join("xgboost_truss", "data", "model", "xgboost.json"))
+from truss import mk_truss
+
+mk_truss(model, target_directory="xgboost_truss")
 ```
 
 Check the target directory to see your new Truss!

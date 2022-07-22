@@ -44,7 +44,7 @@ Supported frameworks:
 The following frameworks will soon be supported by the `mk_truss` command and in the meantime can be created manually:
 
 * [XGBoost](create/xgboost.md)
-* [LightGBM](create/manual.md)
+* [LightGBM](create/lightgbm.md)
 
 A model built in framework not listed, or built without a framework, can still be packaged and used as a Truss. You'll just need to [build the Truss manually](create/manual.md).
 
