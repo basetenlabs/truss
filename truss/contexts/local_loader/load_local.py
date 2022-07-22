@@ -22,7 +22,11 @@ class LoadLocal(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
         spec = TrussSpec(truss_dir)
-        with model_class_module_loaded(str(truss_dir), spec.model_module_fullname) as module:
+        with model_class_module_loaded(
+            str(truss_dir),
+            spec.model_module_fullname,
+            spec.bundled_packages_dir.name,
+        ) as module:
             model_class = getattr(module, spec.model_class_name)
             model_class_signature = inspect.signature(model_class)
             model_init_params = {}

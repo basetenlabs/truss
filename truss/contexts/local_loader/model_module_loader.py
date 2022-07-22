@@ -2,22 +2,37 @@ import importlib
 import sys
 from contextlib import contextmanager
 from importlib.machinery import PathFinder
+from pathlib import Path
+from typing import List
 
 
 class ModelModuleFinder(PathFinder):
     _truss_dir: str
+    _bundled_packages_dir_name: str
 
     @classmethod
-    def set_model_truss_dir(cls, truss_dir: str):
+    def set_model_truss_dirs(
+        cls,
+        truss_dir: str,
+        model_module_name: str = None,
+        bundled_packages_dir_name: str = None,
+    ):
         cls._truss_dir = truss_dir
+        cls._model_module_name = model_module_name
+        cls._bundled_packages_dir_name = bundled_packages_dir_name
         cls.add_to_meta_path()
 
     @classmethod
     def find_spec(cls, fullname, path=None, target=None):
-        if not path:
-            path = [cls._truss_dir]
+        top_level_module_name = fullname.split('.')[0]
+        if top_level_module_name == cls._model_module_name:
+            truss_modules_path = [cls._truss_dir]
         else:
-            path = list(path) + [cls._truss_dir]
+            truss_modules_path = [str(Path(cls._truss_dir) / cls._bundled_packages_dir_name)]
+        if not path:
+            path = truss_modules_path
+        else:
+            path = list(path) + truss_modules_path
         return PathFinder.find_spec(fullname, path, target)
 
     @classmethod
@@ -56,21 +71,52 @@ class ModelModuleLoader:
 
 
 @contextmanager
-def model_class_module_loaded(truss_dir: str, model_class_module_fullname: str):
+def model_class_module_loaded(
+    truss_dir: str,
+    model_class_module_fullname: str,
+    bundled_packages_dir_name: str = None,
+):
     try:
         model_module_name = model_class_module_fullname.split('.')[0]
-        # Unload so that all model modules can be freshly loaded.
-        _unload_model_modules(model_module_name)
-        ModelModuleFinder.set_model_truss_dir(truss_dir)
+        # Unload so that all modules can be freshly loaded.
+        _unload_truss_modules(truss_dir, model_module_name, bundled_packages_dir_name)
+        ModelModuleFinder.set_model_truss_dirs(truss_dir, model_module_name, bundled_packages_dir_name)
         model_class_module = ModelModuleLoader.import_model_module(model_class_module_fullname)
         yield model_class_module
     finally:
         ModelModuleFinder.remove_from_meta_path()
 
 
-def _unload_model_modules(model_module_name: str):
-    model_module_submodules = [module_name
-                               for module_name in sys.modules
-                               if module_name.startswith(model_module_name + '.')]
+def _unload_truss_modules(
+    truss_dir: str,
+    model_module_name: str,
+    bundled_packages_dir_name: str = None,
+):
+    modules_to_unload = [model_module_name]
+    if bundled_packages_dir_name is not None:
+        bundled_packages_path = Path(truss_dir) / bundled_packages_dir_name
+        if bundled_packages_path.exists():
+            modules_to_unload.extend(_sub_dirnames(bundled_packages_path))
+    _unload_top_level_modules(modules_to_unload)
+
+
+def _unload_top_level_modules(module_names: List[str]):
+    for module_name in module_names:
+        _unload_top_level_module(module_name)
+
+
+def _unload_top_level_module(module_name: str):
+    if '.' in module_name:
+        raise ValueError(f'Expecting a top level module but found {module_name}')
+
+    model_module_submodules = [sys_module_name
+                               for sys_module_name in sys.modules
+                               if sys_module_name.startswith(module_name + '.')]
     for model_module_submodule in model_module_submodules:
         del sys.modules[model_module_submodule]
+    if module_name in sys.modules:
+        del sys.modules[module_name]
+
+
+def _sub_dirnames(root_dir: Path):
+    return [path.name for path in root_dir.iterdir() if path.is_dir()]
