@@ -82,7 +82,7 @@ def _get_entries_for_packages(list_of_requirements, desired_requirements):
                 if req_name == req_spec_name:
                     name_to_req_str[req_name] = f'{req_name}=={req_version_base}'
             else:
-                name_to_req_str[req_name] = req_spec_full_str
+                continue
 
     return name_to_req_str
 
