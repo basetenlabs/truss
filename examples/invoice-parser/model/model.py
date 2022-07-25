@@ -11,13 +11,14 @@ class InvoiceParserModel(object):
     To access these secrets, you can find them in the `_config` object
     under `_config["secrets"][KEY_NAME]`.
     """
+
     def __init__(self, **kwargs) -> None:
-        self._config = kwargs['config']
+        self._config = kwargs["config"]
 
     def predict(self, request: Dict) -> Dict[str, List]:
-        inputs = request['inputs']
+        inputs = request["inputs"]
         parsed_invoices = []
-        secret = self._config['secrets']
+        secret = self._config["secrets"]
         for url in inputs:
             parsed_invoices.append(
                 {

@@ -7,7 +7,7 @@ from truss.validation import validate_secret_name
 
 
 class LocalConfigHandler:
-    TRUSS_CONFIG_DIR = Path.home() / '.truss'
+    TRUSS_CONFIG_DIR = Path.home() / ".truss"
 
     @staticmethod
     def get_config() -> LocalConfig:
@@ -30,7 +30,7 @@ class LocalConfigHandler:
 
         for secret_name, secret_value in secrets.items():
             secret_path = secrets_dir / secret_name
-            with secret_path.open('w') as secret_file:
+            with secret_path.open("w") as secret_file:
                 secret_file.write(secret_value)
 
     @staticmethod
@@ -60,8 +60,8 @@ class LocalConfigHandler:
 
     @staticmethod
     def _config_path():
-        return LocalConfigHandler._config_dir() / 'config.yaml'
+        return LocalConfigHandler._config_dir() / "config.yaml"
 
     @staticmethod
     def secrets_dir_path():
-        return LocalConfigHandler._config_dir() / 'secrets'
+        return LocalConfigHandler._config_dir() / "secrets"

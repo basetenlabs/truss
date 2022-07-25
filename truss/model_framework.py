@@ -1,10 +1,8 @@
-
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List
 
 import yaml
-
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR
 from truss.model_inference import infer_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
@@ -13,7 +11,6 @@ from truss.utils import copy_file_path, copy_tree_path
 
 
 class ModelFramework(ABC):
-
     @abstractmethod
     def typ(self) -> ModelFrameworkType:
         pass
@@ -38,23 +35,20 @@ class ModelFramework(ABC):
         pass
 
     def model_type(self, model) -> str:
-        return 'Model'
+        return "Model"
 
     def model_name(self, model) -> str:
         return None
 
     def to_truss(self, model, target_directory: Path) -> str:
         """Exports in-memory model to a Truss, in a target directory."""
-        model_binary_dir = target_directory / 'data' / 'model'
+        model_binary_dir = target_directory / "data" / "model"
         model_binary_dir.mkdir(parents=True, exist_ok=True)
 
         # Serialize model and write it
         self.serialize_model_to_directory(model, model_binary_dir)
         template_path = TEMPLATES_DIR / self.typ().value
-        copy_tree_path(
-            template_path / 'model',
-            target_directory / 'model'
-        )
+        copy_tree_path(template_path / "model", target_directory / "model")
         examples_path = template_path / DEFAULT_EXAMPLES_FILENAME
         target_examples_path = target_directory / DEFAULT_EXAMPLES_FILENAME
         if examples_path.exists():
@@ -73,7 +67,7 @@ class ModelFramework(ABC):
             requirements=self.requirements_txt(),
             python_version=python_version,
         )
-        with (target_directory / CONFIG_FILE).open('w') as config_file:
+        with (target_directory / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(), config_file)
 
     def supports_model_class(self, model_class) -> bool:

@@ -65,12 +65,16 @@ class Singleton(object):
 # initiate it lazily with this singleton pattern
 class DalleTokenizer(Singleton):
     def init(self, *args, **kwargs):
-        self.tokenizer = DalleBartProcessor.from_pretrained(DALLE_MODEL, revision=DALLE_COMMIT_ID)
+        self.tokenizer = DalleBartProcessor.from_pretrained(
+            DALLE_MODEL, revision=DALLE_COMMIT_ID
+        )
 
 
 @partial(jax.pmap, axis_name="batch", static_broadcasted_argnums=(3, 4, 5, 6))
-def parallel_generate(tokenized_prompt, key, params, top_k, top_p, temperature, condition_scale):
-    """ Parallelize inference over all devices that are available """
+def parallel_generate(
+    tokenized_prompt, key, params, top_k, top_p, temperature, condition_scale
+):
+    """Parallelize inference over all devices that are available"""
     return model.generate(
         **tokenized_prompt,
         prng_key=key,
@@ -84,19 +88,18 @@ def parallel_generate(tokenized_prompt, key, params, top_k, top_p, temperature, 
 
 @partial(jax.pmap, axis_name="batch")
 def parallel_decode(indices, params):
-    """ Parallelize image decoding over all devices that availabled"""
+    """Parallelize image decoding over all devices that availabled"""
     return vqgan.decode_code(indices, params=params)
 
 
 def tokenize_prompt(prompt: str):
-    """ Tokenize and replicate the prompt"""
+    """Tokenize and replicate the prompt"""
     processor = DalleTokenizer().tokenizer
     tokenized_prompt = processor([prompt])
     return replicate(tokenized_prompt)
 
 
 class DallEModel(object):
-
     def load(self):
         pass
 
@@ -112,7 +115,7 @@ class DallEModel(object):
         tokenized_prompt = tokenize_prompt(prompt)
 
         # create a random key
-        seed = random.randint(0, 2 ** 32 - 1)
+        seed = random.randint(0, 2**32 - 1)
         key = jax.random.PRNGKey(seed)
 
         # generate images
@@ -144,12 +147,12 @@ class DallEModel(object):
         return images
 
     def predict_single(self, request):
-        prompt = request.get('prompt')
-        num_predictions = request.get('num_predictions', DEFAULT_NUM_PREDICTIONS)
-        gen_top_k = request.get('top_k', GEN_TOP_K)
-        gen_top_p = request.get('top_p', GEN_TOP_P)
-        temperature = request.get('temperature', TEMP)
-        cond_scale = request.get('condition_scale', COND_SCALE)
+        prompt = request.get("prompt")
+        num_predictions = request.get("num_predictions", DEFAULT_NUM_PREDICTIONS)
+        gen_top_k = request.get("top_k", GEN_TOP_K)
+        gen_top_p = request.get("top_p", GEN_TOP_P)
+        temperature = request.get("temperature", TEMP)
+        cond_scale = request.get("condition_scale", COND_SCALE)
 
         generated_images = self.generate_images(
             prompt,
@@ -157,7 +160,7 @@ class DallEModel(object):
             gen_top_k=gen_top_k,
             gen_top_p=gen_top_p,
             temp=temperature,
-            cond_scale=cond_scale
+            cond_scale=cond_scale,
         )
         single_request_response = []
         for img in generated_images:

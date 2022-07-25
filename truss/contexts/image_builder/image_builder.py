@@ -2,20 +2,28 @@ from pathlib import Path
 
 import click
 from jinja2 import Template
-
-from truss.constants import (MODEL_DOCKERFILE_NAME, MODEL_README_NAME,
-                             REQUIREMENTS_TXT_FILENAME, SERVER_CODE_DIR,
-                             SERVER_DOCKERFILE_TEMPLATE_NAME,
-                             SERVER_REQUIREMENTS_TXT_FILENAME,
-                             SYSTEM_PACKAGES_TXT_FILENAME, TEMPLATES_DIR)
+from truss.constants import (
+    MODEL_DOCKERFILE_NAME,
+    MODEL_README_NAME,
+    REQUIREMENTS_TXT_FILENAME,
+    SERVER_CODE_DIR,
+    SERVER_DOCKERFILE_TEMPLATE_NAME,
+    SERVER_REQUIREMENTS_TXT_FILENAME,
+    SYSTEM_PACKAGES_TXT_FILENAME,
+    TEMPLATES_DIR,
+)
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
 from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
-from truss.utils import (build_truss_target_directory, copy_file_path,
-                         copy_tree_path, given_or_temporary_dir)
+from truss.utils import (
+    build_truss_target_directory,
+    copy_file_path,
+    copy_tree_path,
+    given_or_temporary_dir,
+)
 
-BUILD_SERVER_DIR_NAME = 'server'
+BUILD_SERVER_DIR_NAME = "server"
 
 
 class ImageBuilderContext(TrussContext):
@@ -42,11 +50,12 @@ class ImageBuilder:
             return Docker.client().build(
                 str(build_dir_path),
                 labels=labels if labels else {},
-                tags=tag or self.default_tag)
+                tags=tag or self.default_tag,
+            )
 
     @property
     def default_tag(self):
-        return f'{self._spec.model_framework_name}-model:latest'
+        return f"{self._spec.model_framework_name}-model:latest"
 
     def prepare_image_build_dir(self, build_dir: Path = None):
         """Prepare a directory for building the docker image from.
@@ -68,10 +77,10 @@ class ImageBuilder:
             build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
         )
 
-        with (build_dir / REQUIREMENTS_TXT_FILENAME).open('w') as req_file:
+        with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.requirements_txt)
 
-        with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open('w') as req_file:
+        with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.system_packages_txt)
 
         dockerfile_template_path = TEMPLATES_DIR / SERVER_DOCKERFILE_TEMPLATE_NAME
@@ -79,32 +88,34 @@ class ImageBuilder:
         with dockerfile_template_path.open() as dockerfile_template_file:
             dockerfile_template = Template(dockerfile_template_file.read())
             data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
-            bundled_packages_dir_exists = (build_dir / self._spec.config.bundled_packages_dir).exists()
+            bundled_packages_dir_exists = (
+                build_dir / self._spec.config.bundled_packages_dir
+            ).exists()
             dockerfile_contents = dockerfile_template.render(
                 config=self._spec.config,
                 data_dir_exists=data_dir_exists,
                 bundled_packages_dir_exists=bundled_packages_dir_exists,
             )
             docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-            with docker_file_path.open('w') as docker_file:
+            with docker_file_path.open("w") as docker_file:
                 docker_file.write(dockerfile_contents)
 
         readme_file_path = build_dir / MODEL_README_NAME
         try:
             readme_contents = generate_readme(self._spec)
-            with readme_file_path.open('w') as readme_file:
+            with readme_file_path.open("w") as readme_file:
                 readme_file.write(readme_contents)
         except Exception as e:
             click.echo(
-                click.style
-                (
-                    f'''WARNING: Auto-readme generation has failed.
+                click.style(
+                    f"""WARNING: Auto-readme generation has failed.
                     This is probably due to a malformed config.yaml or
                     malformed examples.yaml. Error is:
                     {e}
-                    ''', fg='yellow'
+                    """,
+                    fg="yellow",
                 )
             )
 
     def docker_build_command(self, build_dir) -> str:
-        return f'docker build {build_dir} -t {self.default_tag}'
+        return f"docker build {build_dir} -t {self.default_tag}"

@@ -22,9 +22,7 @@ def kill_all_with_retries(num_retries: int = 10):
     kill_all()
     attempts = 0
     while attempts < num_retries:
-        containers = get_containers({
-            TRUSS: True
-        })
+        containers = get_containers({TRUSS: True})
         if len(containers) == 0:
             return
         attempts += 1

@@ -4,7 +4,6 @@ from typing import Any, List
 
 import click
 import yaml
-
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
 from truss.model_frameworks import model_framework_from_model
@@ -12,8 +11,7 @@ from truss.model_inference import infer_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
-from truss.utils import (build_truss_target_directory, copy_file_path,
-                         copy_tree_path)
+from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
 
 
 def mk_truss(
@@ -40,21 +38,22 @@ def mk_truss(
         TrussHandle: A handle to the generated Truss that provides easy access to content inside.
     """
     model_framework = model_framework_from_model(model)
-    if (model_framework.typ() == ModelFrameworkType.XGBOOST):
+    if model_framework.typ() == ModelFrameworkType.XGBOOST:
         click.echo(
-            click.style
-            (
-                '''WARNING: Truss uses XGBoost save/load which has a
+            click.style(
+                """WARNING: Truss uses XGBoost save/load which has a
                 different interface during inference than the class
                 you used to train this model. You can learn more about
                 these differences at
                 https://xgboost.readthedocs.io/en/stable/tutorials/saving_model.html
-                ''', fg='yellow'
+                """,
+                fg="yellow",
             )
         )
     if target_directory is None:
         target_directory_path = build_truss_target_directory(
-            model_framework.typ().value)
+            model_framework.typ().value
+        )
     else:
         target_directory_path = Path(target_directory)
     model_framework.to_truss(model, target_directory_path)
@@ -82,7 +81,7 @@ def init(
     target_directory_path = Path(target_directory)
     target_directory_path.mkdir(parents=True, exist_ok=True)
     config = TrussConfig(
-        model_type='custom',
+        model_type="custom",
         model_framework=ModelFrameworkType.CUSTOM,
         python_version=infer_python_version(),
     )
@@ -95,16 +94,15 @@ def init(
 
     # Create model module dir
     model_dir = target_directory_path / config.model_module_dir
-    template_path = TEMPLATES_DIR / 'custom'
-    copy_tree_path(template_path / 'model', model_dir)
+    template_path = TEMPLATES_DIR / "custom"
+    copy_tree_path(template_path / "model", model_dir)
 
     examples_path = template_path / DEFAULT_EXAMPLES_FILENAME
     if examples_path.exists():
-        copy_file_path(examples_path,
-                       target_directory_path / DEFAULT_EXAMPLES_FILENAME)
+        copy_file_path(examples_path, target_directory_path / DEFAULT_EXAMPLES_FILENAME)
 
     # Write config
-    with (target_directory_path / CONFIG_FILE).open('w') as config_file:
+    with (target_directory_path / CONFIG_FILE).open("w") as config_file:
         yaml.dump(config.to_dict(), config_file)
 
     scaf = TrussHandle(target_directory_path)
@@ -114,13 +112,13 @@ def init(
 
 def from_directory(truss_directory: str) -> TrussHandle:
     """Get a handle to a Truss. A Truss is a build context designed to be built
-       as a container locally or uploaded into a model serving environment.
+    as a container locally or uploaded into a model serving environment.
 
-       Args:
-           truss_directory (str): The local directory of an existing Truss
-       Returns:
-           TrussHandle
-       """
+    Args:
+        truss_directory (str): The local directory of an existing Truss
+    Returns:
+        TrussHandle
+    """
     return TrussHandle(Path(truss_directory))
 
 
@@ -128,13 +126,10 @@ def cleanup():
     """
     Cleans up .truss directory.
     """
-    build_folder_path = Path(
-        Path.home(),
-        '.truss'
-    )
-    if (build_folder_path.exists()):
-        for obj in build_folder_path.glob('**/*'):
-            if (not obj.name == 'config.yaml') and (obj.is_file()):
+    build_folder_path = Path(Path.home(), ".truss")
+    if build_folder_path.exists():
+        for obj in build_folder_path.glob("**/*"):
+            if (not obj.name == "config.yaml") and (obj.is_file()):
                 os.remove(obj)
     return
 
@@ -158,6 +153,4 @@ def _update_truss_props(
 
 
 def kill_all():
-    kill_containers({
-        TRUSS: True
-    })
+    kill_containers({TRUSS: True})

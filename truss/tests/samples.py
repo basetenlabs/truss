@@ -12,6 +12,7 @@ from pathlib import Path
 
 ##############################################################################
 import numpy as np
+
 ##############################################################################
 import pandas as pd
 import tensorflow as tf
@@ -20,14 +21,15 @@ from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
+
 # Create a fake dataset to include with the deployment
 from test_folder.utils.embedding_util import create_reference_embeddings
-
 from truss.build import mk_truss, scaffold, scaffold_custom
 from truss.constants import HUGGINGFACE_TRANSFORMER
 from truss.definitions.base import build_scaffold_directory
-from truss.definitions.huggingface_transformer import \
-    HuggingFaceTransformerPipelineScaffold
+from truss.definitions.huggingface_transformer import (
+    HuggingFaceTransformerPipelineScaffold,
+)
 
 PYTORCH_MODEL_CODE = """
 import torch
@@ -53,20 +55,20 @@ def my_util_function():
     return 1
 """
 
-PYTORCH_EG_PATH = 'pytorch_eg'
+PYTORCH_EG_PATH = "pytorch_eg"
 path = Path(PYTORCH_EG_PATH)
 path.mkdir(parents=True, exist_ok=True)
-path = Path(f'{PYTORCH_EG_PATH}/utils')
+path = Path(f"{PYTORCH_EG_PATH}/utils")
 path.mkdir(parents=True, exist_ok=True)
 
-with open(f'{PYTORCH_EG_PATH}/my_pytorch_model.py', 'w') as f:
+with open(f"{PYTORCH_EG_PATH}/my_pytorch_model.py", "w") as f:
     f.write(PYTORCH_MODEL_CODE)
 
-with open(f'{PYTORCH_EG_PATH}/utils/myutil.py', 'w') as f:
+with open(f"{PYTORCH_EG_PATH}/utils/myutil.py", "w") as f:
     f.write(UTIL_CODE)
 
-with open(f'{PYTORCH_EG_PATH}/utils/__init__.py', 'w') as f:
-    f.write('')
+with open(f"{PYTORCH_EG_PATH}/utils/__init__.py", "w") as f:
+    f.write("")
 
 current_dir = os.getcwd()
 os.chdir(PYTORCH_EG_PATH)
@@ -76,31 +78,35 @@ os.chdir(current_dir)
 
 
 # You can take a whole directory
-ms = mk_truss(model, model_files=['pytorch_eg/'], data_files=[], target_directory='test_pytorch')
+ms = mk_truss(
+    model, model_files=["pytorch_eg/"], data_files=[], target_directory="test_pytorch"
+)
 # You can also take single files or globs
-ms2 = mk_truss(model, model_files=['pytorch_eg/utils/*.py', 'pytorch_eg/my_pytorch_model.py'], data_files=[], target_directory='test_pytorch2')
+ms2 = mk_truss(
+    model,
+    model_files=["pytorch_eg/utils/*.py", "pytorch_eg/my_pytorch_model.py"],
+    data_files=[],
+    target_directory="test_pytorch2",
+)
 
 ms.docker_build_string
-ms.predict([[0,0,0]])
+ms.predict([[0, 0, 0]])
 
 
-
-
-
-random_suffix = ''.join([random.choice(string.ascii_letters) for _ in range(5)])
+random_suffix = "".join([random.choice(string.ascii_letters) for _ in range(5)])
 rfc = RandomForestClassifier()
 
 iris = load_iris()
-feature_names = iris['feature_names']
-class_labels = list(iris['target_names'])
-data_x = iris['data']
-data_y = iris['target']
+feature_names = iris["feature_names"]
+class_labels = list(iris["target_names"])
+data_x = iris["data"]
+data_y = iris["target"]
 data_x = pd.DataFrame(data_x, columns=feature_names)
 rfc.fit(data_x, data_y)
 
 ms = mk_truss(rfc, model_files=[], data_files=[])
 ms.docker_build_string
-ms.predict([[0,0,0,0]])
+ms.predict([[0, 0, 0, 0]])
 
 
 ##############################################################################
@@ -161,53 +167,60 @@ class MyEmbeddingModel:
 """
 
 
-path = Path('test_folder')
+path = Path("test_folder")
 path.mkdir(parents=True, exist_ok=True)
-path = Path('test_folder/utils')
+path = Path("test_folder/utils")
 path.mkdir(parents=True, exist_ok=True)
 # Create the model file
-with open('test_folder/embedding_model.py', 'w') as f:
+with open("test_folder/embedding_model.py", "w") as f:
     f.write(EMBEDDING_MODEL_CODE)
 
 # Create some utils file
-with open('test_folder/utils/embedding_util.py', 'w') as f:
+with open("test_folder/utils/embedding_util.py", "w") as f:
     f.write(EMBEDDING_UTIL_CODE)
 
-with open('test_folder/utils/__init__.py', 'w') as f:
-    f.write('')
+with open("test_folder/utils/__init__.py", "w") as f:
+    f.write("")
 
 # Create the requirements file
-with open('test_folder/embedding_reqs.txt', 'w') as f:
+with open("test_folder/embedding_reqs.txt", "w") as f:
     f.write(EMBEDDING_REQUIREMENTS)
 
 
 create_reference_embeddings()
 
 mk_truss = scaffold_custom(
-    model_files=['test_folder', 'test_folder/utils/*.py', 'embeddings.npy'],
-    target_directory='test_custom',
-    requirements_file='test_folder/embedding_reqs.txt',
-    model_class='MyEmbeddingModel'
+    model_files=["test_folder", "test_folder/utils/*.py", "embeddings.npy"],
+    target_directory="test_custom",
+    requirements_file="test_folder/embedding_reqs.txt",
+    model_class="MyEmbeddingModel",
 )
 mk_truss.docker_build_string
-mk_truss.predict(['hello world', 'bar baz'])
+mk_truss.predict(["hello world", "bar baz"])
 
 
+url = "http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data"
+column_names = [
+    "MPG",
+    "Cylinders",
+    "Displacement",
+    "Horsepower",
+    "Weight",
+    "Acceleration",
+    "Model Year",
+    "Origin",
+]
 
-url = 'http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data'
-column_names = ['MPG', 'Cylinders', 'Displacement', 'Horsepower', 'Weight',
-                'Acceleration', 'Model Year', 'Origin']
-
-raw_dataset = pd.read_csv(url, names=column_names,
-                          na_values='?', comment='\t',
-                          sep=' ', skipinitialspace=True)
+raw_dataset = pd.read_csv(
+    url, names=column_names, na_values="?", comment="\t", sep=" ", skipinitialspace=True
+)
 
 dataset = raw_dataset.copy()
 dataset.isna().sum()
 
 dataset = dataset.dropna()
-dataset['Origin'] = dataset['Origin'].map({1: 'USA', 2: 'Europe', 3: 'Japan'})
-dataset = pd.get_dummies(dataset, columns=['Origin'], prefix='', prefix_sep='')
+dataset["Origin"] = dataset["Origin"].map({1: "USA", 2: "Europe", 3: "Japan"})
+dataset = pd.get_dummies(dataset, columns=["Origin"], prefix="", prefix_sep="")
 
 train_dataset = dataset.sample(frac=0.8, random_state=0)
 test_dataset = dataset.drop(train_dataset.index)
@@ -217,29 +230,26 @@ train_dataset.describe().transpose()
 train_features = train_dataset.copy()
 test_features = test_dataset.copy()
 
-train_labels = train_features.pop('MPG')
-test_labels = test_features.pop('MPG')
+train_labels = train_features.pop("MPG")
+test_labels = test_features.pop("MPG")
 
 normalizer = preprocessing.Normalization(axis=-1)
 normalizer.adapt(np.array(train_features))
 
-linear_model = tf.keras.Sequential([
-    normalizer,
-    layers.Dense(units=1)
-])
+linear_model = tf.keras.Sequential([normalizer, layers.Dense(units=1)])
 
 linear_model.compile(
-    optimizer=tf.optimizers.Adam(learning_rate=0.1),
-    loss='mean_absolute_error'
+    optimizer=tf.optimizers.Adam(learning_rate=0.1), loss="mean_absolute_error"
 )
 
 history = linear_model.fit(
-    train_features, train_labels,
+    train_features,
+    train_labels,
     epochs=100,
     # suppress logging
     verbose=0,
     # Calculate validation results on 20% of the training data
-    validation_split = 0.2
+    validation_split=0.2,
 )
 
 linear_model.predict(train_features[:10])
@@ -252,12 +262,11 @@ scaff.predict([[0, 0, 0, 0, 0, 0, 0, 0, 0]])
 ##############################################################################
 
 
-built_scaffold_dir = build_scaffold_directory(
-    HUGGINGFACE_TRANSFORMER
+built_scaffold_dir = build_scaffold_directory(HUGGINGFACE_TRANSFORMER)
+mk_truss = HuggingFaceTransformerPipelineScaffold(
+    model_type="text-generation", path_to_scaffold=built_scaffold_dir
 )
-mk_truss = HuggingFaceTransformerPipelineScaffold(model_type='text-generation', path_to_scaffold=built_scaffold_dir)
-mk_truss.predict([{'text_inputs': 'hello world'}])
-
+mk_truss.predict([{"text_inputs": "hello world"}])
 
 
 PYTORCH_MODEL_CODE = """
@@ -282,13 +291,13 @@ class MyModelWithArgs(nn.Module):
 
 """
 
-PYTORCH_WITH_ARGS_PATH = 'pytorch_with_args'
-MODEL_INIT_ARGS = {'nlayers': 2, 'layer_size': 32}
+PYTORCH_WITH_ARGS_PATH = "pytorch_with_args"
+MODEL_INIT_ARGS = {"nlayers": 2, "layer_size": 32}
 
 path = Path(PYTORCH_WITH_ARGS_PATH)
 path.mkdir(parents=True, exist_ok=True)
 
-with open(f'{PYTORCH_WITH_ARGS_PATH}/my_pytorch_model.py', 'w') as f:
+with open(f"{PYTORCH_WITH_ARGS_PATH}/my_pytorch_model.py", "w") as f:
     f.write(PYTORCH_MODEL_CODE)
 
 
@@ -299,9 +308,14 @@ model = MyModelWithArgs(**MODEL_INIT_ARGS)
 os.chdir(current_dir)
 
 
-ms = mk_truss(model, model_files=[PYTORCH_WITH_ARGS_PATH], data_files=[], target_directory='test_pytorch_with_args', model_init_parameters=MODEL_INIT_ARGS)
+ms = mk_truss(
+    model,
+    model_files=[PYTORCH_WITH_ARGS_PATH],
+    data_files=[],
+    target_directory="test_pytorch_with_args",
+    model_init_parameters=MODEL_INIT_ARGS,
+)
 ms.predict([[0, 0, 0]])
-
 
 
 CUSTOM_MODEL_CODE = """
@@ -325,24 +339,23 @@ class MyCustomModelWithArgs:
 
 """
 
-CUSTOM_WITH_ARGS_PATH = 'custom_with_args'
-MODEL_INIT_ARGS = {'arg1': 2, 'arg2': 32, 'keyword_arg': 64}
+CUSTOM_WITH_ARGS_PATH = "custom_with_args"
+MODEL_INIT_ARGS = {"arg1": 2, "arg2": 32, "keyword_arg": 64}
 
 path = Path(CUSTOM_WITH_ARGS_PATH)
 path.mkdir(parents=True, exist_ok=True)
 
-with open(f'{CUSTOM_WITH_ARGS_PATH}/my_custom_model.py', 'w') as f:
+with open(f"{CUSTOM_WITH_ARGS_PATH}/my_custom_model.py", "w") as f:
     f.write(CUSTOM_MODEL_CODE)
 
 
 ms = scaffold_custom(
     model_files=[CUSTOM_WITH_ARGS_PATH],
-    target_directory='test_custom_with_args',
-    model_class='MyCustomModelWithArgs',
+    target_directory="test_custom_with_args",
+    model_class="MyCustomModelWithArgs",
     model_init_parameters=MODEL_INIT_ARGS,
 )
 ms.predict([[0, 0, 0]])
-
 
 
 CUSTOM_MODEL_CODE = """
@@ -355,18 +368,18 @@ class MyCustomModel:
 
 """
 
-CUSTOM_WITHOUT_ARGS_PATH = 'custom_without_args'
+CUSTOM_WITHOUT_ARGS_PATH = "custom_without_args"
 
 path = Path(CUSTOM_WITHOUT_ARGS_PATH)
 path.mkdir(parents=True, exist_ok=True)
 
-with open(f'{CUSTOM_WITHOUT_ARGS_PATH}/my_custom_model.py', 'w') as f:
+with open(f"{CUSTOM_WITHOUT_ARGS_PATH}/my_custom_model.py", "w") as f:
     f.write(CUSTOM_MODEL_CODE)
 
 
 ms = scaffold_custom(
     model_files=[CUSTOM_WITHOUT_ARGS_PATH],
-    target_directory='test_custom_without_args',
-    model_class='MyCustomModel',
+    target_directory="test_custom_without_args",
+    model_class="MyCustomModel",
 )
 ms.predict([[0, 0, 0]])

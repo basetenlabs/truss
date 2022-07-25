@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Dict, List
 
 import yaml
-
 from truss.constants import CONFIG_FILE
 from truss.errors import ValidationError
 from truss.truss_config import TrussConfig
@@ -12,6 +11,7 @@ from truss.types import Example, ModelFrameworkType
 
 class TrussSpec:
     """Helper class for easy access to information in a Truss."""
+
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
         self._config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
@@ -67,11 +67,11 @@ class TrussSpec:
 
     @property
     def model_module_name(self) -> str:
-        return str(Path(self._config.model_class_filename).with_suffix(''))
+        return str(Path(self._config.model_class_filename).with_suffix(""))
 
     @property
     def model_module_fullname(self) -> str:
-        return f'{self._config.model_module_dir}.{self.model_module_name}'
+        return f"{self._config.model_module_dir}.{self.model_module_name}"
 
     @property
     def model_class_name(self) -> str:
@@ -117,7 +117,8 @@ class TrussSpec:
                 examples = []
             if not isinstance(examples, list):
                 raise ValidationError(
-                    f'Examples should be provided as a list but found to be {type(examples)}')
+                    f"Examples should be provided as a list but found to be {type(examples)}"
+                )
             return [Example.from_dict(example) for example in examples]
 
     @property
@@ -135,4 +136,4 @@ class TrussSpec:
 
 
 def _join_lines(lines: List[str]) -> str:
-    return '\n'.join(lines) + '\n'
+    return "\n".join(lines) + "\n"

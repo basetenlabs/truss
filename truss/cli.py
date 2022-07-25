@@ -5,7 +5,6 @@ from functools import wraps
 from pathlib import Path
 
 import click
-
 import truss
 
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +14,7 @@ def echo_output(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         click.echo(f(*args, **kwargs))
+
     return wrapper
 
 
@@ -28,6 +28,7 @@ def error_handling(f):
             print_help()
         except Exception as e:
             click.echo(e)
+
     return wrapper
 
 
@@ -43,15 +44,22 @@ def cli_group():
 
 @cli_group.command()
 @click.argument("target_directory", required=True)
-@click.option("-s", "--skip-confirm", is_flag=True, show_default=True, default=False, help="Skip confirmation prompt.")
+@click.option(
+    "-s",
+    "--skip-confirm",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Skip confirmation prompt.",
+)
 @error_handling
 def init(target_directory, skip_confirm):
-    """ Initializes an empty Truss directory.
+    """Initializes an empty Truss directory.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     tr_path = Path(target_directory)
-    if skip_confirm or click.confirm(f'A Truss will be created at {tr_path}'):
+    if skip_confirm or click.confirm(f"A Truss will be created at {tr_path}"):
         truss.init(target_directory=target_directory)
         click.echo(f"Truss was created in {tr_path}")
 
@@ -114,38 +122,53 @@ def run_image(target_directory, build_dir, tag, port, detach):
     urls = tr.get_urls_from_truss()
     if urls:
         click.confirm(
-            f"Container already exists at {urls}. Are you sure you want to continue?")
+            f"Container already exists at {urls}. Are you sure you want to continue?"
+        )
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=detach)
 
 
 @cli_group.command()
 @click.option("--target_directory", required=False, help="Directory of truss")
-@click.option("--request", type=str, required=False, help="String formatted as json that represents request")
-@click.option("--build-dir", type=click.Path(exists=True), required=False, help="Directory where context is built")
+@click.option(
+    "--request",
+    type=str,
+    required=False,
+    help="String formatted as json that represents request",
+)
+@click.option(
+    "--build-dir",
+    type=click.Path(exists=True),
+    required=False,
+    help="Directory where context is built",
+)
 @click.option("--tag", help="Docker build image tag")
 @click.option("--port", type=int, default=8080, help="Local port used to run image")
-@click.option("--run-local", is_flag=True, default=False, help="Flag to run prediction locally")
-@click.option("--request-file", type=click.Path(exists=True), help="Path to json file containing the request")
+@click.option(
+    "--run-local", is_flag=True, default=False, help="Flag to run prediction locally"
+)
+@click.option(
+    "--request-file",
+    type=click.Path(exists=True),
+    help="Path to json file containing the request",
+)
 @error_handling
 @echo_output
 def predict(target_directory, request, build_dir, tag, port, run_local, request_file):
-    """Runs prediction for a Truss in a docker image or locally """
+    """Runs prediction for a Truss in a docker image or locally"""
     if request is not None:
         request_data = json.loads(request)
     elif request_file is not None:
         with open(request_file) as json_file:
             request_data = json.load(json_file)
     else:
-        raise ValueError(
-            "At least one of request or request-file must be supplied.")
+        raise ValueError("At least one of request or request-file must be supplied.")
 
     tr = _get_truss_from_directory(target_directory=target_directory)
     if run_local:
         return tr.server_predict(request_data)
     else:
         return tr.docker_predict(
-            request_data, build_dir=build_dir,
-            tag=tag, local_port=port, detach=True
+            request_data, build_dir=build_dir, tag=tag, local_port=port, detach=True
         )
 
 
@@ -170,12 +193,12 @@ def run_example(target_directory, name, local):
 
     if name is not None:
         example = tr.example(name)
-        click.echo(f'Running example: {name}')
+        click.echo(f"Running example: {name}")
         return predict_fn(example.input)
     else:
         example_outputs = []
         for example in tr.examples():
-            click.echo(f'Running example: {example.name}')
+            click.echo(f"Running example: {example.name}")
             example_outputs.append(predict_fn(example.input))
         return example_outputs
 

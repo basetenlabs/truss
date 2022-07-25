@@ -9,7 +9,7 @@ from typing import Dict, List
 import kfserving
 from secrets_resolver import SecretsResolver
 
-MODEL_BASENAME = 'model'
+MODEL_BASENAME = "model"
 
 
 class ModelWrapper(kfserving.KFModel):
@@ -19,33 +19,37 @@ class ModelWrapper(kfserving.KFModel):
         self._model = None
 
     def load(self):
-        if 'bundled_packages_dir' in self._config:
-            bundled_packages_path = Path('/packages')
+        if "bundled_packages_dir" in self._config:
+            bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
-        model_module_name = str(Path(self._config['model_class_filename']).with_suffix(''))
-        module = importlib.import_module(f"{self._config['model_module_dir']}.{model_module_name}")
-        model_class = getattr(module, self._config['model_class_name'])
+        model_module_name = str(
+            Path(self._config["model_class_filename"]).with_suffix("")
+        )
+        module = importlib.import_module(
+            f"{self._config['model_module_dir']}.{model_module_name}"
+        )
+        model_class = getattr(module, self._config["model_class_name"])
         model_class_signature = inspect.signature(model_class)
         model_init_params = {}
-        if _signature_accepts_keyword_arg(model_class_signature, 'config'):
-            model_init_params['config'] = self._config
-        if _signature_accepts_keyword_arg(model_class_signature, 'data_dir'):
-            model_init_params['data_dir'] = Path('data')
-        if _signature_accepts_keyword_arg(model_class_signature, 'secrets'):
-            model_init_params['secrets'] = SecretsResolver.get_secrets(self._config)
+        if _signature_accepts_keyword_arg(model_class_signature, "config"):
+            model_init_params["config"] = self._config
+        if _signature_accepts_keyword_arg(model_class_signature, "data_dir"):
+            model_init_params["data_dir"] = Path("data")
+        if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
+            model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
         self._model = model_class(**model_init_params)
-        if hasattr(self._model, 'load'):
+        if hasattr(self._model, "load"):
             self._model.load()
         self.ready = True
 
     def preprocess(self, request: Dict) -> Dict:
-        if not hasattr(self._model, 'preprocess'):
+        if not hasattr(self._model, "preprocess"):
             return request
         return self._model.preprocess(request)
 
     def postprocess(self, request: Dict) -> Dict:
-        if not hasattr(self._model, 'postprocess'):
+        if not hasattr(self._model, "postprocess"):
             return request
         return self._model.postprocess(request)
 
@@ -55,7 +59,7 @@ class ModelWrapper(kfserving.KFModel):
             return self._model.predict(request)
         except Exception:
             logging.error(traceback.format_exc())
-            response['error'] = {'traceback': traceback.format_exc()}
+            response["error"] = {"traceback": traceback.format_exc()}
             return response
 
 

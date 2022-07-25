@@ -9,7 +9,8 @@ backend/baseten/settings/local.py
 /staticfiles/*
 /mediafiles/*
 __pycache__/
-/.vscode/
+/.vscode/*
+!/.vscode/settings.json
 
 # coverage result
 .coverage

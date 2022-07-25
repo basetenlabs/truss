@@ -20,14 +20,13 @@ def get_max_modified_time_of_dir(path: Path):
     max_modified_time = os.path.getmtime(path)
     for root, dirs, files in os.walk(path):
         if os.path.islink(root):
-            raise ValueError(f'Symlinks not allowed in Truss: {root}')
-        files = [f for f in files if not f.startswith('.')]
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+            raise ValueError(f"Symlinks not allowed in Truss: {root}")
+        files = [f for f in files if not f.startswith(".")]
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         max_modified_time = max(max_modified_time, os.path.getmtime(root))
         for file in files:
             max_modified_time = max(
-                max_modified_time,
-                os.path.getmtime(os.path.join(root, file))
+                max_modified_time, os.path.getmtime(os.path.join(root, file))
             )
     return max_modified_time
 
@@ -43,13 +42,9 @@ def given_or_temporary_dir(given_dir: Path = None):
 
 def build_truss_target_directory(model_framework_name: str) -> Path:
     """Builds a directory under ~/.truss/models for the purpose of creating a Truss at."""
-    rand_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    rand_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
     target_directory_path = Path(
-        Path.home(),
-        '.truss',
-        'models',
-        f'{model_framework_name}-{rand_suffix}'
-
+        Path.home(), ".truss", "models", f"{model_framework_name}-{rand_suffix}"
     )
     target_directory_path.mkdir(parents=True)
     return target_directory_path
