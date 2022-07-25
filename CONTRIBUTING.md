@@ -44,9 +44,12 @@ poetry run pytest truss/tests
 To release a new version of the library.
 
 1. Create a PR changing the `pyproject.toml` version
-2. Merge the PR
-3. Create a tag `git tag -a -m "vX.X.X" vX.X.X
-4. Push the tag  `git push -u origin vX.X.X`
+2. Merge the PR, github actions will auto deploy if it detects the change
+
+#### Manual Release
+
+1. Create a tag on a commit `git tag -a -m "vX.X.X" vX.X.X
+2. Push the tag  `git push -u origin vX.X.X`
 
 ## Documentation
 

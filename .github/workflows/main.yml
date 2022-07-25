@@ -13,9 +13,35 @@ jobs:
   integration_tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - run: poetry run pytest truss/tests -m 'integration'
+
+  trigger_release_if_version_changed:
+    needs: [integration_tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
+          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+          lfs: true
+      - uses: ./.github/actions/setup-python/
+      - id: versions
+        run: | 
+          NEW_VERSION=$(poetry version)
+          echo "::set-output name=new-version::$NEW_VERSION\n"
+
+          git checkout HEAD^1 -- pyproject.toml
+          OLD_VERSION=$(poetry version)
+          echo "::set-output name=old-version::$OLD_VERSION\n"
+
+          # Put back things into place
+          git checkout HEAD -- pyproject.toml
+      - if: steps.versions.old-version != steps.versions.new-version
+        run: |
+          git tag -a v${{ steps.versions.new-version }} -m "Release v${{ steps.versions.new-version }}"
+          git push origin v${{ steps.versions.new-version }}
