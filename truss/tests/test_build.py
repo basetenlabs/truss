@@ -23,8 +23,8 @@ def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages
     dir_name = str(dir_path)
 
     # Init data files
-    packages_path = tmp_path / 'data.txt'
-    with packages_path.open('w') as data_file:
+    data_path = tmp_path / 'data.txt'
+    with data_path.open('w') as data_file:
         data_file.write('test')
 
     # Init requirements file
@@ -47,13 +47,14 @@ def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages
         with pkg_file.open('w') as fh:
             fh.write('test')
 
-    init(dir_name, data_files=[str(packages_path)],
+    init(dir_name, data_files=[str(data_path)],
          requirements_file=str(req_file_path), bundled_packages=[str(packages_path)])
     spec = TrussSpec(Path(dir_name))
     assert spec.model_module_dir.exists()
     assert spec.truss_dir == dir_path
     assert spec.config_path.exists()
     assert spec.data_dir.exists()
+    assert spec.bundled_packages_dir.exists()
     assert (spec.data_dir / 'data.txt').exists()
     assert spec.requirements == requirements
     assert (spec.bundled_packages_dir / 'dep_pkg' / '__init__.py').exists()
