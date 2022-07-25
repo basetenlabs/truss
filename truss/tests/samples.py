@@ -1,7 +1,33 @@
 # flake8: noqa
 ##############################################################################
+##############################################################################
+# Simple custom without args
+##############################################################################
+# Simple custom with args
+##############################################################################
 import os
+import random
+import string
 from pathlib import Path
+
+##############################################################################
+import numpy as np
+##############################################################################
+import pandas as pd
+import tensorflow as tf
+from my_pytorch_model import MyModel, MyModelWithArgs
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from tensorflow.keras import layers
+from tensorflow.keras.layers.experimental import preprocessing
+# Create a fake dataset to include with the deployment
+from test_folder.utils.embedding_util import create_reference_embeddings
+
+from truss.build import mk_truss, scaffold, scaffold_custom
+from truss.constants import HUGGINGFACE_TRANSFORMER
+from truss.definitions.base import build_scaffold_directory
+from truss.definitions.huggingface_transformer import \
+    HuggingFaceTransformerPipelineScaffold
 
 PYTORCH_MODEL_CODE = """
 import torch
@@ -44,12 +70,10 @@ with open(f'{PYTORCH_EG_PATH}/utils/__init__.py', 'w') as f:
 
 current_dir = os.getcwd()
 os.chdir(PYTORCH_EG_PATH)
-from my_pytorch_model import MyModel
 
 model = MyModel()
 os.chdir(current_dir)
 
-from truss.build import mk_truss
 
 # You can take a whole directory
 ms = mk_truss(model, model_files=['pytorch_eg/'], data_files=[], target_directory='test_pytorch')
@@ -60,15 +84,8 @@ ms.docker_build_string
 ms.predict([[0,0,0]])
 
 
-import random
-import string
 
-##############################################################################
-import pandas as pd
-from sklearn.datasets import load_iris
-from sklearn.ensemble import RandomForestClassifier
 
-from truss.build import scaffold
 
 random_suffix = ''.join([random.choice(string.ascii_letters) for _ in range(5)])
 rfc = RandomForestClassifier()
@@ -142,9 +159,7 @@ class MyEmbeddingModel:
         }
 
 """
-from pathlib import Path
 
-from truss.build import scaffold_custom
 
 path = Path('test_folder')
 path.mkdir(parents=True, exist_ok=True)
@@ -165,8 +180,6 @@ with open('test_folder/utils/__init__.py', 'w') as f:
 with open('test_folder/embedding_reqs.txt', 'w') as f:
     f.write(EMBEDDING_REQUIREMENTS)
 
-# Create a fake dataset to include with the deployment
-from test_folder.utils.embedding_util import create_reference_embeddings
 
 create_reference_embeddings()
 
@@ -180,12 +193,6 @@ mk_truss.docker_build_string
 mk_truss.predict(['hello world', 'bar baz'])
 
 
-##############################################################################
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras.layers.experimental import preprocessing
 
 url = 'http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data'
 column_names = ['MPG', 'Cylinders', 'Displacement', 'Horsepower', 'Weight',
@@ -237,7 +244,6 @@ history = linear_model.fit(
 
 linear_model.predict(train_features[:10])
 
-from truss.build import scaffold
 
 scaff = mk_truss(model=linear_model)
 scaff.docker_build_string
@@ -245,10 +251,6 @@ scaff.predict([[0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
 ##############################################################################
 
-from truss.constants import HUGGINGFACE_TRANSFORMER
-from truss.definitions.base import build_scaffold_directory
-from truss.definitions.huggingface_transformer import \
-    HuggingFaceTransformerPipelineScaffold
 
 built_scaffold_dir = build_scaffold_directory(
     HUGGINGFACE_TRANSFORMER
@@ -257,9 +259,6 @@ mk_truss = HuggingFaceTransformerPipelineScaffold(model_type='text-generation', 
 mk_truss.predict([{'text_inputs': 'hello world'}])
 
 
-##############################################################################
-import os
-from pathlib import Path
 
 PYTORCH_MODEL_CODE = """
 import torch
@@ -295,21 +294,15 @@ with open(f'{PYTORCH_WITH_ARGS_PATH}/my_pytorch_model.py', 'w') as f:
 
 current_dir = os.getcwd()
 os.chdir(PYTORCH_WITH_ARGS_PATH)
-from my_pytorch_model import MyModelWithArgs
 
 model = MyModelWithArgs(**MODEL_INIT_ARGS)
 os.chdir(current_dir)
 
-from truss.build import scaffold
 
 ms = mk_truss(model, model_files=[PYTORCH_WITH_ARGS_PATH], data_files=[], target_directory='test_pytorch_with_args', model_init_parameters=MODEL_INIT_ARGS)
 ms.predict([[0, 0, 0]])
 
 
-##############################################################################
-# Simple custom with args
-import os
-from pathlib import Path
 
 CUSTOM_MODEL_CODE = """
 class MyCustomModelWithArgs:
@@ -341,7 +334,6 @@ path.mkdir(parents=True, exist_ok=True)
 with open(f'{CUSTOM_WITH_ARGS_PATH}/my_custom_model.py', 'w') as f:
     f.write(CUSTOM_MODEL_CODE)
 
-from truss.build import scaffold_custom
 
 ms = scaffold_custom(
     model_files=[CUSTOM_WITH_ARGS_PATH],
@@ -352,10 +344,6 @@ ms = scaffold_custom(
 ms.predict([[0, 0, 0]])
 
 
-##############################################################################
-# Simple custom without args
-import os
-from pathlib import Path
 
 CUSTOM_MODEL_CODE = """
 class MyCustomModel:
@@ -375,7 +363,6 @@ path.mkdir(parents=True, exist_ok=True)
 with open(f'{CUSTOM_WITHOUT_ARGS_PATH}/my_custom_model.py', 'w') as f:
     f.write(CUSTOM_MODEL_CODE)
 
-from truss.build import scaffold_custom
 
 ms = scaffold_custom(
     model_files=[CUSTOM_WITHOUT_ARGS_PATH],

@@ -171,12 +171,12 @@ def run_example(target_directory, name, local):
     if name is not None:
         example = tr.example(name)
         click.echo(f'Running example: {name}')
-        return predict_fn(example)
+        return predict_fn(example.input)
     else:
         example_outputs = []
-        for name, example in tr.examples().items():
-            click.echo(f'Running example: {name}')
-            example_outputs.append(predict_fn(example))
+        for example in tr.examples():
+            click.echo(f'Running example: {example.name}')
+            example_outputs.append(predict_fn(example.input))
         return example_outputs
 
 

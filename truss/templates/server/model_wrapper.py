@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import logging
+import sys
 import traceback
 from pathlib import Path
 from typing import Dict, List
@@ -18,6 +19,10 @@ class ModelWrapper(kfserving.KFModel):
         self._model = None
 
     def load(self):
+        if 'bundled_packages_dir' in self._config:
+            bundled_packages_path = Path('/packages')
+            if bundled_packages_path.exists():
+                sys.path.append(str(bundled_packages_path))
         model_module_name = str(Path(self._config['model_class_filename']).with_suffix(''))
         module = importlib.import_module(f"{self._config['model_module_dir']}.{model_module_name}")
         model_class = getattr(module, self._config['model_class_name'])

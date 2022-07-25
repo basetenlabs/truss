@@ -82,6 +82,9 @@ COPY ./{{ config.model_module_dir }} /app/model
 {% if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
 {% endif %}
+{% if bundled_packages_dir_exists %}
+COPY ./{{config.bundled_packages_dir}} /packages
+{% endif %}
 COPY ./config.yaml /app/config.yaml
 
 {% for env_var_name, env_var_value in config.environment_variables.items() %}

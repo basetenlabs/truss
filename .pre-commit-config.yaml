@@ -27,3 +27,7 @@ repos:
         language: system
         types: [python]
         pass_filenames: true
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: ""
+    hooks:
+      - id: markdown-link-check
