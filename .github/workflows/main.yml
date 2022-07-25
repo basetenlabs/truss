@@ -29,6 +29,7 @@ jobs:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
           lfs: true
+          fetch-depth: 2
       - uses: ./.github/actions/setup-python/
       - id: versions
         run: | 
