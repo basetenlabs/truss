@@ -67,7 +67,7 @@ class TrussHandle:
         image = self.build_docker_image(build_dir=build_dir, tag=tag)
         built_tag = image.repo_tags[0]
         labels = self._get_labels()
-        labels.update({TRUSS : True})
+        labels.update({TRUSS: True})
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
         container = Docker.client().run(
             built_tag,
@@ -88,7 +88,8 @@ class TrussHandle:
             for log in self.container_logs():
                 logging.info(log)
             raise e
-        logger.info(f'Model server started on port {local_port}, docker container id {container.id}')
+        logger.info(
+            f'Model server started on port {local_port}, docker container id {container.id}')
         return container
 
     def docker_predict(
@@ -108,9 +109,11 @@ class TrussHandle:
         if containers:
             container = containers[0]
         else:
-            container = self.docker_run(build_dir, tag, local_port=local_port, detach=detach)
+            container = self.docker_run(
+                build_dir, tag, local_port=local_port, detach=detach)
         model_base_url = get_urls_from_container(container)[0]
-        resp = requests.post(f'{model_base_url}/v1/models/model:predict', json=request)
+        resp = requests.post(
+            f'{model_base_url}/v1/models/model:predict', json=request)
         resp.raise_for_status()
         return resp.json()
 
@@ -160,7 +163,8 @@ class TrussHandle:
 
         Replaces requirements in truss model's config with the provided list.
         """
-        self._update_config(lambda conf: replace(conf, requirements=requirements))
+        self._update_config(lambda conf: replace(
+            conf, requirements=requirements))
 
     def update_requirements_from_file(self, requirements_filepath: str):
         """Update requirements in truss model's config.
@@ -169,7 +173,8 @@ class TrussHandle:
         at the given path.
         """
         with Path(requirements_filepath).open() as req_file:
-            self.update_requirements([line.strip() for line in req_file.readlines()])
+            self.update_requirements([line.strip()
+                                     for line in req_file.readlines()])
 
     def add_system_package(self, system_package: str):
         """Add a system package requirement to truss model's config."""
@@ -177,21 +182,32 @@ class TrussHandle:
             conf,
             system_packages=[*conf.system_packages, system_package]))
 
+    def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
+        item = file_dir_or_glob
+        item_path = Path(item)
+        if item_path.is_dir():
+            copy_tree_path(item_path, destination_dir / item_path.name)
+        else:
+            filenames = glob.glob(item)
+            for filename in filenames:
+                filepath = Path(filename)
+                copy_file_path(filepath, destination_dir / filepath.name)
+
     def add_data(self, file_dir_or_glob: str):
         """Add data to a truss model.
 
         Accepts a file path, a directory path or a glob. Everything is copied
         under the truss model's data directory.
         """
-        item = file_dir_or_glob
-        item_path = Path(item)
-        if item_path.is_dir():
-            copy_tree_path(item_path, self._spec.data_dir / item_path.name)
-        else:
-            filenames = glob.glob(item)
-            for filename in filenames:
-                filepath = Path(filename)
-                copy_file_path(filepath, self._spec.data_dir / filepath.name)
+        self._copy_files(file_dir_or_glob, self._spec.data_dir)
+
+    def add_bundled_package(self, file_dir_or_glob: str):
+        """Add a bundled package to a truss model.
+
+        Accepts a file path, a directory path or a glob. Everything is copied
+        under the truss model's data directory.
+        """
+        self._copy_files(file_dir_or_glob, self._spec.bundled_packages_dir)
 
     def examples(self) -> List[Example]:
         """List truss model's examples.
@@ -268,7 +284,7 @@ class TrussHandle:
 
     def _get_labels(self):
         return {
-            TRUSS_MODIFIED_TIME : get_max_modified_time_of_dir(
+            TRUSS_MODIFIED_TIME: get_max_modified_time_of_dir(
                 self._truss_dir
             ),
             TRUSS_DIR: self._truss_dir,
