@@ -8,16 +8,6 @@ To get started, initialize the Truss with the following command in the CLI:
 truss init my_truss
 ```
 
-From there, as pseudocode, you'll do the following:
-
-```python
-my_model = train_model()
-my_model.serialize(save_to="path/to/my_truss")
-tr = truss.load("path/to/my_truss")
-```
-
-See the code sample below for a runnable example.
-
 ### Truss structure
 
 To build a Truss manually, you have to understand the package in much more detail than using it with a supported framework. Fortunately, that's what this doc is for!
@@ -70,19 +60,23 @@ This is the part you want to replace with your own code. Build a machine learnin
 import xgboost as xgb
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
+
 def create_data():
     X, y = make_classification(n_samples=100,
-                           n_informative=5,
-                           n_classes=2)
+                               n_informative=5,
+                               n_classes=2)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
     train = xgb.DMatrix(X_train, y_train)
     test = xgb.DMatrix(X_test, y_test)
     return train, test
+
 train, test = create_data()
+
 params = {
     "learning_rate": 0.01,
     "max_depth": 3
 }
+
 # training, we set the early stopping rounds parameter
 model = xgb.train(params,
         train, evals=[(train, "train"), (test, "validation")],
