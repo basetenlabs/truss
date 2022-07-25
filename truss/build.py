@@ -21,7 +21,7 @@ def mk_truss(
     target_directory: str = None,
     data_files: List[str] = None,
     requirements_file: str = None,
-    packages: List[str] = None,
+    bundled_packages: List[str] = None,
 ) -> TrussHandle:
     """Create a Truss with the given model. A Truss is a build context designed to
     be built as a container locally or uploaded into a model serving environment.
@@ -35,7 +35,7 @@ def mk_truss(
             files for the root directory or a directory path.
         requirements_file (str, optional): A file of packages in a PIP requirements format to be installed in the
             container environment.
-        packages (List[str], optional): Additional local packages that are required by the model.
+        bundled_packages (List[str], optional): Additional local packages that are required by the model.
     Returns:
         TrussHandle: A handle to the generated Truss that provides easy access to content inside.
     """
@@ -59,7 +59,7 @@ def mk_truss(
         target_directory_path = Path(target_directory)
     model_framework.to_truss(model, target_directory_path)
     scaf = TrussHandle(target_directory_path)
-    _update_truss_props(scaf, data_files, requirements_file, packages)
+    _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
     return scaf
 
 
@@ -67,6 +67,7 @@ def init(
     target_directory: str,
     data_files: List[str] = None,
     requirements_file: str = None,
+    bundled_packages: List[str] = None,
 ) -> TrussHandle:
     """
     Initialize an empty placeholder Truss. A Truss is a build context designed
@@ -89,6 +90,9 @@ def init(
     # Create data dir
     (target_directory_path / config.data_dir).mkdir()
 
+    # Create bundled packages dir
+    (target_directory_path / config.bundled_packages_dir).mkdir()
+
     # Create model module dir
     model_dir = target_directory_path / config.model_module_dir
     template_path = TEMPLATES_DIR / 'custom'
@@ -104,7 +108,7 @@ def init(
         yaml.dump(config.to_dict(), config_file)
 
     scaf = TrussHandle(target_directory_path)
-    _update_truss_props(scaf, data_files, requirements_file)
+    _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
     return scaf
 
 
@@ -139,14 +143,14 @@ def _update_truss_props(
     scaf: TrussHandle,
     data_files: List[str] = None,
     requirements_file: str = None,
-    packages: List[str] = None,
+    bundled_packages: List[str] = None,
 ):
     if data_files is not None:
         for data_file in data_files:
             scaf.add_data(data_file)
 
-    if packages is not None:
-        for package in packages:
+    if bundled_packages is not None:
+        for package in bundled_packages:
             scaf.add_bundled_package(package)
 
     if requirements_file is not None:

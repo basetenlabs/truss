@@ -1,5 +1,6 @@
 import tempfile
 from contextlib import contextmanager
+from os import mkdir
 from pathlib import Path
 
 import numpy as np
@@ -18,12 +19,16 @@ def test_scaffold_init(tmp_path):
     assert spec.config_path.exists()
 
 
-def test_scaffold_init_with_data_file_and_requirements_file(tmp_path):
+def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages(tmp_path):
     dir_path = tmp_path / 'scaffold'
     dir_name = str(dir_path)
-    data_file_path = tmp_path / 'data.txt'
-    with data_file_path.open('w') as data_file:
+
+    # Init data files
+    packages_path = tmp_path / 'data.txt'
+    with packages_path.open('w') as data_file:
         data_file.write('test')
+
+    # Init requirements file
     req_file_path = tmp_path / 'requirements.txt'
     requirements = [
         'tensorflow==2.3.1',
@@ -33,7 +38,18 @@ def test_scaffold_init_with_data_file_and_requirements_file(tmp_path):
         for req in requirements:
             req_file.write(f'{req}\n')
 
-    init(dir_name, data_files=[str(data_file_path)], requirements_file=str(req_file_path))
+    # init bundled packages
+    packages_path = tmp_path / 'dep_pkg'
+    packages_path, mkdir()
+    packages_path_file_py = packages_path / 'file.py'
+    packages_path_init_py = packages_path / '__init__.py'
+    pkg_files = [packages_path_init_py, packages_path_file_py]
+    for pkg_file in pkg_files:
+        with pkg_file.open('w') as fh:
+            fh.write('test')
+
+    init(dir_name, data_files=[str(packages_path)],
+         requirements_file=str(req_file_path), bundled_packages=[str(packages_path)])
     spec = TrussSpec(Path(dir_name))
     assert spec.model_module_dir.exists()
     assert spec.truss_dir == dir_path
