@@ -1,6 +1,5 @@
 import tempfile
 from contextlib import contextmanager
-from os import mkdir
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +39,7 @@ def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages
 
     # init bundled packages
     packages_path = tmp_path / 'dep_pkg'
-    packages_path, mkdir()
+    packages_path.mkdir()
     packages_path_file_py = packages_path / 'file.py'
     packages_path_init_py = packages_path / '__init__.py'
     pkg_files = [packages_path_init_py, packages_path_file_py]
