@@ -2,11 +2,21 @@
 
 Creating a Truss manually, from a serialized model, works with any model-building framework, including from-scratch bespoke models.
 
-To get started, initialize the Truss with the following command:
+To get started, initialize the Truss with the following command in the CLI:
 
 ```
 truss init my_truss
 ```
+
+From there, as pseudocode, you'll do the following:
+
+```python
+my_model = train_model()
+my_model.serialize(save_to="path/to/my_truss")
+tr = truss.load("path/to/my_truss")
+```
+
+See the code sample below for a runnable example.
 
 ### Truss structure
 
@@ -43,5 +53,47 @@ Having both a constructor and a load function means you have flexibility on when
 3. Load lazily on first prediction, but this gives your model service a cold start issue
 
 Also, your model gets access to certain values, including the `config.yaml` file for configuration and the `data` folder where you previously put the serialized model.
+
+## Example code
+
+While XGBoost is a supported framework — you can make a Truss from an XGBoost model with `mk_truss` — we'll use the manual method here for demonstration.
+
+If you haven't already, create a Truss by running:
+
+```
+truss init my_truss
+```
+
+This is the part you want to replace with your own code. Build a machine learning model and keep it in-memory.
+
+```python
+import xgboost as xgb
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+def create_data():
+    X, y = make_classification(n_samples=100,
+                           n_informative=5,
+                           n_classes=2)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
+    train = xgb.DMatrix(X_train, y_train)
+    test = xgb.DMatrix(X_test, y_test)
+    return train, test
+train, test = create_data()
+params = {
+    "learning_rate": 0.01,
+    "max_depth": 3
+}
+# training, we set the early stopping rounds parameter
+model = xgb.train(params,
+        train, evals=[(train, "train"), (test, "validation")],
+        num_boost_round=100, early_stopping_rounds=20)
+```
+
+Now, we'll serialize and save the model:
+
+```python
+import os
+model.save_model(os.path.join("my_truss", "data", "model", "xgboost.json"))
+```
 
 Once your model is created, you'll likely need to develop it further, see the next section for everything you need to know about local development!
