@@ -35,6 +35,7 @@ pytest-cov = "^3.0.0"
 xgboost = "^1.6.1"
 lightgbm = "^3.3.2"
 transformers = "^4.20.1"
+black = "^22.6.0"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'
@@ -42,3 +43,7 @@ truss = 'truss.cli:cli_group'
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+profile = "black"
+src_paths = ["isort", "test"]

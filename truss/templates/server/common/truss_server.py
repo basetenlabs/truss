@@ -8,8 +8,9 @@ from common.lib_support import ensure_kfserving_installed
 from common.serialization import DeepNumpyEncoder  # noqa: E402
 from common.serialization import truss_msgpack_deserialize  # noqa: E402
 from common.serialization import truss_msgpack_serialize  # noqa: E402
-from common.util import \
-    assign_request_to_inputs_instances_after_validation  # noqa: E402
+from common.util import (  # noqa: E402
+    assign_request_to_inputs_instances_after_validation,
+)
 from kfserving.handlers.http import HTTPHandler  # noqa: E402
 from kfserving.kfserver import LivenessHandler  # noqa: E402; noqa: E402
 from kfserving.kfserver import HealthHandler, KFServer, ListHandler
@@ -20,7 +21,9 @@ ensure_kfserving_installed()
 
 def _configure_logging():
     json_log_handler = logging.StreamHandler()
-    json_log_handler.setFormatter(jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(message)s'))
+    json_log_handler.setFormatter(
+        jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(message)s")
+    )
     logger = logging.getLogger()
     for handler in logger.handlers:
         logger.removeHandler(handler)
@@ -29,22 +32,28 @@ def _configure_logging():
 
 class TrussHTTPBinaryHandler(HTTPHandler):
     def validate(self, request):
-        if ("instances" in request and not isinstance(request["instances"], (list, np.ndarray))) or \
-           ("inputs" in request and not isinstance(request["inputs"], (list, np.ndarray))):
+        if (
+            "instances" in request
+            and not isinstance(request["instances"], (list, np.ndarray))
+        ) or (
+            "inputs" in request
+            and not isinstance(request["inputs"], (list, np.ndarray))
+        ):
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.BAD_REQUEST,
-                reason="Expected \"instances\" or \"inputs\" to be a list or NumPy ndarray"
+                reason='Expected "instances" or "inputs" to be a list or NumPy ndarray',
             )
         return assign_request_to_inputs_instances_after_validation(request)
 
 
 class TrussHTTPHandler(HTTPHandler):
     def validate(self, request):
-        if ("instances" in request and not isinstance(request["instances"], list)) or \
-           ("inputs" in request and not isinstance(request["inputs"], list)):
+        if ("instances" in request and not isinstance(request["instances"], list)) or (
+            "inputs" in request and not isinstance(request["inputs"], list)
+        ):
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.BAD_REQUEST,
-                reason="Expected \"instances\" or \"inputs\" to be a list"
+                reason='Expected "instances" or "inputs" to be a list',
             )
         return assign_request_to_inputs_instances_after_validation(request)
 
@@ -57,7 +66,7 @@ class TrussPredictHandler(TrussHTTPBinaryHandler):
         except Exception as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.BAD_REQUEST,
-                reason="Unrecognized request format: %s" % e
+                reason="Unrecognized request format: %s" % e,
             )
         request = self.validate(body)
         request = model.preprocess(request)
@@ -68,7 +77,7 @@ class TrussPredictHandler(TrussHTTPBinaryHandler):
         except Exception as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                reason="Unable to serialize model prediction to response: %s" % e
+                reason="Unable to serialize model prediction to response: %s" % e,
             )
         self.write(final_response)
 
@@ -81,7 +90,7 @@ class TrussExplainHandler(TrussHTTPBinaryHandler):
         except Exception as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.BAD_REQUEST,
-                reason="Unrecognized request format: %s" % e
+                reason="Unrecognized request format: %s" % e,
             )
         request = self.validate(body)
         request = model.preprocess(request)
@@ -92,7 +101,7 @@ class TrussExplainHandler(TrussHTTPBinaryHandler):
         except Exception as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                reason="Unable to serialize model prediction to response: %s" % e
+                reason="Unable to serialize model prediction to response: %s" % e,
             )
         self.write(final_response)
 
@@ -105,7 +114,7 @@ class PredictHandler(TrussHTTPHandler):
         except json.decoder.JSONDecodeError as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.BAD_REQUEST,
-                reason="Unrecognized request format: %s" % e
+                reason="Unrecognized request format: %s" % e,
             )
         request = self.validate(body)
         request = model.preprocess(request)
@@ -116,7 +125,7 @@ class PredictHandler(TrussHTTPHandler):
         except Exception as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                reason="Unable to serialize model prediction to response: %s" % e
+                reason="Unable to serialize model prediction to response: %s" % e,
             )
         self.write(final_response)
 
@@ -129,7 +138,7 @@ class ExplainHandler(TrussHTTPHandler):
         except json.decoder.JSONDecodeError as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.BAD_REQUEST,
-                reason="Unrecognized request format: %s" % e
+                reason="Unrecognized request format: %s" % e,
             )
         request = self.validate(body)
         request = model.preprocess(request)
@@ -140,32 +149,47 @@ class ExplainHandler(TrussHTTPHandler):
         except Exception as e:
             raise tornado.web.HTTPError(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                reason="Unable to serialize model prediction to response: %s" % e
+                reason="Unable to serialize model prediction to response: %s" % e,
             )
         self.write(final_response)
 
 
 class TrussServer(KFServer):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _configure_logging()
 
     def create_application(self):
-        return tornado.web.Application([
-            # Server Liveness API returns 200 if server is alive.
-            (r"/", LivenessHandler),
-            (r"/v1/models",
-             ListHandler, dict(models=self.registered_models)),
-            # Model Health API returns 200 if model is ready to serve.
-            (r"/v1/models/([a-zA-Z0-9_-]+)",
-             HealthHandler, dict(models=self.registered_models)),
-            (r"/v1/models/([a-zA-Z0-9_-]+):predict",
-             PredictHandler, dict(models=self.registered_models)),
-            (r"/v1/models/([a-zA-Z0-9_-]+):predict_binary",
-             TrussPredictHandler, dict(models=self.registered_models)),
-            (r"/v1/models/([a-zA-Z0-9_-]+):explain",
-             ExplainHandler, dict(models=self.registered_models)),
-            (r"/v1/models/([a-zA-Z0-9_-]+):explain_binary",
-             TrussExplainHandler, dict(models=self.registered_models)),
-        ])
+        return tornado.web.Application(
+            [
+                # Server Liveness API returns 200 if server is alive.
+                (r"/", LivenessHandler),
+                (r"/v1/models", ListHandler, dict(models=self.registered_models)),
+                # Model Health API returns 200 if model is ready to serve.
+                (
+                    r"/v1/models/([a-zA-Z0-9_-]+)",
+                    HealthHandler,
+                    dict(models=self.registered_models),
+                ),
+                (
+                    r"/v1/models/([a-zA-Z0-9_-]+):predict",
+                    PredictHandler,
+                    dict(models=self.registered_models),
+                ),
+                (
+                    r"/v1/models/([a-zA-Z0-9_-]+):predict_binary",
+                    TrussPredictHandler,
+                    dict(models=self.registered_models),
+                ),
+                (
+                    r"/v1/models/([a-zA-Z0-9_-]+):explain",
+                    ExplainHandler,
+                    dict(models=self.registered_models),
+                ),
+                (
+                    r"/v1/models/([a-zA-Z0-9_-]+):explain_binary",
+                    TrussExplainHandler,
+                    dict(models=self.registered_models),
+                ),
+            ]
+        )

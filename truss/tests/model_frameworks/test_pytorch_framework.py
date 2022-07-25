@@ -1,10 +1,12 @@
 import pytest
 import torch
 from torch import package
-
-from truss.model_frameworks.pytorch import (TORCH_MODEL_PACKAGE_NAME,
-                                            TORCH_MODEL_PICKLE_FILENAME,
-                                            TORCH_PACKAGE_FILE, PyTorch)
+from truss.model_frameworks.pytorch import (
+    TORCH_MODEL_PACKAGE_NAME,
+    TORCH_MODEL_PICKLE_FILENAME,
+    TORCH_PACKAGE_FILE,
+    PyTorch,
+)
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
 
@@ -28,14 +30,14 @@ def test_supports_model_class(pytorch_model_with_numpy_import):
 
 @pytest.mark.integration
 def test_run_image(pytorch_model_with_numpy_import, tmp_path):
-    truss_dir = tmp_path / 'truss'
+    truss_dir = tmp_path / "truss"
     pytorch = PyTorch()
     model = pytorch_model_with_numpy_import[0]
     pytorch.to_truss(model, truss_dir)
     truss = TrussHandle(truss_dir)
     with ensure_kill_all():
         result = truss.docker_predict(
-            {'inputs': [[0, 0, 0]]},
+            {"inputs": [[0, 0, 0]]},
             local_port=8090,
         )
-        assert len(result['predictions']) == 1
+        assert len(result["predictions"]) == 1

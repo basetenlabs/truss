@@ -2,8 +2,7 @@ from typing import Any
 
 from truss.errors import FrameworkNotSupportedError
 from truss.model_framework import ModelFramework
-from truss.model_frameworks.huggingface_transformer import \
-    HuggingfaceTransformer
+from truss.model_frameworks.huggingface_transformer import HuggingfaceTransformer
 from truss.model_frameworks.keras import Keras
 from truss.model_frameworks.lightgbm import LightGBM
 from truss.model_frameworks.pytorch import PyTorch
@@ -17,7 +16,7 @@ MODEL_FRAMEWORKS_BY_TYPE = {
     ModelFrameworkType.HUGGINGFACE_TRANSFORMER: HuggingfaceTransformer(),
     ModelFrameworkType.PYTORCH: PyTorch(),
     ModelFrameworkType.XGBOOST: XGBoost(),
-    ModelFrameworkType.LIGHTGBM: LightGBM()
+    ModelFrameworkType.LIGHTGBM: LightGBM(),
 }
 
 
@@ -27,7 +26,7 @@ SUPPORTED_MODEL_FRAMEWORKS = [
     ModelFrameworkType.TENSORFLOW,
     ModelFrameworkType.HUGGINGFACE_TRANSFORMER,
     ModelFrameworkType.XGBOOST,
-    ModelFrameworkType.LIGHTGBM
+    ModelFrameworkType.LIGHTGBM,
 ]
 
 
@@ -40,5 +39,7 @@ def model_framework_from_model_class(model_class) -> ModelFramework:
         if model_framework.supports_model_class(model_class):
             return model_framework
 
-    raise FrameworkNotSupportedError('Model must be one of '
-                                     + '/'.join([t.value for t in SUPPORTED_MODEL_FRAMEWORKS]))
+    raise FrameworkNotSupportedError(
+        "Model must be one of "
+        + "/".join([t.value for t in SUPPORTED_MODEL_FRAMEWORKS])
+    )

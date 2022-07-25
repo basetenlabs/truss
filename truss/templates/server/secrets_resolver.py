@@ -5,12 +5,12 @@ from typing import Dict
 
 
 class SecretsResolver:
-    SECRETS_MOUNT_DIR = '/secrets'
-    SECRET_ENV_VAR_PREFIX = 'TRUSS_SECRET_'
+    SECRETS_MOUNT_DIR = "/secrets"
+    SECRET_ENV_VAR_PREFIX = "TRUSS_SECRET_"
 
     @staticmethod
     def get_secrets(config: dict):
-        return Secrets(config.get('secrets', {}))
+        return Secrets(config.get("secrets", {}))
 
     @staticmethod
     def _resolve_secret(secret_name: str, default_value: str):
@@ -37,7 +37,9 @@ class Secrets(Mapping):
         return SecretsResolver._resolve_secret(key, self._base_secrets[key])
 
     def __iter__(self):
-        raise NotImplementedError("Secrets are meant for lookup and can't be iterated on")
+        raise NotImplementedError(
+            "Secrets are meant for lookup and can't be iterated on"
+        )
 
     def __len__(self):
         return len(self._base_secrets)

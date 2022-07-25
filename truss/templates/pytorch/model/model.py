@@ -6,19 +6,23 @@ from torch import package
 
 class Model:
     def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs['data_dir']
-        config = kwargs['config']
-        self._model_metadata = config['model_metadata']
+        self._data_dir = kwargs["data_dir"]
+        config = kwargs["config"]
+        self._model_metadata = config["model_metadata"]
         self._model = None
         self._model_dtype = None
         self._device = torch.device(
-            "cuda:0" if torch.cuda.is_available() and config['resources']['use_gpu'] else "cpu"
+            "cuda:0"
+            if torch.cuda.is_available() and config["resources"]["use_gpu"]
+            else "cpu"
         )
 
     def load(self):
-        imp = package.PackageImporter(self._data_dir / 'model' / self._model_metadata['torch_package_file'])
-        package_name = self._model_metadata['torch_model_package_name']
-        model_pickle_filename = self._model_metadata['torch_model_pickle_filename']
+        imp = package.PackageImporter(
+            self._data_dir / "model" / self._model_metadata["torch_package_file"]
+        )
+        package_name = self._model_metadata["torch_model_package_name"]
+        model_pickle_filename = self._model_metadata["torch_model_pickle_filename"]
         self._model = imp.load_pickle(package_name, model_pickle_filename)
         self._model_dtype = list(self._model.parameters())[0].dtype
 

@@ -1,5 +1,6 @@
 class Error(Exception):
     """Base Baseten Error"""
+
     def __init__(self, message):
         super().__init__(message)
         self.message = message
@@ -7,6 +8,7 @@ class Error(Exception):
 
 class FrameworkNotSupportedError(Error):
     """Raised in places where the user attempts to use Baseten with an unsupported framework"""
+
     pass
 
 

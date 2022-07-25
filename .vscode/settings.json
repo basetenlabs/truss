@@ -1,0 +1,18 @@
+{
+  // Global settings that applies to all baseten developers
+  "python.linting.flake8Enabled": true,
+  "python.formatting.provider": "black",
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["truss"],
+
+  // Per file type settings
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": true,
+      "source.organizeImports": true,
+      "source.sortMembers": true
+    }
+  }
+}

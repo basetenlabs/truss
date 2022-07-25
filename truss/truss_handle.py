@@ -9,19 +9,23 @@ import numpy as np
 import requests
 import yaml
 from tenacity import Retrying, stop_after_attempt, wait_fixed
-
 from truss.constants import TRUSS, TRUSS_DIR, TRUSS_MODIFIED_TIME
 from truss.contexts.image_builder.image_builder import ImageBuilderContext
 from truss.contexts.local_loader.load_local import LoadLocal
-from truss.docker import (Docker, get_container_logs, get_containers,
-                          get_images, get_urls_from_container, kill_containers)
+from truss.docker import (
+    Docker,
+    get_container_logs,
+    get_containers,
+    get_images,
+    get_urls_from_container,
+    kill_containers,
+)
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.readme_generator import generate_readme
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example
-from truss.utils import (copy_file_path, copy_tree_path,
-                         get_max_modified_time_of_dir)
+from truss.utils import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
 logger = logging.getLogger(__name__)
@@ -74,14 +78,16 @@ class TrussHandle:
             publish=[[local_port, 8080]],
             detach=detach,
             labels=labels,
-            mounts=[[
-                'type=bind',
-                f'src={str(secrets_mount_dir_path)}',
-                'target=/secrets',
-            ]],
-            gpus='all' if self._spec.config.resources.use_gpu else None,
+            mounts=[
+                [
+                    "type=bind",
+                    f"src={str(secrets_mount_dir_path)}",
+                    "target=/secrets",
+                ]
+            ],
+            gpus="all" if self._spec.config.resources.use_gpu else None,
         )
-        model_base_url = f'http://localhost:{local_port}/'
+        model_base_url = f"http://localhost:{local_port}/"
         try:
             _wait_for_model_server(model_base_url)
         except Exception as e:
@@ -89,7 +95,8 @@ class TrussHandle:
                 logging.info(log)
             raise e
         logger.info(
-            f'Model server started on port {local_port}, docker container id {container.id}')
+            f"Model server started on port {local_port}, docker container id {container.id}"
+        )
         return container
 
     def docker_predict(
@@ -110,10 +117,10 @@ class TrussHandle:
             container = containers[0]
         else:
             container = self.docker_run(
-                build_dir, tag, local_port=local_port, detach=detach)
+                build_dir, tag, local_port=local_port, detach=detach
+            )
         model_base_url = get_urls_from_container(container)[0]
-        resp = requests.post(
-            f'{model_base_url}/v1/models/model:predict', json=request)
+        resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
         return resp.json()
 
@@ -130,9 +137,11 @@ class TrussHandle:
 
     def add_python_requirement(self, python_requirement: str):
         """Add a python requirement to truss model's config."""
-        self._update_config(lambda conf: replace(
-            conf,
-            requirements=[*conf.requirements, python_requirement]))
+        self._update_config(
+            lambda conf: replace(
+                conf, requirements=[*conf.requirements, python_requirement]
+            )
+        )
 
     def add_environment_variable(self, env_var_name: str, env_var_value: str):
         """Add an environment variable to truss model's config."""
@@ -140,31 +149,34 @@ class TrussHandle:
             logger.info("Enviroment value should not empty or none!")
             return
 
-        self._update_config(lambda conf: replace(
-            conf,
-            environment_variables={
-                **conf.environment_variables,
-                env_var_name: env_var_value,
-            },
-        ))
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                environment_variables={
+                    **conf.environment_variables,
+                    env_var_name: env_var_value,
+                },
+            )
+        )
 
-    def add_secret(self, secret_name: str, default_secret_value: str = ''):
+    def add_secret(self, secret_name: str, default_secret_value: str = ""):
         validate_secret_name(secret_name)
-        self._update_config(lambda conf: replace(
-            conf,
-            secrets={
-                **conf.secrets,
-                secret_name: default_secret_value,
-            },
-        ))
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                secrets={
+                    **conf.secrets,
+                    secret_name: default_secret_value,
+                },
+            )
+        )
 
     def update_requirements(self, requirements: List[str]):
         """Update requirements in truss model's config.
 
         Replaces requirements in truss model's config with the provided list.
         """
-        self._update_config(lambda conf: replace(
-            conf, requirements=requirements))
+        self._update_config(lambda conf: replace(conf, requirements=requirements))
 
     def update_requirements_from_file(self, requirements_filepath: str):
         """Update requirements in truss model's config.
@@ -173,14 +185,15 @@ class TrussHandle:
         at the given path.
         """
         with Path(requirements_filepath).open() as req_file:
-            self.update_requirements([line.strip()
-                                     for line in req_file.readlines()])
+            self.update_requirements([line.strip() for line in req_file.readlines()])
 
     def add_system_package(self, system_package: str):
         """Add a system package requirement to truss model's config."""
-        self._update_config(lambda conf: replace(
-            conf,
-            system_packages=[*conf.system_packages, system_package]))
+        self._update_config(
+            lambda conf: replace(
+                conf, system_packages=[*conf.system_packages, system_package]
+            )
+        )
 
     def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
         item = file_dir_or_glob
@@ -221,7 +234,7 @@ class TrussHandle:
 
         Existing examples are replaced whole with the given ones.
         """
-        with self._spec.examples_path.open('w') as examples_file:
+        with self._spec.examples_path.open("w") as examples_file:
             examples_to_write = [example.to_dict() for example in examples]
             examples_file.write(yaml.dump(examples_to_write))
 
@@ -235,7 +248,7 @@ class TrussHandle:
             example_name = name_or_index
             index = _find_example_by_name(examples, example_name)
             if index is None:
-                raise ValueError(f'No example named {example_name} was found.')
+                raise ValueError(f"No example named {example_name} was found.")
             return examples[index]
         return self.examples()[name_or_index]
 
@@ -256,7 +269,9 @@ class TrussHandle:
         return get_images(self._get_labels())
 
     def get_docker_containers_from_labels(self, all=False):
-        return sorted(get_containers(self._get_labels(), all=all), key=lambda c: c.created)
+        return sorted(
+            get_containers(self._get_labels(), all=all), key=lambda c: c.created
+        )
 
     def kill_container(self):
         kill_containers(self._get_labels())
@@ -276,6 +291,7 @@ class TrussHandle:
         Note that truss would typically use a larger docker base image when this
         is enabled, for example to include the cuda libraries.
         """
+
         def enable_gpu_fn(conf: TrussConfig):
             new_resources = replace(conf.resources, use_gpu=True)
             return replace(conf, resources=new_resources)
@@ -284,9 +300,7 @@ class TrussHandle:
 
     def _get_labels(self):
         return {
-            TRUSS_MODIFIED_TIME: get_max_modified_time_of_dir(
-                self._truss_dir
-            ),
+            TRUSS_MODIFIED_TIME: get_max_modified_time_of_dir(self._truss_dir),
             TRUSS_DIR: self._truss_dir,
         }
 
@@ -307,19 +321,17 @@ class TrussHandle:
         return generate_readme(self._spec)
 
     def update_description(self, description: str):
-        self._update_config(lambda conf: replace(
-            conf,
-            description=description))
+        self._update_config(lambda conf: replace(conf, description=description))
 
 
 def _prediction_flow(model, request: dict):
     """This flow attempts to mimic the request life-cycle of a kfserving server"""
     _validate_request_input(request)
     _map_instances_inputs(request)
-    if hasattr(model, 'preprocess'):
+    if hasattr(model, "preprocess"):
         request = model.preprocess(request)
     response = model.predict(request)
-    if hasattr(model, 'postprocess'):
+    if hasattr(model, "postprocess"):
         response = model.postprocess(response)
     return response
 
@@ -335,11 +347,10 @@ def _map_instances_inputs(request: dict):
 
 def _validate_request_input(request: dict):
     # TODO(pankaj) Should these checks be there?
-    if _is_invalid_list_input_prop(request, 'instances') \
-            or _is_invalid_list_input_prop(request, 'inputs'):
-        raise Exception(
-            reason="Expected \"instances\" or \"inputs\" to be a list"
-        )
+    if _is_invalid_list_input_prop(request, "instances") or _is_invalid_list_input_prop(
+        request, "inputs"
+    ):
+        raise Exception(reason='Expected "instances" or "inputs" to be a list')
 
 
 def _is_invalid_list_input_prop(request: dict, prop: str):

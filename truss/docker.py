@@ -12,8 +12,9 @@ class Docker:
     def client():
         if Docker._client is None:
             from python_on_whales import DockerClient, docker
+
             if LocalConfigHandler.get_config().use_sudo:
-                Docker._client = DockerClient(client_call=['sudo', 'docker'])
+                Docker._client = DockerClient(client_call=["sudo", "docker"])
             else:
                 Docker._client = docker
         return Docker._client
@@ -21,7 +22,9 @@ class Docker:
 
 def get_containers(labels: dict, all=False):
     """Gets containers given labels."""
-    return Docker.client().container.list(filters=_create_label_filters(labels), all=all)
+    return Docker.client().container.list(
+        filters=_create_label_filters(labels), all=all
+    )
 
 
 def get_images(labels: dict):
@@ -55,6 +58,5 @@ def get_container_logs(container):
 
 def _create_label_filters(labels: dict):
     return {
-        f'label={label_key}': label_value
-        for label_key, label_value in labels.items()
+        f"label={label_key}": label_value for label_key, label_value in labels.items()
     }

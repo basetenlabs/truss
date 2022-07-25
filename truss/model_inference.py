@@ -9,49 +9,52 @@ from typing import Any, Dict, List, Tuple
 import pkg_resources
 from packaging import version
 from pkg_resources.extern.packaging.requirements import InvalidRequirement
-
-from truss.constants import (HUGGINGFACE_TRANSFORMER, KERAS, LIGHTGBM, PYTORCH,
-                             SKLEARN, TENSORFLOW, XGBOOST)
+from truss.constants import (
+    HUGGINGFACE_TRANSFORMER,
+    KERAS,
+    LIGHTGBM,
+    PYTORCH,
+    SKLEARN,
+    TENSORFLOW,
+    XGBOOST,
+)
 from truss.errors import FrameworkNotSupportedError
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
 SKLEARN_REQ_MODULE_NAME = {
-    'numpy',
-    'scipy',
-    'joblib',
-    'scikit-learn',
-    'threadpoolctl',
+    "numpy",
+    "scipy",
+    "joblib",
+    "scikit-learn",
+    "threadpoolctl",
 }
 
-XGBOOST_REQ_MODULE_NAME = {
-    'xgboost'
-}
+XGBOOST_REQ_MODULE_NAME = {"xgboost"}
 
 # list from https://www.tensorflow.org/install/pip
 # if problematic, lets look to https://www.tensorflow.org/install/source
 TENSORFLOW_REQ_MODULE_NAME = {
-    'tensorflow',
+    "tensorflow",
 }
 
 LIGHTGBM_REQ_MODULE_NAME = {
-    'lightgbm',
+    "lightgbm",
 }
 
 # list from https://pytorch.org/get-started/locally/
 PYTORCH_REQ_MODULE_NAME = {
-    'torch',
-    'torchvision',
-    'torchaudio',
+    "torch",
+    "torchvision",
+    "torchaudio",
 }
 
-HUGGINGFACE_TRANSFORMER_MODULE_NAME = {
-}
+HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
 
 # lists of versions supported by the truss+base_images
 PYTHON_VERSIONS = {
-    'py37',
-    'py38',
-    'py39',
+    "py37",
+    "py38",
+    "py39",
 }
 
 
@@ -63,11 +66,12 @@ def pip_freeze():
 
     """
     import pip
+
     pip_version = pip.__version__
-    if version.parse(pip_version) < version.parse('20.1'):
-        stream = os.popen('pip freeze -qq')
+    if version.parse(pip_version) < version.parse("20.1"):
+        stream = os.popen("pip freeze -qq")
     else:
-        stream = os.popen('pip list --format=freeze')
+        stream = os.popen("pip list --format=freeze")
     this_env_requirements = [line.strip() for line in stream.readlines()]
     return this_env_requirements
 
@@ -76,11 +80,11 @@ def _get_entries_for_packages(list_of_requirements, desired_requirements):
     name_to_req_str = {}
     for req_name in desired_requirements:
         for req_spec_full_str in list_of_requirements:
-            if '==' in req_spec_full_str:
-                req_spec_name, req_version = req_spec_full_str.split('==')
-                req_version_base = req_version.split('+')[0]
+            if "==" in req_spec_full_str:
+                req_spec_name, req_version = req_spec_full_str.split("==")
+                req_version_base = req_version.split("+")[0]
                 if req_name == req_spec_name:
-                    name_to_req_str[req_name] = f'{req_name}=={req_version_base}'
+                    name_to_req_str[req_name] = f"{req_name}=={req_version_base}"
             else:
                 continue
 
@@ -116,24 +120,29 @@ def infer_xgboost_packages():
 
 
 def _infer_model_framework(model_class: str):
-    model_framework, _, _ = model_class.__module__.partition('.')
-    if model_framework == 'transformers':
+    model_framework, _, _ = model_class.__module__.partition(".")
+    if model_framework == "transformers":
         return HUGGINGFACE_TRANSFORMER
     if model_framework not in {SKLEARN, TENSORFLOW, KERAS, LIGHTGBM, XGBOOST}:
         try:
             import torch
+
             if issubclass(model_class, torch.nn.Module):
                 model_framework = PYTORCH
             else:
-                raise FrameworkNotSupportedError(f'Models must be one of '
-                                                 f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, '
-                                                 f'{XGBOOST}, {TENSORFLOW}, {PYTORCH} or '
-                                                 f'{LIGHTGBM} ')
+                raise FrameworkNotSupportedError(
+                    f"Models must be one of "
+                    f"{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, "
+                    f"{XGBOOST}, {TENSORFLOW}, {PYTORCH} or "
+                    f"{LIGHTGBM} "
+                )
         except ModuleNotFoundError:
-            raise FrameworkNotSupportedError(f'Models must be one of '
-                                             f'{HUGGINGFACE_TRANSFORMER}, {SKLEARN}'
-                                             f'{XGBOOST}, {TENSORFLOW}, or {PYTORCH}. '
-                                             f'{LIGHTGBM} ')
+            raise FrameworkNotSupportedError(
+                f"Models must be one of "
+                f"{HUGGINGFACE_TRANSFORMER}, {SKLEARN}"
+                f"{XGBOOST}, {TENSORFLOW}, or {PYTORCH}. "
+                f"{LIGHTGBM} "
+            )
 
     return model_framework
 
@@ -151,7 +160,7 @@ def _model_class(model: Any):
 
 
 def infer_python_version() -> str:
-    python_major_minor = f'py{sys.version_info.major}{sys.version_info.minor}'
+    python_major_minor = f"py{sys.version_info.major}{sys.version_info.minor}"
     # might want to fix up this logic
     if python_major_minor not in PYTHON_VERSIONS:
         python_major_minor = None
@@ -182,7 +191,7 @@ def parse_requirements_file(requirements_file: str) -> dict:
             except InvalidRequirement:
                 # there might be pip requirements that do not conform
                 raw_req = str(raw_req).strip()
-                name_to_req_str[f'custom_{raw_req}'] = raw_req
+                name_to_req_str[f"custom_{raw_req}"] = raw_req
             except ValueError:
                 # can't parse empty lines
                 pass
@@ -202,13 +211,17 @@ def _infer_model_init_parameters_ast(model_class_def: ClassDef) -> Tuple[List, L
     named_args = []
     required_args = []
     init_model_functions = [
-        node for node in model_class_def.body if isinstance(node, FunctionDef) and node.name == '__init__'
+        node
+        for node in model_class_def.body
+        if isinstance(node, FunctionDef) and node.name == "__init__"
     ]
 
     if not init_model_functions:
         return named_args, required_args
 
-    assert len(init_model_functions) == 1, 'There should only be one __init__ function in the model class'
+    assert (
+        len(init_model_functions) == 1
+    ), "There should only be one __init__ function in the model class"
     init_model_function = init_model_functions[0]
     named_args = [arg.arg for arg in init_model_function.args.args][1:]
     number_of_defaults = len(init_model_function.args.defaults)
@@ -216,7 +229,9 @@ def _infer_model_init_parameters_ast(model_class_def: ClassDef) -> Tuple[List, L
     return named_args, required_args
 
 
-def validate_provided_parameters_with_model(model_class: Any, provided_parameters: Dict[str, Any]) -> None:
+def validate_provided_parameters_with_model(
+    model_class: Any, provided_parameters: Dict[str, Any]
+) -> None:
     """
     Validates that all provided parameters match the signature of the model.
 
@@ -234,12 +249,18 @@ def validate_provided_parameters_with_model(model_class: Any, provided_parameter
         return
 
     if provided_parameters and type(provided_parameters) is not dict:
-        raise TypeError(f'Provided parameters must be a dict, not {type(provided_parameters)}')
+        raise TypeError(
+            f"Provided parameters must be a dict, not {type(provided_parameters)}"
+        )
 
     for arg in provided_parameters:
         if arg not in named_args:
-            raise ValueError(f'Provided parameter {arg} is not a valid init parameter for the model.')
+            raise ValueError(
+                f"Provided parameter {arg} is not a valid init parameter for the model."
+            )
 
     for arg in required_args:
         if arg not in provided_parameters:
-            raise ValueError(f'Required init parameter {arg} was not provided for this model.')
+            raise ValueError(
+                f"Required init parameter {arg} was not provided for this model."
+            )

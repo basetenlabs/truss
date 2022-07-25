@@ -5,11 +5,10 @@ from truss.model_framework import ModelFramework
 from truss.model_inference import infer_xgboost_packages
 from truss.types import ModelFrameworkType
 
-MODEL_FILENAME = 'model.ubj'
+MODEL_FILENAME = "model.ubj"
 
 
 class XGBoost(ModelFramework):
-
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.XGBOOST
 
@@ -23,10 +22,10 @@ class XGBoost(ModelFramework):
 
     def model_metadata(self, model) -> Dict[str, str]:
         return {
-            'model_binary_dir': 'model',
-            'supports_predict_proba': False,
+            "model_binary_dir": "model",
+            "supports_predict_proba": False,
         }
 
     def supports_model_class(self, model_class) -> bool:
-        model_framework, _, _ = model_class.__module__.partition('.')
+        model_framework, _, _ = model_class.__module__.partition(".")
         return model_framework == ModelFrameworkType.XGBOOST.value

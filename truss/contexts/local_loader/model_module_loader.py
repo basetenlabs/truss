@@ -24,11 +24,13 @@ class ModelModuleFinder(PathFinder):
 
     @classmethod
     def find_spec(cls, fullname, path=None, target=None):
-        top_level_module_name = fullname.split('.')[0]
+        top_level_module_name = fullname.split(".")[0]
         if top_level_module_name == cls._model_module_name:
             truss_modules_path = [cls._truss_dir]
         else:
-            truss_modules_path = [str(Path(cls._truss_dir) / cls._bundled_packages_dir_name)]
+            truss_modules_path = [
+                str(Path(cls._truss_dir) / cls._bundled_packages_dir_name)
+            ]
         if not path:
             path = truss_modules_path
         else:
@@ -56,8 +58,8 @@ class ModelModuleLoader:
         """
         absolute_name = importlib.util.resolve_name(name, None)
         path = None
-        if '.' in absolute_name:
-            parent_name, _, child_name = absolute_name.rpartition('.')
+        if "." in absolute_name:
+            parent_name, _, child_name = absolute_name.rpartition(".")
             parent_module = ModelModuleLoader.import_model_module(parent_name)
             path = parent_module.__spec__.submodule_search_locations
 
@@ -77,11 +79,15 @@ def model_class_module_loaded(
     bundled_packages_dir_name: str = None,
 ):
     try:
-        model_module_name = model_class_module_fullname.split('.')[0]
+        model_module_name = model_class_module_fullname.split(".")[0]
         # Unload so that all modules can be freshly loaded.
         _unload_truss_modules(truss_dir, model_module_name, bundled_packages_dir_name)
-        ModelModuleFinder.set_model_truss_dirs(truss_dir, model_module_name, bundled_packages_dir_name)
-        model_class_module = ModelModuleLoader.import_model_module(model_class_module_fullname)
+        ModelModuleFinder.set_model_truss_dirs(
+            truss_dir, model_module_name, bundled_packages_dir_name
+        )
+        model_class_module = ModelModuleLoader.import_model_module(
+            model_class_module_fullname
+        )
         yield model_class_module
     finally:
         ModelModuleFinder.remove_from_meta_path()
@@ -106,12 +112,14 @@ def _unload_top_level_modules(module_names: List[str]):
 
 
 def _unload_top_level_module(module_name: str):
-    if '.' in module_name:
-        raise ValueError(f'Expecting a top level module but found {module_name}')
+    if "." in module_name:
+        raise ValueError(f"Expecting a top level module but found {module_name}")
 
-    model_module_submodules = [sys_module_name
-                               for sys_module_name in sys.modules
-                               if sys_module_name.startswith(module_name + '.')]
+    model_module_submodules = [
+        sys_module_name
+        for sys_module_name in sys.modules
+        if sys_module_name.startswith(module_name + ".")
+    ]
     for model_module_submodule in model_module_submodules:
         del sys.modules[model_module_submodule]
     if module_name in sys.modules:

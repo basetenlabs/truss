@@ -1,11 +1,9 @@
-
 import copy
 import inspect
 from pathlib import Path
 from typing import Dict
 
-from truss.contexts.local_loader.model_module_loader import \
-    model_class_module_loaded
+from truss.contexts.local_loader.model_module_loader import model_class_module_loaded
 from truss.contexts.truss_context import TrussContext
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_spec import TrussSpec
@@ -30,14 +28,14 @@ class LoadLocal(TrussContext):
             model_class = getattr(module, spec.model_class_name)
             model_class_signature = inspect.signature(model_class)
             model_init_params = {}
-            if _signature_accepts_keyword_arg(model_class_signature, 'config'):
-                model_init_params['config'] = spec.config.to_dict()
-            if _signature_accepts_keyword_arg(model_class_signature, 'data_dir'):
-                model_init_params['data_dir'] = truss_dir / 'data'
-            if _signature_accepts_keyword_arg(model_class_signature, 'secrets'):
-                model_init_params['secrets'] = _prepare_secrets(spec)
+            if _signature_accepts_keyword_arg(model_class_signature, "config"):
+                model_init_params["config"] = spec.config.to_dict()
+            if _signature_accepts_keyword_arg(model_class_signature, "data_dir"):
+                model_init_params["data_dir"] = truss_dir / "data"
+            if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
+                model_init_params["secrets"] = _prepare_secrets(spec)
             model = model_class(**model_init_params)
-            if hasattr(model, 'load'):
+            if hasattr(model, "load"):
                 model.load()
             return model
 
