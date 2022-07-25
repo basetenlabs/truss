@@ -56,6 +56,8 @@ def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages
     assert spec.data_dir.exists()
     assert (spec.data_dir / 'data.txt').exists()
     assert spec.requirements == requirements
+    assert (spec.bundled_packages_dir / 'dep_pkg' / '__init__.py').exists()
+    assert (spec.bundled_packages_dir / 'dep_pkg' / 'file.py').exists()
 
 
 def test_scaffold(sklearn_rfc_model, tmp_path):
