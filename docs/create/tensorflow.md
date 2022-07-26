@@ -1,6 +1,6 @@
 # Create a Truss of a TensorFlow model
 
-[TensorFlow](https://www.tensorflow.org/) is a supported framework on Truss. To package a TensorFlow model, follow the steps below or run [this colab notebook]().
+[TensorFlow](https://www.tensorflow.org/) is a supported framework on Truss. To package a TensorFlow model, follow the steps below.
 
 ### Install packages
 
@@ -33,7 +33,9 @@ Use the `mk_truss` command to package your model into a Truss.
 ```python
 from truss import mk_truss
 
-mk_truss(model, target_directory="tensorflow_truss")
+tr = mk_truss(model, target_directory="tensorflow_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+For information on running the Truss locally, see [local development](../develop/localhost.md).

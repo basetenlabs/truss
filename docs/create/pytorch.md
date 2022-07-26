@@ -1,6 +1,6 @@
 # Create a Truss of a PyTorch model
 
-[PyTorch](https://pytorch.org/) is a supported framework on Truss. To package a PyTorch model, follow the steps below or run [this colab notebook]().
+[PyTorch](https://pytorch.org/) is a supported framework on Truss. To package a PyTorch model, follow the steps below.
 
 ### Install packages
 
@@ -144,7 +144,9 @@ Use the `mk_truss` command to package your model into a Truss.
 ```python
 from truss import mk_truss
 
-mk_truss(model, target_directory="pytorch_truss")
+tr = mk_truss(model, target_directory="pytorch_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+For information on running the Truss locally, see [local development](../develop/localhost.md).

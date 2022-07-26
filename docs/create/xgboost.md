@@ -12,7 +12,7 @@ If you're using a Jupyter notebook, add a line to install the `xgboost` and `tru
 
 ### Create an in-memory model
 
-This is the part you want to replace with your own code. Using a Hugging Face transformer, build a machine learning model and keep it in-memory.
+This is the part you want to replace with your own code. Using XGBoost, build a machine learning model and keep it in-memory.
 
 ```python
 import xgboost as xgb
