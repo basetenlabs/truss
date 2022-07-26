@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/setup-python/
       - id: versions
-        run: | 
+        run: |
           NEW_VERSION=$(poetry version)
           echo "::set-output name=new-version::$NEW_VERSION\n"
 
