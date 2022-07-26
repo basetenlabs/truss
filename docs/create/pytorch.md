@@ -1,6 +1,6 @@
 # Create a Truss of a PyTorch model
 
-[PyTorch](https://pytorch.org/) is a supported framework on Truss. To package a PyTorch model, follow the steps below.
+[PyTorch](https://pytorch.org/) is a supported framework on Truss. To package a PyTorch model, follow the steps below. There is no one-click Colab notebook for this example as it requires multiple files to operate successfully.
 
 ### Install packages
 
@@ -148,5 +148,20 @@ tr = mk_truss(model, target_directory="pytorch_truss")
 ```
 
 Check the target directory to see your new Truss!
+
+### Serve the model
+
+With just a bit of helper code, we can serve a prediction:
+
+```python
+transform = transforms.Compose(
+        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+    )
+inputs = datasets.MNIST("../data", train=False, transform=transform)
+dataset = torch.utils.data.DataLoader(inputs, batch_size=1)
+
+import numpy as np
+print(tr.server_predict({"inputs": np.array(next(iter(dataset))[0])}))
+```
 
 For information on running the Truss locally, see [local development](../develop/localhost.md).
