@@ -37,9 +37,22 @@ def print_help():
     click.echo(ctx.get_help())
 
 
-@click.group(name="truss")
-def cli_group():
-    pass
+@click.group(name="truss", invoke_without_command=True)
+@click.pass_context
+@click.option(
+    "-v",
+    "--version",
+    is_flag=True,
+    show_default=False,
+    default=False,
+    help="Show Truss package version.",
+)
+def cli_group(ctx, version):
+    if not ctx.invoked_subcommand:
+        if version:
+            click.echo(truss.version())
+        else:
+            click.echo(ctx.get_help())
 
 
 @cli_group.command()
