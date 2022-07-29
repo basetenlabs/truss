@@ -8,8 +8,6 @@ Model deployment works in three stages:
 
 ![Truss is a seamless bridge between model development and model deployment](assets/truss_unify.png)
 
-If you want to explore Truss end-to-end before using it for your own projects, follow along using [this notebook for deploying a Tensorflow model on AWS ECS](), which you can run locally or on Google Colab.
-
 ## Step 0: Build your model
 
 Truss is useful after you have a trained machine learning model that you are happy with and want to deploy. You can build a Truss from a pickled or otherwise saved model, or from an in-memory model. So to follow this guide, you will need **one** of the following:
@@ -37,14 +35,11 @@ mk_truss(model, target_directory="my_truss")
 Supported frameworks:
 
 * [Hugging Face](create/huggingface.md)
+* [LightGBM](create/lightgbm.md)
 * [PyTorch](create/pytorch.md)
 * [scikit-learn](create/sklearn.md)
 * [Tensorflow](create/tensorflow.md)
-
-The following frameworks will soon be supported by the `mk_truss` command and in the meantime can be created manually:
-
 * [XGBoost](create/xgboost.md)
-* [LightGBM](create/lightgbm.md)
 
 A model built in framework not listed, or built without a framework, can still be packaged and used as a Truss. You'll just need to [build the Truss manually](create/manual.md).
 
