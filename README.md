@@ -6,9 +6,47 @@
 
 Meet Truss, a seamless bridge from model development to model delivery. Truss presents an open-source standard for packaging models built in any framework for sharing and deployment in any environment, local or production.
 
-## Quickstart
+Get started with the [end-to-end tutorial](https://truss.baseten.co/e2e).
 
-Generate and serve predictions from a Truss with [this Jupyter notebook]().
+## What can I do with Truss?
+
+If you've ever tried to get a model out of a Jupyter notebook, Truss is for you.
+
+Truss exposes just the right amount of complexity around things like Docker and APIs without you really having to think about them. Here are some of the things Truss does:
+
+* 🏎 Turns your Python model into a microservice with a production-ready API endpoint, no need for Flask or Django.
+* 🎚 For most popular frameworks, includes automatic model serialization and deserialization.
+* 🛍 Freezes dependencies via Docker to make your training environment portable.
+* 🕰 Enables rapid iteration with local development that matches your production environment.
+* 🗃 Encourages shipping parsing and even business logic alongside your model with integrated pre- and post-processing functions.
+* 🤖 Supports running predictions on GPUs. (Currently limited to certain hardware, more coming soon)
+* 🙉 Bundles secret management to securely give your model access to API keys.
+
+## Installation
+
+Truss requires Python >=3.7, <3.11
+
+To install from [PyPi](https://pypi.org/project/truss/), run:
+
+```
+pip install truss
+```
+
+To download the source code directly (for development), clone this repository and follow the setup commands in our [contributors' guide](CONTRIBUTING.md).
+
+Truss is actively developed, and we recommend using the latest version. To update your Truss installation, run:
+
+```
+pip install --upgrade truss
+```
+
+Though Truss is in beta, we do care about backward compatibility. Review the [release notes](docs/CHANGELOG.md) before upgrading, and note that we follow semantic versioning, so any breaking changes require the release of a new major version.
+
+## How to use Truss
+
+Generate and serve predictions from a Truss with [this Jupyter notebook](docs/notebooks/sklearn_example.ipynb).
+
+### Quickstart: making a Truss
 
 ```python
 !pip install scikit-learn
@@ -27,91 +65,70 @@ rfc = RandomForestClassifier()
 rfc.fit(data_x, data_y)
 
 # Create the Truss (serializing & packaging model)
-tr = truss.mk_truss(rfc, target_directory="iris_rfc")
+tr = truss.mk_truss(rfc, target_directory="iris_rfc_truss")
 
 # Serve a prediction from the model
 tr.server_predict({"inputs": [[0, 0, 0, 0]]})
 ```
 
-## Use cases
+### Package your model
 
-Truss exposes just the right amount of complexity around things like Docker and APIs without you really having to think about them. Here's some of the things Truss does:
+The `truss.mk_truss()` command can be used with any supported framework:
 
-* 🏎 Turns your Python model into a microservice with a production-ready API endpoint, no need for Flask or Django.
-* 🎚 For most popular frameworks, includes automatic model serialization and deserialization.
-* 🛍 Freezes dependencies via Docker to make your training environment portable.
-* 🕰 Enables rapid iteration with local development that matches your production environment.
-* 🗃 Encourages shipping parsing and even business logic alongside your model with integrated pre- and post-processing functions.
-* 🤖 Supports running predictions on GPUs. (Currently limited to certain hardware, more coming soon)
-* 🙉 Bundles secret management to securely give your model access to API keys.
+* [Hugging Face](https://truss.baseten.co/create/huggingface)
+* [LightGBM](https://truss.baseten.co/create/lightgbm)
+* [PyTorch](https://truss.baseten.co/create/pytorch)
+* [scikit-learn](https://truss.baseten.co/create/sklearn)
+* [Tensorflow](https://truss.baseten.co/create/tensorflow)
+* [XGBoost](https://truss.baseten.co/create/xgboost)
 
-### Model as an API
+But in more complex cases, you can build a Truss manually for any model. Start with `truss init my_truss` and follow [this guide](https://truss.baseten.co/create/manual).
 
-Truss turns your ML model into a backend for web, no Django or Flask needed. This "model as a microservice" approach saves time writing and maintaining web server code, and makes the model a single unit within your application.
+### Serve your model locally
 
-Every model runs in its own environment. This is a different intuition than most APIs, where endpoints share the same dependencies and resources. But two different machine learning models might depend on different frameworks, packages, and hardware. So Truss keeps everything separate, preventing tangled configurations or repeated model serving work.
-
-And with your model behind an API, you can do end-to-end tests locally with your front-end or other systems. Turning a Python-first object into a web-first object unlocks workflows for all kinds of software developers.
-
-### Model as a sharable artifact
-
-Running a model that someone else has created is non-trivial. Sometimes it even requires re-creating their training environment and training it yourself, but at minimum requires setting up an environment, deserializing the model, and creating a model server.
-
-With Truss, "a model exists" and "I can run the model on any machine" are equivalent statements. Truss reliably packages models to be ready for the web and any other ways people want to interface with it. Package your model as a Truss and share it within your team or with the world, and the "setup" portion of your README will be shorter than ever.
-
-### Model as a component
-
-A model embedding factorizes inputs to make them understandable to a model. This is a form of pre-processing input. But pre- and post-processing can be more powerful and flexible. So Truss bundles these functions in the `model.py` file. By writing custom pre- and post-processing code, you can make your model a drop-in component to a larger system and use the same formats to pass around information, be that JSON, XML, video, natural language, or any other structured or unstructured data.
-
-Over time, we aim to add features for iterative development, helping with detecting anomalies, drift, and more. And by composing multiple models, each with their own Truss, you'll be able to build more powerful, capable systems with just a few lines of pre- and post-processing code, conveniently bundled with your model. Truss' use cases are expanding quickly, and you can [review and contribute to the roadmap here]().
-
-## Installation
-
-Truss requires Python >= 3.7,<3.11
-
-To install from [PyPi](https://pypi.org/project/truss/), run:
+Serving your model with Truss, on Docker, lets you interface with your model via HTTP requests. Start your model server with:
 
 ```
-pip install truss
+truss run-image iris_rfc_truss
 ```
 
-To download the source code directly (for development), clone this repository and follow the setup commands in our [contributors' guide](CONTRIBUTING.md).
-
-Truss is actively developed, and we recommend using the latest version. To update your Truss installation, run:
+Then, as long as the container is running, you can invoke the model as an API as follows:
 
 ```
-pip install --upgrade truss
+curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '{"inputs": [[0, 0, 0, 0]]}'
 ```
 
-Though Truss is in beta, we do care about backward compatibility. Review the [release notes](docs/CHANGELOG.md) before upgrading, and note that we follow semantic versioning, so any breaking changes require the release of a new major version.
+### Configure your model for deployment
 
-## Our vision for Truss
+Truss is configurable to its core. Every Truss must include a file `config.yaml` in its root directory, which is automatically generated when the Truss is created. However, configuration is optional. Every configurable value has a sensible default, and a completely empty config file is valid.
 
-Data scientists and machine learning engineers spend a lot of time building models that solve specific problems: sentiment classification, facial recognition, anomaly detection. Generally, this exploratory, experimental work is done using an interactive environment like a Jupyter notebook. To match the wide variety of use cases for ML models, there are a number of popular frameworks to build in, like PyTorch, TensorFlow, and scikit-learn. Each framework specializes in different kinds of models, so a data scientist will pick the framework based on the type of problem they are solving.
+The Truss we generated above in the quickstart sample has a good example of a typical Truss config:
 
-As such, the data scientist's development environment needs to be flexible and permissive. Jupyter notebooks are a great tool for training models, but as a impermanent and development-oriented environment they aren't great for model serving. Model serving, or making a model available to other systems, is critical; a model is not very useful unless it can operate in the real world.
+```yaml
+model_framework: sklearn
+model_metadata:
+  model_binary_dir: model
+  supports_predict_proba: true
+python_version: py39
+requirements:
+- scikit-learn==1.0.2
+- threadpoolctl==3.0.0
+- joblib==1.1.0
+- numpy==1.20.3
+- scipy==1.7.3
+```
 
-There are many ways to serve a model, but most involve the following steps in some form:
+Follow the [configuration guide](https://truss.baseten.co/develop/configuration) and use the complete reference of configurable properties to make your Truss perform exactly as you wish.
 
-1. Serialize the model
-2. Put the model behind a web server such as Flask
-3. Package the web server into a Docker image
-4. Run the Docker image on a container
+### Deploy your model
 
-DevOps is its own specialty for a reason: the endless configuration options and compatibility checks throughout this process can be overwhelming. So Data Scientists, if they're lucky, are able to turn to infrastructure teams for help. But this is not an ideal solution:
+You can deploy a Truss anywhere that can run a Docker image, as well as purpose-built platforms like [Baseten](https://baseten.co).
 
-* Data scientists compete for the limited bandwidth of infrastructure teams, leading to long wait times to get models deployed.
-* The cost and friction of accessing infrastructure expertise means that only the safest ideas ever see the light of day. A lot of brilliant models may not seem promising at first, and will die in the backlog before reaching their potential.
-* Debugging is hard when the model serving environment is different from the data scientist's notebook, introducing cumbersome and time-consuming effort to get everything set up right.
+Follow step-by-step deployment guides for the following platforms:
 
-Truss bridges the gap between model development and model deployment by making it equally straightforward to serve a model in localhost and in prod, making development and testing loops rapid.
-
-We built and open-sourced Truss with the conviction that eliminating this friction will accelerate machine learning productivity:
-
-* Data scientists can build or deploy Docker images with a single command, reducing the model serving workload.
-* Models can be packaged in a standardized format, making it easier to share models within or beyond a team.
-* Data scientists can build on each other's work by pulling down popular models without spending hours coaxing them into running in a new environment.
-* Providing a web-first interface for models will encourage real-world use and new applications.
+* [AWS ECS](https://truss.baseten.co/deploy/aws)
+* [Baseten](https://truss.baseten.co/deploy/baseten)
+* [GCP Cloud Run](https://truss.baseten.co/deploy/gcp)
 
 ## Contributing
 
