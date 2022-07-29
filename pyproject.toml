@@ -16,6 +16,7 @@ PyYAML = "^6.0"
 Jinja2 = "^3.1.2"
 python-on-whales = "^0.46.0"
 tenacity = "^8.0.1"
+single-source = "^0.3.0"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"
@@ -36,7 +37,6 @@ xgboost = "^1.6.1"
 lightgbm = "^3.3.2"
 transformers = "^4.20.1"
 black = "^22.6.0"
-single-source = "^0.3.0"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'
