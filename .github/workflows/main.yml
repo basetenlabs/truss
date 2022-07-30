@@ -1,4 +1,4 @@
-name: PR
+name: main
 
 on:
   push:
