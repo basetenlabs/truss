@@ -4,6 +4,8 @@
 
 ![Truss logo](docs/assets/truss_logo_horizontal.png)
 
+[![ci_status](https://github.com/basetenlabs/truss/actions/workflows/main.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/main.yml)
+
 Meet Truss, a seamless bridge from model development to model delivery. Truss presents an open-source standard for packaging models built in any framework for sharing and deployment in any environment, local or production.
 
 Get started with the [end-to-end tutorial](https://truss.baseten.co/e2e).
