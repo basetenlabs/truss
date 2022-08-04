@@ -9,9 +9,13 @@ interact with the environment in their local environment. A container building t
 ## Model Framework
 
 The following model frameworks are supported as 'base' scaffolds that work with very little friction out of the box.
+
 * `keras`
-* `sklearn`
+* `lightgbm`
 * `pytorch`
+* `sklearn`
+* `transformers`  
+* `xgboost`
 
 ## Code Structure
 
