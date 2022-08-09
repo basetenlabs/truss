@@ -7,8 +7,12 @@
 If you're using a Jupyter notebook, add a line to install the `torch`, `torchvision`, and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
 ```python
-!pip install torch torchvision truss
+!pip install --upgrade torch torchvision truss
 ```
+
+{% hint style="warning" %}
+Truss officially supports `torch` version 1.9.0 or higher. Especially if you're using an online notebook environment like Google Colab or a bundle of packages like Anaconda, ensure that the version you are using is supported. If it's not, use the `--upgrade` flag and pip will install the most recent version.
+{% endhint %}
 
 ### Create an in-memory model
 
