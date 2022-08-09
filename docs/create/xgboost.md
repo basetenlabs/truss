@@ -7,7 +7,7 @@
 If you're using a Jupyter notebook, add a line to install the `xgboost` and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
 ```python
-!pip install xgboost truss
+!pip install --upgrade xgboost truss
 ```
 
 {% hint style="warning" %}

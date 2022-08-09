@@ -7,7 +7,7 @@
 If you're using a Jupyter notebook, add a line to install the `lightgbm` and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
 ```python
-!pip install lightgbm truss
+!pip install --upgrade lightgbm truss
 ```
 
 {% hint style="warning" %}

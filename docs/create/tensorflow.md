@@ -7,7 +7,7 @@
 If you're using a Jupyter notebook, add a line to install the `tensorflow` and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
 ```python
-!pip install tensorflow truss
+!pip install --upgrade tensorflow truss
 # For help installing tensorflow, see https://www.tensorflow.org/install/pip
 ```
 

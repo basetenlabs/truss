@@ -52,8 +52,8 @@ Generate and serve predictions from a Truss with [this Jupyter notebook](docs/no
 ### Quickstart: making a Truss
 
 ```python
-!pip install scikit-learn
-!pip install truss
+!pip install --upgrade scikit-learn truss
+
 import truss
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import load_iris

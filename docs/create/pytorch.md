@@ -7,7 +7,7 @@
 If you're using a Jupyter notebook, add a line to install the `torch`, `torchvision`, and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
 ```python
-!pip install torch torchvision truss
+!pip install --upgrade torch torchvision truss
 ```
 
 {% hint style="warning" %}
