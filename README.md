@@ -2,7 +2,7 @@
 
 **Serve any model without boilerplate code**
 
-![Truss logo](docs/assets/truss_logo_horizontal.png)
+![Truss logo](https://raw.githubusercontent.com/basetenlabs/truss/main/docs/assets/truss_logo_horizontal.png)
 
 [![PyPI version](https://badge.fury.io/py/truss.svg)](https://badge.fury.io/py/truss)
 [![ci_status](https://github.com/basetenlabs/truss/actions/workflows/main.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/main.yml)
