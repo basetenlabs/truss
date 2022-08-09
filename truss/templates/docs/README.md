@@ -14,7 +14,7 @@ The following model frameworks are supported as 'base' scaffolds that work with 
 * `lightgbm`
 * `pytorch`
 * `sklearn`
-* `transformers`  
+* `transformers`
 * `xgboost`
 
 ## Code Structure
