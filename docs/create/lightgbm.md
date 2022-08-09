@@ -1,6 +1,6 @@
 # Create a Truss of a LightGBM model
 
-[LightGBM](https://lightgbm.readthedocs.io/en/v3.3.2/) is a supported framework on Truss. To package a LightGBM model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/lightgbm_example.ipynb).
+[LightGBM](https://lightgbm.readthedocs.io/en/latest) is a supported framework on Truss. To package a LightGBM model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/lightgbm_example.ipynb).
 
 ### Install packages
 
@@ -9,6 +9,10 @@ If you're using a Jupyter notebook, add a line to install the `lightgbm` and `tr
 ```python
 !pip install lightgbm truss
 ```
+
+{% hint style="warning" %}
+Truss officially supports `lightgbm` version 3.3.2 or higher. Especially if you're using an online notebook environment like Google Colab or a bundle of packages like Anaconda, ensure that the version you are using is supported. If it's not, use the `--upgrade` flag and pip will install the most recent version.
+{% endhint %}
 
 ### Create an in-memory model
 

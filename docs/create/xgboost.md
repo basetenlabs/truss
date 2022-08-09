@@ -10,6 +10,10 @@ If you're using a Jupyter notebook, add a line to install the `xgboost` and `tru
 !pip install xgboost truss
 ```
 
+{% hint style="warning" %}
+Truss officially supports `xgboost` version 1.6.1 or higher. Especially if you're using an online notebook environment like Google Colab or a bundle of packages like Anaconda, ensure that the version you are using is supported. If it's not, use the `--upgrade` flag and pip will install the most recent version.
+{% endhint %}
+
 ### Create an in-memory model
 
 This is the part you want to replace with your own code. Using XGBoost, build a machine learning model and keep it in-memory.
