@@ -1,10 +1,19 @@
 [tool.poetry]
 name = "truss"
-version = "0.0.32"
+version = "0.0.33"
 description = "A seamless bridge from model development to model delivery"
+license = "MIT"
 readme = "README.md"
 authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
+repository = "https://github.com/basetenlabs/truss"
+keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learning"]
+
+[tool.poetry.urls]
+"Homepage" = "https://truss.baseten.co"
+"Bug Reports" = "https://github.com/basetenlabs/truss/issues"
+"Documentation" = "https://truss.baseten.co"
+"Baseten" = "https://baseten.co"
 
 [tool.poetry.dependencies]
 python = ">=3.7,<3.11"
