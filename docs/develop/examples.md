@@ -7,8 +7,8 @@ Format each example as follows:
 ```yaml
 - name: example_name
   input:
-	inputs:
-		- [10, 20, 30]
+    inputs:
+      - [10, 20, 30]
 ```
 
 Now, in your terminal you can run:
