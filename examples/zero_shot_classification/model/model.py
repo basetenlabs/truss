@@ -47,7 +47,9 @@ class Model:
 
         with torch.no_grad():
             if self._has_named_args:
-                result = [self._model(**instance) for instance in instances]
+                # Note that we get the first element of model output, this is for
+                # backwards compatibility of zero-shot model on Baseten.
+                result = [self._model(**instance)[0] for instance in instances]
             elif self._has_hybrid_args:
                 try:
                     result = []
