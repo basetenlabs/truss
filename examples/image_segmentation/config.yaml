@@ -5,12 +5,13 @@ model_class_name: Model
 model_framework: custom
 model_type: custom
 model_metadata: {}
+model_name: Image segmentation
 model_module_dir: model
 python_version: py39
 requirements:
   - torchvision==0.9.1
 resources:
-  cpu: 500m
+  cpu: 3000m
   memory: 8Gi
   use_gpu: false
 system_packages: []
