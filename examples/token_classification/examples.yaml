@@ -1,0 +1,5 @@
+- input:
+    inputs:
+    - Joe Biden is President of the United States.
+    - Olaf Scholz is Chancellor of Germany
+  name: example1

@@ -1,0 +1,6 @@
+- input:
+    inputs:
+    - He was a high-ranking <mask> in the President\'s cabinet
+    - <mask> is the meaning of life
+    - The baby <mask> develops a thick layer of blubber to protect it from the cold sea
+  name: example1

@@ -1,0 +1,18 @@
+model_framework: huggingface_transformer
+model_metadata:
+  transformer_config: {}
+  has_hybrid_args: false
+  has_named_args: false
+model_module_dir: model
+model_class_filename: model.py
+model_class_name: Model
+model_name: Masked language modeling
+model_type: fill-mask
+python_version: py39
+requirements: []
+resources:
+  cpu: 3000m
+  memory: 8Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
