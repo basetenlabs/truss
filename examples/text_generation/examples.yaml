@@ -1,0 +1,5 @@
+- input:
+    inputs:
+    - prompt: They knew that after the group won the lottery ticket that their lives would change but
+      max_length: 30
+  name: example1

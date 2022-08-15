@@ -1,0 +1,10 @@
+- input:
+    inputs:
+    - sequences:
+        - capuccino
+      candidate_labels:
+        - coffee
+        - cocktail
+        - tea
+      multi_class: false
+  name: example1
