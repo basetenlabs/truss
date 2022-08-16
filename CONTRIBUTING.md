@@ -41,6 +41,7 @@ poetry run pytest truss/tests
 
 ### Release
 
+When releasing a version of the library with user-facing changes, be sure to update the [changelog](docs/CHANGELOG.md) with an overview of the changes, along with updating any relevant documentation. Feel free to tag @philipkiely-baseten to write or review any changelog or docs updates.
 To release a new version of the library.
 
 1. Create a PR changing the `pyproject.toml` version
