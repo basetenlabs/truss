@@ -39,9 +39,6 @@ class Model:
     def predict(self, request: Dict) -> Dict[str, List]:
         response = {}
         inputs = request["inputs"]
-        response["predictions"] = self._predict_single(inputs[0])
+        reshaped = [np.array(input).reshape(1, 224, 224, 3) for input in inputs]
+        response["predictions"] = self._model.predict(reshaped)
         return response
-
-    def _predict_single(self, input):
-        img = np.array(input).reshape(1, 224, 224, 3)
-        return self._model.predict(img)
