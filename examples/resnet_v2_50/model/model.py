@@ -14,16 +14,10 @@ class Model:
         self._data_dir = kwargs["data_dir"]
         self._config = kwargs["config"]
         self._model = None
+        self._labels_map = None
 
     def load(self):
-        self._model = tf.keras.applications.resnet50.ResNet50(
-            include_top=True,
-            weights="imagenet",
-            input_tensor=None,
-            input_shape=None,
-            pooling=None,
-            classes=1000,
-        )
+        self._model = tf.saved_model.load(self._data_dir / "model")
 
     def preprocess(self, request: Dict) -> Dict:
         if "image_url" in request:
@@ -38,7 +32,12 @@ class Model:
 
     def predict(self, request: Dict) -> Dict[str, List]:
         response = {}
-        inputs = request["inputs"]
-        reshaped = [np.array(input).reshape(1, 224, 224, 3) for input in inputs]
-        response["predictions"] = self._model.predict(reshaped)
+        images = request["inputs"]
+        # Convert input to batched tensor
+        images = np.asarray(images)
+        input_tensor = tf.convert_to_tensor(images)
+        input_tensor = tf.cast(input_tensor, dtype=tf.float32)
+        # Execute model function on batch
+        model_fn = self._model.signatures["serving_default"]
+        response["predictions"] = model_fn(input_tensor)["keras_layer"].numpy().tolist()
         return response

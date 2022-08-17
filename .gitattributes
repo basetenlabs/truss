@@ -1,1 +1,2 @@
 *.joblib filter=lfs diff=lfs merge=lfs -text
+examples/resnet_v2_50/data/model/** filter=lfs diff=lfs merge=lfs -text
