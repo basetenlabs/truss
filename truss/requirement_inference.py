@@ -9,7 +9,7 @@ class Dependency:
     version: str = None
 
     def __repr__(self):
-        return f"{self.name}=={self.version}"
+        return f"{self.name}=={self.version}" if self.version else self.name
 
 
 def infer_execution_requirements():
