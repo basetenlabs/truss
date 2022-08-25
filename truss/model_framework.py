@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR
 from truss.model_inference import infer_python_version
+from truss.requirements_inference import infer_deps
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.types import ModelFrameworkType
 from truss.utils import copy_file_path, copy_tree_path
@@ -16,15 +17,20 @@ class ModelFramework(ABC):
         pass
 
     @abstractmethod
-    def infer_requirements(self):
-        """Mapping of requirements.txt line by name of the requirement.
+    def required_depedencies(self) -> Set[str]:
+        """Returns a set of packages required by this framework.
 
-        e.g. {'tensorflow': 'tensorflow==1.0.0'}
+        e.g. {'tensorflow'}
         """
         pass
 
-    def requirements_txt(self) -> List[str]:
-        return list(self.infer_requirements().values())
+    def requirements_txt(self, root_fn_name: str = "mk_truss") -> List[str]:
+
+        return list(
+            infer_deps(
+                root_fn_name=root_fn_name, must_include_deps=self.required_depedencies()
+            )
+        )
 
     @abstractmethod
     def serialize_model_to_directory(self, model, target_directory: Path):
@@ -40,7 +46,9 @@ class ModelFramework(ABC):
     def model_name(self, model) -> str:
         return None
 
-    def to_truss(self, model, target_directory: Path) -> str:
+    def to_truss(
+        self, model, target_directory: Path, root_fn_name: str = "mk_truss"
+    ) -> str:
         """Exports in-memory model to a Truss, in a target directory."""
         model_binary_dir = target_directory / "data" / "model"
         model_binary_dir.mkdir(parents=True, exist_ok=True)
@@ -64,7 +72,7 @@ class ModelFramework(ABC):
             model_type=self.model_type(model),
             model_framework=self.typ(),
             model_metadata=self.model_metadata(model),
-            requirements=self.requirements_txt(),
+            requirements=self.requirements_txt(root_fn_name=root_fn_name),
             python_version=python_version,
         )
         with (target_directory / CONFIG_FILE).open("w") as config_file:
