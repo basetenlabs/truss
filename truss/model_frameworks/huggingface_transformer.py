@@ -13,7 +13,7 @@ class HuggingfaceTransformer(ModelFramework):
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.HUGGINGFACE_TRANSFORMER
 
-    def required_depedencies(self) -> Set[str]:
+    def required_python_depedencies(self) -> Set[str]:
         return HUGGINGFACE_TRANSFORMER_MODULE_NAME
 
     def serialize_model_to_directory(self, model, target_directory: Path):

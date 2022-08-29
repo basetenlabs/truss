@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, Set
 
-from truss.constants import SKLEARN_REQ_MODULE_NAME
+from truss.constants import SKLEARN_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
 from truss.templates.server.common.util import model_supports_predict_proba
 from truss.types import ModelFrameworkType
@@ -13,8 +13,8 @@ class SKLearn(ModelFramework):
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.SKLEARN
 
-    def required_depedencies(self) -> Set[str]:
-        return SKLEARN_REQ_MODULE_NAME
+    def required_python_depedencies(self) -> Set[str]:
+        return SKLEARN_REQ_MODULE_NAMES
 
     def serialize_model_to_directory(self, model, target_directory: Path):
         import joblib

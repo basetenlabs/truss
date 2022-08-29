@@ -19,15 +19,18 @@ IGNORED_PACKAGES = {"pip", "truss"}
 def infer_deps(
     root_fn_name: str = "mk_truss", must_include_deps: Set = None
 ) -> Set[str]:
-    """Infers the depedencies based on import into global namespace
+    """Infers the depedencies based on imports into the global namespace
 
     Args:
-        root_fn_name (str, optional): The name of the function that's called where the global namespace is relevant.
-                                      Defaults to "mk_truss".
-        must_include_deps (Set, optional): The set of package names that must be imported. Defaults to None.
+        root_fn_name (str, optional):   The name of the function that's called
+                                        where the global namespace is relevant.
+                                        Defaults to "mk_truss".
+        must_include_deps (Set, optional):  The set of package names that
+                                            must necessarily be imported.
+                                            Defaults to None.
 
     Returns:
-        Set[str]: set of required including versions. E.g. `{"xgboost==1.6.1"}`
+        Set[str]: set of required python requirements, including versions. E.g. `{"xgboost==1.6.1"}`
     """
 
     # Find the stack frame that likely has the relevant global inputs

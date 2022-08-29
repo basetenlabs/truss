@@ -41,7 +41,7 @@ TRUSS_DIR = "truss_dir"
 HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
-SKLEARN_REQ_MODULE_NAME = {
+SKLEARN_REQ_MODULE_NAMES = {
     "numpy",
     "scipy",
     "joblib",
@@ -49,22 +49,21 @@ SKLEARN_REQ_MODULE_NAME = {
     "threadpoolctl",
 }
 
-XGBOOST_REQ_MODULE_NAME = {"xgboost"}
+XGBOOST_REQ_MODULE_NAMES = {"xgboost"}
 
 # list from https://www.tensorflow.org/install/pip
 # if problematic, lets look to https://www.tensorflow.org/install/source
-TENSORFLOW_REQ_MODULE_NAME = {
+TENSORFLOW_REQ_MODULE_NAMES = {
     "tensorflow",
 }
 
-LIGHTGBM_REQ_MODULE_NAME = {
+LIGHTGBM_REQ_MODULE_NAMES = {
     "lightgbm",
 }
 
 # list from https://pytorch.org/get-started/locally/
-PYTORCH_REQ_MODULE_NAME = {
+PYTORCH_REQ_MODULE_NAMES = {
     "torch",
     "torchvision",
     "torchaudio",
 }
-

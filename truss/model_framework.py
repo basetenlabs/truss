@@ -17,7 +17,7 @@ class ModelFramework(ABC):
         pass
 
     @abstractmethod
-    def required_depedencies(self) -> Set[str]:
+    def required_python_depedencies(self) -> Set[str]:
         """Returns a set of packages required by this framework.
 
         e.g. {'tensorflow'}
@@ -28,7 +28,8 @@ class ModelFramework(ABC):
 
         return list(
             infer_deps(
-                root_fn_name=root_fn_name, must_include_deps=self.required_depedencies()
+                root_fn_name=root_fn_name,
+                must_include_deps=self.required_python_depedencies(),
             )
         )
 

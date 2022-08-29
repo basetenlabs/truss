@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, Set
 
-from truss.constants import XGBOOST_REQ_MODULE_NAME
+from truss.constants import XGBOOST_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
 from truss.types import ModelFrameworkType
 
@@ -12,8 +12,8 @@ class XGBoost(ModelFramework):
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.XGBOOST
 
-    def required_depedencies(self) -> Set[str]:
-        return XGBOOST_REQ_MODULE_NAME
+    def required_python_depedencies(self) -> Set[str]:
+        return XGBOOST_REQ_MODULE_NAMES
 
     def serialize_model_to_directory(self, model, target_directory: Path):
         model_filename = MODEL_FILENAME
