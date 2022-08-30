@@ -16,6 +16,8 @@ POORLY_NAMED_PACKAGES = {"PIL": "Pillow", "sklearn": "scikit-learn"}
 # We don't want a few foundation packages
 IGNORED_PACKAGES = {"pip", "truss"}
 
+TOP_LEVEL_NAMESPACES_TO_DROP_FOR_INFERENCE = ["truss", "baseten"]
+
 
 def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     """Infers the depedencies based on imports into the global namespace
@@ -58,14 +60,15 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
 
 
 def _filter_truss_frames(stack_frames):
-    return list(
-        dropwhile(
-            lambda stack_frame: inspect.getmodule(
-                stack_frame.frame
-            ).__name__.startswith("truss."),
-            stack_frames,
-        )
-    )
+    def is_truss_invocation_frame(stack_frame):
+        module = inspect.getmodule(stack_frame.frame)
+        module_name = module.__name__
+        for namespace in TOP_LEVEL_NAMESPACES_TO_DROP_FOR_INFERENCE:
+            if module_name.startswith(f"{namespace}."):
+                return True
+        return False
+
+    return list(dropwhile(is_truss_invocation_frame, stack_frames))
 
 
 def _extract_packages_from_frame(frame) -> Set[str]:
