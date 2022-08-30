@@ -4,8 +4,8 @@ from typing import Dict, List, Set
 
 import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR
+from truss.environment_inference.requirements_inference import infer_deps
 from truss.model_inference import infer_python_version
-from truss.requirements_inference import infer_deps
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.types import ModelFrameworkType
 from truss.utils import copy_file_path, copy_tree_path
@@ -24,14 +24,9 @@ class ModelFramework(ABC):
         """
         pass
 
-    def requirements_txt(self, root_fn_name: str = "mk_truss") -> List[str]:
+    def requirements_txt(self) -> List[str]:
 
-        return list(
-            infer_deps(
-                root_fn_name=root_fn_name,
-                must_include_deps=self.required_python_depedencies(),
-            )
-        )
+        return list(infer_deps(must_include_deps=self.required_python_depedencies()))
 
     @abstractmethod
     def serialize_model_to_directory(self, model, target_directory: Path):
@@ -47,9 +42,7 @@ class ModelFramework(ABC):
     def model_name(self, model) -> str:
         return None
 
-    def to_truss(
-        self, model, target_directory: Path, root_fn_name: str = "mk_truss"
-    ) -> str:
+    def to_truss(self, model, target_directory: Path) -> str:
         """Exports in-memory model to a Truss, in a target directory."""
         model_binary_dir = target_directory / "data" / "model"
         model_binary_dir.mkdir(parents=True, exist_ok=True)
@@ -73,7 +66,7 @@ class ModelFramework(ABC):
             model_type=self.model_type(model),
             model_framework=self.typ(),
             model_metadata=self.model_metadata(model),
-            requirements=self.requirements_txt(root_fn_name=root_fn_name),
+            requirements=self.requirements_txt(),
             python_version=python_version,
         )
         with (target_directory / CONFIG_FILE).open("w") as config_file:

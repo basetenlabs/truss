@@ -1,5 +1,6 @@
 import inspect
 import types
+from itertools import dropwhile
 from typing import Set
 
 import pkg_resources
@@ -16,9 +17,7 @@ POORLY_NAMED_PACKAGES = {"PIL": "Pillow", "sklearn": "scikit-learn"}
 IGNORED_PACKAGES = {"pip", "truss"}
 
 
-def infer_deps(
-    root_fn_name: str = "mk_truss", must_include_deps: Set = None
-) -> Set[str]:
+def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     """Infers the depedencies based on imports into the global namespace
 
     Args:
@@ -34,30 +33,15 @@ def infer_deps(
     """
 
     # Find the stack frame that likely has the relevant global inputs
+    stack = inspect.stack()
     try:
-        relevant_stack = next(
-            filter(lambda s: s.function == root_fn_name, inspect.stack())
-        )
+        relevant_stack = _filter_truss_frames(stack)
     except StopIteration:
         return set()
 
-    global_state_of_caller = relevant_stack.frame.f_globals
     imports = must_include_deps.copy() if must_include_deps else set()
-
-    for name, val in global_state_of_caller.items():
-        if isinstance(val, types.ModuleType):
-            # Split ensures you get root package,
-            # not just imported function
-            name = val.__name__.split(".")[0]
-
-        elif isinstance(val, type):
-            name = val.__module__.split(".")[0]
-
-        if name in POORLY_NAMED_PACKAGES:
-            name = POORLY_NAMED_PACKAGES[name]
-
-        imports.add(name)
-
+    pkg_candidates = _extract_packages_from_frame(relevant_stack[0].frame)
+    imports = imports.union(pkg_candidates)
     requirements = set([])
 
     # Must refresh working set manually to get latest installed
@@ -71,3 +55,37 @@ def infer_deps(
             requirements.add(f"{m.project_name}=={m.version}")
 
     return requirements
+
+
+def _filter_truss_frames(stack_frames):
+    return list(
+        dropwhile(
+            lambda stack_frame: inspect.getmodule(
+                stack_frame.frame
+            ).__name__.startswith("truss."),
+            stack_frames,
+        )
+    )
+
+
+def _extract_packages_from_frame(frame) -> Set[str]:
+    candidate_symbols = {**frame.f_globals, **frame.f_locals}
+
+    pkg_names = set()
+    for name, val in candidate_symbols.items():
+        if name.startswith("__"):
+            continue
+
+        if isinstance(val, types.ModuleType):
+            # Split ensures you get root package,
+            # not just imported function
+            pkg_name = val.__name__.split(".")[0]
+        elif hasattr(val, "__module__"):
+            pkg_name = val.__module__.split(".")[0]
+
+        if pkg_name in POORLY_NAMED_PACKAGES:
+            pkg_name = POORLY_NAMED_PACKAGES[pkg_name]
+
+        pkg_names.add(pkg_name)
+
+    return pkg_names

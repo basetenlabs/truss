@@ -7,7 +7,7 @@ from truss.build import cleanup, init, mk_truss
 from truss.truss_spec import TrussSpec
 
 
-def test_scaffold_init(tmp_path):
+def test_truss_init(tmp_path):
     dir_name = str(tmp_path)
     init(dir_name)
     spec = TrussSpec(Path(dir_name))
@@ -17,10 +17,10 @@ def test_scaffold_init(tmp_path):
     assert spec.config_path.exists()
 
 
-def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages(
+def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(
     tmp_path,
 ):
-    dir_path = tmp_path / "scaffold"
+    dir_path = tmp_path / "truss"
     dir_name = str(dir_path)
 
     # Init data files
@@ -66,8 +66,8 @@ def test_scaffold_init_with_data_file_and_requirements_file_and_bundled_packages
     assert (spec.bundled_packages_dir / "dep_pkg" / "file.py").exists()
 
 
-def test_scaffold(sklearn_rfc_model, tmp_path):
-    dir_path = tmp_path / "scaffold"
+def test_mk_truss(sklearn_rfc_model, tmp_path):
+    dir_path = tmp_path / "truss"
     data_file_path = tmp_path / "data.txt"
     with data_file_path.open("w") as data_file:
         data_file.write("test")
@@ -94,7 +94,7 @@ def test_scaffold(sklearn_rfc_model, tmp_path):
     assert spec.requirements == requirements
 
 
-def test_scaffold_sklearn_predict(sklearn_rfc_model):
+def test_truss_sklearn_predict(sklearn_rfc_model):
     with _model_server_predict(sklearn_rfc_model, {"inputs": [[0, 0, 0, 0]]}) as result:
         assert "predictions" in result
         assert "probabilities" in result
@@ -102,7 +102,7 @@ def test_scaffold_sklearn_predict(sklearn_rfc_model):
         assert np.shape(probabilities) == (1, 3)
 
 
-def test_scaffold_keras_predict(keras_mpg_model):
+def test_truss_keras_predict(keras_mpg_model):
     with _model_server_predict(
         keras_mpg_model,
         {"inputs": [[0, 0, 0, 0, 0, 0, 0, 0, 0]]},
@@ -112,7 +112,7 @@ def test_scaffold_keras_predict(keras_mpg_model):
         assert np.shape(predictions) == (1, 1)
 
 
-def test_scaffold_pytorch_predict(pytorch_model):
+def test_truss_pytorch_predict(pytorch_model):
     model = pytorch_model[0]
     with _model_server_predict(
         model,
@@ -122,7 +122,7 @@ def test_scaffold_pytorch_predict(pytorch_model):
         assert len(result["predictions"]) == 1
 
 
-def test_scaffold_huggingface_transformer_predict(
+def test_truss_huggingface_transformer_predict(
     huggingface_transformer_t5_small_model,
 ):
     with _model_server_predict(

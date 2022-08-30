@@ -58,7 +58,7 @@ def mk_truss(
         )
     else:
         target_directory_path = Path(target_directory)
-    model_framework.to_truss(model, target_directory_path, root_fn_name=root_fn_name)
+    model_framework.to_truss(model, target_directory_path)
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
     return scaf
