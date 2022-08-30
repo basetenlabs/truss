@@ -14,7 +14,7 @@ from pkg_resources import WorkingSet
 POORLY_NAMED_PACKAGES = {"PIL": "Pillow", "sklearn": "scikit-learn"}
 
 # We don't want a few foundation packages
-IGNORED_PACKAGES = {"pip", "truss"}
+IGNORED_PACKAGES = {"pip", "truss", "pluggy", "pytest", "py"}
 
 TOP_LEVEL_NAMESPACES_TO_DROP_FOR_INFERENCE = ["truss", "baseten"]
 
