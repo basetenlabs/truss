@@ -23,9 +23,6 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     """Infers the depedencies based on imports into the global namespace
 
     Args:
-        root_fn_name (str, optional):   The name of the function that's called
-                                        where the global namespace is relevant.
-                                        Defaults to "mk_truss".
         must_include_deps (Set, optional):  The set of package names that
                                             must necessarily be imported.
                                             Defaults to None.

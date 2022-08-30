@@ -20,7 +20,6 @@ def mk_truss(
     data_files: List[str] = None,
     requirements_file: str = None,
     bundled_packages: List[str] = None,
-    root_fn_name: str = "mk_truss",
 ) -> TrussHandle:
     """Create a Truss with the given model. A Truss is a build context designed to
     be built as a container locally or uploaded into a model serving environment.
@@ -35,7 +34,6 @@ def mk_truss(
         requirements_file (str, optional): A file of packages in a PIP requirements format to be installed in the
             container environment.
         bundled_packages (List[str], optional): Additional local packages that are required by the model.
-        root_fn_name: (str, optional): The name of the function that's relevant for dependency.
     Returns:
         TrussHandle: A handle to the generated Truss that provides easy access to content inside.
     """
