@@ -1,9 +1,9 @@
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Set
 
+from truss.constants import HUGGINGFACE_TRANSFORMER_MODULE_NAME
 from truss.model_framework import ModelFramework
-from truss.model_inference import infer_huggingface_packages
 from truss.types import ModelFrameworkType
 
 logger = logging.getLogger(__name__)
@@ -13,8 +13,8 @@ class HuggingfaceTransformer(ModelFramework):
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.HUGGINGFACE_TRANSFORMER
 
-    def infer_requirements(self) -> Dict[str, str]:
-        return infer_huggingface_packages()
+    def required_python_depedencies(self) -> Set[str]:
+        return HUGGINGFACE_TRANSFORMER_MODULE_NAME
 
     def serialize_model_to_directory(self, model, target_directory: Path):
         # For Huggingface models, all the important details are in metadata.

@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR
+from truss.environment_inference.requirements_inference import infer_deps
 from truss.model_inference import infer_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.types import ModelFrameworkType
@@ -16,15 +17,16 @@ class ModelFramework(ABC):
         pass
 
     @abstractmethod
-    def infer_requirements(self):
-        """Mapping of requirements.txt line by name of the requirement.
+    def required_python_depedencies(self) -> Set[str]:
+        """Returns a set of packages required by this framework.
 
-        e.g. {'tensorflow': 'tensorflow==1.0.0'}
+        e.g. {'tensorflow'}
         """
         pass
 
     def requirements_txt(self) -> List[str]:
-        return list(self.infer_requirements().values())
+
+        return list(infer_deps(must_include_deps=self.required_python_depedencies()))
 
     @abstractmethod
     def serialize_model_to_directory(self, model, target_directory: Path):

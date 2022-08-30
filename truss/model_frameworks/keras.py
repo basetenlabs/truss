@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Set
 
+from truss.constants import TENSORFLOW_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
-from truss.model_inference import infer_keras_packages
 from truss.types import ModelFrameworkType
 
 
@@ -10,8 +10,8 @@ class Keras(ModelFramework):
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.KERAS
 
-    def infer_requirements(self) -> Dict[str, str]:
-        return infer_keras_packages()
+    def required_python_depedencies(self) -> Set[str]:
+        return TENSORFLOW_REQ_MODULE_NAMES
 
     def serialize_model_to_directory(self, model, target_directory: Path):
         model.save(target_directory)

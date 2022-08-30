@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Set
 
+from truss.constants import PYTORCH_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
-from truss.model_inference import infer_pytorch_packages
 from truss.types import ModelFrameworkType
 
 TORCH_PACKAGE_FILE = "model_package.pt"
@@ -14,8 +14,8 @@ class PyTorch(ModelFramework):
     def typ(self) -> ModelFrameworkType:
         return ModelFrameworkType.PYTORCH
 
-    def infer_requirements(self) -> Dict[str, str]:
-        return infer_pytorch_packages()
+    def required_python_depedencies(self) -> Set[str]:
+        return PYTORCH_REQ_MODULE_NAMES
 
     def serialize_model_to_directory(self, model, target_directory: Path):
         from torch import package

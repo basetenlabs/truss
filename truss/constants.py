@@ -37,3 +37,33 @@ TRUSS = "truss"
 TRUSS_MODIFIED_TIME = "truss_modified_time"
 # Path of the Truss used to identify which Truss is being referred
 TRUSS_DIR = "truss_dir"
+
+HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
+
+# list from https://scikit-learn.org/stable/developers/advanced_installation.html
+SKLEARN_REQ_MODULE_NAMES = {
+    "numpy",
+    "scipy",
+    "joblib",
+    "scikit-learn",
+    "threadpoolctl",
+}
+
+XGBOOST_REQ_MODULE_NAMES = {"xgboost"}
+
+# list from https://www.tensorflow.org/install/pip
+# if problematic, lets look to https://www.tensorflow.org/install/source
+TENSORFLOW_REQ_MODULE_NAMES = {
+    "tensorflow",
+}
+
+LIGHTGBM_REQ_MODULE_NAMES = {
+    "lightgbm",
+}
+
+# list from https://pytorch.org/get-started/locally/
+PYTORCH_REQ_MODULE_NAMES = {
+    "torch",
+    "torchvision",
+    "torchaudio",
+}
