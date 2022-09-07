@@ -18,7 +18,7 @@ requirements:
 - scipy==1.7.3
 ```
 
-More examples can be found [here](../../examples/).
+More examples can be found [here](https://github.com/basetenlabs/truss/tree/main/examples).
 
 Let's investigate the various values that can be set in the config file.
 
