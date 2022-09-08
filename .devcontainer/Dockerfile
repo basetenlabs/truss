@@ -20,7 +20,7 @@ RUN apt-get update && /bin/bash /tmp/library-scripts/common-debian.sh "${INSTALL
     && rm -rf /var/lib/apt/lists/* /tmp/library-scripts/
 
 USER vscode
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
+RUN curl -sSL https://install.python-poetry.org | python
 ENV PATH=/home/vscode/.poetry/bin:$PATH
 
 USER root
