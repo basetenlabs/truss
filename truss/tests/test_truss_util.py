@@ -7,6 +7,7 @@ from truss import utils
 def test_max_modified():
     epoch_time = int(time.time())
     with utils.given_or_temporary_dir() as dir:
+        time.sleep(0.1)
         t1 = utils.get_max_modified_time_of_dir(dir)
         assert t1 > epoch_time
         time.sleep(0.1)
