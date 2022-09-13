@@ -22,8 +22,8 @@ from truss.docker import (
     kill_containers,
 )
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.notebook import is_notebook_or_ipython
 from truss.readme_generator import generate_readme
-from truss.setup_logging import is_notebook_or_ipython
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example
