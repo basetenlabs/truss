@@ -21,6 +21,7 @@ DEFAULT_MODEL_INPUT_TYPE = "Any"
 DEFAULT_PYTHON_VERSION = "py39"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
+DEFAULT_SPEC_VERSION = "2.0"
 
 DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
@@ -78,6 +79,7 @@ class TrussConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
     description: str = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
+    spec_version: str = DEFAULT_SPEC_VERSION
 
     @staticmethod
     def from_dict(d):
@@ -106,6 +108,7 @@ class TrussConfig:
             bundled_packages_dir=d.get(
                 "bundled_packages_dir", DEFAULT_BUNDLED_PACKAGES_DIR
             ),
+            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION),
         )
         config.validate()
         return config
