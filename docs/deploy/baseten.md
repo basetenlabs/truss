@@ -51,7 +51,7 @@ basten.deploy_truss(
 )
 ```
 
-Secrets can be securely stored in your Baseten organization by following [this documentation](https://docs.baseten.co/applications/files/secret-management).
+Secrets can be securely stored in your Baseten organization by following [this documentation](https://docs.baseten.co/settings/secrets).
 
 {% hint style="warning" %}
 Unlike when Truss secrets are bound using environment variables, Baseten mounts secrets, so do not use the `TRUSS_SECRET_` prefix when setting secret names.
