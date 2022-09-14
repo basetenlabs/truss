@@ -1,6 +1,7 @@
 import copy
 import glob
 import logging
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, List, Optional, Union
@@ -21,6 +22,7 @@ from truss.docker import (
     kill_containers,
 )
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.notebook import is_notebook_or_ipython
 from truss.readme_generator import generate_readme
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
@@ -29,6 +31,10 @@ from truss.utils import copy_file_path, copy_tree_path, get_max_modified_time_of
 from truss.validation import validate_secret_name
 
 logger = logging.getLogger(__name__)
+
+if is_notebook_or_ipython():
+    logger.setLevel(logging.INFO)
+    logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 class TrussHandle:
@@ -92,7 +98,7 @@ class TrussHandle:
             _wait_for_model_server(model_base_url)
         except Exception as e:
             for log in self.container_logs():
-                logging.info(log)
+                logger.info(log)
             raise e
         logger.info(
             f"Model server started on port {local_port}, docker container id {container.id}"
