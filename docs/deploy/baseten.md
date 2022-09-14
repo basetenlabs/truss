@@ -10,7 +10,7 @@ To deploy a Truss on Baseten, you first need:
 Start by adding the Baseten Python client to your development environment:
 
 ```
-pip install baseten
+pip install --upgrade baseten
 ```
 
 {% hint style="info" %}
