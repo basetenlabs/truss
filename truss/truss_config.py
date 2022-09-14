@@ -142,6 +142,7 @@ class TrussConfig:
             "secrets": self.secrets,
             "description": self.description,
             "bundled_packages_dir": self.bundled_packages_dir,
+            "spec_version": self.spec_version,
         }
 
     def clone(self):
