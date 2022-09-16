@@ -46,6 +46,10 @@ class TrussSpec:
         return self._config
 
     @property
+    def spec_version(self) -> str:
+        return self._config.spec_version
+
+    @property
     def python_version(self) -> str:
         return self._config.python_version
 
