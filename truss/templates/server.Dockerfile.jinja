@@ -78,6 +78,11 @@ ENV PORT 8080
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 COPY ./server /app
+
+{% if config.use_control_plane %}
+COPY ./control /control
+{% endif %}
+
 COPY ./{{ config.model_module_dir }} /app/model
 {% if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
@@ -91,4 +96,8 @@ COPY ./config.yaml /app/config.yaml
 ENV {{ env_var_name }} {{ env_var_value }}
 {% endfor %}
 
+{% if config.use_control_plane %}
+CMD exec python3 /control/server.py
+{% else %}
 CMD exec python3 /app/inference_server.py
+{% endif %}

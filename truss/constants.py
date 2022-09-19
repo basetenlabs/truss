@@ -15,6 +15,8 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR = TEMPLATES_DIR / "server"
+CONTROL_SERVER_CODE_DIR = TEMPLATES_DIR / "control"
+
 
 # Alias for TEMPLATES_DIR
 SERVING_DIR = TEMPLATES_DIR
