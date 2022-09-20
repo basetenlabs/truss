@@ -17,3 +17,8 @@ def restart_inference_server():
 def stop_inference_server():
     # todo
     return {'msg': 'Inference server stopped successfully'}
+
+if __name__ == "__main__":
+    from waitress import serve
+    print('Starting control server')
+    serve(app, host="0.0.0.0", port=8090)
