@@ -46,12 +46,24 @@ class ModelWrapper(kfserving.KFModel):
     def preprocess(self, request: Dict) -> Dict:
         if not hasattr(self._model, "preprocess"):
             return request
-        return self._model.preprocess(request)
+        response = {}
+        try:
+            return self._model.preprocess(request)
+        except Exception:
+            logging.error(traceback.format_exc())
+            response["error"] = {"traceback": traceback.format_exc()}
+            return response
 
     def postprocess(self, request: Dict) -> Dict:
         if not hasattr(self._model, "postprocess"):
             return request
-        return self._model.postprocess(request)
+        response = {}
+        try:
+            return self._model.postprocess(request)
+        except Exception:
+            logging.error(traceback.format_exc())
+            response["error"] = {"traceback": traceback.format_exc()}
+            return response
 
     def predict(self, request: Dict) -> Dict[str, List]:
         response = {}
