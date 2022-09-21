@@ -59,6 +59,9 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
 def _filter_truss_frames(stack_frames):
     def is_truss_invocation_frame(stack_frame):
         module = inspect.getmodule(stack_frame.frame)
+        if not module:
+            return False
+
         module_name = module.__name__
         for namespace in TOP_LEVEL_NAMESPACES_TO_DROP_FOR_INFERENCE:
             if module_name.startswith(f"{namespace}."):
@@ -82,6 +85,8 @@ def _extract_packages_from_frame(frame) -> Set[str]:
             pkg_name = val.__name__.split(".")[0]
         elif hasattr(val, "__module__"):
             pkg_name = val.__module__.split(".")[0]
+        else:
+            continue
 
         if pkg_name in POORLY_NAMED_PACKAGES:
             pkg_name = POORLY_NAMED_PACKAGES[pkg_name]
