@@ -38,7 +38,9 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     except StopIteration:
         return set()
 
-    must_include_deps = must_include_deps.copy() if must_include_deps else set()
+    if not must_include_deps:
+        must_include_deps = set()
+
     pkg_candidates = _extract_packages_from_frame(relevant_stack[0].frame)
     imports = must_include_deps.union(pkg_candidates)
     requirements = set([])
