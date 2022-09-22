@@ -51,6 +51,10 @@ black = "^22.6.0"
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'
 
+[tool.poetry.group.dev.dependencies]
+Flask = "^2.2.2"
+waitress = "^2.1.2"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

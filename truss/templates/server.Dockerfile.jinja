@@ -97,7 +97,8 @@ ENV {{ env_var_name }} {{ env_var_value }}
 {% endfor %}
 
 {% if config.use_control_plane %}
-CMD exec python3 /control/server.py
+RUN python -m venv .env && .env/bin/pip3 install -r /control/requirements.txt
+CMD exec .env/bin/python3 /control/control/server.py
 {% else %}
 CMD exec python3 /app/inference_server.py
 {% endif %}
