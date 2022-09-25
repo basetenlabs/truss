@@ -1,52 +1,45 @@
 import os
-import subprocess
 import sys
-import threading
 from typing import Callable
 
-from control_utils.context_managers import current_directory
-from flask import Flask
+from flask import Flask, request
+from helpers.inference_server_controller import InferenceServerController
+from helpers.inference_server_process_controller import InferenceServerProcessController
+from helpers.types import Patch
 
 app = Flask(__name__)
 
 
 DEFAULT_CONTROL_SERVER_PORT = 8090
-INFERENCE_SERVER_PROCESS = None
-RESTART_INFERENCE_SERVER_LOCK = threading.Lock()
 
 
 @app.route("/patch", methods=["POST"])
 def patch():
-    return "<p>Hello, World!</p>"
+    body = request.get_json()
+    patch = Patch.from_dict(body)
+    try:
+        app.config["inference_server_controller"].apply_patch(patch)
+    except Exception:  # noqa
+        ex_type, ex_value, _ = sys.exc_info()
+        return {"error": f"Failed to apply patch: {ex_type}, {ex_value}"}
+
+    return {"msg": "Patch applied successfully"}
 
 
 @app.route("/restart_inference_server", methods=["POST"])
 def restart_inference_server():
-    global INFERENCE_SERVER_PROCESS
-    global RESTART_INFERENCE_SERVER_LOCK
-
-    with RESTART_INFERENCE_SERVER_LOCK:
-        try:
-            if INFERENCE_SERVER_PROCESS is not None:
-                # TODO(pankaj) send sigint wait and then kill
-                INFERENCE_SERVER_PROCESS.kill()
-
-            with current_directory(app.config["inference_server_home"]):
-                INFERENCE_SERVER_PROCESS = subprocess.Popen(
-                    app.config["inference_server_process_args"]
-                )
-        except Exception:  # noqa
-            ex_type, ex_value, _ = sys.exc_info()
-            return {
-                "error": f"Failed to restart inference server: {ex_type}, {ex_value}"
-            }
+    try:
+        app.config["inference_server_controller"].restart()
+    except Exception:  # noqa
+        ex_type, ex_value, _ = sys.exc_info()
+        return {"error": f"Failed to restart inference server: {ex_type}, {ex_value}"}
 
     return {"msg": "Inference server started successfully"}
 
 
 @app.route("/stop_inference_server")
 def stop_inference_server():
-    # todo
+    app.config["inference_server_controller"].stop()
     return {"msg": "Inference server stopped successfully"}
 
 
@@ -58,6 +51,15 @@ def _make_server(configure: Callable = _noop):
     from waitress import create_server
 
     configure(app)
+    app.config[
+        "inference_server_process_controller"
+    ] = InferenceServerProcessController(
+        app.config["inference_server_home"], app.config["inference_server_process_args"]
+    )
+    app.config["inference_server_controller"] = InferenceServerController(
+        app.config["inference_server_process_controller"],
+    )
+
     print(f"Starting control server on port {DEFAULT_CONTROL_SERVER_PORT}")
     return create_server(
         app,

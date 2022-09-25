@@ -55,6 +55,12 @@ def test_server():
         assert resp.status_code == 200
         assert "error" not in resp.json()
         assert "msg" in resp.json()
+
+        # Try second restart
+        resp = server_thread.restart_inference_server()
+        assert resp.status_code == 200
+        assert "error" not in resp.json()
+        assert "msg" in resp.json()
     finally:
         server_thread.shutdown()
         print("Waiting for server to shutdown...")

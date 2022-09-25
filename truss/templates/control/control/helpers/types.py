@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 
@@ -15,15 +16,19 @@ class Action(Enum):
     REMOVE = "REMOVE"
 
 
+@dataclass
 class PatchBody:
     """Marker class"""
 
-    pass
+    action: Action
+
+    @abstractmethod
+    def to_dict(self):
+        pass
 
 
 @dataclass
-class ModelCodePatch:
-    action: Action
+class ModelCodePatch(PatchBody):
     filepath: str
     content: str
 
