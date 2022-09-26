@@ -74,6 +74,18 @@ def mk_truss_pipeline(
     target_directory: str = None,
     bundled_packages: List[str] = None,
 ):
+    """Create a Truss from a function. A Truss is a build context designed to
+    be built as a container locally or uploaded into a model serving environment.
+
+    Args:
+        pipeline (a callable function): A function that is expected to be called
+        when the Truss server /predict is invoked.
+        target_directory (str, optional): The local directory target for the Truss. Otherwise a temporary directory
+            will be generated
+        bundled_packages (List[str], optional): Additional local packages that are required by the funtion.
+    Returns:
+        TrussHandle: A handle to the generated Truss that provides easy access to content inside.
+    """
     if target_directory is None:
         target_directory_path = build_truss_target_directory("pipeline")
     else:
