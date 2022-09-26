@@ -1,5 +1,6 @@
 import os
 
+import requests
 from application import create_app
 
 DEFAULT_CONTROL_SERVER_PORT = 8090
@@ -20,6 +21,17 @@ if __name__ == "__main__":
             "control_server_port": DEFAULT_CONTROL_SERVER_PORT,
         }
     )
+
+    # Startup the inference server
+    # todo: move to constant
+    patch_ping_url = os.environ.get("PATCH_PING_URL_TRUSS", None)
+    if patch_ping_url is None:
+        application.config["inference_server_controller"].restart()
+    else:
+        # In this flow the other party needs to call patch, which would start
+        # the inference server.
+        # todo: add retries here
+        requests.post(patch_ping_url)
 
     print(f"Starting control server on port {DEFAULT_CONTROL_SERVER_PORT}")
     server = create_server(

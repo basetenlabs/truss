@@ -287,6 +287,16 @@ def no_preprocess_custom_model(tmp_path):
 
 
 @pytest.fixture
+def custom_model_control(tmp_path):
+    dir_path = tmp_path / "control_truss"
+    handle = init(str(dir_path))
+    handle.use_control_plane()
+    with handle.spec.model_class_filepath.open("w") as file:
+        file.write(CUSTOM_MODEL_CODE)
+    yield dir_path
+
+
+@pytest.fixture
 def no_postprocess_custom_model(tmp_path):
     dir_path = tmp_path / "my_no_postprocess_model"
     handle = init(str(dir_path))

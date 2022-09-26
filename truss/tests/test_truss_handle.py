@@ -1,9 +1,16 @@
 import os
+import time
 from pathlib import Path
 
 import pytest
 from truss.docker import Docker
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.templates.control.control.helpers.types import (
+    Action,
+    ModelCodePatch,
+    Patch,
+    PatchType,
+)
 from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
@@ -443,6 +450,35 @@ def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
             }
         )
         assert resp == [1, 1, 1, 1]
+
+
+@pytest.mark.integration
+def test_control_truss(custom_model_control):
+    th = TrussHandle(custom_model_control)
+    tag = "test-docker-custom-model-control-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 1
+
+        new_model_code = """
+class Model:
+    def predict(self, request):
+        return [2 for i in request['inputs']]
+"""
+        th.apply_patch(
+            Patch(
+                type=PatchType.MODEL_CODE,
+                body=ModelCodePatch(
+                    action=Action.UPDATE,
+                    path="model.py",
+                    content=new_model_code,
+                ),
+            )
+        )
+        # Give some time for inference server to start up
+        time.sleep(2)
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 2
 
 
 def _container_exists(container) -> bool:

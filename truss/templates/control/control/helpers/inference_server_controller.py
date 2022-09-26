@@ -6,6 +6,12 @@ from helpers.types import Patch
 
 
 class InferenceServerController:
+    """Controls the inference server process.
+
+    Currently, it only applies locks to various actions and mostly
+    delegates to InferenceServerProcessController.
+    """
+
     def __init__(
         self,
         process_controller: InferenceServerProcessController,

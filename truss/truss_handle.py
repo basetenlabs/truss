@@ -22,6 +22,7 @@ from truss.docker import (
 )
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.readme_generator import generate_readme
+from truss.templates.control.control.helpers.types import Patch
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example
@@ -60,6 +61,7 @@ class TrussHandle:
         tag: str = None,
         local_port: int = 8080,
         detach=True,
+        control_port: int = 8090,
     ):
         """
         Builds a docker image and runs it as a container.
@@ -73,9 +75,12 @@ class TrussHandle:
         labels = self._get_labels()
         labels.update({TRUSS: True})
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
+        publish_ports = [[local_port, 8080]]
+        if self.spec.use_control_plane:
+            publish_ports.append([control_port, 8090])
         container = Docker.client().run(
             built_tag,
-            publish=[[local_port, 8080]],
+            publish=publish_ports,
             detach=detach,
             labels=labels,
             mounts=[
@@ -106,6 +111,7 @@ class TrussHandle:
         tag: str = None,
         local_port: int = 8080,
         detach: bool = True,
+        control_port: int = 8090,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -117,9 +123,14 @@ class TrussHandle:
             container = containers[0]
         else:
             container = self.docker_run(
-                build_dir, tag, local_port=local_port, detach=detach
+                build_dir,
+                tag,
+                local_port=local_port,
+                detach=detach,
+                control_port=control_port,
             )
-        model_base_url = get_urls_from_container(container)[0]
+        # todo: Move 8080 to constant
+        model_base_url = get_urls_from_container(container)[8080][0]
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
         return resp.json()
@@ -194,17 +205,6 @@ class TrussHandle:
                 conf, system_packages=[*conf.system_packages, system_package]
             )
         )
-
-    def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
-        item = file_dir_or_glob
-        item_path = Path(item)
-        if item_path.is_dir():
-            copy_tree_path(item_path, destination_dir / item_path.name)
-        else:
-            filenames = glob.glob(item)
-            for filename in filenames:
-                filepath = Path(filename)
-                copy_file_path(filepath, destination_dir / filepath.name)
 
     def add_data(self, file_dir_or_glob: str):
         """Add data to a truss model.
@@ -298,6 +298,32 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
+    def apply_patch(self, patch: Patch):
+        if not self.spec.use_control_plane:
+            raise ValueError("Not a control truss: applying patch is not supported.")
+        containers = self.get_docker_containers_from_labels()
+        if not containers:
+            raise ValueError(
+                "Only running trusses can be patched: no running containers found for this truss."
+            )
+        container = containers[0]
+        # todo: Move 8090 to constant
+        control_url = get_urls_from_container(container)[8090][0]
+        resp = requests.post(f"{control_url}/patch", json=patch.to_dict())
+        resp.raise_for_status()
+        return resp.json()
+
+    def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
+        item = file_dir_or_glob
+        item_path = Path(item)
+        if item_path.is_dir():
+            copy_tree_path(item_path, destination_dir / item_path.name)
+        else:
+            filenames = glob.glob(item)
+            for filename in filenames:
+                filepath = Path(filename)
+                copy_file_path(filepath, destination_dir / filepath.name)
+
     def _get_labels(self):
         return {
             TRUSS_MODIFIED_TIME: get_max_modified_time_of_dir(self._truss_dir),
@@ -314,7 +340,8 @@ class TrussHandle:
         urls = []
         containers = self.get_docker_containers_from_labels()
         for container in containers:
-            urls.extend(get_urls_from_container(container))
+            # todo move 8080 to constant
+            urls.extend(get_urls_from_container(container)[8080])
         return urls
 
     def generate_readme(self):
@@ -322,6 +349,20 @@ class TrussHandle:
 
     def update_description(self, description: str):
         self._update_config(lambda conf: replace(conf, description=description))
+
+    def use_control_plane(self, enable: bool = True):
+        """Enable control plane.
+
+        Control plane allows loading truss changes into the running model
+        container. This is useful during development to iterate on model changes
+        quickly.
+        # todo: write tests for it
+        """
+
+        def enable_control_plane_fn(conf: TrussConfig):
+            return replace(conf, use_control_plane=enable)
+
+        self._update_config(enable_control_plane_fn)
 
 
 def _prediction_flow(model, request: dict):

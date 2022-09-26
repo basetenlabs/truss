@@ -30,7 +30,7 @@ class PatchBody:
 @dataclass
 class ModelCodePatch(PatchBody):
     path: str  # Relative to model module directory
-    content: str
+    content: str = None
 
     def to_dict(self):
         return {
