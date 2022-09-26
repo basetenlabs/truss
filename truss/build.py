@@ -1,17 +1,24 @@
 import os
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Callable, List
 
 import click
+import cloudpickle
 import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
+from truss.environment_inference.requirements_inference import infer_deps
 from truss.model_frameworks import model_framework_from_model
 from truss.model_inference import infer_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
-from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
+from truss.utils import (
+    build_truss_target_directory,
+    copy_file_path,
+    copy_tree_path,
+    get_gpu_memory,
+)
 
 
 def mk_truss(
@@ -59,6 +66,59 @@ def mk_truss(
     model_framework.to_truss(model, target_directory_path)
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
+    return scaf
+
+
+def mk_truss_pipeline(
+    pipeline: Callable,
+    target_directory: str = None,
+):
+    if target_directory is None:
+        target_directory_path = build_truss_target_directory("pipeline")
+    else:
+        target_directory_path = Path(target_directory)
+
+    requirements = list(infer_deps(must_include_deps=set(["cloudpickle"])))
+
+    # Create Truss config
+    config = TrussConfig(
+        model_type="custom",
+        model_framework=ModelFrameworkType.CUSTOM,
+        python_version=infer_python_version(),
+        requirements=requirements,
+    )
+
+    # Create data dir
+    (target_directory_path / config.data_dir).mkdir()
+
+    # Create bundled packages dir
+    (target_directory_path / config.bundled_packages_dir).mkdir()
+
+    # Create model module dir via pipeline template
+    model_dir = target_directory_path / config.model_module_dir
+    template_path = TEMPLATES_DIR / "pipeline"
+    copy_tree_path(template_path / "model", model_dir)
+    print(get_gpu_memory())
+    if get_gpu_memory() > 10:
+        click.echo(
+            click.style(
+                """WARNING: Truss identified objects in GPU memory. When serializing a
+                function via mk_truss_pipeline, objects in GPU memory must be moved to
+                CPU to be serialized correctly.""",
+                fg="yellow",
+            )
+        )
+
+    # Write Cloudpickled function to data directory
+    pipeline_binary_path = target_directory_path / config.data_dir / "pipeline.cpick"
+    with open(pipeline_binary_path, "wb+") as f:
+        cloudpickle.dump(pipeline, f)
+
+    # Write config
+    with (target_directory_path / CONFIG_FILE).open("w") as config_file:
+        yaml.dump(config.to_dict(), config_file)
+
+    scaf = TrussHandle(target_directory_path)
     return scaf
 
 

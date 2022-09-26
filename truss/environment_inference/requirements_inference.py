@@ -38,9 +38,11 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     except StopIteration:
         return set()
 
-    imports = must_include_deps.copy() if must_include_deps else set()
+    if not must_include_deps:
+        must_include_deps = set()
+
     pkg_candidates = _extract_packages_from_frame(relevant_stack[0].frame)
-    imports = imports.union(pkg_candidates)
+    imports = must_include_deps.union(pkg_candidates)
     requirements = set([])
 
     # Must refresh working set manually to get latest installed
@@ -52,6 +54,11 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     for m in pkg_resources.working_set:
         if m.project_name in imports and m.project_name not in IGNORED_PACKAGES:
             requirements.add(f"{m.project_name}=={m.version}")
+            if m.project_name in must_include_deps:
+                must_include_deps.remove(m.project_name)
+
+    # Bring in the must include dependencies
+    requirements = requirements.union(must_include_deps)
 
     return requirements
 

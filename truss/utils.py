@@ -1,6 +1,7 @@
 import os
 import random
 import string
+import subprocess as sp
 import tempfile
 from contextlib import contextmanager
 from distutils.dir_util import copy_tree
@@ -48,3 +49,16 @@ def build_truss_target_directory(model_framework_name: str) -> Path:
     )
     target_directory_path.mkdir(parents=True)
     return target_directory_path
+
+
+def get_gpu_memory():
+    # https://stackoverflow.com/questions/59567226/how-to-programmatically-determine-available-gpu-memory-with-tensorflow
+    try:
+        command = "nvidia-smi --query-gpu=memory.used --format=csv"
+        memory_free_info = (
+            sp.check_output(command.split()).decode("ascii").split("\n")[1]
+        )
+        memory_free_values = int(memory_free_info.split()[0])
+        return memory_free_values
+    except Exception:
+        return 0
