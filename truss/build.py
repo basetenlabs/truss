@@ -72,6 +72,7 @@ def mk_truss(
 def mk_truss_pipeline(
     pipeline: Callable,
     target_directory: str = None,
+    bundled_packages: List[str] = None,
 ):
     if target_directory is None:
         target_directory_path = build_truss_target_directory("pipeline")
@@ -98,7 +99,7 @@ def mk_truss_pipeline(
     model_dir = target_directory_path / config.model_module_dir
     template_path = TEMPLATES_DIR / "pipeline"
     copy_tree_path(template_path / "model", model_dir)
-    print(get_gpu_memory())
+
     if get_gpu_memory() > 10:
         click.echo(
             click.style(
@@ -119,6 +120,7 @@ def mk_truss_pipeline(
         yaml.dump(config.to_dict(), config_file)
 
     scaf = TrussHandle(target_directory_path)
+    _update_truss_props(scaf, bundled_packages=bundled_packages)
     return scaf
 
 
