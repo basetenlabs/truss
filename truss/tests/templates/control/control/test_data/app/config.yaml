@@ -1,0 +1,22 @@
+bundled_packages_dir: packages
+data_dir: data
+description: null
+environment_variables: {}
+examples_filename: examples.yaml
+input_type: Any
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: null
+model_type: custom
+python_version: py39
+requirements: []
+resources:
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
+secrets: {}
+system_packages: []
+use_control_plane: false

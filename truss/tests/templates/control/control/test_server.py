@@ -1,67 +1,82 @@
+import shutil
 import sys
-import threading
-import time
 from pathlib import Path
 
-import requests
+import pytest
+
+sys.path.append(
+    str(
+        Path(__file__).parent.parent.parent.parent.parent
+        / "templates"
+        / "control"
+        / "control"
+    )
+)
+
+from truss.templates.control.control.application import create_app  # noqa
+from truss.templates.control.control.helpers.types import (  # noqa
+    Action,
+    ModelCodePatch,
+    Patch,
+    PatchType,
+)
 
 
-class ServerThread(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.control_server_host = "0.0.0.0"
-        self.control_server_port = 8080
-
-        def configure(flask_app):
-            flask_app.config["inference_server_home"] = str(Path(__file__).parent)
-            flask_app.config["inference_server_process_args"] = ["sleep", "5"]
-            flask_app.config["control_server_host"] = self.control_server_host
-            flask_app.config["control_server_port"] = self.control_server_port
-
-        sys.path.append(
-            str(
-                Path(__file__).parent.parent.parent.parent.parent
-                / "templates"
-                / "control"
-                / "control"
-            )
-        )
-        from truss.templates.control.control.server import _make_server
-
-        self.server = _make_server(configure)
-
-    def run(self):
-        self.server.run()
-
-    def shutdown(self):
-        print("Shutting down server")
-        self.server.close()
-
-    def restart_inference_server(self):
-        return self._post("/restart_inference_server")
-
-    def _post(self, path: str = "/"):
-        return requests.post(
-            f"http://{self.control_server_host}:{self.control_server_port}{path}"
-        )
+@pytest.fixture
+def app(tmp_path):
+    inf_serv_home = tmp_path / "app"
+    inf_serv_test_data_path = str(Path(__file__).parent / "test_data" / "app")
+    shutil.copytree(inf_serv_test_data_path, str(inf_serv_home))
+    control_app = create_app(
+        {
+            "inference_server_home": inf_serv_home,
+            "inference_server_process_args": ["python", "inference_server.py"],
+            "control_server_host": "0.0.0.0",
+            "control_server_port": 8081,
+        }
+    )
+    yield control_app
 
 
-def test_server():
-    server_thread = ServerThread()
-    server_thread.start()
+@pytest.fixture()
+def client(app):
+    return app.test_client()
+
+
+def test_restart_server(client):
+    resp = client.post("/stop_inference_server")
+    assert resp.status_code == 200
+    assert "error" not in resp.json
+    assert "msg" in resp.json
+
+    # Try second restart
+    resp = client.post("/stop_inference_server")
+    assert resp.status_code == 200
+    assert "error" not in resp.json
+    assert "msg" in resp.json
+
+
+def test_patch_model_code_update_existing(app, client):
+    mock_model_file_content = """
+class Model:
+    def predict(self, request):
+        return {'prediction': [1]}
+"""
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+        ),
+    )
     try:
-        time.sleep(0.1)
-        resp = server_thread.restart_inference_server()
-        assert resp.status_code == 200
-        assert "error" not in resp.json()
-        assert "msg" in resp.json()
-
-        # Try second restart
-        resp = server_thread.restart_inference_server()
-        assert resp.status_code == 200
-        assert "error" not in resp.json()
-        assert "msg" in resp.json()
+        resp = client.post("/patch", json=patch.to_dict())
     finally:
-        server_thread.shutdown()
-        print("Waiting for server to shutdown...")
-        server_thread.join()
+        client.post("/stop_inference_server")
+    assert resp.status_code == 200
+    with (
+        app.config["inference_server_home"] / "model" / "model.py"
+    ).open() as model_file:
+        new_model_file_content = model_file.read()
+    assert new_model_file_content == mock_model_file_content

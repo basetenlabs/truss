@@ -29,13 +29,13 @@ class PatchBody:
 
 @dataclass
 class ModelCodePatch(PatchBody):
-    filepath: str
+    path: str  # Relative to model module directory
     content: str
 
     def to_dict(self):
         return {
             "action": self.action.value,
-            "filepath": self.filepath,
+            "path": self.path,
             "content": self.content,
         }
 
@@ -44,13 +44,13 @@ class ModelCodePatch(PatchBody):
         action_str = patch_dict["action"]
         return ModelCodePatch(
             action=Action[action_str],
-            filepath=patch_dict["filepath"],
+            path=patch_dict["path"],
             content=patch_dict["content"],
         )
 
 
 PATCH_BODY_BY_TYPE = {
-    PatchType.MODEL_CODE.value: ModelCodePatch,
+    PatchType.MODEL_CODE: ModelCodePatch,
 }
 
 
@@ -70,5 +70,5 @@ class Patch:
     @staticmethod
     def from_dict(patch_dict: dict):
         typ = patch_dict["type"]
-        body = PatchType[typ].from_dict(patch_dict["body"])
+        body = PATCH_BODY_BY_TYPE[PatchType(typ)].from_dict(patch_dict["body"])
         return Patch(typ, body)

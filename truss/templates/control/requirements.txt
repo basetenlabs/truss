@@ -1,3 +1,4 @@
 dataclasses-json = "^0.5.2"
 Flask==2.0.3
 waitress==2.1.2
+truss==0.1.0
