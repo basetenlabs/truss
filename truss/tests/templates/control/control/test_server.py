@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+# Needed to simulate the set up on the model docker container
 sys.path.append(
     str(
         Path(__file__).parent.parent.parent.parent.parent
