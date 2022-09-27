@@ -1,14 +1,13 @@
 import copy
 from dataclasses import replace
-from pathlib import Path
+from typing import Optional
 
+from truss.constants import TRUSS_CONFIG_DIR
 from truss.local.local_config import LocalConfig
 from truss.validation import validate_secret_name
 
 
 class LocalConfigHandler:
-    TRUSS_CONFIG_DIR = Path.home() / ".truss"
-
     @staticmethod
     def get_config() -> LocalConfig:
         if LocalConfigHandler._config_path().exists():
@@ -36,7 +35,7 @@ class LocalConfigHandler:
     @staticmethod
     def set_secret(secret_name: str, secret_value: str):
         validate_secret_name(secret_name)
-        LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
+        TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
         local_config = LocalConfigHandler.get_config()
         new_secrets = {
             **local_config.secrets,
@@ -47,7 +46,7 @@ class LocalConfigHandler:
 
     @staticmethod
     def remove_secret(secret_name: str):
-        LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
+        TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
         local_config = LocalConfigHandler.get_config()
         new_secrets = copy.deepcopy(local_config.secrets)
         del new_secrets[secret_name]
@@ -55,13 +54,31 @@ class LocalConfigHandler:
         new_local_config.write_to_yaml_file(LocalConfigHandler._config_path())
 
     @staticmethod
-    def _config_dir():
-        return LocalConfigHandler.TRUSS_CONFIG_DIR
-
-    @staticmethod
     def _config_path():
-        return LocalConfigHandler._config_dir() / "config.yaml"
+        return TRUSS_CONFIG_DIR / "config.yaml"
 
     @staticmethod
     def secrets_dir_path():
-        return LocalConfigHandler._config_dir() / "secrets"
+        return TRUSS_CONFIG_DIR / "secrets"
+
+    @staticmethod
+    def _signatures_dir_path():
+        return TRUSS_CONFIG_DIR / "signatures"
+
+    @staticmethod
+    def add_signature(truss_hash: str, signature: str):
+        signature_dir = LocalConfigHandler._signatures_dir_path()
+        signature_dir.mkdir(exist_ok=True)
+        with (signature_dir / truss_hash).open("w") as signature_file:
+            signature_file.write(signature)
+
+    @staticmethod
+    def get_signature(truss_hash: str) -> Optional[str]:
+        signature_dir = LocalConfigHandler._signatures_dir_path()
+        signature_dir.mkdir(exist_ok=True)
+        signature_file_path = signature_dir / truss_hash
+        if not signature_file_path.exists() or not signature_file_path.is_file():
+            return None
+
+        with signature_file_path.open() as signature_file:
+            return signature_file.read()

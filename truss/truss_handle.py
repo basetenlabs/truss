@@ -27,6 +27,8 @@ from truss.docker import (
     kill_containers,
 )
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.patch.dir_hash import directory_hash
+from truss.patch.signature import calculate_truss_signature
 from truss.readme_generator import generate_readme
 from truss.templates.control.control.helpers.types import Patch
 from truss.truss_config import TrussConfig
@@ -59,7 +61,12 @@ class TrussHandle:
             return images[0]
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = ImageBuilderContext.run(self._truss_dir)
-        return image_builder.build_image(build_dir_path, tag, labels=self._get_labels())
+        build_image_result = image_builder.build_image(
+            build_dir_path, tag, labels=self._get_labels()
+        )
+        # todo: only store signature on successful build
+        self._store_signature()
+        return build_image_result
 
     def docker_run(
         self,
@@ -345,6 +352,38 @@ class TrussHandle:
     def is_control_truss(self):
         return self._spec.use_control_plane
 
+    def get_urls_from_truss(self):
+        urls = []
+        containers = self.get_docker_containers_from_labels()
+        for container in containers:
+            urls.extend(get_urls_from_container(container)[INFERENCE_SERVER_PORT])
+        return urls
+
+    def generate_readme(self):
+        return generate_readme(self._spec)
+
+    def update_description(self, description: str):
+        self._update_config(lambda conf: replace(conf, description=description))
+
+    def use_control_plane(self, enable: bool = True):
+        """Enable control plane.
+
+        Control plane allows loading truss changes into the running model
+        container. This is useful during development to iterate on model changes
+        quickly.
+        """
+
+        def enable_control_plane_fn(conf: TrussConfig):
+            return replace(conf, use_control_plane=enable)
+
+        self._update_config(enable_control_plane_fn)
+
+    def _store_signature(self):
+        """Store truss signature"""
+        sign = calculate_truss_signature(self._truss_dir)
+        truss_hash = directory_hash(self._truss_dir)
+        LocalConfigHandler.add_signature(truss_hash, sign)
+
     def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
         item = file_dir_or_glob
         item_path = Path(item)
@@ -367,33 +406,6 @@ class TrussHandle:
         config.write_to_yaml_file(self._spec.config_path)
         # reload spec
         self._spec = TrussSpec(self._truss_dir)
-
-    def get_urls_from_truss(self):
-        urls = []
-        containers = self.get_docker_containers_from_labels()
-        for container in containers:
-            urls.extend(get_urls_from_container(container)[INFERENCE_SERVER_PORT])
-        return urls
-
-    def generate_readme(self):
-        return generate_readme(self._spec)
-
-    def update_description(self, description: str):
-        self._update_config(lambda conf: replace(conf, description=description))
-
-    def use_control_plane(self, enable: bool = True):
-        """Enable control plane.
-
-        Control plane allows loading truss changes into the running model
-        container. This is useful during development to iterate on model changes
-        quickly.
-        # todo: write tests for it
-        """
-
-        def enable_control_plane_fn(conf: TrussConfig):
-            return replace(conf, use_control_plane=enable)
-
-        self._update_config(enable_control_plane_fn)
 
 
 def _prediction_flow(model, request: dict):
