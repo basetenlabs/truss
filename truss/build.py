@@ -117,7 +117,11 @@ def mk_truss_from_pipeline(
         when the Truss server /predict is invoked.
         target_directory (str, optional): The local directory target for the Truss. Otherwise a temporary directory
             will be generated
-        bundled_packages (List[str], optional): Additional local packages that are required by the funtion.
+        data_files (List[str], optional): Additional files required for model operation. Can be a glob that resolves to
+            files for the root directory or a directory path.
+        requirements_file (str, optional): A file of packages in a PIP requirements format to be installed in the
+            container environment.
+        bundled_packages (List[str], optional): Additional local packages that are required by the model.
     Returns:
         TrussHandle: A handle to the generated Truss that provides easy access to content inside.
     """
@@ -142,7 +146,7 @@ def mk_truss_from_pipeline(
         click.echo(
             click.style(
                 """WARNING: Truss identified objects in GPU memory. When serializing a
-                function via mk_truss_pipeline, objects in GPU memory must be moved to
+                function via mk_truss, objects in GPU memory must be moved to
                 CPU to be serialized correctly.""",
                 fg="yellow",
             )
