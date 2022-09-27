@@ -68,9 +68,21 @@ class TrussHandle:
         local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
         control_port: int = CONTROL_SERVER_PORT,
+        kill_previous: Optional[int] = None,
     ):
         """
         Builds a docker image and runs it as a container.
+
+        Args:
+            build_dir: Directory to use for creating docker build context.
+            tag: Tags to apply to docker image.
+            local_port: Local port to forward inference server to.
+            detach: Run docker container in detached mode.
+            control_port: Only for control trusses, Local port to forward control server to.
+            kill_previous: Kill previous container for truss. If this is None then
+                behavior depends on whether it's a control truss. For control truses, existing
+                container is updated. For non-control trusses, previous container is killed.
+
 
         Returns:
             Container, which can be used to get information about the running,
@@ -84,6 +96,12 @@ class TrussHandle:
         publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
         if self.spec.use_control_plane:
             publish_ports.append([control_port, CONTROL_SERVER_PORT])
+
+        if kill_previous is True or (
+            kill_previous is None and not self.is_control_truss
+        ):
+            self.kill_container()
+
         container = Docker.client().run(
             built_tag,
             publish=publish_ports,
@@ -279,6 +297,10 @@ class TrussHandle:
         )
 
     def kill_container(self):
+        """Kill container
+
+        Killing is done based on directory of the truss.
+        """
         kill_containers(self._get_labels())
 
     def container_logs(self):
@@ -318,6 +340,10 @@ class TrussHandle:
         resp = requests.post(f"{control_url}/patch", json=patch.to_dict())
         resp.raise_for_status()
         return resp.json()
+
+    @property
+    def is_control_truss(self):
+        return self._spec.use_control_plane
 
     def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
         item = file_dir_or_glob
