@@ -9,7 +9,13 @@ import numpy as np
 import requests
 import yaml
 from tenacity import Retrying, stop_after_attempt, wait_fixed
-from truss.constants import TRUSS, TRUSS_DIR, TRUSS_MODIFIED_TIME
+from truss.constants import (
+    CONTROL_SERVER_PORT,
+    INFERENCE_SERVER_PORT,
+    TRUSS,
+    TRUSS_DIR,
+    TRUSS_MODIFIED_TIME,
+)
 from truss.contexts.image_builder.image_builder import ImageBuilderContext
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.docker import (
@@ -59,9 +65,9 @@ class TrussHandle:
         self,
         build_dir: Path = None,
         tag: str = None,
-        local_port: int = 8080,
+        local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
-        control_port: int = 8090,
+        control_port: int = CONTROL_SERVER_PORT,
     ):
         """
         Builds a docker image and runs it as a container.
@@ -75,9 +81,9 @@ class TrussHandle:
         labels = self._get_labels()
         labels.update({TRUSS: True})
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
-        publish_ports = [[local_port, 8080]]
+        publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
         if self.spec.use_control_plane:
-            publish_ports.append([control_port, 8090])
+            publish_ports.append([control_port, CONTROL_SERVER_PORT])
         container = Docker.client().run(
             built_tag,
             publish=publish_ports,
@@ -109,9 +115,9 @@ class TrussHandle:
         request: dict,
         build_dir: Path = None,
         tag: str = None,
-        local_port: int = 8080,
+        local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
-        control_port: int = 8090,
+        control_port: int = CONTROL_SERVER_PORT,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -129,8 +135,7 @@ class TrussHandle:
                 detach=detach,
                 control_port=control_port,
             )
-        # todo: Move 8080 to constant
-        model_base_url = get_urls_from_container(container)[8080][0]
+        model_base_url = get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
         return resp.json()
@@ -301,14 +306,15 @@ class TrussHandle:
     def apply_patch(self, patch: Patch):
         if not self.spec.use_control_plane:
             raise ValueError("Not a control truss: applying patch is not supported.")
+
         containers = self.get_docker_containers_from_labels()
         if not containers:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
             )
+
         container = containers[0]
-        # todo: Move 8090 to constant
-        control_url = get_urls_from_container(container)[8090][0]
+        control_url = get_urls_from_container(container)[CONTROL_SERVER_PORT][0]
         resp = requests.post(f"{control_url}/patch", json=patch.to_dict())
         resp.raise_for_status()
         return resp.json()
@@ -340,8 +346,7 @@ class TrussHandle:
         urls = []
         containers = self.get_docker_containers_from_labels()
         for container in containers:
-            # todo move 8080 to constant
-            urls.extend(get_urls_from_container(container)[8080])
+            urls.extend(get_urls_from_container(container)[INFERENCE_SERVER_PORT])
         return urls
 
     def generate_readme(self):

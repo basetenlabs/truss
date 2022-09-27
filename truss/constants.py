@@ -69,3 +69,6 @@ PYTORCH_REQ_MODULE_NAMES = {
     "torchvision",
     "torchaudio",
 }
+
+INFERENCE_SERVER_PORT = 8080
+CONTROL_SERVER_PORT = 8090
