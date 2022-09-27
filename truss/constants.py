@@ -39,6 +39,7 @@ TRUSS = "truss"
 TRUSS_MODIFIED_TIME = "truss_modified_time"
 # Path of the Truss used to identify which Truss is being referred
 TRUSS_DIR = "truss_dir"
+TRUSS_HASH = "truss_hash"
 
 HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
 

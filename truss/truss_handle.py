@@ -14,6 +14,7 @@ from truss.constants import (
     INFERENCE_SERVER_PORT,
     TRUSS,
     TRUSS_DIR,
+    TRUSS_HASH,
     TRUSS_MODIFIED_TIME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilderContext
@@ -27,6 +28,7 @@ from truss.docker import (
     kill_containers,
 )
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.patch import calc_truss_patch
 from truss.patch.dir_hash import directory_hash
 from truss.patch.signature import calculate_truss_signature
 from truss.readme_generator import generate_readme
@@ -109,27 +111,29 @@ class TrussHandle:
         ):
             self.kill_container()
 
-        container = Docker.client().run(
-            built_tag,
-            publish=publish_ports,
-            detach=detach,
-            labels=labels,
-            mounts=[
-                [
-                    "type=bind",
-                    f"src={str(secrets_mount_dir_path)}",
-                    "target=/secrets",
-                ]
-            ],
-            gpus="all" if self._spec.config.resources.use_gpu else None,
-        )
+        container = self._try_patch()
+        if container is None:
+            container = Docker.client().run(
+                built_tag,
+                publish=publish_ports,
+                detach=detach,
+                labels=labels,
+                mounts=[
+                    [
+                        "type=bind",
+                        f"src={str(secrets_mount_dir_path)}",
+                        "target=/secrets",
+                    ]
+                ],
+                gpus="all" if self._spec.config.resources.use_gpu else None,
+            )
         model_base_url = f"http://localhost:{local_port}/"
         try:
             _wait_for_model_server(model_base_url)
-        except Exception as e:
+        except Exception as exc:
             for log in self.container_logs():
                 logging.info(log)
-            raise e
+            raise exc
         logger.info(
             f"Model server started on port {local_port}, docker container id {container.id}"
         )
@@ -399,6 +403,7 @@ class TrussHandle:
         return {
             TRUSS_MODIFIED_TIME: get_max_modified_time_of_dir(self._truss_dir),
             TRUSS_DIR: self._truss_dir,
+            TRUSS_HASH: directory_hash(self._truss_dir),
         }
 
     def _update_config(self, update_config_fn: Callable[[TrussConfig], TrussConfig]):
@@ -406,6 +411,33 @@ class TrussHandle:
         config.write_to_yaml_file(self._spec.config_path)
         # reload spec
         self._spec = TrussSpec(self._truss_dir)
+
+    def _try_patch(self):
+        if not self.is_control_truss:
+            return None
+
+        containers = self.get_docker_containers_from_labels(
+            {TRUSS_DIR: str(self._truss_dir)}
+        )
+
+        if len(containers) == 0:
+            return None
+
+        container = containers[0]
+        labels = container.config.labels
+        running_truss_hash = labels.get(TRUSS_HASH, None)
+        if running_truss_hash is None:
+            return None
+
+        current_hash = directory_hash(self._truss_dir)
+        if running_truss_hash == current_hash:
+            return container
+        prev_sign = LocalConfigHandler.get_signature(running_truss_hash)
+        patches = calc_truss_patch(self._truss_dir, prev_sign)
+        # todo apply_patch and the patch endpoint should take a list of patches
+        for patch in patches:
+            self.apply_patch(patch)
+        return container
 
 
 def _prediction_flow(model, request: dict):
