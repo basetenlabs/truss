@@ -60,5 +60,5 @@ def get_gpu_memory():
         )
         memory_free_values = int(memory_free_info.split()[0])
         return memory_free_values
-    except Exception:
-        return 0
+    except FileNotFoundError:
+        return None

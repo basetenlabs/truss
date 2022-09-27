@@ -8,6 +8,7 @@ import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
 from truss.environment_inference.requirements_inference import infer_deps
+from truss.errors import FrameworkNotSupportedError
 from truss.model_frameworks import model_framework_from_model
 from truss.model_inference import infer_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
@@ -21,7 +22,39 @@ from truss.utils import (
 )
 
 
-def mk_truss(
+def populate_target_directory(
+    config: TrussConfig, target_directory_path: str = None, template: str = "custom"
+) -> None:
+
+    if target_directory_path is None:
+        target_directory_path = build_truss_target_directory(template)
+    else:
+        target_directory_path = Path(target_directory_path)
+        target_directory_path.mkdir(parents=True, exist_ok=True)
+
+    # Create data dir
+    (target_directory_path / config.data_dir).mkdir()
+
+    # Create bundled packages dir
+    (target_directory_path / config.bundled_packages_dir).mkdir()
+
+    # Create model module dir
+    model_dir = target_directory_path / config.model_module_dir
+    template_path = TEMPLATES_DIR / template
+    copy_tree_path(template_path / "model", model_dir)
+
+    examples_path = template_path / DEFAULT_EXAMPLES_FILENAME
+    if examples_path.exists():
+        copy_file_path(examples_path, target_directory_path / DEFAULT_EXAMPLES_FILENAME)
+
+    # Write config
+    with (target_directory_path / CONFIG_FILE).open("w") as config_file:
+        yaml.dump(config.to_dict(), config_file)
+
+    return target_directory_path
+
+
+def mk_truss_from_model(
     model: Any,
     target_directory: str = None,
     data_files: List[str] = None,
@@ -69,9 +102,11 @@ def mk_truss(
     return scaf
 
 
-def mk_truss_pipeline(
+def mk_truss_from_pipeline(
     pipeline: Callable,
     target_directory: str = None,
+    data_files: List[str] = None,
+    requirements_file: str = None,
     bundled_packages: List[str] = None,
 ):
     """Create a Truss from a function. A Truss is a build context designed to
@@ -86,14 +121,9 @@ def mk_truss_pipeline(
     Returns:
         TrussHandle: A handle to the generated Truss that provides easy access to content inside.
     """
-    if target_directory is None:
-        target_directory_path = build_truss_target_directory("pipeline")
-    else:
-        target_directory_path = Path(target_directory)
-
-    requirements = list(infer_deps(must_include_deps=set(["cloudpickle"])))
 
     # Create Truss config
+    requirements = list(infer_deps(must_include_deps=set(["cloudpickle"])))
     config = TrussConfig(
         model_type="custom",
         model_framework=ModelFrameworkType.CUSTOM,
@@ -101,18 +131,14 @@ def mk_truss_pipeline(
         requirements=requirements,
     )
 
-    # Create data dir
-    (target_directory_path / config.data_dir).mkdir()
+    # Create and populate target directory path
+    target_directory_path = populate_target_directory(
+        config=config, target_directory_path=target_directory, template="pipeline"
+    )
 
-    # Create bundled packages dir
-    (target_directory_path / config.bundled_packages_dir).mkdir()
-
-    # Create model module dir via pipeline template
-    model_dir = target_directory_path / config.model_module_dir
-    template_path = TEMPLATES_DIR / "pipeline"
-    copy_tree_path(template_path / "model", model_dir)
-
-    if get_gpu_memory() > 10:
+    gpu_memory = get_gpu_memory()
+    if gpu_memory and gpu_memory > 10:
+        # TODO: Abu: Remove use of click here
         click.echo(
             click.style(
                 """WARNING: Truss identified objects in GPU memory. When serializing a
@@ -124,15 +150,11 @@ def mk_truss_pipeline(
 
     # Write Cloudpickled function to data directory
     pipeline_binary_path = target_directory_path / config.data_dir / "pipeline.cpick"
-    with open(pipeline_binary_path, "wb+") as f:
+    with open(pipeline_binary_path, "wb") as f:
         cloudpickle.dump(pipeline, f)
 
-    # Write config
-    with (target_directory_path / CONFIG_FILE).open("w") as config_file:
-        yaml.dump(config.to_dict(), config_file)
-
     scaf = TrussHandle(target_directory_path)
-    _update_truss_props(scaf, bundled_packages=bundled_packages)
+    _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
     return scaf
 
 
@@ -152,32 +174,15 @@ def init(
         target_directory: Absolute or relative path of the directory to create
                           Truss in. The directory is created if it doesn't exist.
     """
-    target_directory_path = Path(target_directory)
-    target_directory_path.mkdir(parents=True, exist_ok=True)
     config = TrussConfig(
         model_type="custom",
         model_framework=ModelFrameworkType.CUSTOM,
         python_version=infer_python_version(),
     )
 
-    # Create data dir
-    (target_directory_path / config.data_dir).mkdir()
-
-    # Create bundled packages dir
-    (target_directory_path / config.bundled_packages_dir).mkdir()
-
-    # Create model module dir
-    model_dir = target_directory_path / config.model_module_dir
-    template_path = TEMPLATES_DIR / "custom"
-    copy_tree_path(template_path / "model", model_dir)
-
-    examples_path = template_path / DEFAULT_EXAMPLES_FILENAME
-    if examples_path.exists():
-        copy_file_path(examples_path, target_directory_path / DEFAULT_EXAMPLES_FILENAME)
-
-    # Write config
-    with (target_directory_path / CONFIG_FILE).open("w") as config_file:
-        yaml.dump(config.to_dict(), config_file)
+    target_directory_path = populate_target_directory(
+        config=config, target_directory_path=target_directory
+    )
 
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
@@ -194,6 +199,30 @@ def from_directory(truss_directory: str) -> TrussHandle:
         TrussHandle
     """
     return TrussHandle(Path(truss_directory))
+
+
+def mk_truss(
+    obj: Any,
+    target_directory: str = None,
+    data_files: List[str] = None,
+    requirements_file: str = None,
+    bundled_packages: List[str] = None,
+) -> TrussHandle:
+    # Some model objects can are callable (like Keras models)
+    # so we first attempt to make Truss via a model object
+    try:
+        return mk_truss_from_model(
+            obj, target_directory, data_files, requirements_file, bundled_packages
+        )
+    except FrameworkNotSupportedError:
+        if callable(obj):
+            return mk_truss_from_pipeline(
+                obj, target_directory, data_files, requirements_file, bundled_packages
+            )
+
+    raise ValueError(
+        "Invalid input to make Truss. Truss expects a supported framework or callable function."
+    )
 
 
 def cleanup():
