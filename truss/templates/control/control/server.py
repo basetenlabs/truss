@@ -22,8 +22,6 @@ if __name__ == "__main__":
         }
     )
 
-    # Startup the inference server
-    # todo: move to constant
     patch_ping_url = os.environ.get("PATCH_PING_URL_TRUSS", None)
     if patch_ping_url is None:
         application.config["inference_server_controller"].restart()
@@ -33,6 +31,7 @@ if __name__ == "__main__":
         # todo: add retries here
         requests.post(patch_ping_url)
 
+    # todo: Move to logger
     print(f"Starting control server on port {DEFAULT_CONTROL_SERVER_PORT}")
     server = create_server(
         application,
