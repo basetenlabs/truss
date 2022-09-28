@@ -525,6 +525,7 @@ def test_truss_hash_caching_based_on_max_mod_time(
     assert labels == labels2
     directory_hash_patcher.assert_called_once()
 
+    time.sleep(0.1)  # Make sure different mod time
     (custom_model_truss_dir / "model" / "model.py").touch()
     labels3 = th._get_labels()
     assert labels3 != labels
