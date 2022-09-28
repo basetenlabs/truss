@@ -466,14 +466,16 @@ class Model:
         return [2 for i in request['inputs']]
 """
         th.apply_patch(
-            Patch(
-                type=PatchType.MODEL_CODE,
-                body=ModelCodePatch(
-                    action=Action.UPDATE,
-                    path="model.py",
-                    content=new_model_code,
-                ),
-            )
+            [
+                Patch(
+                    type=PatchType.MODEL_CODE,
+                    body=ModelCodePatch(
+                        action=Action.UPDATE,
+                        path="model.py",
+                        content=new_model_code,
+                    ),
+                )
+            ]
         )
         # Give some time for inference server to start up
         time.sleep(2)

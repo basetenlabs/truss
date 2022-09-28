@@ -125,7 +125,7 @@ def test_patch_model_code_delete(app, client):
 
 def _apply_patch(client, patch: Patch):
     try:
-        resp = client.post("/patch", json=patch.to_dict())
+        resp = client.post("/patch", json=[patch.to_dict()])
     finally:
         client.post("/stop_inference_server")
     assert resp.status_code == 200

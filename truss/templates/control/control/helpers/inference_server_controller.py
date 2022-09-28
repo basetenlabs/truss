@@ -1,4 +1,5 @@
 import threading
+from typing import List
 
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
@@ -21,10 +22,11 @@ class InferenceServerController:
         self._process_controller = process_controller
         self._patch_applier = patch_applier
 
-    def apply_patch(self, patch: Patch):
+    def apply_patch(self, patches: List[Patch]):
         with self._lock:
             self._process_controller.stop()
-            self._patch_applier.apply_patch(patch)
+            for patch in patches:
+                self._patch_applier.apply_patch(patch)
             self._process_controller.start()
 
     def restart(self):

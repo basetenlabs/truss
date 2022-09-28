@@ -338,7 +338,7 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
-    def apply_patch(self, patch: Patch):
+    def apply_patch(self, patches: List[Patch]):
         if not self.spec.use_control_plane:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
@@ -352,7 +352,9 @@ class TrussHandle:
 
         container = containers[0]
         control_url = get_urls_from_container(container)[CONTROL_SERVER_PORT][0]
-        resp = requests.post(f"{control_url}/patch", json=patch.to_dict())
+        resp = requests.post(
+            f"{control_url}/patch", json=[patch.to_dict() for patch in patches]
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -439,11 +441,9 @@ class TrussHandle:
         prev_sign_str = LocalConfigHandler.get_signature(running_truss_hash)
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
         patches = calc_truss_patch(self._truss_dir, prev_sign)
-        # todo apply_patch and the patch endpoint should take a list of patches
-        for patch in patches:
-            resp = self.apply_patch(patch)
-            if "error" in resp:
-                raise f'Failed to patch control truss {resp["error"]}'
+        resp = self.apply_patch(patches)
+        if "error" in resp:
+            raise f'Failed to patch control truss {resp["error"]}'
         return container
 
 

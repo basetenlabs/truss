@@ -14,9 +14,8 @@ logger = logging.getLogger(__name__)
 def patch():
     body = request.get_json()
     try:
-        current_app.config["inference_server_controller"].apply_patch(
-            Patch.from_dict(body)
-        )
+        patches = [Patch.from_dict(patch_dict) for patch_dict in body]
+        current_app.config["inference_server_controller"].apply_patch(patches)
         logger.info("Patch applied successfully")
     except Exception:  # noqa
         ex_type, ex_value, _ = sys.exc_info()
