@@ -4,7 +4,7 @@ from truss.patch.dir_signature import directory_content_signature
 from truss.patch.types import TrussSignature
 
 
-def calculate_truss_signature(truss_dir: Path) -> TrussSignature:
+def calc_truss_signature(truss_dir: Path) -> TrussSignature:
     content_signature = directory_content_signature(truss_dir)
     with (truss_dir / "config.yaml").open("r") as config_file:
         config = config_file.read()

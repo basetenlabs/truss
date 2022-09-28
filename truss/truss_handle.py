@@ -30,8 +30,8 @@ from truss.docker import (
 )
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch import calc_truss_patch
-from truss.patch.dir_hash import directory_hash
-from truss.patch.signature import calculate_truss_signature
+from truss.patch.hash import directory_hash
+from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
 from truss.templates.control.control.helpers.types import Patch
@@ -57,6 +57,11 @@ class TrussHandle:
         """Run the prediction flow locally."""
         model = LoadLocal.run(self._truss_dir)
         return _prediction_flow(model, request)
+
+    def build_docker_build_context(self, build_dir: Path = None):
+        build_dir_path = Path(build_dir) if build_dir is not None else None
+        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder.prepare_image_build_dir(build_dir_path)
 
     def build_docker_image(self, build_dir: Path = None, tag: str = None):
         """Builds docker image"""
@@ -390,7 +395,7 @@ class TrussHandle:
 
     def _store_signature(self):
         """Store truss signature"""
-        sign = calculate_truss_signature(self._truss_dir)
+        sign = calc_truss_signature(self._truss_dir)
         truss_hash = directory_hash(self._truss_dir)
         LocalConfigHandler.add_signature(truss_hash, json.dumps(sign.to_dict()))
 

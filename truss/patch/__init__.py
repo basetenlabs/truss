@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, List
 
-from truss.patch.dir_hash import file_content_hash_str
+from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import (
     Action,
@@ -15,7 +15,7 @@ from truss.truss_spec import TrussSpec
 def calc_truss_patch(
     truss_dir: Path, previous_truss_signature: TrussSignature
 ) -> List[Patch]:
-    changed_paths = calc_changed_paths(
+    changed_paths = _calc_changed_paths(
         truss_dir, previous_truss_signature.content_hashes_by_path
     )
     # todo calcuate model code patches onlye for now, add config changes later
@@ -44,6 +44,11 @@ def calc_truss_patch(
             relative_to_model_module_path = str(
                 Path(path).relative_to(model_module_path)
             )
+
+            # TODO(pankaj) Add support for empty directories, skip them for now.
+            if not full_path.is_file():
+                continue
+
             with full_path.open() as file:
                 content = file.read()
             patches.append(
@@ -59,11 +64,11 @@ def calc_truss_patch(
     return patches
 
 
-def calc_changed_paths(
+def _calc_changed_paths(
     root: Path, previous_root_path_content_hashes: Dict[str, str]
 ) -> dict:
     """
-    todo add support for directory creation in patch
+    TODO(pankaj) add support for directory creation in patch
     """
     root_relative_paths = set(
         (str(path.relative_to(root)) for path in root.glob("**/*"))

@@ -33,10 +33,12 @@ def get_images(labels: dict):
 
 
 def get_urls_from_container(container_details):
-    """Gets url where docker container is hosted.
-
-    todo: Add unit tests for this
-    """
+    """Gets url where docker container is hosted."""
+    if (
+        container_details.network_settings is None
+        or container_details.network_settings.ports is None
+    ):
+        return {}
     ports = container_details.network_settings.ports
 
     def parse_port(port_protocol) -> int:
@@ -58,6 +60,7 @@ def get_urls_from_container(container_details):
     return {
         parse_port(port_protocol): urls_from_port_protocol_values(value)
         for port_protocol, value in ports.items()
+        if value is not None
     }
 
 

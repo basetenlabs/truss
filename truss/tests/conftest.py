@@ -269,7 +269,7 @@ def pytorch_model_with_init_args(tmp_path, pytorch_model_init_args):
 
 
 @pytest.fixture
-def custom_model_truss_dir(tmp_path):
+def custom_model_truss_dir(tmp_path) -> Path:
     dir_path = tmp_path / "custom_truss"
     handle = init(str(dir_path))
     with handle.spec.model_class_filepath.open("w") as file:
