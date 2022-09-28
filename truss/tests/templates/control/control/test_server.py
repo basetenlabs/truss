@@ -1,4 +1,3 @@
-import shutil
 import sys
 from pathlib import Path
 
@@ -24,10 +23,8 @@ from truss.templates.control.control.helpers.types import (  # noqa
 
 
 @pytest.fixture
-def app(tmp_path):
-    inf_serv_home = tmp_path / "app"
-    inf_serv_test_data_path = str(Path(__file__).parent / "test_data" / "app")
-    shutil.copytree(inf_serv_test_data_path, str(inf_serv_home))
+def app(tmp_path, truss_container_fs):
+    inf_serv_home = truss_container_fs / "app"
     control_app = create_app(
         {
             "inference_server_home": inf_serv_home,

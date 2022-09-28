@@ -10,6 +10,13 @@ from truss.templates.control.control.helpers.types import (
 )
 
 
+def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    (custom_model_truss_dir / "dummy").touch()
+    patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
+    assert patches is None
+
+
 def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     (custom_model_truss_dir / "model" / "dummy").touch()

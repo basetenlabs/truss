@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
@@ -14,7 +14,15 @@ from truss.truss_spec import TrussSpec
 
 def calc_truss_patch(
     truss_dir: Path, previous_truss_signature: TrussSignature
-) -> List[Patch]:
+) -> Optional[List[Patch]]:
+    """
+    Calculate patch for a truss from a previous state.
+
+    Returns: None if patch cannot be calculated, otherwise a list of patches.
+        Note that the none return value is pretty important, patch coverage
+        is limited and this usually indicates that the identified change cannot
+        be expressed with currently supported patches.j
+    """
     changed_paths = _calc_changed_paths(
         truss_dir, previous_truss_signature.content_hashes_by_path
     )
@@ -37,6 +45,8 @@ def calc_truss_patch(
                     ),
                 )
             )
+        else:
+            return None
 
     for path in changed_paths["added"] + changed_paths["updated"]:
         if path.startswith(model_module_path):
@@ -61,6 +71,8 @@ def calc_truss_patch(
                     ),
                 )
             )
+        else:
+            return None
     return patches
 
 

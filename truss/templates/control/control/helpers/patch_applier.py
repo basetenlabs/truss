@@ -31,7 +31,11 @@ class PatchApplier:
         if action == Action.UPDATE:
             filepath.parent.mkdir(parents=True, exist_ok=True)
             with filepath.open("w") as file:
-                file.write(model_code_patch.content)
+                content = model_code_patch.content
+                if content is None:
+                    content = ""
+                file.write(content)
+
         elif action == Action.REMOVE:
             # todo: log error when file is missing
             filepath.unlink(missing_ok=True)

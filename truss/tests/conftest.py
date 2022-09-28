@@ -1,6 +1,7 @@
 import contextlib
 import importlib
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -543,6 +544,16 @@ def custom_model_truss_dir_for_secrets(tmp_path):
     with handle.spec.model_class_filepath.open("w") as file:
         file.write(CUSTOM_MODEL_CODE_FOR_SECRETS_TESTING)
     yield dir_path
+
+
+@pytest.fixture
+def truss_container_fs(tmp_path):
+    truss_fs = tmp_path / "truss_fs"
+    truss_fs_test_data_path = (
+        Path(__file__).parent.parent / "test_data" / "truss_container_fs"
+    )
+    shutil.copytree(str(truss_fs_test_data_path), str(truss_fs))
+    return truss_fs
 
 
 def _pytorch_model_from_content(

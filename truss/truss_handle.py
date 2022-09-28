@@ -446,6 +446,10 @@ class TrussHandle:
         prev_sign_str = LocalConfigHandler.get_signature(running_truss_hash)
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
         patches = calc_truss_patch(self._truss_dir, prev_sign)
+        if patches is None:
+            # Change cannot be expressed with currently supported patch types
+            return None
+
         resp = self.apply_patch(patches)
         if "error" in resp:
             raise f'Failed to patch control truss {resp["error"]}'
