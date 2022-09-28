@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from truss.docker import Docker
@@ -510,6 +511,24 @@ class Model:
         assert result[0] == 2
         # A new image should have been created
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
+
+
+@patch("truss.truss_handle.directory_hash")
+def test_truss_hash_caching_based_on_max_mod_time(
+    directory_hash_patcher,
+    custom_model_truss_dir,
+):
+    directory_hash_patcher.return_value = "mock_hash"
+    th = TrussHandle(custom_model_truss_dir)
+    labels = th._get_labels()
+    labels2 = th._get_labels()
+    assert labels == labels2
+    directory_hash_patcher.assert_called_once()
+
+    (custom_model_truss_dir / "model" / "model.py").touch()
+    labels3 = th._get_labels()
+    assert labels3 != labels
+    directory_hash_patcher.call_count == 2
 
 
 @pytest.mark.integration

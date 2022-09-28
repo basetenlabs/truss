@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import requests
@@ -48,6 +48,7 @@ class TrussHandle:
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
+        self._hash_for_mod_time: Optional[Tuple[float, str]] = None
 
     @property
     def spec(self) -> TrussSpec:
@@ -417,10 +418,20 @@ class TrussHandle:
                 copy_file_path(filepath, destination_dir / filepath.name)
 
     def _get_labels(self):
+        truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
+        # If mod time hasn't changed then hash must be the same
+        if (
+            self._hash_for_mod_time is not None
+            and self._hash_for_mod_time[0] == truss_mod_time
+        ):
+            truss_hash = self._hash_for_mod_time[1]
+        else:
+            truss_hash = directory_hash(self._truss_dir)
+            self._hash_for_mod_time = (truss_mod_time, truss_hash)
         return {
-            TRUSS_MODIFIED_TIME: get_max_modified_time_of_dir(self._truss_dir),
+            TRUSS_MODIFIED_TIME: truss_mod_time,
             TRUSS_DIR: self._truss_dir,
-            TRUSS_HASH: directory_hash(self._truss_dir),
+            TRUSS_HASH: truss_hash,
         }
 
     def _update_config(self, update_config_fn: Callable[[TrussConfig], TrussConfig]):

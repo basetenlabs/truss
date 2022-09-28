@@ -16,7 +16,7 @@ def copy_file_path(src: Path, dest: Path):
     return copy_file(str(src), str(dest))
 
 
-def get_max_modified_time_of_dir(path: Path):
+def get_max_modified_time_of_dir(path: Path) -> float:
     max_modified_time = os.path.getmtime(path)
     for root, dirs, files in os.walk(path):
         if os.path.islink(root):
