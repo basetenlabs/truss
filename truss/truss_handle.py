@@ -65,17 +65,22 @@ class TrussHandle:
 
     def build_docker_image(self, build_dir: Path = None, tag: str = None):
         """Builds docker image"""
-        images = self.get_docker_images_from_label()
-        if images and isinstance(images, list):
-            return images[0]
+        image = self.get_docker_image()
+        if image is not None:
+            return image
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = ImageBuilderContext.run(self._truss_dir)
         build_image_result = image_builder.build_image(
             build_dir_path, tag, labels=self._get_labels()
         )
-        # todo: only store signature on successful build
         self._store_signature()
         return build_image_result
+
+    def get_docker_image(self):
+        """Get docker image for truss if one exists."""
+        images = self.get_docker_images_from_label()
+        if images and isinstance(images, list):
+            return images[0]
 
     def docker_run(
         self,
@@ -84,42 +89,36 @@ class TrussHandle:
         local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
         control_port: int = CONTROL_SERVER_PORT,
-        kill_previous: Optional[int] = None,
     ):
         """
-        Builds a docker image and runs it as a container.
+        Builds a docker image and runs it as a container. For control trusses,
+        tries to patch.
 
         Args:
-            build_dir: Directory to use for creating docker build context.
-            tag: Tags to apply to docker image.
-            local_port: Local port to forward inference server to.
-            detach: Run docker container in detached mode.
-            control_port: Only for control trusses, Local port to forward control server to.
-            kill_previous: Kill previous container for truss. If this is None then
-                behavior depends on whether it's a control truss. For control truses, existing
-                container is updated. For non-control trusses, previous container is killed.
-
+            build_dir: Directory to use for creating docker build context. tag:
+            Tags to apply to docker image. local_port: Local port to forward
+            inference server to. detach: Run docker container in detached mode.
+            control_port: Only for control trusses, Local port to forward
+            control server to.
 
         Returns:
             Container, which can be used to get information about the running,
             including its id. The id can be used to kill the container.
         """
-        image = self.build_docker_image(build_dir=build_dir, tag=tag)
-        built_tag = image.repo_tags[0]
-        labels = self._get_labels()
-        labels.update({TRUSS: True})
-        secrets_mount_dir_path = _prepare_secrets_mount_dir()
-        publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
-        if self.spec.use_control_plane:
-            publish_ports.append([control_port, CONTROL_SERVER_PORT])
-
-        if kill_previous is True or (
-            kill_previous is None and not self.is_control_truss
-        ):
-            self.kill_container()
-
         container = self._try_patch()
         if container is None:
+            image = self.build_docker_image(build_dir=build_dir, tag=tag)
+            built_tag = image.repo_tags[0]
+            secrets_mount_dir_path = _prepare_secrets_mount_dir()
+            publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
+            if self.spec.use_control_plane:
+                publish_ports.append([control_port, CONTROL_SERVER_PORT])
+
+            self.kill_container()
+            labels = {
+                **self._get_labels(),
+                TRUSS: True,
+            }
             container = Docker.client().run(
                 built_tag,
                 publish=publish_ports,
@@ -309,6 +308,13 @@ class TrussHandle:
     def get_docker_images_from_label(self):
         return get_images(self._get_labels())
 
+    def get_all_docker_images(self):
+        """Returns all docker images for this truss.
+
+        Includes images created for previous state of the truss.
+        """
+        return get_images({TRUSS_DIR: str(self._truss_dir)})
+
     def get_docker_containers_from_labels(self, all=False, labels=None):
         if labels is None:
             labels = self._get_labels()
@@ -319,7 +325,7 @@ class TrussHandle:
 
         Killing is done based on directory of the truss.
         """
-        kill_containers(self._get_labels())
+        kill_containers({TRUSS_DIR: self._truss_dir})
 
     def container_logs(self):
         containers = self.get_docker_containers_from_labels(all=True)

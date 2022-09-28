@@ -453,7 +453,7 @@ def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
 
 
 @pytest.mark.integration
-def test_control_truss(custom_model_control):
+def test_control_truss_apply_patch(custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
@@ -484,12 +484,42 @@ class Model:
 
 
 @pytest.mark.integration
+def test_regular_truss_local_update_flow(custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    tag = "test-docker-custom-model-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 1
+        orig_num_truss_images = len(th.get_all_docker_images())
+
+        # No new docker images on second predict
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert orig_num_truss_images == len(th.get_all_docker_images())
+
+        with (custom_model_truss_dir / "model" / "model.py").open(
+            "w"
+        ) as model_code_file:
+            model_code_file.write(
+                """
+class Model:
+    def predict(self, request):
+        return [2 for i in request['inputs']]
+"""
+            )
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 2
+        # A new image should have been created
+        assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
+
+
+@pytest.mark.integration
 def test_control_truss_local_update_flow(custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
         result = th.docker_predict({"inputs": [1]}, tag=tag)
         assert result[0] == 1
+        orig_num_truss_images = len(th.get_all_docker_images())
 
         new_model_code = """
 class Model:
@@ -499,10 +529,25 @@ class Model:
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(new_model_code)
-        # Give some time for inference server to start up
-        time.sleep(2)
         result = th.docker_predict({"inputs": [1]}, tag=tag)
         assert result[0] == 2
+        # Check that no new image was creaed
+        assert orig_num_truss_images == len(th.get_all_docker_images())
+
+        # Adding empty directory should work
+        (custom_model_control / "model" / "dir").mkdir()
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 2
+        # Check that no new image was created
+        assert orig_num_truss_images == len(th.get_all_docker_images())
+
+        # Changes that are not expressible with patch should also work
+        # Changes to data dir are not currently patch expressible
+        (custom_model_control / "data" / "dummy").touch()
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 2
+        # A new image should have been created
+        assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
 
 
 def _container_exists(container) -> bool:
