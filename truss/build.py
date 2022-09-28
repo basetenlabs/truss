@@ -162,6 +162,14 @@ def mk_truss_from_pipeline(
     return scaf
 
 
+def mk_truss_from_model_with_exception_handler(*args):
+    # returns None if framework not supported, otherwise the Truss
+    try:
+        return mk_truss_from_model(*args)
+    except FrameworkNotSupportedError:
+        return None
+
+
 def init(
     target_directory: str,
     data_files: List[str] = None,
@@ -214,11 +222,13 @@ def mk_truss(
 ) -> TrussHandle:
     # Some model objects can are callable (like Keras models)
     # so we first attempt to make Truss via a model object
-    try:
-        return mk_truss_from_model(
-            obj, target_directory, data_files, requirements_file, bundled_packages
-        )
-    except FrameworkNotSupportedError:
+
+    model_scaffold = mk_truss_from_model_with_exception_handler(
+        obj, target_directory, data_files, requirements_file, bundled_packages
+    )
+    if model_scaffold:
+        return model_scaffold
+    else:
         if callable(obj):
             return mk_truss_from_pipeline(
                 obj, target_directory, data_files, requirements_file, bundled_packages

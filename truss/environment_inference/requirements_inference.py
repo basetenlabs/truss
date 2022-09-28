@@ -41,7 +41,6 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     if not must_include_deps:
         must_include_deps = set()
 
-    must_include_dependencies = must_include_deps.copy()
     pkg_candidates = _extract_packages_from_frame(relevant_stack[0].frame)
     imports = must_include_deps.union(pkg_candidates)
     requirements = set([])
@@ -58,11 +57,12 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
             and pkg_in_frame.project_name not in IGNORED_PACKAGES
         ):
             requirements.add(f"{pkg_in_frame.project_name}=={pkg_in_frame.version}")
-            if pkg_in_frame.project_name in must_include_dependencies:
-                must_include_dependencies.remove(pkg_in_frame.project_name)
+            # Remove the package from imports as it was added into requirements
+            imports.remove(pkg_in_frame.project_name)
 
-    # Bring in the remaining must include dependencies
-    requirements = requirements.union(must_include_dependencies)
+    # Add the must include deps not found in frame to requirements
+    deps_not_found_in_frame = imports.intersection(must_include_deps)
+    requirements = requirements.union(deps_not_found_in_frame)
 
     return requirements
 
