@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict
 
-from truss.patch.dir_hash import file_content_hash
+from truss.patch.dir_hash import file_content_hash_str
 
 
 def directory_content_signature(root: Path) -> Dict[str, str]:
@@ -19,6 +19,6 @@ def directory_content_signature(root: Path) -> Dict[str, str]:
 
     def path_hash(pth: Path):
         if pth.is_file():
-            return file_content_hash(pth)
+            return file_content_hash_str(pth)
 
     return {str(path.relative_to(root)): path_hash(path) for path in paths}

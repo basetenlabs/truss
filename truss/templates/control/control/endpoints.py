@@ -1,9 +1,13 @@
+import logging
 import sys
 
 from flask import Blueprint, current_app, request
 from helpers.types import Patch
 
 control_app = Blueprint("control", __name__)
+
+
+logger = logging.getLogger(__name__)
 
 
 @control_app.route("/patch", methods=["POST"])
@@ -13,9 +17,12 @@ def patch():
         current_app.config["inference_server_controller"].apply_patch(
             Patch.from_dict(body)
         )
+        logger.info("Patch applied successfully")
     except Exception:  # noqa
         ex_type, ex_value, _ = sys.exc_info()
-        return {"error": f"Failed to apply patch: {ex_type}, {ex_value}"}
+        error_msg = f"Failed to apply patch: {ex_type}, {ex_value}"
+        logger.warning(error_msg)
+        return {"error": error_msg}
 
     return {"msg": "Patch applied successfully"}
 

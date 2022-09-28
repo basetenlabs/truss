@@ -6,7 +6,7 @@ from truss.patch.types import TrussSignature
 
 def calculate_truss_signature(truss_dir: Path) -> TrussSignature:
     content_signature = directory_content_signature(truss_dir)
-    with (truss_dir / "config.yaml").open() as config_file:
+    with (truss_dir / "config.yaml").open("r") as config_file:
         config = config_file.read()
     return TrussSignature(
         content_hashes_by_path=content_signature,

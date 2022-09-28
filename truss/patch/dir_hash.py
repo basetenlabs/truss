@@ -22,18 +22,27 @@ def directory_hash(root: Path) -> str:
 
 def file_content_hash(file: Path):
     """Calculate sha256 of file content.
-
-    [IMPORTANT] This function is copied directly to
-                `build_model_from_truss_and_notify_task.yaml`.
-                If this code is changed, then make sure to update that as well.
+    Returns: binary hash of content
     """
+    return _file_content_hash_loaded_hasher(file).digest()
+
+
+def file_content_hash_str(file: Path) -> str:
+    """Calculate sha256 of file content.
+
+    Returns: string hash of content
+    """
+    return _file_content_hash_loaded_hasher(file).hexdigest()
+
+
+def _file_content_hash_loaded_hasher(file: Path):
     hasher = hashlib.sha256()
     buffer = bytearray(128 * 1024)
     mem_view = memoryview(buffer)
     with file.open("rb") as f:
         while n := f.readinto(mem_view):
             hasher.update(mem_view[:n])
-    return hasher.digest()
+    return hasher
 
 
 def str_hash(content: str):

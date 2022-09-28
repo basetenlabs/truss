@@ -1,5 +1,6 @@
 import copy
 import glob
+import json
 import logging
 from dataclasses import replace
 from pathlib import Path
@@ -31,6 +32,7 @@ from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch import calc_truss_patch
 from truss.patch.dir_hash import directory_hash
 from truss.patch.signature import calculate_truss_signature
+from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
 from truss.templates.control.control.helpers.types import Patch
 from truss.truss_config import TrussConfig
@@ -302,10 +304,10 @@ class TrussHandle:
     def get_docker_images_from_label(self):
         return get_images(self._get_labels())
 
-    def get_docker_containers_from_labels(self, all=False):
-        return sorted(
-            get_containers(self._get_labels(), all=all), key=lambda c: c.created
-        )
+    def get_docker_containers_from_labels(self, all=False, labels=None):
+        if labels is None:
+            labels = self._get_labels()
+        return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
     def kill_container(self):
         """Kill container
@@ -340,7 +342,9 @@ class TrussHandle:
         if not self.spec.use_control_plane:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
-        containers = self.get_docker_containers_from_labels()
+        containers = self.get_docker_containers_from_labels(
+            labels={TRUSS_DIR: str(self._truss_dir)}
+        )
         if not containers:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
@@ -386,7 +390,7 @@ class TrussHandle:
         """Store truss signature"""
         sign = calculate_truss_signature(self._truss_dir)
         truss_hash = directory_hash(self._truss_dir)
-        LocalConfigHandler.add_signature(truss_hash, sign)
+        LocalConfigHandler.add_signature(truss_hash, json.dumps(sign.to_dict()))
 
     def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
         item = file_dir_or_glob
@@ -417,7 +421,7 @@ class TrussHandle:
             return None
 
         containers = self.get_docker_containers_from_labels(
-            {TRUSS_DIR: str(self._truss_dir)}
+            labels={TRUSS_DIR: str(self._truss_dir)}
         )
 
         if len(containers) == 0:
@@ -432,11 +436,14 @@ class TrussHandle:
         current_hash = directory_hash(self._truss_dir)
         if running_truss_hash == current_hash:
             return container
-        prev_sign = LocalConfigHandler.get_signature(running_truss_hash)
+        prev_sign_str = LocalConfigHandler.get_signature(running_truss_hash)
+        prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
         patches = calc_truss_patch(self._truss_dir, prev_sign)
         # todo apply_patch and the patch endpoint should take a list of patches
         for patch in patches:
-            self.apply_patch(patch)
+            resp = self.apply_patch(patch)
+            if "error" in resp:
+                raise f'Failed to patch control truss {resp["error"]}'
         return container
 
 

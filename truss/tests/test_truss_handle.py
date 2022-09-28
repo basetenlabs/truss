@@ -481,6 +481,28 @@ class Model:
         assert result[0] == 2
 
 
+@pytest.mark.integration
+def test_control_truss_local_update_flow(custom_model_control):
+    th = TrussHandle(custom_model_control)
+    tag = "test-docker-custom-model-control-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 1
+
+        new_model_code = """
+class Model:
+    def predict(self, request):
+        return [2 for i in request['inputs']]
+"""
+        model_code_file_path = custom_model_control / "model" / "model.py"
+        with model_code_file_path.open("w") as model_code_file:
+            model_code_file.write(new_model_code)
+        # Give some time for inference server to start up
+        time.sleep(2)
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 2
+
+
 def _container_exists(container) -> bool:
     for row in Docker.client().ps():
         if row.id.startswith(container.id):

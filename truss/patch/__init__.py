@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, List
 
-from truss.patch.dir_hash import file_content_hash
+from truss.patch.dir_hash import file_content_hash_str
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import (
     Action,
@@ -25,12 +25,15 @@ def calc_truss_patch(
     patches = []
     for path in changed_paths["removed"]:
         if path.startswith(model_module_path):
+            relative_to_model_module_path = str(
+                Path(path).relative_to(model_module_path)
+            )
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=Action.REMOVE,
-                        path=path,
+                        path=relative_to_model_module_path,
                     ),
                 )
             )
@@ -38,6 +41,9 @@ def calc_truss_patch(
     for path in changed_paths["added"] + changed_paths["updated"]:
         if path.startswith(model_module_path):
             full_path = truss_dir / path
+            relative_to_model_module_path = str(
+                Path(path).relative_to(model_module_path)
+            )
             with full_path.open() as file:
                 content = file.read()
             patches.append(
@@ -45,7 +51,7 @@ def calc_truss_patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=Action.UPDATE,
-                        path=path,
+                        path=relative_to_model_module_path,
                         content=content,
                     ),
                 )
@@ -72,7 +78,7 @@ def calc_changed_paths(
     for path in common_paths:
         full_path: Path = root / path
         if full_path.is_file():
-            content_hash = file_content_hash(full_path)
+            content_hash = file_content_hash_str(full_path)
             previous_content_hash = previous_root_path_content_hashes[path]
             if content_hash != previous_content_hash:
                 updated_paths.add(path)

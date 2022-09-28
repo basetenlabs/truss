@@ -16,5 +16,6 @@ class TrussSignature:
     @staticmethod
     def from_dict(d) -> "TrussSignature":
         return TrussSignature(
-            content_hashes_by_path=d["content_hashes_by_path"], config=d["config"]
+            content_hashes_by_path=d["content_hashes_by_path"],
+            config=d["config"],
         )
