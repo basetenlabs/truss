@@ -80,6 +80,7 @@ class TrussConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
     description: str = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
+    use_control_plane: bool = False
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
 
@@ -114,6 +115,7 @@ class TrussConfig:
             bundled_packages_dir=d.get(
                 "bundled_packages_dir", DEFAULT_BUNDLED_PACKAGES_DIR
             ),
+            use_control_plane=d.get("use_control_plane", False),
         )
         config.validate()
         return config
@@ -147,6 +149,7 @@ class TrussConfig:
             "secrets": self.secrets,
             "description": self.description,
             "bundled_packages_dir": self.bundled_packages_dir,
+            "use_control_plane": self.use_control_plane,
             "spec_version": self.spec_version,
         }
 

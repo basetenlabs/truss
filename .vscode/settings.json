@@ -1,6 +1,7 @@
 {
   // Global settings that applies to all baseten developers
   "python.linting.flake8Enabled": true,
+  "python.linting.flake8Path": ".flake8",
   "python.formatting.provider": "black",
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,

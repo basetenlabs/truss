@@ -3,6 +3,7 @@ from pathlib import Path
 import click
 from jinja2 import Template
 from truss.constants import (
+    CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
     MODEL_README_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -24,6 +25,7 @@ from truss.utils import (
 )
 
 BUILD_SERVER_DIR_NAME = "server"
+BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 
 class ImageBuilderContext(TrussContext):
@@ -72,6 +74,11 @@ class ImageBuilder:
             SERVER_CODE_DIR,
             build_dir / BUILD_SERVER_DIR_NAME,
         )
+        if self._spec.config.use_control_plane:
+            copy_tree_path(
+                CONTROL_SERVER_CODE_DIR,
+                build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
+            )
         copy_file_path(
             TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME,
             build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,

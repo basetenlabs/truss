@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, List
 
 from truss.constants import TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
@@ -32,14 +32,36 @@ def get_images(labels: dict):
     return Docker.client().image.list(filters=_create_label_filters(labels))
 
 
-def get_urls_from_container(container):
+def get_urls_from_container(container_details):
     """Gets url where docker container is hosted."""
-    ports = container.network_settings.ports
-    valid_urls = []
-    for port in ports.values():
-        for urls in port:
-            valid_urls.append("http://" + urls["HostIp"] + ":" + urls["HostPort"])
-    return valid_urls
+    if (
+        container_details.network_settings is None
+        or container_details.network_settings.ports is None
+    ):
+        return {}
+    ports = container_details.network_settings.ports
+
+    def parse_port(port_protocol) -> int:
+        return int(port_protocol.split("/")[0])
+
+    def url_from_port_protocol_value(port_protocol_value: Dict[str, str]) -> str:
+        return (
+            "http://"
+            + port_protocol_value["HostIp"]
+            + ":"
+            + port_protocol_value["HostPort"]
+        )
+
+    def urls_from_port_protocol_values(
+        port_protocol_values: List[Dict[str, str]]
+    ) -> List[str]:
+        return [url_from_port_protocol_value(v) for v in port_protocol_values]
+
+    return {
+        parse_port(port_protocol): urls_from_port_protocol_values(value)
+        for port_protocol, value in ports.items()
+        if value is not None
+    }
 
 
 def kill_containers(labels: Dict[str, str]):
