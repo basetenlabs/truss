@@ -44,10 +44,10 @@ If your model uses [secrets](../develop/secrets.md), set `trusted=True` in the `
 
 ```python
 import baseten
-basten.deploy_truss(
+baseten.deploy_truss(
     my_truss,
     model_name="My Model",
-    trusted=True
+    is_trusted=True
 )
 ```
 
