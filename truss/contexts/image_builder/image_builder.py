@@ -15,6 +15,7 @@ from truss.constants import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
+from truss.patch.hash import directory_hash
 from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
 from truss.utils import (
@@ -36,6 +37,7 @@ class ImageBuilderContext(TrussContext):
 
 class ImageBuilder:
     def __init__(self, truss_dir: Path) -> None:
+        self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
 
     def build_image(self, build_dir: Path = None, tag: str = None, labels: dict = None):
@@ -102,6 +104,7 @@ class ImageBuilder:
                 config=self._spec.config,
                 data_dir_exists=data_dir_exists,
                 bundled_packages_dir_exists=bundled_packages_dir_exists,
+                truss_hash=directory_hash(self._truss_dir),
             )
             docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
             with docker_file_path.open("w") as docker_file:

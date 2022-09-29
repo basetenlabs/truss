@@ -1,5 +1,8 @@
+import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Dict
 
 import pytest
 
@@ -23,17 +26,23 @@ from truss.templates.control.control.helpers.types import (  # noqa
 
 
 @pytest.fixture
-def app(tmp_path, truss_container_fs):
-    inf_serv_home = truss_container_fs / "app"
-    control_app = create_app(
-        {
-            "inference_server_home": inf_serv_home,
-            "inference_server_process_args": ["python", "inference_server.py"],
-            "control_server_host": "0.0.0.0",
-            "control_server_port": 8081,
-        }
-    )
-    yield control_app
+def truss_original_hash():
+    return "1234"
+
+
+@pytest.fixture
+def app(truss_container_fs, truss_original_hash):
+    with _env_var({"HASH_TRUSS": truss_original_hash}):
+        inf_serv_home = truss_container_fs / "app"
+        control_app = create_app(
+            {
+                "inference_server_home": inf_serv_home,
+                "inference_server_process_args": ["python", "inference_server.py"],
+                "control_server_host": "0.0.0.0",
+                "control_server_port": 8081,
+            }
+        )
+        yield control_app
 
 
 @pytest.fixture()
@@ -122,9 +131,26 @@ def test_patch_model_code_delete(app, client):
 
 def _apply_patch(client, patch: Patch):
     try:
-        resp = client.post("/patch", json=[patch.to_dict()])
+        original_hash = client.get("/truss_hash").json["result"]
+        patch_request = {
+            "hash": "dummy",
+            "prev_hash": original_hash,
+            "patches": [patch.to_dict()],
+        }
+        resp = client.post("/patch", json=patch_request)
     finally:
         client.post("/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json
     assert "msg" in resp.json
+
+
+@contextmanager
+def _env_var(kvs: Dict[str, str]):
+    orig_env = os.environ.copy()
+    try:
+        os.environ.update(kvs)
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(orig_env)

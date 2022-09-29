@@ -2,7 +2,6 @@ import logging
 import sys
 
 from flask import Blueprint, current_app, request
-from helpers.types import Patch
 
 control_app = Blueprint("control", __name__)
 
@@ -12,10 +11,9 @@ logger = logging.getLogger(__name__)
 
 @control_app.route("/patch", methods=["POST"])
 def patch():
-    body = request.get_json()
+    patch_request = request.get_json()
     try:
-        patches = [Patch.from_dict(patch_dict) for patch_dict in body]
-        current_app.config["inference_server_controller"].apply_patch(patches)
+        current_app.config["inference_server_controller"].apply_patch(patch_request)
         logger.info("Patch applied successfully")
     except Exception:  # noqa
         ex_type, ex_value, _ = sys.exc_info()
@@ -24,6 +22,18 @@ def patch():
         return {"error": error_msg}
 
     return {"msg": "Patch applied successfully"}
+
+
+@control_app.route("/truss_hash", methods=["GET"])
+def truss_hash():
+    try:
+        t_hash = current_app.config["inference_server_controller"].truss_hash()
+    except Exception:  # noqa
+        ex_type, ex_value, _ = sys.exc_info()
+        error_msg = f"Failed to fetch truss hash: {ex_type}, {ex_value}"
+        logger.warning(error_msg)
+        return {"error": error_msg}
+    return {"result": t_hash}
 
 
 @control_app.route("/restart_inference_server", methods=["POST"])

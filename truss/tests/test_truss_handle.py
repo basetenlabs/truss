@@ -461,13 +461,16 @@ def test_control_truss_apply_patch(custom_model_control):
         result = th.docker_predict({"inputs": [1]}, tag=tag)
         assert result[0] == 1
 
+        running_hash = th.truss_hash_on_container()
         new_model_code = """
 class Model:
     def predict(self, request):
         return [2 for i in request['inputs']]
 """
-        th.apply_patch(
-            [
+        patch_request = {
+            "hash": "dummy",
+            "prev_hash": running_hash,
+            "patches": [
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
@@ -475,9 +478,11 @@ class Model:
                         path="model.py",
                         content=new_model_code,
                     ),
-                )
-            ]
-        )
+                ).to_dict(),
+            ],
+        }
+
+        th.patch_container(patch_request)
         # Give some time for inference server to start up
         time.sleep(2)
         result = th.docker_predict({"inputs": [1]}, tag=tag)

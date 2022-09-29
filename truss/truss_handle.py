@@ -140,6 +140,9 @@ class TrussHandle:
                 ],
                 gpus="all" if self._spec.config.resources.use_gpu else None,
             )
+            logger.info(
+                f"Model server started on port {local_port}, docker container id {container.id}"
+            )
         model_base_url = f"http://localhost:{local_port}/"
         try:
             _wait_for_model_server(model_base_url)
@@ -147,9 +150,6 @@ class TrussHandle:
             for log in self.container_logs():
                 logger.info(log)
             raise exc
-        logger.info(
-            f"Model server started on port {local_port}, docker container id {container.id}"
-        )
         return container
 
     def docker_predict(
@@ -356,7 +356,12 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
-    def apply_patch(self, patches: List[Patch]):
+    def patch_container(self, patch_request: dict):
+        """Patch changes onto the container running this Truss.
+
+        Useful for local incremental development.
+        TODO(pankaj): Turn patch_request into a dataclass
+        """
         if not self.spec.use_control_plane:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
@@ -370,11 +375,32 @@ class TrussHandle:
 
         container = containers[0]
         control_url = get_urls_from_container(container)[CONTROL_SERVER_PORT][0]
-        resp = requests.post(
-            f"{control_url}/patch", json=[patch.to_dict() for patch in patches]
-        )
+        resp = requests.post(f"{control_url}/patch", json=patch_request)
         resp.raise_for_status()
         return resp.json()
+
+    def truss_hash_on_container(self) -> Optional[str]:
+        """Get content hash of truss running on container."""
+        if not self.spec.use_control_plane:
+            raise ValueError(
+                "Not a control truss fetching truss hash is not supported."
+            )
+
+        containers = self.get_docker_containers_from_labels(
+            labels={TRUSS_DIR: str(self._truss_dir)}
+        )
+        if containers is None or len(containers) == 0:
+            return None
+
+        container = containers[0]
+        control_url = get_urls_from_container(container)[CONTROL_SERVER_PORT][0]
+        resp = requests.get(f"{control_url}/truss_hash")
+        resp.raise_for_status()
+        respj = resp.json()
+        if "error" in respj:
+            logger.error("Unable to get hash of running container.")
+            return None
+        return respj["result"]
 
     @property
     def is_control_truss(self):
@@ -414,6 +440,7 @@ class TrussHandle:
         """
         prev_sign_str = LocalConfigHandler.get_signature(prev_truss_hash)
         if prev_sign_str is None:
+            logger.info(f"Signature not found for truss for hash {prev_truss_hash}")
             return None
 
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
@@ -463,21 +490,32 @@ class TrussHandle:
             return None
 
         container = containers[0]
-        labels = container.config.labels
-        running_truss_hash = labels.get(TRUSS_HASH, None)
+        running_truss_hash = self.truss_hash_on_container()
         if running_truss_hash is None:
             return None
 
         current_hash = self._truss_hash()
         if running_truss_hash == current_hash:
             return container
+
+        logger.info(
+            "Truss supports patching and a running "
+            "container found: attempting to patch the container"
+        )
         patches = self.calc_patch(running_truss_hash)
         if patches is None:
+            logger.info("Unable to calculate patch.")
             return None
 
-        resp = self.apply_patch(patches)
+        patch_request = {
+            "hash": current_hash,
+            "prev_hash": running_truss_hash,
+            "patches": [patch.to_dict() for patch in patches],
+        }
+        resp = self.patch_container(patch_request)
         if "error" in resp:
-            raise f'Failed to patch control truss {resp["error"]}'
+            raise RuntimeError(f'Failed to patch control truss {resp["error"]}')
+        self._store_signature()
         return container
 
     def _truss_hash(self) -> str:
