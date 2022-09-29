@@ -400,10 +400,23 @@ class TrussHandle:
 
         self._update_config(enable_control_plane_fn)
 
+    def calc_patch(self, prev_truss_hash: str) -> Optional[List[Patch]]:
+        """Calculates patch of current truss from previous.
+
+        Returns None if signature cannot be found locally for previous truss hash
+        or if the change cannot be expressed with currently supported patches.
+        """
+        prev_sign_str = LocalConfigHandler.get_signature(prev_truss_hash)
+        if prev_sign_str is None:
+            return None
+
+        prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
+        return calc_truss_patch(self._truss_dir, prev_sign)
+
     def _store_signature(self):
         """Store truss signature"""
         sign = calc_truss_signature(self._truss_dir)
-        truss_hash = directory_hash(self._truss_dir)
+        truss_hash = self._truss_hash()
         LocalConfigHandler.add_signature(truss_hash, json.dumps(sign.to_dict()))
 
     def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
@@ -419,15 +432,7 @@ class TrussHandle:
 
     def _get_labels(self):
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
-        # If mod time hasn't changed then hash must be the same
-        if (
-            self._hash_for_mod_time is not None
-            and self._hash_for_mod_time[0] == truss_mod_time
-        ):
-            truss_hash = self._hash_for_mod_time[1]
-        else:
-            truss_hash = directory_hash(self._truss_dir)
-            self._hash_for_mod_time = (truss_mod_time, truss_hash)
+        truss_hash = self._truss_hash()
         return {
             TRUSS_MODIFIED_TIME: truss_mod_time,
             TRUSS_DIR: self._truss_dir,
@@ -457,20 +462,30 @@ class TrussHandle:
         if running_truss_hash is None:
             return None
 
-        current_hash = directory_hash(self._truss_dir)
+        current_hash = self._truss_hash()
         if running_truss_hash == current_hash:
             return container
-        prev_sign_str = LocalConfigHandler.get_signature(running_truss_hash)
-        prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
-        patches = calc_truss_patch(self._truss_dir, prev_sign)
+        patches = self.calc_patch(running_truss_hash)
         if patches is None:
-            # Change cannot be expressed with currently supported patch types
             return None
 
         resp = self.apply_patch(patches)
         if "error" in resp:
             raise f'Failed to patch control truss {resp["error"]}'
         return container
+
+    def _truss_hash(self) -> str:
+        truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
+        # If mod time hasn't changed then hash must be the same
+        if (
+            self._hash_for_mod_time is not None
+            and self._hash_for_mod_time[0] == truss_mod_time
+        ):
+            truss_hash = self._hash_for_mod_time[1]
+        else:
+            truss_hash = directory_hash(self._truss_dir)
+            self._hash_for_mod_time = (truss_mod_time, truss_hash)
+        return truss_hash
 
 
 def _prediction_flow(model, request: dict):
