@@ -40,7 +40,7 @@ Head over to [your Baseten account](https://app.baseten.co) to see the model dep
 
 ### Deploying with secrets
 
-If your model uses [secrets](../develop/secrets.md), set `trusted=True` in the `deploy_truss` command to enable your model to access secrets:
+If your model uses [secrets](../develop/secrets.md), set `is_trusted=True` in the `deploy_truss` command to enable your model to access secrets:
 
 ```python
 import baseten
