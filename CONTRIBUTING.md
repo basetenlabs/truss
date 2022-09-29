@@ -14,6 +14,8 @@ To get started contributing to the library, all you have to do is clone this rep
 
 ### Setup
 
+**PLEASE NOTE:** the ML ecosystem in general is still not well supported on M1 Macs, and as such, we do not recommend or support local development on M1 for Truss. Truss is well-optimized for use with GitHub Codespaces and other container-based development environments.
+
 We use `asdf` to manage Python binaries and `poetry` to manage Python dependencies.
 
 For development in a macOS environment, we use `brew` to manage system packages.

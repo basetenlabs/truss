@@ -217,4 +217,4 @@ Secret names need to confirm to the [k8s secret name guidelines](https://kuberne
 How secrets are mounted at runtime depends on the serving environment. For example, when
 running on Docker locally, Truss allows specifying secrets in
 `~/.truss/config.yaml`, while on Baseten, secrets can be specified as regular
-[organization secrets](https://docs.baseten.co/applications/files/secret-management).
+[organization secrets](https://docs.baseten.co/settings/secrets).

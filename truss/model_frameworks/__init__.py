@@ -26,6 +26,7 @@ SUPPORTED_MODEL_FRAMEWORKS = [
     ModelFrameworkType.TENSORFLOW,
     ModelFrameworkType.HUGGINGFACE_TRANSFORMER,
     ModelFrameworkType.XGBOOST,
+    ModelFrameworkType.PYTORCH,
     ModelFrameworkType.LIGHTGBM,
 ]
 

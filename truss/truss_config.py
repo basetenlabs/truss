@@ -21,6 +21,8 @@ DEFAULT_MODEL_INPUT_TYPE = "Any"
 DEFAULT_PYTHON_VERSION = "py39"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
+DEFAULT_SPEC_VERSION = "2.0"
+DEFAULT_SPEC_VERSION_FROM_DIRECTORY = "1.0"
 
 DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
@@ -79,10 +81,16 @@ class TrussConfig:
     description: str = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
     use_control_plane: bool = False
+    # spec_version is a version string
+    spec_version: str = DEFAULT_SPEC_VERSION
 
     @staticmethod
     def from_dict(d):
         config = TrussConfig(
+            # Users that are calling `from_directory` on an existing Truss
+            # should default to 1.0 whereas users creating a new Truss
+            # should default to 2.0.
+            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION_FROM_DIRECTORY),
             model_type=d.get("model_type", DEFAULT_MODEL_TYPE),
             model_framework=ModelFrameworkType(
                 d.get("model_framework", DEFAULT_MODEL_FRAMEWORK_TYPE.value)
@@ -142,6 +150,7 @@ class TrussConfig:
             "description": self.description,
             "bundled_packages_dir": self.bundled_packages_dir,
             "use_control_plane": self.use_control_plane,
+            "spec_version": self.spec_version,
         }
 
     def clone(self):
