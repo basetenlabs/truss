@@ -94,12 +94,56 @@ def test_mk_truss(sklearn_rfc_model, tmp_path):
     assert spec.requirements == requirements
 
 
+def test_mk_truss_pipeline(sklearn_rfc_model, tmp_path):
+    def inference(request: dict):
+        inputs = request["inputs"]
+        response = sklearn_rfc_model.predict([inputs])[0]
+        return {"result": response}
+
+    dir_path = tmp_path / "truss"
+    data_file_path = tmp_path / "data.txt"
+    with data_file_path.open("w") as data_file:
+        data_file.write("test")
+    req_file_path = tmp_path / "requirements.txt"
+    requirements = [
+        "tensorflow==2.3.1",
+        "uvicorn==0.12.2",
+    ]
+    with req_file_path.open("w") as req_file:
+        for req in requirements:
+            req_file.write(f"{req}\n")
+    scaf = mk_truss(
+        inference,
+        target_directory=dir_path,
+        data_files=[str(data_file_path)],
+        requirements_file=str(req_file_path),
+    )
+    spec = scaf.spec
+    assert spec.model_module_dir.exists()
+    assert spec.truss_dir == dir_path
+    assert spec.config_path.exists()
+    assert spec.data_dir.exists()
+    assert (spec.data_dir / "data.txt").exists()
+    assert spec.requirements == requirements
+
+
 def test_truss_sklearn_predict(sklearn_rfc_model):
     with _model_server_predict(sklearn_rfc_model, {"inputs": [[0, 0, 0, 0]]}) as result:
         assert "predictions" in result
         assert "probabilities" in result
         probabilities = result["probabilities"]
         assert np.shape(probabilities) == (1, 3)
+
+
+def test_truss_sklearn_predict_pipeline(sklearn_rfc_model):
+    def inference(request: dict):
+        inputs = request["inputs"]
+        response = sklearn_rfc_model.predict([inputs])[0]
+        return {"result": response}
+
+    with _model_server_predict_pipeline(inference, {"inputs": [0, 0, 0, 0]}) as result:
+        assert "result" in result
+        assert result["result"] == 0
 
 
 def test_truss_keras_predict(keras_mpg_model):
@@ -109,6 +153,21 @@ def test_truss_keras_predict(keras_mpg_model):
     ) as result:
         assert "predictions" in result
         predictions = result["predictions"]
+        assert np.shape(predictions) == (1, 1)
+
+
+def test_truss_keras_predict_pipeline(keras_mpg_model):
+    def inference(request: dict):
+        inputs = request["inputs"]
+        response = keras_mpg_model.predict([inputs])
+        return {"result": response}
+
+    with _model_server_predict_pipeline(
+        inference,
+        {"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]},
+    ) as result:
+        assert "result" in result
+        predictions = result["result"]
         assert np.shape(predictions) == (1, 1)
 
 
@@ -123,10 +182,10 @@ def test_truss_pytorch_predict(pytorch_model):
 
 
 def test_truss_huggingface_transformer_predict(
-    huggingface_transformer_t5_small_model,
+    huggingface_transformer_t5_small_pipeline,
 ):
     with _model_server_predict(
-        huggingface_transformer_t5_small_model,
+        huggingface_transformer_t5_small_pipeline,
         {"inputs": ["My name is Sarah and I live in London"]},
     ) as result:
         print(result)
@@ -162,9 +221,46 @@ def test_cleanup(sklearn_rfc_model, tmp_path):
     assert unique_files == {"config.yaml"}
 
 
+def test_truss_via_simple_mk_pipeline():
+    def generate(request):
+        x = request["x"]
+        return {"y": x + 1}
+
+    with _model_server_predict_pipeline(generate, {"x": 1}) as result:
+        assert result["y"] == 2
+
+
+def test_truss_via_t5_mk_pipeline(
+    huggingface_transformer_t5_small_model, huggingface_transformer_t5_small_tokenizer
+):
+    def generate(request):
+        prompt = request["prompt"]
+        input_ids = huggingface_transformer_t5_small_tokenizer(
+            prompt, return_tensors="pt"
+        ).input_ids
+        return {
+            "response": huggingface_transformer_t5_small_tokenizer.decode(
+                huggingface_transformer_t5_small_model.generate(input_ids)[0],
+                skip_special_tokens=True,
+            )
+        }
+
+    with _model_server_predict_pipeline(
+        generate, {"prompt": "translate to french: hello"}
+    ) as result:
+        assert result["response"].startswith("Hallo")
+
+
 @contextmanager
 def _model_server_predict(model, model_input):
     with tempfile.TemporaryDirectory() as dir_name:
         sc = mk_truss(model, target_directory=dir_name)
         result = sc.server_predict(model_input)
         yield result
+
+
+@contextmanager
+def _model_server_predict_pipeline(pipeline, model_input):
+    sc = mk_truss(pipeline)
+    result = sc.server_predict(model_input)
+    yield result
