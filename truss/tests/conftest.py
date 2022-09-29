@@ -444,10 +444,22 @@ def keras_mpg_model(mpg_dataset):
 
 
 @pytest.fixture(scope="session")
-def huggingface_transformer_t5_small_model():
+def huggingface_transformer_t5_small_pipeline():
     tokenizer = AutoTokenizer.from_pretrained("t5-small")
     model = AutoModelWithLMHead.from_pretrained("t5-small")
     return pipeline("text2text-generation", model=model, tokenizer=tokenizer)
+
+
+@pytest.fixture(scope="session")
+def huggingface_transformer_t5_small_model():
+    model = AutoModelWithLMHead.from_pretrained("t5-small")
+    return model
+
+
+@pytest.fixture(scope="session")
+def huggingface_transformer_t5_small_tokenizer():
+    tokenizer = AutoTokenizer.from_pretrained("t5-small")
+    return tokenizer
 
 
 @pytest.fixture

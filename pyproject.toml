@@ -27,6 +27,7 @@ Jinja2 = "^3.1.2"
 python-on-whales = "^0.46.0"
 tenacity = "^8.0.1"
 single-source = "^0.3.0"
+cloudpickle = "^2.2.0"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"

@@ -38,9 +38,11 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     except StopIteration:
         return set()
 
-    imports = must_include_deps.copy() if must_include_deps else set()
+    if not must_include_deps:
+        must_include_deps = set()
+
     pkg_candidates = _extract_packages_from_frame(relevant_stack[0].frame)
-    imports = imports.union(pkg_candidates)
+    imports = must_include_deps.union(pkg_candidates)
     requirements = set([])
 
     # Must refresh working set manually to get latest installed
@@ -49,9 +51,18 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
     )
 
     # Cross-check the names of installed packages vs. imported packages to get versions
-    for m in pkg_resources.working_set:
-        if m.project_name in imports and m.project_name not in IGNORED_PACKAGES:
-            requirements.add(f"{m.project_name}=={m.version}")
+    for pkg_in_frame in pkg_resources.working_set:
+        if (
+            pkg_in_frame.project_name in imports
+            and pkg_in_frame.project_name not in IGNORED_PACKAGES
+        ):
+            requirements.add(f"{pkg_in_frame.project_name}=={pkg_in_frame.version}")
+            # Remove the package from imports as it was added into requirements
+            imports.remove(pkg_in_frame.project_name)
+
+    # Add the must include deps not found in frame to requirements
+    deps_not_found_in_frame = imports.intersection(must_include_deps)
+    requirements = requirements.union(deps_not_found_in_frame)
 
     return requirements
 
