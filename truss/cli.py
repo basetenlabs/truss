@@ -117,9 +117,7 @@ def build_image(target_directory, build_dir, tag):
 @click.argument("build_dir", required=False)
 @click.option("--tag", help="Docker build image tag")
 @click.option("--port", type=int, default=8080, help="Local port used to run image")
-@click.option(
-    "--detach", is_flag=True, default=False, help="Flag for detaching process"
-)
+@click.option("--detach", is_flag=True, default=True, help="Flag for detaching process")
 @error_handling
 def run_image(target_directory, build_dir, tag, port, detach):
     """
