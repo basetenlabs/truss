@@ -518,23 +518,23 @@ class Model:
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
 
 
-@patch("truss.truss_handle.directory_hash")
+@patch("truss.truss_handle.directory_content_hash")
 def test_truss_hash_caching_based_on_max_mod_time(
-    directory_hash_patcher,
+    directory_content_patcher,
     custom_model_truss_dir,
 ):
-    directory_hash_patcher.return_value = "mock_hash"
+    directory_content_patcher.return_value = "mock_hash"
     th = TrussHandle(custom_model_truss_dir)
     labels = th._get_labels()
     labels2 = th._get_labels()
     assert labels == labels2
-    directory_hash_patcher.assert_called_once()
+    directory_content_patcher.assert_called_once()
 
     time.sleep(0.1)  # Make sure different mod time
     (custom_model_truss_dir / "model" / "model.py").touch()
     labels3 = th._get_labels()
     assert labels3 != labels
-    directory_hash_patcher.call_count == 2
+    directory_content_patcher.call_count == 2
 
 
 @pytest.mark.integration

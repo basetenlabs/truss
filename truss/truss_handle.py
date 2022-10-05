@@ -31,15 +31,14 @@ from truss.docker import (
 )
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
-from truss.patch import calc_truss_patch
-from truss.patch.hash import directory_hash
+from truss.patch.calc_patch import calc_truss_patch
+from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
-from truss.templates.control.control.helpers.types import Patch
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.types import Example
+from truss.types import Example, PatchDetails
 from truss.utils import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
@@ -432,7 +431,7 @@ class TrussHandle:
 
         self._update_config(enable_control_plane_fn)
 
-    def calc_patch(self, prev_truss_hash: str) -> Optional[List[Patch]]:
+    def calc_patch(self, prev_truss_hash: str) -> Optional[PatchDetails]:
         """Calculates patch of current truss from previous.
 
         Returns None if signature cannot be found locally for previous truss hash
@@ -444,7 +443,18 @@ class TrussHandle:
             return None
 
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
-        return calc_truss_patch(self._truss_dir, prev_sign)
+        patch_ops = calc_truss_patch(self._truss_dir, prev_sign)
+        if patch_ops is None:
+            return None
+
+        next_sign = calc_truss_signature(self._truss_dir)
+        return PatchDetails(
+            prev_signature=prev_sign,
+            prev_hash=prev_truss_hash,
+            next_hash=directory_content_hash(self._truss_dir),
+            next_signature=next_sign,
+            patch_ops=patch_ops,
+        )
 
     def _store_signature(self):
         """Store truss signature"""
@@ -502,15 +512,15 @@ class TrussHandle:
             "Truss supports patching and a running "
             "container found: attempting to patch the container"
         )
-        patches = self.calc_patch(running_truss_hash)
-        if patches is None:
+        patch_details = self.calc_patch(running_truss_hash)
+        if patch_details is None:
             logger.info("Unable to calculate patch.")
             return None
 
         patch_request = {
             "hash": current_hash,
             "prev_hash": running_truss_hash,
-            "patches": [patch.to_dict() for patch in patches],
+            "patches": [patch.to_dict() for patch in patch_details.patch_ops],
         }
         resp = self.patch_container(patch_request)
         if "error" in resp:
@@ -527,7 +537,7 @@ class TrussHandle:
         ):
             truss_hash = self._hash_for_mod_time[1]
         else:
-            truss_hash = directory_hash(self._truss_dir)
+            truss_hash = directory_content_hash(self._truss_dir)
             self._hash_for_mod_time = (truss_mod_time, truss_hash)
         return truss_hash
 

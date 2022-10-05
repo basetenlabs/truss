@@ -11,6 +11,10 @@ class LocalConfigHandler:
     TRUSS_CONFIG_DIR = Path.home() / ".truss"
 
     @staticmethod
+    def _ensure_config_dir():
+        LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
+
+    @staticmethod
     def get_config() -> LocalConfig:
         if LocalConfigHandler._config_path().exists():
             return LocalConfig.from_yaml(LocalConfigHandler._config_path())
@@ -19,6 +23,7 @@ class LocalConfigHandler:
     @staticmethod
     def sync_secrets_mount_dir():
         """Syncs config secrets into a directory form, meant for mounting onto docker containers."""
+        LocalConfigHandler._ensure_config_dir()
         local_config = LocalConfigHandler.get_config()
         secrets = local_config.secrets
         secrets_dir = LocalConfigHandler.secrets_dir_path()
@@ -36,8 +41,8 @@ class LocalConfigHandler:
 
     @staticmethod
     def set_secret(secret_name: str, secret_value: str):
+        LocalConfigHandler._ensure_config_dir()
         validate_secret_name(secret_name)
-        LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
         local_config = LocalConfigHandler.get_config()
         new_secrets = {
             **local_config.secrets,
@@ -48,6 +53,7 @@ class LocalConfigHandler:
 
     @staticmethod
     def remove_secret(secret_name: str):
+        LocalConfigHandler._ensure_config_dir()
         LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
         local_config = LocalConfigHandler.get_config()
         new_secrets = copy.deepcopy(local_config.secrets)
@@ -69,6 +75,7 @@ class LocalConfigHandler:
 
     @staticmethod
     def add_signature(truss_hash: str, signature: str):
+        LocalConfigHandler._ensure_config_dir()
         signature_dir = LocalConfigHandler._signatures_dir_path()
         signature_dir.mkdir(exist_ok=True)
         with (signature_dir / truss_hash).open("w") as signature_file:
@@ -76,6 +83,7 @@ class LocalConfigHandler:
 
     @staticmethod
     def get_signature(truss_hash: str) -> Optional[str]:
+        LocalConfigHandler._ensure_config_dir()
         signature_dir = LocalConfigHandler._signatures_dir_path()
         signature_dir.mkdir(exist_ok=True)
         signature_file_path = signature_dir / truss_hash

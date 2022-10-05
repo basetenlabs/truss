@@ -2,15 +2,17 @@ import hashlib
 from pathlib import Path
 
 
-def directory_hash(root: Path) -> str:
+def directory_content_hash(root: Path) -> str:
     """Calculate content based hash of a filesystem directory.
 
     Rough algo: Sort all files by path, then take hash of a content stream, where
     we write path hash to the stream followed by hash of content if path is a file.
     Note the hash of hash aspect.
+
+    Also, note that name of the directory is not taken into account, only the contents
+    underneath. Directory will have the same hash, even if renamed.
     """
     hasher = hashlib.sha256()
-    hasher.update(root.name.encode("utf-8"))
     paths = [path for path in root.glob("**/*")]
     paths.sort(key=lambda p: p.relative_to(root))
     for path in paths:

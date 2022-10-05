@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Callable
 
 import pytest
-from truss.patch.hash import directory_hash, file_content_hash, file_content_hash_str
+from truss.patch.hash import (
+    directory_content_hash,
+    file_content_hash,
+    file_content_hash_str,
+)
 
 
 @pytest.fixture
@@ -121,9 +125,9 @@ def test_file_content_hash_str(tmp_path):
 def _verify_with_dir_modification(
     target_dir: Path, op: Callable[[Path], Path], should_match: bool
 ):
-    hash1 = directory_hash(target_dir)
+    hash1 = directory_content_hash(target_dir)
     new_target_dir = op(target_dir)
-    hash2 = directory_hash(new_target_dir or target_dir)
+    hash2 = directory_content_hash(new_target_dir or target_dir)
     if should_match:
         assert hash1 == hash2
     else:
