@@ -166,7 +166,9 @@ def run_image(target_directory, build_dir, tag, port, detach):
 )
 @error_handling
 @echo_output
-def predict(target_directory, request, build_dir, tag, port, run_local, request_file):
+def predict(
+    target_directory, request, build_dir, tag, port, run_local, request_file, kill=True
+):
     """Runs prediction for a Truss in a docker image or locally"""
     if request is not None:
         request_data = json.loads(request)
@@ -177,6 +179,8 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
         raise ValueError("At least one of request or request-file must be supplied.")
 
     tr = _get_truss_from_directory(target_directory=target_directory)
+    if kill:
+        tr.kill_container()
     if run_local:
         return tr.server_predict(request_data)
     else:
