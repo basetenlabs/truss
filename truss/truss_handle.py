@@ -12,7 +12,6 @@ import requests
 import yaml
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from truss.constants import (
-    CONTROL_SERVER_PORT,
     INFERENCE_SERVER_PORT,
     TRUSS,
     TRUSS_DIR,
@@ -94,7 +93,6 @@ class TrussHandle:
         tag: str = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
-        control_port: int = CONTROL_SERVER_PORT,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -104,8 +102,6 @@ class TrussHandle:
             build_dir: Directory to use for creating docker build context. tag:
             Tags to apply to docker image. local_port: Local port to forward
             inference server to. detach: Run docker container in detached mode.
-            control_port: Only for control trusses, Local port to forward
-            control server to.
 
         Returns:
             Container, which can be used to get information about the running,
@@ -117,8 +113,6 @@ class TrussHandle:
             built_tag = image.repo_tags[0]
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
-            if self.spec.use_control_plane:
-                publish_ports.append([control_port, CONTROL_SERVER_PORT])
 
             self.kill_container()
             labels = {
@@ -158,7 +152,6 @@ class TrussHandle:
         tag: str = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
-        control_port: int = CONTROL_SERVER_PORT,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -174,9 +167,8 @@ class TrussHandle:
                 tag,
                 local_port=local_port,
                 detach=detach,
-                control_port=control_port,
             )
-        model_base_url = get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+        model_base_url = _get_url_from_container(container)
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
         return resp.json()
@@ -373,8 +365,8 @@ class TrussHandle:
             )
 
         container = containers[0]
-        control_url = get_urls_from_container(container)[CONTROL_SERVER_PORT][0]
-        resp = requests.post(f"{control_url}/patch", json=patch_request)
+        model_base_url = _get_url_from_container(container)
+        resp = requests.post(f"{model_base_url}/control/patch", json=patch_request)
         resp.raise_for_status()
         return resp.json()
 
@@ -392,8 +384,8 @@ class TrussHandle:
             return None
 
         container = containers[0]
-        control_url = get_urls_from_container(container)[CONTROL_SERVER_PORT][0]
-        resp = requests.get(f"{control_url}/truss_hash")
+        model_base_url = _get_url_from_container(container)
+        resp = requests.get(f"{model_base_url}/control/truss_hash")
         resp.raise_for_status()
         respj = resp.json()
         if "error" in respj:
@@ -595,3 +587,7 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
     for index, example in enumerate(examples):
         if example.name == example_name:
             return index
+
+
+def _get_url_from_container(container) -> str:
+    return get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]

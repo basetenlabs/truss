@@ -40,6 +40,7 @@ def app(truss_container_fs, truss_original_hash):
                 "inference_server_process_args": ["python", "inference_server.py"],
                 "control_server_host": "0.0.0.0",
                 "control_server_port": 8081,
+                "inference_server_port": 8082,
             }
         )
         yield control_app
@@ -51,13 +52,13 @@ def client(app):
 
 
 def test_restart_server(client):
-    resp = client.post("/stop_inference_server")
+    resp = client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json
     assert "msg" in resp.json
 
     # Try second restart
-    resp = client.post("/stop_inference_server")
+    resp = client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json
     assert "msg" in resp.json
@@ -131,15 +132,15 @@ def test_patch_model_code_delete(app, client):
 
 def _apply_patch(client, patch: Patch):
     try:
-        original_hash = client.get("/truss_hash").json["result"]
+        original_hash = client.get("/control/truss_hash").json["result"]
         patch_request = {
             "hash": "dummy",
             "prev_hash": original_hash,
             "patches": [patch.to_dict()],
         }
-        resp = client.post("/patch", json=patch_request)
+        resp = client.post("/control/patch", json=patch_request)
     finally:
-        client.post("/stop_inference_server")
+        client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json
     assert "msg" in resp.json

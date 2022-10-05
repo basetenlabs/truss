@@ -51,13 +51,13 @@ def test_dir_hash_different_if_file_file_content_modified(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_target_dir_renamed(tmp_path, dir_hash_test_dir):
+def test_dir_hash_same_if_target_dir_renamed(tmp_path, dir_hash_test_dir):
     def mod(dir_path):
         target = tmp_path / "renamed"
         dir_path.rename(target)
         return target
 
-    _verify_with_dir_modification(dir_hash_test_dir, mod, False)
+    _verify_with_dir_modification(dir_hash_test_dir, mod, True)
 
 
 def test_dir_hash_same_if_target_dir_moved_but_not_renamed(tmp_path, dir_hash_test_dir):
