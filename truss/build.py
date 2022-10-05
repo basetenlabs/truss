@@ -214,7 +214,7 @@ def from_directory(truss_directory: str) -> TrussHandle:
 
 
 def mk_truss(
-    obj: Any,
+    model: Any,
     target_directory: str = None,
     data_files: List[str] = None,
     requirements_file: str = None,
@@ -224,14 +224,14 @@ def mk_truss(
     # so we first attempt to make Truss via a model object
 
     model_scaffold = mk_truss_from_model_with_exception_handler(
-        obj, target_directory, data_files, requirements_file, bundled_packages
+        model, target_directory, data_files, requirements_file, bundled_packages
     )
     if model_scaffold:
         return model_scaffold
     else:
-        if callable(obj):
+        if callable(model):
             return mk_truss_from_pipeline(
-                obj, target_directory, data_files, requirements_file, bundled_packages
+                model, target_directory, data_files, requirements_file, bundled_packages
             )
 
     raise ValueError(
