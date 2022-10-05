@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from flask import Blueprint, current_app, request
+from flask import Blueprint, current_app, jsonify, request
 
 control_app = Blueprint("control", __name__)
 
@@ -51,3 +51,10 @@ def restart_inference_server():
 def stop_inference_server():
     current_app.config["inference_server_controller"].stop()
     return {"msg": "Inference server stopped successfully"}
+
+
+@control_app.route("/", defaults={"path": ""})
+@control_app.route("/<path:path>")
+def catch_all(path):
+    # todo proxy to inference server here
+    return jsonify({"ok": True})

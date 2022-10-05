@@ -1,3 +1,5 @@
+import os
+
 import yaml
 from common.truss_server import TrussServer
 from model_wrapper import ModelWrapper
@@ -10,4 +12,5 @@ if __name__ == "__main__":
         config = yaml.safe_load(config_file)
         model = ModelWrapper(config)
         model.load()
-        TrussServer(workers=1).start([model])
+        port = int(os.environ.get("INFERENCE_SERVER_PORT", "8080"))
+        TrussServer(workers=1, http_port=port).start([model])
