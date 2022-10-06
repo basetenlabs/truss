@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from truss.patch import calc_truss_patch
+from truss.patch.calc_patch import calc_truss_patch
 from truss.patch.signature import calc_truss_signature
 from truss.templates.control.control.helpers.types import (
     Action,

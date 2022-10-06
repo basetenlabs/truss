@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -20,7 +21,7 @@ from helpers.types import Action, ModelCodePatch, Patch, PatchType  # noqa
 
 @pytest.fixture
 def patch_applier(truss_container_fs):
-    return PatchApplier(truss_container_fs / "app")
+    return PatchApplier(truss_container_fs / "app", Mock())
 
 
 def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):

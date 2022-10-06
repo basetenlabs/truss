@@ -69,6 +69,6 @@ class Patch:
 
     @staticmethod
     def from_dict(patch_dict: dict):
-        typ = patch_dict["type"]
-        body = PATCH_BODY_BY_TYPE[PatchType(typ)].from_dict(patch_dict["body"])
+        typ = PatchType(patch_dict["type"])
+        body = PATCH_BODY_BY_TYPE[typ].from_dict(patch_dict["body"])
         return Patch(typ, body)

@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Callable
 
 import pytest
-from truss.patch.hash import directory_hash, file_content_hash, file_content_hash_str
+from truss.patch.hash import (
+    directory_content_hash,
+    file_content_hash,
+    file_content_hash_str,
+)
 
 
 @pytest.fixture
@@ -47,13 +51,13 @@ def test_dir_hash_different_if_file_file_content_modified(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_target_dir_renamed(tmp_path, dir_hash_test_dir):
+def test_dir_hash_same_if_target_dir_renamed(tmp_path, dir_hash_test_dir):
     def mod(dir_path):
         target = tmp_path / "renamed"
         dir_path.rename(target)
         return target
 
-    _verify_with_dir_modification(dir_hash_test_dir, mod, False)
+    _verify_with_dir_modification(dir_hash_test_dir, mod, True)
 
 
 def test_dir_hash_same_if_target_dir_moved_but_not_renamed(tmp_path, dir_hash_test_dir):
@@ -121,9 +125,9 @@ def test_file_content_hash_str(tmp_path):
 def _verify_with_dir_modification(
     target_dir: Path, op: Callable[[Path], Path], should_match: bool
 ):
-    hash1 = directory_hash(target_dir)
+    hash1 = directory_content_hash(target_dir)
     new_target_dir = op(target_dir)
-    hash2 = directory_hash(new_target_dir or target_dir)
+    hash2 = directory_content_hash(new_target_dir or target_dir)
     if should_match:
         assert hash1 == hash2
     else:

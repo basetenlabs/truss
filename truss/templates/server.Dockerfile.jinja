@@ -73,8 +73,6 @@ RUN pip install -r server_requirements.txt
 COPY ./requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
-ENV PORT 8080
-
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 COPY ./server /app
@@ -98,8 +96,13 @@ ENV {{ env_var_name }} {{ env_var_value }}
 
 {% if config.use_control_plane %}
 ENV HASH_TRUSS {{truss_hash}}
+ENV CONTROL_SERVER_PORT 8080
+ENV INFERENCE_SERVER_PORT 8090
 RUN python -m venv .env && .env/bin/pip3 install -r /control/requirements.txt
 CMD exec .env/bin/python3 /control/control/server.py
 {% else %}
+
+ENV INFERENCE_SERVER_PORT 8080
+
 CMD exec python3 /app/inference_server.py
 {% endif %}
