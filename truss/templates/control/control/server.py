@@ -36,7 +36,12 @@ if __name__ == "__main__":
             wait=wait_fixed(1),
         ):
             with attempt:
-                requests.post(patch_ping_url)
+                # Fire and forget
+                try:
+                    application.logger.info(f"Pinging {patch_ping_url} for patch")
+                    requests.post(patch_ping_url, timeout=1)
+                except requests.Timeout:
+                    pass
 
     application.logger.info(f"Starting control server on port {CONTROL_SERVER_PORT}")
     server = create_server(

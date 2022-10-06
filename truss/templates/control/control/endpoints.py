@@ -1,5 +1,3 @@
-import sys
-
 import requests
 from flask import Blueprint, Response, current_app, jsonify, request
 from requests.exceptions import ConnectionError
@@ -13,7 +11,6 @@ control_app = Blueprint("control", __name__)
 
 @control_app.route("/")
 def index():
-    current_app.logger.warning("index")
     return jsonify({})
 
 
@@ -47,10 +44,9 @@ def patch():
     try:
         current_app.config["inference_server_controller"].apply_patch(patch_request)
         current_app.logger.info("Patch applied successfully")
-    except Exception:  # noqa
-        ex_type, ex_value, _ = sys.exc_info()
-        error_msg = f"Failed to apply patch: {ex_type}, {ex_value}"
-        current_app.logger.warning(error_msg)
+    except Exception as exc:  # noqa
+        error_msg = f"Failed to apply patch: {type(exc)}, {exc}"
+        current_app.logger.exception(exc, extra={"stack": True})
         return {"error": error_msg}
 
     return {"msg": "Patch applied successfully"}
@@ -60,10 +56,10 @@ def patch():
 def truss_hash():
     try:
         t_hash = current_app.config["inference_server_controller"].truss_hash()
-    except Exception:  # noqa
-        ex_type, ex_value, _ = sys.exc_info()
-        error_msg = f"Failed to fetch truss hash: {ex_type}, {ex_value}"
-        current_app.logger.warning(error_msg)
+    except Exception as exc:  # noqa
+        error_msg = f"Failed to fetch truss hash: {type(exc)}, {exc}"
+        # todo(pankaj): Double check if extra is necessary here
+        current_app.logger.exception(exc, extra={"stack": True})
         return {"error": error_msg}
     return {"result": t_hash}
 
@@ -72,14 +68,20 @@ def truss_hash():
 def restart_inference_server():
     try:
         current_app.config["inference_server_controller"].restart()
-    except Exception:  # noqa
-        ex_type, ex_value, _ = sys.exc_info()
-        return {"error": f"Failed to restart inference server: {ex_type}, {ex_value}"}
+    except Exception as exc:  # noqa
+        error_msg = f"Failed to restart inference server: {type(exc)}, {exc}"
+        current_app.logger.exception(exc, extra={"stack": True})
+        return {"error": error_msg}
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.route("/control/stop_inference_server", methods=["POST"])
 def stop_inference_server():
-    current_app.config["inference_server_controller"].stop()
+    try:
+        current_app.config["inference_server_controller"].stop()
+    except Exception as exc:  # noqa
+        error_msg = f"Failed to stop inference server: {type(exc)}, {exc}"
+        current_app.logger.exception(exc, extra={"stack": True})
+        return {"error": error_msg}
     return {"msg": "Inference server stopped successfully"}

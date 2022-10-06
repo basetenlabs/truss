@@ -75,6 +75,9 @@ class LocalConfigHandler:
 
     @staticmethod
     def add_signature(truss_hash: str, signature: str):
+        if truss_hash is None:
+            raise ValueError("truss_hash is None")
+
         LocalConfigHandler._ensure_config_dir()
         signature_dir = LocalConfigHandler._signatures_dir_path()
         signature_dir.mkdir(exist_ok=True)
@@ -83,6 +86,9 @@ class LocalConfigHandler:
 
     @staticmethod
     def get_signature(truss_hash: str) -> Optional[str]:
+        if truss_hash is None:
+            raise ValueError("truss_hash is None")
+
         LocalConfigHandler._ensure_config_dir()
         signature_dir = LocalConfigHandler._signatures_dir_path()
         signature_dir.mkdir(exist_ok=True)
