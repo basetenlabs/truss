@@ -179,7 +179,8 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
         return tr.server_predict(request_data)
     else:
         return tr.docker_predict(
-            request_data, build_dir=build_dir, tag=tag, local_port=port, detach=True
+            request_data, build_dir=build_dir, tag=tag,
+            local_port=port, detach=True
         )
 
 
