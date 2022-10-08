@@ -51,6 +51,7 @@ black = "^22.6.0"
 Flask = "^2.2.2"
 waitress = "^2.1.2"
 nbconvert = "^7.2.1"
+ipykernel = "^6.16.0"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'

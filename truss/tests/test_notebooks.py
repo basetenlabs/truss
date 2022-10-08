@@ -17,4 +17,3 @@ def test_notebook_exec(notebook):
         nb = nbformat.read(f, as_version=4)
         ep = ExecutePreprocessor(timeout=600, kernel_name="python3")
         ep.preprocess(nb)
-
