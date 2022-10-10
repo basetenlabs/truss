@@ -2,6 +2,18 @@
 
 Release notes for new versions of Truss, in reverse chronological order.
 
+### Version 0.1.3
+
+This release:
+
+* Patches a bug from 0.1.2, no new features
+
+### Version 0.1.2
+
+This release:
+
+* Adds support for more flexible model-to-truss method (via in-memory function)
+
 ### Version 0.1.1
 
 This release:
