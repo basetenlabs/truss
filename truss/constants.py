@@ -15,6 +15,8 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR = TEMPLATES_DIR / "server"
+CONTROL_SERVER_CODE_DIR = TEMPLATES_DIR / "control"
+
 
 # Alias for TEMPLATES_DIR
 SERVING_DIR = TEMPLATES_DIR
@@ -37,6 +39,7 @@ TRUSS = "truss"
 TRUSS_MODIFIED_TIME = "truss_modified_time"
 # Path of the Truss used to identify which Truss is being referred
 TRUSS_DIR = "truss_dir"
+TRUSS_HASH = "truss_hash"
 
 HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
 
@@ -67,3 +70,5 @@ PYTORCH_REQ_MODULE_NAMES = {
     "torchvision",
     "torchaudio",
 }
+
+INFERENCE_SERVER_PORT = 8080

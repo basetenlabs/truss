@@ -45,6 +45,13 @@ def test_sync_secrets_mount_dir(tmp_path):
             assert f.read() == "secret_value"
 
 
+def test_signatures(tmp_path):
+    with _truss_config_dir(tmp_path, CONFIG_CONTENT):
+        assert LocalConfigHandler.get_signature("hash1") is None
+        LocalConfigHandler.add_signature("hash1", "sig1")
+        assert LocalConfigHandler.get_signature("hash1") == "sig1"
+
+
 @contextmanager
 def _truss_config_dir(path: Path, config_content: str):
     orig_config_dir = LocalConfigHandler.TRUSS_CONFIG_DIR

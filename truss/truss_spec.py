@@ -138,6 +138,10 @@ class TrussSpec:
     def description(self) -> str:
         return self._config.description
 
+    @property
+    def use_control_plane(self) -> bool:
+        return self._config.use_control_plane
+
 
 def _join_lines(lines: List[str]) -> str:
     return "\n".join(lines) + "\n"

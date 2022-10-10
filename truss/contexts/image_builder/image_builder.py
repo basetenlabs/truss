@@ -3,6 +3,7 @@ from pathlib import Path
 import click
 from jinja2 import Template
 from truss.constants import (
+    CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
     MODEL_README_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -14,6 +15,7 @@ from truss.constants import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
+from truss.patch.hash import directory_content_hash
 from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
 from truss.utils import (
@@ -24,6 +26,7 @@ from truss.utils import (
 )
 
 BUILD_SERVER_DIR_NAME = "server"
+BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 
 class ImageBuilderContext(TrussContext):
@@ -34,6 +37,7 @@ class ImageBuilderContext(TrussContext):
 
 class ImageBuilder:
     def __init__(self, truss_dir: Path) -> None:
+        self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
 
     def build_image(self, build_dir: Path = None, tag: str = None, labels: dict = None):
@@ -72,6 +76,11 @@ class ImageBuilder:
             SERVER_CODE_DIR,
             build_dir / BUILD_SERVER_DIR_NAME,
         )
+        if self._spec.config.use_control_plane:
+            copy_tree_path(
+                CONTROL_SERVER_CODE_DIR,
+                build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
+            )
         copy_file_path(
             TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME,
             build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
@@ -95,6 +104,7 @@ class ImageBuilder:
                 config=self._spec.config,
                 data_dir_exists=data_dir_exists,
                 bundled_packages_dir_exists=bundled_packages_dir_exists,
+                truss_hash=directory_content_hash(self._truss_dir),
             )
             docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
             with docker_file_path.open("w") as docker_file:
