@@ -30,6 +30,7 @@ def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):
         body=ModelCodePatch(
             action=Action.UPDATE,
             path="dummy",
+            content="",
         ),
     )
     patch_applier.apply_patch(patch)
