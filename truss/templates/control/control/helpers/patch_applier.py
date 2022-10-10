@@ -40,7 +40,9 @@ class PatchApplier:
             with filepath.open("w") as file:
                 content = model_code_patch.content
                 if content is None:
-                    content = ""
+                    raise ValueError(
+                        "Invalid patch: content of a model code update patch should not be None."
+                    )
                 file.write(content)
 
         elif action == Action.REMOVE:

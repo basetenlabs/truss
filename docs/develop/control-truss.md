@@ -16,10 +16,9 @@ property to True in `config.yaml`.
 ## Architecture
 
 Control Trusses run an additional control web-server process in addition to the
-inference server process. The control web-server runs on a separate port and
-provides control over the inference web-server. In particular, it provides a
-patch endpoint that can be used to apply and load changes into the inference
-web-server.
+inference server process. The control web-server acts as a proxy to the
+inference web-server. Additionlly, it provides a patch endpoint that can be used
+to apply and load changes into the inference web-server.
 
 Imagine that a Control Truss is running on docker. Say changes are made to this
 Truss and `docker_predict` is called on the handle. `docker_predict` just

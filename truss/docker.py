@@ -32,7 +32,7 @@ def get_images(labels: dict):
     return Docker.client().image.list(filters=_create_label_filters(labels))
 
 
-def get_urls_from_container(container_details):
+def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]]:
     """Gets url where docker container is hosted."""
     if (
         container_details.network_settings is None

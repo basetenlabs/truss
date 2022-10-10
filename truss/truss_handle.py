@@ -107,13 +107,16 @@ class TrussHandle:
             Container, which can be used to get information about the running,
             including its id. The id can be used to kill the container.
         """
-        container = self._try_patch()
-        if container is None:
+        container_if_patched = self._try_patch()
+        if container_if_patched is not None:
+            container = container_if_patched
+        else:
             image = self.build_docker_image(build_dir=build_dir, tag=tag)
             built_tag = image.repo_tags[0]
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
 
+            # We are going to try running a new container, make sure previous one is gone
             self.kill_container()
             labels = {
                 **self._get_labels(),

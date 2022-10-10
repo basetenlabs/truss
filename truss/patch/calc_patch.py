@@ -21,7 +21,7 @@ def calc_truss_patch(
     Returns: None if patch cannot be calculated, otherwise a list of patches.
         Note that the none return value is pretty important, patch coverage
         is limited and this usually indicates that the identified change cannot
-        be expressed with currently supported patches.j
+        be expressed with currently supported patches.
     """
     changed_paths = _calc_changed_paths(
         truss_dir, previous_truss_signature.content_hashes_by_path

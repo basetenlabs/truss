@@ -9,8 +9,8 @@ def directory_content_hash(root: Path) -> str:
     we write path hash to the stream followed by hash of content if path is a file.
     Note the hash of hash aspect.
 
-    Also, note that name of the directory is not taken into account, only the contents
-    underneath. Directory will have the same hash, even if renamed.
+    Also, note that name of the root directory is not taken into account, only the contents
+    underneath. The (root) Directory will have the same hash, even if renamed.
     """
     hasher = hashlib.sha256()
     paths = [path for path in root.glob("**/*")]
