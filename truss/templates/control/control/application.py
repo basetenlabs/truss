@@ -6,6 +6,7 @@ from flask import Flask
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
+from werkzeug.exceptions import HTTPException
 
 
 def create_app(base_config: dict):
@@ -25,4 +26,14 @@ def create_app(base_config: dict):
         app.config["inference_server_process_controller"], patch_applier, app.logger
     )
     app.register_blueprint(control_app)
+
+    def handle_error(exc):
+        if isinstance(exc, HTTPException):
+            return exc
+
+        app.logger.exception(exc)
+        error_msg = f"{type(exc)}: {exc}"
+        return {"error": error_msg}
+
+    app.register_error_handler(Exception, handle_error)
     return app

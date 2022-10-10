@@ -116,6 +116,27 @@ def test_patch_model_code_create_in_new_dir(app, client):
     ).exists()
 
 
+def test_404(client):
+    resp = client.post("/control/nonexitant")
+    assert resp.status_code == 404
+
+
+def test_invalid_patch(client):
+    try:
+        patch_request = {
+            "hash": "dummy",
+            "prev_hash": "invalid",
+            "patches": [],
+        }
+        resp = client.post("/control/patch", json=patch_request)
+    finally:
+        client.post("/control/stop_inference_server")
+    assert resp.status_code == 200
+    assert "error" in resp.json
+    assert "expected prev hash" in resp.json["error"]
+    assert "msg" not in resp.json
+
+
 def test_patch_model_code_delete(app, client):
     patch = Patch(
         type=PatchType.MODEL_CODE,

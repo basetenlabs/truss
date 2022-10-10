@@ -41,47 +41,25 @@ def proxy(path):
 def patch():
     current_app.logger.info("Patch request received.")
     patch_request = request.get_json()
-    try:
-        current_app.config["inference_server_controller"].apply_patch(patch_request)
-        current_app.logger.info("Patch applied successfully")
-    except Exception as exc:  # noqa
-        error_msg = f"Failed to apply patch: {type(exc)}, {exc}"
-        current_app.logger.exception(exc, extra={"stack": True})
-        return {"error": error_msg}
-
+    current_app.config["inference_server_controller"].apply_patch(patch_request)
+    current_app.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
 
 @control_app.route("/control/truss_hash", methods=["GET"])
 def truss_hash():
-    try:
-        t_hash = current_app.config["inference_server_controller"].truss_hash()
-    except Exception as exc:  # noqa
-        error_msg = f"Failed to fetch truss hash: {type(exc)}, {exc}"
-        # todo(pankaj): Double check if extra is necessary here
-        current_app.logger.exception(exc, extra={"stack": True})
-        return {"error": error_msg}
+    t_hash = current_app.config["inference_server_controller"].truss_hash()
     return {"result": t_hash}
 
 
 @control_app.route("/control/restart_inference_server", methods=["POST"])
 def restart_inference_server():
-    try:
-        current_app.config["inference_server_controller"].restart()
-    except Exception as exc:  # noqa
-        error_msg = f"Failed to restart inference server: {type(exc)}, {exc}"
-        current_app.logger.exception(exc, extra={"stack": True})
-        return {"error": error_msg}
+    current_app.config["inference_server_controller"].restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.route("/control/stop_inference_server", methods=["POST"])
 def stop_inference_server():
-    try:
-        current_app.config["inference_server_controller"].stop()
-    except Exception as exc:  # noqa
-        error_msg = f"Failed to stop inference server: {type(exc)}, {exc}"
-        current_app.logger.exception(exc, extra={"stack": True})
-        return {"error": error_msg}
+    current_app.config["inference_server_controller"].stop()
     return {"msg": "Inference server stopped successfully"}
