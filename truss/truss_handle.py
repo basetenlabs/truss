@@ -34,6 +34,7 @@ from truss.patch.calc_patch import calc_truss_patch
 from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
+from truss.readme_generator import generate_readme
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
