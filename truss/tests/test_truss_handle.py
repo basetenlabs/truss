@@ -575,6 +575,45 @@ class Model:
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
 
 
+@pytest.mark.integration
+def test_handle_if_container_dne(custom_model_truss_dir):
+    def return_container_dne(self):
+        return "DNE"
+
+    with patch.object(
+        TrussHandle, "_try_patch", new=return_container_dne
+    ), pytest.raises(Exception):
+        truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
+        truss_handle.docker_run(local_port=3000)
+    kill_all_with_retries()
+
+
+@pytest.mark.integration
+def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
+    def return_container_dne(self):
+        return "DNE"
+
+    with patch.object(
+        TrussHandle, "_try_patch", new=return_container_dne
+    ), pytest.raises(Exception):
+        truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
+        truss_handle.docker_predict({"inputs": [1]}, local_port=3000)
+    kill_all_with_retries()
+
+
+@pytest.mark.integration
+def test_docker_run_returned_empty_container(custom_model_truss_dir):
+    def return_container_dne(self):
+        return None
+
+    with patch.object(
+        TrussHandle, "docker_run", new=return_container_dne
+    ), pytest.raises(Exception):
+        truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
+        truss_handle.docker_predict(local_port=3000)
+    kill_all_with_retries()
+
+
 def _container_exists(container) -> bool:
     for row in Docker.client().ps():
         if row.id.startswith(container.id):

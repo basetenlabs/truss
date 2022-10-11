@@ -34,7 +34,6 @@ from truss.patch.calc_patch import calc_truss_patch
 from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
-from truss.readme_generator import generate_readme
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
@@ -143,8 +142,8 @@ class TrussHandle:
         try:
             _wait_for_model_server(model_base_url)
         except Exception as exc:
-            for log in self.container_logs():
-                logger.info(log)
+            # for log in self.container_logs():
+            #     logger.info(log)
             raise exc
         return container
 
@@ -165,12 +164,15 @@ class TrussHandle:
         if containers:
             container = containers[0]
         else:
-            container = self.docker_run(
-                build_dir,
-                tag,
-                local_port=local_port,
-                detach=detach,
-            )
+            try:
+                container = self.docker_run(
+                    build_dir,
+                    tag,
+                    local_port=local_port,
+                    detach=detach,
+                )
+            except Exception as exc:
+                raise exc
         model_base_url = _get_url_from_container(container)
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
