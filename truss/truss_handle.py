@@ -142,8 +142,8 @@ class TrussHandle:
         try:
             _wait_for_model_server(model_base_url)
         except Exception as exc:
-            # for log in self.container_logs():
-            #     logger.info(log)
+            for log in self.container_logs():
+                logger.info(log)
             raise exc
         return container
 
@@ -172,7 +172,7 @@ class TrussHandle:
                     detach=detach,
                 )
             except Exception as exc:
-                raise exc
+                raise CannotConnectToContainer
         model_base_url = _get_url_from_container(container)
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
