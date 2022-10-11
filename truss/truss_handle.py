@@ -143,7 +143,8 @@ class TrussHandle:
         try:
             _wait_for_model_server(model_base_url)
         except Exception as exc:
-            for log in self.container_logs():
+            logger.error("Model server down.")
+            for log in self.container_logs(follow=False, stream=False):
                 logger.info(log)
             raise exc
         return container
@@ -328,11 +329,12 @@ class TrussHandle:
         """
         kill_containers({TRUSS_DIR: self._truss_dir})
 
-    def container_logs(self):
+    def container_logs(self, follow=True, stream=True):
+        """Get container logs for truss."""
         containers = self.get_docker_containers_from_labels(all=True)
         if not containers:
             raise ValueError("No Container is running for truss!")
-        return get_container_logs(containers[-1])
+        return get_container_logs(containers[-1], follow, stream)
 
     def enable_gpu(self):
         """Enable gpu use for given model.

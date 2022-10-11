@@ -74,8 +74,8 @@ def kill_containers(labels: Dict[str, str]):
     Docker.client().container.kill(containers)
 
 
-def get_container_logs(container):
-    return Docker.client().container.logs(container, follow=True, stream=True)
+def get_container_logs(container, follow, stream):
+    return Docker.client().container.logs(container, follow=follow, stream=stream)
 
 
 def _create_label_filters(labels: dict):
