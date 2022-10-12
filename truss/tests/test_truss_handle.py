@@ -1,10 +1,11 @@
 import os
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from truss.docker import Docker
+from truss.docker import Docker, DockerStates
+from truss.errors import ContainerIsDownError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.templates.control.control.helpers.types import (
     Action,
@@ -16,7 +17,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
-from truss.truss_handle import TrussHandle
+from truss.truss_handle import TrussHandle, _wait_for_model_server
 from truss.types import Example
 
 
@@ -535,6 +536,20 @@ def test_truss_hash_caching_based_on_max_mod_time(
     labels3 = th._get_labels()
     assert labels3 != labels
     directory_content_patcher.call_count == 2
+
+
+@patch("truss.truss_handle.get_container_state")
+def test_container_oom_caught_during_waiting(container_state_mock):
+    container_state_mock.return_value = DockerStates.OOMKILLED
+    with pytest.raises(ContainerIsDownError):
+        _wait_for_model_server(url="localhost:8000", container=MagicMock())
+
+
+@patch("truss.truss_handle.get_container_state")
+def test_container_stuck_in_created(container_state_mock):
+    container_state_mock.return_value = DockerStates.CREATED
+    with pytest.raises(Exception):
+        _wait_for_model_server(url="localhost:8000", container=MagicMock())
 
 
 @pytest.mark.integration

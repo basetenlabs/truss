@@ -22,12 +22,15 @@ from truss.contexts.image_builder.image_builder import ImageBuilderContext
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.docker import (
     Docker,
+    DockerStates,
     get_container_logs,
+    get_container_state,
     get_containers,
     get_images,
     get_urls_from_container,
     kill_containers,
 )
+from truss.errors import ContainerIsDownError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
 from truss.patch.calc_patch import calc_truss_patch
@@ -141,9 +144,10 @@ class TrussHandle:
             )
         model_base_url = f"http://localhost:{local_port}/"
         try:
-            _wait_for_model_server(model_base_url)
+            _wait_for_model_server(model_base_url, container)
         except Exception as exc:
-            for log in self.container_logs():
+            logger.error("Model server down.")
+            for log in self.container_logs(follow=False, stream=False):
                 logger.info(log)
             raise exc
         return container
@@ -331,11 +335,12 @@ class TrussHandle:
         """
         kill_containers({TRUSS_DIR: self._truss_dir})
 
-    def container_logs(self):
+    def container_logs(self, follow=True, stream=True):
+        """Get container logs for truss."""
         containers = self.get_docker_containers_from_labels(all=True)
         if not containers:
             raise ValueError("No Container is running for truss!")
-        return get_container_logs(containers[-1])
+        return get_container_logs(containers[-1], follow, stream)
 
     def enable_gpu(self):
         """Enable gpu use for given model.
@@ -577,8 +582,20 @@ def _is_valid_list_type(obj) -> bool:
     return isinstance(obj, (list, np.ndarray))
 
 
-def _wait_for_model_server(url: str):
+def _wait_for_docker_build(container):
     for attempt in Retrying(stop=stop_after_attempt(10), wait=wait_fixed(2)):
+        state = get_container_state(container)
+        logger.info(f"Container state: {state}")
+        if state == DockerStates.OOMKILLED or state == DockerStates.DEAD:
+            raise ContainerIsDownError("Container errored out in state: {state}.")
+        with attempt:
+            if state != DockerStates.RUNNING:
+                raise Exception
+
+
+def _wait_for_model_server(url: str, container):
+    _wait_for_docker_build(container)
+    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         with attempt:
             resp = requests.get(url)
             resp.raise_for_status()
