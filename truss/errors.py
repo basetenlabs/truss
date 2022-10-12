@@ -26,3 +26,7 @@ class InvalidConfigurationError(Error):
 
 class ValidationError(Error):
     pass
+
+
+class ContainerIsDownError(Error):
+    pass

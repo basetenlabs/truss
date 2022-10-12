@@ -1,3 +1,4 @@
+import enum
 import logging
 from typing import Dict, List
 
@@ -78,7 +79,26 @@ def get_container_logs(container, follow, stream):
     return Docker.client().container.logs(container, follow=follow, stream=stream)
 
 
-def _create_label_filters(labels: dict):
+class DockerStates(enum.Enum):
+    CREATED = "created"
+    RUNNING = "running"
+    PAUSED = "paused"
+    RESTARTING = "restarting"
+    OOMKILLED = "oomkilled"
+    DEAD = "dead"
+
+
+def inspect_container(container) -> Dict:
+    """Inspects truss container"""
+    return Docker.client().container.inspect(container)
+
+
+def get_container_state(container) -> DockerStates:
+    "Get state of the container"
+    return DockerStates(inspect_container(container).state.status)
+
+
+def _create_label_filters(labels: Dict):
     return {
         f"label={label_key}": label_value for label_key, label_value in labels.items()
     }
