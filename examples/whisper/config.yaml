@@ -15,9 +15,10 @@ requirements:
 - git+https://github.com/openai/whisper.git
 - --extra-index-url https://download.pytorch.org/whl/cu113
 - requests
+- tempfile
 resources:
   cpu: 500m
-  memory: 1Gi
+  memory: 3Gi
   use_gpu: true
 secrets: {}
 spec_version: 2.0

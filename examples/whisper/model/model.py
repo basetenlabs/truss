@@ -1,4 +1,4 @@
-import os
+import tempfile
 from typing import Dict, List
 
 import requests
@@ -8,8 +8,6 @@ import whisper
 
 class Model:
     def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model = None
 
@@ -18,29 +16,22 @@ class Model:
         return
 
     def preprocess(self, request: Dict) -> Dict:
-        resp = requests.get(request['url'])
-        tmp_file = '/tmp/tmp.mp3'
-        with open(tmp_file, 'wb') as f:
-            f.write(resp.content)
-        request['file_path'] = tmp_file
-        return request
-
+        resp = requests.get(request["url"])
+        return {"response": resp.content}
 
     def postprocess(self, request: Dict) -> Dict:
-        request['detected_lang'] = f"Detected Language: {request['language']}"
-        os.remove(request['file_path'])
+        request["detected_lang"] = f"Detected Language: {request['language']}"
         return request
 
-
     def predict(self, request: Dict) -> Dict[str, List]:
-        response = {}
-        result = whisper.transcribe(self._model,
-                    request['file_path'],
-                    temperature=0,
-                    best_of=5,
-                    beam_size=5
-                    )
-        response['file_path'] = request['file_path']
-        response['text'] = result['text']
-        response['language'] = whisper.tokenizer.LANGUAGES[result['language']]
-        return response
+        fp = tempfile.NamedTemporaryFile()
+        fp.write(request["response"])
+        result = whisper.transcribe(
+            self._model,
+            fp.name,
+            temperature=0,
+            best_of=5,
+            beam_size=5,
+        )
+        fp.close()
+        return {"text": result["text"], "language": whisper.tokenizer.LANGUAGES[result["language"]]}
