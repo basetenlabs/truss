@@ -30,6 +30,7 @@ from truss.docker import (
     get_urls_from_container,
     kill_containers,
 )
+from truss.errors import ContainerIsDownError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
 from truss.patch.calc_patch import calc_truss_patch
@@ -581,7 +582,7 @@ def _wait_for_docker_build(container):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
         if state == DockerStates.OOMKILLED or state == DockerStates.DEAD:
-            raise Exception
+            raise ContainerIsDownError("Container errored out in state: {state}.")
         with attempt:
             if state != DockerStates.RUNNING:
                 raise Exception

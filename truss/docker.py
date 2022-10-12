@@ -95,7 +95,7 @@ def inspect_container(container) -> Dict:
 
 def get_container_state(container) -> DockerStates:
     "Get state of the container"
-    return DockerStates(inspect_container(container)["State"]["Status"])
+    return DockerStates(inspect_container(container).state.status)
 
 
 def _create_label_filters(labels: Dict):

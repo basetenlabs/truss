@@ -117,9 +117,11 @@ def build_image(target_directory, build_dir, tag):
 @click.argument("build_dir", required=False)
 @click.option("--tag", help="Docker build image tag")
 @click.option("--port", type=int, default=8080, help="Local port used to run image")
-@click.option("--detach", is_flag=True, default=True, help="Flag for detaching process")
+@click.option(
+    "--attach", is_flag=True, default=False, help="Flag for attaching the process"
+)
 @error_handling
-def run_image(target_directory, build_dir, tag, port, detach):
+def run_image(target_directory, build_dir, tag, port, attach):
     """
     Runs the docker image for a Truss.
 
@@ -135,7 +137,7 @@ def run_image(target_directory, build_dir, tag, port, detach):
         click.confirm(
             f"Container already exists at {urls}. Are you sure you want to continue?"
         )
-    tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=detach)
+    tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
 
 
 @cli_group.command()
