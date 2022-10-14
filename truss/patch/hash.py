@@ -42,8 +42,13 @@ def _file_content_hash_loaded_hasher(file: Path):
     buffer = bytearray(128 * 1024)
     mem_view = memoryview(buffer)
     with file.open("rb") as f:
-        while n := f.readinto(mem_view):
-            hasher.update(mem_view[:n])
+        done = False
+        while not done:
+            n = f.readinto(mem_view)
+            if n > 0:
+                hasher.update(mem_view[:n])
+            else:
+                done = True
     return hasher
 
 
