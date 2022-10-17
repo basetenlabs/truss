@@ -170,15 +170,12 @@ class TrussHandle:
         if containers:
             container = containers[0]
         else:
-            try:
-                container = self.docker_run(
-                    build_dir,
-                    tag,
-                    local_port=local_port,
-                    detach=detach,
-                )
-            except Exception as exc:
-                raise exc
+            container = self.docker_run(
+                build_dir,
+                tag,
+                local_port=local_port,
+                detach=detach,
+            )
         model_base_url = _get_url_from_container(container)
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
