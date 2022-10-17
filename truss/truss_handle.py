@@ -146,9 +146,7 @@ class TrussHandle:
         model_base_url = f"http://localhost:{local_port}/"
         try:
             _wait_for_truss(model_base_url, container)
-        except RetryError as retry_err:
-            ex, tr = retry_err.last_attempt.exception_info()
-        except ContainerIsDownError as err:
+        except ContainerIsDownError,  as err:
             for log in self.container_logs(follow=False, stream=False):
                 logger.info(log)
             raise err
@@ -586,7 +584,7 @@ def _is_valid_list_type(obj) -> bool:
 
 
 def _wait_for_docker_build(container):
-    for attempt in Retrying(stop=stop_after_attempt(1), wait=wait_fixed(2)):
+    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
         if state == DockerStates.OOMKILLED or state == DockerStates.DEAD:

@@ -92,16 +92,6 @@ def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
 
 
 @pytest.mark.integration
-def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path):
-    th = TrussHandle(custom_model_truss_dir_for_gpu)
-    th.use_control_plane(True)
-    tag = "test-build-image-control-gpu-tag:0.0.1"
-    build_dir = tmp_path / "scaffold_build_dir"
-    image = th.build_docker_image(tag=tag, build_dir=build_dir)
-    assert image.repo_tags[0] == tag
-
-
-@pytest.mark.integration
 def test_docker_run(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-run-tag:0.0.1"
@@ -599,7 +589,6 @@ class Model:
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
 
 
-@pytest.mark.integration
 def test_handle_if_container_dne(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"
@@ -612,7 +601,6 @@ def test_handle_if_container_dne(custom_model_truss_dir):
     kill_all_with_retries()
 
 
-@pytest.mark.integration
 def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"
