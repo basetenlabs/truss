@@ -30,3 +30,11 @@ class ValidationError(Error):
 
 class ContainerIsDownError(Error):
     pass
+
+
+class ContainerNotFoundError(Error):
+    pass
+
+
+class ContainerAPINoResponseError(Error):
+    pass

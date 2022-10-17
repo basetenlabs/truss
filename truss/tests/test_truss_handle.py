@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from truss.docker import Docker, DockerStates
-from truss.errors import ContainerIsDownError
+from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.templates.control.control.helpers.types import (
     Action,
@@ -17,7 +17,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
-from truss.truss_handle import TrussHandle, _wait_for_model_server
+from truss.truss_handle import TrussHandle, _wait_for_truss
 from truss.types import Example
 
 
@@ -552,14 +552,14 @@ def test_truss_hash_caching_based_on_max_mod_time(
 def test_container_oom_caught_during_waiting(container_state_mock):
     container_state_mock.return_value = DockerStates.OOMKILLED
     with pytest.raises(ContainerIsDownError):
-        _wait_for_model_server(url="localhost:8000", container=MagicMock())
+        _wait_for_truss(url="localhost:8000", container=MagicMock())
 
 
 @patch("truss.truss_handle.get_container_state")
 def test_container_stuck_in_created(container_state_mock):
     container_state_mock.return_value = DockerStates.CREATED
-    with pytest.raises(Exception):
-        _wait_for_model_server(url="localhost:8000", container=MagicMock())
+    with pytest.raises(ContainerIsDownError):
+        _wait_for_truss(url="localhost:8000", container=MagicMock())
 
 
 @pytest.mark.integration
@@ -598,6 +598,30 @@ class Model:
         assert result[0] == 2
         # A new image should have been created
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
+
+
+def test_handle_if_container_dne(custom_model_truss_dir):
+    def return_container_dne(self):
+        return "DNE"
+
+    with patch.object(
+        TrussHandle, "_try_patch", new=return_container_dne
+    ), pytest.raises(ContainerNotFoundError):
+        truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
+        truss_handle.docker_run(local_port=3000)
+    kill_all_with_retries()
+
+
+def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
+    def return_container_dne(self):
+        return "DNE"
+
+    with patch.object(
+        TrussHandle, "_try_patch", new=return_container_dne
+    ), pytest.raises(ContainerNotFoundError):
+        truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
+        truss_handle.docker_predict({"inputs": [1]}, local_port=3000)
+    kill_all_with_retries()
 
 
 def _container_exists(container) -> bool:
