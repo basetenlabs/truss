@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -89,7 +90,6 @@ def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
     build_dir = tmp_path / "scaffold_build_dir"
     image = th.build_docker_image(tag=tag, build_dir=build_dir)
     assert image.repo_tags[0] == tag
-
 
 
 @pytest.mark.integration
