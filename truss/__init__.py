@@ -11,4 +11,4 @@ def version():
     return __version__
 
 
-from truss.build import from_directory, init, kill_all, mk_truss
+from truss.build import from_directory, init, kill_all, mk_truss, mk_truss_from_mlflow_uri

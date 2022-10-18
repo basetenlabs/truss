@@ -147,9 +147,7 @@ class TrussHandle:
             _wait_for_model_server(model_base_url, container)
         except Exception as exc:
             logger.error("Model server down.")
-            for log in self.container_logs(follow=False, stream=False):
-                logger.info(log)
-            raise exc
+            logger.error(self.container_logs(follow=False, stream=False))
         return container
 
     def docker_predict(

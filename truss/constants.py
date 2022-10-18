@@ -71,4 +71,6 @@ PYTORCH_REQ_MODULE_NAMES = {
     "torchaudio",
 }
 
+MLFLOW_REQ_MODULE_NAMES = {"mlflow"}
+
 INFERENCE_SERVER_PORT = 8080
