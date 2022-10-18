@@ -146,6 +146,8 @@ class TrussHandle:
         model_base_url = f"http://localhost:{local_port}/"
         try:
             _wait_for_truss(model_base_url, container)
+        except ContainerNotFoundError as err:
+            raise err
         except Exception as err:
             logger.error(self.container_logs(follow=False, stream=False))
             raise err
