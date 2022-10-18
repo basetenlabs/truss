@@ -14,7 +14,6 @@ class Model:
 
     def load(self):
         model_binary_dir_path = self._data_dir / self._model_binary_dir
-        print(model_binary_dir_path / "model")
         self._model = mlflow.pyfunc.load_model(model_binary_dir_path / "model")
 
     def preprocess(self, request: Dict) -> Dict:

@@ -10,7 +10,8 @@ from typing import Callable, List, Optional, Tuple, Union
 import numpy as np
 import requests
 import yaml
-from tenacity import Retrying, stop_after_attempt, wait_fixed
+from python_on_whales.exceptions import NoSuchContainer
+from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 from truss.constants import (
     INFERENCE_SERVER_PORT,
     TRUSS,
@@ -30,7 +31,7 @@ from truss.docker import (
     get_urls_from_container,
     kill_containers,
 )
-from truss.errors import ContainerIsDownError
+from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
 from truss.patch.calc_patch import calc_truss_patch
@@ -144,10 +145,11 @@ class TrussHandle:
             )
         model_base_url = f"http://localhost:{local_port}/"
         try:
-            _wait_for_model_server(model_base_url, container)
-        except Exception as exc:
-            logger.error("Model server down.")
+            _wait_for_truss(model_base_url, container)
+        except Exception as err:
             logger.error(self.container_logs(follow=False, stream=False))
+            raise err
+
         return container
 
     def docker_predict(
@@ -578,22 +580,34 @@ def _is_valid_list_type(obj) -> bool:
 
 
 def _wait_for_docker_build(container):
-    for attempt in Retrying(stop=stop_after_attempt(10), wait=wait_fixed(2)):
+    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
         if state == DockerStates.OOMKILLED or state == DockerStates.DEAD:
-            raise ContainerIsDownError("Container errored out in state: {state}.")
+            raise ContainerIsDownError(f"Container errored out in state: {state}.")
         with attempt:
             if state != DockerStates.RUNNING:
-                raise Exception
+                raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
-def _wait_for_model_server(url: str, container):
-    _wait_for_docker_build(container)
+def _wait_for_model_server(url: str):
     for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         with attempt:
             resp = requests.get(url)
             resp.raise_for_status()
+
+
+def _wait_for_truss(url, container):
+    try:
+        _wait_for_docker_build(container)
+    except NoSuchContainer:
+        raise ContainerNotFoundError(message=f"Container {container} was not found")
+    except RetryError as retry_err:
+        retry_err.reraise()
+    try:
+        _wait_for_model_server(url)
+    except RetryError as retry_err:
+        retry_err.reraise()
 
 
 def _prepare_secrets_mount_dir() -> Path:

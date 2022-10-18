@@ -169,6 +169,21 @@ def mk_truss_from_mlflow_uri(
     requirements_file: str = None,
     bundled_packages: List[str] = None,
 ):
+    """Create a Truss with the given model. A Truss is a build context designed to
+    be built as a container locally or uploaded into a model serving environment.
+
+    Args:
+        model_uri (str): URI pointing to the MLflow model.
+        target_directory (str, optional): The local directory target for the Truss. Otherwise a temporary directory
+            will be generated
+        data_files (List[str], optional): Additional files required for model operation. Can be a glob that resolves to
+            files for the root directory or a directory path.
+        requirements_file (str, optional): A file of packages in a PIP requirements format to be installed in the
+            container environment.
+        bundled_packages (List[str], optional): Additional local packages that are required by the model.
+    Returns:
+        TrussHandle: A handle to the generated Truss that provides easy access to content inside.
+    """
     model_framework = MODEL_FRAMEWORKS_BY_TYPE[ModelFrameworkType.MLFLOW]
     if target_directory is None:
         target_directory_path = build_truss_target_directory(
