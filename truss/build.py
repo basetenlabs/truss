@@ -9,7 +9,7 @@ from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
 from truss.environment_inference.requirements_inference import infer_deps
 from truss.errors import FrameworkNotSupportedError
-from truss.model_frameworks import model_framework_from_model
+from truss.model_frameworks import MODEL_FRAMEWORKS_BY_TYPE, model_framework_from_model
 from truss.model_inference import infer_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.truss_handle import TrussHandle
@@ -160,6 +160,41 @@ def mk_truss_from_pipeline(
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
     return scaf
+
+
+def mk_truss_from_mlflow_uri(
+    model_uri: str,
+    target_directory: str = None,
+    data_files: List[str] = None,
+    requirements_file: str = None,
+    bundled_packages: List[str] = None,
+):
+    """Create a Truss with the given model. A Truss is a build context designed to
+    be built as a container locally or uploaded into a model serving environment.
+
+    Args:
+        model_uri (str): URI pointing to the MLflow model.
+        target_directory (str, optional): The local directory target for the Truss. Otherwise a temporary directory
+            will be generated
+        data_files (List[str], optional): Additional files required for model operation. Can be a glob that resolves to
+            files for the root directory or a directory path.
+        requirements_file (str, optional): A file of packages in a PIP requirements format to be installed in the
+            container environment.
+        bundled_packages (List[str], optional): Additional local packages that are required by the model.
+    Returns:
+        TrussHandle: A handle to the generated Truss that provides easy access to content inside.
+    """
+    model_framework = MODEL_FRAMEWORKS_BY_TYPE[ModelFrameworkType.MLFLOW]
+    if target_directory is None:
+        target_directory_path = build_truss_target_directory(
+            model_framework.typ().value
+        )
+    else:
+        target_directory_path = Path(target_directory)
+    model_framework.to_truss(model_uri, target_directory_path)
+    truss = TrussHandle(target_directory_path)
+    _update_truss_props(truss, data_files, requirements_file, bundled_packages)
+    return truss
 
 
 def mk_truss_from_model_with_exception_handler(*args):

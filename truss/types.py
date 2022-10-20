@@ -14,6 +14,7 @@ class ModelFrameworkType(Enum):
     HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
     XGBOOST = "xgboost"
     LIGHTGBM = "lightgbm"
+    MLFLOW = "mlflow"
     CUSTOM = "custom"
 
 

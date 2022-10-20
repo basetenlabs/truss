@@ -6,6 +6,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
+from urllib.error import HTTPError
 
 import numpy as np
 import requests
@@ -146,9 +147,10 @@ class TrussHandle:
         model_base_url = f"http://localhost:{local_port}/"
         try:
             _wait_for_truss(model_base_url, container)
-        except ContainerIsDownError as err:
-            for log in self.container_logs(follow=False, stream=False):
-                logger.info(log)
+        except ContainerNotFoundError as err:
+            raise err
+        except (ContainerIsDownError, HTTPError, ConnectionError) as err:
+            logger.error(self.container_logs(follow=False, stream=False))
             raise err
 
         return container
