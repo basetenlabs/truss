@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Dict, Set
 
 import mlflow
+from mlflow.artifacts import download_artifacts
 from truss.constants import MLFLOW_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
 from truss.templates.server.common.util import model_supports_predict_proba
@@ -42,21 +43,11 @@ class Mlflow(ModelFramework):
         self._add_mlflow_requirements(target_directory)
 
     def _download_model_from_uri(self, uri: str, target_directory: Path):
-        try:
-            from mlflow.artifacts import download_artifacts
-
-            download_artifacts(artifact_uri=uri, dst_path=target_directory)
-        except ImportError:
-            # Backwards compatible
-            from mlflow.tracking.artifact_utils import _download_artifact_from_uri
-
-            _download_artifact_from_uri(artifact_uri=uri, output_path=target_directory)
+        download_artifacts(artifact_uri=uri, dst_path=target_directory)
 
     def _download_model_from_pyfunc(
         self, model: mlflow.pyfunc.PyFuncModel, target_directory: Path
     ):
-        from mlflow.artifacts import download_artifacts
-
         run_id = model._model_meta.run_id
         download_artifacts(run_id=run_id, dst_path=target_directory)
 
@@ -67,6 +58,4 @@ class Mlflow(ModelFramework):
         )
         if not requirements_file.exists():
             return
-        with open(requirements_file, encoding="utf-8") as r:
-            requirements = [line.rstrip() for line in r.readlines()]
-        truss.update_requirements(requirements)
+        truss.update_requirements_from_file(requirements_file)

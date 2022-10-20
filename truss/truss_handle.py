@@ -6,6 +6,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
+from urllib.error import HTTPError
 
 import numpy as np
 import requests
@@ -148,7 +149,7 @@ class TrussHandle:
             _wait_for_truss(model_base_url, container)
         except ContainerNotFoundError as err:
             raise err
-        except Exception as err:
+        except (ContainerIsDownError, HTTPError, ConnectionError) as err:
             logger.error(self.container_logs(follow=False, stream=False))
             raise err
 
