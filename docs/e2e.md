@@ -36,6 +36,7 @@ Supported frameworks:
 
 * [Hugging Face](create/huggingface.md)
 * [LightGBM](create/lightgbm.md)
+* [MLFlow](create/mlflow.md)
 * [PyTorch](create/pytorch.md)
 * [scikit-learn](create/sklearn.md)
 * [Tensorflow](create/tensorflow.md)
