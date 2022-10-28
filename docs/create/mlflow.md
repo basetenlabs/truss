@@ -1,6 +1,6 @@
 # Create a Truss of an MLFlow model
 
-[MLFlow](https://mlflow.org/) is a supported framework on Truss. To package a MLFlow model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/mlflow_example.ipynb).
+[MLFlow](https://mlflow.org/) is a supported framework on Truss. To package an MLFlow model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/mlflow_example.ipynb).
 
 ### Install packages
 
@@ -41,9 +41,7 @@ Truss uses MLFlow's [pyfunc](https://www.mlflow.org/docs/latest/python_api/mlflo
 import os
 import truss
 
-path_to_model = f"mlruns/0/{MODEL_URI.split('/')[1]}/artifacts/model"
-
-model = mlflow.pyfunc.load_model(path_to_model)
+model = mlflow.pyfunc.load_model(MODEL_URI)
 tr = truss.mk_truss(model, target_directory="./mlflow_truss_from_pyfunc")
 ```
 
