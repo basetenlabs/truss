@@ -42,7 +42,7 @@ import os
 import truss
 
 model = mlflow.pyfunc.load_model(MODEL_URI)
-tr = truss.mk_truss(model, target_directory="./mlflow_truss_from_pyfunc")
+tr = truss.mk_truss(model, target_directory="./mlflow_truss")
 ```
 
 Check the target directory to see your new Truss!
@@ -53,7 +53,8 @@ To get a prediction from the Truss, try running:
 
 ```python
 data = np.array([-4, 1, 0, 10, -2, 1]).reshape(-1, 1)
-tr.docker_predict(data)
+predictions = tr.server_predict({"inputs": data})
+print(predictions)
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).
