@@ -1,6 +1,6 @@
-# Create a Truss of an MLFlow model
+# Create a Truss of an MLflow model
 
-[MLFlow](https://mlflow.org/) is a supported framework on Truss. To package an MLFlow model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/mlflow_example.ipynb).
+[MLflow](https://mlflow.org/) is a supported framework on Truss. To package an MLflow model, follow the steps below or run [this Google Colab notebook](https://colab.research.google.com/github/basetenlabs/truss/blob/main/docs/notebooks/mlflow_example.ipynb).
 
 ### Install packages
 
@@ -17,7 +17,7 @@ Truss officially supports `mlflow` version 1.30.0 or higher. Especially if you'r
 
 ### Create an in-memory model
 
-This is the part you want to replace with your own code. We are creating a super simple logistic regression model, but you can package any MLFlow model as a Truss.
+This is the part you want to replace with your own code. We are creating a super simple logistic regression model, but you can package any MLflow model as a Truss.
 
 ```python
 import mlflow
@@ -35,7 +35,7 @@ with mlflow.start_run():
 
 ### Create a Truss
 
-Truss uses MLFlow's [pyfunc](https://www.mlflow.org/docs/latest/python_api/mlflow.pyfunc.html) module in the packaging process. Once you have loaded the model, use the `mk_truss` command to package your model into a Truss.
+Truss uses MLflow's [pyfunc](https://www.mlflow.org/docs/latest/python_api/mlflow.pyfunc.html) module in the packaging process. Once you have loaded the model, use the `mk_truss` command to package your model into a Truss.
 
 ```python
 import os

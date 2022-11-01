@@ -6,7 +6,7 @@ Release notes for new versions of Truss, in reverse chronological order.
 
 This release:
 
-* Adds support for MLFlow
+* Adds support for MLflow
 
 ### Version 0.1.3
 
