@@ -330,17 +330,22 @@ def test_update_requirements_from_file(
     custom_model_truss_dir_with_pre_and_post, tmp_path
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    requirements = [
+    file_requirements = [
+        "tensorflow==2.3.1",
+        "# this is comment. Please don't add.",
+        "uvicorn==0.12.2",
+    ]
+    allowed_requirements = [
         "tensorflow==2.3.1",
         "uvicorn==0.12.2",
     ]
     req_file_path = tmp_path / "requirements.txt"
     with req_file_path.open("w") as req_file:
-        for req in requirements:
+        for req in file_requirements:
             req_file.write(f"{req}\n")
     th.update_requirements_from_file(str(req_file_path))
     sc_requirements = th.spec.requirements
-    assert sc_requirements == requirements
+    assert sc_requirements == allowed_requirements
 
 
 @pytest.mark.integration

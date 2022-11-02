@@ -244,7 +244,13 @@ class TrussHandle:
         at the given path.
         """
         with Path(requirements_filepath).open() as req_file:
-            self.update_requirements([line.strip() for line in req_file.readlines()])
+            self.update_requirements(
+                [
+                    line.strip()
+                    for line in req_file.readlines()
+                    if not line.startswith("#")
+                ]
+            )
 
     def add_system_package(self, system_package: str):
         """Add a system package requirement to truss model's config."""
