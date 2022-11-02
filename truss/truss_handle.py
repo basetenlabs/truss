@@ -248,7 +248,7 @@ class TrussHandle:
                 [
                     line.strip()
                     for line in req_file.readlines()
-                    if not line.startswith("#")
+                    if not line.strip().startswith("#")
                 ]
             )
 

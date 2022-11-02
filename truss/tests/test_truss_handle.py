@@ -333,6 +333,7 @@ def test_update_requirements_from_file(
     file_requirements = [
         "tensorflow==2.3.1",
         "# this is comment. Please don't add.",
+        "    # this is comment with a big space. Please don't add.",
         "uvicorn==0.12.2",
     ]
     allowed_requirements = [
