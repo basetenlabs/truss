@@ -19,4 +19,4 @@ resources:
   use_gpu: false
 secrets: {}
 system_packages: []
-use_control_plane: false
+live_reload: false

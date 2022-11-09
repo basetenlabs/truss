@@ -370,7 +370,7 @@ class TrussHandle:
         Useful for local incremental development.
         TODO(pankaj): Turn patch_request into a dataclass
         """
-        if not self.spec.use_control_plane:
+        if not self.spec.live_reload:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
         containers = self.get_docker_containers_from_labels(
@@ -389,7 +389,7 @@ class TrussHandle:
 
     def truss_hash_on_container(self) -> Optional[str]:
         """Get content hash of truss running on container."""
-        if not self.spec.use_control_plane:
+        if not self.spec.live_reload:
             raise ValueError(
                 "Not a control truss fetching truss hash is not supported."
             )
@@ -412,7 +412,7 @@ class TrussHandle:
 
     @property
     def is_control_truss(self):
-        return self._spec.use_control_plane
+        return self._spec.live_reload
 
     def get_urls_from_truss(self):
         urls = []
@@ -427,7 +427,7 @@ class TrussHandle:
     def update_description(self, description: str):
         self._update_config(lambda conf: replace(conf, description=description))
 
-    def use_control_plane(self, enable: bool = True):
+    def live_reload(self, enable: bool = True):
         """Enable control plane.
 
         Control plane allows loading truss changes into the running model
@@ -435,10 +435,10 @@ class TrussHandle:
         quickly.
         """
 
-        def enable_control_plane_fn(conf: TrussConfig):
-            return replace(conf, use_control_plane=enable)
+        def enable_live_reload_fn(conf: TrussConfig):
+            return replace(conf, live_reload=enable)
 
-        self._update_config(enable_control_plane_fn)
+        self._update_config(enable_live_reload_fn)
 
     def calc_patch(self, prev_truss_hash: str) -> Optional[PatchDetails]:
         """Calculates patch of current truss from previous.

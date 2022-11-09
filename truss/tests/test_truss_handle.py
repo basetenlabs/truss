@@ -95,7 +95,7 @@ def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
 @pytest.mark.integration
 def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
-    th.use_control_plane(True)
+    th.live_reload(True)
     tag = "test-build-image-control-gpu-tag:0.0.1"
     build_dir = tmp_path / "scaffold_build_dir"
     image = th.build_docker_image(tag=tag, build_dir=build_dir)

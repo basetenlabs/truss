@@ -139,8 +139,8 @@ class TrussSpec:
         return self._config.description
 
     @property
-    def use_control_plane(self) -> bool:
-        return self._config.use_control_plane
+    def live_reload(self) -> bool:
+        return self._config.live_reload
 
 
 def _join_lines(lines: List[str]) -> str:

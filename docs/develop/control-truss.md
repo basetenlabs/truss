@@ -10,8 +10,8 @@ python requirements of the inference server.
 
 ## Config
 
-A Truss can be indicated to be a control Truss by setting use_control_plane
-property to True in `config.yaml`.
+A Truss can be indicated to be a control Truss by setting `live_reload` property
+to True in `config.yaml`.
 
 ## Architecture
 

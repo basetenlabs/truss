@@ -76,7 +76,7 @@ class ImageBuilder:
             SERVER_CODE_DIR,
             build_dir / BUILD_SERVER_DIR_NAME,
         )
-        if self._spec.config.use_control_plane:
+        if self._spec.config.live_reload:
             copy_tree_path(
                 CONTROL_SERVER_CODE_DIR,
                 build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
