@@ -291,7 +291,7 @@ def no_preprocess_custom_model(tmp_path):
 def custom_model_control(tmp_path):
     dir_path = tmp_path / "control_truss"
     handle = init(str(dir_path))
-    handle.use_control_plane()
+    handle.live_reload()
     with handle.spec.model_class_filepath.open("w") as file:
         file.write(CUSTOM_MODEL_CODE)
     yield dir_path
