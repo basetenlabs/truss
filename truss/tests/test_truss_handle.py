@@ -626,7 +626,7 @@ class Model:
             result = th.docker_predict({"inputs": [1]}, tag=tag)
         resp = exc_info.value.response
         assert resp.status_code == 500
-        assert 'Inference server is not running' in resp.text
+        assert "Inference server is not running" in resp.text
 
         # Should be able to fix code after
         good_model_code = """
