@@ -2,6 +2,7 @@ import requests
 from flask import Blueprint, Response, current_app, jsonify, request
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
+from werkzeug.exceptions import InternalServerError
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 
@@ -17,6 +18,7 @@ def index():
 @control_app.route("/v1/<path:path>", methods=["GET", "POST"])
 def proxy(path):
     inference_server_port = current_app.config["inference_server_port"]
+    inference_server_process_controller = current_app.config["inference_server_process_controller"]
 
     # Wait a bit for inference server to start
     for attempt in Retrying(
@@ -25,12 +27,24 @@ def proxy(path):
         wait=wait_fixed(1),
     ):
         with attempt:
-            resp = requests.request(
-                method=request.method,
-                url=f"http://localhost:{inference_server_port}/v1/{path}",
-                data=request.get_data(),
-                cookies=request.cookies,
-            )
+            try:
+                resp = requests.request(
+                    method=request.method,
+                    url=f"http://localhost:{inference_server_port}/v1/{path}",
+                    data=request.get_data(),
+                    cookies=request.cookies,
+                )
+            except ConnectionError as exp:
+                # This check is a bit expensive so we don't do it before every request, we
+                # do it only if request fails with connection error. If the inference server
+                # process is running then we continue waiting for it to start (by retrying),
+                # otherwise we bail.
+                if not inference_server_process_controller.is_inference_server_running():
+                    return Response(
+                        'Inference server is not running, make sure model code doesn\'t have any errors',
+                        500
+                    )
+                raise exp
 
     headers = [(name, value) for (name, value) in resp.raw.headers.items()]
     response = Response(resp.content, resp.status_code, headers)
