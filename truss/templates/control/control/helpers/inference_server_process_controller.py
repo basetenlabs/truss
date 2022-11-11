@@ -42,7 +42,7 @@ class InferenceServerProcessController:
         # Explicitly check if inference server process is up, this is a bit expensive.
         if not self._inference_server_started:
             return False
-        
+
         if self._inference_server_process is None:
             return False
 
