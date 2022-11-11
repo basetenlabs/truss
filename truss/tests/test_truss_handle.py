@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
@@ -604,6 +605,39 @@ class Model:
         assert result[0] == 2
         # A new image should have been created
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
+
+
+@pytest.mark.integration
+def test_control_truss_local_update_that_crashes_inference_server(custom_model_control):
+    th = TrussHandle(custom_model_control)
+    tag = "test-docker-custom-model-control-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 1
+
+        bad_model_code = """
+class Model:
+    def malformed
+"""
+        model_code_file_path = custom_model_control / "model" / "model.py"
+        with model_code_file_path.open("w") as model_code_file:
+            model_code_file.write(bad_model_code)
+        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
+            result = th.docker_predict({"inputs": [1]}, tag=tag)
+        resp = exc_info.value.response
+        assert resp.status_code == 500
+        assert "model has stopped running" in resp.text
+
+        # Should be able to fix code after
+        good_model_code = """
+class Model:
+    def predict(self, request):
+        return [2 for i in request['inputs']]
+"""
+        with model_code_file_path.open("w") as model_code_file:
+            model_code_file.write(good_model_code)
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 2
 
 
 def test_handle_if_container_dne(custom_model_truss_dir):

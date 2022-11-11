@@ -39,7 +39,7 @@ class InferenceServerController:
             if req_hash == self._current_running_hash:
                 # We are in sync, ok to start running inference server now, if
                 # it's not running.
-                if not self._process_controller.inference_server_running():
+                if not self._process_controller.inference_server_started():
                     self._process_controller.start()
                 self._app_logger.info("Request hash same as current hash, skipping.")
                 return
