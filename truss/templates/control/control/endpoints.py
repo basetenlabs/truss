@@ -43,10 +43,9 @@ def proxy(path):
                 if (
                     not inference_server_process_controller.is_inference_server_running()
                 ):
-                    return Response(
-                        "Inference server is not running, make sure model code doesn't have any errors",
-                        500,
-                    )
+                    error_msg = "It appears your model has stopped running. This often means' \
+                        ' it crashed and may need a fix to get it running again."
+                    return Response(error_msg, 500)
                 raise exp
 
     headers = [(name, value) for (name, value) in resp.raw.headers.items()]
