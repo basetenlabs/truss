@@ -66,21 +66,18 @@ class Train:
     train_class_name: str = DEFAULT_TRAIN_CLASS_NAME
     train_module_dir: str = DEFAULT_TRAIN_MODULE_DIR
     variables: dict = field(default_factory=dict)
+    resources: Resources = field(default_factory=Resources)
 
     @staticmethod
     def from_dict(d):
-        train_class_filename = d.get(
-            "train_class_filename", DEFAULT_TRAIN_CLASS_FILENAME
-        )
-        train_class_name = d.get("train_class_name", DEFAULT_TRAIN_CLASS_NAME)
-        train_module_dir = d.get("train_module_dir", DEFAULT_TRAIN_MODULE_DIR)
-        variables = d.get("variables", {})
-
         return Train(
-            train_class_filename=train_class_filename,
-            train_class_name=train_class_name,
-            train_module_dir=train_module_dir,
-            variables=variables,
+            train_class_filename=d.get(
+                "train_class_filename", DEFAULT_TRAIN_CLASS_FILENAME
+            ),
+            train_class_name=d.get("train_class_name", DEFAULT_TRAIN_CLASS_NAME),
+            train_module_dir=d.get("train_module_dir", DEFAULT_TRAIN_MODULE_DIR),
+            variables=d.get("variables", {}),
+            resources=Resources.from_dict(d.get("resources", {})),
         )
 
     def to_dict(self):
@@ -89,6 +86,7 @@ class Train:
             "train_class_name": self.train_class_name,
             "train_module_dir": self.train_module_dir,
             "variables": self.variables,
+            "resources": self.resources.to_dict(),
         }
 
 

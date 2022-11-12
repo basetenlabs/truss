@@ -3,15 +3,13 @@ from pathlib import Path
 import click
 from jinja2 import Template
 from truss.constants import (
-    CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
     MODEL_README_NAME,
     REQUIREMENTS_TXT_FILENAME,
-    SERVER_CODE_DIR,
-    SERVER_REQUIREMENTS_TXT_FILENAME,
+    SERVER_DOCKERFILE_TEMPLATE_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRUSS_DOCKERFILE_TEMPLATE_NAME,
+    TRAINING_CODE_DIR,
 )
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
@@ -20,22 +18,20 @@ from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
 from truss.utils import (
     build_truss_target_directory,
-    copy_file_path,
     copy_tree_path,
     given_or_temporary_dir,
 )
 
-BUILD_SERVER_DIR_NAME = "server"
-BUILD_CONTROL_SERVER_DIR_NAME = "control"
+BUILD_TRAINING_DIR_NAME = "train"
 
 
-class ImageBuilderContext(TrussContext):
+class TrainingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
-        return ImageBuilder(truss_dir)
+        return TrainingImageBuilder(truss_dir)
 
 
-class ImageBuilder:
+class TrainingImageBuilder:
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
@@ -68,22 +64,12 @@ class ImageBuilder:
             docker command to build the docker image.
         """
         if build_dir is None:
-            build_dir = build_truss_target_directory(self._spec.model_framework_name)
-            # todo: Add a logging statement here, suggesting how to clean up the directory.
+            build_dir = build_truss_target_directory("train")
 
         copy_tree_path(self._spec.truss_dir, build_dir)
         copy_tree_path(
-            SERVER_CODE_DIR,
-            build_dir / BUILD_SERVER_DIR_NAME,
-        )
-        if self._spec.config.live_reload:
-            copy_tree_path(
-                CONTROL_SERVER_CODE_DIR,
-                build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
-            )
-        copy_file_path(
-            TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME,
-            build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
+            TRAINING_CODE_DIR,
+            build_dir / BUILD_TRAINING_DIR_NAME,
         )
 
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
@@ -92,7 +78,7 @@ class ImageBuilder:
         with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.system_packages_txt)
 
-        dockerfile_template_path = TEMPLATES_DIR / TRUSS_DOCKERFILE_TEMPLATE_NAME
+        dockerfile_template_path = TEMPLATES_DIR / SERVER_DOCKERFILE_TEMPLATE_NAME
 
         with dockerfile_template_path.open() as dockerfile_template_file:
             dockerfile_template = Template(dockerfile_template_file.read())

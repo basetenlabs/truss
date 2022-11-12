@@ -86,6 +86,23 @@ class TrussHandle:
         self._store_signature()
         return build_image_result
 
+    def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
+        """Builds docker image"""
+        # TODO
+        image = self.get_docker_image()
+        if image is not None:
+            return image
+        build_dir_path = Path(build_dir) if build_dir is not None else None
+        # todo perhaps TrainingImageBuilderContext
+        image_builder = ImageBuilderContext.run(self._truss_dir)
+        build_image_result = image_builder.build_image(
+            build_dir_path, tag, labels=self._get_labels()
+        )
+        # How to store training image signature differently from serving, perhaps
+        # need a type? Type can be a tag or label on the image?
+        self._store_signature()
+        return build_image_result
+
     def get_docker_image(self):
         """Get docker image for truss if one exists."""
         images = self.get_docker_images_from_label()
@@ -182,6 +199,17 @@ class TrussHandle:
         resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
         resp.raise_for_status()
         return resp.json()
+
+    def docker_train(
+        self,
+        variables: dict,
+        build_dir: Path = None,
+        tag: str = None,
+    ):
+        """
+        Train this truss.
+        """
+        pass
 
     def docker_build_setup(self, build_dir: Path = None):
         """
