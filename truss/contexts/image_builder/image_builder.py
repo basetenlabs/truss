@@ -1,17 +1,17 @@
 from pathlib import Path
 
 import click
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
     CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
     MODEL_README_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
+    SERVER_DOCKERFILE_TEMPLATE_NAME,
     SERVER_REQUIREMENTS_TXT_FILENAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRUSS_DOCKERFILE_TEMPLATE_NAME,
 )
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
@@ -92,23 +92,23 @@ class ImageBuilder:
         with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.system_packages_txt)
 
-        dockerfile_template_path = TEMPLATES_DIR / TRUSS_DOCKERFILE_TEMPLATE_NAME
+        template_loader = FileSystemLoader(str(TEMPLATES_DIR))
+        template_env = Environment(loader=template_loader)
+        dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
 
-        with dockerfile_template_path.open() as dockerfile_template_file:
-            dockerfile_template = Template(dockerfile_template_file.read())
-            data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
-            bundled_packages_dir_exists = (
-                build_dir / self._spec.config.bundled_packages_dir
-            ).exists()
-            dockerfile_contents = dockerfile_template.render(
-                config=self._spec.config,
-                data_dir_exists=data_dir_exists,
-                bundled_packages_dir_exists=bundled_packages_dir_exists,
-                truss_hash=directory_content_hash(self._truss_dir),
-            )
-            docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-            with docker_file_path.open("w") as docker_file:
-                docker_file.write(dockerfile_contents)
+        data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
+        bundled_packages_dir_exists = (
+            build_dir / self._spec.config.bundled_packages_dir
+        ).exists()
+        dockerfile_contents = dockerfile_template.render(
+            config=self._spec.config,
+            data_dir_exists=data_dir_exists,
+            bundled_packages_dir_exists=bundled_packages_dir_exists,
+            truss_hash=directory_content_hash(self._truss_dir),
+        )
+        docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
+        with docker_file_path.open("w") as docker_file:
+            docker_file.write(dockerfile_contents)
 
         readme_file_path = build_dir / MODEL_README_NAME
         try:

@@ -151,7 +151,7 @@ class TrussConfig:
                 "bundled_packages_dir", DEFAULT_BUNDLED_PACKAGES_DIR
             ),
             live_reload=d.get("live_reload", False),
-            resources=Train.from_dict(d.get("train", {})),
+            train=Train.from_dict(d.get("train", {})),
         )
         config.validate()
         return config

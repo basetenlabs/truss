@@ -23,7 +23,10 @@
 		"python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
 		"python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
 		"python.linting.pylintPath": "/usr/local/py-utils/bin/pylint",
-		"python.linting.flake8Path": ".flake8"
+		"python.linting.flake8Path": ".flake8",
+		"files.associations": {
+			"*.jinja": "jinja"
+		}
 	},
 
 	// Add the IDs of extensions you want installed when the container is created.
