@@ -1,20 +1,16 @@
 from pathlib import Path
 
-import click
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
-    MODEL_DOCKERFILE_NAME,
-    MODEL_README_NAME,
     REQUIREMENTS_TXT_FILENAME,
-    SERVER_DOCKERFILE_TEMPLATE_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
+    TRAIN_DOCKERFILE_NAME,
+    TRAIN_DOCKERFILE_TEMPLATE_NAME,
     TRAINING_CODE_DIR,
 )
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
-from truss.patch.hash import directory_content_hash
-from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
 from truss.utils import (
     build_truss_target_directory,
@@ -32,6 +28,8 @@ class TrainingImageBuilderContext(TrussContext):
 
 
 class TrainingImageBuilder:
+    # todo: remove duplication with image_builder, perhaps create a base class
+    # or may be better to use composition by taking in build_context_preparer as input.
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
@@ -55,7 +53,7 @@ class TrainingImageBuilder:
 
     @property
     def default_tag(self):
-        return f"{self._spec.model_framework_name}-model:latest"
+        return f"{self._spec.model_framework_name}-train:latest"
 
     def prepare_image_build_dir(self, build_dir: Path = None):
         """Prepare a directory for building the docker image from.
@@ -67,6 +65,9 @@ class TrainingImageBuilder:
             build_dir = build_truss_target_directory("train")
 
         copy_tree_path(self._spec.truss_dir, build_dir)
+
+        # todo: Raise error if this ends up conflicting with truss,
+        # training_model_dir can be called the same as value of TRAINING_CODE_DIR
         copy_tree_path(
             TRAINING_CODE_DIR,
             build_dir / BUILD_TRAINING_DIR_NAME,
@@ -78,40 +79,19 @@ class TrainingImageBuilder:
         with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.system_packages_txt)
 
-        dockerfile_template_path = TEMPLATES_DIR / SERVER_DOCKERFILE_TEMPLATE_NAME
-
-        with dockerfile_template_path.open() as dockerfile_template_file:
-            dockerfile_template = Template(dockerfile_template_file.read())
-            data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
-            bundled_packages_dir_exists = (
-                build_dir / self._spec.config.bundled_packages_dir
-            ).exists()
-            dockerfile_contents = dockerfile_template.render(
-                config=self._spec.config,
-                data_dir_exists=data_dir_exists,
-                bundled_packages_dir_exists=bundled_packages_dir_exists,
-                truss_hash=directory_content_hash(self._truss_dir),
-            )
-            docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-            with docker_file_path.open("w") as docker_file:
-                docker_file.write(dockerfile_contents)
-
-        readme_file_path = build_dir / MODEL_README_NAME
-        try:
-            readme_contents = generate_readme(self._spec)
-            with readme_file_path.open("w") as readme_file:
-                readme_file.write(readme_contents)
-        except Exception as e:
-            click.echo(
-                click.style(
-                    f"""WARNING: Auto-readme generation has failed.
-                    This is probably due to a malformed config.yaml or
-                    malformed examples.yaml. Error is:
-                    {e}
-                    """,
-                    fg="yellow",
-                )
-            )
+        bundled_packages_dir_exists = (
+            build_dir / self._spec.config.bundled_packages_dir
+        ).exists()
+        template_loader = FileSystemLoader(str(TEMPLATES_DIR))
+        template_env = Environment(loader=template_loader)
+        dockerfile_template = template_env.get_template(TRAIN_DOCKERFILE_TEMPLATE_NAME)
+        dockerfile_contents = dockerfile_template.render(
+            config=self._spec.config,
+            bundled_packages_dir_exists=bundled_packages_dir_exists,
+        )
+        docker_file_path = build_dir / TRAIN_DOCKERFILE_NAME
+        with docker_file_path.open("w") as docker_file:
+            docker_file.write(dockerfile_contents)
 
     def docker_build_command(self, build_dir) -> str:
         return f"docker build {build_dir} -t {self.default_tag}"

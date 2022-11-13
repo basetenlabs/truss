@@ -210,6 +210,7 @@ def init(
     data_files: List[str] = None,
     requirements_file: str = None,
     bundled_packages: List[str] = None,
+    trainable: bool = False,
 ) -> TrussHandle:
     """
     Initialize an empty placeholder Truss. A Truss is a build context designed
@@ -230,6 +231,9 @@ def init(
     target_directory_path = populate_target_directory(
         config=config, target_directory_path=target_directory
     )
+
+    if trainable:
+        _populate_default_training_code(config)
 
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
@@ -302,6 +306,21 @@ def _update_truss_props(
 
     if requirements_file is not None:
         scaf.update_requirements_from_file(requirements_file)
+
+
+def _populate_default_training_code(
+    config: TrussConfig,
+    target_directory_path: str,
+):
+    """Populate default training code in a truss.
+
+    Assumes that the target directory already exists.
+    """
+    # Todo: for now we don't support customization in training initial code
+    template = ("custom",)
+    training_module_dir = target_directory_path / config.train.train_module_dir
+    template_path = TEMPLATES_DIR / template
+    copy_tree_path(template_path / "train", training_module_dir)
 
 
 def kill_all():

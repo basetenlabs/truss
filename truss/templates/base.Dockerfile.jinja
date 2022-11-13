@@ -62,13 +62,11 @@ FROM baseten/baseten-server-base-$PYVERSION:latest
 
 
 {% block install_system_requirements %}
-
 COPY ./system_packages.txt system_packages.txt
 RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system_packages.txt) \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
-
 {% endblock %}
 
 
@@ -76,10 +74,8 @@ RUN pip install --upgrade pip
 
 
 {% block install_requirements %}
-
 COPY ./requirements.txt requirements.txt
 RUN pip install -r requirements.txt
-
 {% endblock %}
 
 
@@ -88,6 +84,13 @@ WORKDIR $APP_HOME
 
 
 {% block app_copy %}
+{% endblock %}
+
+
+{% block bundled_packages_copy %}
+{% if bundled_packages_dir_exists %}
+COPY ./{{config.bundled_packages_dir}} /packages
+{% endif %}
 {% endblock %}
 
 

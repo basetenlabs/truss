@@ -92,14 +92,14 @@ class ImageBuilder:
         with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.system_packages_txt)
 
-        template_loader = FileSystemLoader(str(TEMPLATES_DIR))
-        template_env = Environment(loader=template_loader)
-        dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
-
         data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
         bundled_packages_dir_exists = (
             build_dir / self._spec.config.bundled_packages_dir
         ).exists()
+
+        template_loader = FileSystemLoader(str(TEMPLATES_DIR))
+        template_env = Environment(loader=template_loader)
+        dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
         dockerfile_contents = dockerfile_template.render(
             config=self._spec.config,
             data_dir_exists=data_dir_exists,

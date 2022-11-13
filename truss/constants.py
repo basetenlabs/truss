@@ -15,7 +15,7 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR = TEMPLATES_DIR / "server"
-TRAINING_CODE_DIR = TEMPLATES_DIR / "train"
+TRAINING_CODE_DIR = TEMPLATES_DIR / "training"
 CONTROL_SERVER_CODE_DIR = TEMPLATES_DIR / "control"
 
 
@@ -27,7 +27,9 @@ SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
+TRAIN_DOCKERFILE_TEMPLATE_NAME = "train.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
+TRAIN_DOCKERFILE_NAME = "Dockerfile"
 
 README_TEMPLATE_NAME = "README.md.jinja"
 MODEL_README_NAME = "README.md"
