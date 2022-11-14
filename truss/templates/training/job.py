@@ -44,9 +44,11 @@ def _load_train_class(config):
 
     sys.path.append(TRAINING_CODE_PATH)
     train_config = config["train"]
-    train_module_name = str(Path(train_config["train_class_filename"]).with_suffix(""))
-    train_module = importlib.import_module(f"{train_module_name}")
-    return getattr(train_module, train_config["train_class_name"])
+    training_module_name = str(
+        Path(train_config["training_class_filename"]).with_suffix("")
+    )
+    train_module = importlib.import_module(f"{training_module_name}")
+    return getattr(train_module, train_config["training_class_name"])
 
 
 def _create_trainer(config):

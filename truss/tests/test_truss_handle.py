@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from pathlib import Path
@@ -156,6 +157,19 @@ def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
     with ensure_kill_all():
         result = th.docker_predict({"inputs": [1, 2]}, tag=tag)
         assert result == {"predictions": [4, 5]}
+
+
+@pytest.mark.integration
+def test_docker_train(variables_to_artifacts_training_truss):
+    th = TrussHandle(variables_to_artifacts_training_truss)
+    tag = "test-docker-train-tag:0.0.1"
+    with ensure_kill_all():
+        input_vars = {"x": "y"}
+        th.docker_train(variables=input_vars, tag=tag)
+        vars_artifact = th.spec.data_dir / "variables.json"
+        with vars_artifact.open() as vars_file:
+            vars_from_artifact = json.load(vars_file)
+            assert vars_from_artifact == input_vars
 
 
 @pytest.mark.integration

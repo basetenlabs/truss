@@ -253,6 +253,7 @@ class TrussHandle:
         # todo wire up logs streaming
         logs = get_container_logs(container, follow=False, stream=False)
         logger.info(logs)
+        return logs
 
     def docker_build_setup(self, build_dir: Path = None):
         """
