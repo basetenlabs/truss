@@ -28,9 +28,9 @@ DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
 DEFAULT_USE_GPU = False
 
-DEFAULT_TRAIN_CLASS_FILENAME = "train.py"
-DEFAULT_TRAIN_CLASS_NAME = "Train"
-DEFAULT_TRAIN_MODULE_DIR = "train"
+DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
+DEFAULT_TRAINING_CLASS_NAME = "Train"
+DEFAULT_TRAINING_MODULE_DIR = "train"
 
 
 @dataclass
@@ -62,29 +62,33 @@ class Resources:
 
 @dataclass
 class Train:
-    train_class_filename: str = DEFAULT_TRAIN_CLASS_FILENAME
-    train_class_name: str = DEFAULT_TRAIN_CLASS_NAME
-    train_module_dir: str = DEFAULT_TRAIN_MODULE_DIR
+    training_class_filename: str = DEFAULT_TRAINING_CLASS_FILENAME
+    training_class_name: str = DEFAULT_TRAINING_CLASS_NAME
+    training_module_dir: str = DEFAULT_TRAINING_MODULE_DIR
     variables: dict = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
 
     @staticmethod
     def from_dict(d):
         return Train(
-            train_class_filename=d.get(
-                "train_class_filename", DEFAULT_TRAIN_CLASS_FILENAME
+            training_class_filename=d.get(
+                "training_class_filename", DEFAULT_TRAINING_CLASS_FILENAME
             ),
-            train_class_name=d.get("train_class_name", DEFAULT_TRAIN_CLASS_NAME),
-            train_module_dir=d.get("train_module_dir", DEFAULT_TRAIN_MODULE_DIR),
+            training_class_name=d.get(
+                "training_class_name", DEFAULT_TRAINING_CLASS_NAME
+            ),
+            training_module_dir=d.get(
+                "training_module_dir", DEFAULT_TRAINING_MODULE_DIR
+            ),
             variables=d.get("variables", {}),
             resources=Resources.from_dict(d.get("resources", {})),
         )
 
     def to_dict(self):
         return {
-            "train_class_filename": self.train_class_filename,
-            "train_class_name": self.train_class_name,
-            "train_module_dir": self.train_module_dir,
+            "training_class_filename": self.training_class_filename,
+            "training_class_name": self.training_class_name,
+            "training_module_dir": self.training_module_dir,
             "variables": self.variables,
             "resources": self.resources.to_dict(),
         }

@@ -9,6 +9,9 @@ from secrets_resolver import SecretsResolver
 
 CONFIG_FILE = "config.yaml"
 
+# This is where user training module will be mounted
+TRAINING_CODE_PATH = "/train"
+
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:
     return kwarg in signature.parameters or _signature_accepts_kwargs(signature)
@@ -30,11 +33,10 @@ def _add_bundled_packages_to_path(config):
 
 
 def _load_train_class(config):
+    sys.path.append(TRAINING_CODE_PATH)
     train_config = config["train"]
     train_module_name = str(Path(train_config["train_class_filename"]).with_suffix(""))
-    train_module = importlib.import_module(
-        f"{train_config['train_module_dir']}.{train_module_name}"
-    )
+    train_module = importlib.import_module(f"{train_module_name}")
     return getattr(train_module, train_config["train_class_name"])
 
 

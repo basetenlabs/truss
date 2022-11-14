@@ -212,6 +212,7 @@ class TrussHandle:
         image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
         built_tag = image.repo_tags[0]
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
+
         # todo: wire up labels
         container = Docker.client().run(
             built_tag,
@@ -221,7 +222,12 @@ class TrussHandle:
                     "type=bind",
                     f"src={str(secrets_mount_dir_path)}",
                     "target=/secrets",
-                ]
+                ],
+                [
+                    "type=bind",
+                    f"src={str(self._spec.training_module_dir.resolve())}",
+                    "target=/train",
+                ],
             ],
             # todo: check training resources as well
             gpus="all" if self._spec.config.resources.use_gpu else None,

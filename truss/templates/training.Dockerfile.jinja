@@ -8,7 +8,8 @@ RUN pip install -r training_requirements.txt
 
 {% block app_copy %}
 COPY ./training /app
-COPY ./{{ config.train.train_module_dir }} /app/train
+# todo: put this behind a flag
+# COPY ./{{ config.train.train_module_dir }} /app/train
 COPY ./config.yaml /app/config.yaml
 {% endblock %}
 

@@ -37,6 +37,10 @@ class TrussSpec:
         return self._truss_dir / self._config.model_module_dir
 
     @property
+    def training_module_dir(self) -> Path:
+        return self._truss_dir / self._config.train.training_module_dir
+
+    @property
     def bundled_packages_dir(self) -> Path:
         return self._truss_dir / self._config.bundled_packages_dir
 
