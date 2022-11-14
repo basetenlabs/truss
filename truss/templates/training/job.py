@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import os
 import sys
 from pathlib import Path
 
@@ -29,11 +30,12 @@ def _add_bundled_packages_to_path(config):
 
 
 def _load_train_class(config):
-    train_module_name = str(Path(config["train_class_filename"]).with_suffix(""))
+    train_config = config["train"]
+    train_module_name = str(Path(train_config["train_class_filename"]).with_suffix(""))
     train_module = importlib.import_module(
-        f"{config['train_module_dir']}.{train_module_name}"
+        f"{train_config['train_module_dir']}.{train_module_name}"
     )
-    return getattr(train_module, config["train_class_name"])
+    return getattr(train_module, train_config["train_class_name"])
 
 
 def _create_trainer(config):
@@ -58,8 +60,11 @@ if __name__ == "__main__":
     with open(CONFIG_FILE, encoding="utf-8") as config_file:
         truss_config = yaml.safe_load(config_file)
         _add_bundled_packages_to_path(truss_config)
+        sys.path.append(os.environ["APP_HOME"])
         trainer = _create_trainer(truss_config)
-        trainer.pre_train()
+        if hasattr(trainer, "pre_train"):
+            trainer.pre_train()
         trainer.train()
-        trainer.post_train()
+        if hasattr(trainer, "post_train"):
+            trainer.post_train()
         # todo: artifact upload

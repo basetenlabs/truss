@@ -194,6 +194,23 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
 
 
 @cli_group.command()
+@click.option("--target_directory", required=False, help="Directory of truss")
+@click.option(
+    "--build-dir",
+    type=click.Path(exists=True),
+    required=False,
+    help="Directory where context is built",
+)
+@click.option("--tag", help="Docker build image tag")
+@error_handling
+@echo_output
+def train(target_directory, build_dir, tag):
+    """Runs prediction for a Truss in a docker image or locally"""
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    return tr.docker_train(build_dir=build_dir, tag=tag)
+
+
+@cli_group.command()
 @click.argument("target_directory", required=False)
 @click.option("--name", type=str, required=False, help="Name of example to run")
 @click.option(

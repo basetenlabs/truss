@@ -21,6 +21,9 @@ from truss.constants import (
     TRUSS_MODIFIED_TIME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilderContext
+from truss.contexts.image_builder.training_image_builder import (
+    TrainingImageBuilderContext,
+)
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.docker import (
     Docker,
@@ -87,20 +90,14 @@ class TrussHandle:
         return build_image_result
 
     def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
-        """Builds docker image"""
-        # TODO
-        image = self.get_docker_image()
-        if image is not None:
-            return image
+        """Builds training docker image"""
+        # todo reuse existing image if present
         build_dir_path = Path(build_dir) if build_dir is not None else None
-        # todo perhaps TrainingImageBuilderContext
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = TrainingImageBuilderContext.run(self._truss_dir)
         build_image_result = image_builder.build_image(
             build_dir_path, tag, labels=self._get_labels()
         )
-        # How to store training image signature differently from serving, perhaps
-        # need a type? Type can be a tag or label on the image?
-        self._store_signature()
+        # todo store signature
         return build_image_result
 
     def get_docker_image(self):
@@ -202,14 +199,39 @@ class TrussHandle:
 
     def docker_train(
         self,
-        variables: dict,
+        variables: dict = None,
         build_dir: Path = None,
         tag: str = None,
     ):
         """
         Train this truss.
         """
-        pass
+        if variables is None:
+            variables = {}
+        # todo: wire up variables
+        image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
+        built_tag = image.repo_tags[0]
+        secrets_mount_dir_path = _prepare_secrets_mount_dir()
+        # todo: wire up labels
+        container = Docker.client().run(
+            built_tag,
+            detach=True,
+            mounts=[
+                [
+                    "type=bind",
+                    f"src={str(secrets_mount_dir_path)}",
+                    "target=/secrets",
+                ]
+            ],
+            # todo: check training resources as well
+            gpus="all" if self._spec.config.resources.use_gpu else None,
+        )
+        # logger.info(
+        #     f"Training started"
+        # )
+        # todo wire up logs streaming
+        logs = get_container_logs(container, follow=False, stream=False)
+        logger.info(logs)
 
     def docker_build_setup(self, build_dir: Path = None):
         """

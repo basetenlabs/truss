@@ -5,20 +5,22 @@ from truss.constants import (
     REQUIREMENTS_TXT_FILENAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRAIN_DOCKERFILE_NAME,
-    TRAIN_DOCKERFILE_TEMPLATE_NAME,
     TRAINING_CODE_DIR,
+    TRAINING_DOCKERFILE_NAME,
+    TRAINING_DOCKERFILE_TEMPLATE_NAME,
+    TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.truss_context import TrussContext
 from truss.docker import Docker
 from truss.truss_spec import TrussSpec
 from truss.utils import (
     build_truss_target_directory,
+    copy_file_path,
     copy_tree_path,
     given_or_temporary_dir,
 )
 
-BUILD_TRAINING_DIR_NAME = "train"
+BUILD_TRAINING_DIR_NAME = "training"
 
 
 class TrainingImageBuilderContext(TrussContext):
@@ -73,6 +75,12 @@ class TrainingImageBuilder:
             build_dir / BUILD_TRAINING_DIR_NAME,
         )
 
+        copy_file_path(
+            TEMPLATES_DIR
+            / self._spec.model_framework_name
+            / TRAINING_REQUIREMENTS_TXT_FILENAME,
+            build_dir / TRAINING_REQUIREMENTS_TXT_FILENAME,
+        )
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.requirements_txt)
 
@@ -84,12 +92,14 @@ class TrainingImageBuilder:
         ).exists()
         template_loader = FileSystemLoader(str(TEMPLATES_DIR))
         template_env = Environment(loader=template_loader)
-        dockerfile_template = template_env.get_template(TRAIN_DOCKERFILE_TEMPLATE_NAME)
+        dockerfile_template = template_env.get_template(
+            TRAINING_DOCKERFILE_TEMPLATE_NAME
+        )
         dockerfile_contents = dockerfile_template.render(
             config=self._spec.config,
             bundled_packages_dir_exists=bundled_packages_dir_exists,
         )
-        docker_file_path = build_dir / TRAIN_DOCKERFILE_NAME
+        docker_file_path = build_dir / TRAINING_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:
             docker_file.write(dockerfile_contents)
 
