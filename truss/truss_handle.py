@@ -22,7 +22,9 @@ from truss.constants import (
     TRUSS_HASH,
     TRUSS_MODIFIED_TIME,
 )
-from truss.contexts.image_builder.image_builder import ImageBuilderContext
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
 from truss.contexts.image_builder.training_image_builder import (
     TrainingImageBuilderContext,
 )
@@ -75,7 +77,7 @@ class TrussHandle:
 
     def build_docker_build_context(self, build_dir: Path = None):
         build_dir_path = Path(build_dir) if build_dir is not None else None
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir_path)
 
     def build_docker_image(self, build_dir: Path = None, tag: str = None):
@@ -84,7 +86,7 @@ class TrussHandle:
         if image is not None:
             return image
         build_dir_path = Path(build_dir) if build_dir is not None else None
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
         build_image_result = image_builder.build_image(
             build_dir_path, tag, labels=self._get_labels()
         )
@@ -262,7 +264,7 @@ class TrussHandle:
         Returns:
             docker build command.
         """
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
 

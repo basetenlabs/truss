@@ -10,15 +10,10 @@ from truss.constants import (
     TRAINING_DOCKERFILE_TEMPLATE_NAME,
     TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
+from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.truss_context import TrussContext
-from truss.docker import Docker
 from truss.truss_spec import TrussSpec
-from truss.utils import (
-    build_truss_target_directory,
-    copy_file_path,
-    copy_tree_path,
-    given_or_temporary_dir,
-)
+from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
 
 BUILD_TRAINING_DIR_NAME = "training"
 
@@ -29,29 +24,10 @@ class TrainingImageBuilderContext(TrussContext):
         return TrainingImageBuilder(truss_dir)
 
 
-class TrainingImageBuilder:
-    # todo: remove duplication with image_builder, perhaps create a base class
-    # or may be better to use composition by taking in build_context_preparer as input.
+class TrainingImageBuilder(ImageBuilder):
     def __init__(self, truss_dir: Path) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
-
-    def build_image(self, build_dir: Path = None, tag: str = None, labels: dict = None):
-        """Build image.
-
-        Arguments:
-            build_dir(Path): Directory to use for building the docker image. If None
-                             then a temporary directory is used.
-            tag(str): A tag to assign to the docker image.
-        """
-
-        with given_or_temporary_dir(build_dir) as build_dir_path:
-            self.prepare_image_build_dir(build_dir_path)
-            return Docker.client().build(
-                str(build_dir_path),
-                labels=labels if labels else {},
-                tags=tag or self.default_tag,
-            )
 
     @property
     def default_tag(self):
@@ -102,6 +78,3 @@ class TrainingImageBuilder:
         docker_file_path = build_dir / TRAINING_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:
             docker_file.write(dockerfile_contents)
-
-    def docker_build_command(self, build_dir) -> str:
-        return f"docker build {build_dir} -t {self.default_tag}"
