@@ -3,6 +3,7 @@ import glob
 import json
 import logging
 import sys
+import uuid
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
@@ -15,6 +16,7 @@ from python_on_whales.exceptions import NoSuchContainer
 from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 from truss.constants import (
     INFERENCE_SERVER_PORT,
+    TRAINING_VARIABLES_FILENAME,
     TRUSS,
     TRUSS_DIR,
     TRUSS_HASH,
@@ -212,6 +214,9 @@ class TrussHandle:
         image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
         built_tag = image.repo_tags[0]
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
+        variables_dir = _prepare_variables_mount_directory()
+        with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
+            vars_file.write(yaml.dump(variables))
 
         # todo: wire up labels
         container = Docker.client().run(
@@ -232,6 +237,11 @@ class TrussHandle:
                     "type=bind",
                     f"src={str(self._spec.data_dir.resolve())}",
                     "target=/output",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(variables_dir)}",
+                    "target=/variables",
                 ],
             ],
             # todo: check training resources as well
@@ -693,3 +703,12 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
 
 def _get_url_from_container(container) -> str:
     return get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+
+
+def _prepare_variables_mount_directory() -> Path:
+    """Builds a directory under ~/.truss/variables for the purpose of storing
+    variables to mount for training."""
+    rnd = str(uuid.uuid4())
+    target_directory_path = Path(Path.home(), ".truss", "variables", rnd)
+    target_directory_path.mkdir(parents=True)
+    return target_directory_path

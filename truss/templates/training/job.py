@@ -12,6 +12,8 @@ CONFIG_FILE = "config.yaml"
 # This is where user training module will be mounted
 TRAINING_CODE_PATH = "/train"
 OUTPUT_PATH = "/output"
+VARIABLES_PATH = "/variables"
+VARIABLES_FILE = "variables.yaml"
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:
@@ -57,9 +59,20 @@ def _create_trainer(config):
         train_class_signature, "output_model_artifacts_dir"
     ):
         train_init_params["output_model_artifacts_dir"] = Path(OUTPUT_PATH)
+
+    # Wire up secrets
     if _signature_accepts_keyword_arg(train_class_signature, "secrets"):
         train_init_params["secrets"] = SecretsResolver.get_secrets(config)
-    # todo: wire up variables, perhaps through VariablesResolver
+
+    # Wire up variables
+    if _signature_accepts_keyword_arg(train_class_signature, "variables"):
+        vars_path = Path(VARIABLES_PATH) / VARIABLES_FILE
+        if vars_path.exists():
+            with vars_path.open() as vars_file:
+                variables = yaml.safe_load(vars_file)
+        else:
+            variables = {}
+        train_init_params["variables"] = variables
     return train_class(**train_init_params)
 
 

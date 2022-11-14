@@ -320,7 +320,7 @@ def _populate_default_training_code(
     """
     # Todo: for now we don't support customization in training initial code
     template = "custom"
-    training_module_dir = target_directory_path / config.train.train_module_dir
+    training_module_dir = target_directory_path / config.train.training_module_dir
     template_path = TEMPLATES_DIR / template
     copy_tree_path(template_path / "train", training_module_dir)
 
