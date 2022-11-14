@@ -65,15 +65,23 @@ def cli_group(ctx, version):
     default=False,
     help="Skip confirmation prompt.",
 )
+@click.option(
+    "-t",
+    "--trainable",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Create a trainable truss.",
+)
 @error_handling
-def init(target_directory, skip_confirm):
+def init(target_directory, skip_confirm, trainable):
     """Initializes an empty Truss directory.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     tr_path = Path(target_directory)
     if skip_confirm or click.confirm(f"A Truss will be created at {tr_path}"):
-        truss.init(target_directory=target_directory)
+        truss.init(target_directory=target_directory, trainable=trainable)
         click.echo(f"Truss was created in {tr_path}")
 
 

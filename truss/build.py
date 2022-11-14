@@ -233,7 +233,9 @@ def init(
     )
 
     if trainable:
-        _populate_default_training_code(config)
+        _populate_default_training_code(
+            config, target_directory_path=Path(target_directory)
+        )
 
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
@@ -310,14 +312,14 @@ def _update_truss_props(
 
 def _populate_default_training_code(
     config: TrussConfig,
-    target_directory_path: str,
+    target_directory_path: Path,
 ):
     """Populate default training code in a truss.
 
     Assumes that the target directory already exists.
     """
     # Todo: for now we don't support customization in training initial code
-    template = ("custom",)
+    template = "custom"
     training_module_dir = target_directory_path / config.train.train_module_dir
     template_path = TEMPLATES_DIR / template
     copy_tree_path(template_path / "train", training_module_dir)
