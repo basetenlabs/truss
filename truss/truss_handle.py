@@ -265,6 +265,17 @@ class TrussHandle:
         image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
 
+    def training_docker_build_setup(self, build_dir: Path = None):
+        """
+        Set up a directory to build training docker image from.
+
+        Returns:
+            docker build command.
+        """
+        image_builder = TrainingImageBuilderContext.run(self._truss_dir)
+        image_builder.prepare_image_build_dir(build_dir)
+        return image_builder.docker_build_command(build_dir)
+
     def add_python_requirement(self, python_requirement: str):
         """Add a python requirement to truss model's config."""
         self._update_config(
