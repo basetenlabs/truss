@@ -228,6 +228,11 @@ class TrussHandle:
                     f"src={str(self._spec.training_module_dir.resolve())}",
                     "target=/train",
                 ],
+                [
+                    "type=bind",
+                    f"src={str(self._spec.data_dir.resolve())}",
+                    "target=/output",
+                ],
             ],
             # todo: check training resources as well
             gpus="all" if self._spec.config.resources.use_gpu else None,

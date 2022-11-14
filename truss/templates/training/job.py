@@ -11,6 +11,7 @@ CONFIG_FILE = "config.yaml"
 
 # This is where user training module will be mounted
 TRAINING_CODE_PATH = "/train"
+OUTPUT_PATH = "/output"
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:
@@ -33,6 +34,12 @@ def _add_bundled_packages_to_path(config):
 
 
 def _load_train_class(config):
+    # These should be mounted, but they're not then create them
+    if not Path(TRAINING_CODE_PATH).exists():
+        Path(TRAINING_CODE_PATH).mkdir()
+    if not Path(OUTPUT_PATH).exists():
+        Path(OUTPUT_PATH).mkdir()
+
     sys.path.append(TRAINING_CODE_PATH)
     train_config = config["train"]
     train_module_name = str(Path(train_config["train_class_filename"]).with_suffix(""))
@@ -49,9 +56,7 @@ def _create_trainer(config):
     if _signature_accepts_keyword_arg(
         train_class_signature, "output_model_artifacts_dir"
     ):
-        train_init_params[
-            "output_model_artifacts_dir"
-        ] = Path()  # todo: wire it up, cwd for now
+        train_init_params["output_model_artifacts_dir"] = Path(OUTPUT_PATH)
     if _signature_accepts_keyword_arg(train_class_signature, "secrets"):
         train_init_params["secrets"] = SecretsResolver.get_secrets(config)
     # todo: wire up variables, perhaps through VariablesResolver
