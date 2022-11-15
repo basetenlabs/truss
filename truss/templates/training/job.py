@@ -36,9 +36,10 @@ def _add_bundled_packages_to_path(config):
 
 
 def _load_train_class(config):
-    # These should be mounted, but they're not then create them
     if not Path(TRAINING_CODE_PATH).exists():
-        Path(TRAINING_CODE_PATH).mkdir()
+        raise ValueError("Training code not mounted")
+
+    # This should be created via mounting, but if not then create it.
     if not Path(OUTPUT_PATH).exists():
         Path(OUTPUT_PATH).mkdir()
 
@@ -86,7 +87,9 @@ if __name__ == "__main__":
         trainer = _create_trainer(truss_config)
         if hasattr(trainer, "pre_train"):
             trainer.pre_train()
+
+        # train is a required method, so no check
         trainer.train()
+
         if hasattr(trainer, "post_train"):
             trainer.post_train()
-        # todo: artifact upload

@@ -312,10 +312,14 @@ def _get_truss_from_directory(target_directory: str = None):
     return truss.from_directory(target_directory)
 
 
-def _variables_dict_from_option(vars: List[str]) -> dict:
+def _variables_dict_from_option(variables_list: List[str]) -> dict:
     vars_dict = {}
-    for var in vars:
+    for var in variables_list:
         first_equals_pos = var.find("=")
+        if first_equals_pos == -1:
+            raise ValueError(
+                f"Training variable expected in `key=value` from but found `{var}`",
+            )
         var_name = var[:first_equals_pos]
         var_value = var[first_equals_pos + 1 :]
         vars_dict[var_name] = var_value

@@ -95,13 +95,13 @@ class TrussHandle:
 
     def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
         """Builds training docker image"""
-        # todo reuse existing image if present
+        # TODO(pankaj) reuse existing image if present
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = TrainingImageBuilderContext.run(self._truss_dir)
         build_image_result = image_builder.build_image(
             build_dir_path, tag, labels=self._get_labels()
         )
-        # todo store signature
+        # TODO(pankaj) store signature to be able to reuse image
         return build_image_result
 
     def get_docker_image(self):
@@ -209,10 +209,14 @@ class TrussHandle:
     ):
         """
         Train this truss.
+
+        Training generates a docker image and runs it to generate artifacts,
+        which are then populated in the truss' data directory so it can be used
+        for serving.
         """
         if variables is None:
             variables = {}
-        # todo: wire up variables
+
         image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
         built_tag = image.repo_tags[0]
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
@@ -220,7 +224,6 @@ class TrussHandle:
         with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
             vars_file.write(yaml.dump(variables))
 
-        # todo: wire up labels
         container = Docker.client().run(
             built_tag,
             detach=True,
@@ -246,13 +249,10 @@ class TrussHandle:
                     "target=/variables",
                 ],
             ],
-            # todo: check training resources as well
+            # TODO(pankaj): check training resource overrides
             gpus="all" if self._spec.config.resources.use_gpu else None,
         )
-        # logger.info(
-        #     f"Training started"
-        # )
-        # todo wire up logs streaming
+        # TODO(pankaj) Wire up logs streaming, right now we retrieve logs after.
         logs = get_container_logs(container, follow=False, stream=False)
         logger.info(logs)
         return logs

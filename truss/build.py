@@ -316,13 +316,14 @@ def _populate_default_training_code(
 ):
     """Populate default training code in a truss.
 
-    Assumes that the target directory already exists.
+    Assumes target directory already exists.
     """
-    # Todo: for now we don't support customization in training initial code
-    template = "custom"
-    training_module_dir = target_directory_path / config.train.training_module_dir
-    template_path = TEMPLATES_DIR / template
-    copy_tree_path(template_path / "train", training_module_dir)
+    # TODO(pankaj): Add support customization based on model framework type, for
+    # now we don't support this.
+    truss_template = "custom"
+    template_path = TEMPLATES_DIR / truss_template
+    truss_training_module_dir = target_directory_path / config.train.training_module_dir
+    copy_tree_path(template_path / "train", truss_training_module_dir)
 
 
 def kill_all():

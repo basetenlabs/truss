@@ -10,6 +10,7 @@ from truss.constants import (
     TRAINING_DOCKERFILE_NAME,
     TRAINING_DOCKERFILE_TEMPLATE_NAME,
     TRAINING_JOB_WRAPPER_CODE_DIR,
+    TRAINING_JOB_WRAPPER_CODE_DIR_NAME,
     TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
@@ -46,8 +47,14 @@ class TrainingImageBuilder(ImageBuilder):
 
         copy_tree_path(self._spec.truss_dir, build_dir)
 
-        # TODO(pankaj): Raise error if this ends up conflicting with truss,
-        # training_model_dir can be called the same as value of TRAINING_CODE_DIR
+        if (self._spec.truss_dir / TRAINING_JOB_WRAPPER_CODE_DIR_NAME).exists():
+            err_msg = (
+                "Unable to build training image: training job "
+                f"wrapper code directory name {TRAINING_JOB_WRAPPER_CODE_DIR_NAME}"
+                " conflicts with an existing directory in the truss."
+            )
+            raise ValueError(err_msg)
+
         copy_tree_path(
             TRAINING_JOB_WRAPPER_CODE_DIR,
             build_dir / BUILD_TRAINING_DIR_NAME,
