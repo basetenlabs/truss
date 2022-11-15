@@ -10,6 +10,8 @@ from truss.constants import (
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
     SERVER_REQUIREMENTS_TXT_FILENAME,
+    SHARED_SERVING_AND_TRAINING_CODE_DIR,
+    SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
 )
@@ -53,6 +55,12 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(
             SERVER_CODE_DIR,
             build_dir / BUILD_SERVER_DIR_NAME,
+        )
+        copy_tree_path(
+            SHARED_SERVING_AND_TRAINING_CODE_DIR,
+            build_dir
+            / BUILD_SERVER_DIR_NAME
+            / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
         )
         if self._spec.config.live_reload:
             copy_tree_path(

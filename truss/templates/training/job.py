@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from secrets_resolver import SecretsResolver
+from shared.secrets_resolver import SecretsResolver
 
 CONFIG_FILE = "config.yaml"
 

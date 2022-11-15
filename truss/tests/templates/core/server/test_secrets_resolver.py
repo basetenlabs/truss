@@ -2,7 +2,7 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-from truss.templates.server.secrets_resolver import SecretsResolver
+from truss.templates.shared.secrets_resolver import SecretsResolver
 
 CONFIG = {"secrets": {"secret_key": "default_secret_value"}}
 

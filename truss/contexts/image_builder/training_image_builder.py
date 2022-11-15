@@ -3,11 +3,13 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
     REQUIREMENTS_TXT_FILENAME,
+    SHARED_SERVING_AND_TRAINING_CODE_DIR,
+    SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRAINING_CODE_DIR,
     TRAINING_DOCKERFILE_NAME,
     TRAINING_DOCKERFILE_TEMPLATE_NAME,
+    TRAINING_JOB_WRAPPER_CODE_DIR,
     TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
@@ -44,11 +46,17 @@ class TrainingImageBuilder(ImageBuilder):
 
         copy_tree_path(self._spec.truss_dir, build_dir)
 
-        # todo: Raise error if this ends up conflicting with truss,
+        # TODO(pankaj): Raise error if this ends up conflicting with truss,
         # training_model_dir can be called the same as value of TRAINING_CODE_DIR
         copy_tree_path(
-            TRAINING_CODE_DIR,
+            TRAINING_JOB_WRAPPER_CODE_DIR,
             build_dir / BUILD_TRAINING_DIR_NAME,
+        )
+        copy_tree_path(
+            SHARED_SERVING_AND_TRAINING_CODE_DIR,
+            build_dir
+            / BUILD_TRAINING_DIR_NAME
+            / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
         )
 
         copy_file_path(
