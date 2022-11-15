@@ -17,9 +17,10 @@
 
 ## Develop
 
-* [Localhost workflow](develop/localhost.md)
+* [Local development](develop/localhost.md)
 * [Truss configuration](develop/configuration.md)
 * [Pre- and post-processing](develop/processing.md)
+* [Bundled packages](develop/bundled-packages.md)
 * [Sample inputs](develop/examples.md)
 * [GPU support](develop/gpu.md)
 * [Secret management](develop/secrets.md)
