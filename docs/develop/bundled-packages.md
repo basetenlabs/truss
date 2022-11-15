@@ -3,7 +3,7 @@
 If your model depends on internal packages that are not available on PyPi, you can bundle this code with the Truss in the `packages` folder. These packages then become available as top level modules to the model class's code when it executes, whether it is running locally, in any Docker container, or on Baseten.
 
 {% hint style="info" %}
-When you import your Truss, the import mechanism adds everything in the Truss' root directory and packages directory to the path.
+When you import your Truss, the import mechanism add the packages in the Truss' `packages` directory to the path.
 {% endhint %}
 
 Great care should be taken to avoid conflicts between these packages with any
