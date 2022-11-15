@@ -143,12 +143,12 @@ model, _ , _ = train_the_model()
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss.
+Use the `create` command to package your model into a Truss.
 
 ```python
-from truss import mk_truss
+from truss import create
 
-tr = mk_truss(model, target_directory="pytorch_truss")
+tr = create(model, target_directory="pytorch_truss")
 ```
 
 Check the target directory to see your new Truss!

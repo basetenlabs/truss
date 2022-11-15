@@ -21,7 +21,7 @@ There are two ways to interface with a Truss locally. The first is via [the Pyth
 When interacting with your Truss via the Python client, the first thing is to make sure it is in-memory. If you just created the Truss, it'll be in memory already, but if not, you'll need to load it with the following command:
 
 ```python
-tr = truss.from_directory("path_to_my_truss")
+tr = truss.load("path_to_my_truss")
 ```
 
 From there, you can invoke the Truss to serve the model in your Python environment. Just run:

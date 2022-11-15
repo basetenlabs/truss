@@ -89,7 +89,7 @@ def build_context(build_dir, target_directory) -> None:
 
     TARGET DIRECTORY: A Truss directory. If none, use current directory.
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _load_truss_from_directory(target_directory=target_directory)
     tr.docker_build_setup(build_dir=Path(build_dir))
 
 
@@ -106,7 +106,7 @@ def build_image(target_directory, build_dir, tag):
 
     BUILD_DIR: Image context. If none, a temp directory is created.
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _load_truss_from_directory(target_directory=target_directory)
     if build_dir:
         build_dir = Path(build_dir)
     tr.build_docker_image(build_dir=build_dir, tag=tag)
@@ -129,7 +129,7 @@ def run_image(target_directory, build_dir, tag, port, attach):
 
     BUILD_DIR: Image context. If none, a temp directory is created.
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _load_truss_from_directory(target_directory=target_directory)
     if build_dir:
         build_dir = Path(build_dir)
     urls = tr.get_urls_from_truss()
@@ -176,7 +176,7 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
     else:
         raise ValueError("At least one of request or request-file must be supplied.")
 
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _load_truss_from_directory(target_directory=target_directory)
     if run_local:
         return tr.server_predict(request_data)
     else:
@@ -199,7 +199,7 @@ def run_example(target_directory, name, local):
 
     TARGET DIRECTORY: A Truss directory. If none, use current directory.
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _load_truss_from_directory(target_directory=target_directory)
     predict_fn = tr.docker_predict
     if local:
         predict_fn = tr.server_predict
@@ -225,7 +225,7 @@ def get_container_logs(target_directory):
 
     TARGET DIRECTORY: A Truss directory. If none, use current directory.
     """
-    for log in _get_truss_from_directory(
+    for log in _load_truss_from_directory(
         target_directory=target_directory
     ).container_logs():
         click.echo(log)
@@ -239,7 +239,7 @@ def kill(target_directory):
 
     TARGET DIRECTORY: A Truss directory. If none, use current directory.
     """
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr = _load_truss_from_directory(target_directory=target_directory)
     tr.kill_container()
 
 
@@ -262,7 +262,7 @@ def cleanup() -> None:
     truss.build.cleanup()
 
 
-def _get_truss_from_directory(target_directory: str = None):
+def _load_truss_from_directory(target_directory: str = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()

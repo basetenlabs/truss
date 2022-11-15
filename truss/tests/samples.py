@@ -24,7 +24,7 @@ from tensorflow.keras.layers.experimental import preprocessing
 
 # Create a fake dataset to include with the deployment
 from test_folder.utils.embedding_util import create_reference_embeddings
-from truss.build import mk_truss, scaffold, scaffold_custom
+from truss.build import create, scaffold, scaffold_custom
 from truss.constants import HUGGINGFACE_TRANSFORMER
 from truss.definitions.base import build_scaffold_directory
 from truss.definitions.huggingface_transformer import (
@@ -78,11 +78,11 @@ os.chdir(current_dir)
 
 
 # You can take a whole directory
-ms = mk_truss(
+ms = create(
     model, model_files=["pytorch_eg/"], data_files=[], target_directory="test_pytorch"
 )
 # You can also take single files or globs
-ms2 = mk_truss(
+ms2 = create(
     model,
     model_files=["pytorch_eg/utils/*.py", "pytorch_eg/my_pytorch_model.py"],
     data_files=[],
@@ -104,7 +104,7 @@ data_y = iris["target"]
 data_x = pd.DataFrame(data_x, columns=feature_names)
 rfc.fit(data_x, data_y)
 
-ms = mk_truss(rfc, model_files=[], data_files=[])
+ms = create(rfc, model_files=[], data_files=[])
 ms.docker_build_string
 ms.predict([[0, 0, 0, 0]])
 
@@ -189,14 +189,14 @@ with open("test_folder/embedding_reqs.txt", "w") as f:
 
 create_reference_embeddings()
 
-mk_truss = scaffold_custom(
+create = scaffold_custom(
     model_files=["test_folder", "test_folder/utils/*.py", "embeddings.npy"],
     target_directory="test_custom",
     requirements_file="test_folder/embedding_reqs.txt",
     model_class="MyEmbeddingModel",
 )
-mk_truss.docker_build_string
-mk_truss.predict(["hello world", "bar baz"])
+create.docker_build_string
+create.predict(["hello world", "bar baz"])
 
 
 url = "http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data"
@@ -255,7 +255,7 @@ history = linear_model.fit(
 linear_model.predict(train_features[:10])
 
 
-scaff = mk_truss(model=linear_model)
+scaff = create(model=linear_model)
 scaff.docker_build_string
 scaff.predict([[0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
@@ -263,10 +263,10 @@ scaff.predict([[0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
 
 built_scaffold_dir = build_scaffold_directory(HUGGINGFACE_TRANSFORMER)
-mk_truss = HuggingFaceTransformerPipelineScaffold(
+create = HuggingFaceTransformerPipelineScaffold(
     model_type="text-generation", path_to_scaffold=built_scaffold_dir
 )
-mk_truss.predict([{"text_inputs": "hello world"}])
+create.predict([{"text_inputs": "hello world"}])
 
 
 PYTORCH_MODEL_CODE = """
@@ -308,7 +308,7 @@ model = MyModelWithArgs(**MODEL_INIT_ARGS)
 os.chdir(current_dir)
 
 
-ms = mk_truss(
+ms = create(
     model,
     model_files=[PYTORCH_WITH_ARGS_PATH],
     data_files=[],
