@@ -239,14 +239,14 @@ class Train:
     def __init__(
        self,
        config,
-       output_model_artifacts_dir,
+       output_dir,
        variables,
     ):
-        self.artifacts_dir = output_model_artifacts_dir
+        self.output_dir = output_dir
         self.variables = variables
 
     def train(self):
-        with (self.artifacts_dir / 'variables.json').open('w') as fp:
+        with (self.output_dir / 'variables.json').open('w') as fp:
             fp.write(json.dumps(self.variables))
 
 """

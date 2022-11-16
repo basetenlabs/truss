@@ -5,14 +5,16 @@ class Train:
     def __init__(
         self,
         config,
-        output_model_artifacts_dir: Path,
+        output_dir: Path,
         variables: dict,
+        secrets,
     ):
-        self.config = config
-        self.training_artifacts_dir = output_model_artifacts_dir
-        self.variables = variables
+        self._config = config
+        self._output_dir = output_dir
+        self._variables = variables
+        self._secrets = secrets
 
     def train(self):
-        # Write your training code here, populating generate artifacts in
-        # self.training_artifacts_dir
+        # Write your training code here, populating generated artifacts in
+        # self._output_dir
         pass
