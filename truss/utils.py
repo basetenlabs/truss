@@ -41,11 +41,11 @@ def given_or_temporary_dir(given_dir: Path = None):
             yield Path(temp_dir)
 
 
-def build_truss_target_directory(model_framework_name: str) -> Path:
+def build_truss_target_directory(stub: str) -> Path:
     """Builds a directory under ~/.truss/models for the purpose of creating a Truss at."""
     rand_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
     target_directory_path = Path(
-        Path.home(), ".truss", "models", f"{model_framework_name}-{rand_suffix}"
+        Path.home(), ".truss", "models", f"{stub}-{rand_suffix}"
     )
     target_directory_path.mkdir(parents=True)
     return target_directory_path

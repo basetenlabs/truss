@@ -3,6 +3,7 @@ import glob
 import json
 import logging
 import sys
+import uuid
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
@@ -15,12 +16,18 @@ from python_on_whales.exceptions import NoSuchContainer
 from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 from truss.constants import (
     INFERENCE_SERVER_PORT,
+    TRAINING_VARIABLES_FILENAME,
     TRUSS,
     TRUSS_DIR,
     TRUSS_HASH,
     TRUSS_MODIFIED_TIME,
 )
-from truss.contexts.image_builder.image_builder import ImageBuilderContext
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
+from truss.contexts.image_builder.training_image_builder import (
+    TrainingImageBuilderContext,
+)
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.docker import (
     Docker,
@@ -70,7 +77,7 @@ class TrussHandle:
 
     def build_docker_build_context(self, build_dir: Path = None):
         build_dir_path = Path(build_dir) if build_dir is not None else None
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir_path)
 
     def build_docker_image(self, build_dir: Path = None, tag: str = None):
@@ -79,11 +86,22 @@ class TrussHandle:
         if image is not None:
             return image
         build_dir_path = Path(build_dir) if build_dir is not None else None
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
         build_image_result = image_builder.build_image(
             build_dir_path, tag, labels=self._get_labels()
         )
         self._store_signature()
+        return build_image_result
+
+    def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
+        """Builds training docker image"""
+        # TODO(pankaj) reuse existing image if present
+        build_dir_path = Path(build_dir) if build_dir is not None else None
+        image_builder = TrainingImageBuilderContext.run(self._truss_dir)
+        build_image_result = image_builder.build_image(
+            build_dir_path, tag, labels=self._get_labels()
+        )
+        # TODO(pankaj) store signature to be able to reuse image
         return build_image_result
 
     def get_docker_image(self):
@@ -183,6 +201,62 @@ class TrussHandle:
         resp.raise_for_status()
         return resp.json()
 
+    def docker_train(
+        self,
+        variables: dict = None,
+        build_dir: Path = None,
+        tag: str = None,
+    ):
+        """
+        Train this truss.
+
+        Training generates a docker image and runs it to generate artifacts,
+        which are then populated in the truss' data directory so it can be used
+        for serving.
+        """
+        if variables is None:
+            variables = {}
+
+        image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
+        built_tag = image.repo_tags[0]
+        secrets_mount_dir_path = _prepare_secrets_mount_dir()
+        variables_dir = _prepare_variables_mount_directory()
+        with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
+            vars_file.write(yaml.dump(variables))
+
+        container = Docker.client().run(
+            built_tag,
+            detach=True,
+            mounts=[
+                [
+                    "type=bind",
+                    f"src={str(secrets_mount_dir_path)}",
+                    "target=/secrets",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(self._spec.training_module_dir.resolve())}",
+                    "target=/train",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(self._spec.data_dir.resolve())}",
+                    "target=/output",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(variables_dir)}",
+                    "target=/variables",
+                ],
+            ],
+            # TODO(pankaj): check training resource overrides
+            gpus="all" if self._spec.config.resources.use_gpu else None,
+        )
+        # TODO(pankaj) Wire up logs streaming, right now we retrieve logs after.
+        logs = get_container_logs(container, follow=False, stream=False)
+        logger.info(logs)
+        return logs
+
     def docker_build_setup(self, build_dir: Path = None):
         """
         Set up a directory to build docker image from.
@@ -190,7 +264,18 @@ class TrussHandle:
         Returns:
             docker build command.
         """
-        image_builder = ImageBuilderContext.run(self._truss_dir)
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
+        image_builder.prepare_image_build_dir(build_dir)
+        return image_builder.docker_build_command(build_dir)
+
+    def training_docker_build_setup(self, build_dir: Path = None):
+        """
+        Set up a directory to build training docker image from.
+
+        Returns:
+            docker build command.
+        """
+        image_builder = TrainingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
 
@@ -632,3 +717,12 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
 
 def _get_url_from_container(container) -> str:
     return get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
+
+
+def _prepare_variables_mount_directory() -> Path:
+    """Builds a directory under ~/.truss/variables for the purpose of storing
+    variables to mount for training."""
+    rnd = str(uuid.uuid4())
+    target_directory_path = Path(Path.home(), ".truss", "variables", rnd)
+    target_directory_path.mkdir(parents=True)
+    return target_directory_path

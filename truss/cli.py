@@ -3,9 +3,11 @@ import logging
 import os
 from functools import wraps
 from pathlib import Path
+from typing import List
 
 import click
 import truss
+import yaml
 
 logging.basicConfig(level=logging.INFO)
 
@@ -65,15 +67,23 @@ def cli_group(ctx, version):
     default=False,
     help="Skip confirmation prompt.",
 )
+@click.option(
+    "-t",
+    "--trainable",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Create a trainable truss.",
+)
 @error_handling
-def init(target_directory, skip_confirm):
+def init(target_directory, skip_confirm, trainable):
     """Initializes an empty Truss directory.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     tr_path = Path(target_directory)
     if skip_confirm or click.confirm(f"A Truss will be created at {tr_path}"):
-        truss.init(target_directory=target_directory)
+        truss.init(target_directory=target_directory, trainable=trainable)
         click.echo(f"Truss was created in {tr_path}")
 
 
@@ -186,6 +196,39 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
 
 
 @cli_group.command()
+@click.option("--target_directory", required=False, help="Directory of truss")
+@click.option(
+    "--build-dir",
+    type=click.Path(exists=True),
+    required=False,
+    help="Directory where context is built",
+)
+@click.option("--tag", help="Docker build image tag")
+@click.option(
+    "--var",
+    multiple=True,
+    help="""Training variables in key=value form where value is string.
+    For more complex values use vars_yaml_file""",
+)
+@click.option(
+    "--vars_yaml_file",
+    required=False,
+    help="Training variables from a yaml file",
+)
+@error_handling
+@echo_output
+def train(target_directory, build_dir, tag, var, vars_yaml_file):
+    """Runs prediction for a Truss in a docker image or locally"""
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    if vars_yaml_file is not None:
+        with Path(vars_yaml_file).open() as vars_file:
+            variables = yaml.safe_load(vars_file)
+    else:
+        variables = _variables_dict_from_option(var)
+    return tr.docker_train(build_dir=build_dir, tag=tag, variables=variables)
+
+
+@cli_group.command()
 @click.argument("target_directory", required=False)
 @click.option("--name", type=str, required=False, help="Name of example to run")
 @click.option(
@@ -267,6 +310,20 @@ def _get_truss_from_directory(target_directory: str = None):
     if target_directory is None:
         target_directory = os.getcwd()
     return truss.from_directory(target_directory)
+
+
+def _variables_dict_from_option(variables_list: List[str]) -> dict:
+    vars_dict = {}
+    for var in variables_list:
+        first_equals_pos = var.find("=")
+        if first_equals_pos == -1:
+            raise ValueError(
+                f"Training variable expected in `key=value` from but found `{var}`",
+            )
+        var_name = var[:first_equals_pos]
+        var_value = var[first_equals_pos + 1 :]
+        vars_dict[var_name] = var_value
+    return vars_dict
 
 
 if __name__ == "__main__":

@@ -6,7 +6,9 @@ import requests
 from python_on_whales import docker
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from truss.constants import CONFIG_FILE
-from truss.contexts.image_builder.image_builder import ImageBuilderContext
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
 from truss.contexts.local_loader.load_local import LoadLocal
 from truss.model_frameworks.keras import Keras
 from truss.truss_config import TrussConfig
@@ -53,7 +55,7 @@ def test_run_image(keras_mpg_model):
         framework = Keras()
         framework.to_truss(keras_mpg_model, truss_dir)
         tag = f"test-{framework.typ().value}-model:latest"
-        image = ImageBuilderContext.run(truss_dir).build_image(tag=tag)
+        image = ServingImageBuilderContext.run(truss_dir).build_image(tag=tag)
         assert image.repo_tags == [tag]
         container = docker.run(tag, publish=[[8080, 8080]], detach=True)
         try:

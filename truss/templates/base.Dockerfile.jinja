@@ -1,0 +1,103 @@
+ARG PYVERSION={{config.python_version}}
+
+{% if config.model_framework.value == 'huggingface_transformer' %}
+    {% if config.resources.use_gpu %}
+FROM baseten/baseten-huggingface-transformer-server-gpu-base:latest
+    {% else %}
+# TODO(pankaj): Use baseten wrapper, to be consistent with gpu case
+FROM huggingface/transformers-cpu:4.18.0
+    {% endif %}
+{% else %}
+    {% if config.resources.use_gpu %}
+# TODO(pankaj): Replace with baseten/baseten-server-gpu-base-$PYVERSION:latest
+FROM nvidia/cuda:11.2.1-base-ubuntu18.04
+ENV CUDNN_VERSION=8.1.0.77
+ENV CUDA=11.2
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        cuda-command-line-tools-11-2 \
+        libcublas-11-2 \
+        libcublas-dev-11-2 \
+        libcufft-11-2 \
+        libcurand-11-2 \
+        libcusolver-11-2 \
+        libcusparse-11-2 \
+        libcudnn8=${CUDNN_VERSION}-1+cuda${CUDA} \
+        libgomp1 \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Allow statements and log messages to immediately appear in the Knative logs
+ENV PYTHONUNBUFFERED True
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && \
+    apt install -y bash \
+                   build-essential \
+                   git \
+                   curl \
+                   ca-certificates \
+                   software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt update -y && \
+    apt install -y python3.9 && \
+    apt install -y python3.9-distutils && \
+    apt install -y python3.9-venv && \
+    rm -rf /var/lib/apt/lists
+
+RUN ln -sf /usr/bin/python3.9 /usr/bin/python3 && \
+    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3 get-pip.py
+
+RUN python3 -m pip install --no-cache-dir --upgrade pip
+
+    {% else %}
+FROM baseten/baseten-server-base-$PYVERSION:latest
+    {% endif %}
+{% endif %}
+
+
+{% block install_system_requirements %}
+COPY ./system_packages.txt system_packages.txt
+RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system_packages.txt) \
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
+{% endblock %}
+
+
+RUN pip install --upgrade pip
+
+
+{% block install_requirements %}
+COPY ./requirements.txt requirements.txt
+RUN pip install -r requirements.txt
+{% endblock %}
+
+
+ENV APP_HOME /app
+WORKDIR $APP_HOME
+
+
+{% block app_copy %}
+{% endblock %}
+
+
+{% block bundled_packages_copy %}
+{% if bundled_packages_dir_exists %}
+COPY ./{{config.bundled_packages_dir}} /packages
+{% endif %}
+{% endblock %}
+
+
+{% for env_var_name, env_var_value in config.environment_variables.items() %}
+ENV {{ env_var_name }} {{ env_var_value }}
+{% endfor %}
+
+
+{% block run %}
+{% endblock %}

@@ -28,6 +28,10 @@ DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
 DEFAULT_USE_GPU = False
 
+DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
+DEFAULT_TRAINING_CLASS_NAME = "Train"
+DEFAULT_TRAINING_MODULE_DIR = "train"
+
 
 @dataclass
 class Resources:
@@ -53,6 +57,40 @@ class Resources:
             "cpu": self.cpu,
             "memory": self.memory,
             "use_gpu": self.use_gpu,
+        }
+
+
+@dataclass
+class Train:
+    training_class_filename: str = DEFAULT_TRAINING_CLASS_FILENAME
+    training_class_name: str = DEFAULT_TRAINING_CLASS_NAME
+    training_module_dir: str = DEFAULT_TRAINING_MODULE_DIR
+    variables: dict = field(default_factory=dict)
+    resources: Resources = field(default_factory=Resources)
+
+    @staticmethod
+    def from_dict(d):
+        return Train(
+            training_class_filename=d.get(
+                "training_class_filename", DEFAULT_TRAINING_CLASS_FILENAME
+            ),
+            training_class_name=d.get(
+                "training_class_name", DEFAULT_TRAINING_CLASS_NAME
+            ),
+            training_module_dir=d.get(
+                "training_module_dir", DEFAULT_TRAINING_MODULE_DIR
+            ),
+            variables=d.get("variables", {}),
+            resources=Resources.from_dict(d.get("resources", {})),
+        )
+
+    def to_dict(self):
+        return {
+            "training_class_filename": self.training_class_filename,
+            "training_class_name": self.training_class_name,
+            "training_module_dir": self.training_module_dir,
+            "variables": self.variables,
+            "resources": self.resources.to_dict(),
         }
 
 
@@ -83,6 +121,7 @@ class TrussConfig:
     live_reload: bool = False
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
+    train: Train = field(default_factory=Train)
 
     @staticmethod
     def from_dict(d):
@@ -116,6 +155,7 @@ class TrussConfig:
                 "bundled_packages_dir", DEFAULT_BUNDLED_PACKAGES_DIR
             ),
             live_reload=d.get("live_reload", False),
+            train=Train.from_dict(d.get("train", {})),
         )
         config.validate()
         return config
@@ -151,6 +191,7 @@ class TrussConfig:
             "bundled_packages_dir": self.bundled_packages_dir,
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
+            "train": self.train.to_dict(),
         }
 
     def clone(self):

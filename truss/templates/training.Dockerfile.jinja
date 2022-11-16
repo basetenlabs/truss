@@ -1,0 +1,19 @@
+{% extends "base.Dockerfile.jinja" %}
+
+{% block install_requirements %}
+COPY ./training_requirements.txt training_requirements.txt
+RUN pip install -r training_requirements.txt
+{{ super() }}
+{% endblock %}
+
+{% block app_copy %}
+COPY ./training /app
+# todo: put this behind a flag
+# COPY ./{{ config.train.train_module_dir }} /app/train
+COPY ./config.yaml /app/config.yaml
+{% endblock %}
+
+
+{% block run %}
+CMD exec python3 /app/job.py
+{% endblock %}
