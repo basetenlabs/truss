@@ -1,8 +1,13 @@
+import fnmatch
 import hashlib
 from pathlib import Path
+from typing import List, Optional
 
 
-def directory_content_hash(root: Path) -> str:
+def directory_content_hash(
+    root: Path,
+    ignore_patterns: List[str] = None,
+) -> str:
     """Calculate content based hash of a filesystem directory.
 
     Rough algo: Sort all files by path, then take hash of a content stream, where
@@ -13,7 +18,11 @@ def directory_content_hash(root: Path) -> str:
     underneath. The (root) Directory will have the same hash, even if renamed.
     """
     hasher = hashlib.sha256()
-    paths = [path for path in root.glob("**/*")]
+    paths = [
+        path
+        for path in root.glob("**/*")
+        if not _path_matches_any_pattern(path.relative_to(root), ignore_patterns)
+    ]
     paths.sort(key=lambda p: p.relative_to(root))
     for path in paths:
         hasher.update(str_hash(str(path.relative_to(root))))
@@ -56,3 +65,14 @@ def str_hash(content: str):
     hasher = hashlib.sha256()
     hasher.update(content.encode("utf-8"))
     return hasher.digest()
+
+
+def _path_matches_any_pattern(path: Path, patterns: Optional[List[str]]) -> bool:
+    if patterns is None:
+        return False
+
+    for pattern in patterns:
+        if fnmatch.fnmatch(str(path), pattern):
+            return True
+
+    return False

@@ -95,18 +95,33 @@ class TrussHandle:
 
     def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
         """Builds training docker image"""
-        # TODO(pankaj) reuse existing image if present
+        data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
+        labels = {
+            TRUSS_DIR: self._truss_dir,
+            TRUSS_HASH: directory_content_hash(
+                self._truss_dir, ["*.pyc", data_dir_ignore_pattern]
+            ),
+            "training": True,
+        }
+        image = self.get_docker_image(labels=labels)
+        if image is not None:
+            return image
+
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = TrainingImageBuilderContext.run(self._truss_dir)
         build_image_result = image_builder.build_image(
-            build_dir_path, tag, labels=self._get_labels()
+            build_dir_path,
+            tag,
+            labels=labels,
         )
-        # TODO(pankaj) store signature to be able to reuse image
         return build_image_result
 
-    def get_docker_image(self):
+    def get_docker_image(self, labels: dict = None):
         """Get docker image for truss if one exists."""
-        images = self.get_docker_images_from_label()
+        if labels is None:
+            labels = self._get_labels()
+
+        images = get_images(labels)
         if images and isinstance(images, list):
             return images[0]
 
@@ -135,7 +150,6 @@ class TrussHandle:
             container = container_if_patched
         else:
             image = self.build_docker_image(build_dir=build_dir, tag=tag)
-            built_tag = image.repo_tags[0]
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
 
@@ -146,7 +160,7 @@ class TrussHandle:
                 TRUSS: True,
             }
             container = Docker.client().run(
-                built_tag,
+                image.id,
                 publish=publish_ports,
                 detach=detach,
                 labels=labels,
@@ -218,14 +232,13 @@ class TrussHandle:
             variables = {}
 
         image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
-        built_tag = image.repo_tags[0]
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
         variables_dir = _prepare_variables_mount_directory()
         with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
             vars_file.write(yaml.dump(variables))
 
         container = Docker.client().run(
-            built_tag,
+            image.id,
             detach=True,
             mounts=[
                 [
