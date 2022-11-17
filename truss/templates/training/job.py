@@ -58,10 +58,8 @@ def _create_trainer(config):
     train_init_params = {}
     if _signature_accepts_keyword_arg(train_class_signature, "config"):
         train_init_params["config"] = config
-    if _signature_accepts_keyword_arg(
-        train_class_signature, "output_model_artifacts_dir"
-    ):
-        train_init_params["output_model_artifacts_dir"] = Path(OUTPUT_PATH)
+    if _signature_accepts_keyword_arg(train_class_signature, "output_dir"):
+        train_init_params["output_dir"] = Path(OUTPUT_PATH)
 
     # Wire up secrets
     if _signature_accepts_keyword_arg(train_class_signature, "secrets"):
