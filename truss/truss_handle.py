@@ -6,7 +6,7 @@ import sys
 import uuid
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
 import numpy as np
@@ -16,6 +16,7 @@ from python_on_whales.exceptions import NoSuchContainer
 from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 from truss.constants import (
     INFERENCE_SERVER_PORT,
+    TRAINING_LABEL,
     TRAINING_VARIABLES_FILENAME,
     TRUSS,
     TRUSS_DIR,
@@ -80,50 +81,29 @@ class TrussHandle:
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir_path)
 
-    def build_docker_image(self, build_dir: Path = None, tag: str = None):
-        """Builds docker image"""
-        image = self.get_docker_image()
-        if image is not None:
-            return image
-        build_dir_path = Path(build_dir) if build_dir is not None else None
-        image_builder = ServingImageBuilderContext.run(self._truss_dir)
-        build_image_result = image_builder.build_image(
-            build_dir_path, tag, labels=self._get_labels()
+    def build_docker_image(self, *args, **kwargs):
+        """[Deprected] Please use build_serving_docker_image."""
+        return self.build_serving_docker_image(*args, **kwargs)
+
+    def build_serving_docker_image(self, build_dir: Path = None, tag: str = None):
+        return self._build_image(
+            builder_context=ServingImageBuilderContext,
+            labels=self._get_serving_labels(),
+            build_dir=build_dir,
+            tag=tag,
         )
-        self._store_signature()
-        return build_image_result
 
     def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
-        """Builds training docker image"""
-        data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
-        labels = {
-            TRUSS_DIR: self._truss_dir,
-            TRUSS_HASH: directory_content_hash(
-                self._truss_dir, ["*.pyc", data_dir_ignore_pattern]
-            ),
-            "training": True,
-        }
-        image = self.get_docker_image(labels=labels)
-        if image is not None:
-            return image
-
-        build_dir_path = Path(build_dir) if build_dir is not None else None
-        image_builder = TrainingImageBuilderContext.run(self._truss_dir)
-        build_image_result = image_builder.build_image(
-            build_dir_path,
-            tag,
-            labels=labels,
+        return self._build_image(
+            builder_context=TrainingImageBuilderContext,
+            labels=self._get_training_labels(),
+            build_dir=build_dir,
+            tag=tag,
         )
-        return build_image_result
 
-    def get_docker_image(self, labels: dict = None):
-        """Get docker image for truss if one exists."""
-        if labels is None:
-            labels = self._get_labels()
-
-        images = get_images(labels)
-        if images and isinstance(images, list):
-            return images[0]
+    def get_docker_image(self, labels: dict):
+        """[Deprecated] Do not use."""
+        return _docker_image_from_labels(labels)
 
     def docker_run(
         self,
@@ -149,16 +129,13 @@ class TrussHandle:
         if container_if_patched is not None:
             container = container_if_patched
         else:
-            image = self.build_docker_image(build_dir=build_dir, tag=tag)
+            image = self.build_serving_docker_image(build_dir=build_dir, tag=tag)
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
 
             # We are going to try running a new container, make sure previous one is gone
             self.kill_container()
-            labels = {
-                **self._get_labels(),
-                TRUSS: True,
-            }
+            labels = self._get_serving_labels()
             container = Docker.client().run(
                 image.id,
                 publish=publish_ports,
@@ -182,7 +159,7 @@ class TrussHandle:
         except ContainerNotFoundError as err:
             raise err
         except (ContainerIsDownError, HTTPError, ConnectionError) as err:
-            logger.error(self.container_logs(follow=False, stream=False))
+            logger.error(self.serving_container_logs(follow=False, stream=False))
             raise err
 
         return container
@@ -200,7 +177,7 @@ class TrussHandle:
         and makes a prediction request to the server running on the container.
         Kills the container afterwards. Mostly useful for testing.
         """
-        containers = self.get_docker_containers_from_labels()
+        containers = self.get_serving_docker_containers_from_labels()
         if containers:
             container = containers[0]
         else:
@@ -417,9 +394,6 @@ class TrussHandle:
             examples[index] = Example(example_name, example_input)
         self.update_examples(examples)
 
-    def get_docker_images_from_label(self):
-        return get_images(self._get_labels())
-
     def get_all_docker_images(self):
         """Returns all docker images for this truss.
 
@@ -427,10 +401,39 @@ class TrussHandle:
         """
         return get_images({TRUSS_DIR: str(self._truss_dir)})
 
-    def get_docker_containers_from_labels(self, all=False, labels=None):
+    def get_docker_containers_from_labels(self, *args, **kwargs):
+        """[Deprecated] Please use get_serving_docker_containers_from_labels."""
+        return self.get_serving_docker_containers_from_labels(*args, **kwargs)
+
+    def get_serving_docker_containers_from_labels(
+        self,
+        all: bool = False,
+        labels: dict = None,
+    ) -> list:
+        """Get serving docker containers, with given labels.
+
+        Args:
+            labels: Labels to match on. If none then use labels for this specific truss.
+            all: If true return both running and not running containers.
+        """
         if labels is None:
-            labels = self._get_labels()
+            labels = self._get_serving_labels()
+        else:
+            # Make sure we're looking for serving container for this truss.
+            labels = {
+                TRUSS: True,
+                TRAINING_LABEL: False,
+                **labels,
+            }
+
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
+
+    def _get_running_serving_container_ignore_hash(self):
+        containers = self.get_serving_docker_containers_from_labels(
+            labels={TRUSS_DIR: str(self._truss_dir)}
+        )
+        if containers is not None and len(containers) > 0:
+            return containers[0]
 
     def kill_container(self):
         """Kill container
@@ -439,9 +442,13 @@ class TrussHandle:
         """
         kill_containers({TRUSS_DIR: self._truss_dir})
 
-    def container_logs(self, follow=True, stream=True):
+    def container_logs(self, *args, **kwargs):
+        """[Deprecate] Use serving_container_logs."""
+        return self.serving_container_logs(*args, **kwargs)
+
+    def serving_container_logs(self, follow=True, stream=True):
         """Get container logs for truss."""
-        containers = self.get_docker_containers_from_labels(all=True)
+        containers = self.get_serving_docker_containers_from_labels(all=True)
         if not containers:
             raise ValueError("No Container is running for truss!")
         return get_container_logs(containers[-1], follow, stream)
@@ -471,34 +478,30 @@ class TrussHandle:
         if not self.spec.live_reload:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
-        containers = self.get_docker_containers_from_labels(
-            labels={TRUSS_DIR: str(self._truss_dir)}
-        )
-        if not containers:
+        # Note that we match on only the truss directory, not hash.
+        container = self._get_running_serving_container_ignore_hash()
+        if not container:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
             )
 
-        container = containers[0]
         model_base_url = _get_url_from_container(container)
         resp = requests.post(f"{model_base_url}/control/patch", json=patch_request)
         resp.raise_for_status()
         return resp.json()
 
     def truss_hash_on_container(self) -> Optional[str]:
+        """[Deprecated] Use truss_hash_on_serving_container."""
+        return self.truss_hash_on_serving_container()
+
+    def truss_hash_on_serving_container(self) -> Optional[str]:
         """Get content hash of truss running on container."""
         if not self.spec.live_reload:
             raise ValueError(
                 "Not a control truss fetching truss hash is not supported."
             )
 
-        containers = self.get_docker_containers_from_labels(
-            labels={TRUSS_DIR: str(self._truss_dir)}
-        )
-        if containers is None or len(containers) == 0:
-            return None
-
-        container = containers[0]
+        container = self._get_running_serving_container_ignore_hash()
         model_base_url = _get_url_from_container(container)
         resp = requests.get(f"{model_base_url}/control/truss_hash")
         resp.raise_for_status()
@@ -514,7 +517,7 @@ class TrussHandle:
 
     def get_urls_from_truss(self):
         urls = []
-        containers = self.get_docker_containers_from_labels()
+        containers = self.get_serving_docker_containers_from_labels()
         for container in containers:
             urls.extend(get_urls_from_container(container)[INFERENCE_SERVER_PORT])
         return urls
@@ -580,14 +583,52 @@ class TrussHandle:
                 filepath = Path(filename)
                 copy_file_path(filepath, destination_dir / filepath.name)
 
-    def _get_labels(self):
+    def _get_serving_labels(self) -> Dict[str, str]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
         truss_hash = self._truss_hash()
         return {
             TRUSS_MODIFIED_TIME: truss_mod_time,
             TRUSS_DIR: self._truss_dir,
             TRUSS_HASH: truss_hash,
+            TRAINING_LABEL: False,
+            TRUSS: True,
         }
+
+    def _get_training_labels(self) -> Dict[str, str]:
+        data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
+        ignore_patterns = [
+            "*.pyc",
+            data_dir_ignore_pattern,
+        ]
+        return {
+            TRUSS_DIR: self._truss_dir,
+            TRUSS_HASH: directory_content_hash(
+                self._truss_dir,
+                ignore_patterns,
+            ),
+            TRAINING_LABEL: True,
+            TRUSS: True,
+        }
+
+    def _build_image(
+        self,
+        builder_context,
+        labels: Dict[str, str],
+        build_dir: Path = None,
+        tag: str = None,
+    ):
+        image = _docker_image_from_labels(labels=labels)
+        if image is not None:
+            return image
+
+        build_dir_path = Path(build_dir) if build_dir is not None else None
+        image_builder = builder_context.run(self._truss_dir)
+        build_image_result = image_builder.build_image(
+            build_dir_path,
+            tag,
+            labels=labels,
+        )
+        return build_image_result
 
     def _update_config(self, update_config_fn: Callable[[TrussConfig], TrussConfig]):
         config = update_config_fn(self._spec.config)
@@ -599,15 +640,11 @@ class TrussHandle:
         if not self.is_control_truss:
             return None
 
-        containers = self.get_docker_containers_from_labels(
-            labels={TRUSS_DIR: str(self._truss_dir)}
-        )
-
-        if len(containers) == 0:
+        container = self._get_running_serving_container_ignore_hash()
+        if container is None:
             return None
 
-        container = containers[0]
-        running_truss_hash = self.truss_hash_on_container()
+        running_truss_hash = self.truss_hash_on_serving_container()
         if running_truss_hash is None:
             return None
 
@@ -739,3 +776,14 @@ def _prepare_variables_mount_directory() -> Path:
     target_directory_path = Path(Path.home(), ".truss", "variables", rnd)
     target_directory_path.mkdir(parents=True)
     return target_directory_path
+
+
+def _docker_image_from_labels(labels: dict):
+    """Get docker image from given labels.
+
+    Assumes there's only one. Returns the first one it finds if there are many,
+    no guarantees which one.
+    """
+    images = get_images(labels)
+    if images and isinstance(images, list):
+        return images[0]

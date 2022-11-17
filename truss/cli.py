@@ -119,7 +119,7 @@ def build_image(target_directory, build_dir, tag):
     tr = _get_truss_from_directory(target_directory=target_directory)
     if build_dir:
         build_dir = Path(build_dir)
-    tr.build_docker_image(build_dir=build_dir, tag=tag)
+    tr.build_serving_docker_image(build_dir=build_dir, tag=tag)
 
 
 @cli_group.command()
@@ -270,7 +270,7 @@ def get_container_logs(target_directory):
     """
     for log in _get_truss_from_directory(
         target_directory=target_directory
-    ).container_logs():
+    ).serving_container_logs():
         click.echo(log)
 
 
