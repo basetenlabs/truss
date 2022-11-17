@@ -214,9 +214,9 @@ class TrussHandle:
         with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
             vars_file.write(yaml.dump(variables))
 
-        logs = Docker.client().run(
+        container = Docker.client().run(
             image.id,
-            detach=False,
+            detach=True,
             mounts=[
                 [
                     "type=bind",
@@ -242,8 +242,9 @@ class TrussHandle:
             # TODO(pankaj): check training resource overrides
             gpus="all" if self._spec.config.resources.use_gpu else None,
         )
-        # TODO(pankaj) Wire up logs streaming, right now we retrieve logs after.
-        return logs
+        logs_iterator = get_container_logs(container, follow=True, stream=True)
+        for log in logs_iterator:
+            print(log[1].decode("utf-8"), end="")
 
     def docker_build_setup(self, build_dir: Path = None):
         """
