@@ -214,9 +214,9 @@ class TrussHandle:
         with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
             vars_file.write(yaml.dump(variables))
 
-        container = Docker.client().run(
+        logs = Docker.client().run(
             image.id,
-            detach=True,
+            detach=False,
             mounts=[
                 [
                     "type=bind",
@@ -243,8 +243,6 @@ class TrussHandle:
             gpus="all" if self._spec.config.resources.use_gpu else None,
         )
         # TODO(pankaj) Wire up logs streaming, right now we retrieve logs after.
-        logs = get_container_logs(container, follow=False, stream=False)
-        logger.info(logs)
         return logs
 
     def docker_build_setup(self, build_dir: Path = None):
@@ -600,20 +598,33 @@ class TrussHandle:
 
     def _get_serving_labels(self) -> Dict[str, str]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
-        truss_hash = self._truss_hash()
+        training_module_dir_ignore_pattern = (
+            f"{str(self._spec.training_module_dir.name)}/*"
+        )
+        ignore_patterns = [
+            "*.pyc",
+            training_module_dir_ignore_pattern,
+        ]
         return {
             TRUSS_MODIFIED_TIME: truss_mod_time,
             TRUSS_DIR: self._truss_dir,
-            TRUSS_HASH: truss_hash,
+            TRUSS_HASH: directory_content_hash(
+                self._truss_dir,
+                ignore_patterns,
+            ),
             TRAINING_LABEL: False,
             TRUSS: True,
         }
 
     def _get_training_labels(self) -> Dict[str, str]:
         data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
+        training_module_dir_ignore_pattern = (
+            f"{str(self._spec.training_module_dir.name)}/*"
+        )
         ignore_patterns = [
             "*.pyc",
             data_dir_ignore_pattern,
+            training_module_dir_ignore_pattern,
         ]
         return {
             TRUSS_DIR: self._truss_dir,
