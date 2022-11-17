@@ -67,12 +67,20 @@ def _create_trainer(config):
 
     # Wire up variables
     if _signature_accepts_keyword_arg(train_class_signature, "variables"):
+        default_variables = {}
+        if "train" in config and "variables" in config["train"]:
+            default_variables = config["train"]["variables"]
+
+        runtime_variables = {}
         vars_path = Path(VARIABLES_PATH) / VARIABLES_FILE
         if vars_path.exists():
             with vars_path.open() as vars_file:
-                variables = yaml.safe_load(vars_file)
-        else:
-            variables = {}
+                runtime_variables = yaml.safe_load(vars_file)
+
+        variables = {
+            **default_variables,
+            **runtime_variables,
+        }
         train_init_params["variables"] = variables
     return train_class(**train_init_params)
 

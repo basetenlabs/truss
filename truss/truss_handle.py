@@ -305,6 +305,21 @@ class TrussHandle:
             )
         )
 
+    def add_training_variable(self, var_name: str, default_var_value: any):
+        """Add a training variable to truss model's config."""
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                train=replace(
+                    conf.train,
+                    variables={
+                        **conf.train.variables,
+                        var_name: default_var_value,
+                    },
+                ),
+            )
+        )
+
     def update_requirements(self, requirements: List[str]):
         """Update requirements in truss model's config.
 
