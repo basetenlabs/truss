@@ -12,8 +12,6 @@ from truss.types import Example, ModelFrameworkType
 class TrussSpec:
     """
     Helper class for easy access to information in a Truss.
-
-    TODO: expose training settings here.
     """
 
     def __init__(self, truss_dir: Path) -> None:

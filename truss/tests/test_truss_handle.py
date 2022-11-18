@@ -81,7 +81,7 @@ def test_readme_generation_str_example(
 def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-build-image-tag:0.0.1"
-    image = th.build_docker_image(tag=tag)
+    image = th.build_serving_docker_image(tag=tag)
     assert image.repo_tags[0] == tag
 
 
@@ -90,7 +90,7 @@ def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-build-image-gpu-tag:0.0.1"
     build_dir = tmp_path / "scaffold_build_dir"
-    image = th.build_docker_image(tag=tag, build_dir=build_dir)
+    image = th.build_serving_docker_image(tag=tag, build_dir=build_dir)
     assert image.repo_tags[0] == tag
 
 
@@ -100,7 +100,7 @@ def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path
     th.live_reload(True)
     tag = "test-build-image-control-gpu-tag:0.0.1"
     build_dir = tmp_path / "scaffold_build_dir"
-    image = th.build_docker_image(tag=tag, build_dir=build_dir)
+    image = th.build_serving_docker_image(tag=tag, build_dir=build_dir)
     assert image.repo_tags[0] == tag
 
 
@@ -141,13 +141,13 @@ def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post):
 def get_docker_containers_from_labels(custom_model_truss_dir_with_pre_and_post):
     with ensure_kill_all():
         t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-        assert len(t1.get_docker_containers_from_labels()) == 0
+        assert len(t1.get_serving_docker_containers_from_labels()) == 0
         t1.docker_run()
-        assert len(t1.get_docker_containers_from_labels()) == 1
+        assert len(t1.get_serving_docker_containers_from_labels()) == 1
         t1.docker_run(port=3000)
-        assert len(t1.get_docker_containers_from_labels()) == 2
+        assert len(t1.get_serving_docker_containers_from_labels()) == 2
         t1.kill_container()
-        assert len(t1.get_docker_containers_from_labels()) == 0
+        assert len(t1.get_serving_docker_containers_from_labels()) == 0
 
 
 @pytest.mark.integration
@@ -162,14 +162,19 @@ def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
 @pytest.mark.integration
 def test_docker_train(variables_to_artifacts_training_truss):
     th = TrussHandle(variables_to_artifacts_training_truss)
+    th.add_training_variable("x", "y")
+    th.add_training_variable("a", "b")
     tag = "test-docker-train-tag:0.0.1"
     with ensure_kill_all():
-        input_vars = {"x": "y"}
+        input_vars = {"x": "z"}
         th.docker_train(variables=input_vars, tag=tag)
         vars_artifact = th.spec.data_dir / "variables.json"
         with vars_artifact.open() as vars_file:
             vars_from_artifact = json.load(vars_file)
-            assert vars_from_artifact == input_vars
+            assert vars_from_artifact == {
+                "x": "z",
+                "a": "b",
+            }
 
 
 @pytest.mark.integration
@@ -192,7 +197,7 @@ def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
         r2 = th.docker_predict({"inputs": [3, 4]}, tag=tag)
         assert r1 == {"predictions": [4, 5]}
         assert r2 == {"predictions": [6, 7]}
-        assert len(th.get_docker_containers_from_labels()) == 1
+        assert len(th.get_serving_docker_containers_from_labels()) == 1
 
 
 @pytest.mark.integration
@@ -201,12 +206,12 @@ def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_po
     t2 = TrussHandle(custom_model_truss_dir)
     with ensure_kill_all():
         t1.docker_run()
-        assert len(t1.get_docker_containers_from_labels()) == 1
+        assert len(t1.get_serving_docker_containers_from_labels()) == 1
         t2.docker_run(local_port=3000)
-        assert len(t2.get_docker_containers_from_labels()) == 1
+        assert len(t2.get_serving_docker_containers_from_labels()) == 1
         kill_all_with_retries()
-        assert len(t1.get_docker_containers_from_labels()) == 0
-        assert len(t2.get_docker_containers_from_labels()) == 0
+        assert len(t1.get_serving_docker_containers_from_labels()) == 0
+        assert len(t2.get_serving_docker_containers_from_labels()) == 0
 
 
 @pytest.mark.skip(reason="Needs gpu")
@@ -493,7 +498,7 @@ def test_control_truss_apply_patch(custom_model_control):
         result = th.docker_predict({"inputs": [1]}, tag=tag)
         assert result[0] == 1
 
-        running_hash = th.truss_hash_on_container()
+        running_hash = th.truss_hash_on_serving_container()
         new_model_code = """
 class Model:
     def predict(self, request):
@@ -557,14 +562,14 @@ def test_truss_hash_caching_based_on_max_mod_time(
 ):
     directory_content_patcher.return_value = "mock_hash"
     th = TrussHandle(custom_model_truss_dir)
-    labels = th._get_labels()
-    labels2 = th._get_labels()
+    labels = th._get_serving_labels()
+    labels2 = th._get_serving_labels()
     assert labels == labels2
     directory_content_patcher.assert_called_once()
 
     time.sleep(0.1)  # Make sure different mod time
     (custom_model_truss_dir / "model" / "model.py").touch()
-    labels3 = th._get_labels()
+    labels3 = th._get_serving_labels()
     assert labels3 != labels
     directory_content_patcher.call_count == 2
 
