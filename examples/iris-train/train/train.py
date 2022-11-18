@@ -66,12 +66,14 @@ class Train:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.002)
         self.loss_fn = nn.CrossEntropyLoss()
 
+        self.load_data()
+
         X_train, X_test, y_train, y_test = self.data
 
         train_losses = []
         test_losses = []
 
-        for epoch in range(self.epochs):
+        for epoch in range(1, self.epochs + 1):
             self.optimizer.zero_grad()
 
             out = self.model(X_train)
@@ -85,16 +87,16 @@ class Train:
             loss = self.loss_fn(out, y_test)
             test_losses.append(loss.item())
 
-            if (epoch + 1) % 10 == 0:
+            if (epoch) % 10 == 0:
                 print(
-                    f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_losses[epoch]:.4f}, Test Loss: {test_losses[epoch]:.4f}"
+                    f"Epoch {epoch}/{self.epochs}, Train Loss: {train_losses[epoch-1]:.4f}, Test Loss: {test_losses[epoch-1]:.4f}"
                 )
-                with (self.output_dir / f"{epoch}" / "loss").open("w+") as fp:
+                with (self.output_dir / f"epoch-{epoch}-loss").open("w") as fp:
                     fp.write(
-                        f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_losses[epoch]:.4f}, Test Loss: {test_losses[epoch]:.4f}"
+                        f"Epoch {epoch}/{self.epochs}, Train Loss: {train_losses[epoch-1]:.4f}, Test Loss: {test_losses[epoch-1]:.4f}"
                     )
             if (epoch + 1) % 25 == 0:
-                PATH = f"{self.output_dir}/{epoch}/model.pt"
+                PATH = f"{self.output_dir}/model{epoch}.pt"
                 torch.save(
                     {
                         "epoch": epoch,
