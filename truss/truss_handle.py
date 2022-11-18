@@ -250,7 +250,8 @@ class TrussHandle:
         logs_iterator = get_container_logs(container, follow=True, stream=True)
         for log in logs_iterator:
             print(log[1].decode("utf-8"), end="")
-        rmtree(str(self._spec.data_dir))
+        if self._spec.data_dir.exists():
+            rmtree(str(self._spec.data_dir))
         copy_tree_path(output_dir, self._spec.data_dir)
         rmtree(str(output_dir))
         rmtree(str(variables_dir))
