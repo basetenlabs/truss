@@ -13,7 +13,7 @@ model_module_dir: model
 model_name: null
 model_type: custom
 python_version: py39
-requirements: 
+requirements:
 - scikit-learn
 - torch
 resources:
