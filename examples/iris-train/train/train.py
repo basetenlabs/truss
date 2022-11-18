@@ -88,11 +88,15 @@ class Train:
 
             if (epoch) % 10 == 0:
                 print(
-                    f"Epoch {epoch}/{self.epochs}, Train Loss: {train_losses[epoch-1]:.4f}, Test Loss: {test_losses[epoch-1]:.4f}"
+                    f"Epoch {epoch}/{self.epochs}, "
+                    f"Train Loss: {train_losses[epoch-1]:.4f}, "
+                    f"Test Loss: {test_losses[epoch-1]:.4f}"
                 )
                 with (self.output_dir / f"epoch-{epoch}-loss").open("w") as fp:
                     fp.write(
-                        f"Epoch {epoch}/{self.epochs}, Train Loss: {train_losses[epoch-1]:.4f}, Test Loss: {test_losses[epoch-1]:.4f}"
+                        f"Epoch {epoch}/{self.epochs}, "
+                        f"Train Loss: {train_losses[epoch-1]:.4f}, "
+                        f"Test Loss: {test_losses[epoch-1]:.4f}"
                     )
             if (epoch) % 25 == 0:
                 PATH = f"{self.output_dir}/model{epoch}.pt"
