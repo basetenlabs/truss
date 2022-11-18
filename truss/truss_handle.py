@@ -18,6 +18,7 @@ from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
 from truss.constants import (
     INFERENCE_SERVER_PORT,
     TRAINING_LABEL,
+    TRAINING_TRUSS_HASH,
     TRAINING_VARIABLES_FILENAME,
     TRUSS,
     TRUSS_DIR,
@@ -627,7 +628,7 @@ class TrussHandle:
         ]
         return {
             TRUSS_DIR: self._truss_dir,
-            TRUSS_HASH: directory_content_hash(
+            TRAINING_TRUSS_HASH: directory_content_hash(
                 self._truss_dir,
                 ignore_patterns,
             ),
