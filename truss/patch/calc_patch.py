@@ -26,9 +26,11 @@ def calc_truss_patch(
     changed_paths = _calc_changed_paths(
         truss_dir, previous_truss_signature.content_hashes_by_path
     )
-    # todo calcuate model code patches onlye for now, add config changes later
+    # TODO(pankaj) Calculate model code patches only for now, add config changes
+    # later.
     truss_spec = TrussSpec(truss_dir)
     model_module_path = str(truss_spec.model_module_dir.relative_to(truss_dir))
+    training_module_path = str(truss_spec.training_module_dir.relative_to(truss_dir))
 
     patches = []
     for path in changed_paths["removed"]:
@@ -45,6 +47,9 @@ def calc_truss_patch(
                     ),
                 )
             )
+        elif path.startswith(training_module_path):
+            # Ignore training changes from patch
+            continue
         else:
             return None
 
@@ -71,6 +76,9 @@ def calc_truss_patch(
                     ),
                 )
             )
+        elif path.startswith(training_module_path):
+            # Ignore training changes from patch
+            continue
         else:
             return None
     return patches

@@ -1,7 +1,7 @@
 import random
 import string
 from pathlib import Path
-from typing import Callable
+from typing import Callable, List
 
 import pytest
 from truss.patch.hash import (
@@ -92,6 +92,44 @@ def test_dir_hash_different_if_file_contents_swapped(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
+def test_dir_hash_ignore_pattern_filename(dir_hash_test_dir):
+    _update_file_content(dir_hash_test_dir / "file1")
+    _update_file_content(dir_hash_test_dir / "file2")
+
+    def mod_file1(dir_path):
+        _update_file_content(dir_path / "file1")
+
+    def mod_file2(dir_path):
+        _update_file_content(dir_path / "file2")
+
+    _verify_with_dir_modification(dir_hash_test_dir, mod_file1, True, ["file1"])
+    _verify_with_dir_modification(dir_hash_test_dir, mod_file2, False, ["file1"])
+
+
+def test_dir_hash_ignore_pattern_multiple(dir_hash_test_dir):
+    _update_file_content(dir_hash_test_dir / "file1")
+    _update_file_content(dir_hash_test_dir / "file2")
+
+    def mod(dir_path):
+        _update_file_content(dir_path / "file1")
+        _update_file_content(dir_path / "file2")
+
+    _verify_with_dir_modification(dir_hash_test_dir, mod, True, ["file1", "file2"])
+
+
+def test_dir_hash_ignore_pattern_dir_glob(dir_hash_test_dir):
+    tmp_dir = dir_hash_test_dir / "tmp_dir"
+    tmp_dir.mkdir()
+    _update_file_content(tmp_dir / "file1")
+    _update_file_content(tmp_dir / "file2")
+
+    def mod(dir_path):
+        _update_file_content(dir_path / "tmp_dir" / "file1")
+        _update_file_content(dir_path / "tmp_dir" / "file2")
+
+    _verify_with_dir_modification(dir_hash_test_dir, mod, True, ["tmp_dir/*"])
+
+
 def test_file_content_hash(tmp_path):
     orig_content = _generate_random_string(1024 * 1024)
     file_path = tmp_path / "file"
@@ -123,11 +161,16 @@ def test_file_content_hash_str(tmp_path):
 
 
 def _verify_with_dir_modification(
-    target_dir: Path, op: Callable[[Path], Path], should_match: bool
+    target_dir: Path,
+    op: Callable[[Path], Path],
+    should_match: bool,
+    ignore_patterns: List[str] = None,
 ):
-    hash1 = directory_content_hash(target_dir)
+    hash1 = directory_content_hash(target_dir, ignore_patterns=ignore_patterns)
     new_target_dir = op(target_dir)
-    hash2 = directory_content_hash(new_target_dir or target_dir)
+    hash2 = directory_content_hash(
+        new_target_dir or target_dir, ignore_patterns=ignore_patterns
+    )
     if should_match:
         assert hash1 == hash2
     else:

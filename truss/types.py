@@ -54,6 +54,12 @@ class PatchDetails:
             "patch_ops": [patch_op.to_dict() for patch_op in self.patch_ops],
         }
 
+    def is_empty(self) -> bool:
+        # It's possible for prev_hash and next_hash to be different and yet
+        # patch_ops to be empty, because certain parts of truss may be ignored.
+        # e.g. training code is ignored for serving.
+        return len(self.patch_ops) == 0
+
     @staticmethod
     def from_dict(patch_details: dict) -> "PatchDetails":
         return PatchDetails(
