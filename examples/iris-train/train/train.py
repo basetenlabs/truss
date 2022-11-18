@@ -67,7 +67,6 @@ class Train:
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.load_data()
-
         X_train, X_test, y_train, y_test = self.data
 
         train_losses = []
@@ -95,7 +94,7 @@ class Train:
                     fp.write(
                         f"Epoch {epoch}/{self.epochs}, Train Loss: {train_losses[epoch-1]:.4f}, Test Loss: {test_losses[epoch-1]:.4f}"
                     )
-            if (epoch + 1) % 25 == 0:
+            if (epoch) % 25 == 0:
                 PATH = f"{self.output_dir}/model{epoch}.pt"
                 torch.save(
                     {
