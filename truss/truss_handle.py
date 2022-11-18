@@ -6,6 +6,7 @@ import sys
 import uuid
 from dataclasses import replace
 from pathlib import Path
+from shutil import rmtree
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
@@ -86,12 +87,14 @@ class TrussHandle:
         return self.build_serving_docker_image(*args, **kwargs)
 
     def build_serving_docker_image(self, build_dir: Path = None, tag: str = None):
-        return self._build_image(
+        image = self._build_image(
             builder_context=ServingImageBuilderContext,
             labels=self._get_serving_labels(),
             build_dir=build_dir,
             tag=tag,
         )
+        self._store_signature()
+        return image
 
     def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
         return self._build_image(
@@ -211,6 +214,7 @@ class TrussHandle:
         image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
         variables_dir = _prepare_variables_mount_directory()
+        output_dir = _prepare_training_output_mount_directory()
         with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
             vars_file.write(yaml.dump(variables))
 
@@ -230,7 +234,7 @@ class TrussHandle:
                 ],
                 [
                     "type=bind",
-                    f"src={str(self._spec.data_dir.resolve())}",
+                    f"src={output_dir}",
                     "target=/output",
                 ],
                 [
@@ -245,6 +249,10 @@ class TrussHandle:
         logs_iterator = get_container_logs(container, follow=True, stream=True)
         for log in logs_iterator:
             print(log[1].decode("utf-8"), end="")
+        rmtree(str(self._spec.data_dir))
+        copy_tree_path(output_dir, self._spec.data_dir)
+        rmtree(str(output_dir))
+        rmtree(str(variables_dir))
 
     def docker_build_setup(self, build_dir: Path = None):
         """
@@ -583,7 +591,7 @@ class TrussHandle:
     def _store_signature(self):
         """Store truss signature"""
         sign = calc_truss_signature(self._truss_dir)
-        truss_hash = self._truss_hash()
+        truss_hash = self._serving_hash()
         LocalConfigHandler.add_signature(truss_hash, json.dumps(sign.to_dict()))
 
     def _copy_files(self, file_dir_or_glob: str, destination_dir: Path):
@@ -599,33 +607,23 @@ class TrussHandle:
 
     def _get_serving_labels(self) -> Dict[str, str]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
-        training_module_dir_ignore_pattern = (
-            f"{str(self._spec.training_module_dir.name)}/*"
-        )
-        ignore_patterns = [
-            "*.pyc",
-            training_module_dir_ignore_pattern,
-        ]
         return {
             TRUSS_MODIFIED_TIME: truss_mod_time,
             TRUSS_DIR: self._truss_dir,
-            TRUSS_HASH: directory_content_hash(
-                self._truss_dir,
-                ignore_patterns,
-            ),
+            TRUSS_HASH: self._serving_hash(),
             TRAINING_LABEL: False,
             TRUSS: True,
         }
 
     def _get_training_labels(self) -> Dict[str, str]:
         data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
-        training_module_dir_ignore_pattern = (
-            f"{str(self._spec.training_module_dir.name)}/*"
-        )
+        model_module_dir_ignore_pattern = f"{str(self._spec.model_module_dir.name)}/*"
+        examples_ignore_pattern = self._spec.examples_path.name
         ignore_patterns = [
             "*.pyc",
             data_dir_ignore_pattern,
-            training_module_dir_ignore_pattern,
+            model_module_dir_ignore_pattern,
+            examples_ignore_pattern,
         ]
         return {
             TRUSS_DIR: self._truss_dir,
@@ -675,7 +673,7 @@ class TrussHandle:
         if running_truss_hash is None:
             return None
 
-        current_hash = self._truss_hash()
+        current_hash = self._serving_hash()
         if running_truss_hash == current_hash:
             return container
 
@@ -688,6 +686,13 @@ class TrussHandle:
             logger.info("Unable to calculate patch.")
             return None
 
+        if patch_details.is_empty():
+            logger.info(
+                "While truss has changed, no serving related "
+                "changes were found, skipping patching."
+            )
+            return container
+
         patch_request = {
             "hash": current_hash,
             "prev_hash": running_truss_hash,
@@ -699,7 +704,13 @@ class TrussHandle:
         self._store_signature()
         return container
 
-    def _truss_hash(self) -> str:
+    def _serving_hash(self) -> str:
+        """Hash to be used for the serving image.
+
+        Caches based on max mod time of files in truss. If truss is not touched
+        then this avoids calculating the hash, which could be expensive for large
+        model binaries.
+        """
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
         # If mod time hasn't changed then hash must be the same
         if (
@@ -708,6 +719,8 @@ class TrussHandle:
         ):
             truss_hash = self._hash_for_mod_time[1]
         else:
+            # TODO(pankaj) Ignore training directory. But this is a bigger change
+            # because it needs syncing with hash generation on baseten side as well.
             truss_hash = directory_content_hash(self._truss_dir)
             self._hash_for_mod_time = (truss_mod_time, truss_hash)
         return truss_hash
@@ -799,8 +812,21 @@ def _get_url_from_container(container) -> str:
 def _prepare_variables_mount_directory() -> Path:
     """Builds a directory under ~/.truss/variables for the purpose of storing
     variables to mount for training."""
+    return _create_rand_dir_in_dot_truss("variables")
+
+
+def _prepare_training_output_mount_directory() -> Path:
+    """Builds a directory under ~/.truss/training_output for the purpose of storing
+    output of training.
+
+    This is mounted at /output of the training docker container.
+    """
+    return _create_rand_dir_in_dot_truss("training_output")
+
+
+def _create_rand_dir_in_dot_truss(subdir: str) -> Path:
     rnd = str(uuid.uuid4())
-    target_directory_path = Path(Path.home(), ".truss", "variables", rnd)
+    target_directory_path = Path(Path.home(), ".truss", subdir, rnd)
     target_directory_path.mkdir(parents=True)
     return target_directory_path
 
