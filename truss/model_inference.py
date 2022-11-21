@@ -1,4 +1,5 @@
 import inspect
+import logging
 import pathlib
 import sys
 from ast import ClassDef, FunctionDef
@@ -25,20 +26,7 @@ PYTHON_VERSIONS = {
     "py39",
 }
 
-
-def _get_entries_for_packages(list_of_requirements, desired_requirements):
-    name_to_req_str = {}
-    for req_name in desired_requirements:
-        for req_spec_full_str in list_of_requirements:
-            if "==" in req_spec_full_str:
-                req_spec_name, req_version = req_spec_full_str.split("==")
-                req_version_base = req_version.split("+")[0]
-                if req_name == req_spec_name:
-                    name_to_req_str[req_name] = f"{req_name}=={req_version_base}"
-            else:
-                continue
-
-    return name_to_req_str
+logger = logging.getLogger(__name__)
 
 
 def _infer_model_framework(model_class: str):
@@ -105,6 +93,10 @@ def map_to_supported_python_version(python_version: str) -> str:
         raise NotImplementedError("Only python version 3 is supported")
 
     if python_minor_version > 9:
+        logger.info(
+            f"Mapping python version {python_major_version}.{python_minor_version}"
+            " to 3.9, the highest version that Truss currently supports."
+        )
         return "py39"
 
     return python_version
