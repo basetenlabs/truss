@@ -47,6 +47,7 @@ def test_infer_model_information(pytorch_model_with_init_args):
         ("py39", "py39"),
         ("py310", "py39"),
         ("py311", "py39"),
+        ("py36", "py37"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):

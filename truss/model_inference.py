@@ -70,11 +70,7 @@ def _model_class(model: Any):
 
 
 def infer_python_version() -> str:
-    python_major_minor = f"py{sys.version_info.major}{sys.version_info.minor}"
-    # might want to fix up this logic
-    if python_major_minor not in PYTHON_VERSIONS:
-        python_major_minor = None
-    return python_major_minor
+    return f"py{sys.version_info.major}{sys.version_info.minor}"
 
 
 def map_to_supported_python_version(python_version: str) -> str:
@@ -92,12 +88,20 @@ def map_to_supported_python_version(python_version: str) -> str:
     if python_major_version > 3:
         raise NotImplementedError("Only python version 3 is supported")
 
+    # TODO(pankaj) Add full support for 3.10 and 3.11, this is stop-gap.
     if python_minor_version > 9:
         logger.info(
             f"Mapping python version {python_major_version}.{python_minor_version}"
             " to 3.9, the highest version that Truss currently supports."
         )
         return "py39"
+
+    if python_minor_version < 7:
+        logger.info(
+            f"Mapping python version {python_major_version}.{python_minor_version}"
+            " to 3.7, the lowest version that Truss currently supports."
+        )
+        return "py37"
 
     return python_version
 
