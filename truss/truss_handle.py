@@ -192,9 +192,12 @@ class TrussHandle:
                 detach=detach,
             )
         model_base_url = _get_url_from_container(container)
-        resp = requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
-        resp.raise_for_status()
-        return resp.json()
+        for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+            resp = requests.post(
+                f"{model_base_url}/v1/models/model:predict", json=request
+            )
+            resp.raise_for_status()
+            return resp.json()
 
     def docker_train(
         self,
