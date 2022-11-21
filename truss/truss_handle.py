@@ -14,7 +14,15 @@ import numpy as np
 import requests
 import yaml
 from python_on_whales.exceptions import NoSuchContainer
-from tenacity import RetryError, Retrying, stop_after_attempt, wait_fixed
+from requests.exceptions import ConnectionError
+from tenacity import (
+    RetryError,
+    Retrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    wait_fixed,
+)
 from truss.constants import (
     INFERENCE_SERVER_PORT,
     TRAINING_LABEL,
@@ -192,7 +200,11 @@ class TrussHandle:
                 detach=detach,
             )
         model_base_url = _get_url_from_container(container)
-        for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+        for attempt in Retrying(
+            stop=stop_after_attempt(6),
+            wait=wait_exponential(multiplier=2, min=1, max=32),
+            retry=retry_if_exception_type(ConnectionError),
+        ):
             resp = requests.post(
                 f"{model_base_url}/v1/models/model:predict", json=request
             )
