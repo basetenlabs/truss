@@ -89,6 +89,27 @@ def infer_python_version() -> str:
     return python_major_minor
 
 
+def map_to_supported_python_version(python_version: str) -> str:
+    """Map python version to truss supported python version.
+
+    Currently, it maps any versions greater than 3.9 to 3.9.
+
+    Args:
+        python_version: in the form py[major_version][minor_version] e.g. py39,
+        py310
+    """
+    python_major_version = int(python_version[2:3])
+    python_minor_version = int(python_version[3:])
+
+    if python_major_version > 3:
+        raise NotImplementedError("Only python version 3 is supported")
+
+    if python_minor_version > 9:
+        return "py39"
+
+    return python_version
+
+
 def infer_model_information(model: Any) -> ModelBuildStageOne:
     model_class = _model_class(model)
     model_framework = _infer_model_framework(model_class)

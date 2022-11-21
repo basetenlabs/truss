@@ -5,7 +5,7 @@ from typing import Dict, List, Set
 import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR
 from truss.environment_inference.requirements_inference import infer_deps
-from truss.model_inference import infer_python_version
+from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.types import ModelFrameworkType
 from truss.utils import copy_file_path, copy_tree_path
@@ -58,7 +58,7 @@ class ModelFramework(ABC):
         else:
             target_examples_path.touch()
 
-        python_version = infer_python_version()
+        python_version = map_to_supported_python_version(infer_python_version())
 
         # Create config
         config = TrussConfig(

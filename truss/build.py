@@ -10,7 +10,7 @@ from truss.docker import kill_containers
 from truss.environment_inference.requirements_inference import infer_deps
 from truss.errors import FrameworkNotSupportedError
 from truss.model_frameworks import MODEL_FRAMEWORKS_BY_TYPE, model_framework_from_model
-from truss.model_inference import infer_python_version
+from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
@@ -131,7 +131,7 @@ def mk_truss_from_pipeline(
     config = TrussConfig(
         model_type="custom",
         model_framework=ModelFrameworkType.CUSTOM,
-        python_version=infer_python_version(),
+        python_version=map_to_supported_python_version(infer_python_version()),
         requirements=requirements,
     )
 
@@ -225,7 +225,7 @@ def init(
     config = TrussConfig(
         model_type="custom",
         model_framework=ModelFrameworkType.CUSTOM,
-        python_version=infer_python_version(),
+        python_version=map_to_supported_python_version(infer_python_version()),
     )
 
     target_directory_path = populate_target_directory(
