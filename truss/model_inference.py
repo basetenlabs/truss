@@ -1,4 +1,5 @@
 import inspect
+import logging
 import pathlib
 import sys
 from ast import ClassDef, FunctionDef
@@ -25,20 +26,7 @@ PYTHON_VERSIONS = {
     "py39",
 }
 
-
-def _get_entries_for_packages(list_of_requirements, desired_requirements):
-    name_to_req_str = {}
-    for req_name in desired_requirements:
-        for req_spec_full_str in list_of_requirements:
-            if "==" in req_spec_full_str:
-                req_spec_name, req_version = req_spec_full_str.split("==")
-                req_version_base = req_version.split("+")[0]
-                if req_name == req_spec_name:
-                    name_to_req_str[req_name] = f"{req_name}=={req_version_base}"
-            else:
-                continue
-
-    return name_to_req_str
+logger = logging.getLogger(__name__)
 
 
 def _infer_model_framework(model_class: str):
@@ -82,11 +70,40 @@ def _model_class(model: Any):
 
 
 def infer_python_version() -> str:
-    python_major_minor = f"py{sys.version_info.major}{sys.version_info.minor}"
-    # might want to fix up this logic
-    if python_major_minor not in PYTHON_VERSIONS:
-        python_major_minor = None
-    return python_major_minor
+    return f"py{sys.version_info.major}{sys.version_info.minor}"
+
+
+def map_to_supported_python_version(python_version: str) -> str:
+    """Map python version to truss supported python version.
+
+    Currently, it maps any versions greater than 3.9 to 3.9.
+
+    Args:
+        python_version: in the form py[major_version][minor_version] e.g. py39,
+        py310
+    """
+    python_major_version = int(python_version[2:3])
+    python_minor_version = int(python_version[3:])
+
+    if python_major_version > 3:
+        raise NotImplementedError("Only python version 3 is supported")
+
+    # TODO(pankaj) Add full support for 3.10 and 3.11, this is stop-gap.
+    if python_minor_version > 9:
+        logger.info(
+            f"Mapping python version {python_major_version}.{python_minor_version}"
+            " to 3.9, the highest version that Truss currently supports."
+        )
+        return "py39"
+
+    if python_minor_version < 7:
+        logger.info(
+            f"Mapping python version {python_major_version}.{python_minor_version}"
+            " to 3.7, the lowest version that Truss currently supports."
+        )
+        return "py37"
+
+    return python_version
 
 
 def infer_model_information(model: Any) -> ModelBuildStageOne:

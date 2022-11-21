@@ -2,6 +2,7 @@ import pytest
 from truss.constants import PYTORCH
 from truss.model_inference import (
     infer_model_information,
+    map_to_supported_python_version,
     validate_provided_parameters_with_model,
 )
 
@@ -36,3 +37,19 @@ def test_infer_model_information(pytorch_model_with_init_args):
     model_info = infer_model_information(pytorch_model_with_init_args[0])
     assert model_info.model_framework == PYTORCH
     assert model_info.model_type == "MyModel"
+
+
+@pytest.mark.parametrize(
+    "python_version, expected_python_version",
+    [
+        ("py37", "py37"),
+        ("py38", "py38"),
+        ("py39", "py39"),
+        ("py310", "py39"),
+        ("py311", "py39"),
+        ("py36", "py37"),
+    ],
+)
+def test_map_to_supported_python_version(python_version, expected_python_version):
+    out_python_version = map_to_supported_python_version(python_version)
+    assert out_python_version == expected_python_version
