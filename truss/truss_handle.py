@@ -201,7 +201,7 @@ class TrussHandle:
             )
         model_base_url = _get_url_from_container(container)
         for attempt in Retrying(
-            stop=stop_after_attempt(10),
+            stop=stop_after_attempt(15),
             wait=wait_exponential(multiplier=2, min=5, max=32),
             retry=retry_if_exception_type(ConnectionError),
         ):
@@ -792,7 +792,7 @@ def _wait_for_docker_build(container):
 
 
 def _wait_for_model_server(url: str):
-    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+    for attempt in Retrying(stop=stop_after_attempt(10), wait=wait_fixed(2)):
         with attempt:
             resp = requests.get(url)
             resp.raise_for_status()
