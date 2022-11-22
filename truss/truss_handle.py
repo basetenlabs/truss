@@ -201,8 +201,8 @@ class TrussHandle:
             )
         model_base_url = _get_url_from_container(container)
         for attempt in Retrying(
-            stop=stop_after_attempt(6),
-            wait=wait_exponential(multiplier=2, min=1, max=32),
+            stop=stop_after_attempt(10),
+            wait=wait_exponential(multiplier=2, min=5, max=32),
             retry=retry_if_exception_type(ConnectionError),
         ):
             resp = requests.post(
