@@ -769,7 +769,7 @@ def _validate_request_input(request: dict):
     if _is_invalid_list_input_prop(request, "instances") or _is_invalid_list_input_prop(
         request, "inputs"
     ):
-        raise Exception(reason='Expected "instances" or "inputs" to be a list')
+        raise Exception('Expected "instances" or "inputs" to be a list')
 
 
 def _is_invalid_list_input_prop(request: dict, prop: str):
