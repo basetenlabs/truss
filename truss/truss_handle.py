@@ -386,7 +386,7 @@ class TrussHandle:
         """Add a bundled package to a truss model.
 
         Accepts a file path, a directory path or a glob. Everything is copied
-        under the truss model's data directory.
+        under the truss model's packages directory.
         """
         self._copy_files(file_dir_or_glob, self._spec.bundled_packages_dir)
 
