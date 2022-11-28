@@ -49,6 +49,11 @@ Returns:
 
 ### Truss Use
 
+#### bundled_package(self, file_dir_or_glob: str)
+      Add a bundled package to a truss model.
+
+      Accepts a file path, a directory path or a glob. Everything is copied
+      under the truss model's packages directory.
 
 #### add_data(self, file_dir_or_glob: str)
       Add data to a truss model.
