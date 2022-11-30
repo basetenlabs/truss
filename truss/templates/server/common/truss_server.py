@@ -5,16 +5,18 @@ from threading import Thread
 
 import numpy as np  # noqa: E402
 import tornado.web  # noqa: E402
-from common.lib_support import ensure_kfserving_installed
-from common.serialization import DeepNumpyEncoder  # noqa: E402
-from common.serialization import truss_msgpack_deserialize  # noqa: E402
-from common.serialization import truss_msgpack_serialize  # noqa: E402
-from common.util import (  # noqa: E402
-    assign_request_to_inputs_instances_after_validation,
-)
 from kfserving.handlers.http import HTTPHandler  # noqa: E402
 from kfserving.kfserver import HealthHandler, KFServer, ListHandler
 from pythonjsonlogger import jsonlogger  # noqa: E402
+from truss.templates.server.common.lib_support import ensure_kfserving_installed
+from truss.templates.server.common.serialization import DeepNumpyEncoder  # noqa: E402
+from truss.templates.server.common.serialization import (  # noqa: E402
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
+from truss.templates.server.common.util import (  # noqa: E402
+    assign_request_to_inputs_instances_after_validation,
+)
 
 ensure_kfserving_installed()
 
