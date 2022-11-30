@@ -1,10 +1,21 @@
+import logging
+from threading import Thread
+from time import sleep
+
 import pytest
-from truss.constants import PYTORCH
+import requests
+import yaml
+from tornado.ioloop import IOLoop
+from truss.constants import CONFIG_FILE, PYTORCH
 from truss.model_inference import (
     infer_model_information,
     map_to_supported_python_version,
     validate_provided_parameters_with_model,
 )
+from truss.templates.server.common.truss_server import TrussServer
+from truss.templates.server.model_wrapper import ModelWrapper
+
+logger = logging.getLogger(__name__)
 
 
 def test_pytorch_init_arg_validation(
@@ -31,6 +42,49 @@ def test_pytorch_init_arg_validation(
     # Requires all args
     with pytest.raises(ValueError):
         validate_provided_parameters_with_model(pytorch_model_with_init_args, {})
+
+
+def test_slow_load_model():
+    with open(
+        f"../test_data/models/slow_load/{CONFIG_FILE}", encoding="utf-8"
+    ) as config_file:
+        config = yaml.safe_load(config_file)
+        model = ModelWrapper(config)
+        server = TrussServer(workers=1, http_port=8998)
+        url = f"http://localhost:{server.http_port}"
+        loop = IOLoop()
+
+        def start():
+            loop.make_current()
+            server.start([model])
+
+        server_thread = Thread(target=start)
+        server_thread.start()
+
+        #  wait for startup
+        sleep(1)
+
+        try:
+            #  liveness should be good right away
+            resp = requests.get(url)
+            assert resp.status_code == 200
+
+            #  readiness should not be ready due to a long load
+            resp = requests.get(f"{url}/v1/models/model")
+            assert resp.status_code == 503
+
+            #  wait for our long load to complete
+            sleep(3)
+
+            #  now we should be ready to serve traffic, post load
+            resp = requests.get(f"{url}/v1/models/model")
+            assert resp.status_code == 200
+        finally:
+            # stop the asyncio loop to kill truss server
+            loop.stop()
+
+            # wait for server to fully exit
+            server_thread.join(10)
 
 
 def test_infer_model_information(pytorch_model_with_init_args):

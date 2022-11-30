@@ -1,0 +1,19 @@
+bundled_packages_dir: packages
+description: null
+environment_variables: {}
+examples_filename: examples.yaml
+input_type: Any
+model_class_filename: model.py
+model_class_name: SlowLoad
+model_framework: custom
+model_metadata: {}
+model_module_dir: truss.test_data.models.slow_load.model
+model_name: model
+model_type: custom
+python_version: py39
+resources:
+  cpu: 500m
+  memory: 3Gi
+  use_gpu: true
+secrets: {}
+spec_version: 2.0

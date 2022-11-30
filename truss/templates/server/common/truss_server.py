@@ -1,6 +1,7 @@
 import json  # noqa: E402
 import logging  # noqa: E402
 from http import HTTPStatus  # noqa: E402
+from threading import Thread
 
 import numpy as np  # noqa: E402
 import tornado.web  # noqa: E402
@@ -12,11 +13,12 @@ from common.util import (  # noqa: E402
     assign_request_to_inputs_instances_after_validation,
 )
 from kfserving.handlers.http import HTTPHandler  # noqa: E402
-from kfserving.kfserver import LivenessHandler  # noqa: E402; noqa: E402
 from kfserving.kfserver import HealthHandler, KFServer, ListHandler
 from pythonjsonlogger import jsonlogger  # noqa: E402
 
 ensure_kfserving_installed()
+
+logger = logging.getLogger(__name__)
 
 
 def _configure_logging():
@@ -154,6 +156,31 @@ class ExplainHandler(TrussHTTPHandler):
         self.write(final_response)
 
 
+class LivenessAndLoadHandler(TrussHTTPHandler):
+
+    _load_thread: Thread = None
+
+    @staticmethod
+    def _exec_load(model):
+        model.load()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get(self):
+        for name in self.models:
+            model = self.models[name]
+
+            # if the model is ready or loading is in flight
+            if not model.ready and not self._load_thread:
+                self._load_thread = Thread(
+                    target=LivenessAndLoadHandler._exec_load, args=[model]
+                )
+                self._load_thread.start()
+
+            self.write("Alive")
+
+
 class TrussServer(KFServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -163,7 +190,7 @@ class TrussServer(KFServer):
         return tornado.web.Application(
             [
                 # Server Liveness API returns 200 if server is alive.
-                (r"/", LivenessHandler),
+                (r"/", LivenessAndLoadHandler, dict(models=self.registered_models)),
                 (r"/v1/models", ListHandler, dict(models=self.registered_models)),
                 # Model Health API returns 200 if model is ready to serve.
                 (

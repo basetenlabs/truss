@@ -1,7 +1,7 @@
 fail_fast: true
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.2.0
+    rev: v4.4.0
     hooks:
       - id: check-added-large-files
         args: ["--maxkb=500"]
@@ -28,11 +28,11 @@ repos:
         types: [python]
         pass_filenames: true
   - repo: https://github.com/tcort/markdown-link-check
-    rev: ""
+    rev: "v3.10.3"
     hooks:
       - id: markdown-link-check
   - repo: https://github.com/psf/black
-    rev: 22.6.0
+    rev: 22.10.0
     hooks:
       - id: black
         # It is recommended to specify the latest version of Python
