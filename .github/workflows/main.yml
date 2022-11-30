@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   integration_tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
         with:
@@ -22,7 +22,7 @@ jobs:
 
   trigger_release_if_version_changed:
     needs: [integration_tests]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
         with:
