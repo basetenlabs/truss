@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import kfserving
-from shared.secrets_resolver import SecretsResolver
+from truss.templates.shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
 

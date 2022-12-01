@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-n-push-image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
 
@@ -39,7 +39,7 @@ jobs:
         cache-to: type=gha, mode=max, scope=${{ github.workflow }}-${{ github.ref_name }}
 
   publish-to-pypi:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
 
