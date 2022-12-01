@@ -1,13 +1,26 @@
 import os
 
 import yaml
-from common.truss_server import TrussServer
-from model_wrapper import ModelWrapper
 from truss.constants import CONFIG_FILE
+from truss.templates.server.common.truss_server import TrussServer
+from truss.templates.server.model_wrapper import ModelWrapper
+
+
+class ConfiguredTrussServer:
+    _config: dict
+    _port: int
+
+    def __init__(self, config_path: str, port: int):
+        self._port = port
+        with open(config_path, encoding="utf-8") as config_file:
+            self._config = yaml.safe_load(config_file)
+
+    def start(self):
+        server = TrussServer(workers=1, http_port=self._port)
+        model = ModelWrapper(self._config)
+        server.start([model])
+
 
 if __name__ == "__main__":
-    with open(CONFIG_FILE, encoding="utf-8") as config_file:
-        config = yaml.safe_load(config_file)
-        model = ModelWrapper(config)
-        port = int(os.environ.get("INFERENCE_SERVER_PORT", "8080"))
-        TrussServer(workers=1, http_port=port).start([model])
+    env_port = int(os.environ.get("INFERENCE_SERVER_PORT", "8080"))
+    ConfiguredTrussServer(CONFIG_FILE, env_port).start()

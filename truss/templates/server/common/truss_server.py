@@ -2,9 +2,11 @@ import json  # noqa: E402
 import logging  # noqa: E402
 from http import HTTPStatus  # noqa: E402
 from threading import Thread
+from typing import List
 
 import numpy as np  # noqa: E402
 import tornado.web  # noqa: E402
+from kfserving import KFModel
 from kfserving.handlers.http import HTTPHandler  # noqa: E402
 from kfserving.kfserver import HealthHandler, KFServer, ListHandler
 from pythonjsonlogger import jsonlogger  # noqa: E402
@@ -17,6 +19,7 @@ from truss.templates.server.common.serialization import (  # noqa: E402
 from truss.templates.server.common.util import (  # noqa: E402
     assign_request_to_inputs_instances_after_validation,
 )
+from truss.templates.server.model_wrapper import ModelWrapper
 
 ensure_kfserving_installed()
 
@@ -187,6 +190,17 @@ class TrussServer(KFServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _configure_logging()
+
+    def start(self, models: List[KFModel]):
+        if len(models) != 1:
+            raise RuntimeError("TrussServer only supports one model")
+
+        if not isinstance(models[0], ModelWrapper):
+            raise ValueError(
+                "TrussServer only accepts ModelWrapper instances instead of KFServer instances"
+            )
+
+        super().start(models)
 
     def create_application(self):
         return tornado.web.Application(
