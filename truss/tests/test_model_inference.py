@@ -5,7 +5,6 @@ from time import sleep
 
 import pytest
 import requests
-from inference_server import ConfiguredTrussServer
 from tornado.ioloop import IOLoop
 from truss.constants import CONFIG_FILE, PYTORCH
 from truss.model_inference import (
@@ -13,6 +12,8 @@ from truss.model_inference import (
     map_to_supported_python_version,
     validate_provided_parameters_with_model,
 )
+
+from ..templates.server.inference_server import ConfiguredTrussServer
 
 logger = logging.getLogger(__name__)
 
