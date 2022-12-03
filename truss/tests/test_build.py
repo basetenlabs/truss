@@ -149,7 +149,7 @@ def test_truss_sklearn_predict_pipeline(sklearn_rfc_model):
 def test_truss_keras_predict(keras_mpg_model):
     with _model_server_predict(
         keras_mpg_model,
-        {"inputs": [[0, 0, 0, 0, 0, 0, 0, 0, 0]]},
+        {"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]},
     ) as result:
         assert "predictions" in result
         predictions = result["predictions"]
@@ -159,7 +159,7 @@ def test_truss_keras_predict(keras_mpg_model):
 def test_truss_keras_predict_pipeline(keras_mpg_model):
     def inference(request: dict):
         inputs = request["inputs"]
-        response = keras_mpg_model.predict([inputs])
+        response = keras_mpg_model.predict(inputs)
         return {"result": response}
 
     with _model_server_predict_pipeline(

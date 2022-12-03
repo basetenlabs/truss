@@ -454,7 +454,12 @@ def keras_mpg_model(mpg_dataset):
     train_dataset = mpg_dataset.sample(frac=0.8, random_state=0)
     train_features = train_dataset.copy()
     train_labels = train_features.pop("MPG")
-    normalizer = preprocessing.Normalization(axis=-1)
+    normalizer = preprocessing.Normalization(
+        input_shape=[
+            9,
+        ],
+        axis=None,
+    )
     normalizer.adapt(np.array(train_features))
     linear_model = tf.keras.Sequential([normalizer, layers.Dense(units=1)])
 
