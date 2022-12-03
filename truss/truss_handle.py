@@ -165,7 +165,7 @@ class TrussHandle:
             logger.info(
                 f"Model server started on port {local_port}, docker container id {container.id}"
             )
-        model_base_url = f"http://localhost:{local_port}/"
+        model_base_url = f"http://localhost:{local_port}/v1/models/model"
         try:
             _wait_for_truss(model_base_url, container)
         except ContainerNotFoundError as err:

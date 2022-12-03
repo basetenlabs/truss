@@ -1,9 +1,10 @@
 import os
 
 import yaml
-from truss.constants import CONFIG_FILE
-from truss.templates.server.common.truss_server import TrussServer
-from truss.templates.server.model_wrapper import ModelWrapper
+from common.truss_server import TrussServer
+from model_wrapper import ModelWrapper
+
+CONFIG_FILE = "config.yaml"
 
 
 class ConfiguredTrussServer:

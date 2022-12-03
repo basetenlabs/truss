@@ -6,20 +6,22 @@ from typing import List
 
 import numpy as np  # noqa: E402
 import tornado.web  # noqa: E402
-from kfserving import KFModel
-from kfserving.handlers.http import HTTPHandler  # noqa: E402
-from kfserving.kfserver import HealthHandler, KFServer, ListHandler
-from pythonjsonlogger import jsonlogger  # noqa: E402
-from truss.templates.server.common.lib_support import ensure_kfserving_installed
-from truss.templates.server.common.serialization import DeepNumpyEncoder  # noqa: E402
-from truss.templates.server.common.serialization import (  # noqa: E402
+from common.lib_support import ensure_kfserving_installed
+from common.serialization import DeepNumpyEncoder  # noqa: E402
+from common.serialization import (  # noqa: E402
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from truss.templates.server.common.util import (  # noqa: E402
+from common.util import (  # noqa: E402
     assign_request_to_inputs_instances_after_validation,
 )
-from truss.templates.server.model_wrapper import ModelWrapper
+from kfserving import KFModel
+from kfserving.handlers.http import HTTPHandler  # noqa: E402
+from kfserving.kfserver import HealthHandler, KFServer, ListHandler, LivenessHandler
+from model_wrapper import ModelWrapper
+from pythonjsonlogger import jsonlogger  # noqa: E402
+from tornado.httpserver import HTTPServer
+from tornado.ioloop import IOLoop
 
 ensure_kfserving_installed()
 
@@ -161,37 +163,16 @@ class ExplainHandler(TrussHTTPHandler):
         self.write(final_response)
 
 
-class LivenessAndLoadHandler(TrussHTTPHandler):
-
-    _load_thread: Thread = None
-
-    @staticmethod
-    def _exec_load(model):
-        model.load()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def get(self):
-        for name in self.models:
-            model = self.models[name]
-
-            # if the model is ready or loading is in flight
-            if not model.ready and not self._load_thread:
-                self._load_thread = Thread(
-                    target=LivenessAndLoadHandler._exec_load, args=[model]
-                )
-                self._load_thread.start()
-
-            self.write("Alive")
-
-
 class TrussServer(KFServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _configure_logging()
 
-    def start(self, models: List[KFModel]):
+    def load_all(self):
+        for model in self.registered_models.get_models():
+            model.load()
+
+    def start(self, models: List[KFModel], nest_asyncio: bool = False):
         if len(models) != 1:
             raise RuntimeError("TrussServer only supports one model")
 
@@ -200,13 +181,28 @@ class TrussServer(KFServer):
                 "TrussServer only accepts ModelWrapper instances instead of KFServer instances"
             )
 
-        super().start(models)
+        for model in models:
+            self.register_model(model)
+
+        self._http_server = HTTPServer(
+            self.create_application(), max_buffer_size=self.max_buffer_size
+        )
+
+        logging.info("Listening on port %s", self.http_port)
+        self._http_server.bind(self.http_port)
+
+        logging.info("Will fork %d workers", self.workers)
+        self._http_server.start(self.workers)
+
+        Thread(target=self.load_all).start()
+
+        IOLoop.current().start()
 
     def create_application(self):
         return tornado.web.Application(
             [
                 # Server Liveness API returns 200 if server is alive.
-                (r"/", LivenessAndLoadHandler, dict(models=self.registered_models)),
+                (r"/", LivenessHandler),
                 (r"/v1/models", ListHandler, dict(models=self.registered_models)),
                 # Model Health API returns 200 if model is ready to serve.
                 (
