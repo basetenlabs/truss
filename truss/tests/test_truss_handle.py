@@ -679,6 +679,34 @@ class Model:
         assert result[0] == 2
 
 
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "patch_path, expected_call_count",
+    [
+        ("hash_is_current", 1),
+        ("hash_is_current_but_only_every_third_call_succeeds", 3),
+    ],
+)
+def test_patch_ping_flow(
+    patch_path, expected_call_count, custom_model_control, patch_ping_test_server
+):
+    port = patch_ping_test_server
+    patch_ping_url = f"http://host.docker.internal:{port}/{patch_path}"
+    th = TrussHandle(custom_model_control)
+    tag = "test-docker-custom-model-control-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict(
+            {"inputs": [1]},
+            tag=tag,
+            patch_ping_url=patch_ping_url,
+        )
+        assert result == [1]
+
+        # Make sure the patch ping url was actually hit
+        stats = requests.get(f"http://127.0.0.1:{port}/stats").json()
+        assert stats[f"{patch_path}_called_count"] == expected_call_count
+
+
 def test_handle_if_container_dne(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"

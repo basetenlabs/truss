@@ -59,13 +59,18 @@ class InferenceServerController:
             self._process_controller.start()
             self._current_running_hash = req_hash
 
-    def truss_hash(self):
+    def truss_hash(self) -> str:
         return self._current_running_hash
 
     def restart(self):
         with self._lock:
             self._process_controller.stop()
             self._process_controller.start()
+
+    def start(self):
+        # For now, start just does restart, this alias allows for better
+        # readability in certain scenarios where the intention is to start.
+        self.restart()
 
     def stop(self):
         with self._lock:
