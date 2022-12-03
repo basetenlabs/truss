@@ -42,7 +42,7 @@ def test_run_truss(keras_mpg_model):
         sklearn_framework = Keras()
         sklearn_framework.to_truss(keras_mpg_model, truss_dir)
         model = LoadLocal.run(truss_dir)
-        result = model.predict({"inputs": [[0, 0, 0, 0, 0, 0, 0, 0, 0]]})
+        result = model.predict({"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]})
         predictions = result["predictions"]
         assert len(predictions) == 1
         assert len(predictions[0]) == 1
@@ -64,7 +64,7 @@ def test_run_image(keras_mpg_model):
                     resp = requests.post(
                         "http://localhost:8080/v1/models/model:predict",
                         json={
-                            "inputs": [[0, 0, 0, 0, 0, 0, 0, 0, 0]],
+                            "inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0],
                         },
                     )
         finally:
