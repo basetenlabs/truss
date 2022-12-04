@@ -38,14 +38,20 @@ def inference_server_startup_flow(application):
         wait=wait_exponential(multiplier=2, min=1, max=4),
     ):
         with attempt:
-            application.logger.info(
-                f"Pinging {patch_ping_url} for patch with hash {truss_hash}"
-            )
-            resp = requests.post(patch_ping_url, timeout=1, json=payload)
-            resp.raise_for_status()
-            resp_body = resp.json()
+            try:
+                application.logger.info(
+                    f"Pinging {patch_ping_url} for patch with hash {truss_hash}"
+                )
+                resp = requests.post(patch_ping_url, json=payload)
+                resp.raise_for_status()
+                resp_body = resp.json()
 
-            # If hash is current start inference server, otherwise delay that
-            # for when patch is applied.
-            if "is_current" in resp_body and resp_body["is_current"] is True:
-                inference_server_controller.start()
+                # If hash is current start inference server, otherwise delay that
+                # for when patch is applied.
+                if "is_current" in resp_body and resp_body["is_current"] is True:
+                    inference_server_controller.start()
+            except Exception as exc:  # noqa
+                application.logger.warning(
+                    f"Patch ping attempt failed with error {exc}"
+                )
+                raise exc
