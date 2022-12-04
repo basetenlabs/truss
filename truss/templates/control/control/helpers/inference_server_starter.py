@@ -49,6 +49,9 @@ def inference_server_startup_flow(application):
                 # If hash is current start inference server, otherwise delay that
                 # for when patch is applied.
                 if "is_current" in resp_body and resp_body["is_current"] is True:
+                    application.logger.info(
+                        "Hash is current, starting inference server"
+                    )
                     inference_server_controller.start()
             except Exception as exc:  # noqa
                 application.logger.warning(
