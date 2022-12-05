@@ -123,15 +123,20 @@ class TrussHandle:
         tag: str = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
+        patch_ping_url: str = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
         tries to patch.
 
         Args:
-            build_dir: Directory to use for creating docker build context. tag:
-            Tags to apply to docker image. local_port: Local port to forward
-            inference server to. detach: Run docker container in detached mode.
+            build_dir: Directory to use for creating docker build context.
+            tag: Tags to apply to docker image.
+            local_port: Local port to forward inference server to.
+            detach: Run docker container in detached mode.
+            patch_ping_url:  Mostly for testing, if supplied then a live
+                             reload capable truss queries for truss changes
+                             by hitting this url.
 
         Returns:
             Container, which can be used to get information about the running,
@@ -148,6 +153,11 @@ class TrussHandle:
             # We are going to try running a new container, make sure previous one is gone
             self.kill_container()
             labels = self._get_serving_labels()
+
+            envs = {}
+            if patch_ping_url is not None:
+                envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
+
             container = Docker.client().run(
                 image.id,
                 publish=publish_ports,
@@ -161,6 +171,8 @@ class TrussHandle:
                     ]
                 ],
                 gpus="all" if self._spec.config.resources.use_gpu else None,
+                envs=envs,
+                add_hosts=[("host.docker.internal", "host-gateway")],
             )
             logger.info(
                 f"Model server started on port {local_port}, docker container id {container.id}"
@@ -183,11 +195,22 @@ class TrussHandle:
         tag: str = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
+        patch_ping_url: str = None,
     ):
         """
         Builds docker image, runs that as a docker container
         and makes a prediction request to the server running on the container.
         Kills the container afterwards. Mostly useful for testing.
+
+        Args:
+            request: Input to the predict function of model truss.
+            build_dir: Directory to use for creating docker build context.
+            tag: Tags to apply to docker image.
+            local_port: Local port to forward inference server to.
+            detach: Run docker container in detached mode.
+            patch_ping_url:  Mostly for testing, if supplied then a live
+                             reload capable truss queries for truss changes
+                             by hitting this url.
         """
         containers = self.get_serving_docker_containers_from_labels()
         if containers:
@@ -198,6 +221,7 @@ class TrussHandle:
                 tag,
                 local_port=local_port,
                 detach=detach,
+                patch_ping_url=patch_ping_url,
             )
         model_base_url = _get_url_from_container(container)
         for attempt in Retrying(

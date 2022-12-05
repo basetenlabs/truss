@@ -2,13 +2,16 @@ import contextlib
 import importlib
 import os
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import pytest
+import requests
 import tensorflow as tf
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
@@ -611,6 +614,40 @@ def truss_container_fs(tmp_path):
     )
     shutil.copytree(str(truss_fs_test_data_path), str(truss_fs))
     return truss_fs
+
+
+@pytest.fixture
+def patch_ping_test_server():
+    port = "5001"
+    proc = subprocess.Popen(
+        [
+            "poetry",
+            "run",
+            "flask",
+            "--app",
+            "app",
+            "run",
+            "-p",
+            port,
+            "--host",
+            "0.0.0.0",
+        ],
+        cwd=str(Path(__file__).parent.parent / "test_data" / "patch_ping_test_server"),
+    )
+    base_url = f"http://127.0.0.1:{port}"
+    retry_secs = 10
+    sleep_between_retries = 1
+    for _ in range(int(retry_secs / sleep_between_retries)):
+        time.sleep(sleep_between_retries)
+        try:
+            resp = requests.get(f"{base_url}/health")
+        except requests.exceptions.ConnectionError:
+            continue
+        if resp.status_code == 200:
+            break
+
+    yield port
+    proc.terminate()
 
 
 def _pytorch_model_from_content(

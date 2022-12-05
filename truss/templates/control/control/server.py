@@ -1,8 +1,8 @@
 import os
+from threading import Thread
 
-import requests
 from application import create_app
-from tenacity import Retrying, stop_after_attempt, wait_fixed
+from helpers.inference_server_starter import inference_server_startup_flow
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -25,23 +25,8 @@ if __name__ == "__main__":
         }
     )
 
-    patch_ping_url = os.environ.get("PATCH_PING_URL_TRUSS", None)
-    if patch_ping_url is None:
-        application.config["inference_server_controller"].restart()
-    else:
-        # In this flow the other party needs to call patch, which would start
-        # the inference server.
-        for attempt in Retrying(
-            stop=stop_after_attempt(3),
-            wait=wait_fixed(1),
-        ):
-            with attempt:
-                # Fire and forget
-                try:
-                    application.logger.info(f"Pinging {patch_ping_url} for patch")
-                    requests.post(patch_ping_url, timeout=1)
-                except requests.Timeout:
-                    pass
+    # Perform inference server startup flow in background
+    Thread(target=inference_server_startup_flow, args=(application,)).start()
 
     application.logger.info(f"Starting control server on port {CONTROL_SERVER_PORT}")
     server = create_server(
