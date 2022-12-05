@@ -10,9 +10,13 @@ Usage: `truss [OPTIONS] COMMAND [ARGS]`
 
 You can always review these commands with `python -m truss --help`, which will print a complete list of commands.
 
+#### -v, --version
+
+Show Truss package version.
+
 ## Commands
 
-#### build_context
+#### build-context
 
 Create a docker build context for a Truss.
 
@@ -20,7 +24,7 @@ Args:
 * BUILD_DIR: Folder where image context is built for Truss
 * TARGET DIRECTORY: A Truss directory. If none, use current directory.
 
-#### build_image
+#### build-image
 
 Builds the docker image for a Truss.
 
@@ -36,9 +40,7 @@ Truss creates temporary directories for various operations
 such as for building docker images. This command clears
 that data to free up disk space.
 
-#### cli_group
-
-#### get_container_logs
+#### get-container-logs
 
 Get logs in a container is running for a truss
 
@@ -59,7 +61,7 @@ Kills containers related to truss.
 Args:
 * TARGET DIRECTORY: A Truss directory. If none, use current directory.
 
-#### kill_all
+#### kill-all
 
 Kills all truss containers that are not manually persisted
 
@@ -67,14 +69,14 @@ Kills all truss containers that are not manually persisted
 
 Runs prediction for a Truss in a docker image or locally
 
-#### run_example
+#### run-example
 
 Runs examples specified in the Truss, over docker.
 
 Args:
 * TARGET DIRECTORY: A Truss directory. If none, use current directory.
 
-#### run_image
+#### run-image
 
 Runs the docker image for a Truss.
 
