@@ -24,7 +24,10 @@ def create_app(base_config: dict):
     )
     patch_applier = PatchApplier(Path(app.config["inference_server_home"]), app.logger)
     app.config["inference_server_controller"] = InferenceServerController(
-        app.config["inference_server_process_controller"], patch_applier, app.logger
+        app.config["inference_server_process_controller"],
+        patch_applier,
+        app.logger,
+        app.config.get("oversee_inference_server", True),
     )
     app.register_blueprint(control_app)
 
