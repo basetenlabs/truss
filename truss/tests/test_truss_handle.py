@@ -665,8 +665,8 @@ class Model:
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
             result = th.docker_predict({"inputs": [1]}, tag=tag)
         resp = exc_info.value.response
-        assert resp.status_code == 500
-        assert "model has stopped running" in resp.text
+        assert resp.status_code == 503
+        assert "model is not ready" in resp.text
 
         # Should be able to fix code after
         good_model_code = """
