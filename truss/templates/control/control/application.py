@@ -20,6 +20,7 @@ def create_app(base_config: dict):
         app.config["inference_server_home"],
         app.config["inference_server_process_args"],
         app.config["inference_server_port"],
+        app_logger=app.logger,
     )
     patch_applier = PatchApplier(Path(app.config["inference_server_home"]), app.logger)
     app.config["inference_server_controller"] = InferenceServerController(

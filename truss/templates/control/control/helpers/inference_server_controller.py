@@ -1,9 +1,12 @@
 import os
 import threading
+import time
 
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
 from helpers.types import Patch
+
+INFERENCE_SERVER_CHECK_INTERVAL_SECS = 10
 
 
 class InferenceServerController:
@@ -24,6 +27,10 @@ class InferenceServerController:
         self._patch_applier = patch_applier
         self._current_running_hash = os.environ.get("HASH_TRUSS", None)
         self._app_logger = app_logger
+        self._inference_server_overseer_thread = threading.Thread(
+            target=self._check_and_recover_inference_server
+        )
+        self._inference_server_overseer_thread.start()
 
     def apply_patch(self, patch_request):
         with self._lock:
@@ -75,3 +82,10 @@ class InferenceServerController:
     def stop(self):
         with self._lock:
             self._process_controller.stop()
+
+    def _check_and_recover_inference_server(self):
+        self._app_logger.info("Inference server overseer thread started")
+        while True:
+            with self._lock:
+                self._process_controller.check_and_recover_inference_server()
+            time.sleep(INFERENCE_SERVER_CHECK_INTERVAL_SECS)

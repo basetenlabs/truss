@@ -10,12 +10,14 @@ class InferenceServerProcessController:
         inference_server_home,
         inference_server_process_args,
         inference_server_port,
+        app_logger,
     ) -> None:
         self._inference_server_process = None
         self._inference_server_home = inference_server_home
         self._inference_server_process_args = inference_server_process_args
         self._inference_server_port = inference_server_port
         self._inference_server_started = False
+        self._app_logger = app_logger
 
     def start(self):
         with current_directory(self._inference_server_home):
@@ -47,3 +49,10 @@ class InferenceServerProcessController:
             return False
 
         return self._inference_server_process.poll() is None
+
+    def check_and_recover_inference_server(self):
+        if self.inference_server_started() and not self.is_inference_server_running():
+            self._app_logger.warning(
+                "Inference server seems to have crashed, restarting"
+            )
+            self.start()

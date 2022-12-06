@@ -294,57 +294,57 @@ def pytorch_model_with_init_args(tmp_path, pytorch_model_init_args):
 
 @pytest.fixture
 def custom_model_truss_dir(tmp_path) -> Path:
-    dir_path = tmp_path / "custom_truss"
-    handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE)
-    return dir_path
+    yield _custom_model_from_code(
+        tmp_path,
+        "custom_truss",
+        CUSTOM_MODEL_CODE,
+    )
 
 
 @pytest.fixture
 def no_preprocess_custom_model(tmp_path):
-    dir_path = tmp_path / "my_no_preprocess_model"
-    handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(NO_PREPROCESS_CUSTOM_MODEL_CODE)
-    yield dir_path
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_no_preprocess_model",
+        NO_PREPROCESS_CUSTOM_MODEL_CODE,
+    )
 
 
 @pytest.fixture
 def custom_model_control(tmp_path):
-    dir_path = tmp_path / "control_truss"
-    handle = init(str(dir_path))
-    handle.live_reload()
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE)
-    yield dir_path
+    yield _custom_model_from_code(
+        tmp_path,
+        "control_truss",
+        CUSTOM_MODEL_CODE,
+        handle_ops=lambda handle: handle.live_reload(),
+    )
 
 
 @pytest.fixture
 def no_postprocess_custom_model(tmp_path):
-    dir_path = tmp_path / "my_no_postprocess_model"
-    handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(NO_POSTPROCESS_CUSTOM_MODEL_CODE)
-    yield dir_path
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_no_postprocess_model",
+        NO_POSTPROCESS_CUSTOM_MODEL_CODE,
+    )
 
 
 @pytest.fixture
 def no_load_custom_model(tmp_path):
-    dir_path = tmp_path / "my_no_load_model"
-    handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(NO_LOAD_CUSTOM_MODEL_CODE)
-    yield dir_path
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_no_load_model",
+        NO_LOAD_CUSTOM_MODEL_CODE,
+    )
 
 
 @pytest.fixture
 def no_params_init_custom_model(tmp_path):
-    dir_path = tmp_path / "my_no_params_init_load_model"
-    handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(NO_PARAMS_INIT_CUSTOM_MODEL_CODE)
-    yield dir_path
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_no_params_init_load_model",
+        NO_PARAMS_INIT_CUSTOM_MODEL_CODE,
+    )
 
 
 @pytest.fixture
@@ -663,3 +663,18 @@ def _pytorch_model_from_content(
     sys.path.append(str(path))
     model_class = getattr(importlib.import_module(model_module_name), model_class_name)
     return model_class(), f
+
+
+def _custom_model_from_code(
+    where_dir: Path,
+    truss_name: str,
+    model_code: str,
+    handle_ops: callable = None,
+) -> Path:
+    dir_path = where_dir / truss_name
+    handle = init(str(dir_path))
+    if handle_ops is not None:
+        handle_ops(handle)
+    with handle.spec.model_class_filepath.open("w") as file:
+        file.write(model_code)
+    return dir_path
