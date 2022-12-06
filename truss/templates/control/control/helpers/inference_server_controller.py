@@ -21,16 +21,18 @@ class InferenceServerController:
         process_controller: InferenceServerProcessController,
         patch_applier: PatchApplier,
         app_logger,
+        oversee_inference_server: bool = True,
     ):
         self._lock = threading.Lock()
         self._process_controller = process_controller
         self._patch_applier = patch_applier
         self._current_running_hash = os.environ.get("HASH_TRUSS", None)
         self._app_logger = app_logger
-        self._inference_server_overseer_thread = threading.Thread(
-            target=self._check_and_recover_inference_server
-        )
-        self._inference_server_overseer_thread.start()
+        if oversee_inference_server:
+            self._inference_server_overseer_thread = threading.Thread(
+                target=self._check_and_recover_inference_server
+            )
+            self._inference_server_overseer_thread.start()
 
     def apply_patch(self, patch_request):
         with self._lock:

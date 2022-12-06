@@ -582,6 +582,7 @@ def test_container_oom_caught_during_waiting(container_state_mock):
 
 
 @patch("truss.truss_handle.get_container_state")
+@pytest.mark.integration
 def test_container_stuck_in_created(container_state_mock):
     container_state_mock.return_value = DockerStates.CREATED
     with pytest.raises(ContainerIsDownError):

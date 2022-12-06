@@ -41,6 +41,7 @@ def app(truss_container_fs, truss_original_hash):
                 "control_server_host": "0.0.0.0",
                 "control_server_port": 8081,
                 "inference_server_port": 8082,
+                "oversee_inference_server": False,
             }
         )
         yield control_app
