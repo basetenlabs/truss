@@ -138,3 +138,7 @@ Follow step-by-step deployment guides for the following platforms:
 We hope this vision excites you, and we gratefully welcome contributions in accordance with our [contributors' guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
 
 Truss was first developed at [Baseten](https://baseten.co) by maintainers Phil Howes, Pankaj Gupta, and Alex Gillmor.
+
+## GitHub Codespace
+
+If your organization allows to access to GitHub Codespaces, you can launch a Codespace for truss development. If you are a GPU Codespace, make sure to use the `.devcontainer/gpu/devcontainer.json` configuration to have access to a GPU and be able to use it in Docker with truss.
