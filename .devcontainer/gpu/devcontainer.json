@@ -7,7 +7,6 @@
 		"context": "../.."
 	},
 	"overrideCommand": false,
-
 	// Set *default* container specific settings.json values on container create.
 	"settings": {
 		"editor.tabSize": 4,
@@ -28,7 +27,6 @@
 			"*.jinja": "jinja"
 		}
 	},
-
 	// Add the IDs of extensions you want installed when the container is created.
 	"extensions": [
 		"ms-python.python",
@@ -38,20 +36,18 @@
 		"vscodevim.vim",
 		"eamodio.gitlens"
 	],
-
 	"features": {
 		"ghcr.io/devcontainers/features/nvidia-cuda:1": {
-			"installCudnn": true, 
+			"installCudnn": true,
 			"installNvtx": true
 		}
 	},
-
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
-
 	"onCreateCommand": "bin/codespace_post_create.sh",
-
 	// Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
 	"remoteUser": "vscode",
-	"runArgs": ["--privileged"]
+	"runArgs": [
+		"--privileged"
+	]
 }
