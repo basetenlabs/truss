@@ -3,7 +3,7 @@
 {
 	"name": "Python 3",
 	"build": {
-		"dockerfile": "Dockerfile",
+		"dockerfile": "../gpu/Dockerfile",
 		"context": "../.."
 	},
 	"overrideCommand": false,
