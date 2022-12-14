@@ -9,7 +9,7 @@ from truss.constants import CONFIG_FILE
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
-from truss.contexts.local_loader.load_local import LoadLocal
+from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.model_frameworks.huggingface_transformer import HuggingfaceTransformer
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import TrussConfig
@@ -45,7 +45,7 @@ def test_run_truss(huggingface_transformer_t5_small_pipeline):
         truss_dir = Path(tmp_work_dir, "truss")
         framework = HuggingfaceTransformer()
         framework.to_truss(model, truss_dir)
-        model = LoadLocal.run(truss_dir)
+        model = LoadModelLocal.run(truss_dir)
         result = model.predict({"inputs": "My name is Sarah and I live in London"})
         predictions = result["predictions"]
         assert len(predictions) == 1

@@ -177,6 +177,21 @@ def test_docker_train(variables_to_artifacts_training_truss):
             }
 
 
+def test_local_train(variables_to_artifacts_training_truss):
+    th = TrussHandle(variables_to_artifacts_training_truss)
+    th.add_training_variable("x", "y")
+    th.add_training_variable("a", "b")
+    input_vars = {"x": "z"}
+    th.local_train(variables=input_vars)
+    vars_artifact = th.spec.data_dir / "variables.json"
+    with vars_artifact.open() as vars_file:
+        vars_from_artifact = json.load(vars_file)
+        assert vars_from_artifact == {
+            "x": "z",
+            "a": "b",
+        }
+
+
 @pytest.mark.integration
 def test_docker_predict_with_bundled_packages(
     custom_model_truss_dir_with_bundled_packages,

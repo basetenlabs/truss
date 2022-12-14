@@ -3,13 +3,13 @@ import inspect
 from pathlib import Path
 from typing import Dict
 
-from truss.contexts.local_loader.model_module_loader import model_class_module_loaded
+from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
 from truss.contexts.truss_context import TrussContext
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_spec import TrussSpec
 
 
-class LoadLocal(TrussContext):
+class LoadModelLocal(TrussContext):
     """Loads a Truss model locally.
 
     The loaded model can be used to make predictions for quick testing.
@@ -20,7 +20,7 @@ class LoadLocal(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
         spec = TrussSpec(truss_dir)
-        with model_class_module_loaded(
+        with truss_module_loaded(
             str(truss_dir),
             spec.model_module_fullname,
             spec.bundled_packages_dir.name,

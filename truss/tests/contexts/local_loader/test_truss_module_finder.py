@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from truss.contexts.local_loader.model_module_loader import model_class_module_loaded
+from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 
 ORIG_MODEL_CLASS_CONTENT = """
@@ -58,7 +58,7 @@ A = 2
 def test_model_module_finder():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, ORIG_MODEL_CLASS_CONTENT)
-        with model_class_module_loaded(temp_dir, "model.model") as model_module:
+        with truss_module_loaded(temp_dir, "model.model") as model_module:
             model_class = getattr(model_module, "Model")
             assert model_class.x == 1
 
@@ -66,12 +66,12 @@ def test_model_module_finder():
 def test_model_module_finder_reload():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, ORIG_MODEL_CLASS_CONTENT)
-        with model_class_module_loaded(temp_dir, "model.model") as model_module:
+        with truss_module_loaded(temp_dir, "model.model") as model_module:
             model_class = getattr(model_module, "Model")
             assert model_class.x == 1
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, NEW_MODEL_CLASS_CONTENT)
-        with model_class_module_loaded(temp_dir, "model.model") as model_module:
+        with truss_module_loaded(temp_dir, "model.model") as model_module:
             model_class = getattr(model_module, "Model")
             assert model_class.x == 2
 
@@ -83,7 +83,7 @@ def test_model_module_finder_additional_modules():
             ORIG_MODEL_CLASS_USING_ADDITIONAL_MODULE_CONTENT,
             additional_module_file_content=ORIG_ADDITIONAL_MODULE_CONTENT,
         )
-        with model_class_module_loaded(
+        with truss_module_loaded(
             temp_dir, "model.model", DEFAULT_BUNDLED_PACKAGES_DIR
         ) as model_module:
             model_class = getattr(model_module, "Model")
@@ -97,7 +97,7 @@ def test_model_module_finder_additional_modules_reload():
             ORIG_MODEL_CLASS_USING_ADDITIONAL_MODULE_CONTENT,
             additional_module_file_content=ORIG_ADDITIONAL_MODULE_CONTENT,
         )
-        with model_class_module_loaded(
+        with truss_module_loaded(
             temp_dir, "model.model", DEFAULT_BUNDLED_PACKAGES_DIR
         ) as model_module:
             model_class = getattr(model_module, "Model")
@@ -109,7 +109,7 @@ def test_model_module_finder_additional_modules_reload():
             ORIG_MODEL_CLASS_USING_ADDITIONAL_MODULE_CONTENT,
             additional_module_file_content=NEW_ADDITIONAL_MODULE_CONTENT,
         )
-        with model_class_module_loaded(
+        with truss_module_loaded(
             temp_dir, "model.model", DEFAULT_BUNDLED_PACKAGES_DIR
         ) as model_module:
             model_class = getattr(model_module, "Model")
@@ -124,7 +124,7 @@ def test_model_module_finder_reload_non_model_file_updated():
             UTIL_FILE_CONTENT,
             SUBMODULE_FILE_CONTENT,
         )
-        with model_class_module_loaded(temp_dir, "model.model") as model_module:
+        with truss_module_loaded(temp_dir, "model.model") as model_module:
             model_class = getattr(model_module, "Model")
             assert model_class.x == 1
             assert model_class.y == 3
@@ -135,7 +135,7 @@ def test_model_module_finder_reload_non_model_file_updated():
             NEW_UTIL_FILE_CONTENT,
             NEW_SUBMODULE_FILE_CONTENT,
         )
-        with model_class_module_loaded(temp_dir, "model.model") as model_module:
+        with truss_module_loaded(temp_dir, "model.model") as model_module:
             model_class = getattr(model_module, "Model")
             assert model_class.x == 2
             assert model_class.y == 4

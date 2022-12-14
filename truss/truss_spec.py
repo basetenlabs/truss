@@ -53,6 +53,18 @@ class TrussSpec:
         return self.training_module_dir / conf.train.training_class_filename
 
     @property
+    def train_module_name(self) -> str:
+        return str(Path(self._config.train.training_class_filename).with_suffix(""))
+
+    @property
+    def train_module_fullname(self) -> str:
+        return f"{self._config.train.training_module_dir}.{self.train_module_name}"
+
+    @property
+    def train_class_name(self) -> str:
+        return self._config.train.training_class_name
+
+    @property
     def config(self) -> TrussConfig:
         return self._config
 

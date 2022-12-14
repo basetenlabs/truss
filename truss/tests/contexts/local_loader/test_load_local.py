@@ -1,4 +1,4 @@
-from truss.contexts.local_loader.load_local import _prepare_secrets
+from truss.contexts.local_loader.load_model_local import _prepare_secrets
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_handle import TrussHandle
 from truss.truss_spec import TrussSpec
