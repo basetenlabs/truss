@@ -9,7 +9,7 @@ from truss.constants import CONFIG_FILE
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
-from truss.contexts.local_loader.load_local import LoadLocal
+from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.model_frameworks.keras import Keras
 from truss.truss_config import TrussConfig
 
@@ -41,7 +41,7 @@ def test_run_truss(keras_mpg_model):
         truss_dir = Path(tmp_work_dir, "truss")
         sklearn_framework = Keras()
         sklearn_framework.to_truss(keras_mpg_model, truss_dir)
-        model = LoadLocal.run(truss_dir)
+        model = LoadModelLocal.run(truss_dir)
         result = model.predict({"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]})
         predictions = result["predictions"]
         assert len(predictions) == 1

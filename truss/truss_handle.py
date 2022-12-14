@@ -39,7 +39,8 @@ from truss.contexts.image_builder.serving_image_builder import (
 from truss.contexts.image_builder.training_image_builder import (
     TrainingImageBuilderContext,
 )
-from truss.contexts.local_loader.load_local import LoadLocal
+from truss.contexts.local_loader.load_model_local import LoadModelLocal
+from truss.contexts.local_loader.train_local import LocalTrainer
 from truss.docker import (
     Docker,
     DockerStates,
@@ -83,7 +84,7 @@ class TrussHandle:
 
     def server_predict(self, request: dict):
         """Run the prediction flow locally."""
-        model = LoadLocal.run(self._truss_dir)
+        model = LoadModelLocal.run(self._truss_dir)
         return _prediction_flow(model, request)
 
     def build_docker_build_context(self, build_dir: Path = None):
@@ -294,6 +295,9 @@ class TrussHandle:
         copy_tree_path(output_dir, self._spec.data_dir)
         rmtree(str(output_dir))
         rmtree(str(variables_dir))
+
+    def local_train(self, variables: dict = None):
+        LocalTrainer.run(self._truss_dir)(variables)
 
     def docker_build_setup(self, build_dir: Path = None):
         """

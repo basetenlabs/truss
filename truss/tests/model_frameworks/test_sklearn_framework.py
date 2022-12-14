@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from truss.constants import CONFIG_FILE
-from truss.contexts.local_loader.load_local import LoadLocal
+from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.model_frameworks.sklearn import SKLearn
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import TrussConfig
@@ -40,7 +40,7 @@ def test_run_truss(sklearn_rfc_model):
         truss_dir = Path(tmp_work_dir, "truss")
         sklearn_framework = SKLearn()
         sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)
-        model = LoadLocal.run(truss_dir)
+        model = LoadModelLocal.run(truss_dir)
         predictions = model.predict({"inputs": [[0, 0, 0, 0]]})
         assert len(predictions["probabilities"]) == 1
         assert len(predictions["probabilities"][0]) == 3
