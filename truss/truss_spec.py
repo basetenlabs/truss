@@ -113,12 +113,32 @@ class TrussSpec:
         return self.model_framework_type.value
 
     @property
+    def train_requirements(self) -> List[str]:
+        result = self._config.requirements
+        result.extend(self._config.train.requirements)
+        return result
+
+    @property
+    def train_requirements_txt(self) -> str:
+        return _join_lines(self.train_requirements)
+
+    @property
+    def train_system_packages(self) -> List[str]:
+        result = self._config.system_packages
+        result.extend(self._config.train.system_packages)
+        return result
+
+    @property
+    def train_system_packages_txt(self) -> str:
+        return _join_lines(self.train_system_packages)
+
+    @property
     def requirements(self) -> List[str]:
         return self._config.requirements
 
     @property
     def requirements_txt(self) -> str:
-        return _join_lines(self._config.requirements)
+        return _join_lines(self.requirements)
 
     @property
     def system_packages(self) -> List[str]:
@@ -126,7 +146,7 @@ class TrussSpec:
 
     @property
     def system_packages_txt(self) -> str:
-        return _join_lines(self._config.system_packages)
+        return _join_lines(self.system_packages)
 
     @property
     def environment_variables(self) -> Dict[str, str]:

@@ -73,10 +73,10 @@ class TrainingImageBuilder(ImageBuilder):
             build_dir / TRAINING_REQUIREMENTS_TXT_FILENAME,
         )
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
-            req_file.write(self._spec.requirements_txt)
+            req_file.write(self._spec.train_requirements_txt)
 
         with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
-            req_file.write(self._spec.system_packages_txt)
+            req_file.write(self._spec.train_system_packages_txt)
 
         bundled_packages_dir_exists = (
             build_dir / self._spec.config.bundled_packages_dir

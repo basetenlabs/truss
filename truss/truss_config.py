@@ -38,6 +38,7 @@ class Resources:
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     use_gpu: bool = DEFAULT_USE_GPU
+    accelerator: str = None
 
     @staticmethod
     def from_dict(d):
@@ -50,14 +51,18 @@ class Resources:
             cpu=cpu,
             memory=memory,
             use_gpu=d.get("use_gpu", DEFAULT_USE_GPU),
+            accelerator=d.get("accelerator", None),
         )
 
     def to_dict(self):
-        return {
+        result = {
             "cpu": self.cpu,
             "memory": self.memory,
             "use_gpu": self.use_gpu,
         }
+        if self.accelerator:
+            result["accelerator"] = self.accelerator
+        return result
 
 
 @dataclass
@@ -67,6 +72,8 @@ class Train:
     training_module_dir: str = DEFAULT_TRAINING_MODULE_DIR
     variables: dict = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
+    requirements: List[str] = field(default_factory=list)
+    system_packages: List[str] = field(default_factory=list)
 
     @staticmethod
     def from_dict(d):
@@ -82,6 +89,8 @@ class Train:
             ),
             variables=d.get("variables", {}),
             resources=Resources.from_dict(d.get("resources", {})),
+            requirements=d.get("requirements", []),
+            system_packages=d.get("system_packages", []),
         )
 
     def to_dict(self):
@@ -91,6 +100,8 @@ class Train:
             "training_module_dir": self.training_module_dir,
             "variables": self.variables,
             "resources": self.resources.to_dict(),
+            "requirements": self.requirements,
+            "system_packages": self.system_packages,
         }
 
 
