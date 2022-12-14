@@ -215,9 +215,15 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
     required=False,
     help="Training variables from a yaml file",
 )
+@click.option(
+    "--local",
+    is_flag=True,
+    default=False,
+    help="Flag to run training locally (not on docker)",
+)
 @error_handling
 @echo_output
-def train(target_directory, build_dir, tag, var, vars_yaml_file):
+def train(target_directory, build_dir, tag, var, vars_yaml_file, local):
     """Runs prediction for a Truss in a docker image or locally"""
     tr = _get_truss_from_directory(target_directory=target_directory)
     if vars_yaml_file is not None:
@@ -225,32 +231,10 @@ def train(target_directory, build_dir, tag, var, vars_yaml_file):
             variables = yaml.safe_load(vars_file)
     else:
         variables = _variables_dict_from_option(var)
+    if local:
+        return tr.local_train(variables=variables)
+
     return tr.docker_train(build_dir=build_dir, tag=tag, variables=variables)
-
-
-@cli_group.command()
-@click.option(
-    "--var",
-    multiple=True,
-    help="""Training variables in key=value form where value is string.
-    For more complex values use vars_yaml_file""",
-)
-@click.option(
-    "--vars_yaml_file",
-    required=False,
-    help="Training variables from a yaml file",
-)
-@error_handling
-@echo_output
-def local_train(target_directory, build_dir, tag, var, vars_yaml_file):
-    """Runs prediction for a Truss in a docker image or locally"""
-    tr = _get_truss_from_directory(target_directory=target_directory)
-    if vars_yaml_file is not None:
-        with Path(vars_yaml_file).open() as vars_file:
-            variables = yaml.safe_load(vars_file)
-    else:
-        variables = _variables_dict_from_option(var)
-    return tr.local_train(variables=variables)
 
 
 @cli_group.command()
