@@ -1,5 +1,3 @@
-ARG PYVERSION={{python_version}}
-
 {% if use_gpu %}
 FROM nvidia/cuda:11.2.1-base-ubuntu18.04
 ENV CUDNN_VERSION=8.1.0.77
@@ -47,7 +45,11 @@ RUN ln -sf /usr/bin/python3.9 /usr/bin/python3 && \
 RUN python3 -m pip install --no-cache-dir --upgrade pip
 
 {% else %}
-FROM baseten/baseten-server-base-$PYVERSION:latest
+FROM python:{{python_version}}-slim
+RUN apt update && apt install -y
+
+# Allow statements and log messages to immediately appear in the Knative logs
+ENV PYTHONUNBUFFERED True
 {% endif %}
 
 

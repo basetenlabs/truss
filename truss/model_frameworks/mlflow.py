@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Dict, Set
 
-import mlflow
-from mlflow.artifacts import download_artifacts
 from truss.constants import MLFLOW_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
 from truss.templates.server.common.util import model_supports_predict_proba
@@ -20,6 +18,8 @@ class Mlflow(ModelFramework):
         return MLFLOW_REQ_MODULE_NAMES
 
     def serialize_model_to_directory(self, model, target_directory: Path):
+        import mlflow
+
         if isinstance(model, str):
             self._download_model_from_uri(uri=model, target_directory=target_directory)
         elif isinstance(model, mlflow.pyfunc.PyFuncModel):
@@ -43,11 +43,13 @@ class Mlflow(ModelFramework):
         self._add_mlflow_requirements(target_directory)
 
     def _download_model_from_uri(self, uri: str, target_directory: Path):
+        from mlflow.artifacts import download_artifacts
+
         download_artifacts(artifact_uri=uri, dst_path=target_directory)
 
-    def _download_model_from_pyfunc(
-        self, model: mlflow.pyfunc.PyFuncModel, target_directory: Path
-    ):
+    def _download_model_from_pyfunc(self, model, target_directory: Path):
+        from mlflow.artifacts import download_artifacts
+
         run_id = model._model_meta.run_id
         download_artifacts(run_id=run_id, dst_path=target_directory)
 

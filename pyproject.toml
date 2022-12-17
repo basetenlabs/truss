@@ -28,7 +28,18 @@ python-on-whales = "^0.46.0"
 tenacity = "^8.0.1"
 single-source = "^0.3.0"
 cloudpickle = "^2.2.0"
-mlflow = "^1.29.0"
+
+[tool.poetry.group.builder.dependencies]
+python = ">=3.7,<3.11"
+packaging = "^20.9"
+python-json-logger = ">=2.0.2"
+PyYAML = "^6.0"
+Jinja2 = "^3.1.2"
+tenacity = "^8.0.1"
+cloudpickle = "^2.2.0"
+single-source = "^0.3.0"
+click = "^8.1.3"
+requests = "^2.28.1"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"
@@ -56,6 +67,9 @@ ipykernel = "^6.16.0"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'
+
+[tool.poetry.group.dev.dependencies]
+mlflow = "^1.29.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

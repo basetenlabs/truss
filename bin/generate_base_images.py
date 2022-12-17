@@ -9,11 +9,15 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 base_path = Path(__file__).parent.parent
-templates_path = base_path / 'truss' / 'templates'
+templates_path = base_path / "truss" / "templates"
 sys.path.append(str(base_path))
 
-from truss.model_inference import PYTHON_VERSIONS
-from truss.types import ModelFrameworkType
+
+PYTHON_VERSIONS = {
+    "3.7",
+    "3.8",
+    "3.9",
+}
 
 
 def _docker_login():
@@ -31,9 +35,9 @@ def _render_dockerfile(
 ) -> str:
     # Render jinja
     jinja_env = Environment(
-        loader=FileSystemLoader(str(base_path / 'docker' / 'base_images')),
+        loader=FileSystemLoader(str(base_path / "docker" / "base_images")),
     )
-    template = jinja_env.get_template('base_image.Dockerfile.jinja')
+    template = jinja_env.get_template("base_image.Dockerfile.jinja")
     return template.render(
         use_gpu=use_gpu,
         live_reload=live_reload,
@@ -46,7 +50,7 @@ def _build(
     python_version: str,
     live_reload: bool = False,
     use_gpu: bool = False,
-    job_type: str = 'server',
+    job_type: str = "server",
     push: bool = False,
     test: bool = True,
 ) -> Path:
@@ -58,35 +62,35 @@ def _build(
     )
     with tempfile.TemporaryDirectory() as temp_dir:
         build_ctx_path = Path(temp_dir)
-        with (build_ctx_path / 'Dockerfile').open('w') as dockerfile_file:
+        with (build_ctx_path / "Dockerfile").open("w") as dockerfile_file:
             dockerfile_file.write(dockerfile_content)
-        
+
         if job_type == "server":
-            reqs_copy_from = templates_path / 'server' / 'requirements.txt'
+            reqs_copy_from = templates_path / "server" / "requirements.txt"
         elif job_type == "training":
-            reqs_copy_from = templates_path / 'training' / 'requirements.txt'
+            reqs_copy_from = templates_path / "training" / "requirements.txt"
         else:
-            raise ValueError(f'Unknown job type {job_type}')
+            raise ValueError(f"Unknown job type {job_type}")
 
         shutil.copyfile(
             str(reqs_copy_from),
-            str(build_ctx_path / 'requirements.txt'),
+            str(build_ctx_path / "requirements.txt"),
         )
         shutil.copytree(
-            str(templates_path / 'control'),
-            str(build_ctx_path / 'control'),
+            str(templates_path / "control"),
+            str(build_ctx_path / "control"),
         )
         # todo: refactor into function
         image_name = f"baseten/truss-{job_type}-base-{python_version}"
         if use_gpu:
-            image_name = f'{image_name}-gpu'
+            image_name = f"{image_name}-gpu"
         if live_reload:
-            image_name = f'{image_name}-reload'
-        tag = 'latest'
+            image_name = f"{image_name}-reload"
+        tag = "latest"
         if test:
-            tag = 'test'
+            tag = "test"
         image_with_tag = f"{image_name}:{tag}"
-        print(f'Building image :: {image_with_tag}')
+        print(f"Building image :: {image_with_tag}")
         cmd = [
             "docker",
             "buildx",
@@ -103,7 +107,7 @@ def _build(
 
 def _build_all(push: bool = False, test: bool = True):
     for job_type in ["server", "training"]:
-        for python_version in PYTHON_VERSIONS:
+        for python_version in ["3.9"]:
             for live_reload in [True, False]:
                 for use_gpu in [True, False]:
                     _build(
@@ -116,9 +120,9 @@ def _build_all(push: bool = False, test: bool = True):
                     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     push_to_dockerhub = False
-    if len(sys.argv) > 1 and sys.argv[1] == 'push':
+    if len(sys.argv) > 1 and sys.argv[1] == "push":
         push_to_dockerhub = True
 
     if push_to_dockerhub:

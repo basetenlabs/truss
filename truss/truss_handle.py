@@ -10,10 +10,8 @@ from shutil import rmtree
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
-import numpy as np
 import requests
 import yaml
-from python_on_whales.exceptions import NoSuchContainer
 from requests.exceptions import ConnectionError
 from tenacity import (
     RetryError,
@@ -805,6 +803,8 @@ def _is_invalid_list_input_prop(request: dict, prop: str):
 
 
 def _is_valid_list_type(obj) -> bool:
+    import numpy as np
+
     return isinstance(obj, (list, np.ndarray))
 
 
@@ -827,6 +827,8 @@ def _wait_for_model_server(url: str):
 
 
 def _wait_for_truss(url, container):
+    from python_on_whales.exceptions import NoSuchContainer
+
     try:
         _wait_for_docker_build(container)
     except NoSuchContainer:
