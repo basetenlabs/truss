@@ -1,6 +1,13 @@
 ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}}
 
+RUN pip install --upgrade pip
+{% if config.model_framework.value == 'huggingface_transformer' %}
+    {% if config.resources.use_gpu %}
+# HuggingFace pytorch gpu support needs mkl
+RUN pip install mkl
+    {% endif %}
+{% endif%}
 
 {% block post_base %}
 {% endblock %}

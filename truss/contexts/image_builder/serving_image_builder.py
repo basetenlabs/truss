@@ -16,6 +16,7 @@ from truss.constants import (
     TEMPLATES_DIR,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
+from truss.contexts.image_builder.util import file_is_not_empty
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.readme_generator import generate_readme
@@ -67,6 +68,15 @@ class ServingImageBuilder(ImageBuilder):
                 CONTROL_SERVER_CODE_DIR,
                 build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
             )
+        server_reqs_filepath = TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME
+        should_install_server_requirements = (
+            server_reqs_filepath.exists() and
+            file_is_not_empty(server_reqs_filepath))
+        if should_install_server_requirements:
+            copy_file_path(
+                TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME,
+                build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
+            )
 
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.requirements_txt)
@@ -83,16 +93,20 @@ class ServingImageBuilder(ImageBuilder):
         template_env = Environment(loader=template_loader)
         dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
         config = self._spec.config
-        base_image_name = f"baseten/truss-base-{config.python_version}-{config.model_framework.value}"
+
+        # todo: refactor
+        base_image_name = f"baseten/truss-server-base-{config.python_version}"
         if config.resources.use_gpu:
             base_image_name = f"{base_image_name}-gpu"
         if config.live_reload:
             base_image_name = f"{base_image_name}-reload"
+
         tag = "test"  # todo: change to latest
         base_image_name_and_tag = f"{base_image_name}:{tag}"
-        should_install_system_requirements = _file_is_not_empty(build_dir / SYSTEM_PACKAGES_TXT_FILENAME)
-        should_install_requirements = _file_is_not_empty(build_dir / REQUIREMENTS_TXT_FILENAME)
+        should_install_system_requirements = file_is_not_empty(build_dir / SYSTEM_PACKAGES_TXT_FILENAME)
+        should_install_requirements = file_is_not_empty(build_dir / REQUIREMENTS_TXT_FILENAME)
         dockerfile_contents = dockerfile_template.render(
+            should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_requirements,
@@ -123,23 +137,3 @@ class ServingImageBuilder(ImageBuilder):
             )
 
 
-def _file_is_empty(path: Path, ignore_hash_style_comments: bool = True) -> bool:
-    if not path.exists():
-        return True
-
-    with path.open() as file:
-        for line in file.readlines():
-            if ignore_hash_style_comments and _is_hash_style_comment(line):
-                continue
-            if line.strip() != "":
-                return False
-
-    return True
-
-
-def _file_is_not_empty(path: Path, ignore_hash_style_comments: bool = True) -> bool:
-    return not _file_is_empty(path, ignore_hash_style_comments)
-
-
-def _is_hash_style_comment(line: str) -> bool:
-    return line.lstrip().startswith("#")

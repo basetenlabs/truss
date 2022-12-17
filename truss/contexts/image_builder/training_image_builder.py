@@ -14,6 +14,7 @@ from truss.constants import (
     TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
+from truss.contexts.image_builder.util import file_is_not_empty
 from truss.contexts.truss_context import TrussContext
 from truss.truss_spec import TrussSpec
 from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
@@ -68,8 +69,8 @@ class TrainingImageBuilder(ImageBuilder):
 
         copy_file_path(
             TEMPLATES_DIR
-            / self._spec.model_framework_name
-            / TRAINING_REQUIREMENTS_TXT_FILENAME,
+            / BUILD_TRAINING_DIR_NAME
+            / REQUIREMENTS_TXT_FILENAME,
             build_dir / TRAINING_REQUIREMENTS_TXT_FILENAME,
         )
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
@@ -86,10 +87,26 @@ class TrainingImageBuilder(ImageBuilder):
         dockerfile_template = template_env.get_template(
             TRAINING_DOCKERFILE_TEMPLATE_NAME
         )
+        should_install_system_requirements = file_is_not_empty(build_dir / SYSTEM_PACKAGES_TXT_FILENAME)
+        should_install_requirements = file_is_not_empty(build_dir / REQUIREMENTS_TXT_FILENAME)
+        # todo: refactor
+        config = self._spec.config
+        base_image_name = f"baseten/truss-server-base-{config.python_version}"
+        if config.resources.use_gpu:
+            base_image_name = f"{base_image_name}-gpu"
+        if config.live_reload:
+            base_image_name = f"{base_image_name}-reload"
+
+        tag = "test"  # todo: change to latest
+        base_image_name_and_tag = f"{base_image_name}:{tag}"
         dockerfile_contents = dockerfile_template.render(
+            base_image_name_and_tag=base_image_name_and_tag,
             config=self._spec.config,
             bundled_packages_dir_exists=bundled_packages_dir_exists,
+            should_install_system_requirements=should_install_system_requirements,
+            should_install_requirements=should_install_requirements,
         )
         docker_file_path = build_dir / TRAINING_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:
             docker_file.write(dockerfile_contents)
+

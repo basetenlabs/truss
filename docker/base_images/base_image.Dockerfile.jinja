@@ -52,19 +52,14 @@ FROM baseten/baseten-server-base-$PYVERSION:latest
 
 
 RUN pip install --upgrade pip
-{% if model_framework == 'huggingface_transformer' %}
-    {% if use_gpu %}
-# HuggingFace pytorch gpu support needs mkl
-RUN pip install mkl
-    {% endif %}
-{% endif%}
 
-COPY ./server_requirements.txt server_requirements.txt
-RUN pip install -r server_requirements.txt \
+COPY ./requirements.txt requirements.txt
+RUN pip install -r requirements.txt \
     && rm -rf /root/.cache/pip
 
 
 {% if live_reload %}
 COPY ./control /control
-RUN python3 -m venv .env && .env/bin/pip3 install -r /control/requirements.txt
+RUN python3 -m venv /control/.env \
+    && /control/.env/bin/pip3 install -r /control/requirements.txt
 {% endif %}
