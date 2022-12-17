@@ -108,8 +108,8 @@ def _build(
 def _build_all(push: bool = False, test: bool = True):
     for job_type in ["server", "training"]:
         for python_version in ["3.9"]:
-            for live_reload in [True, False]:
-                for use_gpu in [True, False]:
+            for live_reload in [False, True]:
+                for use_gpu in [False]:
                     _build(
                         job_type=job_type,
                         python_version=python_version,

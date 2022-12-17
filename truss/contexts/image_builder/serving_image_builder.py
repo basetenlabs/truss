@@ -68,13 +68,17 @@ class ServingImageBuilder(ImageBuilder):
                 CONTROL_SERVER_CODE_DIR,
                 build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
             )
-        server_reqs_filepath = TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME
+        server_reqs_filepath = (
+            TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME
+        )
         should_install_server_requirements = (
-            server_reqs_filepath.exists() and
-            file_is_not_empty(server_reqs_filepath))
+            server_reqs_filepath.exists() and file_is_not_empty(server_reqs_filepath)
+        )
         if should_install_server_requirements:
             copy_file_path(
-                TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME,
+                TEMPLATES_DIR
+                / self._spec.model_framework_name
+                / REQUIREMENTS_TXT_FILENAME,
                 build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
             )
 
@@ -95,7 +99,9 @@ class ServingImageBuilder(ImageBuilder):
         config = self._spec.config
 
         # todo: refactor
-        base_image_name = f"baseten/truss-server-base-{config.python_version}"
+        base_image_name = (
+            f"baseten/truss-server-base-{_to_dotted_version(config.python_version)}"
+        )
         if config.resources.use_gpu:
             base_image_name = f"{base_image_name}-gpu"
         if config.live_reload:
@@ -103,8 +109,12 @@ class ServingImageBuilder(ImageBuilder):
 
         tag = "test"  # todo: change to latest
         base_image_name_and_tag = f"{base_image_name}:{tag}"
-        should_install_system_requirements = file_is_not_empty(build_dir / SYSTEM_PACKAGES_TXT_FILENAME)
-        should_install_requirements = file_is_not_empty(build_dir / REQUIREMENTS_TXT_FILENAME)
+        should_install_system_requirements = file_is_not_empty(
+            build_dir / SYSTEM_PACKAGES_TXT_FILENAME
+        )
+        should_install_requirements = file_is_not_empty(
+            build_dir / REQUIREMENTS_TXT_FILENAME
+        )
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -137,3 +147,5 @@ class ServingImageBuilder(ImageBuilder):
             )
 
 
+def _to_dotted_version(python_version: str):
+    return f"{python_version[2]}.{python_version[3:]}"

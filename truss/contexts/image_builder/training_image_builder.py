@@ -68,9 +68,7 @@ class TrainingImageBuilder(ImageBuilder):
         )
 
         copy_file_path(
-            TEMPLATES_DIR
-            / BUILD_TRAINING_DIR_NAME
-            / REQUIREMENTS_TXT_FILENAME,
+            TEMPLATES_DIR / BUILD_TRAINING_DIR_NAME / REQUIREMENTS_TXT_FILENAME,
             build_dir / TRAINING_REQUIREMENTS_TXT_FILENAME,
         )
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
@@ -87,11 +85,17 @@ class TrainingImageBuilder(ImageBuilder):
         dockerfile_template = template_env.get_template(
             TRAINING_DOCKERFILE_TEMPLATE_NAME
         )
-        should_install_system_requirements = file_is_not_empty(build_dir / SYSTEM_PACKAGES_TXT_FILENAME)
-        should_install_requirements = file_is_not_empty(build_dir / REQUIREMENTS_TXT_FILENAME)
+        should_install_system_requirements = file_is_not_empty(
+            build_dir / SYSTEM_PACKAGES_TXT_FILENAME
+        )
+        should_install_requirements = file_is_not_empty(
+            build_dir / REQUIREMENTS_TXT_FILENAME
+        )
         # todo: refactor
         config = self._spec.config
-        base_image_name = f"baseten/truss-server-base-{config.python_version}"
+        base_image_name = (
+            f"baseten/truss-training-base-{_to_dotted_version(config.python_version)}"
+        )
         if config.resources.use_gpu:
             base_image_name = f"{base_image_name}-gpu"
         if config.live_reload:
@@ -110,3 +114,6 @@ class TrainingImageBuilder(ImageBuilder):
         with docker_file_path.open("w") as docker_file:
             docker_file.write(dockerfile_contents)
 
+
+def _to_dotted_version(python_version: str):
+    return f"{python_version[2]}.{python_version[3:]}"
