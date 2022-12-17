@@ -52,7 +52,10 @@ TRUSS_HASH = "truss_hash"
 TRAINING_TRUSS_HASH = "training_truss_hash"
 TRAINING_LABEL = "training"
 
-HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
+HUGGINGFACE_TRANSFORMER_MODULE_NAME = {
+    "transformers",
+    "torch",
+}
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
 SKLEARN_REQ_MODULE_NAMES = {

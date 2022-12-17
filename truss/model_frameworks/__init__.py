@@ -2,6 +2,7 @@ from typing import Any
 
 from truss.errors import FrameworkNotSupportedError
 from truss.model_framework import ModelFramework
+from truss.model_frameworks.custom import Custom
 from truss.model_frameworks.huggingface_transformer import HuggingfaceTransformer
 from truss.model_frameworks.keras import Keras
 from truss.model_frameworks.lightgbm import LightGBM
@@ -19,6 +20,7 @@ MODEL_FRAMEWORKS_BY_TYPE = {
     ModelFrameworkType.XGBOOST: XGBoost(),
     ModelFrameworkType.LIGHTGBM: LightGBM(),
     ModelFrameworkType.MLFLOW: Mlflow(),
+    ModelFrameworkType.CUSTOM: Custom(),
 }
 
 
