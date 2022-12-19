@@ -1,7 +1,7 @@
 # Builds baseten/truss-context-builder, a light-weight image that can be used
 # for creating docker build context out of a Truss.
 # Build that image as:
-# docker buildx build --platform=linux/amd64 . -t baseten/truss-context-builder
+# docker buildx build . -f context_builder.Dockerfile --platform=linux/amd64 -t baseten/truss-context-builder
 FROM python:3.9-alpine
 
 RUN apk add curl bash --no-cache
