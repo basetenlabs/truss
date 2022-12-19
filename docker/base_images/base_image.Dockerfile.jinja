@@ -1,0 +1,75 @@
+{% if use_gpu %}
+FROM nvidia/cuda:11.2.1-base-ubuntu18.04
+ENV CUDNN_VERSION=8.1.0.77
+ENV CUDA=11.2
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        cuda-command-line-tools-11-2 \
+        libcublas-11-2 \
+        libcublas-dev-11-2 \
+        libcufft-11-2 \
+        libcurand-11-2 \
+        libcusolver-11-2 \
+        libcusparse-11-2 \
+        libcudnn8=${CUDNN_VERSION}-1+cuda${CUDA} \
+        libgomp1 \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Allow statements and log messages to immediately appear in the Knative logs
+ENV PYTHONUNBUFFERED True
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && \
+    apt install -y bash \
+                   build-essential \
+                   git \
+                   curl \
+                   ca-certificates \
+                   software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt update -y && \
+    apt install -y python3.9 && \
+    apt install -y python3.9-distutils && \
+    apt install -y python3.9-venv && \
+    rm -rf /var/lib/apt/lists
+
+RUN ln -sf /usr/bin/python3.9 /usr/bin/python3 && \
+    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3 get-pip.py
+
+RUN python3 -m pip install --no-cache-dir --upgrade pip
+
+{% else %}
+FROM python:{{python_version}}
+RUN apt update && apt install -y
+
+# Allow statements and log messages to immediately appear in the Knative logs
+ENV PYTHONUNBUFFERED True
+{% endif %}
+
+
+RUN pip install --upgrade pip
+
+COPY ./requirements.txt requirements.txt
+RUN pip install -r requirements.txt \
+    && rm -rf /root/.cache/pip
+
+# This is a hack, kfserving uses table_logger, which doesn't work well with
+# numpy 1.24 onwards, where np.float and np.int have been remove.
+# https://github.com/AleksTk/table-logger/blob/v0.3.6/table_logger/table_logger.py#L80
+# Monkey patch table_logger here. Ultimately we should move away from kfserving,
+# perhaps to kserve.
+RUN if [ -f "/usr/local/lib/python{{python_version}}/site-packages/table_logger/table_logger.py" ]; then \
+ sed -i '80d;86d' /usr/local/lib/python{{python_version}}/site-packages/table_logger/table_logger.py; \
+fi
+
+{% if live_reload %}
+COPY ./control /control
+RUN python3 -m venv /control/.env \
+    && /control/.env/bin/pip3 install -r /control/requirements.txt
+{% endif %}
