@@ -77,6 +77,10 @@ class TrussSpec:
         return self._config.python_version
 
     @property
+    def canonical_python_version(self) -> str:
+        return self._config.canonical_python_version
+
+    @property
     def cpu(self) -> str:
         return self._config.resources.cpu
 
