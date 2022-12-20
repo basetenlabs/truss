@@ -7,4 +7,3 @@ msgpack==1.0.2
 python-json-logger==2.0.2
 joblib==1.1.0
 scikit-learn==1.0.2
-numpy==1.23.3
