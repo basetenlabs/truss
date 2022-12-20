@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - bola/pyversion-fix
 
 concurrency:
   group: main-${{ github.ref_name }}
