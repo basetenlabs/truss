@@ -123,6 +123,14 @@ class TrussConfig:
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
 
+    @property
+    def canonical_python_version(self) -> str:
+        return {
+            "py39": "3.9",
+            "py38": "3.8",
+            "py37": "3.7",
+        }[self.python_version]
+
     @staticmethod
     def from_dict(d):
         config = TrussConfig(
