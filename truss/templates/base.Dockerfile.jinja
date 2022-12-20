@@ -88,9 +88,7 @@ WORKDIR $APP_HOME
 # https://github.com/AleksTk/table-logger/blob/v0.3.6/table_logger/table_logger.py#L80
 # Monkey patch table_logger here. Ultimately we should move away from kfserving,
 # perhaps to kserve.
-RUN if [ -f "/usr/local/lib/python{{config.canonical_python_version}}/site-packages/table_logger/table_logger.py" ]; then \
- sed -i '80d;86d' /usr/local/lib/python{{config.canonical_python_version}}/site-packages/table_logger/table_logger.py; \
-fi
+RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.float:/d' {} \;
 
 
 {% block bundled_packages_copy %}
