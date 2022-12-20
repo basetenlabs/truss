@@ -75,6 +75,13 @@ class TrussSpec:
     @property
     def python_version(self) -> str:
         return self._config.python_version
+    @property
+    def canonical_python_version(self) -> str:
+        return {
+            "py39": "3.9",
+            "py38": "3.9",
+            "py37": "3.7",
+        }[self.python_version]
 
     @property
     def cpu(self) -> str:
