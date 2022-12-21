@@ -168,17 +168,14 @@ class TrussServer(KFServer):
         super().__init__(*args, **kwargs)
         _configure_logging()
 
-    def load_all(self):
+    def load_all(self, main_loop):
         try:
             for model in self.registered_models.get_models():
                 model.load()
         except Exception as e:
-            print(f"Error loading model: {e}")
+            logging.error(f"Error loading model: {e}")
             self._http_server.stop()
-            IOLoop.current().stop()
-            import sys
-
-            sys.exit(1, e)
+            main_loop.stop()
             raise e
 
     def start(self, models: List[KFModel], nest_asyncio: bool = False):
@@ -203,7 +200,10 @@ class TrussServer(KFServer):
         logging.info("Will fork %d workers", self.workers)
         self._http_server.start(self.workers)
 
-        Thread(target=self.load_all).start()
+        Thread(
+            target=self.load_all,
+            args=[IOLoop.current()],
+        ).start()
 
         IOLoop.current().start()
 
