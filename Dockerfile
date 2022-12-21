@@ -5,4 +5,4 @@ RUN curl -sSL https://install.python-poetry.org | python -
 ENV PATH="/root/.local/bin:${PATH}"
 COPY . .
 
-RUN poetry install --no-dev
+RUN poetry install --only main
