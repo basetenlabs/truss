@@ -169,8 +169,14 @@ class TrussServer(KFServer):
         _configure_logging()
 
     def load_all(self):
-        for model in self.registered_models.get_models():
-            model.load()
+        try:
+            for model in self.registered_models.get_models():
+                model.load()
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            import sys
+
+            sys.exit(1)
 
     def start(self, models: List[KFModel], nest_asyncio: bool = False):
         if len(models) != 1:
