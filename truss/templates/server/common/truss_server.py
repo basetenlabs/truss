@@ -1,5 +1,6 @@
 import json  # noqa: E402
 import logging  # noqa: E402
+import os
 import sys
 from http import HTTPStatus  # noqa: E402
 from threading import Thread
@@ -169,15 +170,18 @@ class TrussServer(KFServer):
         super().__init__(*args, **kwargs)
         _configure_logging()
 
-    def load_all(self, main_loop):
+    def load_all(self, main_loop: IOLoop):
         try:
             for model in self.registered_models.get_models():
                 model.load()
         except Exception as e:
             logging.error(f"Error loading model: {e}")
-            self._http_server.stop()
-            main_loop.stop()
-            sys.exit(1)
+
+            # fixme(zack) for live reload, we don't want to kill the process?
+            if not os.environ.get("CONTROL_SERVER_PORT"):
+                self._http_server.stop()
+                main_loop.stop()
+                sys.exit(1)
 
     def start(self, models: List[KFModel], nest_asyncio: bool = False):
         if len(models) != 1:
