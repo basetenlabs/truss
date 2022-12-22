@@ -176,7 +176,8 @@ class TrussServer(KFServer):
             logging.error(f"Error loading model: {e}")
             self._http_server.stop()
             main_loop.stop()
-            raise e
+            import sys
+            sys.exit(1, e)
 
     def start(self, models: List[KFModel], nest_asyncio: bool = False):
         if len(models) != 1:
