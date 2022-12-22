@@ -1,5 +1,6 @@
 import json  # noqa: E402
 import logging  # noqa: E402
+import sys
 from http import HTTPStatus  # noqa: E402
 from threading import Thread
 from typing import List
@@ -176,7 +177,7 @@ class TrussServer(KFServer):
             logging.error(f"Error loading model: {e}")
             self._http_server.stop()
             main_loop.stop()
-            raise e
+            sys.exit(1)
 
     def start(self, models: List[KFModel], nest_asyncio: bool = False):
         if len(models) != 1:
