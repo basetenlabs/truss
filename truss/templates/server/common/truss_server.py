@@ -177,7 +177,7 @@ class TrussServer(KFServer):
             self._http_server.stop()
             main_loop.stop()
             import sys
-            sys.exit(1, e)
+            sys.exit(1)
 
     def start(self, models: List[KFModel], nest_asyncio: bool = False):
         if len(models) != 1:
