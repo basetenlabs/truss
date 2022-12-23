@@ -67,7 +67,7 @@ Kills all truss containers that are not manually persisted
 
 #### predict
 
-Runs prediction for a Truss in a docker image or locally
+Invokes the packaged model, either locally or in a Docker container.
 
 Args:
 

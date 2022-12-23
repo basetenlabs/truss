@@ -178,9 +178,7 @@ def run_image(target_directory, build_dir, tag, port, attach):
 @echo_output
 def predict(target_directory, request, build_dir, tag, port, run_local, request_file):
     """
-    Runs prediction for a Truss in a docker image or locally
-    
-    Runs the docker image for a Truss.
+    Invokes the packaged model, either locally or in a Docker container.
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
