@@ -16,7 +16,7 @@ Show Truss package version.
 
 ## Commands
 
-#### `build-context`
+### `build-context`
 
 Create a docker build context for a Truss.
 
@@ -25,7 +25,7 @@ Create a docker build context for a Truss.
 * `build_dir`: Folder where image context is built for Truss
 * `target_directory`: A Truss directory. If none, use current directory.
 
-#### `build-image`
+### `build-image`
 
 Builds the docker image for a Truss.
 
@@ -34,7 +34,7 @@ Builds the docker image for a Truss.
 * `target_directory`: A Truss directory. If none, use current directory.
 * `build_dir`: Image context. If none, a temp directory is created.
 
-#### `cleanup`
+### `cleanup`
 
 Clean up truss data.
 
@@ -42,7 +42,7 @@ Truss creates temporary directories for various operations
 such as for building docker images. This command clears
 that data to free up disk space.
 
-#### `get-container-logs`
+### `get-container-logs`
 
 Get logs in a container is running for a truss
 
@@ -50,7 +50,7 @@ Get logs in a container is running for a truss
 
 * `target_directory`: A Truss directory. If none, use current directory.
 
-#### `init`
+### `init`
 
 Initializes an empty Truss directory.
 
@@ -58,7 +58,7 @@ Initializes an empty Truss directory.
 
 * `target_directory`: A Truss is created in this directory
 
-#### `kill`
+### `kill`
 
 Kills containers related to truss.
 
@@ -66,11 +66,11 @@ Kills containers related to truss.
 
 * `target_directory`: A Truss directory. If none, use current directory.
 
-#### `kill-all`
+### `kill-all`
 
 Kills all truss containers that are not manually persisted
 
-#### `predict`
+### `predict`
 
 Invokes the packaged model, either locally or in a Docker container.
 
@@ -84,7 +84,7 @@ Invokes the packaged model, either locally or in a Docker container.
 * `run_local`: Flag to run prediction locally (instead of on Docker)
 * `request_file`: Path to json file containing the request
 
-#### `run-example`
+### `run-example`
 
 Runs examples specified in the Truss, over docker.
 
@@ -92,7 +92,7 @@ Runs examples specified in the Truss, over docker.
 
 * `target_directory`: A Truss directory. If none, use current directory.
 
-#### `run-image`
+### `run-image`
 
 Runs the docker image for a Truss.
 

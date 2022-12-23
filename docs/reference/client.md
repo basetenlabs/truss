@@ -16,7 +16,7 @@ Get a handle to a Truss. A Truss is a build context designed to be built as a co
 
 * `truss_directory` (`str`): The local directory of an existing Truss
 
-**Returns:
+**Returns:**
 
 * `TrussHandle`: A handle to the generated Truss that provides easy access to content inside.
 
@@ -92,8 +92,9 @@ Builds docker image
 
 Set up a directory to build docker image from.
 
-Returns:
-      docker build command.
+**Returns:**
+
+- docker build command.
 
 #### `docker_predict(self, request: dict, build_dir: pathlib.Path = None, tag: str = None, local_port: int = 8080, detach: bool = True)`
 
