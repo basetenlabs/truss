@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
-from truss.build import cleanup, init, mk_truss
+from truss.build import cleanup, create, init
 from truss.truss_spec import TrussSpec
 
 
@@ -66,7 +66,7 @@ def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(
     assert (spec.bundled_packages_dir / "dep_pkg" / "file.py").exists()
 
 
-def test_mk_truss(sklearn_rfc_model, tmp_path):
+def test_create(sklearn_rfc_model, tmp_path):
     dir_path = tmp_path / "truss"
     data_file_path = tmp_path / "data.txt"
     with data_file_path.open("w") as data_file:
@@ -79,7 +79,7 @@ def test_mk_truss(sklearn_rfc_model, tmp_path):
     with req_file_path.open("w") as req_file:
         for req in requirements:
             req_file.write(f"{req}\n")
-    scaf = mk_truss(
+    scaf = create(
         sklearn_rfc_model,
         target_directory=dir_path,
         data_files=[str(data_file_path)],
@@ -94,7 +94,7 @@ def test_mk_truss(sklearn_rfc_model, tmp_path):
     assert spec.requirements == requirements
 
 
-def test_mk_truss_pipeline(sklearn_rfc_model, tmp_path):
+def test_create_pipeline(sklearn_rfc_model, tmp_path):
     def inference(request: dict):
         inputs = request["inputs"]
         response = sklearn_rfc_model.predict([inputs])[0]
@@ -112,7 +112,7 @@ def test_mk_truss_pipeline(sklearn_rfc_model, tmp_path):
     with req_file_path.open("w") as req_file:
         for req in requirements:
             req_file.write(f"{req}\n")
-    scaf = mk_truss(
+    scaf = create(
         inference,
         target_directory=dir_path,
         data_files=[str(data_file_path)],
@@ -207,7 +207,7 @@ def test_cleanup(sklearn_rfc_model, tmp_path):
     with req_file_path.open("w") as req_file:
         for req in requirements:
             req_file.write(f"{req}\n")
-    _ = mk_truss(
+    _ = create(
         sklearn_rfc_model,
         data_files=[str(data_file_path)],
         requirements_file=str(req_file_path),
@@ -254,13 +254,13 @@ def test_truss_via_t5_mk_pipeline(
 @contextmanager
 def _model_server_predict(model, model_input):
     with tempfile.TemporaryDirectory() as dir_name:
-        sc = mk_truss(model, target_directory=dir_name)
+        sc = create(model, target_directory=dir_name)
         result = sc.server_predict(model_input)
         yield result
 
 
 @contextmanager
 def _model_server_predict_pipeline(pipeline, model_input):
-    sc = mk_truss(pipeline)
+    sc = create(pipeline)
     result = sc.server_predict(model_input)
     yield result

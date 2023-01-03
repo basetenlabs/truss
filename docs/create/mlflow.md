@@ -35,14 +35,14 @@ with mlflow.start_run():
 
 ### Create a Truss
 
-Truss uses MLflow's [pyfunc](https://www.mlflow.org/docs/latest/python_api/mlflow.pyfunc.html) module in the packaging process. Once you have loaded the model, use the `mk_truss` command to package your model into a Truss.
+Truss uses MLflow's [pyfunc](https://www.mlflow.org/docs/latest/python_api/mlflow.pyfunc.html) module in the packaging process. Once you have loaded the model, use the `create` command to package your model into a Truss.
 
 ```python
 import os
 import truss
 
 model = mlflow.pyfunc.load_model(MODEL_URI)
-tr = truss.mk_truss(model, target_directory="./mlflow_truss")
+tr = truss.create(model, target_directory="./mlflow_truss")
 ```
 
 Check the target directory to see your new Truss!
@@ -53,7 +53,7 @@ To get a prediction from the Truss, try running:
 
 ```python
 data = np.array([-4, 1, 0, 10, -2, 1]).reshape(-1, 1)
-predictions = tr.server_predict({"inputs": data})
+predictions = tr.predict({"inputs": data})
 print(predictions)
 ```
 

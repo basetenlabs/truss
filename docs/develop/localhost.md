@@ -21,7 +21,7 @@ There are two ways to interface with a Truss locally. The first is via [the Pyth
 When interacting with your Truss via the Python client, the first thing is to make sure it is in-memory. If you just created the Truss, it'll be in memory already, but if not, you'll need to load it with the following command:
 
 ```python
-tr = truss.from_directory("path_to_my_truss")
+tr = truss.load("path_to_my_truss")
 ```
 
 From there, you can invoke the Truss to serve the model in your Python environment. Just run:
@@ -112,7 +112,7 @@ Unlike Docker image, this mechanism requires that you already have the right Pyt
 In the Python environment, get a prediction without Docker by running:
 
 ```python
-tr.server_predict({"inputs": [[0, 0, 0, 0]]})
+tr.predict({"inputs": [[0, 0, 0, 0]]})
 ```
 
 Or in the command line, run:

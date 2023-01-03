@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import Any, Callable, List
@@ -11,6 +12,7 @@ from truss.environment_inference.requirements_inference import infer_deps
 from truss.errors import FrameworkNotSupportedError
 from truss.model_frameworks import MODEL_FRAMEWORKS_BY_TYPE, model_framework_from_model
 from truss.model_inference import infer_python_version, map_to_supported_python_version
+from truss.notebook import is_notebook_or_ipython
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
@@ -20,6 +22,12 @@ from truss.utils import (
     copy_tree_path,
     get_gpu_memory,
 )
+
+logger = logging.getLogger(__name__)
+
+if is_notebook_or_ipython():
+    logger.setLevel(logging.INFO)
+    logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 def populate_target_directory(
@@ -54,7 +62,7 @@ def populate_target_directory(
     return target_directory_path
 
 
-def mk_truss_from_model(
+def create_from_model(
     model: Any,
     target_directory: str = None,
     data_files: List[str] = None,
@@ -102,7 +110,7 @@ def mk_truss_from_model(
     return scaf
 
 
-def mk_truss_from_pipeline(
+def create_from_pipeline(
     pipeline: Callable,
     target_directory: str = None,
     data_files: List[str] = None,
@@ -146,7 +154,7 @@ def mk_truss_from_pipeline(
         click.echo(
             click.style(
                 """WARNING: Truss identified objects in GPU memory. When serializing a
-                function via mk_truss, objects in GPU memory must be moved to
+                function via create(), objects in GPU memory must be moved to
                 CPU to be serialized correctly.""",
                 fg="yellow",
             )
@@ -162,7 +170,7 @@ def mk_truss_from_pipeline(
     return scaf
 
 
-def mk_truss_from_mlflow_uri(
+def create_from_mlflow_uri(
     model_uri: str,
     target_directory: str = None,
     data_files: List[str] = None,
@@ -197,10 +205,10 @@ def mk_truss_from_mlflow_uri(
     return truss
 
 
-def mk_truss_from_model_with_exception_handler(*args):
+def create_from_model_with_exception_handler(*args):
     # returns None if framework not supported, otherwise the Truss
     try:
-        return mk_truss_from_model(*args)
+        return create_from_model(*args)
     except FrameworkNotSupportedError:
         return None
 
@@ -242,7 +250,7 @@ def init(
     return scaf
 
 
-def from_directory(truss_directory: str) -> TrussHandle:
+def load(truss_directory: str) -> TrussHandle:
     """Get a handle to a Truss. A Truss is a build context designed to be built
     as a container locally or uploaded into a model serving environment.
 
@@ -254,7 +262,14 @@ def from_directory(truss_directory: str) -> TrussHandle:
     return TrussHandle(Path(truss_directory))
 
 
-def mk_truss(
+def from_directory(*args, **kwargs):
+    logger.warn(
+        "DeprecationWarning: from_directory() is deprecated. Use load() instead."
+    )
+    return load(*args, **kwargs)
+
+
+def create(
     model: Any,
     target_directory: str = None,
     data_files: List[str] = None,
@@ -264,20 +279,25 @@ def mk_truss(
     # Some model objects can are callable (like Keras models)
     # so we first attempt to make Truss via a model object
 
-    model_scaffold = mk_truss_from_model_with_exception_handler(
+    model_scaffold = create_from_model_with_exception_handler(
         model, target_directory, data_files, requirements_file, bundled_packages
     )
     if model_scaffold:
         return model_scaffold
     else:
         if callable(model):
-            return mk_truss_from_pipeline(
+            return create_from_pipeline(
                 model, target_directory, data_files, requirements_file, bundled_packages
             )
 
     raise ValueError(
         "Invalid input to make Truss. Truss expects a supported framework or callable function."
     )
+
+
+def mk_truss(*args, **kwargs):
+    logger.warn("DeprecationWarning: mk_truss() is deprecated. Use create() instead.")
+    return create(*args, **kwargs)
 
 
 def cleanup():

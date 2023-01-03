@@ -15,7 +15,7 @@ pip install --upgrade baseten
 
 {% hint style="info" %}
 
-If your model is already in memory (you created it with `mk_truss`), you can skip loading it into memory from the directory.
+If your model is already in memory (you created it with `create`), you can skip loading it into memory from the directory.
 
 {% endhint %}
 
@@ -24,7 +24,7 @@ Before deploying your Truss, you may need to load it into memory in a Jupyter no
 ```python
 import truss
 
-my_truss = truss.from_directory("my_truss_lives_here")
+my_truss = truss.load("my_truss_lives_here")
 ```
 
 Once your Truss is in memory, simply run the following:

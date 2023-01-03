@@ -16,7 +16,7 @@ To familiarize yourself with the structure of Truss, review the [structure refer
 
 ### Adding the model binary
 
-First, you'll need to add a model binary to your new Truss. On supported frameworks, this is provided automatically by the `mk_truss` command. For a custom Truss, it can come from many sources, such as:
+First, you'll need to add a model binary to your new Truss. On supported frameworks, this is provided automatically by the `create` command. For a custom Truss, it can come from many sources, such as:
 
 * Pickling your model
 * Serializing your model
@@ -46,7 +46,7 @@ Also, your model gets access to certain values, including the `config.yaml` file
 
 ## Example code
 
-While XGBoost is a supported framework — you can make a Truss from an XGBoost model with `mk_truss` — we'll use the manual method here for demonstration.
+While XGBoost is a supported framework — you can make a Truss from an XGBoost model with `create` — we'll use the manual method here for demonstration.
 
 If you haven't already, create a Truss by running:
 
