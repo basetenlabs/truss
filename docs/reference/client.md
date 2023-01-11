@@ -46,7 +46,7 @@ be built as a container locally or uploaded into a model serving environment.
 
 * `TrussHandle`: A handle to the generated Truss that provides easy access to content inside.
 
-### Truss Use
+### Truss use (Truss handle reference)
 
 #### `bundled_package(self, file_dir_or_glob: str)`
 
