@@ -189,14 +189,14 @@ with open("test_folder/embedding_reqs.txt", "w") as f:
 
 create_reference_embeddings()
 
-create = scaffold_custom(
+sc = scaffold_custom(
     model_files=["test_folder", "test_folder/utils/*.py", "embeddings.npy"],
     target_directory="test_custom",
     requirements_file="test_folder/embedding_reqs.txt",
     model_class="MyEmbeddingModel",
 )
-create.docker_build_string
-create.predict(["hello world", "bar baz"])
+sc.docker_build_string
+sc.predict(["hello world", "bar baz"])
 
 
 url = "http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data"
@@ -263,10 +263,10 @@ scaff.predict([[0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
 
 built_scaffold_dir = build_scaffold_directory(HUGGINGFACE_TRANSFORMER)
-create = HuggingFaceTransformerPipelineScaffold(
+hf_sc = HuggingFaceTransformerPipelineScaffold(
     model_type="text-generation", path_to_scaffold=built_scaffold_dir
 )
-create.predict([{"text_inputs": "hello world"}])
+hf_sc.predict([{"text_inputs": "hello world"}])
 
 
 PYTORCH_MODEL_CODE = """
