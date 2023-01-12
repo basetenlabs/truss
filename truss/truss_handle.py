@@ -80,11 +80,6 @@ class TrussHandle:
     def spec(self) -> TrussSpec:
         return self._spec
 
-    def server_predict(self, request: dict):
-        """Run the prediction flow locally."""
-        model = LoadModelLocal.run(self._truss_dir)
-        return _prediction_flow(model, request)
-
     def build_docker_build_context(self, build_dir: Path = None):
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
@@ -186,6 +181,33 @@ class TrussHandle:
             raise err
 
         return container
+
+    def predict(
+        self,
+        request: dict,
+        use_docker: bool = False,
+        build_dir: Path = None,
+        tag: str = None,
+        local_port: int = INFERENCE_SERVER_PORT,
+        detach: bool = True,
+        patch_ping_url: str = None,
+    ):
+        if use_docker:
+            return self.docker_predict(
+                request,
+                build_dir=build_dir,
+                tag=tag,
+                local_port=local_port,
+                detach=detach,
+                patch_ping_url=patch_ping_url,
+            )
+        else:
+            return self.server_predict(request)
+
+    def server_predict(self, request: dict):
+        """Run the prediction flow locally."""
+        model = LoadModelLocal.run(self._truss_dir)
+        return _prediction_flow(model, request)
 
     def docker_predict(
         self,

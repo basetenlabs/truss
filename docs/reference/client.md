@@ -8,7 +8,7 @@ A list of the functions available with `import truss` and their arguments and pr
 
 Cleans up `.truss` directory.
 
-#### `from_directory(truss_directory: str) -> truss.truss_handle.TrussHandle`
+#### `load(truss_directory: str) -> truss.truss_handle.TrussHandle`
 
 Get a handle to a Truss. A Truss is a build context designed to be built as a container locally or uploaded into a model serving environment.
 
@@ -30,7 +30,7 @@ Initialize an empty placeholder Truss. A Truss is a build context designed to be
 
 #### `kill_all()`
 
-#### mk_truss(model: Any, target_directory: str = None, data_files: List[str] = None, requirements_file: str = None) -> truss.truss_handle.TrussHandle
+#### create(model: Any, target_directory: str = None, data_files: List[str] = None, requirements_file: str = None) -> truss.truss_handle.TrussHandle
 
 Create a Truss with the given model. A Truss is a build context designed to
 be built as a container locally or uploaded into a model serving environment.
@@ -46,7 +46,7 @@ be built as a container locally or uploaded into a model serving environment.
 
 * `TrussHandle`: A handle to the generated Truss that provides easy access to content inside.
 
-### Truss Use
+### Truss use (Truss handle reference)
 
 #### `bundled_package(self, file_dir_or_glob: str)`
 
@@ -136,7 +136,7 @@ Examples are a simple `name to input` dictionary.
 
 #### `kill_container(self)`
 
-#### `server_predict(self, request: dict)`
+#### `predict(self, request: dict)`
 
 Run the prediction flow locally.
 

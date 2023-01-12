@@ -37,6 +37,16 @@ def test_description(custom_model_truss_dir_with_pre_and_post_description):
     assert spec.description == "This model adds 3 to all inputs"
 
 
+def test_predict(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    resp = th.predict(
+        {
+            "inputs": [1, 2, 3, 4],
+        }
+    )
+    assert resp == {"predictions": [4, 5, 6, 7]}
+
+
 def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     resp = th.server_predict(
@@ -148,6 +158,15 @@ def get_docker_containers_from_labels(custom_model_truss_dir_with_pre_and_post):
         assert len(t1.get_serving_docker_containers_from_labels()) == 2
         t1.kill_container()
         assert len(t1.get_serving_docker_containers_from_labels()) == 0
+
+
+@pytest.mark.integration
+def test_predict_use_docker(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    tag = "test-docker-predict-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.predict({"inputs": [1, 2]}, tag=tag, use_docker=True)
+        assert result == {"predictions": [4, 5]}
 
 
 @pytest.mark.integration

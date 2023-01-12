@@ -32,12 +32,12 @@ model = tf.keras.applications.ResNet50V2(
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss.
+Use the `create` command to package your model into a Truss.
 
 ```python
-from truss import mk_truss
+from truss import create
 
-tr = mk_truss(model, target_directory="tensorflow_truss")
+tr = create(model, target_directory="tensorflow_truss")
 ```
 
 Check the target directory to see your new Truss!
@@ -80,7 +80,7 @@ def postprocess(predictions, k=5):
 With these functions in place, you can invoke the model and pass it a URL, as in:
 
 ```python
-tr.server_predict({"inputs": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"})
+tr.predict({"inputs": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"})
 ```
 
 For information on running the Truss locally, see [local development](../develop/localhost.md).

@@ -79,10 +79,10 @@ Invokes the packaged model, either locally or in a Docker container.
 * `target_directory`: A Truss directory. If none, use current directory.
 * `request`: String formatted as json that represents request
 * `build_dir`: Directory where context is built. If none, a temp directory is created.
-* `tag`: Docker build image tag
-* `port`: Local port used to run image
-* `run_local`: Flag to run prediction locally (instead of on Docker)
-* `request_file`: Path to json file containing the request
+* `tag`: Docker build image tag.
+* `port`: Local port used to run image.
+* `use_docker`: Flag to run prediction on Docker, defaults to `False`.
+* `request_file`: Path to json file containing the request.
 
 ### `run-example`
 
