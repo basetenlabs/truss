@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import List
 
 from jinja2 import Environment, FileSystemLoader
-from truss import __version__
-from truss.contexts.image_builder.util import truss_base_image_name
+from truss.contexts.image_builder.util import (
+    truss_base_image_name,
+    truss_base_image_tag,
+)
 
 base_path = Path(__file__).parent.parent
 templates_path = base_path / "truss" / "templates"
@@ -68,19 +70,17 @@ def _build(
     use_gpu: bool = False,
     job_type: str = "server",
     push: bool = False,
-    tag: str = None,
+    version_tag: str = None,
     dry_run: bool = True,
 ):
-    image_name = truss_base_image_name(
-        job_type=job_type,
+    image_name = truss_base_image_name(job_type=job_type)
+    tag = truss_base_image_tag(
         python_version=python_version,
         use_gpu=use_gpu,
         live_reload=live_reload,
+        version_tag=version_tag,
     )
-    used_tag = f"v{__version__}"
-    if tag is not None:
-        used_tag = tag
-    image_with_tag = f"{image_name}:{used_tag}"
+    image_with_tag = f"{image_name}:{tag}"
     print(f"Building image :: {image_with_tag}")
     if dry_run:
         return
@@ -131,7 +131,7 @@ def _build_all(
     live_reload_values: List[bool] = None,
     use_gpu_values: List[bool] = None,
     push: bool = False,
-    tag: str = None,
+    version_tag: str = None,
     dry_run: bool = False,
 ):
     if job_types is None:
@@ -156,7 +156,7 @@ def _build_all(
                         use_gpu=use_gpu,
                         live_reload=live_reload,
                         push=push,
-                        tag=tag,
+                        version_tag=version_tag,
                         dry_run=dry_run,
                     )
 
@@ -170,9 +170,10 @@ if __name__ == "__main__":
         help="push built images to dockerhub",
     )
     parser.add_argument(
-        "--tag",
+        "--version-tag",
         nargs="?",
-        help="Generate images with given tag, useful for testing. If absent then truss project version is used.",
+        help="Generate images with given version tag, useful for testing. "
+        "If absent then truss project version is used.",
     )
     parser.add_argument(
         "--dry-run",
@@ -241,6 +242,6 @@ if __name__ == "__main__":
         use_gpu_values=use_gpu_values,
         live_reload_values=live_reload_values,
         push=args.push,
-        tag=args.tag,
+        version_tag=args.version_tag,
         dry_run=args.dry_run,
     )

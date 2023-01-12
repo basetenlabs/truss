@@ -17,10 +17,11 @@ from truss.constants import (
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
-    TRUSS_BASE_IMAGE_TAG,
+    TRUSS_BASE_IMAGE_VERSION_TAG,
     file_is_not_empty,
     to_dotted_python_version,
     truss_base_image_name,
+    truss_base_image_tag,
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
@@ -103,13 +104,13 @@ class ServingImageBuilder(ImageBuilder):
         dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
         config = self._spec.config
 
-        base_image_name = truss_base_image_name(
-            job_type="server",
+        base_image_name = truss_base_image_name(job_type="server")
+        tag = truss_base_image_tag(
             python_version=to_dotted_python_version(config.python_version),
             use_gpu=config.resources.use_gpu,
             live_reload=config.live_reload,
+            version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
         )
-        tag = TRUSS_BASE_IMAGE_TAG
         base_image_name_and_tag = f"{base_image_name}:{tag}"
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
