@@ -44,7 +44,7 @@ Check the target directory to see your new Truss!
 To get a prediction from the Truss, try running:
 
 ```python
-tr.docker_predict({"inputs": ["Donatello is a teenage mutant [MASK] turtle"]})
+tr.predict({"inputs": ["Donatello is a teenage mutant [MASK] turtle"]})
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).

@@ -2,6 +2,21 @@
 
 Release notes for new versions of Truss, in reverse chronological order.
 
+### Version 0.2.0
+
+With this release, a minor version increment recognizes the overall progress made on Truss since its initial release in Summer 2022. And simplified naming for key functions improves Truss' developer experience, while carefully considered warnings and a long deprecation period ensure nothing breaks.
+
+#### Interface changes
+
+* In the Python client, `truss.create()` replaces `truss.mk_truss()`.
+* In the Python client, `truss.load()` replaces `truss.from_directory()`.
+* In the Truss handle, `truss.predict()` offers a shorter alternative to `truss.server_predict()`. To use in place of `truss.docker_predict()`, pass the optional kwarg `use_docker=True`.
+* In the command-line interface, the behavior of `truss predict` has been updated to match the Python client.
+  * Previously, `truss predict` ran on Docker by default, which could be overriden with `RUN_LOCAL=true`.
+  * Now, `truss predict` runs without Docker by default, which can be overriden with `USE_DOCKER=true`.
+
+These interface changes are intended to improve Truss' developer experience, not cause unnecessary trouble. As such, the old `mk_truss()` and `from_directory()` functions, while marked with a deprecation warning, will not be removed until the next major version update. And both `server_predict()` and `docker_predict()` will be supported in the Truss handle indefinitely.
+
 ### Version 0.1.5
 
 This release adds the `live_reload` option. This feature makes it faster to run a Truss in Docker in some situations, letting you develop your Truss without waiting for Docker to rebuild between changes.
