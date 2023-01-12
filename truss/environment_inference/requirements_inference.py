@@ -90,11 +90,11 @@ def _extract_packages_from_frame(frame) -> Set[str]:
         if name.startswith("__"):
             continue
 
-        if isinstance(val, types.ModuleType):
+        if isinstance(val, types.ModuleType) and val.__name__ is not None:
             # Split ensures you get root package,
             # not just imported function
             pkg_name = val.__name__.split(".")[0]
-        elif hasattr(val, "__module__"):
+        elif hasattr(val, "__module__") and val.__module__ is not None:
             pkg_name = val.__module__.split(".")[0]
         else:
             continue

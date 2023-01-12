@@ -39,6 +39,14 @@ WORKDIR $APP_HOME
 {% endblock %}
 
 
+# This is a hack, kfserving uses table_logger, which doesn't work well with
+# numpy 1.24 onwards, where np.float and np.int have been remove.
+# https://github.com/AleksTk/table-logger/blob/v0.3.6/table_logger/table_logger.py#L80
+# Monkey patch table_logger here. Ultimately we should move away from kfserving,
+# perhaps to kserve.
+RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.float:/d' {} \;
+
+
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
 COPY ./{{config.bundled_packages_dir}} /packages
