@@ -61,7 +61,7 @@ Check the target directory to see your new Truss!
 To get a prediction from the Truss, try running:
 
 ```python
-tr.docker_predict({"inputs": [[0, 0, 0, 0, 0, 0]]})
+tr.predict({"inputs": [[0, 0, 0, 0, 0, 0]]})
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).

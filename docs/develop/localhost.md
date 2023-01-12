@@ -27,7 +27,7 @@ tr = truss.load("path_to_my_truss")
 From there, you can invoke the Truss to serve the model in your Python environment. Just run:
 
 ```python
-tr.docker_predict({"inputs": [[0, 0, 0, 0]]})
+tr.predict({"inputs": [[0, 0, 0, 0]]})
 ```
 
 ### Command line interface
