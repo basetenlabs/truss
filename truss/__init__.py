@@ -12,9 +12,11 @@ def version():
 
 
 from truss.build import (
+    create,
+    create_from_mlflow_uri,
     from_directory,
     init,
     kill_all,
+    load,
     mk_truss,
-    mk_truss_from_mlflow_uri,
 )

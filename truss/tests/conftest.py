@@ -18,7 +18,7 @@ from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
-from truss.build import init, mk_truss
+from truss.build import create, init
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.types import Example
 from xgboost import XGBClassifier
@@ -517,7 +517,7 @@ def huggingface_truss_handle_small_model(
 ):
     dir_path = tmp_path / "huggingface_truss_small_model"
     dir_path.mkdir()
-    mk_truss(huggingface_transformer_t5_small_pipeline, target_directory=str(dir_path))
+    create(huggingface_transformer_t5_small_pipeline, target_directory=str(dir_path))
     return dir_path
 
 

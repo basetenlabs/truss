@@ -143,12 +143,12 @@ model, _ , _ = train_the_model()
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss.
+Use the `create` command to package your model into a Truss.
 
 ```python
-from truss import mk_truss
+from truss import create
 
-tr = mk_truss(model, target_directory="pytorch_truss")
+tr = create(model, target_directory="pytorch_truss")
 ```
 
 Check the target directory to see your new Truss!
@@ -165,7 +165,7 @@ inputs = datasets.MNIST("../data", train=False, transform=transform)
 dataset = torch.utils.data.DataLoader(inputs, batch_size=1)
 
 import numpy as np
-print(tr.server_predict({"inputs": np.array(next(iter(dataset))[0])}))
+print(tr.predict({"inputs": np.array(next(iter(dataset))[0])}))
 ```
 
 For information on running the Truss locally, see [local development](../develop/localhost.md).

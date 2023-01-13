@@ -68,15 +68,15 @@ rfc = RandomForestClassifier()
 rfc.fit(data_x, data_y)
 
 # Create the Truss (serializing & packaging model)
-tr = truss.mk_truss(rfc, target_directory="iris_rfc_truss")
+tr = truss.create(rfc, target_directory="iris_rfc_truss")
 
 # Serve a prediction from the model
-tr.server_predict({"inputs": [[0, 0, 0, 0]]})
+tr.predict({"inputs": [[0, 0, 0, 0]]})
 ```
 
 ### Package your model
 
-The `truss.mk_truss()` command can be used with any supported framework:
+The `truss.create()` command can be used with any supported framework:
 
 * [Hugging Face](https://truss.baseten.co/create/huggingface)
 * [LightGBM](https://truss.baseten.co/create/lightgbm)
