@@ -210,18 +210,6 @@ if __name__ == "__main__":
         help="Build images for specific python version or all",
     )
 
-    push_to_dockerhub = False
-    if len(sys.argv) > 1 and sys.argv[1] == "push":
-        push_to_dockerhub = True
-        print(
-            "Important: Please update "
-            "truss/contexts/image_builder/util::TRUSS_BASE_IMAGE_TAG"
-            " with the newly published version."
-        )
-
-    if push_to_dockerhub:
-        _docker_login()
-
     args = parser.parse_args()
     if args.python_version == "all":
         python_versions = PYTHON_VERSIONS
@@ -235,6 +223,9 @@ if __name__ == "__main__":
 
     use_gpu_values = _bool_arg_str_to_values(args.use_gpu)
     live_reload_values = _bool_arg_str_to_values(args.live_reload)
+
+    if args.push:
+        _docker_login()
 
     _build_all(
         python_versions=python_versions,
