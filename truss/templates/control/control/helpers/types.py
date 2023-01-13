@@ -49,6 +49,7 @@ class ModelCodePatch(PatchBody):
             content=patch_dict["content"],
         )
 
+
 @dataclass
 class PythonRequirementPatch(PatchBody):
     # For uninstall this should just be the name of the package, but for update

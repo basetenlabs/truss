@@ -99,5 +99,5 @@ def _identify_pip_path() -> str:
 
     if Path("/usr/local/bin/pip").exists():
         return "/usr/local/bin/pip"
-    
+
     raise RuntimeError("Unable to find pip, make sure it's installed.")

@@ -1,16 +1,16 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import yaml
-import pkg_resources
 
+import pkg_resources
+import yaml
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import (
     Action,
     ModelCodePatch,
-    PythonRequirementPatch,
     Patch,
     PatchType,
+    PythonRequirementPatch,
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
@@ -83,9 +83,11 @@ def calc_truss_patch(
         elif path.startswith(training_module_path):
             # Ignore training changes from patch
             continue
-        elif str(path) == 'config.yaml':
-            new_config = TrussConfig.from_yaml(truss_dir / 'config.yaml')
-            prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
+        elif str(path) == "config.yaml":
+            new_config = TrussConfig.from_yaml(truss_dir / "config.yaml")
+            prev_config = TrussConfig.from_dict(
+                yaml.safe_load(previous_truss_signature.config)
+            )
             config_patches = _calc_config_patches(prev_config, new_config)
             if config_patches is None:
                 return None
@@ -126,9 +128,11 @@ def _calc_changed_paths(
     }
 
 
-def _calc_config_patches(prev_config: TrussConfig, new_config: TrussConfig) -> Optional[List[Patch]]:
+def _calc_config_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> Optional[List[Patch]]:
     """Calculate patch based on changes to config.
-    
+
     Returns None if patch cannot be calculated. Empty list means no relevant
     differences found.
     """
@@ -140,9 +144,11 @@ def _calc_config_patches(prev_config: TrussConfig, new_config: TrussConfig) -> O
     return _calc_python_requirements_patches(prev_config, new_config)
 
 
-def _calc_python_requirements_patches(prev_config: TrussConfig, new_config: TrussConfig) -> Optional[List[Patch]]:
+def _calc_python_requirements_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> Optional[List[Patch]]:
     """Calculate patch based on changes to python requirements.
-    
+
     Returns None if patch cannot be calculated. Empty list means no relevant
     differences found.
     """
@@ -154,14 +160,18 @@ def _calc_python_requirements_patches(prev_config: TrussConfig, new_config: Trus
     removed_reqs = prev_req_names.difference(new_req_names)
     for removed_req in removed_reqs:
         patches.append(_mk_python_requirement_patch(Action.REMOVE, removed_req))
-    
+
     added_reqs = new_req_names.difference(prev_req_names)
     for added_req in added_reqs:
-        patches.append(_mk_python_requirement_patch(Action.UPDATE, str(new_reqs[added_req])))
+        patches.append(
+            _mk_python_requirement_patch(Action.UPDATE, str(new_reqs[added_req]))
+        )
 
     for req in new_req_names.intersection(prev_req_names):
         if new_reqs[req] != prev_reqs[req]:
-            patches.append(_mk_python_requirement_patch(Action.UPDATE, str(new_reqs[req])))
+            patches.append(
+                _mk_python_requirement_patch(Action.UPDATE, str(new_reqs[req]))
+            )
 
     return patches
 
@@ -174,11 +184,13 @@ def _parsed_reqs_by_name(reqs: List[str]) -> Dict[str, Any]:
     return parsed_reqs_by_name
 
 
-def _only_python_requirements_different(prev_config: TrussConfig, new_config: TrussConfig) -> bool:
+def _only_python_requirements_different(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> bool:
     prev_config_dict = prev_config.to_dict()
-    prev_config_dict['requirements'] = []
+    prev_config_dict["requirements"] = []
     new_config_dict = new_config.to_dict()
-    new_config_dict['requirements'] = []
+    new_config_dict["requirements"] = []
     return prev_config_dict == new_config_dict
 
 
