@@ -598,6 +598,23 @@ class TrussHandle:
             return None
         return respj["result"]
 
+    def _control_serving_container_has_partially_applied_patch(self) -> Optional[bool]:
+        """Check if there is a partially applied patch on the running live_reload capable container."""
+        if not self.spec.live_reload:
+            raise ValueError(
+                "Not a control truss, operation not supported."
+            )
+
+        container = self._get_running_serving_container_ignore_hash()
+        model_base_url = _get_url_from_container(container)
+        resp = requests.get(f"{model_base_url}/control/has_partially_applied_patch")
+        resp.raise_for_status()
+        respj = resp.json()
+        if "error" in respj:
+            logger.error("Unable to check if control truss container has partially applied patch.")
+            return None
+        return respj["result"]
+
     @property
     def is_control_truss(self):
         return self._spec.live_reload
@@ -740,7 +757,11 @@ class TrussHandle:
 
         current_hash = self._serving_hash()
         if running_truss_hash == current_hash:
-            return container
+            has_partially_applied_patch = self._control_serving_container_has_partially_applied_patch()
+            if has_partially_applied_patch is True:
+                return None
+            else:
+                return container
 
         logger.info(
             "Truss supports patching and a running "

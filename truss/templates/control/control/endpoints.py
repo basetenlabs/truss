@@ -75,6 +75,14 @@ def restart_inference_server():
     return {"msg": "Inference server started successfully"}
 
 
+@control_app.route("/control/has_partially_applied_patch", methods=["GET"])
+def has_partially_applied_patch():
+    app_has_partially_applied_patch = current_app.config[
+        "inference_server_controller"
+    ].has_partially_applied_patch()
+    return {"result": app_has_partially_applied_patch}
+
+
 @control_app.route("/control/stop_inference_server", methods=["POST"])
 def stop_inference_server():
     current_app.config["inference_server_controller"].stop()

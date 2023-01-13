@@ -28,6 +28,7 @@ class InferenceServerController:
         self._patch_applier = patch_applier
         self._current_running_hash = os.environ.get("HASH_TRUSS", None)
         self._app_logger = app_logger
+        self._has_partially_applied_patch = False
         if oversee_inference_server:
             self._inference_server_overseer_thread = threading.Thread(
                 target=self._check_and_recover_inference_server
@@ -63,8 +64,25 @@ class InferenceServerController:
                 Patch.from_dict(patch_dict) for patch_dict in patch_request["patches"]
             ]
             self._process_controller.stop()
-            for patch in patches:
-                self._patch_applier.apply_patch(patch)
+            try:
+                patches_executed = 0
+                for patch in patches:
+                    self._patch_applier.apply_patch(patch)
+                    patches_executed += 1
+            except Exception as exc:
+                if patches_executed > 0:
+                    # In this case we leave inference server stopped, to reflect
+                    # the bad state; with partially applied patch all bets are off.
+                    # Correct handling of this scenario is to fallback to full deploy.
+                    self._has_partially_applied_patch = True
+                else:
+                    # No patches executed, the very first patch failed. We
+                    # consider this safe to start inference server back up.
+                    # Theoretically, a single patch application may leave
+                    # side-effects, but that's not the case with currently
+                    # supported patches.
+                    self._process_controller.start()
+                raise exc
             self._process_controller.start()
             self._current_running_hash = req_hash
 
@@ -84,6 +102,10 @@ class InferenceServerController:
     def stop(self):
         with self._lock:
             self._process_controller.stop()
+
+    def has_partially_applied_patch(self):
+        with self._lock:
+            return self._has_partially_applied_patch
 
     def _check_and_recover_inference_server(self):
         self._app_logger.info("Inference server overseer thread started")

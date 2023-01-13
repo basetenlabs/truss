@@ -72,7 +72,7 @@ class PythonRequirementPatch(PatchBody):
 
 PATCH_BODY_BY_TYPE = {
     PatchType.MODEL_CODE: ModelCodePatch,
-    PatchType.PYTHON_REQUIREMENT: ModelCodePatch,
+    PatchType.PYTHON_REQUIREMENT: PythonRequirementPatch,
 }
 
 
