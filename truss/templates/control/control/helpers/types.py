@@ -7,6 +7,7 @@ class PatchType(Enum):
     """Types of console requests sent to Django and passed along to pynode."""
 
     MODEL_CODE = "model_code"
+    PYTHON_REQUIREMENT = "python_requirement"
 
 
 class Action(Enum):
@@ -48,9 +49,30 @@ class ModelCodePatch(PatchBody):
             content=patch_dict["content"],
         )
 
+@dataclass
+class PythonRequirementPatch(PatchBody):
+    # For uninstall this should just be the name of the package, but for update
+    # should be the full line in the requirements.txt format.
+    requirement: str
+
+    def to_dict(self):
+        return {
+            "action": self.action.value,
+            "requirement": self.requirement,
+        }
+
+    @staticmethod
+    def from_dict(patch_dict: dict):
+        action_str = patch_dict["action"]
+        return PythonRequirementPatch(
+            action=Action[action_str],
+            requirement=patch_dict["requirement"],
+        )
+
 
 PATCH_BODY_BY_TYPE = {
     PatchType.MODEL_CODE: ModelCodePatch,
+    PatchType.PYTHON_REQUIREMENT: ModelCodePatch,
 }
 
 
