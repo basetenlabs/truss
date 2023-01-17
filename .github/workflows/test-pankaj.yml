@@ -1,0 +1,16 @@
+name: test-pankaj
+
+on:
+  push:
+    branches:
+      - pg/integration-tests-fix-try
+
+jobs:
+  integration_tests:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-python/
+      - run: df -h

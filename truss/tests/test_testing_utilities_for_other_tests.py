@@ -16,6 +16,7 @@ def ensure_kill_all():
         yield
     finally:
         kill_all_with_retries()
+        clear_space()
 
 
 def kill_all_with_retries(num_retries: int = 10):
@@ -27,3 +28,8 @@ def kill_all_with_retries(num_retries: int = 10):
             return
         attempts += 1
         time.sleep(1)
+
+
+def clear_space():
+    """Check if disk space is low."""
+    pass
