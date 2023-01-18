@@ -20,6 +20,28 @@ requirements:
 
 More examples can be found [here](https://github.com/basetenlabs/truss/tree/main/examples).
 
+{% hint style="warning" %}
+
+YAML syntax can be a bit non-obvious when dealing with empty lists and dictionaries. You may notice the following in the default Truss config file:
+
+```yaml
+requirements: []
+secrets: {}
+```
+
+When you fill them in with values, list and dictionaries should look like this:
+
+```yaml
+requirements:
+  - dep1 
+  - dep2
+secrets:
+  - key1: default_value1
+  - key2: default_value2
+```
+
+{% endhint %}
+
 Let's investigate the various values that can be set in the config file.
 
 ### model_framework
