@@ -20,6 +20,22 @@ secrets:
   gfpgan_aws_bucket: null
 ```
 
+{% hint style="warning" %}
+YAML syntax can be a bit non-obvious when dealing with empty dictionaries. You may notice the following in the default Truss config file:
+
+```yaml
+secrets: {}
+```
+
+When you fill them in with values, dictionaries should look like this:
+
+```yaml
+secrets:
+  - key1: default_value1
+  - key2: default_value2
+```
+{% endhint %}
+
 Then, you can access the secrets in the `model/model.py` file by referencing them as kwargs in the init function.
 
 ```python
@@ -95,14 +111,14 @@ Mounted secrets should not use the `TRUSS_SECRET_` prefix as there is no need to
 
 ## Deploying with secrets
 
-If you're deploying your model to Baseten, set `trusted=True` in the `deploy_truss` command to enable your model to access secrets:
+If you're deploying your model to Baseten, set `is_trusted=True` in the `deploy()` command to enable your model to access secrets:
 
 ```python
 import baseten
-basten.deploy_truss(
+basten.deploy(
     my_truss,
     model_name="My Model",
-    trusted=True
+    is_trusted=True
 )
 ```
 

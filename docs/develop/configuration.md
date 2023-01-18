@@ -20,6 +20,26 @@ requirements:
 
 More examples can be found [here](https://github.com/basetenlabs/truss/tree/main/examples).
 
+{% hint style="warning" %}
+YAML syntax can be a bit non-obvious when dealing with empty lists and dictionaries. You may notice the following in the default Truss config file:
+
+```yaml
+requirements: []
+secrets: {}
+```
+
+When you fill them in with values, lists and dictionaries should look like this:
+
+```yaml
+requirements:
+  - dep1
+  - dep2
+secrets:
+  - key1: default_value1
+  - key2: default_value2
+```
+{% endhint %}
+
 Let's investigate the various values that can be set in the config file.
 
 ### model_framework
@@ -122,6 +142,22 @@ requirements:
 - scipy==1.7.3
 ```
 
+{% hint style="warning" %}
+YAML syntax can be a bit non-obvious when dealing with empty lists. You may notice the following in the default Truss config file:
+
+```yaml
+requirements: []
+```
+
+When you fill them in with values, lists should look like this:
+
+```yaml
+requirements:
+  - dep1
+  - dep2
+```
+{% endhint %}
+
 ### system_packages
 
 Truss assumes the Debian operating system. This field can be used to specify any
@@ -211,6 +247,22 @@ make available only the secrets for which keys are listed here.
 secrets:
   openai_api_key:
 ```
+
+{% hint style="warning" %}
+YAML syntax can be a bit non-obvious when dealing with empty dictionaries. You may notice the following in the default Truss config file:
+
+```yaml
+secrets: {}
+```
+
+When you fill them in with values, dictionaries should look like this:
+
+```yaml
+secrets:
+  - key1: default_value1
+  - key2: default_value2
+```
+{% endhint %}
 
 Secret names need to confirm to the [k8s secret name guidelines](https://kubernetes.io/docs/concepts/configuration/secret/).
 

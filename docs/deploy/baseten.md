@@ -33,18 +33,18 @@ Once your Truss is in memory, simply run the following:
 import baseten
 
 baseten.login("PASTE_API_KEY_HERE")
-baseten.deploy_truss(my_truss)
+baseten.deploy(my_truss)
 ```
 
 Head over to [your Baseten account](https://app.baseten.co) to see the model deployment logs and interface with your newly deployed model!
 
 ### Deploying with secrets
 
-If your model uses [secrets](../develop/secrets.md), set `is_trusted=True` in the `deploy_truss` command to enable your model to access secrets:
+If your model uses [secrets](../develop/secrets.md), set `is_trusted=True` in the `deploy()` command to enable your model to access secrets:
 
 ```python
 import baseten
-baseten.deploy_truss(
+baseten.deploy(
     my_truss,
     model_name="My Model",
     is_trusted=True
