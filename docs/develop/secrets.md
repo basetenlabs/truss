@@ -95,14 +95,14 @@ Mounted secrets should not use the `TRUSS_SECRET_` prefix as there is no need to
 
 ## Deploying with secrets
 
-If you're deploying your model to Baseten, set `trusted=True` in the `deploy_truss` command to enable your model to access secrets:
+If you're deploying your model to Baseten, set `is_trusted=True` in the `deploy()` command to enable your model to access secrets:
 
 ```python
 import baseten
-basten.deploy_truss(
+basten.deploy(
     my_truss,
     model_name="My Model",
-    trusted=True
+    is_trusted=True
 )
 ```
 
