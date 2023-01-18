@@ -20,6 +20,22 @@ secrets:
   gfpgan_aws_bucket: null
 ```
 
+{% hint style="warning" %}
+YAML syntax can be a bit non-obvious when dealing with empty dictionaries. You may notice the following in the default Truss config file:
+
+```yaml
+secrets: {}
+```
+
+When you fill them in with values, dictionaries should look like this:
+
+```yaml
+secrets:
+  - key1: default_value1
+  - key2: default_value2
+```
+{% endhint %}
+
 Then, you can access the secrets in the `model/model.py` file by referencing them as kwargs in the init function.
 
 ```python
