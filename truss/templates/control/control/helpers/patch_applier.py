@@ -16,7 +16,7 @@ class PatchApplier:
             self._inference_server_home / self._truss_config.model_module_dir
         )
         self._app_logger = app_logger
-        self._pip_path = _identify_pip_path()
+        self._pip_path_cached = None
 
     def apply_patch(self, patch: Patch):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
@@ -32,6 +32,12 @@ class PatchApplier:
     @property
     def _truss_config(self) -> TrussConfig:
         return TrussConfig.from_yaml(self._inference_server_home / "config.yaml")
+
+    @property
+    def _pip_path(self) -> str:
+        if self._pip_path_cached is None:
+            self._pip_path_cached = _identify_pip_path()
+        return self._pip_path_cached
 
     def _apply_model_code_patch(self, model_code_patch: ModelCodePatch):
         self._app_logger.debug(
