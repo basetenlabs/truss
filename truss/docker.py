@@ -2,7 +2,6 @@ import enum
 import logging
 from typing import Dict, List
 
-from python_on_whales.exceptions import DockerException
 from truss.constants import TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
 
@@ -67,6 +66,8 @@ def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]
 
 
 def kill_containers(labels: Dict[str, str]):
+    from python_on_whales.exceptions import DockerException
+
     containers = get_containers(labels)
     for container in containers:
         container_labels = container.config.labels
