@@ -17,6 +17,7 @@ class InferenceServerProcessController:
         self._inference_server_process_args = inference_server_process_args
         self._inference_server_port = inference_server_port
         self._inference_server_started = False
+        self._inference_server_ever_started = False
         self._app_logger = app_logger
 
     def start(self):
@@ -28,6 +29,7 @@ class InferenceServerProcessController:
                 env=inf_env,
             )
             self._inference_server_started = True
+            self._inference_server_ever_started = True
 
     def stop(self):
         if self._inference_server_process is not None:
@@ -39,6 +41,9 @@ class InferenceServerProcessController:
 
     def inference_server_started(self) -> bool:
         return self._inference_server_started
+
+    def inference_server_ever_started(self) -> bool:
+        return self._inference_server_ever_started
 
     def is_inference_server_running(self) -> bool:
         # Explicitly check if inference server process is up, this is a bit expensive.
