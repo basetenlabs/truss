@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
+
+from datetime import datetime
 
 import yaml
 from truss.types import ModelFrameworkType
@@ -31,6 +33,42 @@ DEFAULT_USE_GPU = False
 DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
 DEFAULT_TRAINING_CLASS_NAME = "Train"
 DEFAULT_TRAINING_MODULE_DIR = "train"
+from collections import namedtuple
+
+TypeParsers = namedtuple("TypeParsers", "input output")
+DEFAULT_TYPE = "str"
+
+SUPPORTED_TYPES_WITH_PARSERS: dict[str, TypeParsers] = {
+    "str": TypeParsers(str, str),
+    "int": TypeParsers(int, str),
+    "float": TypeParsers(float, str),
+    "datetime": TypeParsers(
+        lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S.%f"), str
+    ),
+    "json": TypeParsers(lambda x: x, lambda x: x),
+}
+
+
+@dataclass
+class TypedVariable:
+    type: str
+    value: any
+
+    @staticmethod
+    def from_dict(d):
+        type = d.get("type", DEFAULT_TYPE)
+        value = d.get("value", None)
+
+        return TypedVariable(
+            type=type,
+            value=SUPPORTED_TYPES_WITH_PARSERS[type].input(value),
+        )
+
+    def to_dict(self):
+        return {
+            "type": self.type,
+            "value": SUPPORTED_TYPES_WITH_PARSERS[self.type].output(self.value),
+        }
 
 
 @dataclass
@@ -65,7 +103,7 @@ class Train:
     training_class_filename: str = DEFAULT_TRAINING_CLASS_FILENAME
     training_class_name: str = DEFAULT_TRAINING_CLASS_NAME
     training_module_dir: str = DEFAULT_TRAINING_MODULE_DIR
-    variables: dict = field(default_factory=dict)
+    variables: dict[str, Union[str, TypedVariable]] = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
 
     @staticmethod
