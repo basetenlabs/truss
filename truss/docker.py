@@ -2,6 +2,7 @@ import enum
 import logging
 from typing import Dict, List
 
+from python_on_whales.exceptions import DockerException
 from truss.constants import TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
 
@@ -72,7 +73,14 @@ def kill_containers(labels: Dict[str, str]):
         if TRUSS_DIR in container_labels:
             truss_dir = container_labels[TRUSS_DIR]
             logging.info(f"Killing Container: {container.id} for {truss_dir}")
-    Docker.client().container.kill(containers)
+    try:
+        Docker.client().container.kill(containers)
+    except DockerException:
+        # The container may have stopped running by this point, this path
+        # is for catching that. Unfortunately, there's no separate exception
+        # for this scenario, so we catch the general one. Specific exceptions
+        # such as NoSuchContainer are still allowed to error out.
+        pass
 
 
 def get_container_logs(container, follow, stream):

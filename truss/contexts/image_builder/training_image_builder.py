@@ -14,6 +14,13 @@ from truss.constants import (
     TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
+from truss.contexts.image_builder.util import (
+    TRUSS_BASE_IMAGE_VERSION_TAG,
+    file_is_not_empty,
+    to_dotted_python_version,
+    truss_base_image_name,
+    truss_base_image_tag,
+)
 from truss.contexts.truss_context import TrussContext
 from truss.truss_spec import TrussSpec
 from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
@@ -67,9 +74,7 @@ class TrainingImageBuilder(ImageBuilder):
         )
 
         copy_file_path(
-            TEMPLATES_DIR
-            / self._spec.model_framework_name
-            / TRAINING_REQUIREMENTS_TXT_FILENAME,
+            TEMPLATES_DIR / BUILD_TRAINING_DIR_NAME / REQUIREMENTS_TXT_FILENAME,
             build_dir / TRAINING_REQUIREMENTS_TXT_FILENAME,
         )
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
@@ -86,9 +91,27 @@ class TrainingImageBuilder(ImageBuilder):
         dockerfile_template = template_env.get_template(
             TRAINING_DOCKERFILE_TEMPLATE_NAME
         )
+        should_install_system_requirements = file_is_not_empty(
+            build_dir / SYSTEM_PACKAGES_TXT_FILENAME
+        )
+        should_install_requirements = file_is_not_empty(
+            build_dir / REQUIREMENTS_TXT_FILENAME
+        )
+        config = self._spec.config
+        base_image_name = truss_base_image_name(job_type="training")
+        tag = truss_base_image_tag(
+            python_version=to_dotted_python_version(config.python_version),
+            use_gpu=config.resources.use_gpu,
+            live_reload=config.live_reload,
+            version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
+        )
+        base_image_name_and_tag = f"{base_image_name}:{tag}"
         dockerfile_contents = dockerfile_template.render(
+            base_image_name_and_tag=base_image_name_and_tag,
             config=self._spec.config,
             bundled_packages_dir_exists=bundled_packages_dir_exists,
+            should_install_system_requirements=should_install_system_requirements,
+            should_install_requirements=should_install_requirements,
         )
         docker_file_path = build_dir / TRAINING_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:

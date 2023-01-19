@@ -16,6 +16,13 @@ from truss.constants import (
     TEMPLATES_DIR,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
+from truss.contexts.image_builder.util import (
+    TRUSS_BASE_IMAGE_VERSION_TAG,
+    file_is_not_empty,
+    to_dotted_python_version,
+    truss_base_image_name,
+    truss_base_image_tag,
+)
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.readme_generator import generate_readme
@@ -67,10 +74,19 @@ class ServingImageBuilder(ImageBuilder):
                 CONTROL_SERVER_CODE_DIR,
                 build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
             )
-        copy_file_path(
-            TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME,
-            build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
+        server_reqs_filepath = (
+            TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME
         )
+        should_install_server_requirements = (
+            server_reqs_filepath.exists() and file_is_not_empty(server_reqs_filepath)
+        )
+        if should_install_server_requirements:
+            copy_file_path(
+                TEMPLATES_DIR
+                / self._spec.model_framework_name
+                / REQUIREMENTS_TXT_FILENAME,
+                build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
+            )
 
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
             req_file.write(self._spec.requirements_txt)
@@ -86,8 +102,28 @@ class ServingImageBuilder(ImageBuilder):
         template_loader = FileSystemLoader(str(TEMPLATES_DIR))
         template_env = Environment(loader=template_loader)
         dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
+        config = self._spec.config
+
+        base_image_name = truss_base_image_name(job_type="server")
+        tag = truss_base_image_tag(
+            python_version=to_dotted_python_version(config.python_version),
+            use_gpu=config.resources.use_gpu,
+            live_reload=config.live_reload,
+            version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
+        )
+        base_image_name_and_tag = f"{base_image_name}:{tag}"
+        should_install_system_requirements = file_is_not_empty(
+            build_dir / SYSTEM_PACKAGES_TXT_FILENAME
+        )
+        should_install_requirements = file_is_not_empty(
+            build_dir / REQUIREMENTS_TXT_FILENAME
+        )
         dockerfile_contents = dockerfile_template.render(
-            config=self._spec.config,
+            should_install_server_requirements=should_install_server_requirements,
+            base_image_name_and_tag=base_image_name_and_tag,
+            should_install_system_requirements=should_install_system_requirements,
+            should_install_requirements=should_install_requirements,
+            config=config,
             data_dir_exists=data_dir_exists,
             bundled_packages_dir_exists=bundled_packages_dir_exists,
             truss_hash=directory_content_hash(self._truss_dir),
