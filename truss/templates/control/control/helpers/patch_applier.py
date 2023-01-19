@@ -1,6 +1,7 @@
+import subprocess
 from pathlib import Path
 
-from helpers.types import Action, ModelCodePatch, Patch
+from helpers.types import Action, ModelCodePatch, Patch, PythonRequirementPatch
 from truss.truss_config import TrussConfig
 
 
@@ -15,18 +16,28 @@ class PatchApplier:
             self._inference_server_home / self._truss_config.model_module_dir
         )
         self._app_logger = app_logger
+        self._pip_path_cached = None
 
     def apply_patch(self, patch: Patch):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
             self._apply_model_code_patch(model_code_patch)
+        elif isinstance(patch.body, PythonRequirementPatch):
+            py_req_patch: PythonRequirementPatch = patch.body
+            self._apply_python_requirement_patch(py_req_patch)
         else:
             raise ValueError(f"Unknown patch type {patch.type}")
 
     @property
     def _truss_config(self) -> TrussConfig:
         return TrussConfig.from_yaml(self._inference_server_home / "config.yaml")
+
+    @property
+    def _pip_path(self) -> str:
+        if self._pip_path_cached is None:
+            self._pip_path_cached = _identify_pip_path()
+        return self._pip_path_cached
 
     def _apply_model_code_patch(self, model_code_patch: ModelCodePatch):
         self._app_logger.debug(
@@ -55,3 +66,44 @@ class PatchApplier:
                 filepath.unlink()
         else:
             raise ValueError(f"Unknown model code patch action {action}")
+
+    def _apply_python_requirement_patch(
+        self, python_requirement_patch: PythonRequirementPatch
+    ):
+        self._app_logger.debug(
+            f"Applying python requirement patch {python_requirement_patch.to_dict()}"
+        )
+        action = python_requirement_patch.action
+
+        if action == Action.REMOVE:
+            subprocess.run(
+                [
+                    self._pip_path,
+                    "uninstall",
+                    "-y",
+                    python_requirement_patch.requirement,
+                ],
+                check=True,
+            )
+
+        elif action == Action.UPDATE:
+            subprocess.run(
+                [
+                    self._pip_path,
+                    "install",
+                    python_requirement_patch.requirement,
+                ],
+                check=True,
+            )
+        else:
+            raise ValueError(f"Unknown python requirement patch action {action}")
+
+
+def _identify_pip_path() -> str:
+    if Path("/usr/local/bin/pip3").exists():
+        return "/usr/local/bin/pip3"
+
+    if Path("/usr/local/bin/pip").exists():
+        return "/usr/local/bin/pip"
+
+    raise RuntimeError("Unable to find pip, make sure it's installed.")
