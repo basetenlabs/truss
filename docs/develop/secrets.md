@@ -31,8 +31,8 @@ When you fill them in with values, dictionaries should look like this:
 
 ```yaml
 secrets:
-  - key1: default_value1
-  - key2: default_value2
+  key1: default_value1
+  key2: default_value2
 ```
 {% endhint %}
 
