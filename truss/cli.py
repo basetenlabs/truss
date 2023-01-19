@@ -169,7 +169,7 @@ def run_image(target_directory, build_dir, tag, port, attach):
 @click.option(
     "--use-docker",
     is_flag=True,
-    default=False,
+    default=True,
     help="Flag to run prediction with a docker container",
 )
 @click.option(
@@ -179,7 +179,7 @@ def run_image(target_directory, build_dir, tag, port, attach):
 )
 @error_handling
 @echo_output
-def predict(target_directory, request, build_dir, tag, port, run_local, request_file):
+def predict(target_directory, request, build_dir, tag, port, use_docker, request_file):
     """
     Invokes the packaged model, either locally or in a Docker container.
 
@@ -193,7 +193,7 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
 
     PORT: Local port used to run image
 
-    RUN_LOCAL: Flag to run prediction with in process rather than on docker container
+    USE_DOCKER: Flag to run prediction with a docker container
 
     REQUEST_FILE: Path to json file containing the request
     """
@@ -206,12 +206,12 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
         raise ValueError("At least one of request or request-file must be supplied.")
 
     tr = _get_truss_from_directory(target_directory=target_directory)
-    if run_local:
-        return tr.server_predict(request_data)
-    else:
+    if use_docker:
         return tr.docker_predict(
             request_data, build_dir=build_dir, tag=tag, local_port=port, detach=True
         )
+    else:
+        return tr.server_predict(request_data)
 
 
 @cli_group.command()
