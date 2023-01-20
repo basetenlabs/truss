@@ -30,7 +30,7 @@ def _signature_accepts_kwargs(signature: inspect.Signature) -> bool:
 
 def _add_bundled_packages_to_path(config: dict):
     if "bundled_packages_dir" in config:
-        bundled_packages_path = Path("/packages")
+        bundled_packages_path = Path("/" + config["bundled_packages_dir"])
         if bundled_packages_path.exists():
             sys.path.append(str(bundled_packages_path))
 
