@@ -438,6 +438,13 @@ class TrussHandle:
         """
         self._copy_files(file_dir_or_glob, self._spec.bundled_packages_dir)
 
+    def add_external_package(self, external_dir_path: str):
+        self._update_config(
+            lambda conf: replace(
+                conf, external_packages=[*conf.external_packages, external_dir_path]
+            )
+        )
+
     def examples(self) -> List[Example]:
         """List truss model's examples.
 

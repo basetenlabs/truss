@@ -23,6 +23,9 @@ class ModelWrapper(kfserving.KFModel):
             bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
+        if "external_packages" in self._config:
+            for external_dir in self._config["external_packages"]:
+                sys.path.append(str(external_dir))
         model_module_name = str(
             Path(self._config["model_class_filename"]).with_suffix("")
         )

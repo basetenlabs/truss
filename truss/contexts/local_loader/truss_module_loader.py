@@ -9,6 +9,7 @@ from typing import List
 class TrussModuleFinder(PathFinder):
     _truss_dir: str
     _bundled_packages_dir_name: str
+    _external_packages_dirs: List[str]
 
     @classmethod
     def set_model_truss_dirs(
@@ -16,10 +17,12 @@ class TrussModuleFinder(PathFinder):
         truss_dir: str,
         truss_module_name: str = None,
         bundled_packages_dir_name: str = None,
+        external_packages_dirs: List[str] = None,
     ):
         cls._truss_dir = truss_dir
         cls._truss_module_name = truss_module_name
         cls._bundled_packages_dir_name = bundled_packages_dir_name
+        cls._external_packages_dirs = external_packages_dirs
         cls.add_to_meta_path()
 
     @classmethod
@@ -29,8 +32,12 @@ class TrussModuleFinder(PathFinder):
             truss_modules_path = [cls._truss_dir]
         else:
             truss_modules_path = [
-                str(Path(cls._truss_dir) / cls._bundled_packages_dir_name)
+                str(Path(cls._truss_dir) / cls._bundled_packages_dir_name),
             ]
+            if cls._external_packages_dirs:
+                truss_modules_path += [
+                    str(Path(cls._truss_dir) / d) for d in cls._external_packages_dirs
+                ]
         if not path:
             path = truss_modules_path
         else:
@@ -77,6 +84,7 @@ def truss_module_loaded(
     truss_dir: str,
     truss_class_module_fullname: str,
     bundled_packages_dir_name: str = None,
+    external_packages_dirs: List[str] = None,
 ):
     """
     Load a truss module: model or train.
@@ -86,13 +94,23 @@ def truss_module_loaded(
                                      e.g. 'model.model', 'train.train'
         bundled_packages_dir_name: name of the bundled packages directory
                                    if None then bundled packages are not loaded.
+        external_packages_dirs: list of names of the external packages directories
+                                   if None then external packages are not loaded.
     """
     try:
         truss_module_name = truss_class_module_fullname.split(".")[0]
         # Unload so that all modules can be freshly loaded.
-        _unload_truss_modules(truss_dir, truss_module_name, bundled_packages_dir_name)
+        _unload_truss_modules(
+            truss_dir,
+            truss_module_name,
+            bundled_packages_dir_name,
+            external_packages_dirs,
+        )
         TrussModuleFinder.set_model_truss_dirs(
-            truss_dir, truss_module_name, bundled_packages_dir_name
+            truss_dir,
+            truss_module_name,
+            bundled_packages_dir_name,
+            external_packages_dirs,
         )
         class_module = TrussModuleLoader.import_truss_module(
             truss_class_module_fullname
@@ -106,12 +124,21 @@ def _unload_truss_modules(
     truss_dir: str,
     truss_module_name: str,
     bundled_packages_dir_name: str = None,
+    external_packages_dirs: List[str] = None,
 ):
     modules_to_unload = [truss_module_name]
+
+    def _add_relative_dir_to_unload(dir_nae: str):
+        path = Path(truss_dir) / dir_nae
+        if path.exists():
+            modules_to_unload.extend(_sub_dirnames(path))
+
     if bundled_packages_dir_name is not None:
-        bundled_packages_path = Path(truss_dir) / bundled_packages_dir_name
-        if bundled_packages_path.exists():
-            modules_to_unload.extend(_sub_dirnames(bundled_packages_path))
+        _add_relative_dir_to_unload(bundled_packages_dir_name)
+
+    if external_packages_dirs is not None:
+        for relative_dir in external_packages_dirs:
+            _add_relative_dir_to_unload(relative_dir)
     _unload_top_level_modules(modules_to_unload)
 
 
