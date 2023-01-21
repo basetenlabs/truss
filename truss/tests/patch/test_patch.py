@@ -193,12 +193,12 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
     ]
 
 
-def test_calc_config_patches_non_python_requirement_change(
+def test_calc_config_patches_non_python_or_system_requirement_change(
     custom_model_truss_dir: Path,
 ):
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
-        config_op=lambda config: config.system_packages.append("bla"),
+        config_op=lambda config: config.environment_variables.update({"foo": "bar"}),
     )
     assert patches is None
 
