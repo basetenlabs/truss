@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import pkg_resources
 import yaml
@@ -11,6 +11,7 @@ from truss.templates.control.control.helpers.types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
+    SystemPackagePatch,
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
@@ -136,12 +137,16 @@ def _calc_config_patches(
     Returns None if patch cannot be calculated. Empty list means no relevant
     differences found.
     """
-    # Currently only calculate patches for python requirements change, bail out
-    # if anything else has changed.
-    if not _only_python_requirements_different(prev_config, new_config):
+    # Currently only calculate patches for python requirements and system
+    # packages, bail out if anything else has changed.
+    if not _only_expected_config_differences(prev_config, new_config):
         return None
 
-    return _calc_python_requirements_patches(prev_config, new_config)
+    python_requirement_patches = _calc_python_requirements_patches(
+        prev_config, new_config
+    )
+    system_package_patches = _calc_system_packages_patches(prev_config, new_config)
+    return [*python_requirement_patches, *system_package_patches]
 
 
 def _calc_python_requirements_patches(
@@ -176,6 +181,35 @@ def _calc_python_requirements_patches(
     return patches
 
 
+def _calc_system_packages_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> Optional[List[Patch]]:
+    """Calculate patch based on changes to system packates.
+
+    Returns None if patch cannot be calculated. Empty list means no relevant
+    differences found.
+    """
+    patches = []
+    prev_pkgs = _system_pacakges_set(prev_config)
+    new_pkgs = _system_pacakges_set(new_config)
+    removed_pkgs = prev_pkgs.difference(new_pkgs)
+    for removed_pkg in removed_pkgs:
+        patches.append(_mk_system_package_patch(Action.REMOVE, removed_pkg))
+
+    added_pkgs = new_pkgs.difference(prev_pkgs)
+    for added_pkg in added_pkgs:
+        patches.append(_mk_system_package_patch(Action.UPDATE, added_pkg))
+
+    return patches
+
+
+def _system_pacakges_set(config: TrussConfig) -> Set[str]:
+    pkgs = []
+    for sys_pkg_line in config.system_packages:
+        pkgs.extend(sys_pkg_line.strip().split())
+    return set(pkgs)
+
+
 def _parsed_reqs_by_name(reqs: List[str]) -> Dict[str, Any]:
     parsed_reqs_by_name = {}
     for req in reqs:
@@ -184,13 +218,17 @@ def _parsed_reqs_by_name(reqs: List[str]) -> Dict[str, Any]:
     return parsed_reqs_by_name
 
 
-def _only_python_requirements_different(
+def _only_expected_config_differences(
     prev_config: TrussConfig, new_config: TrussConfig
 ) -> bool:
     prev_config_dict = prev_config.to_dict()
     prev_config_dict["requirements"] = []
+    prev_config_dict["system_packages"] = []
+
     new_config_dict = new_config.to_dict()
     new_config_dict["requirements"] = []
+    new_config_dict["system_packages"] = []
+
     return prev_config_dict == new_config_dict
 
 
@@ -200,5 +238,15 @@ def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
         body=PythonRequirementPatch(
             action=action,
             requirement=requirement,
+        ),
+    )
+
+
+def _mk_system_package_patch(action: Action, package: str) -> Patch:
+    return Patch(
+        type=PatchType.SYSTEM_PACKAGE,
+        body=SystemPackagePatch(
+            action=action,
+            package=package,
         ),
     )
