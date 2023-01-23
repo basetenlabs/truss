@@ -43,8 +43,12 @@ class TrussSpec:
         return self._truss_dir / self._config.bundled_packages_dir
 
     @property
-    def external_packages_dirs_names(self) -> List[Path]:
-        return self._config.external_packages
+    def external_packages_dirs_paths(self) -> List[Path]:
+        return [self._truss_dir / d for d in self._config.external_packages]
+
+    @property
+    def external_packages_dirs_names(self) -> List[str]:
+        return [p.name for p in self.external_packages_dirs_paths]
 
     @property
     def model_class_filepath(self) -> Path:

@@ -47,11 +47,9 @@ COPY ./{{config.bundled_packages_dir}} /packages
 
 
 {% block external_packages_copy %}
-    {%- if external_packages_dir_exists %}
-        {% for external_package in config.external_packages %}
-COPY ./{{config.external_package}} /packages
-        {% endfor %}
-    {%- endif %}
+    {% for external_package in external_packages_dirs_names %}
+COPY ./{{external_package}}/* /packages
+    {% endfor %}
 {% endblock %}
 
 {% for env_var_name, env_var_value in config.environment_variables.items() %}
