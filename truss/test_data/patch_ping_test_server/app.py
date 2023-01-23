@@ -36,7 +36,7 @@ def hash_is_current_but_only_every_third_call_succeeds():
         return {
             "is_current": True,
         }
-    return "simulated failure", 500
+    return "simulated failure", 503
 
 
 @app.route("/accepted", methods=["POST"])

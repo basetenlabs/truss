@@ -188,7 +188,6 @@ def test_truss_huggingface_transformer_predict(
         huggingface_transformer_t5_small_pipeline,
         {"inputs": ["My name is Sarah and I live in London"]},
     ) as result:
-        print(result)
         assert "predictions" in result
         predictions = result["predictions"]
         assert len(predictions) == 1

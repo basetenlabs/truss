@@ -10,15 +10,20 @@ from shutil import rmtree
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
+import numpy as np
 import requests
 import yaml
+from python_on_whales.exceptions import NoSuchContainer
+from requests import exceptions
 from requests.exceptions import ConnectionError
 from tenacity import (
     RetryError,
     Retrying,
+    retry,
     retry_if_exception_type,
+    retry_if_result,
     stop_after_attempt,
-    wait_exponential,
+    stop_after_delay,
     wait_fixed,
 )
 from truss.constants import (
@@ -85,6 +90,18 @@ class TrussHandle:
     @property
     def spec(self) -> TrussSpec:
         return self._spec
+
+    @staticmethod
+    @retry(
+        stop=stop_after_delay(20),
+        wait=wait_fixed(1),
+        retry=(
+            retry_if_result(lambda response: response.status_code == 503)
+            | retry_if_exception_type(exceptions.ConnectionError)
+        ),
+    )
+    def _wait_for_predict(model_base_url: str, request: dict):
+        return requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
 
     @proxy_to_shadow_if_scattered
     def build_docker_build_context(self, build_dir: Path = None):
@@ -183,7 +200,7 @@ class TrussHandle:
             )
         model_base_url = f"http://localhost:{local_port}/v1/models/model"
         try:
-            _wait_for_truss(model_base_url, container)
+            wait_for_truss(model_base_url, container)
         except ContainerNotFoundError as err:
             raise err
         except (ContainerIsDownError, HTTPError, ConnectionError) as err:
@@ -256,16 +273,13 @@ class TrussHandle:
                 patch_ping_url=patch_ping_url,
             )
         model_base_url = _get_url_from_container(container)
-        for attempt in Retrying(
-            stop=stop_after_attempt(15),
-            wait=wait_exponential(multiplier=2, min=5, max=32),
-            retry=retry_if_exception_type(ConnectionError),
-        ):
-            resp = requests.post(
-                f"{model_base_url}/v1/models/model:predict", json=request
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        resp = TrussHandle._wait_for_predict(model_base_url, request)
+
+        if resp.status_code == 500:
+            raise requests.exceptions.HTTPError("500 error", response=resp)
+
+        return resp.json()
 
     @proxy_to_shadow_if_scattered
     def docker_train(
@@ -931,7 +945,7 @@ class TrussHandle:
 
 
 def _prediction_flow(model, request: dict):
-    """This flow attempts to mimic the request life-cycle of a kfserving server"""
+    """This flow attempts to mimic the request life-cycle of a kserve server"""
     _validate_request_input(request)
     _map_instances_inputs(request)
     if hasattr(model, "preprocess"):
@@ -964,8 +978,6 @@ def _is_invalid_list_input_prop(request: dict, prop: str):
 
 
 def _is_valid_list_type(obj) -> bool:
-    import numpy as np
-
     return isinstance(obj, (list, np.ndarray))
 
 
@@ -980,26 +992,27 @@ def _wait_for_docker_build(container):
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
+@retry(
+    stop=stop_after_delay(120),
+    wait=wait_fixed(2),
+    retry=(
+        retry_if_result(lambda response: response.status_code == 503)
+        | retry_if_exception_type(exceptions.ConnectionError)
+    ),
+)
 def _wait_for_model_server(url: str):
-    for attempt in Retrying(stop=stop_after_attempt(10), wait=wait_fixed(2)):
-        with attempt:
-            resp = requests.get(url)
-            resp.raise_for_status()
+    return requests.get(url)
 
 
-def _wait_for_truss(url, container):
-    from python_on_whales.exceptions import NoSuchContainer
-
+def wait_for_truss(url: str, container):
     try:
         _wait_for_docker_build(container)
     except NoSuchContainer:
         raise ContainerNotFoundError(message=f"Container {container} was not found")
     except RetryError as retry_err:
         retry_err.reraise()
-    try:
-        _wait_for_model_server(url)
-    except RetryError as retry_err:
-        retry_err.reraise()
+
+    _wait_for_model_server(url)
 
 
 def _prepare_secrets_mount_dir() -> Path:

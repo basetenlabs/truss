@@ -3,22 +3,83 @@ import inspect
 import logging
 import sys
 import traceback
+from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from threading import Lock, Thread
+from typing import Dict, Union
 
-import kfserving
+import kserve
+from cloudevents.http import CloudEvent
+from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
+
+logger = logging.getLogger(__name__)
 
 MODEL_BASENAME = "model"
 
 
-class ModelWrapper(kfserving.KFModel):
+class ModelWrapper(kserve.Model):
+    class Status(Enum):
+        NOT_READY = 0
+        LOADING = 1
+        READY = 2
+        FAILED = 3
+
+    _config: dict
+    _model: object
+    _load_lock: Lock = Lock()
+    _predict_lock: Lock = Lock()
+    _status: Status = Status.NOT_READY
+
     def __init__(self, config: dict):
         super().__init__(MODEL_BASENAME)
         self._config = config
-        self._model = None
 
-    def load(self):
+    def load(self) -> bool:
+        if self.ready:
+            return self.ready
+
+        # if we are already loading, just pass; our container will return 503 while we're loading
+        if not self._load_lock.acquire(blocking=False):
+            return False
+
+        self._status = ModelWrapper.Status.LOADING
+
+        logger.info("Executing model.load()...")
+
+        try:
+            self.try_load()
+            self.ready = True
+            self._status = ModelWrapper.Status.READY
+
+            logger.info("Completed model.load() execution")
+
+            return self.ready
+        except Exception:
+            logger.exception("Exception while loading model")
+            self._status = ModelWrapper.Status.FAILED
+        finally:
+            self._load_lock.release()
+
+        return self.ready
+
+    def start_load(self):
+        if self.should_load():
+            thread = Thread(target=self.load)
+            thread.start()
+
+    def load_failed(self) -> bool:
+        return self._status == ModelWrapper.Status.FAILED
+
+    def should_load(self) -> bool:
+        # don't retry failed loads
+        return (
+            not self._load_lock.locked()
+            and not self._status == ModelWrapper.Status.FAILED
+            and not self.ready
+        )
+
+    def try_load(self):
         if "bundled_packages_dir" in self._config:
             bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
@@ -39,28 +100,39 @@ class ModelWrapper(kfserving.KFModel):
         if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
         self._model = model_class(**model_init_params)
+
         if hasattr(self._model, "load"):
             self._model.load()
-        self.ready = True
 
-    def preprocess(self, request: Dict) -> Dict:
+    async def preprocess(
+        self,
+        payload: Union[Dict, CloudEvent, ModelInferRequest],
+        headers: Dict[str, str] = None,
+    ) -> Union[Dict, ModelInferRequest]:
         if not hasattr(self._model, "preprocess"):
-            return request
-        return self._model.preprocess(request)
+            return payload
+        return self._model.preprocess(payload)
 
-    def postprocess(self, request: Dict) -> Dict:
+    def postprocess(
+        self, response: Union[Dict, ModelInferResponse], headers: Dict[str, str] = None
+    ) -> Dict:
         if not hasattr(self._model, "postprocess"):
-            return request
-        return self._model.postprocess(request)
+            return response
+        return self._model.postprocess(response)
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        response = {}
+    def predict(
+        self, payload: Union[Dict, ModelInferRequest], headers: Dict[str, str] = None
+    ) -> Union[Dict, ModelInferResponse]:
         try:
-            return self._model.predict(request)
+            self._predict_lock.acquire()
+            return self._model.predict(payload)
         except Exception:
-            logging.error(traceback.format_exc())
+            response = {}
+            logging.exception("Exception while running predict")
             response["error"] = {"traceback": traceback.format_exc()}
             return response
+        finally:
+            self._predict_lock.release()
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:

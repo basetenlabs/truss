@@ -20,7 +20,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
-from truss.truss_handle import TrussHandle, _wait_for_truss
+from truss.truss_handle import TrussHandle, wait_for_truss
 from truss.types import Example
 
 
@@ -303,6 +303,15 @@ def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
 
 
 @pytest.mark.integration
+def test_docker_long_load(long_load_model):
+    th = TrussHandle(long_load_model)
+    tag = "test-docker-long-load-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result["predictions"][0] == 2
+
+
+@pytest.mark.integration
 def test_local_no_preprocess_custom_model(no_preprocess_custom_model):
     th = TrussHandle(no_preprocess_custom_model)
     result = th.server_predict({"inputs": [1]})
@@ -576,8 +585,6 @@ class Model:
         }
 
         th.patch_container(patch_request)
-        # Give some time for inference server to start up
-        time.sleep(2)
         result = th.docker_predict({"inputs": [1]}, tag=tag)
         assert result[0] == 2
 
@@ -634,7 +641,7 @@ def test_truss_hash_caching_based_on_max_mod_time(
 def test_container_oom_caught_during_waiting(container_state_mock):
     container_state_mock.return_value = DockerStates.OOMKILLED
     with pytest.raises(ContainerIsDownError):
-        _wait_for_truss(url="localhost:8000", container=MagicMock())
+        wait_for_truss(url="localhost:8000", container=MagicMock())
 
 
 @patch("truss.truss_handle.get_container_state")
@@ -642,7 +649,7 @@ def test_container_oom_caught_during_waiting(container_state_mock):
 def test_container_stuck_in_created(container_state_mock):
     container_state_mock.return_value = DockerStates.CREATED
     with pytest.raises(ContainerIsDownError):
-        _wait_for_truss(url="localhost:8000", container=MagicMock())
+        wait_for_truss(url="localhost:8000", container=MagicMock())
 
 
 @pytest.mark.integration
@@ -769,10 +776,10 @@ class Model:
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(bad_model_code)
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            result = th.docker_predict({"inputs": [1]}, tag=tag)
+            th.docker_predict({"inputs": [1]}, tag=tag)
         resp = exc_info.value.response
-        assert resp.status_code == 503
-        assert "model is not ready" in resp.text
+        assert resp.status_code == 500
+        assert "Model load failed" in resp.text
 
         # Should be able to fix code after
         good_model_code = """
