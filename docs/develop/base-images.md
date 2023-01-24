@@ -15,7 +15,7 @@ to generate.
 Examples:
 ```
 # To generate base image for live reloadable truss, with gpu support, for python
-# version 3.8, for model serving and with a version tag v0.2.2
+# version 3.9, for model serving and with a version tag v0.2.2
 poetry run bin/generate_base_images.py --live-reload y --use-gpu y --python-version 3.9 --version-tag v0.2.2 --job-type server
 # Generates image named baseten/truss-server-base:3.9-gpu-reload-v0.2.2
 ```
