@@ -22,6 +22,8 @@ poetry run bin/generate_base_images.py --live-reload y --use-gpu y --python-vers
 
 ```
 # Generate and pushing to dockerhub all images with version tag v0.2.2
+# Note that this requires access to a specific dockerhub account,
+# which is not available publicly.
 poetry run bin/generate_base_images.py  --version-tag v0.2.2 --push
 ```
 
