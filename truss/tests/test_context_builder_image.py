@@ -28,6 +28,7 @@ def test_build_docker_image():
         cwd=root,
         capture_output=True,
     )
+    print(_proc_output_str(proc))  # todo remove
     if proc.returncode != 0:
         assert (
             False
@@ -46,6 +47,7 @@ def test_build_docker_image():
         cwd=root,
         capture_output=True,
     )
+    print(_proc_output_str(proc))  # todo remove
     if proc.returncode != 0:
         assert (
             False
