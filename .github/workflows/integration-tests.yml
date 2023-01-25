@@ -16,4 +16,4 @@ jobs:
           lfs: true
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests/test_context_builder_image.py -m 'integration' pg/fix-ctx-builder-integration-test
+      - run: poetry run pytest truss/tests/test_context_builder_image.py -m 'integration'
