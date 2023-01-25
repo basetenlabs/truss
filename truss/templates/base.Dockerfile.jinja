@@ -46,12 +46,6 @@ COPY ./{{config.bundled_packages_dir}} /packages
 {% endblock %}
 
 
-{% block external_packages_copy %}
-    {% for external_package in external_packages_dirs_names %}
-COPY ./{{external_package}}/* /packages
-    {% endfor %}
-{% endblock %}
-
 {% for env_var_name, env_var_value in config.environment_variables.items() %}
 ENV {{ env_var_name }} {{ env_var_value }}
 {% endfor %}

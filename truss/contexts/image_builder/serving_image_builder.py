@@ -99,13 +99,6 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / self._spec.config.bundled_packages_dir
         ).exists()
 
-        for external_package in self._spec.config.external_packages:
-            copy_tree_path(
-                self._spec.truss_dir / external_package,
-                build_dir / Path(external_package).name,
-            )
-        external_packages_dirs_names = self._spec.external_packages_dirs_names
-
         template_loader = FileSystemLoader(str(TEMPLATES_DIR))
         template_env = Environment(loader=template_loader)
         dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
@@ -133,10 +126,7 @@ class ServingImageBuilder(ImageBuilder):
             config=config,
             data_dir_exists=data_dir_exists,
             bundled_packages_dir_exists=bundled_packages_dir_exists,
-            external_packages_dirs_names=external_packages_dirs_names,
-            truss_hash=directory_content_hash(
-                self._truss_dir, additional_dirs=self._spec.external_packages_dirs_names
-            ),
+            truss_hash=directory_content_hash(self._truss_dir),
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:

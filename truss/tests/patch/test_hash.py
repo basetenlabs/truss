@@ -24,21 +24,6 @@ def dir_hash_test_dir(tmp_path: Path):
     return target_dir
 
 
-@pytest.fixture
-def additonal_dir(tmp_path: Path):
-    add_dir = tmp_path / "additional"
-    add_dir.mkdir()
-    target_dir_file = add_dir / "target_file"
-    _update_file_content(target_dir_file)
-    return add_dir
-
-
-def test_dir_hash_with_add_dr(dir_hash_test_dir, additonal_dir):
-    _verify_with_dir_modification(
-        dir_hash_test_dir, lambda _: None, True, additional_dirs=[additonal_dir]
-    )
-
-
 def test_dir_hash_same_on_retry(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, lambda _: None, True)
 
@@ -180,20 +165,11 @@ def _verify_with_dir_modification(
     op: Callable[[Path], Path],
     should_match: bool,
     ignore_patterns: List[str] = None,
-    additional_dirs: List[Path] = None,
-    additional_dir_op: Callable[[List[Path]], Path] = None,
 ):
-    hash1 = directory_content_hash(
-        target_dir, ignore_patterns=ignore_patterns, additional_dirs=additional_dirs
-    )
+    hash1 = directory_content_hash(target_dir, ignore_patterns=ignore_patterns)
     new_target_dir = op(target_dir)
-    new_additonal_dirs = None
-    if additional_dir_op:
-        new_additonal_dirs = additional_dir_op(additional_dirs)
     hash2 = directory_content_hash(
-        new_target_dir or target_dir,
-        ignore_patterns=ignore_patterns,
-        additional_dirs=new_additonal_dirs or additional_dirs,
+        new_target_dir or target_dir, ignore_patterns=ignore_patterns
     )
     if should_match:
         assert hash1 == hash2

@@ -7,7 +7,6 @@ from typing import List, Optional
 def directory_content_hash(
     root: Path,
     ignore_patterns: List[str] = None,
-    additional_dirs: List[Path] = None,
 ) -> str:
     """Calculate content based hash of a filesystem directory.
 
@@ -24,12 +23,6 @@ def directory_content_hash(
         for path in root.glob("**/*")
         if not _path_matches_any_pattern(path.relative_to(root), ignore_patterns)
     ]
-    if additional_dirs is not None:
-        for extra_dir in additional_dirs:
-            paths.extend(
-                [path for path in Path(extra_dir).relative_to(root).glob("**/*")]
-            )
-
     paths.sort(key=lambda p: p.relative_to(root))
     for path in paths:
         hasher.update(str_hash(str(path.relative_to(root))))

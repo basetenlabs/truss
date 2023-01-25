@@ -20,7 +20,7 @@ class ModelWrapper(kfserving.KFModel):
 
     def load(self):
         if "bundled_packages_dir" in self._config:
-            bundled_packages_path = Path("/" + self._config["bundled_packages_dir"])
+            bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
         model_module_name = str(
