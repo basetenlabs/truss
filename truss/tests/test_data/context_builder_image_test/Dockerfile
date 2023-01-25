@@ -1,4 +1,4 @@
-from baseten/truss-context-builder:test
+from truss-context-builder-for-testing
 
 COPY test.py test.py
 
