@@ -42,7 +42,7 @@ def test_build_docker_image():
             context_builder_image_test_dir,
             "--platform=linux/amd64",
             "-t",
-            "baseten/truss-context-builder-test",
+            "truss-context-builder-test",
         ],
         cwd=root,
         capture_output=True,
@@ -58,7 +58,7 @@ def test_build_docker_image():
         [
             "docker",
             "run",
-            "baseten/truss-context-builder-test",
+            "truss-context-builder-test",
         ],
         cwd=root,
         capture_output=True,
