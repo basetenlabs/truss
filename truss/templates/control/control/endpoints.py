@@ -41,7 +41,8 @@ def proxy(path):
                 # process is running then we continue waiting for it to start (by retrying),
                 # otherwise we bail.
                 if (
-                    not inference_server_process_controller.is_inference_server_running()
+                    inference_server_process_controller.inference_server_ever_started()
+                    and not inference_server_process_controller.is_inference_server_running()
                 ):
                     error_msg = "It appears your model has stopped running. This often means' \
                         ' it crashed and may need a fix to get it running again."

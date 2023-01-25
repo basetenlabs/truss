@@ -46,5 +46,10 @@
 
 	// Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
 	"remoteUser": "vscode",
-	"runArgs": ["--privileged"]
+	"runArgs": ["--privileged"],
+	"features": {
+	    "ghcr.io/devcontainers/features/sshd:1": {
+		"version": "latest"
+	    }
+	}
 }

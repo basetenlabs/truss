@@ -4,7 +4,7 @@ import time
 
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
-from helpers.types import Patch
+from helpers.types import Patch, PatchType
 
 INFERENCE_SERVER_CHECK_INTERVAL_SECS = 10
 
@@ -64,6 +64,7 @@ class InferenceServerController:
                 Patch.from_dict(patch_dict) for patch_dict in patch_request["patches"]
             ]
             self._process_controller.stop()
+            patches.sort(key=_patch_sort_key_fn)
             try:
                 patches_executed = 0
                 for patch in patches:
@@ -113,3 +114,22 @@ class InferenceServerController:
             with self._lock:
                 self._process_controller.check_and_recover_inference_server()
             time.sleep(INFERENCE_SERVER_CHECK_INTERVAL_SECS)
+
+
+def _patch_sort_key_fn(patch: Patch) -> int:
+    # System packages need to be applied before python requirements as they
+    # might need them.
+    # System packages or python packages are more likely to fail to apply then
+    # model code patches, so it's better to apply model code patches last to
+    # avoid ending up with partially applied patches which currently triggers
+    # full deploy.
+    if patch.type == PatchType.SYSTEM_PACKAGE:
+        return 0
+
+    if patch.type == PatchType.PYTHON_REQUIREMENT:
+        return 1
+
+    if patch.type == PatchType.MODEL_CODE:
+        return 2
+
+    raise ValueError(f"Unexpected patch type {patch.type}")

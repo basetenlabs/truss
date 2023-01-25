@@ -9,6 +9,7 @@ from truss.templates.control.control.helpers.types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
+    SystemPackagePatch,
 )
 from truss.truss_config import TrussConfig
 
@@ -193,14 +194,86 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
     ]
 
 
-def test_calc_config_patches_non_python_requirement_change(
+def test_calc_config_patches_non_python_or_system_requirement_change(
     custom_model_truss_dir: Path,
 ):
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
-        config_op=lambda config: config.system_packages.append("bla"),
+        config_op=lambda config: config.environment_variables.update({"foo": "bar"}),
     )
     assert patches is None
+
+
+def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        lambda config: config.system_packages.append("curl"),
+    )
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.SYSTEM_PACKAGE,
+        body=SystemPackagePatch(
+            action=Action.UPDATE,
+            package="curl",
+        ),
+    )
+
+
+def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path):
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_pre_op=lambda config: config.system_packages.append("curl"),
+        config_op=lambda config: config.system_packages.clear(),
+    )
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.SYSTEM_PACKAGE,
+        body=SystemPackagePatch(
+            action=Action.REMOVE,
+            package="curl",
+        ),
+    )
+
+
+def test_calc_config_patches_add_and_remove_system_package(
+    custom_model_truss_dir: Path,
+):
+    def config_pre_op(config: TrussConfig):
+        config.system_packages = [
+            "curl",
+            "jq",
+        ]
+
+    def config_op(config: TrussConfig):
+        config.system_packages = [
+            "curl",
+            "libsnd",
+        ]
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_pre_op=config_pre_op,
+        config_op=config_op,
+    )
+    patches.sort(key=lambda patch: patch.body.package)
+    assert patches == [
+        Patch(
+            type=PatchType.SYSTEM_PACKAGE,
+            body=SystemPackagePatch(
+                action=Action.REMOVE,
+                package="jq",
+            ),
+        ),
+        Patch(
+            type=PatchType.SYSTEM_PACKAGE,
+            body=SystemPackagePatch(
+                action=Action.UPDATE,
+                package="libsnd",
+            ),
+        ),
+    ]
 
 
 def _apply_config_change_and_calc_patches(
