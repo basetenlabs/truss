@@ -39,6 +39,7 @@ from truss.contexts.image_builder.training_image_builder import (
 )
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.contexts.local_loader.train_local import LocalTrainer
+from truss.decorators import proxy_to_shadow
 from truss.docker import (
     Docker,
     DockerStates,
@@ -209,6 +210,7 @@ class TrussHandle:
         model = LoadModelLocal.run(self._truss_dir)
         return _prediction_flow(model, request)
 
+    @proxy_to_shadow
     def docker_predict(
         self,
         request: dict,
@@ -445,6 +447,9 @@ class TrussHandle:
             )
         )
 
+    def clear_external_packages(self):
+        self._update_config(lambda conf: replace(conf, external_packages=[]))
+
     def examples(self) -> List[Example]:
         """List truss model's examples.
 
@@ -676,6 +681,46 @@ class TrussHandle:
             next_signature=next_sign,
             patch_ops=patch_ops,
         )
+
+    def gather(self) -> "TrussHandle":
+        """Convert a Truss with external dependencies into one without.
+
+        Any external packages are copied under packages folder to form a Truss,
+        where no parts of the Truss are outside the Truss folder. If the Truss
+        doesn't have any external dependencies then this returns the handle to
+        itself. Otherwise, a new truss is created with external dependencies
+        gatherer and a handle to that truss is returned. These gathered trusses
+        are caches and resused.
+        """
+        from truss.truss_gatherer import gather
+
+        if not self.is_scattered():
+            return self
+
+        gatherd_truss_path = gather(self._truss_dir)
+        return TrussHandle(gatherd_truss_path)
+
+    def max_modified_time(self) -> float:
+        """Max modified time of all the files and directories that this Truss spans."""
+        max_mod_time = get_max_modified_time_of_dir(self._truss_dir)
+        if self.no_external_packages():
+            return max_mod_time
+
+        for path in self.spec.external_packages_dirs_paths():
+            max_mod_time_for_path = get_max_modified_time_of_dir(path)
+            if max_mod_time_for_path > max_mod_time:
+                max_mod_time = max_mod_time_for_path
+        return max_mod_time
+
+    def no_external_packages(self) -> bool:
+        return len(self.spec.config.external_packages) == 0
+
+    def is_scattered(self) -> bool:
+        """A scattered truss is one where parts of it are outside the truss directory.
+
+        Many operations require a scattered truss to be gathered first.
+        """
+        return not self.no_external_packages()
 
     def _store_signature(self):
         """Store truss signature"""

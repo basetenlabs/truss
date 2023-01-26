@@ -74,6 +74,10 @@ class LocalConfigHandler:
         return LocalConfigHandler.TRUSS_CONFIG_DIR / "signatures"
 
     @staticmethod
+    def shadow_trusses_dir_path():
+        return LocalConfigHandler.TRUSS_CONFIG_DIR / "shadow_trusses"
+
+    @staticmethod
     def add_signature(truss_hash: str, signature: str):
         if truss_hash is None:
             raise ValueError("truss_hash is None")
