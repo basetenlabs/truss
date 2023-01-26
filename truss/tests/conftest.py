@@ -321,6 +321,20 @@ def custom_model_control(tmp_path):
 
 
 @pytest.fixture
+def custom_model_with_external_package(tmp_path: Path):
+    ext_pkg_path = tmp_path / "ext_pkg"
+    ext_pkg_path.mkdir()
+    (ext_pkg_path / "subdir").mkdir()
+    (ext_pkg_path / "file.py").touch()
+    yield _custom_model_from_code(
+        tmp_path,
+        "control_truss",
+        CUSTOM_MODEL_CODE,
+        handle_ops=lambda handle: handle.add_external_package(str(ext_pkg_path)),
+    )
+
+
+@pytest.fixture
 def no_postprocess_custom_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,

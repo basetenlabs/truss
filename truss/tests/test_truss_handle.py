@@ -179,6 +179,17 @@ def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
+def test_docker_predict_model_with_external_packages(
+    custom_model_with_external_package,
+):
+    th = TrussHandle(custom_model_with_external_package)
+    tag = "test-docker-predict-ext-pkg-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict({"inputs": [1, 2]}, tag=tag)
+        assert result == [1, 1]
+
+
+@pytest.mark.integration
 def test_docker_train(variables_to_artifacts_training_truss):
     th = TrussHandle(variables_to_artifacts_training_truss)
     th.add_training_variable("x", "y")
