@@ -4,7 +4,7 @@ import string
 import subprocess as sp
 import tempfile
 from contextlib import contextmanager
-from distutils.dir_util import copy_tree
+from distutils.dir_util import copy_tree, remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
 
@@ -15,6 +15,10 @@ def copy_tree_path(src: Path, dest: Path):
 
 def copy_file_path(src: Path, dest: Path):
     return copy_file(str(src), str(dest))
+
+
+def remove_tree_path(target: Path):
+    return remove_tree(str(target))
 
 
 def get_max_modified_time_of_dir(path: Path) -> float:

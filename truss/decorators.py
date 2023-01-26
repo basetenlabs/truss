@@ -1,4 +1,4 @@
-def proxy_to_shadow(func):
+def proxy_to_shadow_if_scattered(func):
     def wrapper(*args, **kwargs):
         truss_handle = args[0]
         if not truss_handle.is_scattered():

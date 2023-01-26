@@ -39,7 +39,7 @@ from truss.contexts.image_builder.training_image_builder import (
 )
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.contexts.local_loader.train_local import LocalTrainer
-from truss.decorators import proxy_to_shadow
+from truss.decorators import proxy_to_shadow_if_scattered
 from truss.docker import (
     Docker,
     DockerStates,
@@ -81,6 +81,7 @@ class TrussHandle:
     def spec(self) -> TrussSpec:
         return self._spec
 
+    @proxy_to_shadow_if_scattered
     def build_docker_build_context(self, build_dir: Path = None):
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
@@ -90,16 +91,18 @@ class TrussHandle:
         """[Deprected] Please use build_serving_docker_image."""
         return self.build_serving_docker_image(*args, **kwargs)
 
+    @proxy_to_shadow_if_scattered
     def build_serving_docker_image(self, build_dir: Path = None, tag: str = None):
         image = self._build_image(
             builder_context=ServingImageBuilderContext,
-            labels=self._get_serving_labels(),
+            labels=self._get_serving_lookup_labels(),
             build_dir=build_dir,
             tag=tag,
         )
         self._store_signature()
         return image
 
+    @proxy_to_shadow_if_scattered
     def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
         return self._build_image(
             builder_context=TrainingImageBuilderContext,
@@ -112,6 +115,7 @@ class TrussHandle:
         """[Deprecated] Do not use."""
         return _docker_image_from_labels(labels)
 
+    @proxy_to_shadow_if_scattered
     def docker_run(
         self,
         build_dir: Path = None,
@@ -210,7 +214,7 @@ class TrussHandle:
         model = LoadModelLocal.run(self._truss_dir)
         return _prediction_flow(model, request)
 
-    @proxy_to_shadow
+    @proxy_to_shadow_if_scattered
     def docker_predict(
         self,
         request: dict,
@@ -258,6 +262,7 @@ class TrussHandle:
             resp.raise_for_status()
             return resp.json()
 
+    @proxy_to_shadow_if_scattered
     def docker_train(
         self,
         variables: dict = None,
@@ -321,6 +326,7 @@ class TrussHandle:
     def local_train(self, variables: dict = None):
         LocalTrainer.run(self._truss_dir)(variables)
 
+    @proxy_to_shadow_if_scattered
     def docker_build_setup(self, build_dir: Path = None):
         """
         Set up a directory to build docker image from.
@@ -332,6 +338,7 @@ class TrussHandle:
         image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
 
+    @proxy_to_shadow_if_scattered
     def training_docker_build_setup(self, build_dir: Path = None):
         """
         Set up a directory to build training docker image from.
@@ -493,6 +500,7 @@ class TrussHandle:
             examples[index] = Example(example_name, example_input)
         self.update_examples(examples)
 
+    @proxy_to_shadow_if_scattered
     def get_all_docker_images(self):
         """Returns all docker images for this truss.
 
@@ -500,10 +508,12 @@ class TrussHandle:
         """
         return get_images({TRUSS_DIR: str(self._truss_dir)})
 
+    @proxy_to_shadow_if_scattered
     def get_docker_containers_from_labels(self, *args, **kwargs):
         """[Deprecated] Please use get_serving_docker_containers_from_labels."""
         return self.get_serving_docker_containers_from_labels(*args, **kwargs)
 
+    @proxy_to_shadow_if_scattered
     def get_serving_docker_containers_from_labels(
         self,
         all: bool = False,
@@ -516,7 +526,7 @@ class TrussHandle:
             all: If true return both running and not running containers.
         """
         if labels is None:
-            labels = self._get_serving_labels()
+            labels = self._get_serving_lookup_labels()
         else:
             # Make sure we're looking for serving container for this truss.
             labels = {
@@ -534,6 +544,7 @@ class TrussHandle:
         if containers is not None and len(containers) > 0:
             return containers[0]
 
+    @proxy_to_shadow_if_scattered
     def kill_container(self):
         """Kill container
 
@@ -541,10 +552,12 @@ class TrussHandle:
         """
         kill_containers({TRUSS_DIR: self._truss_dir})
 
+    @proxy_to_shadow_if_scattered
     def container_logs(self, *args, **kwargs):
         """[Deprecate] Use serving_container_logs."""
         return self.serving_container_logs(*args, **kwargs)
 
+    @proxy_to_shadow_if_scattered
     def serving_container_logs(self, follow=True, stream=True):
         """Get container logs for truss."""
         containers = self.get_serving_docker_containers_from_labels(all=True)
@@ -568,6 +581,7 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
+    @proxy_to_shadow_if_scattered
     def patch_container(self, patch_request: dict):
         """Patch changes onto the container running this Truss.
 
@@ -593,6 +607,7 @@ class TrussHandle:
         """[Deprecated] Use truss_hash_on_serving_container."""
         return self.truss_hash_on_serving_container()
 
+    @proxy_to_shadow_if_scattered
     def truss_hash_on_serving_container(self) -> Optional[str]:
         """Get content hash of truss running on container."""
         if not self.spec.live_reload:
@@ -631,6 +646,7 @@ class TrussHandle:
     def is_control_truss(self):
         return self._spec.live_reload
 
+    @proxy_to_shadow_if_scattered
     def get_urls_from_truss(self):
         urls = []
         containers = self.get_serving_docker_containers_from_labels()
@@ -657,6 +673,7 @@ class TrussHandle:
 
         self._update_config(enable_live_reload_fn)
 
+    @proxy_to_shadow_if_scattered
     def calc_patch(self, prev_truss_hash: str) -> Optional[PatchDetails]:
         """Calculates patch of current truss from previous.
 
@@ -682,7 +699,7 @@ class TrussHandle:
             patch_ops=patch_ops,
         )
 
-    def gather(self) -> "TrussHandle":
+    def gather(self) -> Path:
         """Convert a Truss with external dependencies into one without.
 
         Any external packages are copied under packages folder to form a Truss,
@@ -695,10 +712,9 @@ class TrussHandle:
         from truss.truss_gatherer import gather
 
         if not self.is_scattered():
-            return self
+            return self._truss_dir
 
-        gatherd_truss_path = gather(self._truss_dir)
-        return TrussHandle(gatherd_truss_path)
+        return gather(self._truss_dir)
 
     def max_modified_time(self) -> float:
         """Max modified time of all the files and directories that this Truss spans."""
@@ -706,7 +722,7 @@ class TrussHandle:
         if self.no_external_packages():
             return max_mod_time
 
-        for path in self.spec.external_packages_dirs_paths():
+        for path in self.spec.external_packages_dirs_paths:
             max_mod_time_for_path = get_max_modified_time_of_dir(path)
             if max_mod_time_for_path > max_mod_time:
                 max_mod_time = max_mod_time_for_path
@@ -742,7 +758,12 @@ class TrussHandle:
     def _get_serving_labels(self) -> Dict[str, str]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
         return {
+            **self._get_serving_lookup_labels(),
             TRUSS_MODIFIED_TIME: truss_mod_time,
+        }
+
+    def _get_serving_lookup_labels(self) -> Dict[str, str]:
+        return {
             TRUSS_DIR: self._truss_dir,
             TRUSS_HASH: self._serving_hash(),
             TRAINING_LABEL: False,
