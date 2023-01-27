@@ -21,6 +21,7 @@ class LocalTrainer(TrussContext):
                 str(truss_dir),
                 spec.train_module_fullname,
                 spec.bundled_packages_dir.name,
+                [str(path) for path in spec.external_package_dirs_paths],
             ) as module:
                 train_class = getattr(module, spec.train_class_name)
                 train_class_signature = inspect.signature(train_class)
