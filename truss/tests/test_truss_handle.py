@@ -47,6 +47,16 @@ def test_predict(custom_model_truss_dir_with_pre_and_post):
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
+def test_predict_with_external_packages(custom_model_with_external_package):
+    th = TrussHandle(custom_model_with_external_package)
+    resp = th.predict(
+        {
+            "inputs": [1, 2, 3, 4],
+        }
+    )
+    assert resp == [1, 1, 1, 1]
+
+
 def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     resp = th.server_predict(

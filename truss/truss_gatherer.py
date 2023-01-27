@@ -21,7 +21,7 @@ def gather(truss_path: Path) -> Path:
         with shadow_truss_metdata_file_path.open() as fp:
             metadata = yaml.safe_load(fp)
         max_mod_time = metadata["max_mod_time"]
-        if max_mod_time == handle.max_modified_time():
+        if max_mod_time == handle.max_modified_time:
             return shadow_truss_path
 
         # Shadow truss is out of sync, clear it
@@ -33,11 +33,19 @@ def gather(truss_path: Path) -> Path:
         shadow_truss_path / handle.spec.config.bundled_packages_dir
     )
     packages_dir_path_in_shadow.mkdir(exist_ok=True)
-    for path in handle.spec.external_packages_dirs_paths:
+    for path in handle.spec.external_package_dirs_paths:
         if not path.is_dir():
             raise ValueError(
                 f"External packages directory at {path} is not a directory"
             )
+        # We copy over contents of the external package directory, not the
+        # directory itself. This mimics the local load behavior and is meant to
+        # replicate adding external package directory to sys.path which doesn't
+        # make the directory available as a package to python but the contents
+        # inside.
+        #
+        # Note that this operation can fail if there are conflicts. Onus is on
+        # the creator of truss to make sure that there are no conflicts.
         for sub_path in path.iterdir():
             if sub_path.is_dir():
                 copy_tree_path(sub_path, packages_dir_path_in_shadow / sub_path.name)
@@ -47,7 +55,7 @@ def gather(truss_path: Path) -> Path:
     shadow_handle = TrussHandle(shadow_truss_path)
     shadow_handle.clear_external_packages()
     with shadow_truss_metdata_file_path.open("w") as fp:
-        yaml.safe_dump({"max_mod_time": handle.max_modified_time()}, fp)
+        yaml.safe_dump({"max_mod_time": handle.max_modified_time}, fp)
     return shadow_truss_path
 
 

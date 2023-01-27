@@ -89,6 +89,15 @@ class Model:
         return [1 for i in request['inputs']]
 """
 
+CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE = """
+import top_module
+import subdir.sub_module
+import top_module2
+class Model:
+    def predict(self, request):
+        return [1 for i in request['inputs']]
+"""
+
 CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS = """
 class Model:
     def __init__(*args, **kwargs):
@@ -325,12 +334,23 @@ def custom_model_with_external_package(tmp_path: Path):
     ext_pkg_path = tmp_path / "ext_pkg"
     ext_pkg_path.mkdir()
     (ext_pkg_path / "subdir").mkdir()
-    (ext_pkg_path / "file.py").touch()
+    (ext_pkg_path / "subdir" / "sub_module.py").touch()
+    (ext_pkg_path / "top_module.py").touch()
+    ext_pkg_path2 = tmp_path / "ext_pkg2"
+    ext_pkg_path2.mkdir()
+    (ext_pkg_path2 / "top_module2.py").touch()
+
+    def add_packages(handle):
+        # Use absolute path for this
+        handle.add_external_package(str(ext_pkg_path.resolve()))
+        # Use relative path for this
+        handle.add_external_package("../ext_pkg2")
+
     yield _custom_model_from_code(
         tmp_path,
         "control_truss",
-        CUSTOM_MODEL_CODE,
-        handle_ops=lambda handle: handle.add_external_package(str(ext_pkg_path)),
+        CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE,
+        handle_ops=add_packages,
     )
 
 

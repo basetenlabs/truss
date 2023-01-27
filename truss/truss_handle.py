@@ -450,12 +450,13 @@ class TrussHandle:
     def add_external_package(self, external_dir_path: str):
         self._update_config(
             lambda conf: replace(
-                conf, external_packages=[*conf.external_packages, external_dir_path]
+                conf,
+                external_package_dirs=[*conf.external_package_dirs, external_dir_path],
             )
         )
 
     def clear_external_packages(self):
-        self._update_config(lambda conf: replace(conf, external_packages=[]))
+        self._update_config(lambda conf: replace(conf, external_package_dirs=[]))
 
     def examples(self) -> List[Example]:
         """List truss model's examples.
@@ -716,27 +717,29 @@ class TrussHandle:
 
         return gather(self._truss_dir)
 
+    @property
     def max_modified_time(self) -> float:
         """Max modified time of all the files and directories that this Truss spans."""
         max_mod_time = get_max_modified_time_of_dir(self._truss_dir)
-        if self.no_external_packages():
+        if self.no_external_packages:
             return max_mod_time
 
-        for path in self.spec.external_packages_dirs_paths:
+        for path in self.spec.external_package_dirs_paths:
             max_mod_time_for_path = get_max_modified_time_of_dir(path)
             if max_mod_time_for_path > max_mod_time:
                 max_mod_time = max_mod_time_for_path
         return max_mod_time
 
+    @property
     def no_external_packages(self) -> bool:
-        return len(self.spec.config.external_packages) == 0
+        return len(self.spec.config.external_package_dirs) == 0
 
     def is_scattered(self) -> bool:
         """A scattered truss is one where parts of it are outside the truss directory.
 
         Many operations require a scattered truss to be gathered first.
         """
-        return not self.no_external_packages()
+        return not self.no_external_packages
 
     def _store_signature(self):
         """Store truss signature"""

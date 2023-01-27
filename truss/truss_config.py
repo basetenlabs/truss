@@ -118,7 +118,7 @@ class TrussConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
     description: str = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
-    external_packages: List[str] = field(default_factory=list)
+    external_package_dirs: List[str] = field(default_factory=list)
     live_reload: bool = False
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
@@ -163,7 +163,7 @@ class TrussConfig:
             bundled_packages_dir=d.get(
                 "bundled_packages_dir", DEFAULT_BUNDLED_PACKAGES_DIR
             ),
-            external_packages=d.get("external_packages", []),
+            external_package_dirs=d.get("external_package_dirs", []),
             live_reload=d.get("live_reload", False),
             train=Train.from_dict(d.get("train", {})),
         )
@@ -199,7 +199,7 @@ class TrussConfig:
             "secrets": self.secrets,
             "description": self.description,
             "bundled_packages_dir": self.bundled_packages_dir,
-            "external_packages": self.external_packages,
+            "external_package_dirs": self.external_package_dirs,
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),

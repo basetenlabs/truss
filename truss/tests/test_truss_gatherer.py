@@ -8,11 +8,18 @@ from truss.truss_gatherer import gather
 def test_gather(custom_model_with_external_package):
     gathered_truss_path = gather(custom_model_with_external_package)
     subdir = gathered_truss_path / "packages" / "subdir"
-    ext_pkg_file = gathered_truss_path / "packages" / "file.py"
+    sub_module = gathered_truss_path / "packages" / "subdir" / "sub_module.py"
+    ext_pkg_top_module = gathered_truss_path / "packages" / "top_module.py"
+    ext_pkg_top_module2 = gathered_truss_path / "packages" / "top_module2.py"
     assert subdir.exists()
-    assert ext_pkg_file.exists()
+    assert ext_pkg_top_module.exists()
+    assert ext_pkg_top_module2.exists()
+    assert sub_module.exists()
+    sub_module.unlink()
     subdir.rmdir()
-    ext_pkg_file.unlink()
+    ext_pkg_top_module.unlink()
+    ext_pkg_top_module2.unlink()
+
     assert _same_dir_content(
         custom_model_with_external_package,
         gathered_truss_path,

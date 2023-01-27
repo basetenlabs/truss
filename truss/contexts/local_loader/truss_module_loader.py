@@ -128,8 +128,8 @@ def _unload_truss_modules(
 ):
     modules_to_unload = [truss_module_name]
 
-    def _add_relative_dir_to_unload(dir_nae: str):
-        path = Path(truss_dir) / dir_nae
+    def _add_relative_dir_to_unload(dir_name: str):
+        path = Path(truss_dir) / dir_name
         if path.exists():
             modules_to_unload.extend(_sub_dirnames(path))
 
