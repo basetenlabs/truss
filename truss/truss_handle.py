@@ -72,10 +72,14 @@ if is_notebook_or_ipython():
 
 
 class TrussHandle:
-    def __init__(self, truss_dir: Path) -> None:
+    def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
+        if validate:
+            self.validate()
+
+    def validate(self):
         self._validate_external_packages()
 
     @property
@@ -895,7 +899,7 @@ class TrussHandle:
             for path in self._spec.external_package_dirs_paths:
                 if not path.exists():
                     raise RuntimeError(
-                        f"Truss referets to external package at "
+                        f"Truss referes to external package at "
                         f"{path.resolve()} but that path does not exist."
                     )
 

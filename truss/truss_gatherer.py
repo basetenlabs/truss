@@ -52,8 +52,11 @@ def gather(truss_path: Path) -> Path:
             if sub_path.is_file():
                 copy_file_path(sub_path, packages_dir_path_in_shadow / sub_path.name)
 
-    shadow_handle = TrussHandle(shadow_truss_path)
+    # Don't run validation because they will fail until we clear external
+    # packages. We do it after.
+    shadow_handle = TrussHandle(shadow_truss_path, validate=False)
     shadow_handle.clear_external_packages()
+    shadow_handle.validate()
     with shadow_truss_metdata_file_path.open("w") as fp:
         yaml.safe_dump({"max_mod_time": handle.max_modified_time}, fp)
     return shadow_truss_path
