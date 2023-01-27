@@ -76,6 +76,7 @@ class TrussHandle:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
+        self._validate_external_packages()
 
     @property
     def spec(self) -> TrussSpec:
@@ -888,6 +889,15 @@ class TrussHandle:
             truss_hash = directory_content_hash(self._truss_dir)
             self._hash_for_mod_time = (truss_mod_time, truss_hash)
         return truss_hash
+
+    def _validate_external_packages(self):
+        if not self.no_external_packages:
+            for path in self._spec.external_package_dirs_paths:
+                if not path.exists():
+                    raise RuntimeError(
+                        f"Truss referets to external package at "
+                        f"{path.resolve()} but that path does not exist."
+                    )
 
 
 def _prediction_flow(model, request: dict):
