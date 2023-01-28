@@ -1,0 +1,9 @@
+-i https://pypi.org/simple
+
+argparse==1.4.0
+aiocontextvars==0.2.2
+cython==0.29.23
+kfserving==0.5.0
+msgpack-numpy==0.4.8
+msgpack==1.0.2
+python-json-logger==2.0.2
