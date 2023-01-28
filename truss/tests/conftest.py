@@ -189,9 +189,10 @@ class MyModel:
 """
 
 LONG_LOAD_MODEL_CODE = """
+import time
 class Model:
      def load(*args, **kwargs):
-        sleep(10)
+        time.sleep(10)
         pass
 
      def predict(self, request):
@@ -336,7 +337,7 @@ def long_load_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "long_load_model",
-        NO_PREPROCESS_CUSTOM_MODEL_CODE,
+        LONG_LOAD_MODEL_CODE,
     )
 
 

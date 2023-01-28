@@ -1,30 +1,28 @@
+import asyncio
 import json
-import logging
 from typing import Dict, Optional, Union
 
 import kserve
 import kserve.errors as errors
-import numpy as np
+from common.logging import setup_logging
 from common.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from common.util import assign_request_to_inputs_instances_after_validation
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from kserve.errors import InvalidInput
 from kserve.handlers import DataPlane, ModelRepositoryExtension, V1Endpoints
 from model_wrapper import ModelWrapper
 from starlette.responses import Response
 
-logger = logging.getLogger(__name__)
 
-
-async def parse_body(request: Request):
-    data: bytes = await request.body()
-    return data
+async def parse_body(request: Request) -> bytes:
+    """
+    Used by FastAPI to read body in an asynchronous manner
+    """
+    return await request.body()
 
 
 class BasetenEndpoints(V1Endpoints):
@@ -37,8 +35,6 @@ class BasetenEndpoints(V1Endpoints):
 
     @staticmethod
     def check_healthy(model: ModelWrapper):
-        model.start_load()
-
         if model.load_failed():
             raise errors.InferenceError("Model load failed")
 
@@ -55,6 +51,9 @@ class BasetenEndpoints(V1Endpoints):
     def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
+        """
+        This method is called by FastAPI, which introspects that it's not async, and schedules it on a thread
+        """
         model: ModelWrapper = self.dataplane.get_model_from_registry(model_name)
 
         self.check_healthy(model)
@@ -65,19 +64,8 @@ class BasetenEndpoints(V1Endpoints):
         else:
             body = json.loads(body_raw)
 
-        body = assign_request_to_inputs_instances_after_validation(body)
-
-        if (
-            "instances" in request
-            and not isinstance(request["instances"], (list, np.ndarray))
-            or "inputs" in request
-            and not isinstance(request["inputs"], (list, np.ndarray))
-        ):
-            raise InvalidInput(
-                'Expected "instances" or "inputs" to be a list or NumPy ndarray'
-            )
-
-        response = model.predict(body, headers=dict(request.headers.items()))
+        # calls kserve.model.Model.__call__, which runs validate, preprocess, predict, and postprocess
+        response: dict = asyncio.run(model(body, headers=dict(request.headers.items())))
 
         response_headers = {}
         if self.is_binary(request):
@@ -104,8 +92,9 @@ class TrussServer(kserve.ModelServer):
 
     _endpoints: BasetenEndpoints
     _model: ModelWrapper
+    _config: dict
 
-    def __init__(self, http_port: int, model: ModelWrapper):
+    def __init__(self, http_port: int, config: dict):
         super().__init__(
             http_port=http_port,
             enable_grpc=False,
@@ -114,7 +103,7 @@ class TrussServer(kserve.ModelServer):
             enable_latency_logging=False,
         )
 
-        self._model = model
+        self._config = config
         self._endpoints = BasetenEndpoints(
             self.dataplane, self.model_repository_extension
         )
@@ -123,7 +112,18 @@ class TrussServer(kserve.ModelServer):
         """
         Overloaded version of super().start to use instance model in TrussServer
         """
-        super().start([self._model])
+        super().start([])
+
+    def on_startup(self):
+        """
+        This method will be started inside the main process, so here is where we want to setup our logging and model
+        """
+        setup_logging()
+
+        self._model = ModelWrapper(self._config)
+        self.register_model(self._model)
+
+        self._model.start_load()
 
     def create_application(self):
         return FastAPI(
@@ -131,7 +131,7 @@ class TrussServer(kserve.ModelServer):
             docs_url=None,
             redoc_url=None,
             default_response_class=ORJSONResponse,
-            on_startup=[self._model.start_load],
+            on_startup=[self.on_startup],
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", self.dataplane.live),

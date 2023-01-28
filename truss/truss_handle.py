@@ -10,10 +10,8 @@ from shutil import rmtree
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
-import numpy as np
 import requests
 import yaml
-from python_on_whales.exceptions import NoSuchContainer
 from requests import exceptions
 from requests.exceptions import ConnectionError
 from tenacity import (
@@ -63,6 +61,7 @@ from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
+from truss.templates.server.common.serialization import truss_msgpack_serialize
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
@@ -100,8 +99,18 @@ class TrussHandle:
             | retry_if_exception_type(exceptions.ConnectionError)
         ),
     )
-    def _wait_for_predict(model_base_url: str, request: dict):
-        return requests.post(f"{model_base_url}/v1/models/model:predict", json=request)
+    def _wait_for_predict(model_base_url: str, request: dict, binary: bool = False):
+
+        url = f"{model_base_url}/v1/models/model:predict"
+
+        if binary:
+            binary = truss_msgpack_serialize(request)
+
+            return requests.post(
+                url, data=binary, headers={"Content-Type": "application/octet-stream"}
+            )
+
+        return requests.post(url, json=request)
 
     @proxy_to_shadow_if_scattered
     def build_docker_build_context(self, build_dir: Path = None):
@@ -245,6 +254,7 @@ class TrussHandle:
         local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
         patch_ping_url: str = None,
+        binary: bool = False,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -978,6 +988,8 @@ def _is_invalid_list_input_prop(request: dict, prop: str):
 
 
 def _is_valid_list_type(obj) -> bool:
+    import numpy as np
+
     return isinstance(obj, (list, np.ndarray))
 
 
@@ -1005,6 +1017,8 @@ def _wait_for_model_server(url: str):
 
 
 def wait_for_truss(url: str, container):
+    from python_on_whales.exceptions import NoSuchContainer
+
     try:
         _wait_for_docker_build(container)
     except NoSuchContainer:

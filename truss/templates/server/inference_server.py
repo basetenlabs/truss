@@ -1,14 +1,12 @@
 import os
 
 import yaml
-from common.util import setup_logging
-
-setup_logging()
-
+from common.logging import setup_logging
 from common.truss_server import TrussServer  # noqa: E402
-from model_wrapper import ModelWrapper  # noqa: E402
 
 CONFIG_FILE = "config.yaml"
+
+setup_logging()
 
 
 class ConfiguredTrussServer:
@@ -21,8 +19,7 @@ class ConfiguredTrussServer:
             self._config = yaml.safe_load(config_file)
 
     def start(self):
-        model = ModelWrapper(self._config)
-        server = TrussServer(http_port=self._port, model=model)
+        server = TrussServer(http_port=self._port, config=self._config)
         server.start_model()
 
 

@@ -9,11 +9,12 @@ from threading import Lock, Thread
 from typing import Dict, Union
 
 import kserve
+import numpy as np
 from cloudevents.http import CloudEvent
+from common.util import assign_request_to_inputs_instances_after_validation
+from kserve.errors import InvalidInput
 from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
-
-logger = logging.getLogger(__name__)
 
 MODEL_BASENAME = "model"
 
@@ -30,10 +31,12 @@ class ModelWrapper(kserve.Model):
     _load_lock: Lock = Lock()
     _predict_lock: Lock = Lock()
     _status: Status = Status.NOT_READY
+    _logger: logging.Logger
 
     def __init__(self, config: dict):
         super().__init__(MODEL_BASENAME)
         self._config = config
+        self.logger = logging.getLogger(__name__)
 
     def load(self) -> bool:
         if self.ready:
@@ -45,18 +48,18 @@ class ModelWrapper(kserve.Model):
 
         self._status = ModelWrapper.Status.LOADING
 
-        logger.info("Executing model.load()...")
+        self.logger.info("Executing model.load()...")
 
         try:
             self.try_load()
             self.ready = True
             self._status = ModelWrapper.Status.READY
 
-            logger.info("Completed model.load() execution")
+            self.logger.info("Completed model.load() execution")
 
             return self.ready
         except Exception:
-            logger.exception("Exception while loading model")
+            self.logger.exception("Exception while loading model")
             self._status = ModelWrapper.Status.FAILED
         finally:
             self._load_lock.release()
@@ -104,7 +107,20 @@ class ModelWrapper(kserve.Model):
         if hasattr(self._model, "load"):
             self._model.load()
 
-    async def preprocess(
+    def validate(self, payload):
+        if (
+            "instances" in payload
+            and not isinstance(payload["instances"], (list, np.ndarray))
+            or "inputs" in payload
+            and not isinstance(payload["inputs"], (list, np.ndarray))
+        ):
+            raise InvalidInput(
+                'Expected "instances" or "inputs" to be a list or NumPy ndarray'
+            )
+
+        return assign_request_to_inputs_instances_after_validation(payload)
+
+    def preprocess(
         self,
         payload: Union[Dict, CloudEvent, ModelInferRequest],
         headers: Dict[str, str] = None,

@@ -308,7 +308,7 @@ def test_docker_long_load(long_load_model):
     tag = "test-docker-long-load-tag:0.0.1"
     with ensure_kill_all():
         result = th.docker_predict({"inputs": [1]}, tag=tag)
-        assert result["predictions"][0] == 2
+        assert result["predictions"][0] == 1
 
 
 @pytest.mark.integration
