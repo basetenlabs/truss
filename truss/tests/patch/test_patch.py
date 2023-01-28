@@ -31,7 +31,7 @@ def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
     assert patch == Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
+            action=Action.ADD,
             path="dummy",
             content="",
         ),
@@ -50,7 +50,7 @@ def test_calc_truss_patch_add_under_new_directory(custom_model_truss_dir: Path):
     assert patch == Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
+            action=Action.ADD,
             path="dir/dummy",
             content="",
         ),
@@ -104,7 +104,7 @@ def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path
     assert patch == Patch(
         type=PatchType.PYTHON_REQUIREMENT,
         body=PythonRequirementPatch(
-            action=Action.UPDATE,
+            action=Action.ADD,
             requirement="requests==1.0.0",
         ),
     )
@@ -180,7 +180,7 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
         Patch(
             type=PatchType.PYTHON_REQUIREMENT,
             body=PythonRequirementPatch(
-                action=Action.UPDATE,
+                action=Action.ADD,
                 requirement="numpy>=1.8",
             ),
         ),
@@ -214,7 +214,7 @@ def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
     assert patch == Patch(
         type=PatchType.SYSTEM_PACKAGE,
         body=SystemPackagePatch(
-            action=Action.UPDATE,
+            action=Action.ADD,
             package="curl",
         ),
     )
@@ -269,7 +269,7 @@ def test_calc_config_patches_add_and_remove_system_package(
         Patch(
             type=PatchType.SYSTEM_PACKAGE,
             body=SystemPackagePatch(
-                action=Action.UPDATE,
+                action=Action.ADD,
                 package="libsnd",
             ),
         ),
