@@ -9,7 +9,7 @@ def test_build_docker_image():
     root_path = Path(__file__).parent.parent.parent
     root = str(root_path)
     context_builder_image_test_dir = str(
-        root_path / "truss" / "tests" / "test_data" / "context_builder_image_test"
+        root_path / "truss" / "test_data" / "context_builder_image_test"
     )
 
     subprocess.run(
