@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from python_on_whales.exceptions import DockerException
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
@@ -364,8 +365,8 @@ def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
     tag = "test-custom-python-req-tag:0.0.1"
     container = th.docker_run(tag=tag)
     try:
-        _verify_python_requirement_installed_on_container(tag, "theano")
-        _verify_python_requirement_installed_on_container(tag, "scipy")
+        _verify_python_requirement_installed_on_container(container, "theano")
+        _verify_python_requirement_installed_on_container(container, "scipy")
     finally:
         Docker.client().kill(container)
 
@@ -378,8 +379,8 @@ def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
     tag = "test-custom-system-package-tag:0.0.1"
     container = th.docker_run(tag=tag)
     try:
-        _verify_system_package_installed_on_container(tag, "jq")
-        _verify_system_package_installed_on_container(tag, "fzf")
+        _verify_system_package_installed_on_container(container, "jq")
+        _verify_system_package_installed_on_container(container, "fzf")
     finally:
         Docker.client().kill(container)
 
@@ -431,7 +432,7 @@ def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
     tag = "test-add-env-var-tag:0.0.1"
     container = th.docker_run(tag=tag)
     try:
-        _verify_environment_variable_on_container(tag, "test_env", "test_value")
+        _verify_environment_variable_on_container(container, "test_env", "test_value")
     finally:
         Docker.client().kill(container)
 
@@ -648,11 +649,8 @@ def test_container_stuck_in_created(container_state_mock):
 def test_control_truss_local_update_flow(custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
-    with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
-        assert result[0] == 1
-        orig_num_truss_images = len(th.get_all_docker_images())
 
+    def predict_with_updated_model_code():
         new_model_code = """
 class Model:
     def predict(self, request):
@@ -661,25 +659,78 @@ class Model:
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(new_model_code)
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
-        assert result[0] == 2
-        # Check that no new image was creaed
-        assert orig_num_truss_images == len(th.get_all_docker_images())
+        return th.docker_predict({"inputs": [1]}, tag=tag)
 
+    def predict_with_added_empty_directory():
         # Adding empty directory should work
         (custom_model_control / "model" / "dir").mkdir()
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
-        assert result[0] == 2
-        # Check that no new image was created
-        assert orig_num_truss_images == len(th.get_all_docker_images())
+        return th.docker_predict({"inputs": [1]}, tag=tag)
 
+    def predict_with_unpatchable_change():
         # Changes that are not expressible with patch should also work
         # Changes to data dir are not currently patch expressible
         (custom_model_control / "data" / "dummy").touch()
+        return th.docker_predict({"inputs": [1]}, tag=tag)
+
+    def predict_with_python_requirement_added(req: str):
+        th.add_python_requirement(req)
+        return th.docker_predict({"inputs": [1]}, tag=tag)
+
+    def predict_with_python_requirement_removed(req):
+        th.remove_python_requirement(req)
+        return th.docker_predict({"inputs": [1]}, tag=tag)
+
+    def predict_with_system_requirement_added(pkg):
+        th.add_system_package(pkg)
+        return th.docker_predict({"inputs": [1]}, tag=tag)
+
+    def predict_with_system_requirement_removed(pkg):
+        th.remove_system_package(pkg)
+        return th.docker_predict({"inputs": [1]}, tag=tag)
+
+    def current_num_docker_images() -> int:
+        return len(th.get_all_docker_images())
+
+    with ensure_kill_all():
         result = th.docker_predict({"inputs": [1]}, tag=tag)
+        assert result[0] == 1
+        orig_num_truss_images = len(th.get_all_docker_images())
+
+        result = predict_with_updated_model_code()
         assert result[0] == 2
-        # A new image should have been created
-        assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
+        assert orig_num_truss_images == current_num_docker_images()
+
+        result = predict_with_added_empty_directory()
+        assert result[0] == 2
+        assert orig_num_truss_images == current_num_docker_images()
+
+        container = th._get_running_serving_container_ignore_hash()
+
+        python_req = "psutil"
+        result = predict_with_python_requirement_added(python_req)
+        assert result[0] == 2
+        assert current_num_docker_images() == orig_num_truss_images
+        _verify_python_requirement_installed_on_container(container, python_req)
+
+        result = predict_with_python_requirement_removed(python_req)
+        assert result[0] == 2
+        assert current_num_docker_images() == orig_num_truss_images
+        _verify_python_requirement_not_installed_on_container(container, python_req)
+
+        system_pkg = "jq"
+        result = predict_with_system_requirement_added(system_pkg)
+        assert result[0] == 2
+        assert current_num_docker_images() == orig_num_truss_images
+        _verify_system_package_installed_on_container(container, system_pkg)
+
+        result = predict_with_system_requirement_removed(system_pkg)
+        assert result[0] == 2
+        assert current_num_docker_images() == orig_num_truss_images
+        _verify_system_requirement_not_installed_on_container(container, system_pkg)
+
+        result = predict_with_unpatchable_change()
+        assert result[0] == 2
+        assert current_num_docker_images() == orig_num_truss_images + 1
 
 
 @pytest.mark.integration
@@ -794,22 +845,36 @@ def _container_exists(container) -> bool:
     return False
 
 
-def _verify_system_package_installed_on_container(tag: str, cmd: str):
-    resp = Docker.client().run(tag, ["which", cmd])
-    assert resp.strip() == f"/usr/bin/{cmd}"
+def _verify_system_package_installed_on_container(container, pkg: str):
+    resp = container.execute(["which", pkg])
+    assert resp.strip() == f"/usr/bin/{pkg}"
 
 
-def _verify_python_requirement_installed_on_container(tag: str, cmd: str):
-    resp = Docker.client().run(tag, ["pip", "show", cmd])
-    assert resp.splitlines()[0].lower() == f"Name: {cmd}".lower()
+def _verify_system_requirement_not_installed_on_container(container, pkg: str):
+    try:
+        container.execute(["dpkg", "-l", pkg])
+    except DockerException as excp:
+        assert "no packages found" in str(excp)
+
+
+def _verify_python_requirement_installed_on_container(container, req: str):
+    resp = container.execute(["pip", "show", req])
+    assert resp.splitlines()[0].lower() == f"Name: {req}".lower()
+
+
+def _verify_python_requirement_not_installed_on_container(container, req: str):
+    try:
+        container.execute(["pip", "show", req])
+    except DockerException as excp:
+        assert "not found" in str(excp)
 
 
 def _verify_environment_variable_on_container(
-    tag: str,
+    container,
     env_var_name: str,
     env_var_value: str,
 ):
-    resp = Docker.client().run(tag, ["env"])
+    resp = container.execute(["env"])
     needle = f"{env_var_name}={env_var_value}"
     assert needle in resp.splitlines()
 
