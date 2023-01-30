@@ -50,7 +50,7 @@ class TrussSpec:
             if path.is_absolute():
                 paths.append(path)
             else:
-                paths.append(self._truss_dir / path)
+                paths.append(self._truss_dir.resolve() / path)
         return paths
 
     @property
