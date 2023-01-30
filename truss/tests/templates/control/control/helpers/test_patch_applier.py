@@ -28,7 +28,7 @@ def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
+            action=Action.ADD,
             path="dummy",
             content="",
         ),

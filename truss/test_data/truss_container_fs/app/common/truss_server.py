@@ -1,22 +1,33 @@
 import json  # noqa: E402
 import logging  # noqa: E402
+import os
+import sys
 from http import HTTPStatus  # noqa: E402
+from threading import Thread
+from typing import List
 
 import numpy as np  # noqa: E402
 import tornado.web  # noqa: E402
 from common.lib_support import ensure_kfserving_installed
 from common.serialization import DeepNumpyEncoder  # noqa: E402
-from common.serialization import truss_msgpack_deserialize  # noqa: E402
-from common.serialization import truss_msgpack_serialize  # noqa: E402
+from common.serialization import (  # noqa: E402
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 from common.util import (  # noqa: E402
     assign_request_to_inputs_instances_after_validation,
 )
+from kfserving import KFModel
 from kfserving.handlers.http import HTTPHandler  # noqa: E402
-from kfserving.kfserver import LivenessHandler  # noqa: E402; noqa: E402
-from kfserving.kfserver import HealthHandler, KFServer, ListHandler
+from kfserving.kfserver import HealthHandler, KFServer, ListHandler, LivenessHandler
+from model_wrapper import ModelWrapper
 from pythonjsonlogger import jsonlogger  # noqa: E402
+from tornado.httpserver import HTTPServer
+from tornado.ioloop import IOLoop
 
 ensure_kfserving_installed()
+
+logger = logging.getLogger(__name__)
 
 
 def _configure_logging():
@@ -158,6 +169,48 @@ class TrussServer(KFServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _configure_logging()
+
+    def load_all(self, main_loop: IOLoop):
+        try:
+            for model in self.registered_models.get_models():
+                model.load()
+        except Exception as e:
+            logging.error(f"Error loading model: {e}")
+
+            # fixme(zack) for live reload, we don't want to kill the process?
+            if not os.environ.get("CONTROL_SERVER_PORT"):
+                self._http_server.stop()
+                main_loop.stop()
+                sys.exit(1)
+
+    def start(self, models: List[KFModel], nest_asyncio: bool = False):
+        if len(models) != 1:
+            raise RuntimeError("TrussServer only supports one model")
+
+        if not isinstance(models[0], ModelWrapper):
+            raise ValueError(
+                "TrussServer only accepts ModelWrapper instances instead of KFServer instances"
+            )
+
+        for model in models:
+            self.register_model(model)
+
+        self._http_server = HTTPServer(
+            self.create_application(), max_buffer_size=self.max_buffer_size
+        )
+
+        logging.info("Listening on port %s", self.http_port)
+        self._http_server.bind(self.http_port)
+
+        logging.info("Will fork %d workers", self.workers)
+        self._http_server.start(self.workers)
+
+        Thread(
+            target=self.load_all,
+            args=[IOLoop.current()],
+        ).start()
+
+        IOLoop.current().start()
 
     def create_application(self):
         return tornado.web.Application(

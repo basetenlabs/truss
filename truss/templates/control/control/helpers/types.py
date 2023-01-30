@@ -14,6 +14,7 @@ class PatchType(Enum):
 class Action(Enum):
     """Types of console requests sent to Django and passed along to pynode."""
 
+    ADD = "ADD"
     UPDATE = "UPDATE"
     REMOVE = "REMOVE"
 

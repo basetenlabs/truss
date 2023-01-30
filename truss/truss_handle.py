@@ -363,6 +363,21 @@ class TrussHandle:
             )
         )
 
+    def remove_python_requirement(self, python_requirement: str):
+        """Remove a python requirement to truss model's config.
+
+        Note that the requirement has to match exactly, with version included.
+        TODO(pankaj) Make this work with just the name of python_requirement.
+        """
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                requirements=[
+                    req for req in conf.requirements if req != python_requirement
+                ],
+            )
+        )
+
     def add_environment_variable(self, env_var_name: str, env_var_value: str):
         """Add an environment variable to truss model's config."""
         if not env_var_value:
@@ -433,6 +448,17 @@ class TrussHandle:
         self._update_config(
             lambda conf: replace(
                 conf, system_packages=[*conf.system_packages, system_package]
+            )
+        )
+
+    def remove_system_package(self, system_package: str):
+        """Remove a system package requirement from truss model's config."""
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                system_packages=[
+                    pkg for pkg in conf.system_packages if pkg != system_package
+                ],
             )
         )
 

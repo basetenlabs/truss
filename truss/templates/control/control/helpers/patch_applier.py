@@ -54,7 +54,7 @@ class PatchApplier:
         )
         action = model_code_patch.action
         filepath: Path = self._model_module_dir / model_code_patch.path
-        if action == Action.UPDATE:
+        if action in [Action.ADD, Action.UPDATE]:
             filepath.parent.mkdir(parents=True, exist_ok=True)
             self._app_logger.info(f"Updating file {filepath}")
             with filepath.open("w") as file:
@@ -94,7 +94,7 @@ class PatchApplier:
                 ],
                 check=True,
             )
-        elif action == Action.UPDATE:
+        elif action in [Action.ADD, Action.UPDATE]:
             subprocess.run(
                 [
                     self._pip_path,
@@ -122,7 +122,7 @@ class PatchApplier:
                 ],
                 check=True,
             )
-        elif action == Action.UPDATE:
+        elif action in [Action.ADD, Action.UPDATE]:
             subprocess.run(
                 [
                     "apt",

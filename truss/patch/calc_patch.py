@@ -71,11 +71,12 @@ def calc_truss_patch(
 
             with full_path.open() as file:
                 content = file.read()
+            action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
-                        action=Action.UPDATE,
+                        action=action,
                         path=relative_to_model_module_path,
                         content=content,
                     ),
@@ -169,7 +170,7 @@ def _calc_python_requirements_patches(
     added_reqs = new_req_names.difference(prev_req_names)
     for added_req in added_reqs:
         patches.append(
-            _mk_python_requirement_patch(Action.UPDATE, str(new_reqs[added_req]))
+            _mk_python_requirement_patch(Action.ADD, str(new_reqs[added_req]))
         )
 
     for req in new_req_names.intersection(prev_req_names):
@@ -198,7 +199,7 @@ def _calc_system_packages_patches(
 
     added_pkgs = new_pkgs.difference(prev_pkgs)
     for added_pkg in added_pkgs:
-        patches.append(_mk_system_package_patch(Action.UPDATE, added_pkg))
+        patches.append(_mk_system_package_patch(Action.ADD, added_pkg))
 
     return patches
 
