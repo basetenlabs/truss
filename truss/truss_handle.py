@@ -270,6 +270,7 @@ class TrussHandle:
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
                              by hitting this url.
+            binary: Use msgpack to serialize the response
         """
         containers = self.get_serving_docker_containers_from_labels()
         if containers:
@@ -284,7 +285,7 @@ class TrussHandle:
             )
         model_base_url = _get_url_from_container(container)
 
-        resp = TrussHandle._wait_for_predict(model_base_url, request)
+        resp = TrussHandle._wait_for_predict(model_base_url, request, binary)
 
         if resp.status_code == 500:
             raise requests.exceptions.HTTPError("500 error", response=resp)
