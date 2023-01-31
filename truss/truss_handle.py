@@ -61,7 +61,10 @@ from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
-from truss.templates.server.common.serialization import truss_msgpack_serialize
+from truss.templates.server.common.serialization import (
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
@@ -289,6 +292,9 @@ class TrussHandle:
 
         if resp.status_code == 500:
             raise requests.exceptions.HTTPError("500 error", response=resp)
+
+        if binary:
+            return truss_msgpack_deserialize(resp.content)
 
         return resp.json()
 
