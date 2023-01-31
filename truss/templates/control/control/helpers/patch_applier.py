@@ -17,6 +17,7 @@ class PatchApplier:
         self,
         inference_server_home: Path,
         app_logger,
+        pip_path: str = None,  # Only meant for testing
     ) -> None:
         self._inference_server_home = inference_server_home
         self._model_module_dir = (
@@ -24,6 +25,8 @@ class PatchApplier:
         )
         self._app_logger = app_logger
         self._pip_path_cached = None
+        if pip_path is not None:
+            self._pip_path_cached = "pip"
 
     def apply_patch(self, patch: Patch):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
