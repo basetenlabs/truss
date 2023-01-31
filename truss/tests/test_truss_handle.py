@@ -713,7 +713,7 @@ class Model:
 
         container = th._get_running_serving_container_ignore_hash()
 
-        python_req = "psutil"
+        python_req = "pydot"
         result = predict_with_python_requirement_added(python_req)
         assert result[0] == 2
         assert current_num_docker_images() == orig_num_truss_images
