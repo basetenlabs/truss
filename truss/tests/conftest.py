@@ -188,6 +188,19 @@ class MyModel:
         pass
 """
 
+LONG_LOAD_MODEL_CODE = """
+import time
+class Model:
+     def load(*args, **kwargs):
+        time.sleep(10)
+        pass
+
+     def predict(self, request):
+        return {
+            'predictions': request['inputs'],
+        }
+"""
+
 # Doesn't implement preprocess
 NO_PREPROCESS_CUSTOM_MODEL_CODE = """
 class Model:
@@ -316,6 +329,15 @@ def no_preprocess_custom_model(tmp_path):
         tmp_path,
         "my_no_preprocess_model",
         NO_PREPROCESS_CUSTOM_MODEL_CODE,
+    )
+
+
+@pytest.fixture
+def long_load_model(tmp_path):
+    yield _custom_model_from_code(
+        tmp_path,
+        "long_load_model",
+        LONG_LOAD_MODEL_CODE,
     )
 
 

@@ -52,7 +52,6 @@ class GPTJTransformerModel(object):
         self._model = AutoModelForCausalLM.from_pretrained(
             "EleutherAI/gpt-j-6B", revision="float16", torch_dtype=torch.float16
         ).to(self.device)
-        self.ready = True
 
     def preprocess(self, request: Dict) -> Dict:
         """

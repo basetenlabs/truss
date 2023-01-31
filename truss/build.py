@@ -33,7 +33,7 @@ if is_notebook_or_ipython():
 
 def populate_target_directory(
     config: TrussConfig, target_directory_path: str = None, template: str = "custom"
-) -> None:
+) -> Path:
 
     if target_directory_path is None:
         target_directory_path = build_truss_target_directory(template)

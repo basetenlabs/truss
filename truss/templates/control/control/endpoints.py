@@ -46,7 +46,7 @@ def proxy(path):
                 ):
                     error_msg = "It appears your model has stopped running. This often means' \
                         ' it crashed and may need a fix to get it running again."
-                    return Response(error_msg, 500)
+                    return Response(error_msg, 503)
                 raise exp
 
     headers = [(name, value) for (name, value) in resp.raw.headers.items()]

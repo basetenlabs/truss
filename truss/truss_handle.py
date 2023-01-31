@@ -12,13 +12,16 @@ from urllib.error import HTTPError
 
 import requests
 import yaml
+from requests import exceptions
 from requests.exceptions import ConnectionError
 from tenacity import (
     RetryError,
     Retrying,
+    retry,
     retry_if_exception_type,
+    retry_if_result,
     stop_after_attempt,
-    wait_exponential,
+    stop_after_delay,
     wait_fixed,
 )
 from truss.constants import (
@@ -58,6 +61,10 @@ from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
+from truss.templates.server.common.serialization import (
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
@@ -85,6 +92,28 @@ class TrussHandle:
     @property
     def spec(self) -> TrussSpec:
         return self._spec
+
+    @staticmethod
+    @retry(
+        stop=stop_after_delay(20),
+        wait=wait_fixed(1),
+        retry=(
+            retry_if_result(lambda response: response.status_code == 503)
+            | retry_if_exception_type(exceptions.ConnectionError)
+        ),
+    )
+    def _wait_for_predict(model_base_url: str, request: dict, binary: bool = False):
+
+        url = f"{model_base_url}/v1/models/model:predict"
+
+        if binary:
+            binary = truss_msgpack_serialize(request)
+
+            return requests.post(
+                url, data=binary, headers={"Content-Type": "application/octet-stream"}
+            )
+
+        return requests.post(url, json=request)
 
     @proxy_to_shadow_if_scattered
     def build_docker_build_context(self, build_dir: Path = None):
@@ -183,7 +212,7 @@ class TrussHandle:
             )
         model_base_url = f"http://localhost:{local_port}/v1/models/model"
         try:
-            _wait_for_truss(model_base_url, container)
+            wait_for_truss(model_base_url, container)
         except ContainerNotFoundError as err:
             raise err
         except (ContainerIsDownError, HTTPError, ConnectionError) as err:
@@ -228,6 +257,7 @@ class TrussHandle:
         local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
         patch_ping_url: str = None,
+        binary: bool = False,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -243,6 +273,7 @@ class TrussHandle:
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
                              by hitting this url.
+            binary: Use msgpack to serialize the response
         """
         containers = self.get_serving_docker_containers_from_labels()
         if containers:
@@ -256,16 +287,16 @@ class TrussHandle:
                 patch_ping_url=patch_ping_url,
             )
         model_base_url = _get_url_from_container(container)
-        for attempt in Retrying(
-            stop=stop_after_attempt(15),
-            wait=wait_exponential(multiplier=2, min=5, max=32),
-            retry=retry_if_exception_type(ConnectionError),
-        ):
-            resp = requests.post(
-                f"{model_base_url}/v1/models/model:predict", json=request
-            )
-            resp.raise_for_status()
-            return resp.json()
+
+        resp = TrussHandle._wait_for_predict(model_base_url, request, binary)
+
+        if resp.status_code == 500:
+            raise requests.exceptions.HTTPError("500 error", response=resp)
+
+        if binary:
+            return truss_msgpack_deserialize(resp.content)
+
+        return resp.json()
 
     @proxy_to_shadow_if_scattered
     def docker_train(
@@ -931,7 +962,7 @@ class TrussHandle:
 
 
 def _prediction_flow(model, request: dict):
-    """This flow attempts to mimic the request life-cycle of a kfserving server"""
+    """This flow attempts to mimic the request life-cycle of a kserve server"""
     _validate_request_input(request)
     _map_instances_inputs(request)
     if hasattr(model, "preprocess"):
@@ -980,14 +1011,19 @@ def _wait_for_docker_build(container):
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
+@retry(
+    stop=stop_after_delay(120),
+    wait=wait_fixed(2),
+    retry=(
+        retry_if_result(lambda response: response.status_code == 503)
+        | retry_if_exception_type(exceptions.ConnectionError)
+    ),
+)
 def _wait_for_model_server(url: str):
-    for attempt in Retrying(stop=stop_after_attempt(10), wait=wait_fixed(2)):
-        with attempt:
-            resp = requests.get(url)
-            resp.raise_for_status()
+    return requests.get(url)
 
 
-def _wait_for_truss(url, container):
+def wait_for_truss(url: str, container):
     from python_on_whales.exceptions import NoSuchContainer
 
     try:
@@ -996,10 +1032,8 @@ def _wait_for_truss(url, container):
         raise ContainerNotFoundError(message=f"Container {container} was not found")
     except RetryError as retry_err:
         retry_err.reraise()
-    try:
-        _wait_for_model_server(url)
-    except RetryError as retry_err:
-        retry_err.reraise()
+
+    _wait_for_model_server(url)
 
 
 def _prepare_secrets_mount_dir() -> Path:
