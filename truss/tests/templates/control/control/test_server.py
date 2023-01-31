@@ -2,7 +2,7 @@ import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import pytest
 
@@ -22,6 +22,7 @@ from truss.templates.control.control.helpers.types import (  # noqa
     ModelCodePatch,
     Patch,
     PatchType,
+    PythonRequirementPatch,
 )
 
 
@@ -79,7 +80,7 @@ class Model:
             content=mock_model_file_content,
         ),
     )
-    _apply_patch(client, patch)
+    _verify_apply_patch_success(client, patch)
     with (
         app.config["inference_server_home"] / "model" / "model.py"
     ).open() as model_file:
@@ -97,7 +98,7 @@ def test_patch_model_code_create_new(app, client):
             content=empty_content,
         ),
     )
-    _apply_patch(client, patch)
+    _verify_apply_patch_success(client, patch)
     assert (app.config["inference_server_home"] / "model" / "touched").exists()
 
 
@@ -111,7 +112,7 @@ def test_patch_model_code_create_in_new_dir(app, client):
             content=empty_content,
         ),
     )
-    _apply_patch(client, patch)
+    _verify_apply_patch_success(client, patch)
     assert (
         app.config["inference_server_home"] / "model" / "new_directory" / "touched"
     ).exists()
@@ -134,25 +135,54 @@ def test_invalid_patch(client):
         client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" in resp.json
-    assert "expected prev hash" in resp.json["error"]
+    assert resp.json["error"]["type"] == "inadmissible_patch"
     assert "msg" not in resp.json
 
 
-def test_patch_model_code_delete(app, client):
-    patch = Patch(
-        type=PatchType.MODEL_CODE,
-        body=ModelCodePatch(
-            action=Action.REMOVE,
-            path="dummy",
-            content=None,
+def test_unsupported_patch(client):
+    unsupported_patch = {
+        "type": "unsupported",
+        "body": {},
+    }
+    resp = _apply_patches(client, [unsupported_patch])
+    assert resp.status_code == 200
+    assert "error" in resp.json
+    assert resp.json["error"]["type"] == "unsupported_patch"
+
+
+def test_patch_failed_recoverable(client):
+    will_fail_patch = Patch(
+        type=PatchType.PYTHON_REQUIREMENT,
+        body=PythonRequirementPatch(
+            action=Action.ADD, requirement="not_a_valid_python_requirement"
         ),
     )
-    assert (app.config["inference_server_home"] / "model" / "dummy").exists()
-    _apply_patch(client, patch)
-    assert not (app.config["inference_server_home"] / "model" / "dummy").exists()
+    resp = _apply_patches(client, [will_fail_patch.to_dict()])
+    assert resp.status_code == 200
+    assert "error" in resp.json
+    assert resp.json["error"]["type"] == "patch_failed_recoverable"
 
 
-def _apply_patch(client, patch: Patch):
+def test_patch_failed_unrecoverable(client):
+    will_pass_patch = Patch(
+        type=PatchType.PYTHON_REQUIREMENT,
+        body=PythonRequirementPatch(action=Action.ADD, requirement="requests"),
+    )
+    will_fail_patch = Patch(
+        type=PatchType.PYTHON_REQUIREMENT,
+        body=PythonRequirementPatch(
+            action=Action.ADD, requirement="not_a_valid_python_requirement"
+        ),
+    )
+    resp = _apply_patches(
+        client, [will_pass_patch.to_dict(), will_fail_patch.to_dict()]
+    )
+    assert resp.status_code == 200
+    assert "error" in resp.json
+    assert resp.json["error"]["type"] == "patch_failed_unrecoverable"
+
+
+def _verify_apply_patch_success(client, patch: Patch):
     try:
         original_hash = client.get("/control/truss_hash").json["result"]
         patch_request = {
@@ -163,9 +193,24 @@ def _apply_patch(client, patch: Patch):
         resp = client.post("/control/patch", json=patch_request)
     finally:
         client.post("/control/stop_inference_server")
+    resp = _apply_patches(client, [patch.to_dict()])
     assert resp.status_code == 200
     assert "error" not in resp.json
     assert "msg" in resp.json
+
+
+def _apply_patches(client, patches: List[dict]):
+    try:
+        original_hash = client.get("/control/truss_hash").json["result"]
+        patch_request = {
+            "hash": "dummy",
+            "prev_hash": original_hash,
+            "patches": patches,
+        }
+        resp = client.post("/control/patch", json=patch_request)
+    finally:
+        client.post("/control/stop_inference_server")
+    return resp
 
 
 @contextmanager

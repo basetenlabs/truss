@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+from helpers.errors import UnsupportedPatch
 from helpers.types import (
     Action,
     ModelCodePatch,
@@ -36,7 +37,7 @@ class PatchApplier:
             sys_pkg_patch: SystemPackagePatch = patch.body
             self._apply_system_package_patch(sys_pkg_patch)
         else:
-            raise ValueError(f"Unknown patch type {patch.type}")
+            raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
     @property
     def _truss_config(self) -> TrussConfig:

@@ -1,8 +1,15 @@
 import logging
+import re
 from pathlib import Path
 
 from endpoints import control_app
 from flask import Flask
+from helpers.errors import (
+    InadmissiblePatch,
+    PatchFailedRecoverable,
+    PatchFailedUnrecoverable,
+    UnsupportedPatch,
+)
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
@@ -36,8 +43,29 @@ def create_app(base_config: dict):
             return exc
 
         app.logger.exception(exc)
+        if isinstance(
+            exc,
+            (
+                UnsupportedPatch,
+                PatchFailedRecoverable,
+                PatchFailedUnrecoverable,
+                InadmissiblePatch,
+            ),
+        ):
+            error_type = _camel_to_snake_case(type(exc).__name__)
+            return {
+                "error": {
+                    "type": error_type,
+                    "msg": str(exc),
+                }
+            }
+
         error_msg = f"{type(exc)}: {exc}"
         return {"error": error_msg}
 
     app.register_error_handler(Exception, handle_error)
     return app
+
+
+def _camel_to_snake_case(camel_cased: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", camel_cased).lower()
