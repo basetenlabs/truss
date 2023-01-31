@@ -4,12 +4,7 @@ from pathlib import Path
 
 from endpoints import control_app
 from flask import Flask
-from helpers.errors import (
-    InadmissiblePatch,
-    PatchFailedRecoverable,
-    PatchFailedUnrecoverable,
-    UnsupportedPatch,
-)
+from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
@@ -43,19 +38,12 @@ def create_app(base_config: dict):
     app.register_blueprint(control_app)
 
     def handle_error(exc):
-        if isinstance(exc, HTTPException):
+        try:
+            raise exc
+        except HTTPException:
             return exc
-
-        app.logger.exception(exc)
-        if isinstance(
-            exc,
-            (
-                UnsupportedPatch,
-                PatchFailedRecoverable,
-                PatchFailedUnrecoverable,
-                InadmissiblePatch,
-            ),
-        ):
+        except PatchApplicatonError:
+            app.logger.exception(exc)
             error_type = _camel_to_snake_case(type(exc).__name__)
             return {
                 "error": {
@@ -63,9 +51,14 @@ def create_app(base_config: dict):
                     "msg": str(exc),
                 }
             }
-
-        error_msg = f"{type(exc)}: {exc}"
-        return {"error": error_msg}
+        except Exception:
+            app.logger.exception(exc)
+            return {
+                "error": {
+                    "type": "unknown",
+                    "msg": f"{type(exc)}: {exc}",
+                }
+            }
 
     app.register_error_handler(Exception, handle_error)
     return app

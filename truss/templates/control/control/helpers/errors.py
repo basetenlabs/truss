@@ -7,26 +7,30 @@ class Error(Exception):
         self.type = type
 
 
-class UnsupportedPatch(Error):
+class PatchApplicatonError(Error):
+    pass
+
+
+class UnsupportedPatch(PatchApplicatonError):
     """Patch unsupported by this truss"""
 
     pass
 
 
-class PatchFailedRecoverable(Error):
+class PatchFailedRecoverable(PatchApplicatonError):
     """Patch admissible but failed to apply. Recoverable via further patching."""
 
     pass
 
 
-class PatchFailedUnrecoverable(Error):
+class PatchFailedUnrecoverable(PatchApplicatonError):
     """Patch admissible but failed to apply, leaving truss in unrecoverable state.
     Full deploy is required."""
 
     pass
 
 
-class InadmissiblePatch(Error):
+class InadmissiblePatch(PatchApplicatonError):
     """Patch does not apply to current state of Truss."""
 
     pass

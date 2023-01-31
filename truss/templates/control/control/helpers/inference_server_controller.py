@@ -71,7 +71,7 @@ class InferenceServerController:
                     Patch.from_dict(patch_dict)
                     for patch_dict in patch_request["patches"]
                 ]
-            except Exception as exc:
+            except KeyError as exc:
                 raise UnsupportedPatch(str(exc)) from exc
 
             self._process_controller.stop()
