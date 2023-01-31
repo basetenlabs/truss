@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import time
@@ -22,11 +23,16 @@ class InferenceServerController:
     delegates to InferenceServerProcessController.
     """
 
+    _process_controller: InferenceServerProcessController
+    _patch_applier: PatchApplier
+    _app_logger: logging.Logger
+    _oversee_inference_server: bool
+
     def __init__(
         self,
         process_controller: InferenceServerProcessController,
         patch_applier: PatchApplier,
-        app_logger,
+        app_logger: logging.Logger,
         oversee_inference_server: bool = True,
     ):
         self._lock = threading.Lock()

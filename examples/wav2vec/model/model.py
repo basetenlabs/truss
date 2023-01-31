@@ -13,7 +13,6 @@ class Wav2VecTransformerModel(object):
         )
         self._tokenizer = tokenizer
         self._model = model
-        self.ready = True
 
     def predict(self, input_audio: Dict) -> List:
         with torch.no_grad():

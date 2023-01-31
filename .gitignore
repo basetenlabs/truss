@@ -71,3 +71,4 @@ k8s/on-prem/deps/*
 yarn.lock
 
 .eslintcache
+/.pytest_cache/

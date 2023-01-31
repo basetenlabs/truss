@@ -1,16 +1,18 @@
 import logging
-from threading import Thread
-from time import sleep
+import tempfile
+from pathlib import Path
 
+import numpy as np
 import pytest
-import requests
-from tornado.ioloop import IOLoop
 from truss.constants import PYTORCH
+from truss.model_frameworks import SKLearn
 from truss.model_inference import (
     infer_model_information,
     map_to_supported_python_version,
     validate_provided_parameters_with_model,
 )
+from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.truss_handle import TrussHandle
 
 logger = logging.getLogger(__name__)
 
@@ -41,50 +43,6 @@ def test_pytorch_init_arg_validation(
         validate_provided_parameters_with_model(pytorch_model_with_init_args, {})
 
 
-@pytest.mark.skip(
-    reason="package resolution works inconsistently between unit and integration tests"
-)
-def test_slow_load_model():
-    # todo fix module resolution to be consistent in all environments
-    # config_path = f"{pathlib.Path(__file__).parent.resolve()}/../test_data/models/slow_load/{CONFIG_FILE}"
-    port = 8998
-    # server = ConfiguredTrussServer(config_path, port)
-    url = f"http://localhost:{port}"
-    loop = IOLoop()
-
-    def start():
-        loop.make_current()
-        # server.start()
-
-    server_thread = Thread(target=start)
-    server_thread.start()
-
-    #  wait for startup
-    sleep(1)
-
-    try:
-        #  liveness should be good right away
-        resp = requests.get(url)
-        assert resp.status_code == 200
-
-        #  readiness should not be ready due to a long load
-        resp = requests.get(f"{url}/v1/models/model")
-        assert resp.status_code == 503
-
-        #  wait for our long load to complete
-        sleep(3)
-
-        #  now we should be ready to serve traffic, post load
-        resp = requests.get(f"{url}/v1/models/model")
-        assert resp.status_code == 200
-    finally:
-        # stop the asyncio loop to kill truss server
-        loop.stop()
-
-        # wait for server to fully exit
-        server_thread.join(10)
-
-
 def test_infer_model_information(pytorch_model_with_init_args):
     model_info = infer_model_information(pytorch_model_with_init_args[0])
     assert model_info.model_framework == PYTORCH
@@ -105,3 +63,17 @@ def test_infer_model_information(pytorch_model_with_init_args):
 def test_map_to_supported_python_version(python_version, expected_python_version):
     out_python_version = map_to_supported_python_version(python_version)
     assert out_python_version == expected_python_version
+
+
+@pytest.mark.integration
+def test_binary_request(sklearn_rfc_model):
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+        sklearn_framework = SKLearn()
+        sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)
+        tr = TrussHandle(truss_dir)
+        predictions = tr.docker_predict(
+            {"inputs": [[0, 0, 0, 0]]}, local_port=8090, binary=True
+        )
+        assert len(predictions["probabilities"]) == 1
+        assert np.shape(predictions["probabilities"]) == (1, 3)

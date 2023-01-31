@@ -95,6 +95,7 @@ class DockerStates(enum.Enum):
     RESTARTING = "restarting"
     OOMKILLED = "oomkilled"
     DEAD = "dead"
+    EXITED = "exited"
 
 
 def inspect_container(container) -> Dict:

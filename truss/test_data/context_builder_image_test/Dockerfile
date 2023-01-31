@@ -1,4 +1,4 @@
-from baseten/truss-context-builder:test
+FROM baseten/truss-context-builder:test
 
 COPY test.py test.py
 

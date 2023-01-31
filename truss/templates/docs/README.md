@@ -22,7 +22,7 @@ The following model frameworks are supported as 'base' scaffolds that work with 
 A scaffold will provide the following in the `src` directory of the build context
 
 * `common` -  A package of `baseten` specific tooling which provide our opinions over
-`kfserving` model servers, as well as various utilities and exceptions,
+`kserve` model servers, as well as various utilities and exceptions,
 * `server` - A python package that contains `model_framework` specific code for loading model binaries
  and serving model predictions.
 * `model` - A python package designed to be a destination for any code required for model operation and model binaries.

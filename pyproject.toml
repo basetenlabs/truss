@@ -16,8 +16,8 @@ keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learnin
 "Baseten" = "https://baseten.co"
 
 [tool.poetry.dependencies]
-python = ">=3.7,<3.11"
-numpy = ">=1.18"
+python = ">=3.8,<3.11"
+numpy = "1.23.5"
 msgpack = ">=1.0.2"
 msgpack-numpy = ">=0.4.7.1"
 packaging = "^20.9"
@@ -30,7 +30,7 @@ single-source = "^0.3.0"
 cloudpickle = "^2.2.0"
 
 [tool.poetry.group.builder.dependencies]
-python = ">=3.7,<3.11"
+python = ">=3.8,<3.11"
 packaging = "^20.9"
 python-json-logger = ">=2.0.2"
 PyYAML = "^6.0"
@@ -38,19 +38,23 @@ Jinja2 = "^3.1.2"
 tenacity = "^8.0.1"
 cloudpickle = "^2.2.0"
 single-source = "^0.3.0"
-click = "^8.1.3"
+click = "^8.0.3"
 requests = "^2.28.1"
+msgpack = ">=1.0.2"
+msgpack-numpy = ">=0.4.7.1"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"
 ipython = "^7.16"
-pytest = "6.2.4"
-tensorflow = "^2.4.0"
+pytest = "7.2.0"
+tensorflow = { version = "^2.4.4", markers = "sys_platform == 'linux'" }
+tensorflow-macos = { version = "^2.4.4", markers = "sys_platform == 'darwin'" }
 pre-commit = "^2.18.1"
 scikit-learn = "1.0.2"
-pandas = "1.1.5"
+pandas = "1.5.2"
 tensorflow-hub = "^0.12.0"
-kfserving = "^0.5"
+# generally discouraged to use an RC version. Will fast follow with 0.10.0 version.
+kserve = "0.10.0rc1"
 isort = "^5.10.1"
 flake8 = "^4.0.1"
 ipdb = "^0.13.9"
@@ -72,7 +76,7 @@ truss = 'truss.cli:cli_group'
 mlflow = "^1.29.0"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=1.2.1"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.isort]
