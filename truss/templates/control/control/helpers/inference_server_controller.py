@@ -3,6 +3,12 @@ import os
 import threading
 import time
 
+from helpers.errors import (
+    InadmissiblePatch,
+    PatchFailedRecoverable,
+    PatchFailedUnrecoverable,
+    UnsupportedPatch,
+)
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
 from helpers.types import Patch, PatchType
@@ -61,14 +67,19 @@ class InferenceServerController:
                 return
 
             if req_prev_hash != self._current_running_hash:
-                raise ValueError(
+                raise InadmissiblePatch(
                     f"Unable to apply patch: expected prev hash \
                     to be {self._current_running_hash} but found {req_prev_hash}"
                 )
 
-            patches = [
-                Patch.from_dict(patch_dict) for patch_dict in patch_request["patches"]
-            ]
+            try:
+                patches = [
+                    Patch.from_dict(patch_dict)
+                    for patch_dict in patch_request["patches"]
+                ]
+            except (KeyError, ValueError) as exc:
+                raise UnsupportedPatch(str(exc)) from exc
+
             self._process_controller.stop()
             patches.sort(key=_patch_sort_key_fn)
             try:
@@ -82,14 +93,15 @@ class InferenceServerController:
                     # the bad state; with partially applied patch all bets are off.
                     # Correct handling of this scenario is to fallback to full deploy.
                     self._has_partially_applied_patch = True
-                else:
-                    # No patches executed, the very first patch failed. We
-                    # consider this safe to start inference server back up.
-                    # Theoretically, a single patch application may leave
-                    # side-effects, but that's not the case with currently
-                    # supported patches.
-                    self._process_controller.start()
-                raise exc
+                    raise PatchFailedUnrecoverable(str(exc)) from exc
+                # No patches executed, the very first patch failed. We
+                # consider this safe to start inference server back up.
+                # Theoretically, a single patch application may leave
+                # side-effects, but that's not the case with currently
+                # supported patches.
+                self._process_controller.start()
+                raise PatchFailedRecoverable(str(exc)) from exc
+
             self._process_controller.start()
             self._current_running_hash = req_hash
 
