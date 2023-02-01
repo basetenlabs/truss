@@ -22,14 +22,14 @@ If you want to follow this tutorial for a particular framework and don't have a 
 
 ## Step 1: Create a Truss
 
-Truss works across model frameworks, and the most common model frameworks are supported with the one-line `mk_truss` command. Click the framework you built your model in to see specific packaging instructions for that format.
+Truss works across model frameworks, and the most common model frameworks are supported with the one-line `create` command. Click the framework you built your model in to see specific packaging instructions for that format.
 
 For the following formats, if you have an in-memory trained model object `model`, just call the following:
 
 ```python
-from truss import mk_truss
+from truss import create
 
-mk_truss(model, target_directory="my_truss")
+create(model, target_directory="my_truss")
 ```
 
 Supported frameworks:

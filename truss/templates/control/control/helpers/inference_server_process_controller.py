@@ -1,22 +1,31 @@
+import logging
 import os
+import signal
 import subprocess
 
 from helpers.context_managers import current_directory
 
 
 class InferenceServerProcessController:
+
+    _inference_server_process: subprocess.Popen = None
+    _inference_server_port: int
+    _inference_server_home: str
+    _app_logger: logging.Logger
+    _inference_server_process_args: list[str]
+
     def __init__(
         self,
-        inference_server_home,
-        inference_server_process_args,
-        inference_server_port,
-        app_logger,
+        inference_server_home: str,
+        inference_server_process_args: list[str],
+        inference_server_port: int,
+        app_logger: logging.Logger,
     ) -> None:
-        self._inference_server_process = None
         self._inference_server_home = inference_server_home
         self._inference_server_process_args = inference_server_process_args
         self._inference_server_port = inference_server_port
         self._inference_server_started = False
+        self._inference_server_ever_started = False
         self._app_logger = app_logger
 
     def start(self):
@@ -27,18 +36,25 @@ class InferenceServerProcessController:
                 self._inference_server_process_args,
                 env=inf_env,
             )
+
             self._inference_server_started = True
+            self._inference_server_ever_started = True
 
     def stop(self):
         if self._inference_server_process is not None:
-            # TODO(pankaj) send sigint wait and then kill
-            poll = self._inference_server_process.poll()
-            if poll is None:
-                self._inference_server_process.kill()
-                self._inference_server_started = False
+            name = " ".join(self._inference_server_process_args)
+
+            for line in os.popen("ps ax | grep '" + name + "' | grep -v grep"):
+                pid = line.split()[0]
+                os.kill(int(pid), signal.SIGKILL)
+
+        self._inference_server_started = False
 
     def inference_server_started(self) -> bool:
         return self._inference_server_started
+
+    def inference_server_ever_started(self) -> bool:
+        return self._inference_server_ever_started
 
     def is_inference_server_running(self) -> bool:
         # Explicitly check if inference server process is up, this is a bit expensive.

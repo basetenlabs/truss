@@ -4,8 +4,7 @@ from pathlib import Path
 import pytest
 import requests
 from python_on_whales import docker
-from tenacity import Retrying, stop_after_attempt, wait_fixed
-from truss.constants import CONFIG_FILE
+from truss.constants import CONFIG_FILE, TRUSS
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
@@ -13,6 +12,7 @@ from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.model_frameworks.huggingface_transformer import HuggingfaceTransformer
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import TrussConfig
+from truss.truss_handle import wait_for_truss
 
 
 def test_to_truss(huggingface_transformer_t5_small_pipeline):
@@ -61,20 +61,21 @@ def test_run_image(huggingface_transformer_t5_small_pipeline):
         framework = HuggingfaceTransformer()
         framework.to_truss(model, truss_dir)
         tag = f"test-{framework.typ().value}-model:latest"
-        image = ServingImageBuilderContext.run(truss_dir).build_image(tag=tag)
+        image = ServingImageBuilderContext.run(truss_dir).build_image(
+            tag=tag, labels={TRUSS: True}
+        )
         assert image.repo_tags == [tag]
         container = docker.run(tag, publish=[[8080, 8080]], detach=True)
-        try:
-            for attempt in Retrying(stop=stop_after_attempt(50), wait=wait_fixed(2)):
-                with attempt:
-                    resp = requests.post(
-                        "http://localhost:8080/v1/models/model:predict",
-                        json={
-                            "inputs": ["My name is Sarah and I live in London"],
-                        },
-                    )
-        finally:
-            docker.kill(container)
+
+        wait_for_truss("http://localhost:8080/v1/models/model", container)
+
+        resp = requests.post(
+            "http://localhost:8080/v1/models/model:predict",
+            json={
+                "inputs": ["My name is Sarah and I live in London"],
+            },
+        )
+
         predictions = resp.json()["predictions"]
         assert len(predictions) == 1
         prediction = predictions[0]

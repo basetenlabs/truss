@@ -41,11 +41,12 @@ def proxy(path):
                 # process is running then we continue waiting for it to start (by retrying),
                 # otherwise we bail.
                 if (
-                    not inference_server_process_controller.is_inference_server_running()
+                    inference_server_process_controller.inference_server_ever_started()
+                    and not inference_server_process_controller.is_inference_server_running()
                 ):
                     error_msg = "It appears your model has stopped running. This often means' \
                         ' it crashed and may need a fix to get it running again."
-                    return Response(error_msg, 500)
+                    return Response(error_msg, 503)
                 raise exp
 
     headers = [(name, value) for (name, value) in resp.raw.headers.items()]
@@ -73,6 +74,14 @@ def restart_inference_server():
     current_app.config["inference_server_controller"].restart()
 
     return {"msg": "Inference server started successfully"}
+
+
+@control_app.route("/control/has_partially_applied_patch", methods=["GET"])
+def has_partially_applied_patch():
+    app_has_partially_applied_patch = current_app.config[
+        "inference_server_controller"
+    ].has_partially_applied_patch()
+    return {"result": app_has_partially_applied_patch}
 
 
 @control_app.route("/control/stop_inference_server", methods=["POST"])

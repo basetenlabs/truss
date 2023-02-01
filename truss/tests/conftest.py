@@ -18,7 +18,7 @@ from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
-from truss.build import init, mk_truss
+from truss.build import create, init
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.types import Example
 from xgboost import XGBClassifier
@@ -85,6 +85,15 @@ class Model:
     def load(self):
         pass
 
+    def predict(self, request):
+        return [1 for i in request['inputs']]
+"""
+
+CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE = """
+import top_module
+import subdir.sub_module
+import top_module2
+class Model:
     def predict(self, request):
         return [1 for i in request['inputs']]
 """
@@ -177,6 +186,19 @@ NO_PREDICT_CUSTOM_MODEL_CODE = """
 class MyModel:
     def load(self):
         pass
+"""
+
+LONG_LOAD_MODEL_CODE = """
+import time
+class Model:
+     def load(*args, **kwargs):
+        time.sleep(10)
+        pass
+
+     def predict(self, request):
+        return {
+            'predictions': request['inputs'],
+        }
 """
 
 # Doesn't implement preprocess
@@ -311,12 +333,46 @@ def no_preprocess_custom_model(tmp_path):
 
 
 @pytest.fixture
+def long_load_model(tmp_path):
+    yield _custom_model_from_code(
+        tmp_path,
+        "long_load_model",
+        LONG_LOAD_MODEL_CODE,
+    )
+
+
+@pytest.fixture
 def custom_model_control(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "control_truss",
         CUSTOM_MODEL_CODE,
         handle_ops=lambda handle: handle.live_reload(),
+    )
+
+
+@pytest.fixture
+def custom_model_with_external_package(tmp_path: Path):
+    ext_pkg_path = tmp_path / "ext_pkg"
+    ext_pkg_path.mkdir()
+    (ext_pkg_path / "subdir").mkdir()
+    (ext_pkg_path / "subdir" / "sub_module.py").touch()
+    (ext_pkg_path / "top_module.py").touch()
+    ext_pkg_path2 = tmp_path / "ext_pkg2"
+    ext_pkg_path2.mkdir()
+    (ext_pkg_path2 / "top_module2.py").touch()
+
+    def add_packages(handle):
+        # Use absolute path for this
+        handle.add_external_package(str(ext_pkg_path.resolve()))
+        # Use relative path for this
+        handle.add_external_package("../ext_pkg2")
+
+    yield _custom_model_from_code(
+        tmp_path,
+        "control_truss",
+        CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE,
+        handle_ops=add_packages,
     )
 
 
@@ -517,7 +573,7 @@ def huggingface_truss_handle_small_model(
 ):
     dir_path = tmp_path / "huggingface_truss_small_model"
     dir_path.mkdir()
-    mk_truss(huggingface_transformer_t5_small_pipeline, target_directory=str(dir_path))
+    create(huggingface_transformer_t5_small_pipeline, target_directory=str(dir_path))
     return dir_path
 
 

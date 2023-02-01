@@ -22,7 +22,7 @@ DEFAULT_PYTHON_VERSION = "py39"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
-DEFAULT_SPEC_VERSION_FROM_DIRECTORY = "1.0"
+DEFAULT_SPEC_VERSION_ON_LOAD = "1.0"
 
 DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
@@ -129,18 +129,27 @@ class TrussConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
     description: str = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
+    external_package_dirs: List[str] = field(default_factory=list)
     live_reload: bool = False
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
 
+    @property
+    def canonical_python_version(self) -> str:
+        return {
+            "py39": "3.9",
+            "py38": "3.8",
+            "py37": "3.7",
+        }[self.python_version]
+
     @staticmethod
     def from_dict(d):
         config = TrussConfig(
-            # Users that are calling `from_directory` on an existing Truss
+            # Users that are calling `load` on an existing Truss
             # should default to 1.0 whereas users creating a new Truss
             # should default to 2.0.
-            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION_FROM_DIRECTORY),
+            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION_ON_LOAD),
             model_type=d.get("model_type", DEFAULT_MODEL_TYPE),
             model_framework=ModelFrameworkType(
                 d.get("model_framework", DEFAULT_MODEL_FRAMEWORK_TYPE.value)
@@ -165,6 +174,7 @@ class TrussConfig:
             bundled_packages_dir=d.get(
                 "bundled_packages_dir", DEFAULT_BUNDLED_PACKAGES_DIR
             ),
+            external_package_dirs=d.get("external_package_dirs", []),
             live_reload=d.get("live_reload", False),
             train=Train.from_dict(d.get("train", {})),
         )
@@ -200,6 +210,7 @@ class TrussConfig:
             "secrets": self.secrets,
             "description": self.description,
             "bundled_packages_dir": self.bundled_packages_dir,
+            "external_package_dirs": self.external_package_dirs,
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),

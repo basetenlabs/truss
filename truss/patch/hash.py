@@ -67,6 +67,12 @@ def str_hash(content: str):
     return hasher.digest()
 
 
+def str_hash_str(content: str):
+    hasher = hashlib.sha256()
+    hasher.update(content.encode("utf-8"))
+    return hasher.hexdigest()
+
+
 def _path_matches_any_pattern(path: Path, patterns: Optional[List[str]]) -> bool:
     if patterns is None:
         return False

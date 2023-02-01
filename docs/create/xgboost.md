@@ -46,12 +46,12 @@ model = xgb.train(params,
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss.
+Use the `create` command to package your model into a Truss.
 
 ```python
-from truss import mk_truss
+from truss import create
 
-tr = mk_truss(model, target_directory="xgboost_truss")
+tr = create(model, target_directory="xgboost_truss")
 ```
 
 Check the target directory to see your new Truss!
@@ -61,7 +61,7 @@ Check the target directory to see your new Truss!
 To get a prediction from the Truss, try running:
 
 ```python
-tr.docker_predict({"inputs": [[0, 0, 0, 0, 0, 0]]})
+tr.predict({"inputs": [[0, 0, 0, 0, 0, 0]]})
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).

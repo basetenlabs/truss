@@ -25,6 +25,7 @@ class LoadModelLocal(TrussContext):
             str(truss_dir),
             spec.model_module_fullname,
             spec.bundled_packages_dir.name,
+            [str(path.resolve()) for path in spec.external_package_dirs_paths],
         ) as module:
             model_class = getattr(module, spec.model_class_name)
             model_class_signature = inspect.signature(model_class)

@@ -29,12 +29,12 @@ model = pipeline('fill-mask', model='bert-base-uncased')
 
 ### Create a Truss
 
-Use the `mk_truss` command to package your model into a Truss.
+Use the `create` command to package your model into a Truss.
 
 ```python
-from truss import mk_truss
+from truss import create
 
-tr = mk_truss(model, target_directory="huggingface_truss")
+tr = create(model, target_directory="huggingface_truss")
 ```
 
 Check the target directory to see your new Truss!
@@ -44,7 +44,7 @@ Check the target directory to see your new Truss!
 To get a prediction from the Truss, try running:
 
 ```python
-tr.docker_predict({"inputs": ["Donatello is a teenage mutant [MASK] turtle"]})
+tr.predict({"inputs": ["Donatello is a teenage mutant [MASK] turtle"]})
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).

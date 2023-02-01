@@ -15,7 +15,7 @@ pip install --upgrade baseten
 
 {% hint style="info" %}
 
-If your model is already in memory (you created it with `mk_truss`), you can skip loading it into memory from the directory.
+If your model is already in memory (you created it with `create`), you can skip loading it into memory from the directory.
 
 {% endhint %}
 
@@ -24,7 +24,7 @@ Before deploying your Truss, you may need to load it into memory in a Jupyter no
 ```python
 import truss
 
-my_truss = truss.from_directory("my_truss_lives_here")
+my_truss = truss.load("my_truss_lives_here")
 ```
 
 Once your Truss is in memory, simply run the following:
@@ -33,18 +33,18 @@ Once your Truss is in memory, simply run the following:
 import baseten
 
 baseten.login("PASTE_API_KEY_HERE")
-baseten.deploy_truss(my_truss)
+baseten.deploy(my_truss)
 ```
 
 Head over to [your Baseten account](https://app.baseten.co) to see the model deployment logs and interface with your newly deployed model!
 
 ### Deploying with secrets
 
-If your model uses [secrets](../develop/secrets.md), set `is_trusted=True` in the `deploy_truss` command to enable your model to access secrets:
+If your model uses [secrets](../develop/secrets.md), set `is_trusted=True` in the `deploy()` command to enable your model to access secrets:
 
 ```python
 import baseten
-baseten.deploy_truss(
+baseten.deploy(
     my_truss,
     model_name="My Model",
     is_trusted=True

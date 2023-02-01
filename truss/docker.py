@@ -66,13 +66,22 @@ def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]
 
 
 def kill_containers(labels: Dict[str, str]):
+    from python_on_whales.exceptions import DockerException
+
     containers = get_containers(labels)
     for container in containers:
         container_labels = container.config.labels
         if TRUSS_DIR in container_labels:
             truss_dir = container_labels[TRUSS_DIR]
             logging.info(f"Killing Container: {container.id} for {truss_dir}")
-    Docker.client().container.kill(containers)
+    try:
+        Docker.client().container.kill(containers)
+    except DockerException:
+        # The container may have stopped running by this point, this path
+        # is for catching that. Unfortunately, there's no separate exception
+        # for this scenario, so we catch the general one. Specific exceptions
+        # such as NoSuchContainer are still allowed to error out.
+        pass
 
 
 def get_container_logs(container, follow, stream):
@@ -86,6 +95,7 @@ class DockerStates(enum.Enum):
     RESTARTING = "restarting"
     OOMKILLED = "oomkilled"
     DEAD = "dead"
+    EXITED = "exited"
 
 
 def inspect_container(container) -> Dict:

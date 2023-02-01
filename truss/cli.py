@@ -97,7 +97,7 @@ def build_context(build_dir, target_directory) -> None:
 
     BUILD_DIR: Folder where image context is built for Truss
 
-    TARGET DIRECTORY: A Truss directory. If none, use current directory.
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
     tr.docker_build_setup(build_dir=Path(build_dir))
@@ -112,7 +112,7 @@ def build_image(target_directory, build_dir, tag):
     """
     Builds the docker image for a Truss.
 
-    TARGET DIRECTORY: A Truss directory. If none, use current directory.
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     BUILD_DIR: Image context. If none, a temp directory is created.
     """
@@ -135,7 +135,7 @@ def run_image(target_directory, build_dir, tag, port, attach):
     """
     Runs the docker image for a Truss.
 
-    TARGET DIRECTORY: A Truss directory. If none, use current directory.
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     BUILD_DIR: Image context. If none, a temp directory is created.
     """
@@ -167,7 +167,10 @@ def run_image(target_directory, build_dir, tag, port, attach):
 @click.option("--tag", help="Docker build image tag")
 @click.option("--port", type=int, default=8080, help="Local port used to run image")
 @click.option(
-    "--run-local", is_flag=True, default=False, help="Flag to run prediction locally"
+    "--use-docker",
+    is_flag=True,
+    default=True,
+    help="Flag to run prediction with a docker container",
 )
 @click.option(
     "--request-file",
@@ -176,8 +179,24 @@ def run_image(target_directory, build_dir, tag, port, attach):
 )
 @error_handling
 @echo_output
-def predict(target_directory, request, build_dir, tag, port, run_local, request_file):
-    """Runs prediction for a Truss in a docker image or locally"""
+def predict(target_directory, request, build_dir, tag, port, use_docker, request_file):
+    """
+    Invokes the packaged model, either locally or in a Docker container.
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+
+    REQUEST: String formatted as json that represents request
+
+    BUILD_DIR: Directory where context is built. If none, a temp directory is created.
+
+    TAG: Docker build image tag
+
+    PORT: Local port used to run image
+
+    USE_DOCKER: Flag to run prediction with a docker container
+
+    REQUEST_FILE: Path to json file containing the request
+    """
     if request is not None:
         request_data = json.loads(request)
     elif request_file is not None:
@@ -187,12 +206,12 @@ def predict(target_directory, request, build_dir, tag, port, run_local, request_
         raise ValueError("At least one of request or request-file must be supplied.")
 
     tr = _get_truss_from_directory(target_directory=target_directory)
-    if run_local:
-        return tr.server_predict(request_data)
-    else:
+    if use_docker:
         return tr.docker_predict(
             request_data, build_dir=build_dir, tag=tag, local_port=port, detach=True
         )
+    else:
+        return tr.server_predict(request_data)
 
 
 @cli_group.command()
@@ -249,7 +268,7 @@ def run_example(target_directory, name, local):
     """
     Runs examples specified in the Truss, over docker.
 
-    TARGET DIRECTORY: A Truss directory. If none, use current directory.
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
     predict_fn = tr.docker_predict
@@ -275,7 +294,7 @@ def get_container_logs(target_directory):
     """
     Get logs in a container is running for a truss
 
-    TARGET DIRECTORY: A Truss directory. If none, use current directory.
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
     for log in _get_truss_from_directory(
         target_directory=target_directory
@@ -289,7 +308,7 @@ def kill(target_directory):
     """
     Kills containers related to truss.
 
-    TARGET DIRECTORY: A Truss directory. If none, use current directory.
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
     tr.kill_container()
@@ -318,7 +337,7 @@ def _get_truss_from_directory(target_directory: str = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return truss.from_directory(target_directory)
+    return truss.load(target_directory)
 
 
 def _variables_dict_from_option(variables_list: List[str]) -> dict:
