@@ -34,6 +34,7 @@ def proxy(path):
                     url=f"http://localhost:{inference_server_port}/v1/{path}",
                     data=request.get_data(),
                     cookies=request.cookies,
+                    headers=request.headers,
                 )
             except ConnectionError as exp:
                 # This check is a bit expensive so we don't do it before every request, we
