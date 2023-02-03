@@ -688,6 +688,20 @@ class TrussHandle:
             return None
         return respj["result"]
 
+    def update_python_version(self, python_version: str):
+        inferred_python_version = python_version
+        if not python_version.startswith("py"):
+            # support 3.9 style versions
+            version_parts = python_version.split(".")
+            inferred_python_version = f"py{version_parts[0]}{version_parts[1]}"
+
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                python_version=inferred_python_version,
+            )
+        )
+
     def _control_serving_container_has_partially_applied_patch(self) -> Optional[bool]:
         """Check if there is a partially applied patch on the running live_reload capable container."""
         if not self.spec.live_reload:
