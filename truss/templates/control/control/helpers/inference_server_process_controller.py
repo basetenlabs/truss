@@ -4,6 +4,7 @@ import signal
 import subprocess
 
 from helpers.context_managers import current_directory
+from typing import List
 
 
 class InferenceServerProcessController:
@@ -12,12 +13,12 @@ class InferenceServerProcessController:
     _inference_server_port: int
     _inference_server_home: str
     _app_logger: logging.Logger
-    _inference_server_process_args: list[str]
+    _inference_server_process_args: List[str]
 
     def __init__(
         self,
         inference_server_home: str,
-        inference_server_process_args: list[str],
+        inference_server_process_args: List[str],
         inference_server_port: int,
         app_logger: logging.Logger,
     ) -> None:
