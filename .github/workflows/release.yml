@@ -34,7 +34,7 @@ jobs:
         context: ./
         file: ./context_builder.Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        tags: dummy
+        tags: baseten/truss-context-builder:dummy
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: |
           type=gha, scope=${{ github.workflow }}-${{ github.ref_name }}
