@@ -44,9 +44,6 @@ jobs:
         push: ${{ github.event_name != 'pull_request' }}
         tags: baseten/truss-context-builder:v${{steps.prep_version.outputs.version}}-test
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: |
-          type=gha, scope=${{ github.workflow }}-${{ github.ref_name }}
-        cache-to: type=gha, mode=max, scope=${{ github.workflow }}-${{ github.ref_name }}
 
   # publish-to-pypi:
   #   runs-on: ubuntu-20.04
