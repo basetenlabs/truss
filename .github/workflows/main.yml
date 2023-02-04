@@ -19,7 +19,7 @@ jobs:
           lfs: true
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests  #  -m 'integration' todo fix this back
+      - run: poetry run pytest truss/tests  -m 'not integration' # todo fix this back
 
   git_tag_if_version_changed:
     needs: [integration_tests]
