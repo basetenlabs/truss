@@ -59,8 +59,8 @@ jobs:
       - if: steps.versions.outputs.version_changed == 'true'
         run: |
           NEW_VERSION=v${{ steps.versions.outputs.new_version }}
-          git config --global user.name "Pankaj Gupta"
-          git config --global user.email "pankaj.roark@gmail.com"
+          git config --global user.name "Github Action"
+          git config --global user.email "github.action@baseten.co"
 
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
           git push origin $NEW_VERSION
