@@ -57,6 +57,8 @@ jobs:
           fi
 
       - if: steps.versions.outputs.version_changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
         run: |
           NEW_VERSION=v${{ steps.versions.outputs.new_version }}
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
