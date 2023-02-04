@@ -38,12 +38,12 @@ jobs:
       # - uses: ./.github/actions/setup-python/
       - id: versions
         run: |
-          NEW_VERSION=$(poetry version | awk '{print $2})
+          NEW_VERSION=$(poetry version | awk '{print $2}')
           echo "::set-output name=new-version::$NEW_VERSION\n"
           echo $NEW_VERSION
 
           git checkout HEAD^1 -- pyproject.toml
-          OLD_VERSION=$(poetry version | awk '{print $2})
+          OLD_VERSION=$(poetry version | awk '{print $2}')
           echo "::set-output name=old-version::$OLD_VERSION\n"
           echo $OLD_VERSION
 
