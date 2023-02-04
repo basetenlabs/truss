@@ -27,6 +27,12 @@ jobs:
       with:
         images: baseten/truss-context-builder
 
+    - name: Prep version
+      id: prep_version
+      run: |
+        version=$(poetry version| awk '{print $2}')
+        echo ::set-output name=version::$version
+
     - name: Docker Build
       id: docker_build
       uses: docker/build-push-action@v2
@@ -34,7 +40,7 @@ jobs:
         context: ./
         file: ./context_builder.Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        tags: baseten/truss-context-builder:dummy
+        tags: baseten/truss-context-builder:v{{steps.prep_version.outputs.version}}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: |
           type=gha, scope=${{ github.workflow }}-${{ github.ref_name }}
