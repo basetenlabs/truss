@@ -1,10 +1,10 @@
+# [Deprecated] This happens automatically on merge to main. This workflow will
+# be deleted soon.
 name: Release CI
 
 on:
   push:
     tags: [ "v*" ]
-    branches:
-      - pg/ctx-builder-improv
 
 jobs:
   build-n-push-image:
@@ -56,15 +56,6 @@ jobs:
 
     - name: Install poetry packages
       run: poetry install --no-dev
-
-    - name: Prep version
-      id: prep_version
-      run: |
-        version=$(poetry version | awk '{print $2}')
-        echo ::set-output name=version::$version
-
-    - name: Set version
-      run: poetry version ${{ steps.prep_version.outputs.version }}dev11
 
     - name: Build
       run: poetry build
