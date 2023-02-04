@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.3.2dev18"
+version = "0.3.2dev19"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
