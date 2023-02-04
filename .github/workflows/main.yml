@@ -38,10 +38,12 @@ jobs:
         run: |
           NEW_VERSION=$(poetry version)
           echo "::set-output name=new-version::$NEW_VERSION\n"
+          echo $NEW_VERSION
 
           git checkout HEAD^1 -- pyproject.toml
           OLD_VERSION=$(poetry version)
           echo "::set-output name=old-version::$OLD_VERSION\n"
+          echo $OLD_VERSION
 
           # Put back things into place
           git checkout HEAD -- pyproject.toml
