@@ -11,18 +11,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # integration_tests:
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #       with:
-  #         lfs: true
-  #     - uses: ./.github/actions/setup-python/
-  #     - run: poetry install
-  #     - run: poetry run pytest truss/tests  -m 'not integration' # todo fix this back
+  integration_tests:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss/tests  -m 'integration'
 
   git_tag_if_version_changed:
-    # needs: [integration_tests]
+    needs: [integration_tests]
     runs-on: ubuntu-20.04
     outputs:
       version_changed: ${{ steps.versions.outputs.version_changed }}
@@ -35,7 +35,6 @@ jobs:
           fetch-depth: 2
       - run: curl -sSL https://install.python-poetry.org | python3 -
         shell: bash
-      # - uses: ./.github/actions/setup-python/
       - id: versions
         run: |
           NEW_VERSION=$(poetry version | awk '{print $2}')
@@ -62,7 +61,6 @@ jobs:
 
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
           git push origin $NEW_VERSION
-
 
   build-n-push-image:
     needs: [git_tag_if_version_changed]
