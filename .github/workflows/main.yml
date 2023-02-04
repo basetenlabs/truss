@@ -25,7 +25,7 @@ jobs:
     # needs: [integration_tests]
     runs-on: ubuntu-20.04
     outputs:
-      version-changed: ${{steps.versions.old-version != steps.versions.new-version}}
+      version-changed: ${{steps.versions.version_changed}}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -39,17 +39,25 @@ jobs:
       - id: versions
         run: |
           NEW_VERSION=$(poetry version | awk '{print $2}')
-          echo "::set-output name=new-version::$NEW_VERSION\n"
           echo $NEW_VERSION
 
           git checkout HEAD^1 -- pyproject.toml
           OLD_VERSION=$(poetry version | awk '{print $2}')
-          echo "::set-output name=old-version::$OLD_VERSION\n"
           echo $OLD_VERSION
 
           # Put back things into place
           git checkout HEAD -- pyproject.toml
-      - if: steps.versions.old-version != steps.versions.new-version
+
+          echo "old_version=$OLD_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$NEW_VERSION" != "$OLD_VERSION" ]]; then
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - if: steps.versions.version_changed == 'true'
         run: |
           git tag -a v${{ steps.versions.new-version }} -m "Release v${{ steps.versions.new-version }}"
           git push origin v${{ steps.versions.new-version }}
@@ -57,7 +65,7 @@ jobs:
 
   build-n-push-image:
     needs: [git_tag_if_version_changed]
-    if: needs.git_tag_if_version_changed.outputs.version-changed == 'true'
+    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
@@ -99,7 +107,7 @@ jobs:
 
   publish-to-pypi:
     needs: [git_tag_if_version_changed]
-    if: needs.git_tag_if_version_changed.outputs.version-changed == 'true'
+    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
