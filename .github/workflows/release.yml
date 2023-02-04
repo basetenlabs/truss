@@ -44,35 +44,31 @@ jobs:
         context: ./
         file: ./context_builder.Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        tags: baseten/truss-context-builder:v${{steps.prep_version.outputs.version}}-test
+        tags: baseten/truss-context-builder:v${{steps.prep_version.outputs.version}}dev11
         labels: ${{ steps.meta.outputs.labels }}
 
-  # publish-to-pypi:
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #   - uses: actions/checkout@v3
+  publish-to-pypi:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v3
 
-  #   - uses: ./.github/actions/setup-python/
+    - uses: ./.github/actions/setup-python/
 
-  #   - name: Install poetry packages
-  #     run: poetry install --no-dev
+    - name: Install poetry packages
+      run: poetry install --no-dev
 
-  #   - name: Prep version
-  #     id: prep_version # removes starting v from tag_name and sets it as version in poetry
-  #     run: |
-  #       if [[ $(echo ${{github.ref_name}} | grep -e '^v') != "" ]]; then
-  #         version=$(echo ${{ github.ref_name }} |  sed 's/^v//g')
-  #       else
-  #         version=$(poetry version | awk '{print $2}')+${{ github.ref_name }}
-  #       fi
-  #       echo ::set-output name=version::$version
+    - name: Prep version
+      id: prep_version
+      run: |
+        version=$(poetry version | awk '{print $2}')
+        echo ::set-output name=version::$version
 
-  #   - name: Set version
-  #     run: poetry version ${{ steps.prep_version.outputs.version }}
+    - name: Set version
+      run: poetry version ${{ steps.prep_version.outputs.version }}dev11
 
-  #   - name: Build
-  #     run: poetry build
+    - name: Build
+      run: poetry build
 
-  #   - name: Publish to PyPI
-  #     if: ${{ github.event_name != 'pull_request' }}
-  #     run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
+    - name: Publish to PyPI
+      if: ${{ github.event_name != 'pull_request' }}
+      run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
