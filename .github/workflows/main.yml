@@ -68,7 +68,6 @@ jobs:
 
   build-n-push-image:
     needs: [git_tag_if_version_changed]
-    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
@@ -110,7 +109,6 @@ jobs:
 
   publish-to-pypi:
     needs: [git_tag_if_version_changed]
-    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
