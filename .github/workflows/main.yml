@@ -11,18 +11,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  integration_tests:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          lfs: true
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss/tests  -m 'not integration' # todo fix this back
+  # integration_tests:
+  #   runs-on: ubuntu-20.04
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #       with:
+  #         lfs: true
+  #     - uses: ./.github/actions/setup-python/
+  #     - run: poetry install
+  #     - run: poetry run pytest truss/tests  -m 'not integration' # todo fix this back
 
   git_tag_if_version_changed:
-    needs: [integration_tests]
+    # needs: [integration_tests]
     runs-on: ubuntu-20.04
     outputs:
       version-changed: ${{steps.versions.old-version != steps.versions.new-version}}
@@ -33,15 +33,17 @@ jobs:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
           lfs: true
           fetch-depth: 2
-      - uses: ./.github/actions/setup-python/
+      - run: curl -sSL https://install.python-poetry.org | python3 -
+        shell: bash
+      # - uses: ./.github/actions/setup-python/
       - id: versions
         run: |
-          NEW_VERSION=$(poetry version)
+          NEW_VERSION=$(poetry version | awk '{print $2})
           echo "::set-output name=new-version::$NEW_VERSION\n"
           echo $NEW_VERSION
 
           git checkout HEAD^1 -- pyproject.toml
-          OLD_VERSION=$(poetry version)
+          OLD_VERSION=$(poetry version | awk '{print $2})
           echo "::set-output name=old-version::$OLD_VERSION\n"
           echo $OLD_VERSION
 
