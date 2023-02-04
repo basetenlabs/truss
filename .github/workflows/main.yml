@@ -39,11 +39,9 @@ jobs:
       - id: versions
         run: |
           NEW_VERSION=$(poetry version | awk '{print $2}')
-          echo $NEW_VERSION
 
           git checkout HEAD^1 -- pyproject.toml
           OLD_VERSION=$(poetry version | awk '{print $2}')
-          echo $OLD_VERSION
 
           # Put back things into place
           git checkout HEAD -- pyproject.toml
