@@ -653,7 +653,11 @@ def test_container_stuck_in_created(container_state_mock):
 
 
 @pytest.mark.integration
-def test_control_truss_local_update_flow(custom_model_control):
+@pytest.mark.parametrize(
+    "binary",
+    [(True), (False)],
+)
+def test_control_truss_local_update_flow(binary, custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
 
@@ -666,40 +670,40 @@ class Model:
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(new_model_code)
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def predict_with_added_empty_directory():
         # Adding empty directory should work
         (custom_model_control / "model" / "dir").mkdir()
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def predict_with_unpatchable_change():
         # Changes that are not expressible with patch should also work
         # Changes to data dir are not currently patch expressible
         (custom_model_control / "data" / "dummy").touch()
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def predict_with_python_requirement_added(req: str):
         th.add_python_requirement(req)
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def predict_with_python_requirement_removed(req):
         th.remove_python_requirement(req)
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def predict_with_system_requirement_added(pkg):
         th.add_system_package(pkg)
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def predict_with_system_requirement_removed(pkg):
         th.remove_system_package(pkg)
-        return th.docker_predict({"inputs": [1]}, tag=tag)
+        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
 
     def current_num_docker_images() -> int:
         return len(th.get_all_docker_images())
 
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
 

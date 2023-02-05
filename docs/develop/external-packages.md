@@ -6,6 +6,9 @@ to share code across multiple local trusses and publishing that code into a pypi
 package is not an option. External packages are meant for this use case, but
 should be used carefully.
 
+{% hint style="info" %}
+Take a look at this demo repository on Truss external packages: [https://github.com/bolasm/truss-packages-example](https://github.com/bolasm/truss-packages-example)
+{% endhint %}
 # Config
 
 A truss can be provided a set of external folders as places to look up local
