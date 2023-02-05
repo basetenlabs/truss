@@ -19,7 +19,9 @@ class ConfiguredTrussServer:
             self._config = yaml.safe_load(config_file)
 
     def start(self):
-        server = TrussServer(http_port=self._port, config=self._config)
+        server = TrussServer(
+            http_port=self._port, truss_configs_by_name={"bola_test": self._config}
+        )
         server.start_model()
 
 

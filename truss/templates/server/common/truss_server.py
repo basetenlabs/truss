@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from kserve.handlers import DataPlane, ModelRepositoryExtension, V1Endpoints
+from kserve.model_repository import ModelRepository
 from model_wrapper import ModelWrapper
 from starlette.responses import Response
 
@@ -88,22 +89,42 @@ class BasetenEndpoints(V1Endpoints):
         )
 
 
+class MultiTrussModelRepository(ModelRepository):
+    def __init__(self, truss_configs_by_name: dict[str, dict] = None):
+        self.models: Dict[str, ModelWrapper] = {}
+        self._configs_by_name = truss_configs_by_name
+
+    def load_models(self):
+        for name, config in self._configs_by_name.items():
+            self.models[name] = ModelWrapper(config)
+            self.models[name].start_load()
+
+    def load(self, name: str) -> bool:
+        self.models[name].start_load()
+        return self.models[name].ready
+
+    def load_model(self, name: str) -> bool:
+        self.models[name].start_load()
+        return self.models[name].ready
+
+
 class TrussServer(kserve.ModelServer):
 
     _endpoints: BasetenEndpoints
-    _model: ModelWrapper
+    _model_repository: MultiTrussModelRepository
     _config: dict
 
-    def __init__(self, http_port: int, config: dict):
+    def __init__(self, http_port: int, truss_configs_by_name: dict[str, dict]):
+        self._model_repository = MultiTrussModelRepository(truss_configs_by_name)
         super().__init__(
             http_port=http_port,
             enable_grpc=False,
             workers=1,
             enable_docs_url=False,
             enable_latency_logging=False,
+            registered_models=self._model_repository,
         )
 
-        self._config = config
         self._endpoints = BasetenEndpoints(
             self.dataplane, self.model_repository_extension
         )
@@ -119,15 +140,11 @@ class TrussServer(kserve.ModelServer):
         This method will be started inside the main process, so here is where we want to setup our logging and model
         """
         setup_logging()
-
-        self._model = ModelWrapper(self._config)
-        self.register_model(self._model)
-
-        self._model.start_load()
+        self._model_repository.load_models()
 
     def create_application(self):
         return FastAPI(
-            title="Baseten Inference Server",
+            title="MultiTruss Inference Server",
             docs_url=None,
             redoc_url=None,
             default_response_class=ORJSONResponse,
@@ -135,7 +152,7 @@ class TrussServer(kserve.ModelServer):
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", self.dataplane.live),
-                # readiness endpoint
+                # readiness endpoint. Handles model by name.
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
                 ),
