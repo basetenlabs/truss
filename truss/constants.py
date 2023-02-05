@@ -33,8 +33,10 @@ TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
+MULTI_SERVER_DOCKERFILE_TEMPLATE_NAME = "multi.server.Dockerfile.jinja"
 TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
+MULTI_SERVER_DOCKERFILE_NAME = "Dockerfile"
 TRAINING_DOCKERFILE_NAME = "Dockerfile"
 
 README_TEMPLATE_NAME = "README.md.jinja"
@@ -44,6 +46,7 @@ CONFIG_FILE = "config.yaml"
 DOCKERFILE = "Dockerfile"
 # Used to indicate whether to associate a container with Truss
 TRUSS = "truss"
+TRUSS_MULTI = "multi_truss"
 # Used to create unique identifier based on last time truss was updated
 TRUSS_MODIFIED_TIME = "truss_modified_time"
 # Path of the Truss used to identify which Truss is being referred

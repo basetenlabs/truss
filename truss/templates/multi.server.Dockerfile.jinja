@@ -1,0 +1,31 @@
+{% extends "base.Dockerfile.jinja" %}
+
+{% block install_requirements %}
+    {%- if should_install_server_requirements %}
+COPY ./server_requirements.txt server_requirements.txt
+RUN pip install -r server_requirements.txt
+    {%- endif %}
+{{ super() }}
+{% endblock %}
+
+{% block app_copy %}
+COPY ./server /app
+COPY ./{{ config.model_module_dir }} /app/model
+COPY ./config.yaml /app/config.yaml
+    {%- if data_dir_exists %}
+COPY ./{{config.data_dir}} /app/data
+    {%- endif %}
+{% endblock %}
+
+
+{% block run %}
+    {%- if config.live_reload %}
+ENV HASH_TRUSS {{truss_hash}}
+ENV CONTROL_SERVER_PORT 8080
+ENV INFERENCE_SERVER_PORT 8090
+CMD exec /control/.env/bin/python3 /control/control/server.py
+    {%- else %}
+ENV INFERENCE_SERVER_PORT 8080
+CMD exec python3 /app/inference_server.py
+    {%- endif %}
+{% endblock %}
