@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
@@ -12,10 +12,23 @@ from truss.truss_config import (
 
 
 @dataclass
+class TrussRef:
+    path: str
+    name: str
+
+    @staticmethod
+    def from_dict(d):
+        return TrussRef(**d)
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
 class MultiTrussConfig:
     # Relative Path's to all the member trusses
     # TODO: update to be object with names
-    trusses: List[str] = field(default_factory=list)
+    trusses: List[TrussRef] = field(default_factory=list)
     python_version: str = DEFAULT_PYTHON_VERSION
     resources: Resources = field(default_factory=Resources)
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
@@ -32,7 +45,7 @@ class MultiTrussConfig:
 
     def to_dict(self):
         return {
-            "trusses": self.trusses,
+            "trusses": list([t.to_dict() for t in self.trusses]),
             "python_version": self.python_version,
             "resources": self.resources.to_dict(),
         }
@@ -40,7 +53,7 @@ class MultiTrussConfig:
     @staticmethod
     def from_dict(d):
         config = MultiTrussConfig(
-            trusses=d.get("trusses", []),
+            trusses=list([TrussRef.from_dict(t) for t in d.get("trusses", [])]),
             python_version=d.get("python_version", DEFAULT_PYTHON_VERSION),
             resources=Resources.from_dict(d.get("resources", {})),
         )

@@ -10,6 +10,7 @@ RUN pip install -r server_requirements.txt
 
 {% block app_copy %}
 COPY ./server /app
+COPY ./config.yaml /app/config.yaml
 {% endblock %}
 
 {% block trusses_copy %}

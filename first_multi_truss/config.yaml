@@ -1,3 +1,5 @@
 trusses:
-- ../sbert_truss_1
-- ../sbert_truss_2
+- path: ../sbert_truss_1
+  name: sbert_en
+- path: ../sbert_truss_2
+  name: sbert_jp

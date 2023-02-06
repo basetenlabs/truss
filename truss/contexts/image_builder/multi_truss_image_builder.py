@@ -2,6 +2,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
+    CONFIG_FILE,
     MULTI_SERVER_DOCKERFILE_NAME,
     MULTI_SERVER_DOCKERFILE_TEMPLATE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -24,7 +25,7 @@ from truss.contexts.truss_context import TrussContext
 from truss.multi_truss.spec import MultiTrussSpec
 from truss.patch.hash import directory_content_hash
 from truss.truss_spec import TrussSpec
-from truss.utils import build_truss_target_directory, copy_tree_path
+from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
@@ -57,6 +58,9 @@ class MultiTrussImageBuilder(ImageBuilder):
             build_dir = build_truss_target_directory("multi-truss-build")
             # todo: Add a logging statement here, suggesting how to clean up the directory.
 
+        # Copy Multi Truss Config
+        copy_file_path(self._truss_dir / CONFIG_FILE, build_dir / CONFIG_FILE)
+
         # TODO: Split  out MultiTrussServer into a separate directory
         # For now, it's small enough to not matter
         copy_tree_path(
@@ -70,8 +74,8 @@ class MultiTrussImageBuilder(ImageBuilder):
             / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
         )
 
-        def handle_truss_context(spec: TrussSpec):
-            model_build_dir: Path = build_dir / spec.name
+        def handle_truss_context(spec: TrussSpec, name: str):
+            model_build_dir: Path = build_dir / name
 
             copy_tree_path(spec.truss_dir, model_build_dir)
 
@@ -106,12 +110,12 @@ class MultiTrussImageBuilder(ImageBuilder):
 
             with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("a") as req_file:
                 req_file.write(spec.system_packages_txt)
-            return spec.name
+            return name
 
         model_build_dir_names = []
-        for truss_path in self._spec.prepared_truss_dir_paths:
+        for name, truss_path in self._spec.prepared_truss_dir_paths.items():
             model_build_dir_names.append(
-                handle_truss_context(TrussSpec(truss_dir=truss_path))
+                handle_truss_context(TrussSpec(truss_dir=truss_path), name)
             )
         print(build_dir)
         print(model_build_dir_names)

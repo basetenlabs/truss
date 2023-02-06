@@ -6,7 +6,7 @@ import traceback
 from enum import Enum
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import kserve
 import numpy as np
@@ -35,11 +35,13 @@ class ModelWrapper(kserve.Model):
     _predict_lock: Lock = Lock()
     _status: Status = Status.NOT_READY
     _logger: logging.Logger
+    _base_dir: Optional[Path]
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, base_dir: Optional[Path] = None):
         super().__init__(MODEL_BASENAME)
         self._config = config
         self.logger = logging.getLogger(__name__)
+        self._base_dir = base_dir
 
     def load(self) -> bool:
         if self.ready:
@@ -86,6 +88,7 @@ class ModelWrapper(kserve.Model):
         )
 
     def try_load(self):
+        # TODO: Handle bundled packages properly for multi config
         if "bundled_packages_dir" in self._config:
             bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
@@ -93,10 +96,21 @@ class ModelWrapper(kserve.Model):
         model_module_name = str(
             Path(self._config["model_class_filename"]).with_suffix("")
         )
-        module = importlib.import_module(
-            f"{self._config['model_module_dir']}.{model_module_name}"
-        )
-        model_class = getattr(module, self._config["model_class_name"])
+        if self._base_dir:
+            spec = importlib.util.spec_from_file_location(
+                model_module_name,
+                self._base_dir
+                / self._config["model_module_dir"]
+                / self._config["model_class_filename"],
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            model_class = getattr(module, self._config["model_class_name"])
+        else:
+            module = importlib.import_module(
+                f"{self._config['model_module_dir']}.{model_module_name}"
+            )
+            model_class = getattr(module, self._config["model_class_name"])
         model_class_signature = inspect.signature(model_class)
         model_init_params = {}
         if _signature_accepts_keyword_arg(model_class_signature, "config"):

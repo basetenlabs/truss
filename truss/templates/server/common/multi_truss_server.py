@@ -1,9 +1,11 @@
 import asyncio
 import json
+from pathlib import Path
 from typing import Dict, Optional, Union
 
 import kserve
 import kserve.errors as errors
+import yaml
 from common.logging import setup_logging
 from common.serialization import (
     DeepNumpyEncoder,
@@ -90,13 +92,15 @@ class BasetenEndpoints(V1Endpoints):
 
 
 class MultiTrussModelRepository(ModelRepository):
-    def __init__(self, truss_configs_by_name: dict[str, dict] = None):
+    def __init__(self, truss_configs_by_name: dict[str, dict], base_dir: Path):
         self.models: Dict[str, ModelWrapper] = {}
         self._configs_by_name = truss_configs_by_name
+        self._base_dir = base_dir
 
     def load_models(self):
         for name, config in self._configs_by_name.items():
-            self.models[name] = ModelWrapper(config)
+            print(f"Loading: {name}")
+            self.models[name] = ModelWrapper(config, self._base_dir / name)
             self.models[name].start_load()
 
     def load(self, name: str) -> bool:
@@ -113,9 +117,21 @@ class MultiTrussServer(kserve.ModelServer):
     _endpoints: BasetenEndpoints
     _model_repository: MultiTrussModelRepository
     _config: dict
+    _model_truss_dir: Path
 
-    def __init__(self, http_port: int, truss_configs_by_name: dict[str, dict]):
-        self._model_repository = MultiTrussModelRepository(truss_configs_by_name)
+    def _make_config_by_name(self, model_truss_dir):
+        result = {}
+        for truss_ref in self._config["trusses"]:
+            with open(model_truss_dir / truss_ref["name"] / "config.yaml", "r") as f:
+                result[truss_ref["name"]] = yaml.safe_load(f)
+        return result
+
+    def __init__(self, http_port: int, multi_truss_config: dict, model_truss_dir: Path):
+        self._config = multi_truss_config
+        self._model_repository = MultiTrussModelRepository(
+            truss_configs_by_name=self._make_config_by_name(model_truss_dir),
+            base_dir=model_truss_dir,
+        )
         super().__init__(
             http_port=http_port,
             enable_grpc=False,

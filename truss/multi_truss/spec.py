@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from truss.constants import CONFIG_FILE
 from truss.multi_truss.config import MultiTrussConfig
@@ -12,9 +12,17 @@ class MultiTrussSpec:
         self.config = MultiTrussConfig.from_yaml(multi_truss_dir / CONFIG_FILE)
 
     @property
+    def trusses_names(self) -> List[str]:
+        return list([t.name for t in self.config.trusses])
+
+    @property
+    def trusses_paths(self) -> List[str]:
+        return list([t.path for t in self.config.trusses])
+
+    @property
     def trusses_dir_paths(self) -> List[Path]:
         paths = []
-        for path_name in self.config.trusses:
+        for path_name in self.trusses_paths:
             path = Path(path_name)
             if path.is_absolute():
                 paths.append(path)
@@ -23,13 +31,13 @@ class MultiTrussSpec:
         return paths
 
     @property
-    def prepared_truss_dir_paths(self) -> List[Path]:
+    def prepared_truss_dir_paths(self) -> Dict[str, Path]:
         # Make sure that all the children trusses are ready to be copied
-        return list(
-            [
-                TrussHandle(truss_path, validate=True).gather()
-                for truss_path in self.trusses_dir_paths
-            ]
+        return dict(
+            {
+                name: TrussHandle(truss_path, validate=True).gather()
+                for name, truss_path in zip(self.trusses_names, self.trusses_dir_paths)
+            }
         )
 
     def update_resources(self) -> None:

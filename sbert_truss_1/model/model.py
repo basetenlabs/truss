@@ -19,7 +19,7 @@ class Model:
         self._device_predict = torch.device(
             "cuda:0" if torch.cuda.is_available() else "cpu"
         )
-        self._model = SentenceTransformer()
+        self._model = SentenceTransformer(DEFAULT_SBERT)
 
     def prepare(self):
         self._model.to(self._device_predict)
@@ -30,9 +30,9 @@ class Model:
     def preprocess(self, request: Dict) -> Dict:
         # Our sentences we like to encode
         request["sentences"] = [
-            "This framework generates embeddings for each input sentence",
-            "Sentences are passed as a list of string.",
-            "The quick brown fox jumps over the lazy dog.",
+            # "This framework generates embeddings for each input sentence",
+            # "Sentences are passed as a list of string.",
+            # "The quick brown fox jumps over the lazy dog.",
         ]
         return request
 

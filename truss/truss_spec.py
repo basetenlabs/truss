@@ -23,10 +23,6 @@ class TrussSpec:
         return self._truss_dir
 
     @property
-    def name(self) -> str:
-        return self._config.model_name
-
-    @property
     def config_path(self) -> Path:
         return self._truss_dir / CONFIG_FILE
 
