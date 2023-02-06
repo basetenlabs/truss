@@ -42,8 +42,9 @@ def truss_base_image_name(job_type: str) -> str:
 def truss_base_image_tag(
     python_version: str,
     use_gpu: bool,
-    live_reload: bool,
+    live_reload: bool = True,
     version_tag: str = None,
+    # multi_server: bool = False,
 ) -> str:
     if version_tag is None:
         version_tag = f"v{__version__}"
@@ -53,6 +54,8 @@ def truss_base_image_tag(
         base_tag = f"{base_tag}-gpu"
     if live_reload:
         base_tag = f"{base_tag}-reload"
+    # if multi_server:
+    #     base_tag += "-multi"
     return f"{base_tag}-{version_tag}"
 
 

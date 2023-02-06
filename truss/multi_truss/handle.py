@@ -1,77 +1,18 @@
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 from urllib.error import HTTPError
 
-import yaml
-from truss.constants import CONFIG_FILE, INFERENCE_SERVER_PORT, TRUSS_DIR
+from truss.constants import INFERENCE_SERVER_PORT, TRUSS_DIR
 from truss.contexts.image_builder.multi_truss_image_builder import (
     MultiTrussImageBuilderContext,
 )
 from truss.docker import Docker, kill_containers
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
-from truss.truss_handle import TrussHandle, wait_for_truss
+from truss.multi_truss.spec import MultiTrussSpec
+from truss.truss_handle import wait_for_truss
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MultiTrussConfig:
-    # Relative Path's to all the member trusses
-    trusses: List[str] = field(default_factory=list)
-
-    @staticmethod
-    def from_yaml(yaml_path: Path):
-        with yaml_path.open() as yaml_file:
-            return MultiTrussConfig.from_dict(yaml.safe_load(yaml_file))
-
-    def write_to_yaml_file(self, path: Path):
-        with path.open("w") as config_file:
-            yaml.dump(self.to_dict(), config_file)
-
-    def to_dict(self):
-        return {"trusses": self.trusses}
-
-    @staticmethod
-    def from_dict(d):
-        config = MultiTrussConfig(trusses=d.get("trusses", []))
-        config.validate()
-        return config
-
-    def clone(self):
-        return MultiTrussConfig.from_dict(self.to_dict())
-
-    def validate(self):
-        if len(self.trusses) < 2:
-            raise ValueError("MultiTruss is only useful is you have at least 2 models")
-
-
-class MultiTrussSpec:
-    def __init__(self, multi_truss_dir: Path) -> None:
-        self.dir = multi_truss_dir
-        self.config = MultiTrussConfig.from_yaml(multi_truss_dir / CONFIG_FILE)
-
-    @property
-    def trusses_dir_paths(self) -> List[Path]:
-        paths = []
-        for path_name in self.config.trusses:
-            path = Path(path_name)
-            if path.is_absolute():
-                paths.append(path)
-            else:
-                paths.append(self.dir / path)
-        return paths
-
-    @property
-    def prepared_truss_dir_paths(self) -> List[Path]:
-        # Make sure that all the children trusses are ready to be copied
-        return list(
-            [
-                TrussHandle(truss_path, validate=True).gather()
-                for truss_path in self.trusses_dir_paths
-            ]
-        )
 
 
 class MultiTrussHandle:
@@ -106,7 +47,7 @@ class MultiTrussHandle:
         return build_image_result
 
     def build_serving_docker_image(self, build_dir: Path = None, tag: str = None):
-
+        self.spec.update_resources()
         image = self._build_image(
             builder_context=MultiTrussImageBuilderContext,
             # TODO: add real labels

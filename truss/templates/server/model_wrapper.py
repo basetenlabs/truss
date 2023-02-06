@@ -10,6 +10,9 @@ from typing import Dict, Union
 
 import kserve
 import numpy as np
+
+# TODO: add to requirements or ignore if not GPU
+import torch
 from cloudevents.http import CloudEvent
 from common.util import assign_request_to_inputs_instances_after_validation
 from kserve.errors import InvalidInput
@@ -129,6 +132,20 @@ class ModelWrapper(kserve.Model):
             return payload
         return self._model.preprocess(payload)
 
+    def prepare(self):
+        if not hasattr(self._model, "prepare"):
+            return
+        # Force re-calc GPU memory
+        torch.cuda.memory_allocated()
+        self._model.prepare()
+
+    def standby(self):
+        if not hasattr(self._model, "standby"):
+            return
+        self._model.standby()
+        # Force re-calc GPU memory
+        torch.cuda.memory_allocated()
+
     def postprocess(
         self, response: Union[Dict, ModelInferResponse], headers: Dict[str, str] = None
     ) -> Dict:
@@ -141,6 +158,7 @@ class ModelWrapper(kserve.Model):
     ) -> Union[Dict, ModelInferResponse]:
         try:
             self._predict_lock.acquire()
+            self.prepare()
             return self._model.predict(payload)
         except Exception:
             response = {}
@@ -148,6 +166,7 @@ class ModelWrapper(kserve.Model):
             response["error"] = {"traceback": traceback.format_exc()}
             return response
         finally:
+            self.standby()
             self._predict_lock.release()
 
 

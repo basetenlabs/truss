@@ -38,6 +38,9 @@ WORKDIR $APP_HOME
 {% block app_copy %}
 {% endblock %}
 
+{% block trusses_copy %}
+{% endblock %}
+
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
 COPY ./{{config.bundled_packages_dir}} /packages

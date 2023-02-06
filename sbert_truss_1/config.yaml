@@ -1,0 +1,19 @@
+data_dir: data
+input_type: Any
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_name: sbert_en
+model_type: custom
+model_metadata: {}
+model_module_dir: model
+python_version: py39
+requirements:
+- --extra-index-url https://download.pytorch.org/whl/cu113
+- torch==1.8.0
+- sentence_transformers
+resources:
+  cpu: 500m
+  memory: 8Gi
+  use_gpu: true
+system_packages: []

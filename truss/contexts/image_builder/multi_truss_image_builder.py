@@ -1,10 +1,7 @@
 from pathlib import Path
 
-import click
 from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
-    MODEL_DOCKERFILE_NAME,
-    MODEL_README_NAME,
     MULTI_SERVER_DOCKERFILE_NAME,
     MULTI_SERVER_DOCKERFILE_TEMPLATE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -24,11 +21,10 @@ from truss.contexts.image_builder.util import (
     truss_base_image_tag,
 )
 from truss.contexts.truss_context import TrussContext
-from truss.multi_truss import MultiTrussSpec
+from truss.multi_truss.spec import MultiTrussSpec
 from truss.patch.hash import directory_content_hash
-from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
-from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
+from truss.utils import build_truss_target_directory, copy_tree_path
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
@@ -48,7 +44,7 @@ class MultiTrussImageBuilder(ImageBuilder):
     @property
     def default_tag(self):
         # TODO: generate meaningful tag
-        return f"mult-truss:latest"
+        return "mult-truss:latest"
 
     def prepare_image_build_dir(self, build_dir: Path = None):
         """Prepare a directory for building the docker image from.
@@ -110,9 +106,15 @@ class MultiTrussImageBuilder(ImageBuilder):
 
             with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("a") as req_file:
                 req_file.write(spec.system_packages_txt)
+            return spec.name
 
-        for truss_path in self._spec.trusses_dir_paths:
-            handle_truss_context(TrussSpec(truss_dir=truss_path))
+        model_build_dir_names = []
+        for truss_path in self._spec.prepared_truss_dir_paths:
+            model_build_dir_names.append(
+                handle_truss_context(TrussSpec(truss_dir=truss_path))
+            )
+        print(build_dir)
+        print(model_build_dir_names)
 
         template_loader = FileSystemLoader(str(TEMPLATES_DIR))
         template_env = Environment(loader=template_loader)
@@ -121,12 +123,14 @@ class MultiTrussImageBuilder(ImageBuilder):
         )
         config = self._spec.config
 
-        base_image_name = truss_base_image_name(job_type="multi-server")
+        # TODO: update to different base image if needed
+        base_image_name = truss_base_image_name(job_type="server")
         tag = truss_base_image_tag(
             python_version=to_dotted_python_version(config.python_version),
             use_gpu=config.resources.use_gpu,
-            live_reload=config.live_reload,
+            live_reload=False,
             version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
+            # multi_server=True,
         )
         base_image_name_and_tag = f"{base_image_name}:{tag}"
         should_install_system_requirements = file_is_not_empty(
@@ -148,6 +152,7 @@ class MultiTrussImageBuilder(ImageBuilder):
             bundled_packages_dir_exists=False,
             truss_hash=directory_content_hash(self._truss_dir),
             # TODO(handle prepared dirs)
+            model_dir_names=model_build_dir_names,
         )
         docker_file_path = build_dir / MULTI_SERVER_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:
