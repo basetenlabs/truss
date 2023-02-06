@@ -400,6 +400,23 @@ def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
     assert th.spec.config.resources.use_gpu
 
 
+@pytest.mark.parametrize(
+    "python_version, expected_python_version",
+    [
+        ("3.8", "py38"),
+        ("py38", "py38"),
+    ],
+)
+def test_update_python_version(
+    python_version,
+    expected_python_version,
+    custom_model_truss_dir_with_pre_and_post,
+):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    th.update_python_version(python_version)
+    assert th.spec.python_version == expected_python_version
+
+
 def test_update_requirements(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     requirements = [
@@ -654,11 +671,16 @@ def test_container_stuck_in_created(container_state_mock):
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "binary",
-    [(True), (False)],
+    "binary, python_version",
+    [
+        (binary, python_version)
+        for binary in [True, False]
+        for python_version in ["3.8", "3.9"]
+    ],
 )
-def test_control_truss_local_update_flow(binary, custom_model_control):
+def test_control_truss_local_update_flow(binary, python_version, custom_model_control):
     th = TrussHandle(custom_model_control)
+    th.update_python_version(python_version)
     tag = "test-docker-custom-model-control-tag:0.0.1"
 
     def predict_with_updated_model_code():
