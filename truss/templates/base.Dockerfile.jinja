@@ -1,7 +1,8 @@
 ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}}
 
-RUN pip install --upgrade pip --no-cache-dir
+RUN pip install --upgrade pip --no-cache-dir \
+    && rm -rf /root/.cache/pip
 {% if config.model_framework.value == 'huggingface_transformer' %}
     {% if config.resources.use_gpu %}
 # HuggingFace pytorch gpu support needs mkl
