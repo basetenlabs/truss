@@ -53,10 +53,11 @@ ENV PYTHONUNBUFFERED True
 {% endif %}
 
 
-RUN pip install --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip \
+    && rm -rf /root/.cache/pip
 
 COPY ./requirements.txt requirements.txt
-RUN pip install -r requirements.txt \
+RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /root/.cache/pip
 
 {% if live_reload %}

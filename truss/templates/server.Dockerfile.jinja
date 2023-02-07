@@ -3,7 +3,7 @@
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
 COPY ./server_requirements.txt server_requirements.txt
-RUN pip install -r server_requirements.txt
+RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 {{ super() }}
 {% endblock %}
