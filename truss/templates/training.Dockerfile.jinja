@@ -2,7 +2,7 @@
 
 {% block install_requirements %}
 COPY ./training_requirements.txt training_requirements.txt
-RUN pip install -r training_requirements.txt
+RUN pip install -r training_requirements.txt --no-cache-dir
 {{ super() }}
 {% endblock %}
 

@@ -1,7 +1,7 @@
 ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}}
 
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip --no-cache-dir
 {% if config.model_framework.value == 'huggingface_transformer' %}
     {% if config.resources.use_gpu %}
 # HuggingFace pytorch gpu support needs mkl
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system
 {% block install_requirements %}
     {%- if should_install_requirements %}
 COPY ./requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt --no-cache-dir
     {%- endif %}
 {% endblock %}
 
@@ -49,6 +49,7 @@ COPY ./{{config.bundled_packages_dir}} /packages
 ENV {{ env_var_name }} {{ env_var_value }}
 {% endfor %}
 
+RUN rm -rf /root/.cache/pip
 
 {% block run %}
 {% endblock %}
