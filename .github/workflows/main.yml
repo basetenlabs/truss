@@ -41,18 +41,21 @@ jobs:
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
           fi
-  push_images:
+  push_images_if_needed:
     needs: [detect_version_changed]
-    if: needs.detect_version_changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry --version
-      # - run: poetry run bin/generate_base_images.py --version-tag
+      - shell: bash
+        run: |
+          if [[ "${{ needs.detect_version_changed.outputs.version_changed }}" == "true" ]]; then
+            poetry --version
+            echo "some"
+          fi
   integration_tests:
-    needs: [push_images]
+    needs: [push_images_if_needed]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
