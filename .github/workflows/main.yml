@@ -60,7 +60,8 @@ jobs:
       - shell: bash
         run: |
           if [[ "${{ needs.detect_version_changed.outputs.version_changed }}" == "true" ]]; then
-            poetry run bin/generate_base_images.py --skip-login --version-tag ${{ needs.detect_version_changed.outputs.new_version }} --live-reload n --use-gpu n --job-type server
+            poetry run bin/generate_base_images.py --version-tag ${{ needs.detect_version_changed.outputs.new_version }} \
+              --live-reload n --use-gpu n --job-type server --skip-login --push
           fi
   integration_tests:
     needs: [build_and_push_truss_base_images_if_needed]
