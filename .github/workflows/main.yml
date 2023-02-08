@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-20.04
     outputs:
       version_changed: ${{ steps.versions.outputs.version_changed }}
+      new_version: ${{ steps.versions.outputs.new_version }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -75,7 +76,7 @@ jobs:
       # - run: poetry install
       # - run: poetry run pytest truss/tests  -m 'integration'
 
-  git_tag_if_version_changed:
+  git-tag-if-version-changed:
     needs: [integration-tests, detect-version-changed]
     if: needs.detect-version-changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
