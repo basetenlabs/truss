@@ -37,7 +37,8 @@ def populate_target_directory(
     template: str = "custom",
 ) -> Path:
     if target_directory_path is None:
-        target_directory_path_typed: Path = build_truss_target_directory(template)
+        # target_directory_path_typed: Path = build_truss_target_directory(template)
+        pass
     else:
         target_directory_path_typed: Path = Path(target_directory_path)
         target_directory_path_typed.mkdir(parents=True, exist_ok=True)

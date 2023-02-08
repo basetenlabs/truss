@@ -29,7 +29,14 @@ repos:
         pass_filenames: true
       - id: mypy
         name: mypy-local
-        entry: mypy --python-version 3.8 --ignore-missing-imports --exclude examples/ --exclude truss/tests/ --exclude truss/test_data/ --exclude model.py  --install-types --non-interactive
+        entry: poetry run mypy
+        args:
+          - "--python-version=3.8"
+          - "--ignore-missing-imports"
+          - "--exclude=examples/"
+          - "--exclude=truss/tests/"
+          - "--exclude=truss/test_data/"
+          - "--exclude=model.py"
         language: python
         types: [python]
         pass_filenames: true
