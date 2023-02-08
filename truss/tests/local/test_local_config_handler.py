@@ -9,13 +9,13 @@ secrets:
 """
 
 
-def test_get_config(tmp_path):
+def test_get_config(tmp_path: Path) -> None:
     with _truss_config_dir(tmp_path, CONFIG_CONTENT):
         config = LocalConfigHandler.get_config()
         assert config.secrets["secret_name"] == "secret_value"
 
 
-def test_set_secret(tmp_path):
+def test_set_secret(tmp_path: Path) -> None:
     with _truss_config_dir(tmp_path, CONFIG_CONTENT):
         LocalConfigHandler.set_secret("another_secret_name", "another_secret_value")
         config = LocalConfigHandler.get_config()
@@ -23,21 +23,21 @@ def test_set_secret(tmp_path):
         assert config.secrets["another_secret_name"] == "another_secret_value"
 
 
-def test_set_secret_override(tmp_path):
+def test_set_secret_override(tmp_path: Path) -> None:
     with _truss_config_dir(tmp_path, CONFIG_CONTENT):
         LocalConfigHandler.set_secret("secret_name", "another_secret_value")
         config = LocalConfigHandler.get_config()
         assert config.secrets["secret_name"] == "another_secret_value"
 
 
-def test_remove_secret(tmp_path):
+def test_remove_secret(tmp_path: Path) -> None:
     with _truss_config_dir(tmp_path, CONFIG_CONTENT):
         LocalConfigHandler.remove_secret("secret_name")
         config = LocalConfigHandler.get_config()
         assert "secret_name" not in config.secrets
 
 
-def test_sync_secrets_mount_dir(tmp_path):
+def test_sync_secrets_mount_dir(tmp_path: Path) -> None:
     with _truss_config_dir(tmp_path, CONFIG_CONTENT):
         LocalConfigHandler.sync_secrets_mount_dir()
         assert (tmp_path / "secrets").exists()
@@ -45,7 +45,7 @@ def test_sync_secrets_mount_dir(tmp_path):
             assert f.read() == "secret_value"
 
 
-def test_signatures(tmp_path):
+def test_signatures(tmp_path: Path) -> None:
     with _truss_config_dir(tmp_path, CONFIG_CONTENT):
         assert LocalConfigHandler.get_signature("hash1") is None
         LocalConfigHandler.add_signature("hash1", "sig1")

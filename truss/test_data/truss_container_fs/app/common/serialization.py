@@ -1,11 +1,14 @@
-import datetime
 import decimal
 import json
 import uuid
+from datetime import date, datetime, time, timedelta
+from typing import Callable, Dict, Union
 
 
 # mostly cribbed from django.core.serializer.DjangoJSONEncoder
-def truss_msgpack_encoder(obj, chain=None):
+def truss_msgpack_encoder(
+    obj: Union[Decimal, date, time, timedelta, uuid.UUID, Dict], chain: Callable = None
+) -> Dict:
     if isinstance(obj, datetime.datetime):
         r = obj.isoformat()
         if r.endswith("+00:00"):

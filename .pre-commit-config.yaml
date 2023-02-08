@@ -27,6 +27,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: true
+      - id: mypy
+        name: mypy-local
+        entry : mypy --python-version 3.8 --ignore-missing-imports --exclude examples/ --install-types --non-interactive
+        language: python
+        types: [python]
+        pass_filenames: true
   - repo: https://github.com/tcort/markdown-link-check
     rev: "v3.10.3"
     hooks:

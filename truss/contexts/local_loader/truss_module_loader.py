@@ -125,7 +125,7 @@ def _unload_truss_modules(
     truss_module_name: str,
     bundled_packages_dir_name: str = None,
     external_packages_dirs: List[str] = None,
-):
+) -> None:
     modules_to_unload = [truss_module_name]
 
     def _add_relative_dir_to_unload(dir_name: str):
@@ -142,12 +142,12 @@ def _unload_truss_modules(
     _unload_top_level_modules(modules_to_unload)
 
 
-def _unload_top_level_modules(module_names: List[str]):
+def _unload_top_level_modules(module_names: List[str]) -> None:
     for module_name in module_names:
         _unload_top_level_module(module_name)
 
 
-def _unload_top_level_module(module_name: str):
+def _unload_top_level_module(module_name: str) -> None:
     if "." in module_name:
         raise ValueError(f"Expecting a top level module but found {module_name}")
 
@@ -162,5 +162,5 @@ def _unload_top_level_module(module_name: str):
         del sys.modules[module_name]
 
 
-def _sub_dirnames(root_dir: Path):
+def _sub_dirnames(root_dir: Path) -> List[str]:
     return [path.name for path in root_dir.iterdir() if path.is_dir()]

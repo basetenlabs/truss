@@ -14,14 +14,14 @@ from truss.templates.control.control.helpers.types import (
 from truss.truss_config import TrussConfig
 
 
-def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):
+def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path) -> None:
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     (custom_model_truss_dir / "dummy").touch()
     patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
     assert patches is None
 
 
-def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
+def test_calc_truss_patch_add_file(custom_model_truss_dir: Path) -> None:
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     (custom_model_truss_dir / "model" / "dummy").touch()
     patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
@@ -38,7 +38,7 @@ def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
     )
 
 
-def test_calc_truss_patch_add_under_new_directory(custom_model_truss_dir: Path):
+def test_calc_truss_patch_add_under_new_directory(custom_model_truss_dir: Path) -> None:
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     new_dir = custom_model_truss_dir / "model" / "dir"
     new_dir.mkdir()
@@ -57,7 +57,7 @@ def test_calc_truss_patch_add_under_new_directory(custom_model_truss_dir: Path):
     )
 
 
-def test_calc_truss_patch_remove_file(custom_model_truss_dir: Path):
+def test_calc_truss_patch_remove_file(custom_model_truss_dir: Path) -> None:
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     (custom_model_truss_dir / "model" / "model.py").unlink()
     patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
@@ -73,7 +73,7 @@ def test_calc_truss_patch_remove_file(custom_model_truss_dir: Path):
     )
 
 
-def test_calc_truss_patch_update_file(custom_model_truss_dir: Path):
+def test_calc_truss_patch_update_file(custom_model_truss_dir: Path) -> None:
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     new_model_file_content = """
     class Model:
@@ -94,7 +94,7 @@ def test_calc_truss_patch_update_file(custom_model_truss_dir: Path):
     )
 
 
-def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path):
+def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path) -> None:
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         lambda config: config.requirements.append("requests==1.0.0"),
@@ -110,7 +110,7 @@ def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path
     )
 
 
-def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: Path):
+def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: Path) -> None:
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         config_pre_op=lambda config: config.requirements.append("requests==1.0.0"),
@@ -127,7 +127,7 @@ def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: P
     )
 
 
-def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: Path):
+def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: Path) -> None:
     def update_requests_version(config: TrussConfig):
         config.requirements[0] = "requests==2.0.0"
 
@@ -149,7 +149,7 @@ def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: P
 
 def test_calc_config_patches_add_remove_and_update_python_requirement(
     custom_model_truss_dir: Path,
-):
+) -> None:
     def config_pre_op(config: TrussConfig):
         config.requirements = [
             "requests==1.0.0",
@@ -196,7 +196,7 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
 
 def test_calc_config_patches_non_python_or_system_requirement_change(
     custom_model_truss_dir: Path,
-):
+) -> None:
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         config_op=lambda config: config.environment_variables.update({"foo": "bar"}),
@@ -204,7 +204,7 @@ def test_calc_config_patches_non_python_or_system_requirement_change(
     assert patches is None
 
 
-def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
+def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path) -> None:
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         lambda config: config.system_packages.append("curl"),
@@ -220,7 +220,7 @@ def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
     )
 
 
-def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path):
+def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path) -> None:
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         config_pre_op=lambda config: config.system_packages.append("curl"),
@@ -239,7 +239,7 @@ def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path)
 
 def test_calc_config_patches_add_and_remove_system_package(
     custom_model_truss_dir: Path,
-):
+) -> None:
     def config_pre_op(config: TrussConfig):
         config.system_packages = [
             "curl",

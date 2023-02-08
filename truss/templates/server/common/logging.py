@@ -1,11 +1,14 @@
 import logging
 import sys
+from typing import TextIO
 
 from pythonjsonlogger import jsonlogger
 
-LEVEL = logging.INFO
+LEVEL: int = logging.INFO
 
-JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stderr)
+JSON_LOG_HANDLER: logging.StreamHandler[TextIO] = logging.StreamHandler(
+    stream=sys.stderr
+)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
 JSON_LOG_HANDLER.setLevel(LEVEL)
 JSON_LOG_HANDLER.setFormatter(
@@ -22,7 +25,7 @@ class HealthCheckFilter(logging.Filter):
         )
 
 
-def setup_logging():
+def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]

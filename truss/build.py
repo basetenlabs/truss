@@ -24,7 +24,7 @@ from truss.utils import (
     get_gpu_memory,
 )
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 if is_notebook_or_ipython():
     logger.setLevel(logging.INFO)
@@ -301,7 +301,7 @@ def mk_truss(*args, **kwargs):
     return create(*args, **kwargs)
 
 
-def cleanup():
+def cleanup() -> None:
     """
     Cleans up .truss directory.
     """
@@ -318,7 +318,7 @@ def _update_truss_props(
     data_files: List[str] = None,
     requirements_file: str = None,
     bundled_packages: List[str] = None,
-):
+) -> None:
     if data_files is not None:
         for data_file in data_files:
             scaf.add_data(data_file)
@@ -334,7 +334,7 @@ def _update_truss_props(
 def _populate_default_training_code(
     config: TrussConfig,
     target_directory_path: Path,
-):
+) -> None:
     """Populate default training code in a truss.
 
     Assumes target directory already exists.
@@ -347,5 +347,5 @@ def _populate_default_training_code(
     copy_tree_path(template_path / "train", truss_training_module_dir)
 
 
-def kill_all():
+def kill_all() -> None:
     kill_containers({TRUSS: True})

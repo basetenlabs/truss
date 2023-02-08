@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, Type, Union
 
 
 class PatchType(Enum):
@@ -94,7 +95,10 @@ class SystemPackagePatch(PatchBody):
         )
 
 
-PATCH_BODY_BY_TYPE = {
+PATCH_BODY_BY_TYPE: Dict[
+    PatchType,
+    Type[Union[ModelCodePatch, PythonRequirementPatch, SystemPackagePatch]],
+] = {
     PatchType.MODEL_CODE: ModelCodePatch,
     PatchType.PYTHON_REQUIREMENT: PythonRequirementPatch,
     PatchType.SYSTEM_PACKAGE: SystemPackagePatch,

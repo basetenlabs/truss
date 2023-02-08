@@ -6,7 +6,7 @@ except ModuleNotFoundError:
     KFSERVING_LIB = False
 
 
-def ensure_kfserving_installed():
+def ensure_kfserving_installed() -> bool:
     if not KFSERVING_LIB:
         raise ModuleNotFoundError(
             'Could not successfully import "kfserving" package, check your Python environment'

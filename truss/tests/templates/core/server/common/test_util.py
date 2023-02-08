@@ -5,7 +5,7 @@ from truss.templates.server.common.util import (
 )
 
 
-def test_assign_request_to_inputs_instances_after_validation():
+def test_assign_request_to_inputs_instances_after_validation() -> None:
     inputs_input = [1, 2, 3, 4]
     inputs_dict = {"inputs": inputs_input}
     instances_input = [5, 6, 7, 8]
@@ -24,7 +24,7 @@ def test_assign_request_to_inputs_instances_after_validation():
     )
 
 
-def model_supports_predict_proba():
+def model_supports_predict_proba() -> None:
     mock_not_predict_proba = mock.Mock(name="mock_not_predict_proba")
     mock_not_predict_proba.predict_proba.return_value = False
 

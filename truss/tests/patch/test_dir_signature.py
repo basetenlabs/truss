@@ -1,7 +1,7 @@
 from truss.patch.dir_signature import directory_content_signature
 
 
-def test_directory_content_signature(tmp_path):
+def test_directory_content_signature(tmp_path) -> None:
     root = tmp_path / "root"
     root.mkdir()
     (root / "file1").touch()

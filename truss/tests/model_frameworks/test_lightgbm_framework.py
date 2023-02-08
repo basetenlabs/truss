@@ -12,7 +12,7 @@ from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 
 
-def test_to_truss(lgb_pima_model):
+def test_to_truss(lgb_pima_model) -> None:
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         lgb_framework = LightGBM()
@@ -35,7 +35,7 @@ def test_to_truss(lgb_pima_model):
         assert (truss_dir / "model" / "model.py").exists()
 
 
-def test_run_truss(lgb_pima_model):
+def test_run_truss(lgb_pima_model) -> None:
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         lgb_framework = LightGBM()
@@ -47,7 +47,7 @@ def test_run_truss(lgb_pima_model):
 
 
 @pytest.mark.integration
-def test_run_image(lgb_pima_model):
+def test_run_image(lgb_pima_model) -> None:
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         lgb_framework = LightGBM()

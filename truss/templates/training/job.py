@@ -28,7 +28,7 @@ def _signature_accepts_kwargs(signature: inspect.Signature) -> bool:
     return False
 
 
-def _add_bundled_packages_to_path(config):
+def _add_bundled_packages_to_path(config) -> None:
     if "bundled_packages_dir" in config:
         bundled_packages_path = Path("/packages")
         if bundled_packages_path.exists():

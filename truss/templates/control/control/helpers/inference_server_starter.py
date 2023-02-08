@@ -4,7 +4,7 @@ import requests
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 
-def inference_server_startup_flow(application):
+def inference_server_startup_flow(application) -> None:
     """
     Perform the inference server startup flow
 

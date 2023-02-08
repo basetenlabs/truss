@@ -12,7 +12,7 @@ from truss.patch.hash import (
 
 
 @pytest.fixture
-def dir_hash_test_dir(tmp_path: Path):
+def dir_hash_test_dir(tmp_path: Path) -> Path:
     target_dir = tmp_path / "target"
     target_dir.mkdir()
     target_dir_file = target_dir / "target_file"
@@ -24,25 +24,25 @@ def dir_hash_test_dir(tmp_path: Path):
     return target_dir
 
 
-def test_dir_hash_same_on_retry(dir_hash_test_dir):
+def test_dir_hash_same_on_retry(dir_hash_test_dir: Path) -> None:
     _verify_with_dir_modification(dir_hash_test_dir, lambda _: None, True)
 
 
-def test_dir_hash_different_if_file_added_at_top_level(dir_hash_test_dir):
+def test_dir_hash_different_if_file_added_at_top_level(dir_hash_test_dir: Path) -> None:
     def mod(dir_path):
         _update_file_content(dir_path / "new_file")
 
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_file_added_to_sub_directory(dir_hash_test_dir):
+def test_dir_hash_different_if_file_added_to_sub_directory(dir_hash_test_dir: Path) -> None:
     def mod(dir_path):
         _update_file_content(dir_path / "subdir" / "new_file")
 
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_file_file_content_modified(dir_hash_test_dir):
+def test_dir_hash_different_if_file_file_content_modified(dir_hash_test_dir: Path) -> None:
     def mod(dir_path):
         _update_file_content(
             dir_path / "target_file", content=_generate_random_string(5)
@@ -51,7 +51,7 @@ def test_dir_hash_different_if_file_file_content_modified(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_same_if_target_dir_renamed(tmp_path, dir_hash_test_dir):
+def test_dir_hash_same_if_target_dir_renamed(tmp_path, dir_hash_test_dir: Path) -> None:
     def mod(dir_path):
         target = tmp_path / "renamed"
         dir_path.rename(target)
@@ -60,7 +60,7 @@ def test_dir_hash_same_if_target_dir_renamed(tmp_path, dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, True)
 
 
-def test_dir_hash_same_if_target_dir_moved_but_not_renamed(tmp_path, dir_hash_test_dir):
+def test_dir_hash_same_if_target_dir_moved_but_not_renamed(tmp_path, dir_hash_test_dir: Path) -> None:
     def mod(dir_path):
         holding_dir = tmp_path / "holding_dir"
         holding_dir.mkdir()
@@ -71,7 +71,7 @@ def test_dir_hash_same_if_target_dir_moved_but_not_renamed(tmp_path, dir_hash_te
     _verify_with_dir_modification(dir_hash_test_dir, mod, True)
 
 
-def test_dir_hash_different_if_sub_directory_renamed(dir_hash_test_dir):
+def test_dir_hash_different_if_sub_directory_renamed(dir_hash_test_dir: Path) -> None:
     def mod(dir_path):
         sub_dir = dir_path / "subdir"
         sub_dir.rename(dir_path / "new_subdir")
@@ -79,7 +79,7 @@ def test_dir_hash_different_if_sub_directory_renamed(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_file_contents_swapped(dir_hash_test_dir):
+def test_dir_hash_different_if_file_contents_swapped(dir_hash_test_dir: Path) -> None:
     _update_file_content(dir_hash_test_dir / "file1")
     _update_file_content(dir_hash_test_dir / "file2")
 
@@ -92,7 +92,7 @@ def test_dir_hash_different_if_file_contents_swapped(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_ignore_pattern_filename(dir_hash_test_dir):
+def test_dir_hash_ignore_pattern_filename(dir_hash_test_dir: Path) -> None:
     _update_file_content(dir_hash_test_dir / "file1")
     _update_file_content(dir_hash_test_dir / "file2")
 
@@ -106,7 +106,7 @@ def test_dir_hash_ignore_pattern_filename(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod_file2, False, ["file1"])
 
 
-def test_dir_hash_ignore_pattern_multiple(dir_hash_test_dir):
+def test_dir_hash_ignore_pattern_multiple(dir_hash_test_dir: Path) -> None:
     _update_file_content(dir_hash_test_dir / "file1")
     _update_file_content(dir_hash_test_dir / "file2")
 
@@ -117,7 +117,7 @@ def test_dir_hash_ignore_pattern_multiple(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, True, ["file1", "file2"])
 
 
-def test_dir_hash_ignore_pattern_dir_glob(dir_hash_test_dir):
+def test_dir_hash_ignore_pattern_dir_glob(dir_hash_test_dir: Path) -> None:
     tmp_dir = dir_hash_test_dir / "tmp_dir"
     tmp_dir.mkdir()
     _update_file_content(tmp_dir / "file1")
@@ -130,7 +130,7 @@ def test_dir_hash_ignore_pattern_dir_glob(dir_hash_test_dir):
     _verify_with_dir_modification(dir_hash_test_dir, mod, True, ["tmp_dir/*"])
 
 
-def test_file_content_hash(tmp_path):
+def test_file_content_hash(tmp_path) -> None:
     orig_content = _generate_random_string(1024 * 1024)
     file_path = tmp_path / "file"
     _update_file_content(file_path, orig_content)
@@ -145,7 +145,7 @@ def test_file_content_hash(tmp_path):
     assert final_hash == orig_hash
 
 
-def test_file_content_hash_str(tmp_path):
+def test_file_content_hash_str(tmp_path) -> None:
     orig_content = _generate_random_string(1024 * 1024)
     file_path = tmp_path / "file"
     _update_file_content(file_path, orig_content)
@@ -165,7 +165,7 @@ def _verify_with_dir_modification(
     op: Callable[[Path], Path],
     should_match: bool,
     ignore_patterns: List[str] = None,
-):
+) -> None:
     hash1 = directory_content_hash(target_dir, ignore_patterns=ignore_patterns)
     new_target_dir = op(target_dir)
     hash2 = directory_content_hash(
@@ -182,7 +182,7 @@ def _generate_random_string(size: int = 10) -> str:
     return "".join(random.choice(letters) for _ in range(size))
 
 
-def _update_file_content(file: Path, content: str = None):
+def _update_file_content(file: Path, content: str = None) -> None:
     if content is None:
         content = _generate_random_string()
     with file.open("w") as f:

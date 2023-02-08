@@ -6,7 +6,7 @@ from truss.constants import HUGGINGFACE_TRANSFORMER_MODULE_NAME
 from truss.model_framework import ModelFramework
 from truss.types import ModelFrameworkType
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class HuggingfaceTransformer(ModelFramework):

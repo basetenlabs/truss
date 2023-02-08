@@ -7,13 +7,14 @@ import uuid
 from dataclasses import replace
 from pathlib import Path
 from shutil import rmtree
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
 import requests
 import yaml
 from requests import exceptions
 from requests.exceptions import ConnectionError
+from requests.models import Response
 from tenacity import (
     RetryError,
     Retrying,
@@ -71,7 +72,7 @@ from truss.types import Example, PatchDetails
 from truss.utils import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 if is_notebook_or_ipython():
     logger.setLevel(logging.INFO)
@@ -987,7 +988,7 @@ def _prediction_flow(model, request: dict):
     return response
 
 
-def _map_instances_inputs(request: dict):
+def _map_instances_inputs(request: dict) -> Dict[str, Any]:
     # TODO(pankaj) Share this code with baseten deployed code
     if "instances" in request and "inputs" not in request:
         request["inputs"] = request["instances"]
@@ -996,7 +997,7 @@ def _map_instances_inputs(request: dict):
     return request
 
 
-def _validate_request_input(request: dict):
+def _validate_request_input(request: dict) -> None:
     # TODO(pankaj) Should these checks be there?
     if _is_invalid_list_input_prop(request, "instances") or _is_invalid_list_input_prop(
         request, "inputs"
@@ -1004,7 +1005,7 @@ def _validate_request_input(request: dict):
         raise Exception('Expected "instances" or "inputs" to be a list')
 
 
-def _is_invalid_list_input_prop(request: dict, prop: str):
+def _is_invalid_list_input_prop(request: dict, prop: str) -> bool:
     return prop in request and not _is_valid_list_type(request[prop])
 
 
@@ -1014,7 +1015,7 @@ def _is_valid_list_type(obj) -> bool:
     return isinstance(obj, (list, np.ndarray))
 
 
-def _wait_for_docker_build(container):
+def _wait_for_docker_build(container) -> None:
     for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
@@ -1033,11 +1034,11 @@ def _wait_for_docker_build(container):
         | retry_if_exception_type(exceptions.ConnectionError)
     ),
 )
-def _wait_for_model_server(url: str):
+def _wait_for_model_server(url: str) -> Response:
     return requests.get(url)
 
 
-def wait_for_truss(url: str, container):
+def wait_for_truss(url: str, container) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
     try:

@@ -26,7 +26,7 @@ PYTHON_VERSIONS = {
     "py39",
 }
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def _infer_model_framework(model_class: str):

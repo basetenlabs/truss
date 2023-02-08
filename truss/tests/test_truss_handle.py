@@ -24,21 +24,21 @@ from truss.truss_handle import TrussHandle, wait_for_truss
 from truss.types import Example
 
 
-def test_spec(custom_model_truss_dir_with_pre_and_post):
+def test_spec(custom_model_truss_dir_with_pre_and_post) -> None:
     dir_path = custom_model_truss_dir_with_pre_and_post
     th = TrussHandle(dir_path)
     spec = th.spec
     assert spec.truss_dir == dir_path
 
 
-def test_description(custom_model_truss_dir_with_pre_and_post_description):
+def test_description(custom_model_truss_dir_with_pre_and_post_description) -> None:
     dir_path = custom_model_truss_dir_with_pre_and_post_description
     th = TrussHandle(dir_path)
     spec = th.spec
     assert spec.description == "This model adds 3 to all inputs"
 
 
-def test_predict(custom_model_truss_dir_with_pre_and_post):
+def test_predict(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     resp = th.predict(
         {
@@ -48,7 +48,7 @@ def test_predict(custom_model_truss_dir_with_pre_and_post):
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
-def test_predict_with_external_packages(custom_model_with_external_package):
+def test_predict_with_external_packages(custom_model_with_external_package) -> None:
     th = TrussHandle(custom_model_with_external_package)
     resp = th.predict(
         {
@@ -58,7 +58,7 @@ def test_predict_with_external_packages(custom_model_with_external_package):
     assert resp == [1, 1, 1, 1]
 
 
-def test_server_predict(custom_model_truss_dir_with_pre_and_post):
+def test_server_predict(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     resp = th.server_predict(
         {
@@ -68,7 +68,7 @@ def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
-def test_readme_generation_int_example(custom_model_truss_dir_with_pre_and_post):
+def test_readme_generation_int_example(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace("\n", "")
@@ -78,7 +78,7 @@ def test_readme_generation_int_example(custom_model_truss_dir_with_pre_and_post)
 
 def test_readme_generation_no_example(
     custom_model_truss_dir_with_pre_and_post_no_example,
-):
+) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_no_example)
     # Remove the examples file
     os.remove(th._spec.examples_path)
@@ -90,7 +90,7 @@ def test_readme_generation_no_example(
 
 def test_readme_generation_str_example(
     custom_model_truss_dir_with_pre_and_post_str_example,
-):
+) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_str_example)
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace("\n", "")
@@ -99,7 +99,7 @@ def test_readme_generation_str_example(
 
 
 @pytest.mark.integration
-def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
+def test_build_docker_image(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-build-image-tag:0.0.1"
     image = th.build_serving_docker_image(tag=tag)
@@ -107,7 +107,7 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
+def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path) -> None:
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-build-image-gpu-tag:0.0.1"
     build_dir = tmp_path / "scaffold_build_dir"
@@ -116,7 +116,7 @@ def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
 
 
 @pytest.mark.integration
-def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path):
+def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path) -> None:
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     th.live_reload(True)
     tag = "test-build-image-control-gpu-tag:0.0.1"
@@ -126,7 +126,7 @@ def test_build_docker_image_control_gpu(custom_model_truss_dir_for_gpu, tmp_path
 
 
 @pytest.mark.integration
-def test_docker_run(custom_model_truss_dir_with_pre_and_post):
+def test_docker_run(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-run-tag:0.0.1"
     container = th.docker_run(tag=tag)
@@ -138,7 +138,7 @@ def test_docker_run(custom_model_truss_dir_with_pre_and_post):
 
 @pytest.mark.skip(reason="Needs gpu")
 @pytest.mark.integration
-def test_docker_run_gpu(custom_model_truss_dir_for_gpu):
+def test_docker_run_gpu(custom_model_truss_dir_for_gpu) -> None:
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-docker-run-gpu-tag:0.0.1"
     container = th.docker_run(tag=tag)
@@ -149,7 +149,7 @@ def test_docker_run_gpu(custom_model_truss_dir_for_gpu):
 
 
 @pytest.mark.integration
-def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post):
+def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     container = th.docker_run()
     try:
@@ -159,7 +159,7 @@ def test_docker_run_without_tag(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def get_docker_containers_from_labels(custom_model_truss_dir_with_pre_and_post):
+def get_docker_containers_from_labels(custom_model_truss_dir_with_pre_and_post) -> None:
     with ensure_kill_all():
         t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
         assert len(t1.get_serving_docker_containers_from_labels()) == 0
@@ -172,7 +172,7 @@ def get_docker_containers_from_labels(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_predict_use_docker(custom_model_truss_dir_with_pre_and_post):
+def test_predict_use_docker(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
@@ -181,7 +181,7 @@ def test_predict_use_docker(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
+def test_docker_predict(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
@@ -192,7 +192,7 @@ def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
 @pytest.mark.integration
 def test_docker_predict_model_with_external_packages(
     custom_model_with_external_package,
-):
+) -> None:
     th = TrussHandle(custom_model_with_external_package)
     tag = "test-docker-predict-ext-pkg-tag:0.0.1"
     with ensure_kill_all():
@@ -201,7 +201,7 @@ def test_docker_predict_model_with_external_packages(
 
 
 @pytest.mark.integration
-def test_docker_train(variables_to_artifacts_training_truss):
+def test_docker_train(variables_to_artifacts_training_truss) -> None:
     th = TrussHandle(variables_to_artifacts_training_truss)
     th.add_training_variable("x", "y")
     th.add_training_variable("a", "b")
@@ -218,7 +218,7 @@ def test_docker_train(variables_to_artifacts_training_truss):
             }
 
 
-def test_local_train(variables_to_artifacts_training_truss):
+def test_local_train(variables_to_artifacts_training_truss) -> None:
     th = TrussHandle(variables_to_artifacts_training_truss)
     th.add_training_variable("x", "y")
     th.add_training_variable("a", "b")
@@ -236,7 +236,7 @@ def test_local_train(variables_to_artifacts_training_truss):
 @pytest.mark.integration
 def test_docker_predict_with_bundled_packages(
     custom_model_truss_dir_with_bundled_packages,
-):
+) -> None:
     th = TrussHandle(custom_model_truss_dir_with_bundled_packages)
     tag = "test-docker-predict-bundled-packages-tag:0.0.1"
     with ensure_kill_all():
@@ -245,7 +245,7 @@ def test_docker_predict_with_bundled_packages(
 
 
 @pytest.mark.integration
-def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
+def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
@@ -257,7 +257,7 @@ def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_post):
+def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_post) -> None:
     t1 = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     t2 = TrussHandle(custom_model_truss_dir)
     with ensure_kill_all():
@@ -272,7 +272,7 @@ def test_kill_all(custom_model_truss_dir, custom_model_truss_dir_with_pre_and_po
 
 @pytest.mark.skip(reason="Needs gpu")
 @pytest.mark.integration
-def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
+def test_docker_predict_gpu(custom_model_truss_dir_for_gpu) -> None:
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-docker-predict-gpu-tag:0.0.1"
     with ensure_kill_all():
@@ -281,7 +281,7 @@ def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
 
 
 @pytest.mark.integration
-def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
+def test_docker_predict_secrets(custom_model_truss_dir_for_secrets) -> None:
     th = TrussHandle(custom_model_truss_dir_for_secrets)
     tag = "test-docker-predict-secrets-tag:0.0.1"
     LocalConfigHandler.set_secret("secret_name", "secret_value")
@@ -294,7 +294,7 @@ def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
 
 
 @pytest.mark.integration
-def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
+def test_docker_no_preprocess_custom_model(no_preprocess_custom_model) -> None:
     th = TrussHandle(no_preprocess_custom_model)
     tag = "test-docker-no-preprocess-tag:0.0.1"
     with ensure_kill_all():
@@ -303,7 +303,7 @@ def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
 
 
 @pytest.mark.integration
-def test_docker_long_load(long_load_model):
+def test_docker_long_load(long_load_model) -> None:
     th = TrussHandle(long_load_model)
     tag = "test-docker-long-load-tag:0.0.1"
     with ensure_kill_all():
@@ -312,14 +312,14 @@ def test_docker_long_load(long_load_model):
 
 
 @pytest.mark.integration
-def test_local_no_preprocess_custom_model(no_preprocess_custom_model):
+def test_local_no_preprocess_custom_model(no_preprocess_custom_model) -> None:
     th = TrussHandle(no_preprocess_custom_model)
     result = th.server_predict({"inputs": [1]})
     assert result["predictions"][0] == 2
 
 
 @pytest.mark.integration
-def test_docker_no_postprocess_custom_model(no_postprocess_custom_model):
+def test_docker_no_postprocess_custom_model(no_postprocess_custom_model) -> None:
     th = TrussHandle(no_postprocess_custom_model)
     tag = "test-docker-no-postprocess-tag:0.0.1"
     with ensure_kill_all():
@@ -328,14 +328,14 @@ def test_docker_no_postprocess_custom_model(no_postprocess_custom_model):
 
 
 @pytest.mark.integration
-def test_local_no_postprocess_custom_model(no_postprocess_custom_model):
+def test_local_no_postprocess_custom_model(no_postprocess_custom_model) -> None:
     th = TrussHandle(no_postprocess_custom_model)
     result = th.server_predict({"inputs": [1]})
     assert result["predictions"][0] == 2
 
 
 @pytest.mark.integration
-def test_docker_no_load_custom_model(no_load_custom_model):
+def test_docker_no_load_custom_model(no_load_custom_model) -> None:
     th = TrussHandle(no_load_custom_model)
     tag = "test-docker-no-load-tag:0.0.1"
     with ensure_kill_all():
@@ -344,14 +344,14 @@ def test_docker_no_load_custom_model(no_load_custom_model):
 
 
 @pytest.mark.integration
-def test_local_no_load_custom_model(no_load_custom_model):
+def test_local_no_load_custom_model(no_load_custom_model) -> None:
     th = TrussHandle(no_load_custom_model)
     result = th.server_predict({"inputs": [1]})
     assert result["predictions"][0] == 1
 
 
 @pytest.mark.integration
-def test_docker_no_params_init_custom_model(no_params_init_custom_model):
+def test_docker_no_params_init_custom_model(no_params_init_custom_model) -> None:
     th = TrussHandle(no_params_init_custom_model)
     tag = "test-docker-no-params-init-tag:0.0.1"
     with ensure_kill_all():
@@ -360,14 +360,14 @@ def test_docker_no_params_init_custom_model(no_params_init_custom_model):
 
 
 @pytest.mark.integration
-def test_local_no_params_init_custom_model(no_params_init_custom_model):
+def test_local_no_params_init_custom_model(no_params_init_custom_model) -> None:
     th = TrussHandle(no_params_init_custom_model)
     result = th.server_predict({"inputs": [1]})
     assert result["predictions"][0] == 1
 
 
 @pytest.mark.integration
-def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
+def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.add_python_requirement("theano")
     th.add_python_requirement("scipy")
@@ -381,7 +381,7 @@ def test_custom_python_requirement(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
+def test_custom_system_package(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.add_system_package("jq")
     th.add_system_package("fzf")
@@ -394,7 +394,7 @@ def test_custom_system_package(custom_model_truss_dir_with_pre_and_post):
         Docker.client().kill(container)
 
 
-def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
+def test_enable_gpu(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.enable_gpu()
     assert th.spec.config.resources.use_gpu
@@ -411,13 +411,13 @@ def test_update_python_version(
     python_version,
     expected_python_version,
     custom_model_truss_dir_with_pre_and_post,
-):
+) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.update_python_version(python_version)
     assert th.spec.python_version == expected_python_version
 
 
-def test_update_requirements(custom_model_truss_dir_with_pre_and_post):
+def test_update_requirements(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     requirements = [
         "tensorflow==2.3.1",
@@ -430,7 +430,7 @@ def test_update_requirements(custom_model_truss_dir_with_pre_and_post):
 
 def test_update_requirements_from_file(
     custom_model_truss_dir_with_pre_and_post, tmp_path
-):
+) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     file_requirements = [
         "tensorflow==2.3.1",
@@ -452,7 +452,7 @@ def test_update_requirements_from_file(
 
 
 @pytest.mark.integration
-def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
+def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.add_environment_variable("test_env", "test_value")
     tag = "test-add-env-var-tag:0.0.1"
@@ -463,7 +463,7 @@ def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
         Docker.client().kill(container)
 
 
-def test_add_data_file(custom_model_truss_dir_with_pre_and_post, tmp_path):
+def test_add_data_file(custom_model_truss_dir_with_pre_and_post, tmp_path) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     data_filepath = tmp_path / "test_data.txt"
     with data_filepath.open("w") as data_file:
@@ -477,7 +477,7 @@ def test_add_data_file(custom_model_truss_dir_with_pre_and_post, tmp_path):
         assert data_file.read() == "test"
 
 
-def test_add_data_fileglob(custom_model_truss_dir_with_pre_and_post, tmp_path):
+def test_add_data_fileglob(custom_model_truss_dir_with_pre_and_post, tmp_path) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     file1_path = tmp_path / "test_data1.txt"
     with file1_path.open("w") as data_file:
@@ -498,7 +498,7 @@ def test_add_data_fileglob(custom_model_truss_dir_with_pre_and_post, tmp_path):
     assert not (th.spec.data_dir / "test_data2.json").exists()
 
 
-def test_add_data_dir(custom_model_truss_dir_with_pre_and_post, tmp_path):
+def test_add_data_dir(custom_model_truss_dir_with_pre_and_post, tmp_path) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     sub_dir = tmp_path / "sub"
     sub_sub_dir = sub_dir / "sub"
@@ -516,23 +516,23 @@ def test_add_data_dir(custom_model_truss_dir_with_pre_and_post, tmp_path):
         assert data_file.read() == "test"
 
 
-def test_examples(custom_model_truss_dir_with_pre_and_post):
+def test_examples(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     examples = th.examples()
     assert "example1" in [example.name for example in examples]
 
 
-def test_example(custom_model_truss_dir_with_pre_and_post):
+def test_example(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     assert "inputs" in th.example("example1").input
 
 
-def test_example_index(custom_model_truss_dir_with_pre_and_post):
+def test_example_index(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     assert "inputs" in th.example(0).input
 
 
-def test_add_example_new(custom_model_truss_dir_with_pre_and_post):
+def test_add_example_new(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     orig_examples = th.examples()
     th.add_example("example2", {"inputs": [[1]]})
@@ -542,7 +542,7 @@ def test_add_example_new(custom_model_truss_dir_with_pre_and_post):
     ]
 
 
-def test_add_example_update(custom_model_truss_dir_with_pre_and_post):
+def test_add_example_update(custom_model_truss_dir_with_pre_and_post) -> None:
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.add_example("example1", {"inputs": [[1]]})
     assert th.examples() == [
@@ -550,7 +550,7 @@ def test_add_example_update(custom_model_truss_dir_with_pre_and_post):
     ]
 
 
-def test_model_without_pre_post(custom_model_truss_dir):
+def test_model_without_pre_post(custom_model_truss_dir) -> None:
     th = TrussHandle(custom_model_truss_dir)
     resp = th.server_predict(
         {
@@ -561,7 +561,7 @@ def test_model_without_pre_post(custom_model_truss_dir):
 
 
 @pytest.mark.integration
-def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
+def test_docker_predict_model_without_pre_post(custom_model_truss_dir) -> None:
     th = TrussHandle(custom_model_truss_dir)
     with ensure_kill_all():
         resp = th.docker_predict(
@@ -573,7 +573,7 @@ def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
 
 
 @pytest.mark.integration
-def test_control_truss_apply_patch(custom_model_control):
+def test_control_truss_apply_patch(custom_model_control) -> None:
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
@@ -607,7 +607,7 @@ class Model:
 
 
 @pytest.mark.integration
-def test_regular_truss_local_update_flow(custom_model_truss_dir):
+def test_regular_truss_local_update_flow(custom_model_truss_dir) -> None:
     th = TrussHandle(custom_model_truss_dir)
     tag = "test-docker-custom-model-tag:0.0.1"
     with ensure_kill_all():
@@ -639,7 +639,7 @@ class Model:
 def test_truss_hash_caching_based_on_max_mod_time(
     directory_content_patcher,
     custom_model_truss_dir,
-):
+) -> None:
     directory_content_patcher.return_value = "mock_hash"
     th = TrussHandle(custom_model_truss_dir)
     labels = th._get_serving_labels()
@@ -655,7 +655,7 @@ def test_truss_hash_caching_based_on_max_mod_time(
 
 
 @patch("truss.truss_handle.get_container_state")
-def test_container_oom_caught_during_waiting(container_state_mock):
+def test_container_oom_caught_during_waiting(container_state_mock) -> None:
     container_state_mock.return_value = DockerStates.OOMKILLED
     with pytest.raises(ContainerIsDownError):
         wait_for_truss(url="localhost:8000", container=MagicMock())
@@ -663,7 +663,7 @@ def test_container_oom_caught_during_waiting(container_state_mock):
 
 @patch("truss.truss_handle.get_container_state")
 @pytest.mark.integration
-def test_container_stuck_in_created(container_state_mock):
+def test_container_stuck_in_created(container_state_mock) -> None:
     container_state_mock.return_value = DockerStates.CREATED
     with pytest.raises(ContainerIsDownError):
         wait_for_truss(url="localhost:8000", container=MagicMock())
@@ -678,7 +678,7 @@ def test_container_stuck_in_created(container_state_mock):
         for python_version in ["3.8", "3.9"]
     ],
 )
-def test_control_truss_local_update_flow(binary, python_version, custom_model_control):
+def test_control_truss_local_update_flow(binary, python_version, custom_model_control) -> None:
     th = TrussHandle(custom_model_control)
     th.update_python_version(python_version)
     tag = "test-docker-custom-model-control-tag:0.0.1"
@@ -769,7 +769,7 @@ class Model:
 @pytest.mark.integration
 def test_control_truss_huggingface(
     huggingface_truss_handle_small_model,
-):
+) -> None:
     th = TrussHandle(huggingface_truss_handle_small_model)
     th.live_reload()
     tag = "test-docker-huggingface-model-control-tag:0.0.1"
@@ -787,7 +787,7 @@ def test_control_truss_huggingface(
 
 
 @pytest.mark.integration
-def test_control_truss_local_update_that_crashes_inference_server(custom_model_control):
+def test_control_truss_local_update_that_crashes_inference_server(custom_model_control) -> None:
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
@@ -829,7 +829,7 @@ class Model:
 )
 def test_patch_ping_flow(
     patch_path, expected_call_count, custom_model_control, patch_ping_test_server
-):
+) -> None:
     port = patch_ping_test_server
     patch_ping_url = f"http://host.docker.internal:{port}/{patch_path}"
     th = TrussHandle(custom_model_control)
@@ -847,7 +847,7 @@ def test_patch_ping_flow(
         assert stats[f"{patch_path}_called_count"] == expected_call_count
 
 
-def test_handle_if_container_dne(custom_model_truss_dir):
+def test_handle_if_container_dne(custom_model_truss_dir) -> None:
     def return_container_dne(self):
         return "DNE"
 
@@ -859,7 +859,7 @@ def test_handle_if_container_dne(custom_model_truss_dir):
     kill_all_with_retries()
 
 
-def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
+def test_docker_predict_container_does_not_exist(custom_model_truss_dir) -> None:
     def return_container_dne(self):
         return "DNE"
 
@@ -878,24 +878,24 @@ def _container_exists(container) -> bool:
     return False
 
 
-def _verify_system_package_installed_on_container(container, pkg: str):
+def _verify_system_package_installed_on_container(container, pkg: str) -> None:
     resp = container.execute(["which", pkg])
     assert resp.strip() == f"/usr/bin/{pkg}"
 
 
-def _verify_system_requirement_not_installed_on_container(container, pkg: str):
+def _verify_system_requirement_not_installed_on_container(container, pkg: str) -> None:
     try:
         container.execute(["dpkg", "-l", pkg])
     except DockerException as excp:
         assert "no packages found" in str(excp)
 
 
-def _verify_python_requirement_installed_on_container(container, req: str):
+def _verify_python_requirement_installed_on_container(container, req: str) -> None:
     resp = container.execute(["pip", "show", req])
     assert resp.splitlines()[0].lower() == f"Name: {req}".lower()
 
 
-def _verify_python_requirement_not_installed_on_container(container, req: str):
+def _verify_python_requirement_not_installed_on_container(container, req: str) -> None:
     try:
         container.execute(["pip", "show", req])
     except DockerException as excp:
@@ -906,7 +906,7 @@ def _verify_environment_variable_on_container(
     container,
     env_var_name: str,
     env_var_value: str,
-):
+) -> None:
     resp = container.execute(["env"])
     needle = f"{env_var_name}={env_var_value}"
     assert needle in resp.splitlines()

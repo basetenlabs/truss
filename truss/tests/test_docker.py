@@ -14,6 +14,6 @@ def docker_container():
 
 
 @pytest.mark.integration
-def test_get_urls_from_container(docker_container):
+def test_get_urls_from_container(docker_container) -> None:
     resp = get_urls_from_container(docker_container)
     assert resp == {19051: ["http://0.0.0.0:19051", "http://:::19051"]}

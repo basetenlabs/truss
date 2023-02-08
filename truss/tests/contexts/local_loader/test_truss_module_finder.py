@@ -55,7 +55,7 @@ A = 2
 """
 
 
-def test_model_module_finder():
+def test_model_module_finder() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, ORIG_MODEL_CLASS_CONTENT)
         with truss_module_loaded(temp_dir, "model.model") as model_module:
@@ -63,7 +63,7 @@ def test_model_module_finder():
             assert model_class.x == 1
 
 
-def test_model_module_finder_reload():
+def test_model_module_finder_reload() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, ORIG_MODEL_CLASS_CONTENT)
         with truss_module_loaded(temp_dir, "model.model") as model_module:
@@ -76,7 +76,7 @@ def test_model_module_finder_reload():
             assert model_class.x == 2
 
 
-def test_model_module_finder_additional_modules():
+def test_model_module_finder_additional_modules() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(
             temp_dir,
@@ -90,7 +90,7 @@ def test_model_module_finder_additional_modules():
             assert model_class.x == 1
 
 
-def test_model_module_finder_additional_modules_reload():
+def test_model_module_finder_additional_modules_reload() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(
             temp_dir,
@@ -116,7 +116,7 @@ def test_model_module_finder_additional_modules_reload():
             assert model_class.x == 2
 
 
-def test_model_module_finder_reload_non_model_file_updated():
+def test_model_module_finder_reload_non_model_file_updated() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(
             temp_dir,
@@ -147,7 +147,7 @@ def _write_model_module_files(
     util_file_content: str = None,
     submodule_file_content: str = None,
     additional_module_file_content: str = None,
-):
+) -> None:
     model_dir_path = Path(truss_dir) / "model"
     model_dir_path.mkdir(parents=True)
     with (model_dir_path / "model.py").open("w") as f:
