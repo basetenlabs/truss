@@ -36,11 +36,11 @@ def populate_target_directory(
     target_directory_path: Optional[str] = None,
     template: str = "custom",
 ) -> Path:
+    target_directory_path_typed = None
     if target_directory_path is None:
-        # target_directory_path_typed: Path = build_truss_target_directory(template)
-        pass
+        target_directory_path_typed = build_truss_target_directory(template)
     else:
-        target_directory_path_typed: Path = Path(target_directory_path)
+        target_directory_path_typed = Path(target_directory_path)
         target_directory_path_typed.mkdir(parents=True, exist_ok=True)
 
     # Create data dir
