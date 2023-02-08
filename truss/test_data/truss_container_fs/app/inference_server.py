@@ -10,7 +10,7 @@ setup_logging()
 
 
 class ConfiguredTrussServer:
-    _config: dict
+    _config: Dict
     _port: int
 
     def __init__(self, config_path: str, port: int):

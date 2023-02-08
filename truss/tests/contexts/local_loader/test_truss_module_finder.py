@@ -144,9 +144,9 @@ def test_model_module_finder_reload_non_model_file_updated() -> None:
 def _write_model_module_files(
     truss_dir: str,
     model_file_content: str,
-    util_file_content: str = None,
-    submodule_file_content: str = None,
-    additional_module_file_content: str = None,
+    util_file_content: Optional[str] = None,
+    submodule_file_content: Optional[str] = None,
+    additional_module_file_content: Optional[str] = None,
 ) -> None:
     model_dir_path = Path(truss_dir) / "model"
     model_dir_path.mkdir(parents=True)

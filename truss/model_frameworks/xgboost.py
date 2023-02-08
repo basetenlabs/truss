@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Set
+from typing import Any, Dict, Set
 
 from truss.constants import XGBOOST_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
@@ -20,7 +20,7 @@ class XGBoost(ModelFramework):
         model_filepath = target_directory / model_filename
         model.save_model(model_filepath)
 
-    def model_metadata(self, model) -> Dict[str, str]:
+    def model_metadata(self, model) -> Dict[str, Any]:
         return {
             "model_binary_dir": "model",
             "supports_predict_proba": False,

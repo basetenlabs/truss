@@ -26,14 +26,14 @@ class ModelWrapper(kserve.Model):
         READY = 2
         FAILED = 3
 
-    _config: dict
+    _config: Dict
     _model: object
     _load_lock: Lock = Lock()
     _predict_lock: Lock = Lock()
     _status: Status = Status.NOT_READY
     _logger: logging.Logger
 
-    def __init__(self, config: dict):
+    def __init__(self, config: Dict):
         super().__init__(MODEL_BASENAME)
         self._config = config
         self.logger = logging.getLogger(__name__)

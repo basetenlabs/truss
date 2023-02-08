@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 from truss.types import ModelFrameworkType
@@ -65,7 +65,7 @@ class Train:
     training_class_filename: str = DEFAULT_TRAINING_CLASS_FILENAME
     training_class_name: str = DEFAULT_TRAINING_CLASS_NAME
     training_module_dir: str = DEFAULT_TRAINING_MODULE_DIR
-    variables: dict = field(default_factory=dict)
+    variables: Dict = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
 
     @staticmethod
@@ -98,7 +98,7 @@ class Train:
 class TrussConfig:
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
-    model_name: str = None
+    model_name: Optional[str] = None
 
     model_module_dir: str = DEFAULT_MODEL_MODULE_DIR
     model_class_filename: str = DEFAULT_MODEL_CLASS_FILENAME
@@ -116,7 +116,7 @@ class TrussConfig:
     python_version: str = DEFAULT_PYTHON_VERSION
     examples_filename: str = DEFAULT_EXAMPLES_FILENAME
     secrets: Dict[str, str] = field(default_factory=dict)
-    description: str = None
+    description: Optional[str] = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
     external_package_dirs: List[str] = field(default_factory=list)
     live_reload: bool = False

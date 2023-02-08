@@ -4,9 +4,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from argparse import ArgumentParser, BooleanOptionalAction
+from argparse import ArgumentParser, BooleanOptionalAction  # ignore: type
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Set
 
 from jinja2 import Environment, FileSystemLoader
 from truss.contexts.image_builder.util import (
@@ -69,7 +69,7 @@ def _build(
     use_gpu: bool = False,
     job_type: str = "server",
     push: bool = False,
-    version_tag: str = None,
+    version_tag: Optional[str] = None,
     dry_run: bool = True,
 ):
     image_name = truss_base_image_name(job_type=job_type)
@@ -125,12 +125,12 @@ def _build(
 
 
 def _build_all(
-    job_types: List[str] = None,
-    python_versions: List[str] = None,
-    live_reload_values: List[bool] = None,
-    use_gpu_values: List[bool] = None,
+    job_types: Optional[List[str]] = None,
+    python_versions: Optional[Set[str]] = None,
+    live_reload_values: Optional[List[bool]] = None,
+    use_gpu_values: Optional[List[bool]] = None,
     push: bool = False,
-    version_tag: str = None,
+    version_tag: Optional[str] = None,
     dry_run: bool = False,
 ):
     if job_types is None:
@@ -219,7 +219,7 @@ if __name__ == "__main__":
     if args.python_version == "all":
         python_versions = PYTHON_VERSIONS
     else:
-        python_versions = [args.python_version]
+        python_versions = {args.python_version}
 
     if args.job_type == "all":
         job_types = ["server", "training"]

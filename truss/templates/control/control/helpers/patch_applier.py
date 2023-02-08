@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 from helpers.errors import UnsupportedPatch
 from helpers.types import (
@@ -17,7 +18,7 @@ class PatchApplier:
         self,
         inference_server_home: Path,
         app_logger,
-        pip_path: str = None,  # Only meant for testing
+        pip_path: Optional[str] = None,  # Only meant for testing
     ) -> None:
         self._inference_server_home = inference_server_home
         self._model_module_dir = (

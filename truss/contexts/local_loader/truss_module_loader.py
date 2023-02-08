@@ -3,7 +3,7 @@ import sys
 from contextlib import contextmanager
 from importlib.machinery import PathFinder
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 class TrussModuleFinder(PathFinder):
@@ -15,9 +15,9 @@ class TrussModuleFinder(PathFinder):
     def set_model_truss_dirs(
         cls,
         truss_dir: str,
-        truss_module_name: str = None,
-        bundled_packages_dir_name: str = None,
-        external_packages_dirs: List[str] = None,
+        truss_module_name: Optional[str] = None,
+        bundled_packages_dir_name: Optional[str] = None,
+        external_packages_dirs: Optional[List[str]] = None,
     ):
         cls._truss_dir = truss_dir
         cls._truss_module_name = truss_module_name
@@ -83,8 +83,8 @@ class TrussModuleLoader:
 def truss_module_loaded(
     truss_dir: str,
     truss_class_module_fullname: str,
-    bundled_packages_dir_name: str = None,
-    external_packages_dirs: List[str] = None,
+    bundled_packages_dir_name: Optional[str] = None,
+    external_packages_dirs: Optional[List[str]] = None,
 ):
     """
     Load a truss module: model or train.
@@ -94,7 +94,7 @@ def truss_module_loaded(
                                      e.g. 'model.model', 'train.train'
         bundled_packages_dir_name: name of the bundled packages directory
                                    if None then bundled packages are not loaded.
-        external_packages_dirs: list of names of the external packages directories
+        external_packages_dirs: List of names of the external packages directories
                                    if None then external packages are not loaded.
     """
     try:
@@ -123,8 +123,8 @@ def truss_module_loaded(
 def _unload_truss_modules(
     truss_dir: str,
     truss_module_name: str,
-    bundled_packages_dir_name: str = None,
-    external_packages_dirs: List[str] = None,
+    bundled_packages_dir_name: Optional[str] = None,
+    external_packages_dirs: Optional[List[str]] = None,
 ) -> None:
     modules_to_unload = [truss_module_name]
 

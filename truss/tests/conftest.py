@@ -726,7 +726,7 @@ def _custom_model_from_code(
     where_dir: Path,
     truss_name: str,
     model_code: str,
-    handle_ops: callable = None,
+    handle_ops: Optional[callable] = None,
 ) -> Path:
     dir_path = where_dir / truss_name
     handle = init(str(dir_path))

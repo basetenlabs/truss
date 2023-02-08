@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Type, Union
+from typing import Dict, Optional, Type, Union
 
 
 class PatchType(Enum):
@@ -34,7 +34,7 @@ class PatchBody:
 @dataclass
 class ModelCodePatch(PatchBody):
     path: str  # Relative to model module directory
-    content: str = None
+    content: Optional[str] = None
 
     def to_dict(self):
         return {
@@ -44,7 +44,7 @@ class ModelCodePatch(PatchBody):
         }
 
     @staticmethod
-    def from_dict(patch_dict: dict):
+    def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
         return ModelCodePatch(
             action=Action[action_str],
@@ -66,7 +66,7 @@ class PythonRequirementPatch(PatchBody):
         }
 
     @staticmethod
-    def from_dict(patch_dict: dict):
+    def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
         return PythonRequirementPatch(
             action=Action[action_str],
@@ -87,7 +87,7 @@ class SystemPackagePatch(PatchBody):
         }
 
     @staticmethod
-    def from_dict(patch_dict: dict):
+    def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
         return SystemPackagePatch(
             action=Action[action_str],
@@ -119,7 +119,7 @@ class Patch:
         }
 
     @staticmethod
-    def from_dict(patch_dict: dict):
+    def from_dict(patch_dict: Dict):
         typ = PatchType(patch_dict["type"])
         body = PATCH_BODY_BY_TYPE[typ].from_dict(patch_dict["body"])
         return Patch(typ, body)

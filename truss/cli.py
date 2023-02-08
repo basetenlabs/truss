@@ -3,7 +3,7 @@ import logging
 import os
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
 
 import click
 import truss
@@ -179,7 +179,15 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 )
 @error_handling
 @echo_output
-def predict(target_directory: str, request: Union[bytes, str], build_dir, tag, port, use_docker, request_file):
+def predict(
+    target_directory: str,
+    request: Union[bytes, str],
+    build_dir,
+    tag,
+    port,
+    use_docker,
+    request_file,
+):
     """
     Invokes the packaged model, either locally or in a Docker container.
 
@@ -333,7 +341,7 @@ def cleanup() -> None:
     truss.build.cleanup()
 
 
-def _get_truss_from_directory(target_directory: str = None):
+def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()

@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Optional
 
 import click
 import cloudpickle
@@ -32,43 +32,46 @@ if is_notebook_or_ipython():
 
 
 def populate_target_directory(
-    config: TrussConfig, target_directory_path: str = None, template: str = "custom"
+    config: TrussConfig,
+    target_directory_path: Optional[str] = None,
+    template: str = "custom",
 ) -> Path:
-
     if target_directory_path is None:
-        target_directory_path = build_truss_target_directory(template)
+        target_directory_path_typed: Path = build_truss_target_directory(template)
     else:
-        target_directory_path = Path(target_directory_path)
-        target_directory_path.mkdir(parents=True, exist_ok=True)
+        target_directory_path_typed: Path = Path(target_directory_path)
+        target_directory_path_typed.mkdir(parents=True, exist_ok=True)
 
     # Create data dir
-    (target_directory_path / config.data_dir).mkdir()
+    (target_directory_path_typed / config.data_dir).mkdir()
 
     # Create bundled packages dir
-    (target_directory_path / config.bundled_packages_dir).mkdir()
+    (target_directory_path_typed / config.bundled_packages_dir).mkdir()
 
     # Create model module dir
-    model_dir = target_directory_path / config.model_module_dir
+    model_dir = target_directory_path_typed / config.model_module_dir
     template_path = TEMPLATES_DIR / template
     copy_tree_path(template_path / "model", model_dir)
 
     examples_path = template_path / DEFAULT_EXAMPLES_FILENAME
     if examples_path.exists():
-        copy_file_path(examples_path, target_directory_path / DEFAULT_EXAMPLES_FILENAME)
+        copy_file_path(
+            examples_path, target_directory_path_typed / DEFAULT_EXAMPLES_FILENAME
+        )
 
     # Write config
-    with (target_directory_path / CONFIG_FILE).open("w") as config_file:
+    with (target_directory_path_typed / CONFIG_FILE).open("w") as config_file:
         yaml.dump(config.to_dict(), config_file)
 
-    return target_directory_path
+    return target_directory_path_typed
 
 
 def create_from_model(
     model: Any,
-    target_directory: str = None,
-    data_files: List[str] = None,
-    requirements_file: str = None,
-    bundled_packages: List[str] = None,
+    target_directory: Optional[str] = None,
+    data_files: Optional[List[str]] = None,
+    requirements_file: Optional[str] = None,
+    bundled_packages: Optional[List[str]] = None,
 ) -> TrussHandle:
     """Create a Truss with the given model. A Truss is a build context designed to
     be built as a container locally or uploaded into a model serving environment.
@@ -113,10 +116,10 @@ def create_from_model(
 
 def create_from_pipeline(
     pipeline: Callable,
-    target_directory: str = None,
-    data_files: List[str] = None,
-    requirements_file: str = None,
-    bundled_packages: List[str] = None,
+    target_directory: Optional[str] = None,
+    data_files: Optional[List[str]] = None,
+    requirements_file: Optional[str] = None,
+    bundled_packages: Optional[List[str]] = None,
 ):
     """Create a Truss from a function. A Truss is a build context designed to
     be built as a container locally or uploaded into a model serving environment.
@@ -173,10 +176,10 @@ def create_from_pipeline(
 
 def create_from_mlflow_uri(
     model_uri: str,
-    target_directory: str = None,
-    data_files: List[str] = None,
-    requirements_file: str = None,
-    bundled_packages: List[str] = None,
+    target_directory: Optional[str] = None,
+    data_files: Optional[List[str]] = None,
+    requirements_file: Optional[str] = None,
+    bundled_packages: Optional[List[str]] = None,
 ):
     """Create a Truss with the given model. A Truss is a build context designed to
     be built as a container locally or uploaded into a model serving environment.
@@ -216,9 +219,9 @@ def create_from_model_with_exception_handler(*args):
 
 def init(
     target_directory: str,
-    data_files: List[str] = None,
-    requirements_file: str = None,
-    bundled_packages: List[str] = None,
+    data_files: Optional[List[str]] = None,
+    requirements_file: Optional[str] = None,
+    bundled_packages: Optional[List[str]] = None,
     trainable: bool = False,
 ) -> TrussHandle:
     """
@@ -272,10 +275,10 @@ def from_directory(*args, **kwargs):
 
 def create(
     model: Any,
-    target_directory: str = None,
-    data_files: List[str] = None,
-    requirements_file: str = None,
-    bundled_packages: List[str] = None,
+    target_directory: Optional[str] = None,
+    data_files: Optional[List[str]] = None,
+    requirements_file: Optional[str] = None,
+    bundled_packages: Optional[List[str]] = None,
 ) -> TrussHandle:
     # Some model objects can are callable (like Keras models)
     # so we first attempt to make Truss via a model object
@@ -315,9 +318,9 @@ def cleanup() -> None:
 
 def _update_truss_props(
     scaf: TrussHandle,
-    data_files: List[str] = None,
-    requirements_file: str = None,
-    bundled_packages: List[str] = None,
+    data_files: Optional[List[str]] = None,
+    requirements_file: Optional[str] = None,
+    bundled_packages: Optional[List[str]] = None,
 ) -> None:
     if data_files is not None:
         for data_file in data_files:

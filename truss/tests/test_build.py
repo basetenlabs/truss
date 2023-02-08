@@ -95,7 +95,7 @@ def test_create(sklearn_rfc_model, tmp_path) -> None:
 
 
 def test_create_pipeline(sklearn_rfc_model, tmp_path) -> None:
-    def inference(request: dict):
+    def inference(request: Dict):
         inputs = request["inputs"]
         response = sklearn_rfc_model.predict([inputs])[0]
         return {"result": response}
@@ -136,7 +136,7 @@ def test_truss_sklearn_predict(sklearn_rfc_model) -> None:
 
 
 def test_truss_sklearn_predict_pipeline(sklearn_rfc_model) -> None:
-    def inference(request: dict):
+    def inference(request: Dict):
         inputs = request["inputs"]
         response = sklearn_rfc_model.predict([inputs])[0]
         return {"result": response}
@@ -157,7 +157,7 @@ def test_truss_keras_predict(keras_mpg_model) -> None:
 
 
 def test_truss_keras_predict_pipeline(keras_mpg_model) -> None:
-    def inference(request: dict):
+    def inference(request: Dict):
         inputs = request["inputs"]
         response = keras_mpg_model.predict(inputs)
         return {"result": response}

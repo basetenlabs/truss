@@ -20,7 +20,7 @@ Get a handle to a Truss. A Truss is a build context designed to be built as a co
 
 * `TrussHandle`: A handle to the generated Truss that provides easy access to content inside.
 
-#### `init(target_directory: str, data_files: List[str] = None, requirements_file: str = None) -> truss.truss_handle.TrussHandle`
+#### `init(target_directory: str, data_files: List[str] = None, requirements_file: Optional[str] = None) -> truss.truss_handle.TrussHandle`
 
 Initialize an empty placeholder Truss. A Truss is a build context designed to be built as a container locally or uploaded into a model serving environment. This placeholder structure can be filled to represent ML models.
 
@@ -30,7 +30,7 @@ Initialize an empty placeholder Truss. A Truss is a build context designed to be
 
 #### `kill_all()`
 
-#### create(model: Any, target_directory: str = None, data_files: List[str] = None, requirements_file: str = None) -> truss.truss_handle.TrussHandle
+#### create(model: Any, target_directory: Optional[str] = None, data_files: List[str] = None, requirements_file: Optional[str] = None) -> truss.truss_handle.TrussHandle
 
 Create a Truss with the given model. A Truss is a build context designed to
 be built as a container locally or uploaded into a model serving environment.
@@ -82,7 +82,7 @@ Add a python requirement to truss model's config.
 
 Add a system package requirement to truss model's config.
 
-#### `build_docker_image(self, build_dir: pathlib.Path = None, tag: str = None)`
+#### `build_docker_image(self, build_dir: pathlib.Path = None, tag: Optional[str] = None)`
 
 Builds docker image
 
@@ -96,11 +96,11 @@ Set up a directory to build docker image from.
 
 - docker build command.
 
-#### `docker_predict(self, request: dict, build_dir: pathlib.Path = None, tag: str = None, local_port: int = 8080, detach: bool = True)`
+#### `docker_predict(self, request: dict, build_dir: pathlib.Path = None, tag: Optional[str] = None, local_port: int = 8080, detach: bool = True)`
 
 Builds docker image, runs that as a docker container and makes a prediction request to the server running on the container. Kills the container afterwards. Mostly useful for testing.
 
-#### `docker_run(self, build_dir: pathlib.Path = None, tag: str = None, local_port: int = 8080, detach=True)`
+#### `docker_run(self, build_dir: pathlib.Path = None, tag: Optional[str] = None, local_port: int = 8080, detach=True)`
 
 Builds a docker image and runs it as a container.
 

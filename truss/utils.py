@@ -38,7 +38,7 @@ def get_max_modified_time_of_dir(path: Path) -> float:
 
 
 @contextmanager
-def given_or_temporary_dir(given_dir: Path = None):
+def given_or_temporary_dir(given_dir: Optional[Path] = None):
     if given_dir is not None:
         yield given_dir
     else:

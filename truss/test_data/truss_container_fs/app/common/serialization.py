@@ -7,7 +7,8 @@ from typing import Callable, Dict, Union
 
 # mostly cribbed from django.core.serializer.DjangoJSONEncoder
 def truss_msgpack_encoder(
-    obj: Union[Decimal, date, time, timedelta, uuid.UUID, Dict], chain: Callable = None
+    obj: Union[Decimal, date, time, timedelta, uuid.UUID, Dict],
+    chain: Optional[Callable] = None,
 ) -> Dict:
     if isinstance(obj, datetime.datetime):
         r = obj.isoformat()

@@ -47,7 +47,7 @@ class PyTorch(ModelFramework):
             return False
 
 
-def _torch_package(model, path: Path, extern_modules: list) -> None:
+def _torch_package(model, path: Path, extern_modules) -> None:
     from torch import package
 
     with package.PackageExporter(path) as exp:

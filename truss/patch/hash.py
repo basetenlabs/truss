@@ -6,7 +6,7 @@ from typing import List, Optional
 
 def directory_content_hash(
     root: Path,
-    ignore_patterns: List[str] = None,
+    ignore_patterns: Optional[List[str]] = None,
 ) -> str:
     """Calculate content based hash of a filesystem directory.
 

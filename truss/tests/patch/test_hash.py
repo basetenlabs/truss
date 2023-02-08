@@ -35,14 +35,18 @@ def test_dir_hash_different_if_file_added_at_top_level(dir_hash_test_dir: Path) 
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_file_added_to_sub_directory(dir_hash_test_dir: Path) -> None:
+def test_dir_hash_different_if_file_added_to_sub_directory(
+    dir_hash_test_dir: Path,
+) -> None:
     def mod(dir_path):
         _update_file_content(dir_path / "subdir" / "new_file")
 
     _verify_with_dir_modification(dir_hash_test_dir, mod, False)
 
 
-def test_dir_hash_different_if_file_file_content_modified(dir_hash_test_dir: Path) -> None:
+def test_dir_hash_different_if_file_file_content_modified(
+    dir_hash_test_dir: Path,
+) -> None:
     def mod(dir_path):
         _update_file_content(
             dir_path / "target_file", content=_generate_random_string(5)
@@ -60,7 +64,9 @@ def test_dir_hash_same_if_target_dir_renamed(tmp_path, dir_hash_test_dir: Path) 
     _verify_with_dir_modification(dir_hash_test_dir, mod, True)
 
 
-def test_dir_hash_same_if_target_dir_moved_but_not_renamed(tmp_path, dir_hash_test_dir: Path) -> None:
+def test_dir_hash_same_if_target_dir_moved_but_not_renamed(
+    tmp_path, dir_hash_test_dir: Path
+) -> None:
     def mod(dir_path):
         holding_dir = tmp_path / "holding_dir"
         holding_dir.mkdir()
@@ -164,7 +170,7 @@ def _verify_with_dir_modification(
     target_dir: Path,
     op: Callable[[Path], Path],
     should_match: bool,
-    ignore_patterns: List[str] = None,
+    ignore_patterns: Optional[List[str]] = None,
 ) -> None:
     hash1 = directory_content_hash(target_dir, ignore_patterns=ignore_patterns)
     new_target_dir = op(target_dir)
@@ -182,7 +188,7 @@ def _generate_random_string(size: int = 10) -> str:
     return "".join(random.choice(letters) for _ in range(size))
 
 
-def _update_file_content(file: Path, content: str = None) -> None:
+def _update_file_content(file: Path, content: Optional[str] = None) -> None:
     if content is None:
         content = _generate_random_string()
     with file.open("w") as f:

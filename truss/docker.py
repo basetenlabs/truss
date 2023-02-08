@@ -21,14 +21,14 @@ class Docker:
         return Docker._client
 
 
-def get_containers(labels: dict, all: bool = False):
+def get_containers(labels: Dict, all: bool = False):
     """Gets containers given labels."""
     return Docker.client().container.list(
         filters=_create_label_filters(labels), all=all
     )
 
 
-def get_images(labels: dict):
+def get_images(labels: Dict):
     """Gets images given labels."""
     return Docker.client().image.list(filters=_create_label_filters(labels))
 
@@ -65,7 +65,7 @@ def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]
     }
 
 
-def kill_containers(labels: Dict[str, str]) -> None:
+def kill_containers(labels: Dict[str, bool]) -> None:
     from python_on_whales.exceptions import DockerException
 
     containers = get_containers(labels)

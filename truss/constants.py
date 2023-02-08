@@ -1,5 +1,6 @@
 import os
 import pathlib
+from typing import Set
 
 SKLEARN = "sklearn"
 TENSORFLOW = "tensorflow"
@@ -16,7 +17,9 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
-TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME
+TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = (
+    TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME
+)
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME
@@ -52,10 +55,10 @@ TRUSS_HASH = "truss_hash"
 TRAINING_TRUSS_HASH = "training_truss_hash"
 TRAINING_LABEL = "training"
 
-HUGGINGFACE_TRANSFORMER_MODULE_NAME = {}
+HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = {}
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
-SKLEARN_REQ_MODULE_NAMES = {
+SKLEARN_REQ_MODULE_NAMES: Set[str] = {
     "numpy",
     "scipy",
     "joblib",
@@ -63,26 +66,26 @@ SKLEARN_REQ_MODULE_NAMES = {
     "threadpoolctl",
 }
 
-XGBOOST_REQ_MODULE_NAMES = {"xgboost"}
+XGBOOST_REQ_MODULE_NAMES: Set[str] = {"xgboost"}
 
 # list from https://www.tensorflow.org/install/pip
 # if problematic, lets look to https://www.tensorflow.org/install/source
-TENSORFLOW_REQ_MODULE_NAMES = {
+TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {
     "tensorflow",
 }
 
-LIGHTGBM_REQ_MODULE_NAMES = {
+LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {
     "lightgbm",
 }
 
 # list from https://pytorch.org/get-started/locally/
-PYTORCH_REQ_MODULE_NAMES = {
+PYTORCH_REQ_MODULE_NAMES: Set[str] = {
     "torch",
     "torchvision",
     "torchaudio",
 }
 
-MLFLOW_REQ_MODULE_NAMES = {"mlflow"}
+MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
 
 INFERENCE_SERVER_PORT = 8080
 

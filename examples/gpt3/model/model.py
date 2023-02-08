@@ -3,7 +3,7 @@ from typing import Dict, List
 import openai
 
 
-def _run_gpt3(gpt3_input: dict):
+def _run_gpt3(gpt3_input: Dict):
     # Using completion API, much more here to uncover,
     # see https://beta.openai.com/docs/api-reference/completions/create
     prompt = gpt3_input.pop("prompt")

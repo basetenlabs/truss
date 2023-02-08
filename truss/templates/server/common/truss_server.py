@@ -58,14 +58,14 @@ class BasetenEndpoints(V1Endpoints):
 
         self.check_healthy(model)
 
-        body: dict
+        body: Dict
         if self.is_binary(request):
             body = truss_msgpack_deserialize(body_raw)
         else:
             body = json.loads(body_raw)
 
         # calls kserve.model.Model.__call__, which runs validate, preprocess, predict, and postprocess
-        response: dict = asyncio.run(model(body, headers=dict(request.headers.items())))
+        response: Dict = asyncio.run(model(body, headers=dict(request.headers.items())))
 
         response_headers = {}
         if self.is_binary(request):
@@ -92,9 +92,9 @@ class TrussServer(kserve.ModelServer):
 
     _endpoints: BasetenEndpoints
     _model: ModelWrapper
-    _config: dict
+    _config: Dict
 
-    def __init__(self, http_port: int, config: dict):
+    def __init__(self, http_port: int, config: Dict):
         super().__init__(
             http_port=http_port,
             enable_grpc=False,

@@ -9,7 +9,7 @@ PROCESSOR_ID = "sample"
 CONFIDENCE_THRESHOLD = 0.5
 
 
-def extract_pdf_data(file_url: str, creds: dict):
+def extract_pdf_data(file_url: str, creds: Dict):
     """
     Extracts structured data from pdfs.
     Args:
