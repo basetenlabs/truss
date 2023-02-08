@@ -128,7 +128,7 @@ jobs:
 
   publish-to-pypi:
     needs: [integration-tests, detect-version-changed]
-    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
+    if: needs.detect-version-changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
