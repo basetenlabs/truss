@@ -55,8 +55,9 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: actions/checkout@v3
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: echo "some"  # todo remove
+      # - uses: ./.github/actions/setup-python/
+      # - run: poetry install
       # - shell: bash
       #   run: |
       #     if [[ "${{ needs.detect-version-changed.outputs.version_changed }}" == "true" ]]; then
@@ -68,8 +69,9 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
-      - uses: ./.github/actions/setup-python/
-      - run: poetry version
+      - run: echo "some"  # todo remove
+      # - uses: ./.github/actions/setup-python/
+      # - run: poetry version
       # - run: poetry install
       # - run: poetry run pytest truss/tests  -m 'integration'
 
