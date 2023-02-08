@@ -442,7 +442,7 @@ class TrussHandle:
             )
         )
 
-    def add_training_variable(self, var_name: str, default_var_value: any):
+    def add_training_variable(self, var_name: str, default_var_value: Any):
         """Add a training variable to truss model's config."""
         self._update_config(
             lambda conf: replace(
@@ -839,14 +839,14 @@ class TrussHandle:
                 filepath = Path(filename)
                 copy_file_path(filepath, destination_dir / filepath.name)
 
-    def _get_serving_labels(self) -> Dict[str, str]:
+    def _get_serving_labels(self) -> Dict[str, Any]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
         return {
             **self._get_serving_lookup_labels(),
             TRUSS_MODIFIED_TIME: truss_mod_time,
         }
 
-    def _get_serving_lookup_labels(self) -> Dict[str, str]:
+    def _get_serving_lookup_labels(self) -> Dict[str, Any]:
         return {
             TRUSS_DIR: self._truss_dir,
             TRUSS_HASH: self._serving_hash(),
@@ -854,7 +854,7 @@ class TrussHandle:
             TRUSS: True,
         }
 
-    def _get_training_labels(self) -> Dict[str, str]:
+    def _get_training_labels(self) -> Dict[str, Any]:
         data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
         model_module_dir_ignore_pattern = f"{str(self._spec.model_module_dir.name)}/*"
         examples_ignore_pattern = self._spec.examples_path.name
@@ -1064,6 +1064,7 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
     for index, example in enumerate(examples):
         if example.name == example_name:
             return index
+    raise ValueError(f"{example_name} not found.")
 
 
 def _get_url_from_container(container) -> str:

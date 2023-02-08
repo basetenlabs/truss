@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 import time
+from typing import Optional
 
 from helpers.errors import (
     InadmissiblePatch,
@@ -105,7 +106,7 @@ class InferenceServerController:
             self._process_controller.start()
             self._current_running_hash = req_hash
 
-    def truss_hash(self) -> str:
+    def truss_hash(self) -> Optional[str]:
         return self._current_running_hash
 
     def restart(self):

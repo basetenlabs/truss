@@ -8,8 +8,9 @@ from typing import List, Optional
 
 class TrussModuleFinder(PathFinder):
     _truss_dir: str
-    _bundled_packages_dir_name: str
-    _external_packages_dirs: List[str]
+    _bundled_packages_dir_name: Optional[str]
+    _external_packages_dirs: Optional[List[str]]
+    _truss_module_name: Optional[str]
 
     @classmethod
     def set_model_truss_dirs(

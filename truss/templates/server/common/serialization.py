@@ -64,9 +64,7 @@ def is_truss_serializable(obj) -> bool:
     # basic JSON types
     if isinstance(obj, (str, int, float, bool, type(None), dict, list)):
         return True
-    elif isinstance(
-        obj, (datetime.datetime, datetime.date, datetime.time, datetime.timedelta)
-    ):
+    elif isinstance(obj, (datetime, date, time, timedelta)):
         return True
     elif isinstance(obj, np.ndarray):
         return True

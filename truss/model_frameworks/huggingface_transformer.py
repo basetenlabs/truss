@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Set
+from typing import Any, Dict, Optional, Set
 
 from truss.constants import HUGGINGFACE_TRANSFORMER_MODULE_NAME
 from truss.model_framework import ModelFramework
@@ -20,7 +20,7 @@ class HuggingfaceTransformer(ModelFramework):
         # For Huggingface models, all the important details are in metadata.
         pass
 
-    def model_metadata(self, model) -> Dict[str, str]:
+    def model_metadata(self, model) -> Dict[str, Any]:
         hf_task = self.model_type(model)
         return {
             "transformer_config": {
@@ -38,13 +38,14 @@ class HuggingfaceTransformer(ModelFramework):
         return model_framework == "transformers"
 
 
-def _hf_model_name(model) -> str:
+def _hf_model_name(model) -> Optional[str]:
     try:
-        return model.model.config._name_or_path
+        return model.model.config._name_or_path  # type: ignore
     except AttributeError:
         logger.info(
             "Unable to infer a HuggingFace model on this task pipeline; transformer library will default"
         )
+        return None
 
 
 def _infer_hf_task(model) -> str:

@@ -55,7 +55,7 @@ TRUSS_HASH = "truss_hash"
 TRAINING_TRUSS_HASH = "training_truss_hash"
 TRAINING_LABEL = "training"
 
-HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = {}
+HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
 
 # list from https://scikit-learn.org/stable/developers/advanced_installation.html
 SKLEARN_REQ_MODULE_NAMES: Set[str] = {

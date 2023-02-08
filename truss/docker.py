@@ -2,6 +2,7 @@ import enum
 import logging
 from typing import Any, Dict, List
 
+from python_on_whales.components.container.cli_wrapper import Container
 from truss.constants import TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
 
@@ -33,7 +34,7 @@ def get_images(labels: Dict):
     return Docker.client().image.list(filters=_create_label_filters(labels))
 
 
-def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]]:
+def get_urls_from_container(container_details) -> Dict[int, List[str]]:
     """Gets url where docker container is hosted."""
     if (
         container_details.network_settings is None
@@ -98,7 +99,7 @@ class DockerStates(enum.Enum):
     EXITED = "exited"
 
 
-def inspect_container(container) -> Dict:
+def inspect_container(container) -> Container:
     """Inspects truss container"""
     return Docker.client().container.inspect(container)
 

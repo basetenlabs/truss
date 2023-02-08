@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from argparse import ArgumentParser, BooleanOptionalAction  # ignore: type
+from argparse import ArgumentParser, BooleanOptionalAction  # type: ignore
 from pathlib import Path
 from typing import List, Optional, Set
 

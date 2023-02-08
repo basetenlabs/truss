@@ -152,7 +152,7 @@ def _calc_config_patches(
 
 def _calc_python_requirements_patches(
     prev_config: TrussConfig, new_config: TrussConfig
-) -> Optional[List[Patch]]:
+) -> List[Patch]:
     """Calculate patch based on changes to python requirements.
 
     Returns None if patch cannot be calculated. Empty list means no relevant
@@ -184,7 +184,7 @@ def _calc_python_requirements_patches(
 
 def _calc_system_packages_patches(
     prev_config: TrussConfig, new_config: TrussConfig
-) -> Optional[List[Patch]]:
+) -> List[Patch]:
     """Calculate patch based on changes to system packates.
 
     Returns None if patch cannot be calculated. Empty list means no relevant
@@ -215,7 +215,7 @@ def _parsed_reqs_by_name(reqs: List[str]) -> Dict[str, Any]:
     parsed_reqs_by_name = {}
     for req in reqs:
         parsed_req = pkg_resources.Requirement.parse(req)
-        parsed_reqs_by_name[parsed_req.name] = parsed_req
+        parsed_reqs_by_name[parsed_req.name] = parsed_req  # type: ignore
     return parsed_reqs_by_name
 
 
