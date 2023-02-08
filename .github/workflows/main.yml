@@ -10,28 +10,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  integration_tests:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          lfs: true
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss/tests  -m 'integration'
-
-  git_tag_if_version_changed:
-    needs: [integration_tests]
+  detect-version-changed:
     runs-on: ubuntu-20.04
     outputs:
       version_changed: ${{ steps.versions.outputs.version_changed }}
+      new_version: ${{ steps.versions.outputs.new_version }}
     steps:
       - uses: actions/checkout@v3
         with:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-          lfs: true
-          fetch-depth: 2
       - run: curl -sSL https://install.python-poetry.org | python3 -
         shell: bash
       - id: versions
@@ -51,25 +39,60 @@ jobs:
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
           fi
+  build-and-push-truss-base-images-if-needed:
+    needs: [detect-version-changed]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
 
-      - if: steps.versions.outputs.version_changed == 'true'
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - shell: bash
         run: |
-          NEW_VERSION=v${{ steps.versions.outputs.new_version }}
+          if [[ "${{ needs.detect-version-changed.outputs.version_changed }}" == "true" ]]; then
+            poetry run bin/generate_base_images.py --version-tag ${{ needs.detect-version-changed.outputs.new_version }} \
+              --skip-login --push
+          fi
+  integration-tests:
+    needs: [build-and-push-truss-base-images-if-needed]
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss/tests  -m 'integration'
+
+  git-tag-if-version-changed:
+    needs: [integration-tests, detect-version-changed]
+    if: needs.detect-version-changed.outputs.version_changed == 'true'
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
+          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+      - run: |
+          NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
           git config --global user.name "Github action"
           git config --global user.email "github.action@baseten.co"
 
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
           git push origin $NEW_VERSION
 
-  build-n-push-image:
-    needs: [git_tag_if_version_changed]
-    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
+  build-n-push-context-builder-image:
+    needs: [integration-tests, detect-version-changed]
+    if: needs.detect-version-changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
-
-    - run: curl -sSL https://install.python-poetry.org | python3 -
-      shell: bash
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
@@ -87,12 +110,6 @@ jobs:
       with:
         images: baseten/truss-context-builder
 
-    - name: Prep version
-      id: prep_version
-      run: |
-        version=$(poetry version | awk '{print $2}')
-        echo ::set-output name=version::$version
-
     - name: Docker Build
       id: docker_build
       uses: docker/build-push-action@v2
@@ -100,12 +117,12 @@ jobs:
         context: ./
         file: ./context_builder.Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
-        tags: baseten/truss-context-builder:v${{steps.prep_version.outputs.version}}dev11
+        tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
         labels: ${{ steps.meta.outputs.labels }}
 
   publish-to-pypi:
-    needs: [git_tag_if_version_changed]
-    if: needs.git_tag_if_version_changed.outputs.version_changed == 'true'
+    needs: [integration-tests, detect-version-changed]
+    if: needs.detect-version-changed.outputs.version_changed == 'true'
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
