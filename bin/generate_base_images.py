@@ -20,7 +20,6 @@ sys.path.append(str(base_path))
 
 
 PYTHON_VERSIONS = {
-    "3.7",
     "3.8",
     "3.9",
 }
