@@ -208,6 +208,12 @@ if __name__ == "__main__":
         choices=[*PYTHON_VERSIONS, "all"],
         help="Build images for specific python version or all",
     )
+    parser.add_argument(
+        "--skip-login",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Skip docker login even if push is specire",
+    )
 
     args = parser.parse_args()
     if args.python_version == "all":
@@ -223,7 +229,7 @@ if __name__ == "__main__":
     use_gpu_values = _bool_arg_str_to_values(args.use_gpu)
     live_reload_values = _bool_arg_str_to_values(args.live_reload)
 
-    if args.push:
+    if args.push and not args.skip_login:
         _docker_login()
 
     _build_all(
