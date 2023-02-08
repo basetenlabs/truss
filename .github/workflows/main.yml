@@ -21,8 +21,6 @@ jobs:
         with:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-          lfs: true
-          fetch-depth: 2
       - run: curl -sSL https://install.python-poetry.org | python3 -
         shell: bash
       - id: versions
@@ -56,25 +54,22 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: actions/checkout@v3
-      - run: echo "some"  # todo remove
-      # - uses: ./.github/actions/setup-python/
-      # - run: poetry install
-      # - shell: bash
-      #   run: |
-      #     if [[ "${{ needs.detect-version-changed.outputs.version_changed }}" == "true" ]]; then
-      #       poetry run bin/generate_base_images.py --version-tag ${{ needs.detect-version-changed.outputs.new_version }} \
-      #         --skip-login --push
-      #     fi
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - shell: bash
+        run: |
+          if [[ "${{ needs.detect-version-changed.outputs.version_changed }}" == "true" ]]; then
+            poetry run bin/generate_base_images.py --version-tag ${{ needs.detect-version-changed.outputs.new_version }} \
+              --skip-login --push
+          fi
   integration-tests:
     needs: [build-and-push-truss-base-images-if-needed]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
-      - run: echo "some"  # todo remove
-      # - uses: ./.github/actions/setup-python/
-      # - run: poetry version
-      # - run: poetry install
-      # - run: poetry run pytest truss/tests  -m 'integration'
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss/tests  -m 'integration'
 
   git-tag-if-version-changed:
     needs: [integration-tests, detect-version-changed]
@@ -85,7 +80,6 @@ jobs:
         with:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-          fetch-depth: 2
       - run: |
           NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
           git config --global user.name "Github action"
