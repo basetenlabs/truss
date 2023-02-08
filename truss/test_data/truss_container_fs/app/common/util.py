@@ -1,4 +1,4 @@
-def model_supports_predict_proba(model):
+def model_supports_predict_proba(model: object) -> bool:
     if not hasattr(model, "predict_proba"):
         return False
     if hasattr(
@@ -12,10 +12,10 @@ def model_supports_predict_proba(model):
     return True
 
 
-def assign_request_to_inputs_instances_after_validation(request):
+def assign_request_to_inputs_instances_after_validation(body: dict) -> dict:
     # we will treat "instances" and "inputs" the same
-    if "instances" in request and "inputs" not in request:
-        request["inputs"] = request["instances"]
-    elif "inputs" in request and "instances" not in request:
-        request["instances"] = request["inputs"]
-    return request
+    if "instances" in body and "inputs" not in body:
+        body["inputs"] = body["instances"]
+    elif "inputs" in body and "instances" not in body:
+        body["instances"] = body["inputs"]
+    return body
