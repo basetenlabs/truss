@@ -17,8 +17,8 @@ class HealthCheckFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         # for any health check endpoints, lets skip logging
         return (
-            record.getMessage().find("/") == -1
-            and record.getMessage().find("/v1/models/model") == -1
+            record.getMessage().find("GET / ") == -1
+            and record.getMessage().find("GET /v1/models/model ") == -1
         )
 
 
