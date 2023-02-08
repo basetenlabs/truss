@@ -72,6 +72,7 @@ truss = 'truss.cli:cli_group'
 
 [tool.poetry.group.dev.dependencies]
 mlflow = "^1.29.0"
+mypy = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]
