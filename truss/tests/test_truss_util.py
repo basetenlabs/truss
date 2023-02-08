@@ -4,7 +4,7 @@ import time
 from truss import utils
 
 
-def test_max_modified() -> None:
+def test_max_modified():
     epoch_time = int(time.time())
     with utils.given_or_temporary_dir() as dir:
         time.sleep(0.1)

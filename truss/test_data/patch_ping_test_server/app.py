@@ -1,6 +1,5 @@
 import inspect
 from collections import Counter
-from typing import Dict, Union
 
 from flask import Flask
 
@@ -14,14 +13,14 @@ app = Flask(__name__)
 _stats = Counter()
 
 
-def _inc_fn_call_stat() -> None:
+def _inc_fn_call_stat():
     global _stats
     fn_name = inspect.stack()[1][3]
     _stats[f"{fn_name}_called_count"] += 1
 
 
 @app.route("/hash_is_current", methods=["POST"])
-def hash_is_current() -> Dict[str, bool]:
+def hash_is_current():
     _inc_fn_call_stat()
     return {
         "is_current": True,
@@ -29,7 +28,7 @@ def hash_is_current() -> Dict[str, bool]:
 
 
 @app.route("/hash_is_current_but_only_every_third_call_succeeds", methods=["POST"])
-def hash_is_current_but_only_every_third_call_succeeds() -> Union[Dict[str, bool], tuple[Union[int, str]]]:
+def hash_is_current_but_only_every_third_call_succeeds():
     _inc_fn_call_stat()
     global _stats
     fn_name = inspect.stack()[0][3]
@@ -41,7 +40,7 @@ def hash_is_current_but_only_every_third_call_succeeds() -> Union[Dict[str, bool
 
 
 @app.route("/accepted", methods=["POST"])
-def accepted() -> Dict[str, bool]:
+def accepted():
     _inc_fn_call_stat()
     return {
         "accepted": True,

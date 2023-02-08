@@ -30,7 +30,7 @@ from truss.validation import (
         ("a_", False),
     ],
 )
-def test_validate_secret_name(secret_name, should_error) -> None:
+def test_validate_secret_name(secret_name, should_error):
     does_error = False
     try:
         validate_secret_name(secret_name)
@@ -55,7 +55,7 @@ def test_validate_secret_name(secret_name, should_error) -> None:
         ("M1", False),
     ],
 )
-def test_validate_cpu_spec(cpu_spec, expected_valid) -> None:
+def test_validate_cpu_spec(cpu_spec, expected_valid):
     if not expected_valid:
         with pytest.raises(ValidationError):
             validate_cpu_spec(cpu_spec)
@@ -76,7 +76,7 @@ def test_validate_cpu_spec(cpu_spec, expected_valid) -> None:
         ("abc", False),
     ],
 )
-def test_validate_mem_spec(mem_spec, expected_valid) -> None:
+def test_validate_mem_spec(mem_spec, expected_valid):
     if not expected_valid:
         with pytest.raises(ValidationError):
             validate_memory_spec(mem_spec)

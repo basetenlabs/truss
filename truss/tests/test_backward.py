@@ -1,7 +1,7 @@
 from truss.build import from_directory, mk_truss
 
 
-def test_mk_truss_passthrough(sklearn_rfc_model, tmp_path) -> None:
+def test_mk_truss_passthrough(sklearn_rfc_model, tmp_path):
     dir_path = tmp_path / "truss"
     data_file_path = tmp_path / "data.txt"
     with data_file_path.open("w") as data_file:
@@ -29,7 +29,7 @@ def test_mk_truss_passthrough(sklearn_rfc_model, tmp_path) -> None:
     assert spec.requirements == requirements
 
 
-def test_from_directory_passthrough(sklearn_rfc_model, tmp_path) -> None:
+def test_from_directory_passthrough(sklearn_rfc_model, tmp_path):
     dir_path = tmp_path / "truss"
     data_file_path = tmp_path / "data.txt"
     with data_file_path.open("w") as data_file:

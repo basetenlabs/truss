@@ -15,7 +15,7 @@ from truss.truss_config import TrussConfig
 from truss.truss_handle import wait_for_truss
 
 
-def test_to_truss(keras_mpg_model) -> None:
+def test_to_truss(keras_mpg_model):
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         framework = Keras()
@@ -37,7 +37,7 @@ def test_to_truss(keras_mpg_model) -> None:
         assert (truss_dir / "model" / "model.py").exists()
 
 
-def test_run_truss(keras_mpg_model) -> None:
+def test_run_truss(keras_mpg_model):
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         sklearn_framework = Keras()
@@ -50,7 +50,7 @@ def test_run_truss(keras_mpg_model) -> None:
 
 
 @pytest.mark.integration
-def test_run_image(keras_mpg_model) -> None:
+def test_run_image(keras_mpg_model):
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         framework = Keras()

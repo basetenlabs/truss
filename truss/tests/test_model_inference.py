@@ -14,12 +14,12 @@ from truss.model_inference import (
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
 
-logger: logging.Logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def test_pytorch_init_arg_validation(
     pytorch_model_with_init_args, pytorch_model_init_args
-) -> None:
+):
     pytorch_model_with_init_args, _ = pytorch_model_with_init_args
     # Validates with args and kwargs
     validate_provided_parameters_with_model(
@@ -43,7 +43,7 @@ def test_pytorch_init_arg_validation(
         validate_provided_parameters_with_model(pytorch_model_with_init_args, {})
 
 
-def test_infer_model_information(pytorch_model_with_init_args) -> None:
+def test_infer_model_information(pytorch_model_with_init_args):
     model_info = infer_model_information(pytorch_model_with_init_args[0])
     assert model_info.model_framework == PYTORCH
     assert model_info.model_type == "MyModel"
@@ -60,13 +60,13 @@ def test_infer_model_information(pytorch_model_with_init_args) -> None:
         ("py36", "py37"),
     ],
 )
-def test_map_to_supported_python_version(python_version, expected_python_version) -> None:
+def test_map_to_supported_python_version(python_version, expected_python_version):
     out_python_version = map_to_supported_python_version(python_version)
     assert out_python_version == expected_python_version
 
 
 @pytest.mark.integration
-def test_binary_request(sklearn_rfc_model) -> None:
+def test_binary_request(sklearn_rfc_model):
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         sklearn_framework = SKLearn()

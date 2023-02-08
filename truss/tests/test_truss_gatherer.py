@@ -5,7 +5,7 @@ from truss.patch.dir_signature import directory_content_signature
 from truss.truss_gatherer import gather
 
 
-def test_gather(custom_model_with_external_package: Path) -> None:
+def test_gather(custom_model_with_external_package):
     gathered_truss_path = gather(custom_model_with_external_package)
     subdir = gathered_truss_path / "packages" / "subdir"
     sub_module = gathered_truss_path / "packages" / "subdir" / "sub_module.py"

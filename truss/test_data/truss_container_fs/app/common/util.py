@@ -1,4 +1,4 @@
-def model_supports_predict_proba(model) -> bool:
+def model_supports_predict_proba(model: object) -> bool:
     if not hasattr(model, "predict_proba"):
         return False
     if hasattr(

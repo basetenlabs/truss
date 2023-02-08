@@ -55,7 +55,7 @@ A = 2
 """
 
 
-def test_model_module_finder() -> None:
+def test_model_module_finder():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, ORIG_MODEL_CLASS_CONTENT)
         with truss_module_loaded(temp_dir, "model.model") as model_module:
@@ -63,7 +63,7 @@ def test_model_module_finder() -> None:
             assert model_class.x == 1
 
 
-def test_model_module_finder_reload() -> None:
+def test_model_module_finder_reload():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(temp_dir, ORIG_MODEL_CLASS_CONTENT)
         with truss_module_loaded(temp_dir, "model.model") as model_module:
@@ -76,7 +76,7 @@ def test_model_module_finder_reload() -> None:
             assert model_class.x == 2
 
 
-def test_model_module_finder_additional_modules() -> None:
+def test_model_module_finder_additional_modules():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(
             temp_dir,
@@ -90,7 +90,7 @@ def test_model_module_finder_additional_modules() -> None:
             assert model_class.x == 1
 
 
-def test_model_module_finder_additional_modules_reload() -> None:
+def test_model_module_finder_additional_modules_reload():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(
             temp_dir,
@@ -116,7 +116,7 @@ def test_model_module_finder_additional_modules_reload() -> None:
             assert model_class.x == 2
 
 
-def test_model_module_finder_reload_non_model_file_updated() -> None:
+def test_model_module_finder_reload_non_model_file_updated():
     with tempfile.TemporaryDirectory() as temp_dir:
         _write_model_module_files(
             temp_dir,
@@ -144,10 +144,10 @@ def test_model_module_finder_reload_non_model_file_updated() -> None:
 def _write_model_module_files(
     truss_dir: str,
     model_file_content: str,
-    util_file_content: Optional[str] = None,
-    submodule_file_content: Optional[str] = None,
-    additional_module_file_content: Optional[str] = None,
-) -> None:
+    util_file_content: str = None,
+    submodule_file_content: str = None,
+    additional_module_file_content: str = None,
+):
     model_dir_path = Path(truss_dir) / "model"
     model_dir_path.mkdir(parents=True)
     with (model_dir_path / "model.py").open("w") as f:

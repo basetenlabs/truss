@@ -15,7 +15,7 @@ from truss.truss_config import TrussConfig
 from truss.truss_handle import wait_for_truss
 
 
-def test_to_truss(huggingface_transformer_t5_small_pipeline) -> None:
+def test_to_truss(huggingface_transformer_t5_small_pipeline):
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         model = huggingface_transformer_t5_small_pipeline
         truss_dir = Path(tmp_work_dir, "truss")
@@ -39,7 +39,7 @@ def test_to_truss(huggingface_transformer_t5_small_pipeline) -> None:
         assert (truss_dir / "model" / "model.py").exists()
 
 
-def test_run_truss(huggingface_transformer_t5_small_pipeline) -> None:
+def test_run_truss(huggingface_transformer_t5_small_pipeline):
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         model = huggingface_transformer_t5_small_pipeline
         truss_dir = Path(tmp_work_dir, "truss")
@@ -54,7 +54,7 @@ def test_run_truss(huggingface_transformer_t5_small_pipeline) -> None:
 
 
 @pytest.mark.integration
-def test_run_image(huggingface_transformer_t5_small_pipeline) -> None:
+def test_run_image(huggingface_transformer_t5_small_pipeline):
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         model = huggingface_transformer_t5_small_pipeline
         truss_dir = Path(tmp_work_dir, "truss")

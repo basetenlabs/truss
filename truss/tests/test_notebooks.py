@@ -6,7 +6,7 @@ from nbconvert.preprocessors import ExecutePreprocessor
 
 
 @pytest.mark.parametrize("notebook", ["happy.ipynb"])
-def test_notebook_exec(notebook) -> None:
+def test_notebook_exec(notebook):
     """
     Test for Jupyter notebooks to establish some base exercising.  Future tests can add new notebooks similar to
     happy.ipynb in the test_data directory, then add that file to the above parameterization

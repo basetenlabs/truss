@@ -27,7 +27,7 @@ from truss.templates.control.control.helpers.types import (  # noqa
 
 
 @pytest.fixture
-def truss_original_hash() -> str:
+def truss_original_hash():
     return "1234"
 
 
@@ -59,7 +59,7 @@ def client(app):
     return app.test_client()
 
 
-def test_restart_server(client) -> None:
+def test_restart_server(client):
     resp = client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json
@@ -72,7 +72,7 @@ def test_restart_server(client) -> None:
     assert "msg" in resp.json
 
 
-def test_patch_model_code_update_existing(app, client) -> None:
+def test_patch_model_code_update_existing(app, client):
     mock_model_file_content = """
 class Model:
     def predict(self, request):
@@ -132,7 +132,7 @@ def test_patch_model_code_create_new(app, client):
     assert (app.config["inference_server_home"] / "model" / "touched").exists()
 
 
-def test_patch_model_code_create_in_new_dir(app, client) -> None:
+def test_patch_model_code_create_in_new_dir(app, client):
     empty_content = ""
     patch = Patch(
         type=PatchType.MODEL_CODE,
@@ -148,12 +148,11 @@ def test_patch_model_code_create_in_new_dir(app, client) -> None:
     ).exists()
 
 
-def test_404(client) -> None:
+def test_404(client):
     resp = client.post("/control/nonexitant")
     assert resp.status_code == 404
 
 
-<<<<<<< HEAD
 def test_invalid_patch(client):
     patch_request = {
         "hash": "dummy",
@@ -161,25 +160,13 @@ def test_invalid_patch(client):
         "patches": [],
     }
     resp = client.post("/control/patch", json=patch_request)
-=======
-def test_invalid_patch(client) -> None:
-    try:
-        patch_request = {
-            "hash": "dummy",
-            "prev_hash": "invalid",
-            "patches": [],
-        }
-        resp = client.post("/control/patch", json=patch_request)
-    finally:
-        client.post("/control/stop_inference_server")
->>>>>>> 08a3bf5 (Autogenerate types with pyre and check with mypy 3.8)
     assert resp.status_code == 200
     assert "error" in resp.json
     assert resp.json["error"]["type"] == "inadmissible_patch"
     assert "msg" not in resp.json
 
 
-def test_unsupported_patch(client) -> None:
+def test_unsupported_patch(client):
     unsupported_patch = {
         "type": "unsupported",
         "body": {},
@@ -190,7 +177,7 @@ def test_unsupported_patch(client) -> None:
     assert resp.json["error"]["type"] == "unsupported_patch"
 
 
-def test_patch_failed_recoverable(client) -> None:
+def test_patch_failed_recoverable(client):
     will_fail_patch = Patch(
         type=PatchType.PYTHON_REQUIREMENT,
         body=PythonRequirementPatch(
@@ -203,7 +190,7 @@ def test_patch_failed_recoverable(client) -> None:
     assert resp.json["error"]["type"] == "patch_failed_recoverable"
 
 
-def test_patch_failed_unrecoverable(client) -> None:
+def test_patch_failed_unrecoverable(client):
     will_pass_patch = Patch(
         type=PatchType.PYTHON_REQUIREMENT,
         body=PythonRequirementPatch(action=Action.ADD, requirement="requests"),
@@ -222,7 +209,6 @@ def test_patch_failed_unrecoverable(client) -> None:
     assert resp.json["error"]["type"] == "patch_failed_unrecoverable"
 
 
-<<<<<<< HEAD
 def _verify_apply_patch_success(client, patch: Patch):
     original_hash = client.get("/control/truss_hash").json["result"]
     patch_request = {
@@ -231,19 +217,6 @@ def _verify_apply_patch_success(client, patch: Patch):
         "patches": [patch.to_dict()],
     }
     resp = client.post("/control/patch", json=patch_request)
-=======
-def _verify_apply_patch_success(client, patch: Patch) -> None:
-    try:
-        original_hash = client.get("/control/truss_hash").json["result"]
-        patch_request = {
-            "hash": "dummy",
-            "prev_hash": original_hash,
-            "patches": [patch.to_dict()],
-        }
-        resp = client.post("/control/patch", json=patch_request)
-    finally:
-        client.post("/control/stop_inference_server")
->>>>>>> 08a3bf5 (Autogenerate types with pyre and check with mypy 3.8)
     resp = _apply_patches(client, [patch.to_dict()])
     assert resp.status_code == 200
     assert "error" not in resp.json

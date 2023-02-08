@@ -5,7 +5,7 @@ import pytest
 
 
 @pytest.mark.integration
-def test_build_docker_image() -> None:
+def test_build_docker_image():
     root_path = Path(__file__).parent.parent.parent
     root = str(root_path)
     context_builder_image_test_dir = str(

@@ -1,7 +1,7 @@
 from truss.patch.signature import calc_truss_signature
 
 
-def test_calc_truss_signature(custom_model_truss_dir) -> None:
+def test_calc_truss_signature(custom_model_truss_dir):
     sign = calc_truss_signature(custom_model_truss_dir)
     assert len(sign.content_hashes_by_path) > 0
     assert "config.yaml" in sign.content_hashes_by_path

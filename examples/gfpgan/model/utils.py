@@ -5,10 +5,7 @@ import boto3
 
 
 def upload_file_to_s3(
-    file_name,
-    bucket: Optional[str] = None,
-    object_name: Optional[str] = None,
-    aws_credentials: Optional[Dict] = None,
+    file_name, bucket: str = None, object_name: str = None, aws_credentials: Dict = None
 ) -> str:
     aws_secret_access_key = aws_credentials["aws_secret_access_key"]
     aws_access_key_id = aws_credentials["aws_access_key_id"]

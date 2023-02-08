@@ -7,7 +7,7 @@ from truss.build import cleanup, create, init
 from truss.truss_spec import TrussSpec
 
 
-def test_truss_init(tmp_path) -> None:
+def test_truss_init(tmp_path):
     dir_name = str(tmp_path)
     init(dir_name)
     spec = TrussSpec(Path(dir_name))
@@ -19,7 +19,7 @@ def test_truss_init(tmp_path) -> None:
 
 def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(
     tmp_path,
-) -> None:
+):
     dir_path = tmp_path / "truss"
     dir_name = str(dir_path)
 
@@ -66,7 +66,7 @@ def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(
     assert (spec.bundled_packages_dir / "dep_pkg" / "file.py").exists()
 
 
-def test_create(sklearn_rfc_model, tmp_path) -> None:
+def test_create(sklearn_rfc_model, tmp_path):
     dir_path = tmp_path / "truss"
     data_file_path = tmp_path / "data.txt"
     with data_file_path.open("w") as data_file:
@@ -94,8 +94,8 @@ def test_create(sklearn_rfc_model, tmp_path) -> None:
     assert spec.requirements == requirements
 
 
-def test_create_pipeline(sklearn_rfc_model, tmp_path) -> None:
-    def inference(request: Dict):
+def test_create_pipeline(sklearn_rfc_model, tmp_path):
+    def inference(request: dict):
         inputs = request["inputs"]
         response = sklearn_rfc_model.predict([inputs])[0]
         return {"result": response}
@@ -127,7 +127,7 @@ def test_create_pipeline(sklearn_rfc_model, tmp_path) -> None:
     assert spec.requirements == requirements
 
 
-def test_truss_sklearn_predict(sklearn_rfc_model) -> None:
+def test_truss_sklearn_predict(sklearn_rfc_model):
     with _model_server_predict(sklearn_rfc_model, {"inputs": [[0, 0, 0, 0]]}) as result:
         assert "predictions" in result
         assert "probabilities" in result
@@ -135,8 +135,8 @@ def test_truss_sklearn_predict(sklearn_rfc_model) -> None:
         assert np.shape(probabilities) == (1, 3)
 
 
-def test_truss_sklearn_predict_pipeline(sklearn_rfc_model) -> None:
-    def inference(request: Dict):
+def test_truss_sklearn_predict_pipeline(sklearn_rfc_model):
+    def inference(request: dict):
         inputs = request["inputs"]
         response = sklearn_rfc_model.predict([inputs])[0]
         return {"result": response}
@@ -146,7 +146,7 @@ def test_truss_sklearn_predict_pipeline(sklearn_rfc_model) -> None:
         assert result["result"] == 0
 
 
-def test_truss_keras_predict(keras_mpg_model) -> None:
+def test_truss_keras_predict(keras_mpg_model):
     with _model_server_predict(
         keras_mpg_model,
         {"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]},
@@ -156,8 +156,8 @@ def test_truss_keras_predict(keras_mpg_model) -> None:
         assert np.shape(predictions) == (1, 1)
 
 
-def test_truss_keras_predict_pipeline(keras_mpg_model) -> None:
-    def inference(request: Dict):
+def test_truss_keras_predict_pipeline(keras_mpg_model):
+    def inference(request: dict):
         inputs = request["inputs"]
         response = keras_mpg_model.predict(inputs)
         return {"result": response}
@@ -171,7 +171,7 @@ def test_truss_keras_predict_pipeline(keras_mpg_model) -> None:
         assert np.shape(predictions) == (1, 1)
 
 
-def test_truss_pytorch_predict(pytorch_model) -> None:
+def test_truss_pytorch_predict(pytorch_model):
     model = pytorch_model[0]
     with _model_server_predict(
         model,
@@ -183,7 +183,7 @@ def test_truss_pytorch_predict(pytorch_model) -> None:
 
 def test_truss_huggingface_transformer_predict(
     huggingface_transformer_t5_small_pipeline,
-) -> None:
+):
     with _model_server_predict(
         huggingface_transformer_t5_small_pipeline,
         {"inputs": ["My name is Sarah and I live in London"]},
@@ -194,7 +194,7 @@ def test_truss_huggingface_transformer_predict(
         assert predictions[0]["generated_text"].startswith("Mein Name")
 
 
-def test_cleanup(sklearn_rfc_model, tmp_path) -> None:
+def test_cleanup(sklearn_rfc_model, tmp_path):
     data_file_path = tmp_path / "data.txt"
     with data_file_path.open("w") as data_file:
         data_file.write("test")
@@ -220,7 +220,7 @@ def test_cleanup(sklearn_rfc_model, tmp_path) -> None:
     assert unique_files == {"config.yaml"}
 
 
-def test_truss_via_simple_mk_pipeline() -> None:
+def test_truss_via_simple_mk_pipeline():
     def generate(request):
         x = request["x"]
         return {"y": x + 1}
@@ -231,7 +231,7 @@ def test_truss_via_simple_mk_pipeline() -> None:
 
 def test_truss_via_t5_mk_pipeline(
     huggingface_transformer_t5_small_model, huggingface_transformer_t5_small_tokenizer
-) -> None:
+):
     def generate(request):
         prompt = request["prompt"]
         input_ids = huggingface_transformer_t5_small_tokenizer(

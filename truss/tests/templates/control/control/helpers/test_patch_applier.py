@@ -24,7 +24,7 @@ def patch_applier(truss_container_fs):
     return PatchApplier(truss_container_fs / "app", Mock())
 
 
-def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs) -> None:
+def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
@@ -37,7 +37,7 @@ def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs) -> N
     assert (truss_container_fs / "app" / "model" / "dummy").exists()
 
 
-def test_patch_applier_remove(patch_applier: PatchApplier, truss_container_fs) -> None:
+def test_patch_applier_remove(patch_applier: PatchApplier, truss_container_fs):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
@@ -50,7 +50,7 @@ def test_patch_applier_remove(patch_applier: PatchApplier, truss_container_fs) -
     assert not (truss_container_fs / "app" / "model" / "model.py").exists()
 
 
-def test_patch_applier_update(patch_applier: PatchApplier, truss_container_fs) -> None:
+def test_patch_applier_update(patch_applier: PatchApplier, truss_container_fs):
     new_model_file_content = """
     class Model:
         pass

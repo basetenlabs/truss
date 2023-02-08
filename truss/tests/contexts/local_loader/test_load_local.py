@@ -4,7 +4,7 @@ from truss.truss_handle import TrussHandle
 from truss.truss_spec import TrussSpec
 
 
-def test_prepare_secrets(custom_model_truss_dir, tmp_path) -> None:
+def test_prepare_secrets(custom_model_truss_dir, tmp_path):
     orig_truss_config_dir = LocalConfigHandler.TRUSS_CONFIG_DIR
     LocalConfigHandler.TRUSS_CONFIG_DIR = tmp_path
     try:

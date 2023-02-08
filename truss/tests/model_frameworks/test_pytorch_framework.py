@@ -11,7 +11,7 @@ from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
 
 
-def test_serialize_model_to_directory(pytorch_model_with_numpy_import, tmp_path) -> None:
+def test_serialize_model_to_directory(pytorch_model_with_numpy_import, tmp_path):
     pytorch = PyTorch()
     model = pytorch_model_with_numpy_import[0]
     pytorch.serialize_model_to_directory(model, tmp_path)
@@ -23,13 +23,13 @@ def test_serialize_model_to_directory(pytorch_model_with_numpy_import, tmp_path)
     assert len(result) == 1
 
 
-def test_supports_model_class(pytorch_model_with_numpy_import) -> None:
+def test_supports_model_class(pytorch_model_with_numpy_import):
     pytorch = PyTorch()
     assert pytorch.supports_model_class(pytorch_model_with_numpy_import[0].__class__)
 
 
 @pytest.mark.integration
-def test_run_image(pytorch_model_with_numpy_import, tmp_path) -> None:
+def test_run_image(pytorch_model_with_numpy_import, tmp_path):
     truss_dir = tmp_path / "truss"
     pytorch = PyTorch()
     model = pytorch_model_with_numpy_import[0]

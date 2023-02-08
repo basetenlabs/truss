@@ -70,7 +70,7 @@ with open(f"{PYTORCH_EG_PATH}/utils/myutil.py", "w") as f:
 with open(f"{PYTORCH_EG_PATH}/utils/__init__.py", "w") as f:
     f.write("")
 
-current_dir: str = os.getcwd()
+current_dir = os.getcwd()
 os.chdir(PYTORCH_EG_PATH)
 
 model = MyModel()
@@ -93,7 +93,7 @@ ms.docker_build_string
 ms.predict([[0, 0, 0]])
 
 
-random_suffix: str = "".join([random.choice(string.ascii_letters) for _ in range(5)])
+random_suffix = "".join([random.choice(string.ascii_letters) for _ in range(5)])
 rfc = RandomForestClassifier()
 
 iris = load_iris()
@@ -301,7 +301,7 @@ with open(f"{PYTORCH_WITH_ARGS_PATH}/my_pytorch_model.py", "w") as f:
     f.write(PYTORCH_MODEL_CODE)
 
 
-current_dir: str = os.getcwd()
+current_dir = os.getcwd()
 os.chdir(PYTORCH_WITH_ARGS_PATH)
 
 model = MyModelWithArgs(**MODEL_INIT_ARGS)

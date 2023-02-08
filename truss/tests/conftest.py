@@ -6,7 +6,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Union
 
 import lightgbm as lgb
 import numpy as np
@@ -279,7 +278,7 @@ class Train:
 
 
 @pytest.fixture
-def pytorch_model(tmp_path: Path):
+def pytorch_model(tmp_path):
     return _pytorch_model_from_content(
         tmp_path,
         PYTORCH_MODEL_FILE_CONTENTS,
@@ -290,7 +289,7 @@ def pytorch_model(tmp_path: Path):
 
 
 @pytest.fixture
-def pytorch_model_with_numpy_import(tmp_path: Path):
+def pytorch_model_with_numpy_import(tmp_path):
     return _pytorch_model_from_content(
         tmp_path,
         PYTORCH_MODEL_FILE_WITH_NUMPY_IMPORT_CONTENTS,
@@ -301,7 +300,7 @@ def pytorch_model_with_numpy_import(tmp_path: Path):
 
 
 @pytest.fixture
-def pytorch_model_init_args() -> Dict[str, int]:
+def pytorch_model_init_args():
     return {"arg1": 1, "arg2": 2, "kwarg1": 3, "kwarg2": 4}
 
 
@@ -316,7 +315,7 @@ def pytorch_model_with_init_args(tmp_path, pytorch_model_init_args):
 
 
 @pytest.fixture
-def custom_model_truss_dir(tmp_path: Path) -> Path:
+def custom_model_truss_dir(tmp_path) -> Path:
     yield _custom_model_from_code(
         tmp_path,
         "custom_truss",
@@ -325,7 +324,7 @@ def custom_model_truss_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def no_preprocess_custom_model(tmp_path: Path):
+def no_preprocess_custom_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "my_no_preprocess_model",
@@ -334,7 +333,7 @@ def no_preprocess_custom_model(tmp_path: Path):
 
 
 @pytest.fixture
-def long_load_model(tmp_path: Path):
+def long_load_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "long_load_model",
@@ -343,7 +342,7 @@ def long_load_model(tmp_path: Path):
 
 
 @pytest.fixture
-def custom_model_control(tmp_path: Path):
+def custom_model_control(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "control_truss",
@@ -378,7 +377,7 @@ def custom_model_with_external_package(tmp_path: Path):
 
 
 @pytest.fixture
-def no_postprocess_custom_model(tmp_path: Path):
+def no_postprocess_custom_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "my_no_postprocess_model",
@@ -387,7 +386,7 @@ def no_postprocess_custom_model(tmp_path: Path):
 
 
 @pytest.fixture
-def no_load_custom_model(tmp_path: Path):
+def no_load_custom_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "my_no_load_model",
@@ -396,7 +395,7 @@ def no_load_custom_model(tmp_path: Path):
 
 
 @pytest.fixture
-def no_params_init_custom_model(tmp_path: Path):
+def no_params_init_custom_model(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "my_no_params_init_load_model",
@@ -413,7 +412,7 @@ def useless_file(tmp_path):
 
 
 @contextlib.contextmanager
-def temp_dir(directory: Union[os.PathLike[bytes], os.PathLike[str], bytes, int, str]):
+def temp_dir(directory):
     """A context to allow user to drop into the temporary
     directory created by the tmp_path fixture"""
     current_dir = os.getcwd()
@@ -571,7 +570,7 @@ def custom_model_truss_dir_with_pre_and_post_no_example(tmp_path):
 def huggingface_truss_handle_small_model(
     tmp_path: Path,
     huggingface_transformer_t5_small_pipeline,
-) -> Path:
+):
     dir_path = tmp_path / "huggingface_truss_small_model"
     dir_path.mkdir()
     create(huggingface_transformer_t5_small_pipeline, target_directory=str(dir_path))
@@ -726,7 +725,7 @@ def _custom_model_from_code(
     where_dir: Path,
     truss_name: str,
     model_code: str,
-    handle_ops: Optional[callable] = None,
+    handle_ops: callable = None,
 ) -> Path:
     dir_path = where_dir / truss_name
     handle = init(str(dir_path))

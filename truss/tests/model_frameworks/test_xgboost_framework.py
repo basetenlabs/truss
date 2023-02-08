@@ -12,7 +12,7 @@ from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 
 
-def test_to_truss(xgboost_pima_model) -> None:
+def test_to_truss(xgboost_pima_model):
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         xgboost_framework = XGBoost()
@@ -35,7 +35,7 @@ def test_to_truss(xgboost_pima_model) -> None:
         assert (truss_dir / "model" / "model.py").exists()
 
 
-def test_run_truss(xgboost_pima_model) -> None:
+def test_run_truss(xgboost_pima_model):
     with tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         xgboost_framework = XGBoost()
@@ -47,7 +47,7 @@ def test_run_truss(xgboost_pima_model) -> None:
 
 
 @pytest.mark.integration
-def test_run_image(xgboost_pima_model) -> None:
+def test_run_image(xgboost_pima_model):
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
         xgboost_framework = XGBoost()

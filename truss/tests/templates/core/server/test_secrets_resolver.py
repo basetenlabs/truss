@@ -7,18 +7,18 @@ from truss.templates.shared.secrets_resolver import SecretsResolver
 CONFIG = {"secrets": {"secret_key": "default_secret_value"}}
 
 
-def test_resolve_default_value() -> None:
+def test_resolve_default_value():
     secrets = SecretsResolver.get_secrets(CONFIG)
     assert secrets["secret_key"] == "default_secret_value"
 
 
-def test_resolve_env_var() -> None:
+def test_resolve_env_var():
     secrets = SecretsResolver.get_secrets(CONFIG)
     with _override_env_var("TRUSS_SECRET_secret_key", "secret_value_from_env"):
         assert secrets["secret_key"] == "secret_value_from_env"
 
 
-def test_resolve_mounted_secrets(tmp_path: Path) -> None:
+def test_resolve_mounted_secrets(tmp_path):
     secrets = SecretsResolver.get_secrets(CONFIG)
     with (tmp_path / "secret_key").open("w") as f:
         f.write("secret_value_from_mounted_secrets")

@@ -23,7 +23,7 @@ def ensure_kill_all():
         ensure_free_disk_space()
 
 
-def kill_all_with_retries(num_retries: int = 10) -> None:
+def kill_all_with_retries(num_retries: int = 10):
     kill_all()
     attempts = 0
     while attempts < num_retries:
@@ -34,7 +34,7 @@ def kill_all_with_retries(num_retries: int = 10) -> None:
         time.sleep(1)
 
 
-def ensure_free_disk_space() -> None:
+def ensure_free_disk_space():
     """Check if disk space is low."""
     if is_disk_space_low():
         clear_disk_space()
@@ -46,7 +46,7 @@ def is_disk_space_low() -> bool:
     return disk_free_percent <= DISK_SPACE_LOW_PERCENTAGE
 
 
-def clear_disk_space() -> None:
+def clear_disk_space():
     docker_ps_output = subprocess.check_output(
         ["docker", "ps", "-a", "-f", "status=exited", "-q"]
     ).decode("utf-8")
