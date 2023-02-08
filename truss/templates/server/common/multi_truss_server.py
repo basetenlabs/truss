@@ -1,6 +1,8 @@
 import asyncio
 import json
 from pathlib import Path
+from threading import Thread
+from time import sleep
 from typing import Dict, Optional, Union
 
 import kserve
@@ -97,11 +99,17 @@ class MultiTrussModelRepository(ModelRepository):
         self._configs_by_name = truss_configs_by_name
         self._base_dir = base_dir
 
-    def load_models(self):
+    def load_models_task(self):
         for name, config in self._configs_by_name.items():
             print(f"Loading: {name}")
             self.models[name] = ModelWrapper(config, self._base_dir / name)
             self.models[name].start_load()
+            while not self.models[name].ready:
+                sleep(1)
+
+    def load_models(self):
+        thread = Thread(target=self.load_models_task)
+        thread.start()
 
     def load(self, name: str) -> bool:
         self.models[name].start_load()

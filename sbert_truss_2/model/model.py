@@ -19,7 +19,7 @@ class Model:
         self._device_predict = torch.device(
             "cuda:0" if torch.cuda.is_available() else "cpu"
         )
-        self._model = SentenceTransformer(DEFAULT_SBERT)
+        self._model = SentenceTransformer(DEFAULT_SBERT, device=self._device_fallback)
 
     def prepare(self):
         self._model.to(self._device_predict)
