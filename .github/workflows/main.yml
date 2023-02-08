@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - pg/ctx-bldr-automation-test
 
 concurrency:
   group: main-${{ github.ref_name }}
