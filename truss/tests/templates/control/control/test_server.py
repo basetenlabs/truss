@@ -46,7 +46,12 @@ def app(truss_container_fs, truss_original_hash):
                 "pip_path": "pip",
             }
         )
-        yield control_app
+        inference_server_controller = control_app.config["inference_server_controller"]
+        try:
+            inference_server_controller.start()
+            yield control_app
+        finally:
+            inference_server_controller.stop()
 
 
 @pytest.fixture()
@@ -89,6 +94,30 @@ class Model:
     assert new_model_file_content == mock_model_file_content
 
 
+def test_patch_model_code_update_predict_on_long_load_time(app, client):
+    mock_model_file_content = """
+class Model:
+    def load(self):
+        import time
+        time.sleep(3)
+
+    def predict(self, request):
+        return {'prediction': [1]}
+"""
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+        ),
+    )
+    _verify_apply_patch_success(client, patch)
+    resp = client.post("/v1/models/model:predict", json={})
+    resp.status_code == 200
+    assert resp.json == {"prediction": [1]}
+
+
 def test_patch_model_code_create_new(app, client):
     empty_content = ""
     patch = Patch(
@@ -125,15 +154,12 @@ def test_404(client):
 
 
 def test_invalid_patch(client):
-    try:
-        patch_request = {
-            "hash": "dummy",
-            "prev_hash": "invalid",
-            "patches": [],
-        }
-        resp = client.post("/control/patch", json=patch_request)
-    finally:
-        client.post("/control/stop_inference_server")
+    patch_request = {
+        "hash": "dummy",
+        "prev_hash": "invalid",
+        "patches": [],
+    }
+    resp = client.post("/control/patch", json=patch_request)
     assert resp.status_code == 200
     assert "error" in resp.json
     assert resp.json["error"]["type"] == "inadmissible_patch"
@@ -184,16 +210,13 @@ def test_patch_failed_unrecoverable(client):
 
 
 def _verify_apply_patch_success(client, patch: Patch):
-    try:
-        original_hash = client.get("/control/truss_hash").json["result"]
-        patch_request = {
-            "hash": "dummy",
-            "prev_hash": original_hash,
-            "patches": [patch.to_dict()],
-        }
-        resp = client.post("/control/patch", json=patch_request)
-    finally:
-        client.post("/control/stop_inference_server")
+    original_hash = client.get("/control/truss_hash").json["result"]
+    patch_request = {
+        "hash": "dummy",
+        "prev_hash": original_hash,
+        "patches": [patch.to_dict()],
+    }
+    resp = client.post("/control/patch", json=patch_request)
     resp = _apply_patches(client, [patch.to_dict()])
     assert resp.status_code == 200
     assert "error" not in resp.json
@@ -201,17 +224,13 @@ def _verify_apply_patch_success(client, patch: Patch):
 
 
 def _apply_patches(client, patches: List[dict]):
-    try:
-        original_hash = client.get("/control/truss_hash").json["result"]
-        patch_request = {
-            "hash": "dummy",
-            "prev_hash": original_hash,
-            "patches": patches,
-        }
-        resp = client.post("/control/patch", json=patch_request)
-    finally:
-        client.post("/control/stop_inference_server")
-    return resp
+    original_hash = client.get("/control/truss_hash").json["result"]
+    patch_request = {
+        "hash": "dummy",
+        "prev_hash": original_hash,
+        "patches": patches,
+    }
+    return client.post("/control/patch", json=patch_request)
 
 
 @contextmanager

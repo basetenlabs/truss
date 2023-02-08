@@ -1,5 +1,6 @@
 import requests
 from flask import Blueprint, Response, current_app, jsonify, request
+from helpers.errors import ModelNotReady
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
@@ -23,7 +24,10 @@ def proxy(path):
 
     # Wait a bit for inference server to start
     for attempt in Retrying(
-        retry=retry_if_exception_type(ConnectionError),
+        retry=(
+            retry_if_exception_type(ConnectionError)
+            | retry_if_exception_type(ModelNotReady)
+        ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
         wait=wait_fixed(1),
     ):
@@ -36,6 +40,8 @@ def proxy(path):
                     cookies=request.cookies,
                     headers=request.headers,
                 )
+                if _is_model_not_ready(resp):
+                    raise ModelNotReady("Model has started running, but not ready yet.")
             except ConnectionError as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
@@ -89,3 +95,11 @@ def has_partially_applied_patch():
 def stop_inference_server():
     current_app.config["inference_server_controller"].stop()
     return {"msg": "Inference server stopped successfully"}
+
+
+def _is_model_not_ready(resp) -> bool:
+    return (
+        resp.status_code == 503
+        and resp.content is not None
+        and "model is not ready" in resp.content.decode("utf-8")
+    )

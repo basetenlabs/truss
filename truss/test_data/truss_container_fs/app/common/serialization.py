@@ -3,10 +3,6 @@ import decimal
 import json
 import uuid
 
-import msgpack
-import msgpack_numpy as mp_np
-import numpy as np
-
 
 # mostly cribbed from django.core.serializer.DjangoJSONEncoder
 def truss_msgpack_encoder(obj, chain=None):
@@ -61,6 +57,8 @@ def truss_msgpack_decoder(obj, chain=None):
 
 # this json object is JSONType + np.array + datetime
 def is_truss_serializable(obj):
+    import numpy as np
+
     # basic JSON types
     if isinstance(obj, (str, int, float, bool, type(None), dict, list)):
         return True
@@ -75,12 +73,18 @@ def is_truss_serializable(obj):
 
 
 def truss_msgpack_serialize(obj):
+    import msgpack
+    import msgpack_numpy as mp_np
+
     return msgpack.packb(
         obj, default=lambda x: truss_msgpack_encoder(x, chain=mp_np.encode)
     )
 
 
 def truss_msgpack_deserialize(obj):
+    import msgpack
+    import msgpack_numpy as mp_np
+
     return msgpack.unpackb(
         obj, object_hook=lambda x: truss_msgpack_decoder(x, chain=mp_np.decode)
     )
@@ -88,6 +92,8 @@ def truss_msgpack_deserialize(obj):
 
 class DeepNumpyEncoder(json.JSONEncoder):
     def default(self, obj):
+        import numpy as np
+
         if isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):

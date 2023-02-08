@@ -34,3 +34,9 @@ class InadmissiblePatch(PatchApplicatonError):
     """Patch does not apply to current state of Truss."""
 
     pass
+
+
+class ModelNotReady(Error):
+    """Model has started running, but not ready yet."""
+
+    pass
