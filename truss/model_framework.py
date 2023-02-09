@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 import yaml
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR
@@ -39,10 +39,10 @@ class ModelFramework(ABC):
     def model_type(self, model) -> str:
         return "Model"
 
-    def model_name(self, model) -> str:
+    def model_name(self, model) -> Optional[str]:
         return None
 
-    def to_truss(self, model, target_directory: Path) -> str:
+    def to_truss(self, model, target_directory: Path) -> None:
         """Exports in-memory model to a Truss, in a target directory."""
         model_binary_dir = target_directory / "data" / "model"
         model_binary_dir.mkdir(parents=True, exist_ok=True)
@@ -72,5 +72,6 @@ class ModelFramework(ABC):
         with (target_directory / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(), config_file)
 
+    @abstractmethod
     def supports_model_class(self, model_class) -> bool:
         pass

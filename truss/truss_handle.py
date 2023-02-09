@@ -103,15 +103,19 @@ class TrussHandle:
             | retry_if_exception_type(exceptions.ConnectionError)
         ),
     )
-    def _wait_for_predict(model_base_url: str, request: Dict, binary: bool = False):
+    def _wait_for_predict(
+        model_base_url: str, request: Dict, binary: bool = False
+    ) -> Response:
 
         url = f"{model_base_url}/v1/models/model:predict"
 
         if binary:
-            binary = truss_msgpack_serialize(request)
+            binary_data = truss_msgpack_serialize(request)
 
             return requests.post(
-                url, data=binary, headers={"Content-Type": "application/octet-stream"}
+                url,
+                data=binary_data,
+                headers={"Content-Type": "application/octet-stream"},
             )
 
         return requests.post(url, json=request)

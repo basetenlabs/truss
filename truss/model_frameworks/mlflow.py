@@ -38,10 +38,9 @@ class Mlflow(ModelFramework):
         model_framework, _, _ = model_class.__module__.partition(".")
         return model_framework == ModelFrameworkType.MLFLOW.value
 
-    def to_truss(self, model, target_directory: Path) -> str:
-        result = super().to_truss(model, target_directory)
+    def to_truss(self, model, target_directory: Path) -> None:
+        super().to_truss(model, target_directory)
         self._add_mlflow_requirements(str(target_directory))
-        return result
 
     def _download_model_from_uri(self, uri: str, target_directory: Path):
         from mlflow.artifacts import download_artifacts
