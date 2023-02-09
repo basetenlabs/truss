@@ -81,3 +81,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.isort]
 profile = "black"
 src_paths = ["isort", "test"]
+
+[tool.mypy]
+python_version = 3.8
+ignore_missing_imports = true

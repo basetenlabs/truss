@@ -1068,7 +1068,7 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
     for index, example in enumerate(examples):
         if example.name == example_name:
             return index
-    raise ValueError(f"{example_name} not found.")
+    return None
 
 
 def _get_url_from_container(container) -> str:
