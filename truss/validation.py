@@ -6,7 +6,9 @@ from truss.errors import ValidationError
 SECRET_NAME_MATCH_REGEX: Pattern[str] = re.compile(r"^[-._a-zA-Z0-9]+$")
 MILLI_CPU_REGEX: Pattern[str] = re.compile(r"^[0-9.]*m$")
 MEMORY_REGEX: Pattern[str] = re.compile(r"^[0-9.]*(\w*)$")
-MEMORY_UNITS: Set[str] = set(["k", "M", "G", "T", "P", "E", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"])
+MEMORY_UNITS: Set[str] = set(
+    ["k", "M", "G", "T", "P", "E", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"]
+)
 
 
 def validate_secret_name(secret_name: str) -> None:
