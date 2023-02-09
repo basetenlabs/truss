@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, List
+from typing import Any, Dict, List
 
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import Patch
@@ -61,7 +61,7 @@ class PatchDetails:
         return len(self.patch_ops) == 0
 
     @staticmethod
-    def from_dict(patch_details: dict) -> "PatchDetails":
+    def from_dict(patch_details: Dict) -> "PatchDetails":
         return PatchDetails(
             prev_hash=patch_details["prev_hash"],
             prev_signature=TrussSignature.from_dict(patch_details["prev_signature"]),

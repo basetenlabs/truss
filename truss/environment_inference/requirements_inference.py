@@ -1,10 +1,10 @@
 import inspect
 import types
 from itertools import dropwhile
-from typing import Set
+from typing import Optional, Set
 
-import pkg_resources
-from pkg_resources import WorkingSet
+import pkg_resources  # type: ignore
+from pkg_resources import WorkingSet  # type: ignore
 
 # Some packages are weird and have different
 # imported names vs. system/pip names. Unfortunately,
@@ -19,7 +19,7 @@ IGNORED_PACKAGES = {"baseten", "pip", "truss", "pluggy", "pytest", "py"}
 TOP_LEVEL_NAMESPACES_TO_DROP_FOR_INFERENCE = ["truss", "baseten"]
 
 
-def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
+def infer_deps(must_include_deps: Optional[Set[str]] = None) -> Set[str]:
     """Infers the depedencies based on imports into the global namespace
 
     Args:
@@ -47,7 +47,7 @@ def infer_deps(must_include_deps: Set[str] = None) -> Set[str]:
 
     # Must refresh working set manually to get latest installed
     pkg_resources.working_set = (
-        WorkingSet._build_master()  # pylint: disable=protected-access
+        WorkingSet._build_master()  # type: ignore # pylint: disable=protected-access
     )
 
     # Cross-check the names of installed packages vs. imported packages to get versions

@@ -1,6 +1,9 @@
 import enum
 import logging
-from typing import Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
+
+if TYPE_CHECKING:
+    from python_on_whales.components.container.cli_wrapper import Container
 
 from truss.constants import TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
@@ -21,19 +24,19 @@ class Docker:
         return Docker._client
 
 
-def get_containers(labels: dict, all=False):
+def get_containers(labels: Dict, all: bool = False):
     """Gets containers given labels."""
     return Docker.client().container.list(
         filters=_create_label_filters(labels), all=all
     )
 
 
-def get_images(labels: dict):
+def get_images(labels: Dict):
     """Gets images given labels."""
     return Docker.client().image.list(filters=_create_label_filters(labels))
 
 
-def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]]:
+def get_urls_from_container(container_details) -> Dict[int, List[str]]:
     """Gets url where docker container is hosted."""
     if (
         container_details.network_settings is None
@@ -65,7 +68,7 @@ def get_urls_from_container(container_details) -> Dict[int, List[Dict[str, str]]
     }
 
 
-def kill_containers(labels: Dict[str, str]):
+def kill_containers(labels: Dict[str, bool]) -> None:
     from python_on_whales.exceptions import DockerException
 
     containers = get_containers(labels)
@@ -98,7 +101,7 @@ class DockerStates(enum.Enum):
     EXITED = "exited"
 
 
-def inspect_container(container) -> Dict:
+def inspect_container(container) -> "Container":
     """Inspects truss container"""
     return Docker.client().container.inspect(container)
 
@@ -108,7 +111,7 @@ def get_container_state(container) -> DockerStates:
     return DockerStates(inspect_container(container).state.status)
 
 
-def _create_label_filters(labels: Dict):
+def _create_label_filters(labels: Dict) -> Dict[str, Any]:
     return {
         f"label={label_key}": label_value for label_key, label_value in labels.items()
     }

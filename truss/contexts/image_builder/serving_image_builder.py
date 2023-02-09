@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 import click
 from jinja2 import Environment, FileSystemLoader
@@ -48,7 +49,7 @@ class ServingImageBuilder(ImageBuilder):
     def default_tag(self):
         return f"{self._spec.model_framework_name}-model:latest"
 
-    def prepare_image_build_dir(self, build_dir: Path = None):
+    def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
         """Prepare a directory for building the docker image from.
 
         Returns:

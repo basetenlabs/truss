@@ -1,5 +1,6 @@
 import inspect
 from pathlib import Path
+from typing import Dict, Optional
 
 from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
 from truss.contexts.local_loader.utils import (
@@ -15,7 +16,7 @@ class LocalTrainer(TrussContext):
 
     @staticmethod
     def run(truss_dir: Path):
-        def train(variables: dict = None):
+        def train(variables: Optional[Dict] = None):
             spec = TrussSpec(truss_dir)
             with truss_module_loaded(
                 str(truss_dir),

@@ -1,12 +1,12 @@
 import fnmatch
 import hashlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 def directory_content_hash(
     root: Path,
-    ignore_patterns: List[str] = None,
+    ignore_patterns: Optional[List[str]] = None,
 ) -> str:
     """Calculate content based hash of a filesystem directory.
 
@@ -31,7 +31,7 @@ def directory_content_hash(
     return hasher.hexdigest()
 
 
-def file_content_hash(file: Path):
+def file_content_hash(file: Path) -> bytes:
     """Calculate sha256 of file content.
     Returns: binary hash of content
     """
@@ -46,7 +46,7 @@ def file_content_hash_str(file: Path) -> str:
     return _file_content_hash_loaded_hasher(file).hexdigest()
 
 
-def _file_content_hash_loaded_hasher(file: Path):
+def _file_content_hash_loaded_hasher(file: Path) -> Any:
     hasher = hashlib.sha256()
     buffer = bytearray(128 * 1024)
     mem_view = memoryview(buffer)
@@ -61,13 +61,13 @@ def _file_content_hash_loaded_hasher(file: Path):
     return hasher
 
 
-def str_hash(content: str):
+def str_hash(content: str) -> bytes:
     hasher = hashlib.sha256()
     hasher.update(content.encode("utf-8"))
     return hasher.digest()
 
 
-def str_hash_str(content: str):
+def str_hash_str(content: str) -> str:
     hasher = hashlib.sha256()
     hasher.update(content.encode("utf-8"))
     return hasher.hexdigest()

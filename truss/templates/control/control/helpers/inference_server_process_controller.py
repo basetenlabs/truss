@@ -2,14 +2,14 @@ import logging
 import os
 import signal
 import subprocess
+from typing import List, Optional
 
 from helpers.context_managers import current_directory
-from typing import List
 
 
 class InferenceServerProcessController:
 
-    _inference_server_process: subprocess.Popen = None
+    _inference_server_process: Optional[subprocess.Popen] = None
     _inference_server_port: int
     _inference_server_home: str
     _app_logger: logging.Logger

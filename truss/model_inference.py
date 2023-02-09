@@ -6,8 +6,8 @@ from ast import ClassDef, FunctionDef
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-import pkg_resources
-from pkg_resources.extern.packaging.requirements import InvalidRequirement
+import pkg_resources  # type: ignore
+from pkg_resources.extern.packaging import requirements  # type: ignore
 from truss.constants import (
     HUGGINGFACE_TRANSFORMER,
     KERAS,
@@ -26,10 +26,10 @@ PYTHON_VERSIONS = {
     "py39",
 }
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _infer_model_framework(model_class: str):
+def _infer_model_framework(model_class: Any):
     model_framework, _, _ = model_class.__module__.partition(".")
     if model_framework == "transformers":
         return HUGGINGFACE_TRANSFORMER
@@ -123,11 +123,11 @@ def parse_requirements_file(requirements_file: str) -> dict:
         for raw_req in reqs_file.readlines():
             try:
                 req = pkg_resources.Requirement.parse(raw_req)
-                if req.specifier:
-                    name_to_req_str[req.name] = str(req)
+                if req.specifier:  # type: ignore
+                    name_to_req_str[req.name] = str(req)  # type: ignore
                 else:
                     name_to_req_str[str(req)] = str(req)
-            except InvalidRequirement:
+            except requirements.InvalidRequirement:
                 # there might be pip requirements that do not conform
                 raw_req = str(raw_req).strip()
                 name_to_req_str[f"custom_{raw_req}"] = raw_req
@@ -147,8 +147,8 @@ def _infer_model_init_parameters(model_class: Any) -> Tuple[List, List]:
 
 
 def _infer_model_init_parameters_ast(model_class_def: ClassDef) -> Tuple[List, List]:
-    named_args = []
-    required_args = []
+    named_args: List[str] = []
+    required_args: List[str] = []
     init_model_functions = [
         node
         for node in model_class_def.body

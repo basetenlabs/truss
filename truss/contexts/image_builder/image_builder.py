@@ -1,12 +1,18 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional
 
 from truss.docker import Docker
 from truss.utils import given_or_temporary_dir
 
 
 class ImageBuilder(ABC):
-    def build_image(self, build_dir: Path = None, tag: str = None, labels: dict = None):
+    def build_image(
+        self,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
+        labels: Optional[dict] = None,
+    ):
         """Build image.
 
         Arguments:
@@ -29,7 +35,7 @@ class ImageBuilder(ABC):
         pass
 
     @abstractmethod
-    def prepare_image_build_dir(self, build_dir: Path = None):
+    def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
         pass
 
     def docker_build_command(self, build_dir) -> str:

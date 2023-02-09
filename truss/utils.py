@@ -7,17 +7,18 @@ from contextlib import contextmanager
 from distutils.dir_util import copy_tree, remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 
-def copy_tree_path(src: Path, dest: Path):
+def copy_tree_path(src: Path, dest: Path) -> List[str]:
     return copy_tree(str(src), str(dest))
 
 
-def copy_file_path(src: Path, dest: Path):
+def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest))
 
 
-def remove_tree_path(target: Path):
+def remove_tree_path(target: Path) -> None:
     return remove_tree(str(target))
 
 
@@ -37,7 +38,7 @@ def get_max_modified_time_of_dir(path: Path) -> float:
 
 
 @contextmanager
-def given_or_temporary_dir(given_dir: Path = None):
+def given_or_temporary_dir(given_dir: Optional[Path] = None):
     if given_dir is not None:
         yield given_dir
     else:
@@ -55,7 +56,7 @@ def build_truss_target_directory(stub: str) -> Path:
     return target_directory_path
 
 
-def get_gpu_memory():
+def get_gpu_memory() -> Optional[int]:
     # https://stackoverflow.com/questions/59567226/how-to-programmatically-determine-available-gpu-memory-with-tensorflow
     try:
         command = "nvidia-smi --query-gpu=memory.used --format=csv"

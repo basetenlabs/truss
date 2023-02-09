@@ -1,30 +1,34 @@
-import datetime
-import decimal
 import json
 import uuid
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from typing import Any, Callable, Dict, Optional, Union
 
 
 # mostly cribbed from django.core.serializer.DjangoJSONEncoder
-def truss_msgpack_encoder(obj, chain=None):
-    if isinstance(obj, datetime.datetime):
+def truss_msgpack_encoder(
+    obj: Union[Decimal, date, time, timedelta, uuid.UUID, Dict],
+    chain: Optional[Callable] = None,
+) -> Dict:
+    if isinstance(obj, datetime):
         r = obj.isoformat()
         if r.endswith("+00:00"):
             r = r[:-6] + "Z"
         return {b"__dt_datetime_iso__": True, b"data": r}
-    elif isinstance(obj, datetime.date):
+    elif isinstance(obj, date):
         r = obj.isoformat()
         return {b"__dt_date_iso__": True, b"data": r}
-    elif isinstance(obj, datetime.time):
+    elif isinstance(obj, time):
         if obj.utcoffset() is not None:
             raise ValueError("Cannot represent timezone-aware times.")
         r = obj.isoformat()
         return {b"__dt_time_iso__": True, b"data": r}
-    elif isinstance(obj, datetime.timedelta):
+    elif isinstance(obj, timedelta):
         return {
             b"__dt_timedelta__": True,
             b"data": (obj.days, obj.seconds, obj.microseconds),
         }
-    elif isinstance(obj, decimal.Decimal):
+    elif isinstance(obj, Decimal):
         return {b"__decimal__": True, b"data": str(obj)}
     elif isinstance(obj, uuid.UUID):
         return {b"__uuid__": True, b"data": str(obj)}
@@ -32,21 +36,19 @@ def truss_msgpack_encoder(obj, chain=None):
         return obj if chain is None else chain(obj)
 
 
-def truss_msgpack_decoder(obj, chain=None):
+def truss_msgpack_decoder(obj: Any, chain=None):
     try:
         if b"__dt_datetime_iso__" in obj:
-            return datetime.datetime.fromisoformat(obj[b"data"])
+            return datetime.fromisoformat(obj[b"data"])
         elif b"__dt_date_iso__" in obj:
-            return datetime.date.fromisoformat(obj[b"data"])
+            return date.fromisoformat(obj[b"data"])
         elif b"__dt_time_iso__" in obj:
-            return datetime.time.fromisoformat(obj[b"data"])
+            return time.fromisoformat(obj[b"data"])
         elif b"__dt_timedelta__" in obj:
             days, seconds, microseconds = obj[b"data"]
-            return datetime.timedelta(
-                days=days, seconds=seconds, microseconds=microseconds
-            )
+            return timedelta(days=days, seconds=seconds, microseconds=microseconds)
         elif b"__decimal__" in obj:
-            return decimal.Decimal(obj[b"data"])
+            return Decimal(obj[b"data"])
         elif b"__uuid__" in obj:
             return uuid.UUID(obj[b"data"])
         else:
@@ -56,15 +58,13 @@ def truss_msgpack_decoder(obj, chain=None):
 
 
 # this json object is JSONType + np.array + datetime
-def is_truss_serializable(obj):
+def is_truss_serializable(obj) -> bool:
     import numpy as np
 
     # basic JSON types
     if isinstance(obj, (str, int, float, bool, type(None), dict, list)):
         return True
-    elif isinstance(
-        obj, (datetime.datetime, datetime.date, datetime.time, datetime.timedelta)
-    ):
+    elif isinstance(obj, (datetime, date, time, timedelta)):
         return True
     elif isinstance(obj, np.ndarray):
         return True

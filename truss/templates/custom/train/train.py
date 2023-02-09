@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Dict
 
 
 class Train:
@@ -6,7 +7,7 @@ class Train:
         self,
         config,
         output_dir: Path,
-        variables: dict,
+        variables: Dict,
         secrets,
     ):
         self._config = config

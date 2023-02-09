@@ -1,14 +1,17 @@
 import re
+from typing import Pattern, Set
 
 from truss.errors import ValidationError
 
-SECRET_NAME_MATCH_REGEX = re.compile(r"^[-._a-zA-Z0-9]+$")
-MILLI_CPU_REGEX = re.compile(r"^[0-9.]*m$")
-MEMORY_REGEX = re.compile(r"^[0-9.]*(\w*)$")
-MEMORY_UNITS = set(["k", "M", "G", "T", "P", "E", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"])
+SECRET_NAME_MATCH_REGEX: Pattern[str] = re.compile(r"^[-._a-zA-Z0-9]+$")
+MILLI_CPU_REGEX: Pattern[str] = re.compile(r"^[0-9.]*m$")
+MEMORY_REGEX: Pattern[str] = re.compile(r"^[0-9.]*(\w*)$")
+MEMORY_UNITS: Set[str] = set(
+    ["k", "M", "G", "T", "P", "E", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"]
+)
 
 
-def validate_secret_name(secret_name: str):
+def validate_secret_name(secret_name: str) -> None:
     if secret_name is None or not isinstance(secret_name, str) or secret_name == "":
         raise ValueError(f"Invalid secret name `{secret_name}`")
 
@@ -32,7 +35,7 @@ def validate_secret_name(secret_name: str):
         raise ValueError(constraint_violation_msg() + ", secret name cannot be `..`")
 
 
-def validate_cpu_spec(cpu_spec: str):
+def validate_cpu_spec(cpu_spec: str) -> None:
     if not isinstance(cpu_spec, str):
         raise ValidationError(
             f"{cpu_spec} needs to be a string, but is {type(cpu_spec)}"
@@ -46,7 +49,7 @@ def validate_cpu_spec(cpu_spec: str):
         raise ValidationError(f"Invalid cpu specification {cpu_spec}")
 
 
-def validate_memory_spec(mem_spec: str):
+def validate_memory_spec(mem_spec: str) -> None:
     if not isinstance(mem_spec, str):
         raise ValidationError(
             f"{mem_spec} needs to be a string, but is {type(mem_spec)}"

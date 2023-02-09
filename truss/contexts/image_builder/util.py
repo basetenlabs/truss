@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from truss import __version__
 
@@ -43,7 +44,7 @@ def truss_base_image_tag(
     python_version: str,
     use_gpu: bool,
     live_reload: bool,
-    version_tag: str = None,
+    version_tag: Optional[str] = None,
 ) -> str:
     if version_tag is None:
         version_tag = f"v{__version__}"

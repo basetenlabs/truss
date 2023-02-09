@@ -3,7 +3,7 @@ import sys
 
 from pythonjsonlogger import jsonlogger
 
-LEVEL = logging.INFO
+LEVEL: int = logging.INFO
 
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stderr)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
@@ -22,7 +22,7 @@ class HealthCheckFilter(logging.Filter):
         )
 
 
-def setup_logging():
+def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]

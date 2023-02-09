@@ -9,7 +9,7 @@ class SecretsResolver:
     SECRET_ENV_VAR_PREFIX = "TRUSS_SECRET_"
 
     @staticmethod
-    def get_secrets(config: dict):
+    def get_secrets(config: Dict):
         return Secrets(config.get("secrets", {}))
 
     @staticmethod

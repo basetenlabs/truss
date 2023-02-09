@@ -1,4 +1,5 @@
 import os
+from typing import Dict
 
 import yaml
 from common.logging import setup_logging
@@ -10,7 +11,7 @@ setup_logging()
 
 
 class ConfiguredTrussServer:
-    _config: dict
+    _config: Dict
     _port: int
 
     def __init__(self, config_path: str, port: int):

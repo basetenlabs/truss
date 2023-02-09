@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Set
+from typing import Any, Dict, Set
 
 from truss.constants import MLFLOW_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
@@ -27,7 +27,7 @@ class Mlflow(ModelFramework):
                 model=model, target_directory=target_directory
             )
 
-    def model_metadata(self, model) -> Dict[str, str]:
+    def model_metadata(self, model) -> Dict[str, Any]:
         supports_predict_proba = model_supports_predict_proba(model)
         return {
             "model_binary_dir": "model",
@@ -38,9 +38,9 @@ class Mlflow(ModelFramework):
         model_framework, _, _ = model_class.__module__.partition(".")
         return model_framework == ModelFrameworkType.MLFLOW.value
 
-    def to_truss(self, model, target_directory: Path) -> str:
+    def to_truss(self, model, target_directory: Path) -> None:
         super().to_truss(model, target_directory)
-        self._add_mlflow_requirements(target_directory)
+        self._add_mlflow_requirements(str(target_directory))
 
     def _download_model_from_uri(self, uri: str, target_directory: Path):
         from mlflow.artifacts import download_artifacts
@@ -54,10 +54,10 @@ class Mlflow(ModelFramework):
         download_artifacts(run_id=run_id, dst_path=target_directory)
 
     def _add_mlflow_requirements(self, target_directory: str):
-        truss = TrussHandle(truss_dir=target_directory)
+        truss = TrussHandle(truss_dir=Path(target_directory))
         requirements_file = (
             truss._spec.data_dir / "model" / "model" / "requirements.txt"
         )
         if not requirements_file.exists():
             return
-        truss.update_requirements_from_file(requirements_file)
+        truss.update_requirements_from_file(str(requirements_file))

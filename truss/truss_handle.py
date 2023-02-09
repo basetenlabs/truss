@@ -7,13 +7,14 @@ import uuid
 from dataclasses import replace
 from pathlib import Path
 from shutil import rmtree
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
 import requests
 import yaml
 from requests import exceptions
 from requests.exceptions import ConnectionError
+from requests.models import Response
 from tenacity import (
     RetryError,
     Retrying,
@@ -71,7 +72,7 @@ from truss.types import Example, PatchDetails
 from truss.utils import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 if is_notebook_or_ipython():
     logger.setLevel(logging.INFO)
@@ -102,21 +103,25 @@ class TrussHandle:
             | retry_if_exception_type(exceptions.ConnectionError)
         ),
     )
-    def _wait_for_predict(model_base_url: str, request: dict, binary: bool = False):
+    def _wait_for_predict(
+        model_base_url: str, request: Dict, binary: bool = False
+    ) -> Response:
 
         url = f"{model_base_url}/v1/models/model:predict"
 
         if binary:
-            binary = truss_msgpack_serialize(request)
+            binary_data = truss_msgpack_serialize(request)
 
             return requests.post(
-                url, data=binary, headers={"Content-Type": "application/octet-stream"}
+                url,
+                data=binary_data,
+                headers={"Content-Type": "application/octet-stream"},
             )
 
         return requests.post(url, json=request)
 
     @proxy_to_shadow_if_scattered
-    def build_docker_build_context(self, build_dir: Path = None):
+    def build_docker_build_context(self, build_dir: Optional[Path] = None):
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir_path)
@@ -126,7 +131,9 @@ class TrussHandle:
         return self.build_serving_docker_image(*args, **kwargs)
 
     @proxy_to_shadow_if_scattered
-    def build_serving_docker_image(self, build_dir: Path = None, tag: str = None):
+    def build_serving_docker_image(
+        self, build_dir: Optional[Path] = None, tag: Optional[str] = None
+    ):
         image = self._build_image(
             builder_context=ServingImageBuilderContext,
             labels=self._get_serving_lookup_labels(),
@@ -137,7 +144,9 @@ class TrussHandle:
         return image
 
     @proxy_to_shadow_if_scattered
-    def build_training_docker_image(self, build_dir: Path = None, tag: str = None):
+    def build_training_docker_image(
+        self, build_dir: Optional[Path] = None, tag: Optional[str] = None
+    ):
         return self._build_image(
             builder_context=TrainingImageBuilderContext,
             labels=self._get_training_labels(),
@@ -145,18 +154,18 @@ class TrussHandle:
             tag=tag,
         )
 
-    def get_docker_image(self, labels: dict):
+    def get_docker_image(self, labels: Dict):
         """[Deprecated] Do not use."""
         return _docker_image_from_labels(labels)
 
     @proxy_to_shadow_if_scattered
     def docker_run(
         self,
-        build_dir: Path = None,
-        tag: str = None,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
-        patch_ping_url: str = None,
+        patch_ping_url: Optional[str] = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -223,13 +232,13 @@ class TrussHandle:
 
     def predict(
         self,
-        request: dict,
+        request: Dict,
         use_docker: bool = False,
-        build_dir: Path = None,
-        tag: str = None,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
-        patch_ping_url: str = None,
+        patch_ping_url: Optional[str] = None,
     ):
         if use_docker:
             return self.docker_predict(
@@ -243,7 +252,7 @@ class TrussHandle:
         else:
             return self.server_predict(request)
 
-    def server_predict(self, request: dict):
+    def server_predict(self, request: Dict):
         """Run the prediction flow locally."""
         model = LoadModelLocal.run(self._truss_dir)
         return _prediction_flow(model, request)
@@ -251,12 +260,12 @@ class TrussHandle:
     @proxy_to_shadow_if_scattered
     def docker_predict(
         self,
-        request: dict,
-        build_dir: Path = None,
-        tag: str = None,
+        request: Dict,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
         local_port: int = INFERENCE_SERVER_PORT,
         detach: bool = True,
-        patch_ping_url: str = None,
+        patch_ping_url: Optional[str] = None,
         binary: bool = False,
     ):
         """
@@ -301,9 +310,9 @@ class TrussHandle:
     @proxy_to_shadow_if_scattered
     def docker_train(
         self,
-        variables: dict = None,
-        build_dir: Path = None,
-        tag: str = None,
+        variables: Optional[dict] = None,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
     ):
         """
         Train this truss.
@@ -359,11 +368,11 @@ class TrussHandle:
         rmtree(str(output_dir))
         rmtree(str(variables_dir))
 
-    def local_train(self, variables: dict = None):
+    def local_train(self, variables: Optional[dict] = None):
         LocalTrainer.run(self._truss_dir)(variables)
 
     @proxy_to_shadow_if_scattered
-    def docker_build_setup(self, build_dir: Path = None):
+    def docker_build_setup(self, build_dir: Optional[Path] = None):
         """
         Set up a directory to build docker image from.
 
@@ -375,7 +384,7 @@ class TrussHandle:
         return image_builder.docker_build_command(build_dir)
 
     @proxy_to_shadow_if_scattered
-    def training_docker_build_setup(self, build_dir: Path = None):
+    def training_docker_build_setup(self, build_dir: Optional[Path] = None):
         """
         Set up a directory to build training docker image from.
 
@@ -437,7 +446,7 @@ class TrussHandle:
             )
         )
 
-    def add_training_variable(self, var_name: str, default_var_value: any):
+    def add_training_variable(self, var_name: str, default_var_value: Any):
         """Add a training variable to truss model's config."""
         self._update_config(
             lambda conf: replace(
@@ -550,7 +559,7 @@ class TrussHandle:
             return examples[index]
         return self.examples()[name_or_index]
 
-    def add_example(self, example_name: str, example_input: dict):
+    def add_example(self, example_name: str, example_input: Dict):
         """Add example for truss model.
 
         If the example with the given name already exists then it is overwritten.
@@ -580,7 +589,7 @@ class TrussHandle:
     def get_serving_docker_containers_from_labels(
         self,
         all: bool = False,
-        labels: dict = None,
+        labels: Optional[dict] = None,
     ) -> list:
         """Get serving docker containers, with given labels.
 
@@ -645,7 +654,7 @@ class TrussHandle:
         self._update_config(enable_gpu_fn)
 
     @proxy_to_shadow_if_scattered
-    def patch_container(self, patch_request: dict):
+    def patch_container(self, patch_request: Dict):
         """Patch changes onto the container running this Truss.
 
         Useful for local incremental development.
@@ -834,14 +843,14 @@ class TrussHandle:
                 filepath = Path(filename)
                 copy_file_path(filepath, destination_dir / filepath.name)
 
-    def _get_serving_labels(self) -> Dict[str, str]:
+    def _get_serving_labels(self) -> Dict[str, Any]:
         truss_mod_time = get_max_modified_time_of_dir(self._truss_dir)
         return {
             **self._get_serving_lookup_labels(),
             TRUSS_MODIFIED_TIME: truss_mod_time,
         }
 
-    def _get_serving_lookup_labels(self) -> Dict[str, str]:
+    def _get_serving_lookup_labels(self) -> Dict[str, Any]:
         return {
             TRUSS_DIR: self._truss_dir,
             TRUSS_HASH: self._serving_hash(),
@@ -849,7 +858,7 @@ class TrussHandle:
             TRUSS: True,
         }
 
-    def _get_training_labels(self) -> Dict[str, str]:
+    def _get_training_labels(self) -> Dict[str, Any]:
         data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
         model_module_dir_ignore_pattern = f"{str(self._spec.model_module_dir.name)}/*"
         examples_ignore_pattern = self._spec.examples_path.name
@@ -873,8 +882,8 @@ class TrussHandle:
         self,
         builder_context,
         labels: Dict[str, str],
-        build_dir: Path = None,
-        tag: str = None,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
     ):
         image = _docker_image_from_labels(labels=labels)
         if image is not None:
@@ -975,7 +984,7 @@ class TrussHandle:
                     )
 
 
-def _prediction_flow(model, request: dict):
+def _prediction_flow(model, request: Dict):
     """This flow attempts to mimic the request life-cycle of a kserve server"""
     _validate_request_input(request)
     _map_instances_inputs(request)
@@ -987,7 +996,7 @@ def _prediction_flow(model, request: dict):
     return response
 
 
-def _map_instances_inputs(request: dict):
+def _map_instances_inputs(request: Dict) -> Dict[str, Any]:
     # TODO(pankaj) Share this code with baseten deployed code
     if "instances" in request and "inputs" not in request:
         request["inputs"] = request["instances"]
@@ -996,7 +1005,7 @@ def _map_instances_inputs(request: dict):
     return request
 
 
-def _validate_request_input(request: dict):
+def _validate_request_input(request: Dict) -> None:
     # TODO(pankaj) Should these checks be there?
     if _is_invalid_list_input_prop(request, "instances") or _is_invalid_list_input_prop(
         request, "inputs"
@@ -1004,7 +1013,7 @@ def _validate_request_input(request: dict):
         raise Exception('Expected "instances" or "inputs" to be a list')
 
 
-def _is_invalid_list_input_prop(request: dict, prop: str):
+def _is_invalid_list_input_prop(request: Dict, prop: str) -> bool:
     return prop in request and not _is_valid_list_type(request[prop])
 
 
@@ -1014,7 +1023,7 @@ def _is_valid_list_type(obj) -> bool:
     return isinstance(obj, (list, np.ndarray))
 
 
-def _wait_for_docker_build(container):
+def _wait_for_docker_build(container) -> None:
     for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         state = get_container_state(container)
         logger.info(f"Container state: {state}")
@@ -1033,11 +1042,11 @@ def _wait_for_docker_build(container):
         | retry_if_exception_type(exceptions.ConnectionError)
     ),
 )
-def _wait_for_model_server(url: str):
+def _wait_for_model_server(url: str) -> Response:
     return requests.get(url)
 
 
-def wait_for_truss(url: str, container):
+def wait_for_truss(url: str, container) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
     try:
@@ -1059,6 +1068,7 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
     for index, example in enumerate(examples):
         if example.name == example_name:
             return index
+    return None
 
 
 def _get_url_from_container(container) -> str:
@@ -1087,7 +1097,7 @@ def _create_rand_dir_in_dot_truss(subdir: str) -> Path:
     return target_directory_path
 
 
-def _docker_image_from_labels(labels: dict):
+def _docker_image_from_labels(labels: Dict):
     """Get docker image from given labels.
 
     Assumes there's only one. Returns the first one it finds if there are many,

@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from typing import Dict
 
 from endpoints import control_app
 from flask import Flask
@@ -11,7 +12,7 @@ from helpers.patch_applier import PatchApplier
 from werkzeug.exceptions import HTTPException
 
 
-def create_app(base_config: dict):
+def create_app(base_config: Dict):
     app = Flask(__name__)
     # TODO(pankaj): change this back to info once things are stable
     app.logger.setLevel(logging.DEBUG)

@@ -3,21 +3,22 @@ import sys
 from contextlib import contextmanager
 from importlib.machinery import PathFinder
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 class TrussModuleFinder(PathFinder):
     _truss_dir: str
-    _bundled_packages_dir_name: str
-    _external_packages_dirs: List[str]
+    _bundled_packages_dir_name: Optional[str]
+    _external_packages_dirs: Optional[List[str]]
+    _truss_module_name: Optional[str]
 
     @classmethod
     def set_model_truss_dirs(
         cls,
         truss_dir: str,
-        truss_module_name: str = None,
-        bundled_packages_dir_name: str = None,
-        external_packages_dirs: List[str] = None,
+        truss_module_name: Optional[str] = None,
+        bundled_packages_dir_name: Optional[str] = None,
+        external_packages_dirs: Optional[List[str]] = None,
     ):
         cls._truss_dir = truss_dir
         cls._truss_module_name = truss_module_name
@@ -83,8 +84,8 @@ class TrussModuleLoader:
 def truss_module_loaded(
     truss_dir: str,
     truss_class_module_fullname: str,
-    bundled_packages_dir_name: str = None,
-    external_packages_dirs: List[str] = None,
+    bundled_packages_dir_name: Optional[str] = None,
+    external_packages_dirs: Optional[List[str]] = None,
 ):
     """
     Load a truss module: model or train.
@@ -94,7 +95,7 @@ def truss_module_loaded(
                                      e.g. 'model.model', 'train.train'
         bundled_packages_dir_name: name of the bundled packages directory
                                    if None then bundled packages are not loaded.
-        external_packages_dirs: list of names of the external packages directories
+        external_packages_dirs: List of names of the external packages directories
                                    if None then external packages are not loaded.
     """
     try:
@@ -123,9 +124,9 @@ def truss_module_loaded(
 def _unload_truss_modules(
     truss_dir: str,
     truss_module_name: str,
-    bundled_packages_dir_name: str = None,
-    external_packages_dirs: List[str] = None,
-):
+    bundled_packages_dir_name: Optional[str] = None,
+    external_packages_dirs: Optional[List[str]] = None,
+) -> None:
     modules_to_unload = [truss_module_name]
 
     def _add_relative_dir_to_unload(dir_name: str):
@@ -142,12 +143,12 @@ def _unload_truss_modules(
     _unload_top_level_modules(modules_to_unload)
 
 
-def _unload_top_level_modules(module_names: List[str]):
+def _unload_top_level_modules(module_names: List[str]) -> None:
     for module_name in module_names:
         _unload_top_level_module(module_name)
 
 
-def _unload_top_level_module(module_name: str):
+def _unload_top_level_module(module_name: str) -> None:
     if "." in module_name:
         raise ValueError(f"Expecting a top level module but found {module_name}")
 
@@ -162,5 +163,5 @@ def _unload_top_level_module(module_name: str):
         del sys.modules[module_name]
 
 
-def _sub_dirnames(root_dir: Path):
+def _sub_dirnames(root_dir: Path) -> List[str]:
     return [path.name for path in root_dir.iterdir() if path.is_dir()]

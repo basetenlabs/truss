@@ -72,6 +72,7 @@ truss = 'truss.cli:cli_group'
 
 [tool.poetry.group.dev.dependencies]
 mlflow = "^1.29.0"
+mypy = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]
@@ -80,3 +81,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.isort]
 profile = "black"
 src_paths = ["isort", "test"]
+
+[tool.mypy]
+python_version = 3.8
+ignore_missing_imports = true
