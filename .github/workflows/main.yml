@@ -59,7 +59,7 @@ jobs:
       - shell: bash
         run: |
           if [[ "${{ needs.detect-version-changed.outputs.version_changed }}" == "true" ]]; then
-            poetry run bin/generate_base_images.py --version-tag ${{ needs.detect-version-changed.outputs.new_version }} \
+            poetry run bin/generate_base_images.py --version-tag v${{ needs.detect-version-changed.outputs.new_version }} \
               --skip-login --push
           fi
   integration-tests:
