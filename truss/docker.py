@@ -1,8 +1,10 @@
 import enum
 import logging
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
-from python_on_whales.components.container.cli_wrapper import Container
+if TYPE_CHECKING:
+    from python_on_whales.components.container.cli_wrapper import Container
+
 from truss.constants import TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
 
@@ -99,7 +101,7 @@ class DockerStates(enum.Enum):
     EXITED = "exited"
 
 
-def inspect_container(container) -> Container:
+def inspect_container(container) -> "Container":
     """Inspects truss container"""
     return Docker.client().container.inspect(container)
 

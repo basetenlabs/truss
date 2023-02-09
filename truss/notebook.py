@@ -1,9 +1,7 @@
 def is_notebook_or_ipython() -> bool:
     """Based on https://stackoverflow.com/a/39662359"""
     try:
-        from IPython import get_ipython
-
-        shell = get_ipython().__class__.__name__
+        shell = get_ipython().__class__.__name__  # type: ignore
         if shell == "ZMQInteractiveShell":
             return True  # Jupyter notebook or qtconsole
         elif shell == "TerminalInteractiveShell":
