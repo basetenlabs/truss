@@ -1,7 +1,7 @@
 import fnmatch
 import hashlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 def directory_content_hash(
@@ -46,7 +46,7 @@ def file_content_hash_str(file: Path) -> str:
     return _file_content_hash_loaded_hasher(file).hexdigest()
 
 
-def _file_content_hash_loaded_hasher(file: Path) -> hashlib._Hash:
+def _file_content_hash_loaded_hasher(file: Path) -> Any:
     hasher = hashlib.sha256()
     buffer = bytearray(128 * 1024)
     mem_view = memoryview(buffer)
