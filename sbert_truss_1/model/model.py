@@ -20,6 +20,10 @@ class Model:
             "cuda:0" if torch.cuda.is_available() else "cpu"
         )
         self._model = SentenceTransformer(DEFAULT_SBERT, device=self._device_fallback)
+        self.prepare()
+
+        # UNCOMMENT IF MULTI
+        # self.standby()
 
     def prepare(self):
         self._model.to(self._device_predict)
@@ -30,9 +34,9 @@ class Model:
     def preprocess(self, request: Dict) -> Dict:
         # Our sentences we like to encode
         request["sentences"] = [
-            # "This framework generates embeddings for each input sentence",
-            # "Sentences are passed as a list of string.",
-            # "The quick brown fox jumps over the lazy dog.",
+            "This framework generates embeddings for each input sentence",
+            "Sentences are passed as a list of string.",
+            "The quick brown fox jumps over the lazy dog.",
         ]
         return request
 
