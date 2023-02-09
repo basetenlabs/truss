@@ -1,14 +1,11 @@
 import logging
 import sys
-from typing import TextIO
 
 from pythonjsonlogger import jsonlogger
 
 LEVEL: int = logging.INFO
 
-JSON_LOG_HANDLER: logging.StreamHandler[TextIO] = logging.StreamHandler(
-    stream=sys.stderr
-)
+JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stderr)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
 JSON_LOG_HANDLER.setLevel(LEVEL)
 JSON_LOG_HANDLER.setFormatter(
