@@ -1,8 +1,10 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
 from truss.validation import (
     validate_cpu_spec,
@@ -33,11 +35,48 @@ DEFAULT_TRAINING_CLASS_NAME = "Train"
 DEFAULT_TRAINING_MODULE_DIR = "train"
 
 
+class Accelerator(Enum):
+    T4 = "T4"
+    A10G = "A10G"
+    V100 = "V100"
+    A100 = "A100"
+
+
+@dataclass
+class AcceleratorSpec:
+    accelerator: Optional[Accelerator] = None
+    count: int = 0
+
+    def to_str(self) -> Optional[str]:
+        if self.accelerator is None or self.count == 0:
+            return None
+        if self.count > 1:
+            return f"{self.accelerator.value}:{self.count}"
+        return self.accelerator.value
+
+    @staticmethod
+    def from_str(acc_spec: Optional[str]):
+        if acc_spec is None:
+            return AcceleratorSpec()
+        parts = acc_spec.split(":")
+        count = 1
+        if len(parts) not in [1, 2]:
+            raise ValidationError("`accelerator` does not match parsing requirements.")
+        if len(parts) == 2:
+            count = int(parts[1])
+        try:
+            acc = Accelerator[parts[0]]
+        except KeyError as exc:
+            raise ValidationError(f"Accelerator {acc_spec} not supported") from exc
+        return AcceleratorSpec(accelerator=acc, count=count)
+
+
 @dataclass
 class Resources:
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     use_gpu: bool = DEFAULT_USE_GPU
+    accelerator: AcceleratorSpec = AcceleratorSpec()
 
     @staticmethod
     def from_dict(d):
@@ -45,11 +84,16 @@ class Resources:
         validate_cpu_spec(cpu)
         memory = d.get("memory", DEFAULT_MEMORY)
         validate_memory_spec(memory)
+        accelerator = AcceleratorSpec.from_str((d.get("accelerator", None)))
+        use_gpu = d.get("use_gpu", DEFAULT_USE_GPU)
+        if accelerator.accelerator is not None:
+            use_gpu = True
 
         return Resources(
             cpu=cpu,
             memory=memory,
-            use_gpu=d.get("use_gpu", DEFAULT_USE_GPU),
+            use_gpu=use_gpu,
+            accelerator=accelerator,
         )
 
     def to_dict(self):
@@ -57,6 +101,7 @@ class Resources:
             "cpu": self.cpu,
             "memory": self.memory,
             "use_gpu": self.use_gpu,
+            "accelerator": self.accelerator.to_str(),
         }
 
 
