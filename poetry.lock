@@ -1075,19 +1075,19 @@ test = ["pytest (>=6)"]
 
 [[package]]
 name = "fastapi"
-version = "0.89.1"
+version = "0.92.0"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "fastapi-0.89.1-py3-none-any.whl", hash = "sha256:f9773ea22290635b2f48b4275b2bf69a8fa721fda2e38228bed47139839dc877"},
-    {file = "fastapi-0.89.1.tar.gz", hash = "sha256:15d9271ee52b572a015ca2ae5c72e1ce4241dd8532a534ad4f7ec70c376a580f"},
+    {file = "fastapi-0.92.0-py3-none-any.whl", hash = "sha256:ae7b97c778e2f2ec3fb3cb4fb14162129411d99907fb71920f6d69a524340ebf"},
+    {file = "fastapi-0.92.0.tar.gz", hash = "sha256:023a0f5bd2c8b2609014d3bba1e14a1d7df96c6abea0a73070621c9862b9a4de"},
 ]
 
 [package.dependencies]
 pydantic = ">=1.6.2,<1.7 || >1.7,<1.7.1 || >1.7.1,<1.7.2 || >1.7.2,<1.7.3 || >1.7.3,<1.8 || >1.8,<1.8.1 || >1.8.1,<2.0.0"
-starlette = "0.22.0"
+starlette = ">=0.25.0,<0.26.0"
 
 [package.extras]
 all = ["email-validator (>=1.1.1)", "httpx (>=0.23.0)", "itsdangerous (>=1.1.0)", "jinja2 (>=2.11.2)", "orjson (>=3.2.1)", "python-multipart (>=0.0.5)", "pyyaml (>=5.3.1)", "ujson (>=4.0.1,!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0)", "uvicorn[standard] (>=0.12.0)"]
@@ -4590,14 +4590,14 @@ files = [
 
 [[package]]
 name = "starlette"
-version = "0.22.0"
+version = "0.25.0"
 description = "The little ASGI library that shines."
 category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "starlette-0.22.0-py3-none-any.whl", hash = "sha256:b5eda991ad5f0ee5d8ce4c4540202a573bb6691ecd0c712262d0bc85cf8f2c50"},
-    {file = "starlette-0.22.0.tar.gz", hash = "sha256:b092cbc365bea34dd6840b42861bdabb2f507f8671e642e8272d2442e08ea4ff"},
+    {file = "starlette-0.25.0-py3-none-any.whl", hash = "sha256:774f1df1983fd594b9b6fb3ded39c2aa1979d10ac45caac0f4255cbe2acb8628"},
+    {file = "starlette-0.25.0.tar.gz", hash = "sha256:854c71e73736c429c2bdb07801f2c76c9cba497e7c3cf4988fde5e95fe4cdb3c"},
 ]
 
 [package.dependencies]
