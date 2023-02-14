@@ -159,7 +159,6 @@ class TrussServer(kserve.ModelServer):
                 ),
             ],
             exception_handlers={
-                errors.InvalidInput: errors.invalid_input_handler,
                 errors.InferenceError: errors.inference_error_handler,
                 errors.ModelNotFound: errors.model_not_found_handler,
                 errors.ModelNotReady: errors.model_not_ready_handler,
