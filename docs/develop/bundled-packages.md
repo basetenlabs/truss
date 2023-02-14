@@ -14,44 +14,40 @@ packages.
 
 ## External packages
 
-Where possible, a truss folder should be self contained. But, there are certain
-situations where you may need to keep some code outside. e.g. when you want
-to share code across multiple local trusses and publishing that code into a pypi
-package is not an option. External packages are meant for this use case, but
-should be used carefully.
+There are situations where you may need to maintain code separately from your Truss. For example, you may want to share code across multiple Trusses without publishing it to PyPi. External packages are built for this use case.
 
 {% hint style="info" %}
-Take a look at this demo repository on Truss external packages: [https://github.com/bolasm/truss-packages-example](https://github.com/bolasm/truss-packages-example)
+Take a look at [this demo repository](https://github.com/bolasim/truss-packages-example) on Truss external packages.
 {% endhint %}
 ### Config
 
-A truss can be provided a set of external folders as places to look up local
-packages, using the `external_package_dirs` setting. This settings is similar to
-`bundled_packages_dir` except that these folders can be outside of the truss
+A Truss can be provided a set of external folders as places to look up local
+packages, using the `external_package_dirs` setting in `config.yaml`. This settings is similar to
+`bundled_packages_dir` except that these folders can be outside of the Truss
 folder. These external directories are then effectively available to the model
 and training python code to lookup modules and packages from.
 
 ### Terminology
 
-A truss that has any external pacakges is considered `scattered`, because the
-truss is not self contained. Correspondingly, `gather` means collecting into a
-self contained truss. `TrussHandle` has a method called `gather` to gather a
-scattered  truss.
+A Truss that has any external packages is considered `scattered`, because the
+Truss is not self contained. Correspondingly, `gather` means collecting into a
+self contained Truss. `TrussHandle` has a method called `gather` to gather a
+scattered  Truss.
 
-Note that a scattered Truss will likley not work on another machine, unless all
-the `external_package_dirs` are carefully replicated there as well. e.g. this will
-work for git repos that contain both the truss and the `external_package_dirs`
-and relative paths are used. Where possible, a scattered truss should be gathered
-into an equivalent truss using the `gather` operation, before sending over.
+Note that a scattered Truss will likely not work on another machine, unless all
+the `external_package_dirs` are carefully replicated there as well. For example, this will
+work for Git repos that contain both the Truss and the `external_package_dirs`
+and relative paths are used. Where possible, a scattered Truss should be gathered
+into an equivalent Truss using the `gather` operation, before sending over.
 
 ### Implementation
 
-For in-memory serving and training, i.e. without creating and running a docker
+For in-memory serving and training, i.e. without creating and running a Docker
 image, these external directories are added to sys.path and thus become
 available to model/training code.
 
-For any docker based execution, a gathered truss is first created and then
-executed. This gathered truss works behind the scenes and the user doesn't need
-to touch it directly. The gathered truss is cached and reused, and only
-recreated if any part of the original truss is modified. This flow will likely
+For any Docker based execution, a gathered Truss is first created and then
+executed. This gathered Truss works behind the scenes and the user doesn't need
+to touch it directly. The gathered Truss is cached and reused, and only
+recreated if any part of the original Truss is modified. This flow will likely
 be optimized in future to only update the changed parts, rather than recreate.
