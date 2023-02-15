@@ -111,9 +111,6 @@ class ModelWrapper(kserve.Model):
         payload: Union[Dict, CloudEvent, ModelInferRequest],
         headers: Optional[Dict[str, str]] = None,
     ) -> Union[Dict, ModelInferRequest]:
-        # Do kserve validation pre-processing for backwards compatibility
-        payload = assign_request_to_inputs_instances_after_validation(payload)
-
         if not hasattr(self._model, "preprocess"):
             return payload
         return self._model.preprocess(payload)  # type: ignore
