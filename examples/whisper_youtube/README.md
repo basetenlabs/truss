@@ -13,7 +13,7 @@ baseten.login("API_KEY")
 baseten.deploy(my_truss)
 ```
 
-Once the deployment is finished invoke your model with the following input
+Once the deployment is finished, update your model resources to use a GPU (Models -> Update resources) and invoke your model with the following input
 
 ```
 model = baseten.deployed_model_id("MODEL_ID")
