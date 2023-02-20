@@ -10,6 +10,7 @@ from shutil import rmtree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
+import pkg_resources
 import requests
 import yaml
 from requests import exceptions
@@ -397,32 +398,30 @@ class TrussHandle:
     def add_python_requirement(self, python_requirement: str):
         """Add a python requirement to truss model's config."""
 
-        # Raise error if user forgets to put "=="
-        try:
-            requirement_name, requirement_version = python_requirement.split("==")
-        except ValueError:
-            raise TypeError("You need to put '==' between the package and its version")
+        # Parse the added python requirements
+        parsed_reqs = pkg_resources.Requirement.parse(python_requirement)
+        requirement_name = parsed_reqs.name
+        _, requirement_version = parsed_reqs.specs[0]
 
-        requirements = self._spec.config.requirements
+        # Parse the existing requirements
+        requirements = list(
+            pkg_resources.parse_requirements(self._spec.config.requirements)
+        )
 
-        # If requirements is empty
-        if not requirements:
-            self._update_config(
-                lambda conf: replace(conf, requirements=[python_requirement])
-            )
-            return
-
-        # If we already have the requirement added but version needs to be updated
-        if requirement_name in map(lambda x: x.split("==")[0], requirements):
-            new_conf = [
-                req.replace(req.split("==")[1], requirement_version)
+        # If we already have the requirement among the existing requirements
+        # but version needs to be updated
+        if requirement_name in map(lambda x: x.name, requirements):
+            [
+                list(req.specs[0])[1].replace(
+                    list(req.specs[0])[1], requirement_version
+                )
                 for req in requirements
-                if req.split("==")[0] == requirement_name
+                if req.name == requirement_name
             ]
-            self._update_config(lambda conf: replace(conf, requirements=new_conf))
+            self._update_config(lambda conf: replace(conf, requirements=[]))
 
         # If the requirement is totally new
-        if python_requirement not in self._spec.config.requirements:
+        if python_requirement not in requirements:
             self._update_config(
                 lambda conf: replace(
                     conf, requirements=[*conf.requirements, python_requirement]
