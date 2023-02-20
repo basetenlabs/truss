@@ -106,7 +106,6 @@ class TrussHandle:
     def _wait_for_predict(
         model_base_url: str, request: Dict, binary: bool = False
     ) -> Response:
-
         url = f"{model_base_url}/v1/models/model:predict"
 
         if binary:
@@ -397,11 +396,38 @@ class TrussHandle:
 
     def add_python_requirement(self, python_requirement: str):
         """Add a python requirement to truss model's config."""
-        self._update_config(
-            lambda conf: replace(
-                conf, requirements=[*conf.requirements, python_requirement]
+
+        # Raise error if user forgets to put "=="
+        try:
+            requirement_name, requirement_version = python_requirement.split("==")
+        except ValueError:
+            raise TypeError("You need to put '==' between the package and its version")
+
+        requirements = self._spec.config.requirements
+
+        # If requirements is empty
+        if not requirements:
+            self._update_config(
+                lambda conf: replace(conf, requirements=[python_requirement])
             )
-        )
+            return
+
+        # If we already have the requirement added but version needs to be updated
+        if requirement_name in map(lambda x: x.split("==")[0], requirements):
+            new_conf = [
+                req.replace(req.split("==")[1], requirement_version)
+                for req in requirements
+                if req.split("==")[0] == requirement_name
+            ]
+            self._update_config(lambda conf: replace(conf, requirements=new_conf))
+
+        # If the requirement is totally new
+        if python_requirement not in self._spec.config.requirements:
+            self._update_config(
+                lambda conf: replace(
+                    conf, requirements=[*conf.requirements, python_requirement]
+                )
+            )
 
     def remove_python_requirement(self, python_requirement: str):
         """Remove a python requirement to truss model's config.
