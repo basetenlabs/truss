@@ -427,6 +427,21 @@ def test_update_requirements(custom_model_truss_dir_with_pre_and_post):
     sc_requirements = th.spec.requirements
     assert sc_requirements == requirements
 
+def test_add_python_requirements_new(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    python_package_to_add = "tensorflow==2.3.1"
+    th.add_python_requirement(python_package_to_add)
+    sc_requirements = th.spec.requirements
+    assert python_package_to_add in sc_requirements
+
+def test_add_python_requirements_version_change(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    th.add_python_requirement("tensorflow==2.3.1")
+    
+    python_package_to_change_version = "tensorflow==2.3.5"
+    th.add_python_requirement(python_package_to_change_version)
+    sc_requirements = th.spec.requirements
+    assert python_package_to_change_version.split('==')[1]==sc_requirements[0].split('==')[1]
 
 def test_update_requirements_from_file(
     custom_model_truss_dir_with_pre_and_post, tmp_path
