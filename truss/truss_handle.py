@@ -10,6 +10,7 @@ from shutil import rmtree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
+import pkg_resources
 import requests
 import yaml
 from requests import exceptions
@@ -79,6 +80,10 @@ if is_notebook_or_ipython():
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
+def _python_req_name(python_requirement: str) -> str:
+    return pkg_resources.Requirement.parse(python_requirement).name
+
+
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
@@ -106,7 +111,6 @@ class TrussHandle:
     def _wait_for_predict(
         model_base_url: str, request: Dict, binary: bool = False
     ) -> Response:
-
         url = f"{model_base_url}/v1/models/model:predict"
 
         if binary:
@@ -397,11 +401,15 @@ class TrussHandle:
 
     def add_python_requirement(self, python_requirement: str):
         """Add a python requirement to truss model's config."""
-        self._update_config(
-            lambda conf: replace(
-                conf, requirements=[*conf.requirements, python_requirement]
-            )
-        )
+
+        # Parse the added python requirements
+        input_python_req_name = _python_req_name(python_requirement)
+        new_reqs = [
+            req for req in self._spec.config.requirements
+                if _python_req_name(req) != input_python_req_name
+        ]
+        new_reqs.append(python_requirement)
+        self._update_config(lambda conf: replace(conf, requirements=new_reqs))
 
     def remove_python_requirement(self, python_requirement: str):
         """Remove a python requirement to truss model's config.
