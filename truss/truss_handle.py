@@ -80,6 +80,10 @@ if is_notebook_or_ipython():
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
+def _python_req_name(python_requirement: str) -> str:
+    return pkg_resources.Requirement.parse(python_requirement).name
+
+
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
@@ -399,48 +403,13 @@ class TrussHandle:
         """Add a python requirement to truss model's config."""
 
         # Parse the added python requirements
-        requirement_name = self._python_req_name(python_requirement)
-        requirement_version = self._python_req_version(python_requirement)
-
-        # Parse the existing requirements
-        requirements = self._existing_req_names(self._spec.config.requirements)
-
-        # If we already have the requirement among the existing requirements
-        # but version needs to be updated
-        if requirement_name in map(lambda reqs: reqs.name, requirements):
-            _ = [
-                self._existing_req_version_update(req, requirement_version)
-                for req in requirements
-                if req.name == requirement_name
-            ]
-            self._update_config(lambda conf: replace(conf, requirements=[]))
-
-        # If the requirement is totally new
-        if python_requirement not in requirements:
-            self._update_config(
-                lambda conf: replace(
-                    conf, requirements=[*conf.requirements, python_requirement]
-                )
-            )
-
-    @staticmethod
-    def _python_req_name(python_requirement: str) -> str:
-        return pkg_resources.Requirement.parse(python_requirement).name
-
-    @staticmethod
-    def _python_req_version(python_requirement: str) -> str:
-        return list(pkg_resources.Requirement.parse(python_requirement).specs[0])[1]
-
-    @staticmethod
-    def _existing_req_names(req_names: list[str]) -> list[str]:
-        return list(pkg_resources.parse_requirements(req_names))
-
-    @staticmethod
-    def _existing_req_version_update(requirement: str, new_version: str) -> list[str]:
-        list(requirement.specs[0])[1].replace(
-            list(requirement.specs[0])[1], new_version
-        )
-        return requirement
+        input_python_req_name = _python_req_name(python_requirement)
+        new_reqs = [
+            req for req in self._spec.config.requirements
+                if _python_req_name(req) != input_python_req_name
+        ]
+        new_reqs.append(python_requirement)
+        self._update_config(lambda conf: replace(conf, requirements=new_reqs))
 
     def remove_python_requirement(self, python_requirement: str):
         """Remove a python requirement to truss model's config.
