@@ -80,10 +80,6 @@ if is_notebook_or_ipython():
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
-def _python_req_name(python_requirement: str) -> str:
-    return pkg_resources.Requirement.parse(python_requirement).name
-
-
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
@@ -405,8 +401,9 @@ class TrussHandle:
         # Parse the added python requirements
         input_python_req_name = _python_req_name(python_requirement)
         new_reqs = [
-            req for req in self._spec.config.requirements
-                if _python_req_name(req) != input_python_req_name
+            req
+            for req in self._spec.config.requirements
+            if _python_req_name(req) != input_python_req_name
         ]
         new_reqs.append(python_requirement)
         self._update_config(lambda conf: replace(conf, requirements=new_reqs))
@@ -1114,3 +1111,8 @@ def _docker_image_from_labels(labels: Dict):
     images = get_images(labels)
     if images and isinstance(images, list):
         return images[0]
+
+
+def _python_req_name(python_requirement: str) -> str:
+    req = pkg_resources.Requirement.parse(python_requirement)
+    return req.name  # type: ignore
