@@ -3,7 +3,8 @@ data_dir: data
 description: null
 environment_variables: {}
 examples_filename: examples.yaml
-external_package_dirs: []
+external_package_dirs:
+- ../shared/
 input_type: Any
 live_reload: false
 model_class_filename: model.py

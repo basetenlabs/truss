@@ -1,31 +1,16 @@
-import base64
 from dataclasses import asdict
-from io import BytesIO
 from typing import Dict
 
 import torch
+from base64_utils import pil_to_b64
 from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
 
 STABLE_DIFFUSION_MODEL_ID = "runwayml/stable-diffusion-v1-5"
-BASE64_PREAMBLE = "data:image/png;base64,"
-
-
-def pil_to_b64(pil_img):
-    buffered = BytesIO()
-    pil_img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue())
-    return BASE64_PREAMBLE + str(img_str)[2:-1]
 
 
 class Model:
     def __init__(self, **kwargs) -> None:
         self._model = None
-
-    def convert_to_b64(self, pil_img):
-        buffered = BytesIO()
-        pil_img.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue())
-        return BASE64_PREAMBLE + str(img_str)[2:-1]
 
     def load(self):
         scheduler = EulerDiscreteScheduler.from_pretrained(

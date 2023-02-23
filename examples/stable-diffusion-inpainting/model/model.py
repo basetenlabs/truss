@@ -1,25 +1,11 @@
-import base64
 from dataclasses import asdict
-from io import BytesIO
 from typing import Dict
 
 import torch
+from base64_utils import b64_to_pil, pil_to_b64
 from diffusers import StableDiffusionInpaintPipeline
-from PIL import Image
 
 STABLE_DIFFUSION_MODEL_ID = "runwayml/stable-diffusion-inpainting"
-BASE64_PREAMBLE = "data:image/png;base64,"
-
-
-def pil_to_b64(pil_img):
-    buffered = BytesIO()
-    pil_img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue())
-    return BASE64_PREAMBLE + str(img_str)[2:-1]
-
-
-def b64_to_pil(b64_str):
-    return Image.open(BytesIO(base64.b64decode(b64_str.replace(BASE64_PREAMBLE, ""))))
 
 
 class Model:
@@ -35,7 +21,7 @@ class Model:
     def preprocess(self, request: Dict) -> Dict:
         # Convert from base64
         if "image" in request:
-            request["image"] = b64_to_pil(request["image"]).convert("RGB")
+            request["image"] = b64_to_pil(request["image"])
         if "mask_image" in request:
             request["mask_image"] = b64_to_pil(request["mask_image"])
         return request

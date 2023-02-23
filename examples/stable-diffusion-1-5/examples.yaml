@@ -1,4 +1,3 @@
 - input:
-    inputs:
-    - - 0
-  name: example1
+    prompt: a photo of an astronaut riding a horse on mars
+  name: astronaut example
