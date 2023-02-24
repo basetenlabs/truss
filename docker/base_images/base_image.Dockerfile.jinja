@@ -33,12 +33,12 @@ RUN apt update && \
                    software-properties-common && \
     add-apt-repository -y ppa:deadsnakes/ppa && \
     apt update -y && \
-    apt install -y python3.9 && \
-    apt install -y python3.9-distutils && \
-    apt install -y python3.9-venv && \
+    apt install -y python{{python_version}} && \
+    apt install -y python{{python_version}}-distutils && \
+    apt install -y python{{python_version}}-venv && \
     rm -rf /var/lib/apt/lists
 
-RUN ln -sf /usr/bin/python3.9 /usr/bin/python3 && \
+RUN ln -sf /usr/bin/python{{python_version}} /usr/bin/python3 && \
     curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python3 get-pip.py
 
