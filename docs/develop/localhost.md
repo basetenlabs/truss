@@ -27,7 +27,7 @@ tr = truss.load("path_to_my_truss")
 From there, you can invoke the Truss to serve the model in your Python environment. Just run:
 
 ```python
-tr.predict({"inputs": [[0, 0, 0, 0]]})
+tr.predict([[0, 0, 0, 0]])
 ```
 
 ### Command line interface
@@ -35,7 +35,7 @@ tr.predict({"inputs": [[0, 0, 0, 0]]})
 Alternately, you can run your Truss from the command line.
 
 ```
-truss predict path_to_my_truss '{"inputs": [[0, 0, 0, 0]]}'
+truss predict path_to_my_truss '[[0, 0, 0, 0]]'
 ```
 
 You can also specify examples for the model and run them instead. It's much easier to express request data in the example file. Running the example provides for a good dev loop.
@@ -51,7 +51,7 @@ truss run-image path_to_my_truss
 Then, as long as the container is running, you can invoke the model as an API as follows:
 
 ```
-curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '{"inputs": [[0, 0, 0, 0]]}'
+curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '{[[0, 0, 0, 0]]'
 ```
 
 ## Setting up local dev
@@ -69,7 +69,7 @@ This is the standard way to run a Truss. It creates a Docker image, runs the Tru
 To run in Docker:
 
 ```python
-tr.docker_predict({"inputs": [[0, 0, 0, 0]]})
+tr.docker_predict([[0, 0, 0, 0]])
 ```
 
 ### Faster dev loop with live reload
@@ -112,11 +112,11 @@ Unlike Docker image, this mechanism requires that you already have the right Pyt
 In the Python environment, get a prediction without Docker by running:
 
 ```python
-tr.predict({"inputs": [[0, 0, 0, 0]]})
+tr.predict([[0, 0, 0, 0]])
 ```
 
 Or in the command line, run:
 
 ```python
-truss predict --run-local path_to_my_truss '{"inputs": [[0, 0, 0, 0]]}'
+truss predict --run-local path_to_my_truss '[[0, 0, 0, 0]]'
 ```

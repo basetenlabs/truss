@@ -80,7 +80,7 @@ def postprocess(predictions, k=5):
 With these functions in place, you can invoke the model and pass it a URL, as in:
 
 ```python
-tr.predict({"inputs": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"})
+tr.predict("https://github.com/pytorch/hub/raw/master/images/dog.jpg")
 ```
 
 For information on running the Truss locally, see [local development](../develop/localhost.md).
