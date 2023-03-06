@@ -27,9 +27,8 @@ class Model:
         """
         return model_output
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        response = {}
-        inputs = request["inputs"]  # noqa
+    def predict(self, model_input: Any) -> Dict[str, List]:
+        model_output = {}
         # Invoke model and calculate predictions here.
-        response["predictions"] = self._model.predict(inputs)
-        return response
+        model_output["predictions"] = self._model.predict(model_input)
+        return model_output
