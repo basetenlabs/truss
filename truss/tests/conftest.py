@@ -583,7 +583,7 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
     handle = init(str(dir_path))
     with handle.spec.model_class_filepath.open("w") as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    handle.update_examples([Example("example1", {"inputs": [[0]]})])
+    handle.update_examples([Example("example1", [[0]])])
     yield dir_path
 
 
@@ -620,11 +620,7 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
             Example(
                 "example1",
                 {
-                    "inputs": [
-                        {
-                            "image_url": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"
-                        }
-                    ]
+                    "image_url": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"
                 },
             )
         ]

@@ -41,7 +41,7 @@ def test_run_truss(xgboost_pima_model):
         xgboost_framework = XGBoost()
         xgboost_framework.to_truss(xgboost_pima_model, truss_dir)
         model = LoadModelLocal.run(truss_dir)
-        predictions = model.predict({"inputs": [[0, 0, 0, 0, 0, 0, 0, 0]]})
+        predictions = model.predict([[0, 0, 0, 0, 0, 0, 0, 0]])
         assert "predictions" in predictions
         assert len(predictions["predictions"]) == 1
 
@@ -54,7 +54,7 @@ def test_run_image(xgboost_pima_model):
         xgboost_framework.to_truss(xgboost_pima_model, truss_dir)
         tr = TrussHandle(truss_dir)
         predictions = tr.docker_predict(
-            {"inputs": [[0, 0, 0, 0, 0, 0, 0, 0]]},
+            [[0, 0, 0, 0, 0, 0, 0, 0]],
             local_port=8080,
         )
         assert len(predictions["predictions"]) == 1

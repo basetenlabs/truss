@@ -40,31 +40,19 @@ def test_description(custom_model_truss_dir_with_pre_and_post_description):
 
 def test_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    resp = th.predict(
-        {
-            "inputs": [1, 2, 3, 4],
-        }
-    )
+    resp = th.predict([1, 2, 3, 4])
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
 def test_predict_with_external_packages(custom_model_with_external_package):
     th = TrussHandle(custom_model_with_external_package)
-    resp = th.predict(
-        {
-            "inputs": [1, 2, 3, 4],
-        }
-    )
+    resp = th.predict([1, 2, 3, 4])
     assert resp == [1, 1, 1, 1]
 
 
 def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    resp = th.server_predict(
-        {
-            "inputs": [1, 2, 3, 4],
-        }
-    )
+    resp = th.server_predict([1, 2, 3, 4])
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
@@ -176,7 +164,7 @@ def test_predict_use_docker(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
-        result = th.predict({"inputs": [1, 2]}, tag=tag, use_docker=True)
+        result = th.predict([1, 2], tag=tag, use_docker=True)
         assert result == {"predictions": [4, 5]}
 
 
@@ -185,7 +173,7 @@ def test_docker_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1, 2]}, tag=tag)
+        result = th.docker_predict([1, 2], tag=tag)
         assert result == {"predictions": [4, 5]}
 
 
@@ -196,7 +184,7 @@ def test_docker_predict_model_with_external_packages(
     th = TrussHandle(custom_model_with_external_package)
     tag = "test-docker-predict-ext-pkg-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1, 2]}, tag=tag)
+        result = th.docker_predict([1, 2], tag=tag)
         assert result == [1, 1]
 
 
@@ -240,7 +228,7 @@ def test_docker_predict_with_bundled_packages(
     th = TrussHandle(custom_model_truss_dir_with_bundled_packages)
     tag = "test-docker-predict-bundled-packages-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1, 2]}, tag=tag)
+        result = th.docker_predict([1, 2], tag=tag)
         assert result == {"predictions": [1]}
 
 
@@ -249,8 +237,8 @@ def test_docker_multiple_predict(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     tag = "test-docker-predict-tag:0.0.1"
     with ensure_kill_all():
-        r1 = th.docker_predict({"inputs": [1, 2]}, tag=tag)
-        r2 = th.docker_predict({"inputs": [3, 4]}, tag=tag)
+        r1 = th.docker_predict([1, 2], tag=tag)
+        r2 = th.docker_predict([3, 4], tag=tag)
         assert r1 == {"predictions": [4, 5]}
         assert r2 == {"predictions": [6, 7]}
         assert len(th.get_serving_docker_containers_from_labels()) == 1
@@ -276,7 +264,7 @@ def test_docker_predict_gpu(custom_model_truss_dir_for_gpu):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-docker-predict-gpu-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result["predictions"][0]["cuda_version"].startswith("11")
 
 
@@ -298,7 +286,7 @@ def test_docker_no_preprocess_custom_model(no_preprocess_custom_model):
     th = TrussHandle(no_preprocess_custom_model)
     tag = "test-docker-no-preprocess-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result["predictions"][0] == 2
 
 
@@ -307,14 +295,14 @@ def test_docker_long_load(long_load_model):
     th = TrussHandle(long_load_model)
     tag = "test-docker-long-load-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result["predictions"][0] == 1
 
 
 @pytest.mark.integration
 def test_local_no_preprocess_custom_model(no_preprocess_custom_model):
     th = TrussHandle(no_preprocess_custom_model)
-    result = th.server_predict({"inputs": [1]})
+    result = th.server_predict([1])
     assert result["predictions"][0] == 2
 
 
@@ -323,14 +311,14 @@ def test_docker_no_postprocess_custom_model(no_postprocess_custom_model):
     th = TrussHandle(no_postprocess_custom_model)
     tag = "test-docker-no-postprocess-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result["predictions"][0] == 2
 
 
 @pytest.mark.integration
 def test_local_no_postprocess_custom_model(no_postprocess_custom_model):
     th = TrussHandle(no_postprocess_custom_model)
-    result = th.server_predict({"inputs": [1]})
+    result = th.server_predict([1])
     assert result["predictions"][0] == 2
 
 
@@ -339,14 +327,14 @@ def test_docker_no_load_custom_model(no_load_custom_model):
     th = TrussHandle(no_load_custom_model)
     tag = "test-docker-no-load-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result["predictions"][0] == 1
 
 
 @pytest.mark.integration
 def test_local_no_load_custom_model(no_load_custom_model):
     th = TrussHandle(no_load_custom_model)
-    result = th.server_predict({"inputs": [1]})
+    result = th.server_predict([1])
     assert result["predictions"][0] == 1
 
 
@@ -355,14 +343,14 @@ def test_docker_no_params_init_custom_model(no_params_init_custom_model):
     th = TrussHandle(no_params_init_custom_model)
     tag = "test-docker-no-params-init-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result["predictions"][0] == 1
 
 
 @pytest.mark.integration
 def test_local_no_params_init_custom_model(no_params_init_custom_model):
     th = TrussHandle(no_params_init_custom_model)
-    result = th.server_predict({"inputs": [1]})
+    result = th.server_predict([1])
     assert result["predictions"][0] == 1
 
 
@@ -545,41 +533,27 @@ def test_examples(custom_model_truss_dir_with_pre_and_post):
     assert "example1" in [example.name for example in examples]
 
 
-def test_example(custom_model_truss_dir_with_pre_and_post):
-    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    assert "inputs" in th.example("example1").input
-
-
-def test_example_index(custom_model_truss_dir_with_pre_and_post):
-    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    assert "inputs" in th.example(0).input
-
-
 def test_add_example_new(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     orig_examples = th.examples()
-    th.add_example("example2", {"inputs": [[1]]})
+    th.add_example("example2", [[1]])
     assert th.examples() == [
         *orig_examples,
-        Example("example2", {"inputs": [[1]]}),
+        Example("example2", [[1]]),
     ]
 
 
 def test_add_example_update(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.add_example("example1", {"inputs": [[1]]})
+    th.add_example("example1", [[1]])
     assert th.examples() == [
-        Example("example1", {"inputs": [[1]]}),
+        Example("example1", [[1]]),
     ]
 
 
 def test_model_without_pre_post(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
-    resp = th.server_predict(
-        {
-            "inputs": [1, 2, 3, 4],
-        }
-    )
+    resp = th.server_predict([1, 2, 3, 4])
     assert resp == [1, 1, 1, 1]
 
 
@@ -587,11 +561,7 @@ def test_model_without_pre_post(custom_model_truss_dir):
 def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     with ensure_kill_all():
-        resp = th.docker_predict(
-            {
-                "inputs": [1, 2, 3, 4],
-            }
-        )
+        resp = th.docker_predict([1, 2, 3, 4])
         assert resp == [1, 1, 1, 1]
 
 
@@ -600,7 +570,7 @@ def test_control_truss_apply_patch(custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result[0] == 1
 
         running_hash = th.truss_hash_on_serving_container()
@@ -625,7 +595,7 @@ class Model:
         }
 
         th.patch_container(patch_request)
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result[0] == 2
 
 
@@ -634,12 +604,12 @@ def test_regular_truss_local_update_flow(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     tag = "test-docker-custom-model-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
 
         # No new docker images on second predict
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert orig_num_truss_images == len(th.get_all_docker_images())
 
         with (custom_model_truss_dir / "model" / "model.py").open(
@@ -652,7 +622,7 @@ class Model:
         return [2 for i in request['inputs']]
 """
             )
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result[0] == 2
         # A new image should have been created
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
@@ -715,40 +685,40 @@ class Model:
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(new_model_code)
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def predict_with_added_empty_directory():
         # Adding empty directory should work
         (custom_model_control / "model" / "dir").mkdir()
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def predict_with_unpatchable_change():
         # Changes that are not expressible with patch should also work
         # Changes to data dir are not currently patch expressible
         (custom_model_control / "data" / "dummy").touch()
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def predict_with_python_requirement_added(req: str):
         th.add_python_requirement(req)
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def predict_with_python_requirement_removed(req):
         th.remove_python_requirement(req)
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def predict_with_system_requirement_added(pkg):
         th.add_system_package(pkg)
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def predict_with_system_requirement_removed(pkg):
         th.remove_system_package(pkg)
-        return th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        return th.docker_predict([1], tag=tag, binary=binary)
 
     def current_num_docker_images() -> int:
         return len(th.get_all_docker_images())
 
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag, binary=binary)
+        result = th.docker_predict([1], tag=tag, binary=binary)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
 
@@ -798,9 +768,7 @@ def test_control_truss_huggingface(
     tag = "test-docker-huggingface-model-control-tag:0.0.1"
     with ensure_kill_all():
         result = th.docker_predict(
-            {
-                "inputs": ["My name is Sarah and I live in London"],
-            },
+            "My name is Sarah and I live in London",
             tag=tag,
         )
         predictions = result["predictions"]
@@ -814,7 +782,7 @@ def test_control_truss_local_update_that_crashes_inference_server(custom_model_c
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result[0] == 1
 
         bad_model_code = """
@@ -825,7 +793,7 @@ class Model:
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(bad_model_code)
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            th.docker_predict({"inputs": [1]}, tag=tag)
+            th.docker_predict([1], tag=tag)
         resp = exc_info.value.response
         assert resp.status_code == 500
         assert "Model load failed" in resp.text
@@ -838,7 +806,7 @@ class Model:
 """
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(good_model_code)
-        result = th.docker_predict({"inputs": [1]}, tag=tag)
+        result = th.docker_predict([1], tag=tag)
         assert result[0] == 2
 
 
@@ -859,7 +827,7 @@ def test_patch_ping_flow(
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
         result = th.docker_predict(
-            {"inputs": [1]},
+            [1],
             tag=tag,
             patch_ping_url=patch_ping_url,
         )
@@ -890,7 +858,7 @@ def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
         TrussHandle, "_try_patch", new=return_container_dne
     ), pytest.raises(ContainerNotFoundError):
         truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
-        truss_handle.docker_predict({"inputs": [1]}, local_port=3000)
+        truss_handle.docker_predict([1], local_port=3000)
     kill_all_with_retries()
 
 
