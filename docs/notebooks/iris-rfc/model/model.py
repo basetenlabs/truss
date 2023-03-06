@@ -24,26 +24,24 @@ class Model:
         model_file_path = next(path for path in paths if path.exists())
         self._model = joblib.load(model_file_path)
 
-    def preprocess(self, model_input: Any) -> Any:
+    def preprocess(self, request: Dict) -> Dict:
         """
         Incorporate pre-processing required by the model if desired here.
 
         These might be feature transformations that are tightly coupled to the model.
         """
-        return model_input
+        return request
 
-    def postprocess(self, model_output: Dict) -> Dict:
+    def postprocess(self, request: Dict) -> Dict:
         """
         Incorporate post-processing required by the model if desired here.
         """
-        return model_output
+        return request
 
-    def predict(self, model_input: Any) -> Dict[str, List]:
-        model_output = {}
-        result = self._model.predict(model_input)
-        model_output["predictions"] = result
+    def predict(self, inputs: Any) -> Dict[str, List]:
+        response = {}
+        result = self._model.predict(inputs)
+        response["predictions"] = result
         if self._supports_predict_proba:
-            model_output["probabilities"] = self._model.predict_proba(
-                model_input
-            ).tolist()
-        return model_output
+            response["probabilities"] = self._model.predict_proba(inputs).tolist()
+        return response

@@ -1,5 +1,5 @@
 import pickle
-from typing import Dict, List
+from typing import Any, Dict, List
 
 
 class Model:
@@ -12,19 +12,19 @@ class Model:
         with open(self._data_dir / "pipeline.cpick", "rb") as f:
             self._pipeline = pickle.load(f)
 
-    def preprocess(self, request: Dict) -> Dict:
+    def preprocess(self, model_input: Any) -> Any:
         """
         Incorporate pre-processing required by the model if desired here.
 
         These might be feature transformations that are tightly coupled to the model.
         """
-        return request
+        return model_input
 
-    def postprocess(self, request: Dict) -> Dict:
+    def postprocess(self, model_output: Dict) -> Dict:
         """
         Incorporate post-processing required by the model if desired here.
         """
-        return request
+        return model_output
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        return self._pipeline(request)
+    def predict(self, model_input: Any) -> Dict[str, List]:
+        return self._pipeline(model_input)

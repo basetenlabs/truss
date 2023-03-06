@@ -1,6 +1,6 @@
 import logging
 import traceback
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import torch
 from transformers import pipeline
@@ -27,23 +27,23 @@ class Model:
             **transformer_config,
         )
 
-    def preprocess(self, request: Dict) -> Dict:
+    def preprocess(self, model_input: Any) -> Any:
         """
         Incorporate pre-processing required by the model if desired here.
 
         These might be feature transformations that are tightly coupled to the model.
         """
-        return request
+        return model_input
 
-    def postprocess(self, request: Dict) -> Dict:
+    def postprocess(self, model_output: Dict) -> Dict:
         """
         Incorporate post-processing required by the model if desired here.
         """
-        return request
+        return model_output
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        response = {}
-        instances = request["inputs"]
+    def predict(self, model_input: Any) -> Dict[str, List]:
+        model_output = {}
+        instances = model_input
 
         with torch.no_grad():
             if self._has_named_args:
@@ -56,11 +56,11 @@ class Model:
                         result.append(self._model(prompt, **instance))
                 except (KeyError, AttributeError):
                     logging.error(traceback.format_exc())
-                    response["error"] = {
+                    model_output["error"] = {
                         "traceback": f'Expected request as an object with text in "prompt"\n{traceback.format_exc()}'
                     }
-                    return response
+                    return model_output
             else:
                 result = self._model(instances)
-        response["predictions"] = result
-        return response
+        model_output["predictions"] = result
+        return model_output
