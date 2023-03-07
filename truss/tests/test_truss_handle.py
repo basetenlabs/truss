@@ -81,6 +81,8 @@ def test_readme_generation_str_example(
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_str_example)
     readme_contents = th.generate_readme()
+    with open("tmp.md", "w") as f:
+        f.write(readme_contents)
     readme_contents = readme_contents.replace("\n", "")
     correct_readme_contents = _read_readme("readme_str_example.md")
     assert readme_contents == correct_readme_contents

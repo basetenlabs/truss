@@ -85,8 +85,8 @@ class Model:
     def load(self):
         pass
 
-    def predict(self, request):
-        return [1 for i in request['inputs']]
+    def predict(self, model_input):
+        return [1 for i in model_input]
 """
 
 CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE = """
@@ -94,8 +94,8 @@ import top_module
 import subdir.sub_module
 import top_module2
 class Model:
-    def predict(self, request):
-        return [1 for i in request['inputs']]
+    def predict(self, model_input):
+        return [1 for i in model_input]
 """
 
 CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS = """
@@ -106,22 +106,20 @@ class Model:
     def load(*args, **kwargs):
         pass
 
-    def preprocess(self, request):
+    def preprocess(self, model_input):
         # Adds 1 to all
-        return {
-            'inputs': [value + 1 for value in request['inputs']]
-        }
+        return [value + 1 for value in model_input]
 
-    def predict(self, request):
+    def predict(self, model_input):
         # Returns inputs as predictions
         return {
-            'predictions': request['inputs'],
+            'predictions': model_input,
         }
 
-    def postprocess(self, request):
+    def postprocess(self, model_output):
         # Adds 2 to all
         return {
-            'predictions': [value + 2 for value in request['predictions']],
+            'predictions': [value + 2 for value in model_output['predictions']],
         }
 """
 
@@ -195,9 +193,9 @@ class Model:
         time.sleep(10)
         pass
 
-     def predict(self, request):
+     def predict(self, model_input):
         return {
-            'predictions': request['inputs'],
+            'predictions': model_input,
         }
 """
 
@@ -213,9 +211,9 @@ class Model:
             'predictions': [value + 1 for value in request['predictions']],
         }
 
-     def predict(self, request):
+     def predict(self, model_input):
         return {
-            'predictions': request['inputs'],
+            'predictions': model_input,
         }
 """
 
@@ -226,15 +224,15 @@ class Model:
      def load(*args, **kwargs):
         pass
 
-     def preprocess(self, request):
+     def preprocess(self, model_input):
         # Adds 1 to all
         return {
-            'inputs': [value + 1 for value in request['inputs']],
+            'inputs': [value + 1 for value in model_input],
         }
 
-     def predict(self, request):
+     def predict(self, model_input):
         return {
-            'predictions': request['inputs'],
+            'predictions': model_input,
         }
 """
 
@@ -250,9 +248,9 @@ class Model:
      def postporcess(self, request):
         return request
 
-     def predict(self, request):
+     def predict(self, model_input):
         return {
-            'predictions': request['inputs'],
+            'predictions': model_input,
         }
 """
 
@@ -583,7 +581,7 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
     handle = init(str(dir_path))
     with handle.spec.model_class_filepath.open("w") as file:
         file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
-    handle.update_examples([Example("example1", [[0]])])
+    handle.update_examples([Example("example1", {"inputs": [[0]]})])
     yield dir_path
 
 
@@ -620,7 +618,11 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
             Example(
                 "example1",
                 {
-                    "image_url": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"
+                    "inputs": [
+                        {
+                            "image_url": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"
+                        },
+                    ],
                 },
             )
         ]
