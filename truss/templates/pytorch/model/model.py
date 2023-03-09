@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 from torch import package
@@ -34,13 +34,13 @@ class Model:
         """
         return model_input
 
-    def postprocess(self, model_output: Dict) -> Dict:
+    def postprocess(self, model_output: Any) -> Any:
         """
         Incorporate post-processing required by the model if desired here.
         """
         return model_output
 
-    def predict(self, model_input: Any) -> Dict[str, List]:
+    def predict(self, model_input: Any) -> Any:
         model_output = {}
         with torch.no_grad():
             inputs = torch.tensor(

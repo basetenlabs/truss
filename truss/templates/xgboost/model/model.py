@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import xgboost as xgb
 
@@ -39,13 +39,13 @@ class Model:
         """
         return model_input
 
-    def postprocess(self, model_output: Dict) -> Dict:
+    def postprocess(self, model_output: Any) -> Any:
         """
         Incorporate post-processing required by the model if desired here.
         """
         return model_output
 
-    def predict(self, model_input: Any) -> Dict[str, List]:
+    def predict(self, model_input: Any) -> Any:
         model_output = {}
         dmatrix_inputs = xgb.DMatrix(model_input)
         result = self._model.predict(dmatrix_inputs)
