@@ -287,7 +287,7 @@ def test_docker_predict_secrets(custom_model_truss_dir_for_secrets):
     LocalConfigHandler.set_secret("secret_name", "secret_value")
     with ensure_kill_all():
         try:
-            result = th.docker_predict({"inputs": ["secret_name"]}, tag=tag)
+            result = th.docker_predict({"instances": ["secret_name"]}, tag=tag)
             assert result["predictions"][0] == "secret_value"
         finally:
             LocalConfigHandler.remove_secret("secret_name")
