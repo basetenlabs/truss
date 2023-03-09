@@ -10,7 +10,6 @@ from typing import Dict, Optional, Union
 
 import kserve
 from cloudevents.http import CloudEvent
-from common.util import assign_request_to_inputs_instances_after_validation
 from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
 
