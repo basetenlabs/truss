@@ -91,5 +91,5 @@ Now that you're task is running, you can make requests to your model! To get the
 If you've been following along with the model above, you can use the snippet below to make a sample request.
 
 ```
-curl -H 'Content-Type: application/json' -d '{"inputs": [[0,0,0,0]]}' -X POST [CONTAINER_LINK]:80/v1/models/model:predict
+curl -H 'Content-Type: application/json' -d '[[0,0,0,0]]' -X POST [CONTAINER_LINK]:80/v1/models/model:predict
 ```

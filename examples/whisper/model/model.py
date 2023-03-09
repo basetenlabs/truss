@@ -15,16 +15,16 @@ class Model:
         self._model = whisper.load_model("small", self.device)
         return
 
-    def preprocess(self, request: Dict) -> Dict:
-        resp = requests.get(request["url"])
+    def preprocess(self, model_input: Dict) -> Dict:
+        resp = requests.get(model_input["url"])
         return {"response": resp.content}
 
-    def postprocess(self, request: Dict) -> Dict:
-        return request
+    def postprocess(self, model_output: Dict) -> Dict:
+        return model_output
 
-    def predict(self, request: Dict) -> Dict:
+    def predict(self, model_input: Dict) -> Dict:
         with NamedTemporaryFile() as fp:
-            fp.write(request["response"])
+            fp.write(model_input["response"])
             result = whisper.transcribe(
                 self._model,
                 fp.name,

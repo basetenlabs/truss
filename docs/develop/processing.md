@@ -19,9 +19,9 @@ import requests
 import tempfile
 import numpy as np
 
-def preprocess(url):
+def preprocess(self, model_input: Any) -> Any:
     """Preprocess step for ResNet"""
-    request = requests.get(url)
+    request = requests.get(model_input)
     with tempfile.NamedTemporaryFile() as f:
         f.write(request.content)
         f.seek(0)
@@ -41,13 +41,16 @@ Here is a post-processing function from the same [TensorFlow example](../create/
 ```python
 from scipy.special import softmax
 
-def postprocess(predictions, k=5):
+def postprocess(self, model_output: Dict, k=5) -> Dict:
     """Post process step for ResNet"""
-    class_predictions = predictions[0]
+    class_predictions = model_output["predictions"][0]
     LABELS = requests.get(
-        'https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt'
-    ).text.split('\n')
+        "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
+    ).text.split("\n")
     class_probabilities = softmax(class_predictions)
     top_probability_indices = class_probabilities.argsort()[::-1][:k].tolist()
-    return {LABELS[index]: 100 * class_probabilities[index].round(3) for index in top_probability_indices}
+    return {
+        LABELS[index]: 100 * class_probabilities[index].round(3)
+        for index in top_probability_indices
+    }
 ```

@@ -46,7 +46,7 @@ def test_run_truss(huggingface_transformer_t5_small_pipeline):
         framework = HuggingfaceTransformer()
         framework.to_truss(model, truss_dir)
         model = LoadModelLocal.run(truss_dir)
-        result = model.predict({"inputs": "My name is Sarah and I live in London"})
+        result = model.predict("My name is Sarah and I live in London")
         predictions = result["predictions"]
         assert len(predictions) == 1
         prediction = predictions[0]
@@ -71,9 +71,7 @@ def test_run_image(huggingface_transformer_t5_small_pipeline):
 
         resp = requests.post(
             "http://localhost:8080/v1/models/model:predict",
-            json={
-                "inputs": ["My name is Sarah and I live in London"],
-            },
+            json="My name is Sarah and I live in London",
         )
 
         predictions = resp.json()["predictions"]

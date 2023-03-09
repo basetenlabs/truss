@@ -165,7 +165,7 @@ inputs = datasets.MNIST("../data", train=False, transform=transform)
 dataset = torch.utils.data.DataLoader(inputs, batch_size=1)
 
 import numpy as np
-print(tr.predict({"inputs": np.array(next(iter(dataset))[0])}))
+print(tr.predict(np.array(next(iter(dataset))[0])))
 ```
 
 For information on running the Truss locally, see [local development](../develop/localhost.md).

@@ -15,14 +15,14 @@ class Model:
         self._model = whisper.load_model("medium", self._device)
         return
 
-    def preprocess(self, request: Dict) -> Dict:
-        return request
+    def preprocess(self, model_input: Dict) -> Dict:
+        return model_input
 
-    def postprocess(self, request: Dict) -> Dict:
-        return request
+    def postprocess(self, model_output: Dict) -> Dict:
+        return model_output
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        media_url = request["url"]
+    def predict(self, model_input: Dict) -> Dict[str, List]:
+        media_url = model_input["url"]
         yt = YouTube(media_url)
         itag = yt.streams.filter(only_audio=True)[0].itag
         stream = yt.streams.get_by_itag(itag)

@@ -44,19 +44,24 @@ Check the target directory to see your new Truss!
 
 ### Serve the model
 
-The TensorFlow model requires [pre- and post-processing functions](../develop/processing.md) to run. These functions go in `model/model.py`:
+In your newly created Truss, open `model/model.py` and add pre- and post-processing functions as follows.
+
+First, add the following imports at the top of the file:
+
 
 ```python
-#Preprocess and Postprocess Functions
 import requests
 import tempfile
-import numpy as np
-
+import tensorflow as tf
 from scipy.special import softmax
+```
 
-def preprocess(url):
+Then, update the pre-processing function to:
+
+```python
+def preprocess(self, model_input: Any) -> Any:
     """Preprocess step for ResNet"""
-    request = requests.get(url)
+    request = requests.get(model_input)
     with tempfile.NamedTemporaryFile() as f:
         f.write(request.content)
         f.seek(0)
@@ -65,22 +70,32 @@ def preprocess(url):
         tf.image.resize([input_image], (224, 224))
     )
     return np.array(preprocessed_image)
+```
 
-def postprocess(predictions, k=5):
+Finally, update the post-processing function to:
+
+```python
+def postprocess(self, model_output: Dict, k=5) -> Dict:
     """Post process step for ResNet"""
-    class_predictions = predictions[0]
+    class_predictions = model_output["predictions"][0]
     LABELS = requests.get(
-        'https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt'
-    ).text.split('\n')
+        "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
+    ).text.split("\n")
     class_probabilities = softmax(class_predictions)
     top_probability_indices = class_probabilities.argsort()[::-1][:k].tolist()
-    return {LABELS[index]: 100 * class_probabilities[index].round(3) for index in top_probability_indices}
+    return {
+        LABELS[index]: 100 * class_probabilities[index].round(3)
+        for index in top_probability_indices
+    }
 ```
 
 With these functions in place, you can invoke the model and pass it a URL, as in:
 
 ```python
-tr.predict({"inputs": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"})
+from truss import load
+
+tr = load("tensorflow_truss")
+tr.predict("https://github.com/pytorch/hub/raw/master/images/dog.jpg")
 ```
 
 For information on running the Truss locally, see [local development](../develop/localhost.md).

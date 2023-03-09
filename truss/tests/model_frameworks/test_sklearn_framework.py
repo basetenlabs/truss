@@ -41,7 +41,7 @@ def test_run_truss(sklearn_rfc_model):
         sklearn_framework = SKLearn()
         sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)
         model = LoadModelLocal.run(truss_dir)
-        predictions = model.predict({"inputs": [[0, 0, 0, 0]]})
+        predictions = model.predict([[0, 0, 0, 0]])
         assert len(predictions["probabilities"]) == 1
         assert len(predictions["probabilities"][0]) == 3
 
@@ -54,7 +54,7 @@ def test_run_image(sklearn_rfc_model):
         sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)
         tr = TrussHandle(truss_dir)
         predictions = tr.docker_predict(
-            {"inputs": [[0, 0, 0, 0]]},
+            [[0, 0, 0, 0]],
             local_port=8090,
         )
         assert len(predictions["probabilities"]) == 1

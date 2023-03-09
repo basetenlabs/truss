@@ -41,7 +41,7 @@ def test_run_truss(lgb_pima_model):
         lgb_framework = LightGBM()
         lgb_framework.to_truss(lgb_pima_model, truss_dir)
         model = LoadModelLocal.run(truss_dir)
-        predictions = model.predict({"inputs": [[0, 0, 0, 0, 0, 0, 0, 0]]})
+        predictions = model.predict([[0, 0, 0, 0, 0, 0, 0, 0]])
         assert len(predictions["predictions"]) == 1
         assert len(predictions["predictions"][0]) == 2
 
@@ -54,7 +54,7 @@ def test_run_image(lgb_pima_model):
         lgb_framework.to_truss(lgb_pima_model, truss_dir)
         tr = TrussHandle(truss_dir)
         predictions = tr.docker_predict(
-            {"inputs": [[0, 0, 0, 0, 0, 0, 0, 0]]},
+            [[0, 0, 0, 0, 0, 0, 0, 0]],
             local_port=8080,
         )
         assert len(predictions["predictions"]) == 1

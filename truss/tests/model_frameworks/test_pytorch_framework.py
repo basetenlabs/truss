@@ -37,7 +37,7 @@ def test_run_image(pytorch_model_with_numpy_import, tmp_path):
     truss = TrussHandle(truss_dir)
     with ensure_kill_all():
         result = truss.docker_predict(
-            {"inputs": [[0, 0, 0]]},
+            [[0, 0, 0]],
             local_port=8090,
         )
         assert len(result["predictions"]) == 1
