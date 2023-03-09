@@ -6,13 +6,10 @@ import traceback
 from enum import Enum
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import kserve
-import numpy as np
 from cloudevents.http import CloudEvent
-from common.util import assign_request_to_inputs_instances_after_validation
-from kserve.errors import InvalidInput
 from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
 
@@ -26,14 +23,15 @@ class ModelWrapper(kserve.Model):
         READY = 2
         FAILED = 3
 
-    _config: dict
+    _config: Dict
     _model: object
     _load_lock: Lock = Lock()
     _predict_lock: Lock = Lock()
     _status: Status = Status.NOT_READY
     _logger: logging.Logger
+    ready: bool
 
-    def __init__(self, config: dict):
+    def __init__(self, config: Dict):
         super().__init__(MODEL_BASENAME)
         self._config = config
         self.logger = logging.getLogger(__name__)
@@ -107,41 +105,32 @@ class ModelWrapper(kserve.Model):
         if hasattr(self._model, "load"):
             self._model.load()
 
-    def validate(self, payload):
-        if (
-            "instances" in payload
-            and not isinstance(payload["instances"], (list, np.ndarray))
-            or "inputs" in payload
-            and not isinstance(payload["inputs"], (list, np.ndarray))
-        ):
-            raise InvalidInput(
-                'Expected "instances" or "inputs" to be a list or NumPy ndarray'
-            )
-
-        return assign_request_to_inputs_instances_after_validation(payload)
-
     def preprocess(
         self,
         payload: Union[Dict, CloudEvent, ModelInferRequest],
-        headers: Dict[str, str] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Union[Dict, ModelInferRequest]:
         if not hasattr(self._model, "preprocess"):
             return payload
-        return self._model.preprocess(payload)
+        return self._model.preprocess(payload)  # type: ignore
 
     def postprocess(
-        self, response: Union[Dict, ModelInferResponse], headers: Dict[str, str] = None
+        self,
+        response: Union[Dict, ModelInferResponse],
+        headers: Optional[Dict[str, str]] = None,
     ) -> Dict:
         if not hasattr(self._model, "postprocess"):
             return response
-        return self._model.postprocess(response)
+        return self._model.postprocess(response)  # type: ignore
 
     def predict(
-        self, payload: Union[Dict, ModelInferRequest], headers: Dict[str, str] = None
+        self,
+        payload: Union[Dict, ModelInferRequest],
+        headers: Optional[Dict[str, str]] = None,
     ) -> Union[Dict, ModelInferResponse]:
         try:
             self._predict_lock.acquire()
-            return self._model.predict(payload)
+            return self._model.predict(payload)  # type: ignore
         except Exception:
             response = {}
             logging.exception("Exception while running predict")
