@@ -226,9 +226,7 @@ class Model:
 
      def preprocess(self, model_input):
         # Adds 1 to all
-        return {
-            'inputs': [value + 1 for value in model_input],
-        }
+        return [value + 1 for value in model_input]
 
      def predict(self, model_input):
         return {
