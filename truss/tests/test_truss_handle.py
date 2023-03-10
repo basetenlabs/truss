@@ -81,8 +81,6 @@ def test_readme_generation_str_example(
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_str_example)
     readme_contents = th.generate_readme()
-    with open("tmp.md", "w") as f:
-        f.write(readme_contents)
     readme_contents = readme_contents.replace("\n", "")
     correct_readme_contents = _read_readme("readme_str_example.md")
     assert readme_contents == correct_readme_contents
@@ -578,8 +576,8 @@ def test_control_truss_apply_patch(custom_model_control):
         running_hash = th.truss_hash_on_serving_container()
         new_model_code = """
 class Model:
-    def predict(self, request):
-        return [2 for i in request['inputs']]
+    def predict(self, model_input):
+        return [2 for i in model_input]
 """
         patch_request = {
             "hash": "dummy",
@@ -620,8 +618,8 @@ def test_regular_truss_local_update_flow(custom_model_truss_dir):
             model_code_file.write(
                 """
 class Model:
-    def predict(self, request):
-        return [2 for i in request['inputs']]
+    def predict(self, model_input):
+        return [2 for i in model_input]
 """
             )
         result = th.docker_predict([1], tag=tag)
@@ -681,8 +679,8 @@ def test_control_truss_local_update_flow(binary, python_version, custom_model_co
     def predict_with_updated_model_code():
         new_model_code = """
 class Model:
-    def predict(self, request):
-        return [2 for i in request['inputs']]
+    def predict(self, model_input):
+        return [2 for i in model_input]
 """
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
@@ -803,8 +801,8 @@ class Model:
         # Should be able to fix code after
         good_model_code = """
 class Model:
-    def predict(self, request):
-        return [2 for i in request['inputs']]
+    def predict(self, model_input):
+        return [2 for i in model_input]
 """
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(good_model_code)
