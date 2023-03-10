@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import uuid
+import venv
 from dataclasses import replace
 from pathlib import Path
 from shutil import rmtree
@@ -60,7 +61,7 @@ from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
 from truss.patch.calc_patch import calc_truss_patch
-from truss.patch.hash import directory_content_hash
+from truss.patch.hash import directory_content_hash, str_hash_str
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
@@ -831,6 +832,45 @@ class TrussHandle:
         Many operations require a scattered truss to be gathered first.
         """
         return not self.no_external_packages
+
+    def create_venv(self, serving: bool = True) -> Path:
+        """Create a venv for the truss.
+
+        Currently venvs are created under ~/.truss/venvs and based on hash of
+        truss's absolute path. If a truss is moved around then it will not map
+        to the original venv which will need to be create againa.
+
+        Currently only supports venv creation for model serving.
+        """
+        venv_path = self.venv_path
+        venv_path.mkdir(exist_ok=True, parents=True)
+        venv.create(str(venv_path), with_pip=True)
+
+        if sys.platform == "win32":
+            bin_dir = venv_path / "Scripts"
+        else:
+            bin_dir = venv_path / "bin"
+        activate_file = bin_dir / "activate"
+        paths_to_add = [
+            self._spec.bundled_packages_dir,
+            *self._spec.external_package_dirs_paths,
+        ]
+        if serving:
+            paths_to_add.append(self._spec.model_module_dir)
+        else:
+            paths_to_add.append(self._spec.training_module_dir)
+        with activate_file.open("a") as file:
+            for path in paths_to_add:
+                file.write(f"\nexport PATH=$PATH:{path.resolve()}")
+            file.write("\n")
+        return venv_path
+
+    @property
+    def venv_path(self) -> Path:
+        venvs_path = LocalConfigHandler.venvs_path()
+        path_hash = str_hash_str(str(self._truss_dir.resolve()))
+        venv_dir_name = f"{self._truss_dir.name}_{path_hash}"
+        return venvs_path / venv_dir_name
 
     def _store_signature(self):
         """Store truss signature"""

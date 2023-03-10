@@ -75,6 +75,10 @@ class LocalConfigHandler:
         return DOT_TRUSS_DIR / "shadow_trusses"
 
     @staticmethod
+    def venvs_path():
+        return DOT_TRUSS_DIR / "venvs"
+
+    @staticmethod
     def add_signature(truss_hash: str, signature: str):
         if truss_hash is None:
             raise ValueError("truss_hash is None")
