@@ -845,12 +845,16 @@ class TrussHandle:
         venv_path = self.venv_path
         venv_path.mkdir(exist_ok=True, parents=True)
         venv.create(str(venv_path), with_pip=True)
-
         if sys.platform == "win32":
-            bin_dir = venv_path / "Scripts"
+            site_packages_dir = venv_path / "Lib" / "site-packages"
         else:
-            bin_dir = venv_path / "bin"
-        activate_file = bin_dir / "activate"
+            site_packages_dir = (
+                venv_path
+                / "lib"
+                / f"python{self._spec.canonical_python_version}"
+                / "site-packages"
+            )
+        pth_path = site_packages_dir / "python_paths.pth"
         paths_to_add = [
             self._spec.bundled_packages_dir,
             *self._spec.external_package_dirs_paths,
@@ -859,10 +863,9 @@ class TrussHandle:
             paths_to_add.append(self._spec.model_module_dir)
         else:
             paths_to_add.append(self._spec.training_module_dir)
-        with activate_file.open("a") as file:
+        with pth_path.open("w") as file:
             for path in paths_to_add:
-                file.write(f"\nexport PATH=$PATH:{path.resolve()}")
-            file.write("\n")
+                file.write(f"{path.resolve()}\n")
         return venv_path
 
     @property
