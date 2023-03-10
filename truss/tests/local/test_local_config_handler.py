@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 from truss.local.local_config_handler import LocalConfigHandler
 
@@ -54,11 +55,7 @@ def test_signatures(tmp_path):
 
 @contextmanager
 def _truss_config_dir(path: Path, config_content: str):
-    orig_config_dir = LocalConfigHandler.TRUSS_CONFIG_DIR
-    LocalConfigHandler.TRUSS_CONFIG_DIR = path
-    try:
+    with patch("truss.local.local_config_handler.DOT_TRUSS_DIR", path):
         with (path / "config.yaml").open("w") as f:
             f.write(config_content)
         yield
-    finally:
-        LocalConfigHandler.TRUSS_CONFIG_DIR = orig_config_dir

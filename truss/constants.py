@@ -11,6 +11,8 @@ CUSTOM = "custom"
 HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
 LIGHTGBM = "lightgbm"
 
+DOT_TRUSS_DIR = pathlib.Path(pathlib.Path.home(), ".truss")
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 

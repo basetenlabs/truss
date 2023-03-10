@@ -9,6 +9,8 @@ from distutils.file_util import copy_file
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from truss.constants import DOT_TRUSS_DIR
+
 
 def copy_tree_path(src: Path, dest: Path) -> List[str]:
     return copy_tree(str(src), str(dest))
@@ -49,9 +51,7 @@ def given_or_temporary_dir(given_dir: Optional[Path] = None):
 def build_truss_target_directory(stub: str) -> Path:
     """Builds a directory under ~/.truss/models for the purpose of creating a Truss at."""
     rand_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    target_directory_path = Path(
-        Path.home(), ".truss", "models", f"{stub}-{rand_suffix}"
-    )
+    target_directory_path = DOT_TRUSS_DIR / "models" / f"{stub}-{rand_suffix}"
     target_directory_path.mkdir(parents=True)
     return target_directory_path
 

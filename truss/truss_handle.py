@@ -27,6 +27,7 @@ from tenacity import (
     wait_fixed,
 )
 from truss.constants import (
+    DOT_TRUSS_DIR,
     INFERENCE_SERVER_PORT,
     TRAINING_LABEL,
     TRAINING_TRUSS_HASH,
@@ -1097,7 +1098,7 @@ def _prepare_training_output_mount_directory() -> Path:
 
 def _create_rand_dir_in_dot_truss(subdir: str) -> Path:
     rnd = str(uuid.uuid4())
-    target_directory_path = Path(Path.home(), ".truss", subdir, rnd)
+    target_directory_path = DOT_TRUSS_DIR / subdir / rnd
     target_directory_path.mkdir(parents=True)
     return target_directory_path
 

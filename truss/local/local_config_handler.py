@@ -1,18 +1,16 @@
 import copy
 from dataclasses import replace
-from pathlib import Path
 from typing import Optional
 
+from truss.constants import DOT_TRUSS_DIR
 from truss.local.local_config import LocalConfig
 from truss.validation import validate_secret_name
 
 
 class LocalConfigHandler:
-    TRUSS_CONFIG_DIR = Path.home() / ".truss"
-
     @staticmethod
     def _ensure_config_dir():
-        LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
+        DOT_TRUSS_DIR.mkdir(exist_ok=True, parents=True)
 
     @staticmethod
     def get_config() -> LocalConfig:
@@ -54,7 +52,6 @@ class LocalConfigHandler:
     @staticmethod
     def remove_secret(secret_name: str):
         LocalConfigHandler._ensure_config_dir()
-        LocalConfigHandler.TRUSS_CONFIG_DIR.mkdir(exist_ok=True, parents=True)
         local_config = LocalConfigHandler.get_config()
         new_secrets = copy.deepcopy(local_config.secrets)
         del new_secrets[secret_name]
@@ -63,19 +60,19 @@ class LocalConfigHandler:
 
     @staticmethod
     def _config_path():
-        return LocalConfigHandler.TRUSS_CONFIG_DIR / "config.yaml"
+        return DOT_TRUSS_DIR / "config.yaml"
 
     @staticmethod
     def secrets_dir_path():
-        return LocalConfigHandler.TRUSS_CONFIG_DIR / "secrets"
+        return DOT_TRUSS_DIR / "secrets"
 
     @staticmethod
     def _signatures_dir_path():
-        return LocalConfigHandler.TRUSS_CONFIG_DIR / "signatures"
+        return DOT_TRUSS_DIR / "signatures"
 
     @staticmethod
     def shadow_trusses_dir_path():
-        return LocalConfigHandler.TRUSS_CONFIG_DIR / "shadow_trusses"
+        return DOT_TRUSS_DIR / "shadow_trusses"
 
     @staticmethod
     def add_signature(truss_hash: str, signature: str):

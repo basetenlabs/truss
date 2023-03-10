@@ -7,7 +7,7 @@ from typing import Any, Callable, List, Optional
 import click
 import cloudpickle
 import yaml
-from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
+from truss.constants import CONFIG_FILE, DOT_TRUSS_DIR, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
 from truss.environment_inference.requirements_inference import infer_deps
 from truss.errors import FrameworkNotSupportedError
@@ -309,9 +309,8 @@ def cleanup() -> None:
     """
     Cleans up .truss directory.
     """
-    build_folder_path = Path(Path.home(), ".truss")
-    if build_folder_path.exists():
-        for obj in build_folder_path.glob("**/*"):
+    if DOT_TRUSS_DIR.exists():
+        for obj in DOT_TRUSS_DIR.glob("**/*"):
             if (not obj.name == "config.yaml") and (obj.is_file()):
                 os.remove(obj)
     return
