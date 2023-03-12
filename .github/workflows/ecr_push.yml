@@ -7,7 +7,7 @@ on:
 
 jobs:
 
-  build-n-pushto-ecr-context-builder-image:
+  build-n-push-to-ecr-context-builder-image:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
@@ -23,14 +23,8 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build, tag and push Docker image
+    - name: Build docker image
       id: build-image
-      uses: docker/build-push-action@v2
-      with:
-        context: ./
-        file: ./context_builder.Dockerfile
-        push: true
-        tags: public.ecr.aws/q8h3f2p1/baseten/truss-context-builder:vpankajtest1
-      env:
-        ECR_REGISTRY: public.ecr.aws/q8h3f2p1
-        ECR_REPOSITORY: baseten/truss-context-builder
+      run: |
+        docker build . -f ./context_builder.Dockerfile -t public.ecr.aws/q8h3f2p1/baseten/truss-context-builder:vpankajtest1
+        docker push public.ecr.aws/q8h3f2p1/baseten/truss-context-builder:vpankajtest1
