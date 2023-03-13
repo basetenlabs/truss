@@ -41,7 +41,7 @@ Here is a post-processing function from the same [TensorFlow example](../create/
 ```python
 from scipy.special import softmax
 
-def postprocess(self, model_output: Dict, k=5) -> Dict:
+def postprocess(self, model_output: Any, k=5) -> Any:
     """Post process step for ResNet"""
     class_predictions = model_output["predictions"][0]
     LABELS = requests.get(
