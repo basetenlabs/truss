@@ -2,6 +2,32 @@
 
 Release notes for new versions of Truss, in reverse chronological order.
 
+### Version 0.4.0
+
+This release updates the model invocation interface in Truss templates, affecting **only newly created Trusses**.
+
+Until now, when creating a Truss, the `predict()` function expected a dictionary with the key `inputs` and a value to give the model as input. This default behavior was due to a legacy requirement in Baseten that was removed months ago.
+
+Now, the default behavior is to use the input of `predict()` directly, which can be anything JSON-serializable: string, number, list, dictionary, etc. If you want, you can modify the `predict()` function to expect a dictionary with `inputs` like the old spec.
+
+Before (sklearn iris):
+
+```python
+model.predict({"inputs": [[0, 0, 0, 0]]})
+```
+
+Now (sklearn iris):
+
+```python
+model.predict([[0, 0, 0, 0]])
+```
+
+**This change does not affect existing Trusses.** Only new Trusses created on this version (i.e. by running `truss.create()` or `truss init`) will use the updated templates.
+
+### Version 0.3.0
+
+This version was created to support [blueprint](https://blueprint.baseten.co).
+
 ### Version 0.2.0
 
 With this release, a minor version increment recognizes the overall progress made on Truss since its initial release in Summer 2022. And simplified naming for key functions improves Truss' developer experience, while carefully considered warnings and a long deprecation period ensure nothing breaks.
