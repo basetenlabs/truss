@@ -75,14 +75,14 @@ def preprocess(self, model_input: Any) -> Any:
 Finally, update the post-processing function to:
 
 ```python
-def postprocess(self, model_output: Dict, k=5) -> Dict:
+def postprocess(self, model_output: Dict) -> Dict:
     """Post process step for ResNet"""
     class_predictions = model_output["predictions"][0]
     LABELS = requests.get(
         "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
     ).text.split("\n")
     class_probabilities = softmax(class_predictions)
-    top_probability_indices = class_probabilities.argsort()[::-1][:k].tolist()
+    top_probability_indices = class_probabilities.argsort()[::-1][:5].tolist()
     return {
         LABELS[index]: 100 * class_probabilities[index].round(3)
         for index in top_probability_indices
