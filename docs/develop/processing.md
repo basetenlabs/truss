@@ -1,12 +1,10 @@
 # Pre- and post-processing
 
-An efficiently serialized model is just the model and its direct dependencies. No custom logic or extra frameworks.
-
-This makes deserialization fast, but may make using the model inconvenient.
+An efficiently serialized model is just the model and its direct dependencies. No custom logic or extra frameworks. This makes deserialization fast, but may make invoking the model inconvenient.
 
 Truss bundles your serialized model with pre- and post-processing functions. Use them to:
 
-* Format model inputs and outputs, especially when the model needs something like a Numpy array that isn't JSON-serializable
+* Format model inputs and outputs, especially when the model needs something like an `xgboost.DMatrix` that isn't JSON-serializable
 * Add custom logic like saving model outputs to a data store
 * Factor out unnecessary logic from `predict()`
 
@@ -84,13 +82,13 @@ Here is a post-processing function from the same [TensorFlow example](../create/
 ```python
 from scipy.special import softmax
 
-def postprocess(self, model_output: Any, k=5) -> Any:
+def postprocess(self, model_output: Any) -> Any:
     class_predictions = model_output["predictions"][0]
     LABELS = requests.get(
         "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
     ).text.split("\n")
     class_probabilities = softmax(class_predictions)
-    top_probability_indices = class_probabilities.argsort()[::-1][:k].tolist()
+    top_probability_indices = class_probabilities.argsort()[::-1][:5].tolist()
     return {
         LABELS[index]: 100 * class_probabilities[index].round(3)
         for index in top_probability_indices
@@ -105,5 +103,3 @@ Once you've modified your processing functions, you can test them by reloading t
 tr = truss.load("my-truss")
 tr.predict("MODEL_INPUT")
 ```
-
-&nbsp;
