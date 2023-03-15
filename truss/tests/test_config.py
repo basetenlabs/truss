@@ -68,3 +68,18 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
     parsed_result = Resources.from_dict(input_dict)
     assert parsed_result == expect_resources
     assert parsed_result.to_dict() == output_dict
+
+
+@pytest.mark.parametrize(
+    "input_str, expected_acc",
+    [
+        # we parse accelerator when use_gpu = True, so count is always 1 unless specified
+        (None, AcceleratorSpec(None, 0)),
+        ("None", AcceleratorSpec(None, 0)),
+        ("T4", AcceleratorSpec(Accelerator.T4, 1)),
+        ("A10G:4", AcceleratorSpec(Accelerator.A10G, 4)),
+        ("A100:8", AcceleratorSpec(Accelerator.A100, 8)),
+    ],
+)
+def test_acc_spec_from_str(input_str, expected_acc):
+    assert AcceleratorSpec.from_str(input_str) == expected_acc
