@@ -40,6 +40,8 @@ class Model:
 
     def predict(self, model_input: Any) -> Any:
         model_output = {}
+        if isinstance(model_input, dict) and "inputs" in model_input:
+            model_input = model_input["inputs"]  # For backward compatability
         result = self._model.predict(model_input)
         model_output["predictions"] = result
         if self._supports_predict_proba:

@@ -47,6 +47,8 @@ class Model:
 
     def predict(self, model_input: Any) -> Any:
         model_output = {}
+        if isinstance(model_input, dict) and "inputs" in model_input:
+            model_input = model_input["inputs"]  # For backward compatability
         dmatrix_inputs = xgb.DMatrix(model_input)
         result = self._model.predict(dmatrix_inputs)
         model_output["predictions"] = result

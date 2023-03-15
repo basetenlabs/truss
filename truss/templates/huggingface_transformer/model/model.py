@@ -43,7 +43,10 @@ class Model:
 
     def predict(self, model_input: Any) -> Any:
         model_output = {}
-        instances = model_input
+        if isinstance(model_input, dict) and "inputs" in model_input:
+            instances = model_input["inputs"]  # For backward compatability
+        else:
+            instances = model_input
 
         with torch.no_grad():
             if self._has_named_args:

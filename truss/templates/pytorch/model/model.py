@@ -42,6 +42,8 @@ class Model:
 
     def predict(self, model_input: Any) -> Any:
         model_output = {}
+        if isinstance(model_input, dict) and "inputs" in model_input:
+            model_input = model_input["inputs"]  # For backward compatability
         with torch.no_grad():
             inputs = torch.tensor(
                 model_input, dtype=self._model_dtype, device=self._device

@@ -32,7 +32,10 @@ class Model:
 
     def predict(self, model_input: Any) -> Any:
         model_output = {}
-        inputs = np.array(model_input)
+        if isinstance(model_input, dict) and "inputs" in model_input:
+            inputs = np.array(model_input["inputs"])  # For backward compatability
+        else:
+            inputs = np.array(model_input)
         result = self._model.predict(inputs).tolist()
         model_output["predictions"] = result
         return model_output
