@@ -217,6 +217,26 @@ class Model:
         }
 """
 
+# Backward compatible pre 0.4.0
+COMPATIBLE_040_CUSTOM_MODEL_CODE = """
+class Model:
+     def load(*args, **kwargs):
+        pass
+
+     def postprocess(self, request):
+        # Adds 1 to all
+        return {
+            'predictions': [value + 1 for value in request['predictions']],
+        }
+
+     def predict(self, model_input):
+        if isinstance(model_input, dict) and "inputs" in model_input:
+            model_input = model_input["inputs"] # For backward compatability
+        return {
+            'predictions': model_input,
+        }
+"""
+
 
 # Doesn't implement postprocess
 NO_POSTPROCESS_CUSTOM_MODEL_CODE = """
@@ -325,6 +345,15 @@ def no_preprocess_custom_model(tmp_path):
         tmp_path,
         "my_no_preprocess_model",
         NO_PREPROCESS_CUSTOM_MODEL_CODE,
+    )
+
+
+@pytest.fixture
+def compatible_040_custom_model(tmp_path):
+    yield _custom_model_from_code(
+        tmp_path,
+        "compatible_040_model",
+        COMPATIBLE_040_CUSTOM_MODEL_CODE,
     )
 
 

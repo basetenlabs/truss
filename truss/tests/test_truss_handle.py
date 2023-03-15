@@ -44,6 +44,18 @@ def test_predict(custom_model_truss_dir_with_pre_and_post):
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
+def test_predict_with_inputs_key(compatible_040_custom_model):
+    th = TrussHandle(compatible_040_custom_model)
+    result = th.server_predict({"inputs": [1]})
+    assert result["predictions"][0] == 2
+
+
+def test_predict_with_instances_key(compatible_040_custom_model):
+    th = TrussHandle(compatible_040_custom_model)
+    result = th.server_predict({"instances": [1]})
+    assert result["predictions"][0] == 2
+
+
 def test_predict_with_external_packages(custom_model_with_external_package):
     th = TrussHandle(custom_model_with_external_package)
     resp = th.predict([1, 2, 3, 4])
