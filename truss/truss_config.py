@@ -56,8 +56,7 @@ class AcceleratorSpec:
 
     @staticmethod
     def from_str(acc_spec: Optional[str]):
-        # Adding string to check to handle bad string config.
-        if acc_spec is None or acc_spec.lower() == "none":
+        if acc_spec is None:
             return AcceleratorSpec()
         parts = acc_spec.split(":")
         count = 1
@@ -65,7 +64,6 @@ class AcceleratorSpec:
             raise ValidationError("`accelerator` does not match parsing requirements.")
         if len(parts) == 2:
             count = int(parts[1])
-
         try:
             acc = Accelerator[parts[0]]
         except KeyError as exc:

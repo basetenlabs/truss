@@ -74,7 +74,6 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
     "input_str, expected_acc",
     [
         (None, AcceleratorSpec(None, 0)),
-        ("None", AcceleratorSpec(None, 0)),
         ("T4", AcceleratorSpec(Accelerator.T4, 1)),
         ("A10G:4", AcceleratorSpec(Accelerator.A10G, 4)),
         ("A100:8", AcceleratorSpec(Accelerator.A100, 8)),
