@@ -73,7 +73,6 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
 @pytest.mark.parametrize(
     "input_str, expected_acc",
     [
-        # we parse accelerator when use_gpu = True, so count is always 1 unless specified
         (None, AcceleratorSpec(None, 0)),
         ("None", AcceleratorSpec(None, 0)),
         ("T4", AcceleratorSpec(Accelerator.T4, 1)),
