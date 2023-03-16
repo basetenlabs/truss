@@ -10,7 +10,6 @@ from shutil import rmtree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
-import pkg_resources
 import requests
 import yaml
 from requests import exceptions
@@ -398,15 +397,11 @@ class TrussHandle:
     def add_python_requirement(self, python_requirement: str):
         """Add a python requirement to truss model's config."""
 
-        # Parse the added python requirements
-        input_python_req_name = _python_req_name(python_requirement)
-        new_reqs = [
-            req
-            for req in self._spec.config.requirements
-            if _python_req_name(req) != input_python_req_name
-        ]
-        new_reqs.append(python_requirement)
-        self._update_config(lambda conf: replace(conf, requirements=new_reqs))
+        self._update_config(
+            lambda conf: replace(
+                conf, requirements=[*conf.requirements, python_requirement]
+            )
+        )
 
     def remove_python_requirement(self, python_requirement: str):
         """Remove a python requirement to truss model's config.
@@ -1111,8 +1106,3 @@ def _docker_image_from_labels(labels: Dict):
     images = get_images(labels)
     if images and isinstance(images, list):
         return images[0]
-
-
-def _python_req_name(python_requirement: str) -> str:
-    req = pkg_resources.Requirement.parse(python_requirement)
-    return req.name  # type: ignore
