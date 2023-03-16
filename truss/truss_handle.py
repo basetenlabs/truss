@@ -1106,8 +1106,3 @@ def _docker_image_from_labels(labels: Dict):
     images = get_images(labels)
     if images and isinstance(images, list):
         return images[0]
-
-
-def _python_req_name(python_requirement: str) -> str:
-    req = pkg_resources.Requirement.parse(python_requirement)
-    return req.name  # type: ignore
