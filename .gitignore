@@ -8,7 +8,7 @@ backend/*.sqlite3
 backend/baseten/settings/local.py
 /staticfiles/*
 /mediafiles/*
-__pycache__/
+__pycache__
 /.vscode/*
 !/.vscode/settings.json
 
@@ -71,4 +71,4 @@ k8s/on-prem/deps/*
 yarn.lock
 
 .eslintcache
-/.pytest_cache/
+.pytest_cache

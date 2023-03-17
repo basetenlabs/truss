@@ -6,8 +6,8 @@
 
 If you're using a Jupyter notebook, add a line to install the `transformers` and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
-```python
-!pip install --upgrade transformers truss
+```bash
+pip install --upgrade transformers truss
 ```
 
 {% hint style="warning" %}

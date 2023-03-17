@@ -117,6 +117,6 @@ tr.predict({"inputs": [[0, 0, 0, 0]]})
 
 Or in the command line, run:
 
-```python
+```bash
 truss predict --run-local path_to_my_truss '{"inputs": [[0, 0, 0, 0]]}'
 ```

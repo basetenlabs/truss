@@ -5,7 +5,7 @@ import pkg_resources
 import yaml
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
-from truss.templates.control.control.helpers.types import (
+from truss.server.control.helpers.types import (
     Action,
     ModelCodePatch,
     Patch,

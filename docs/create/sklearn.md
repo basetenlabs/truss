@@ -6,7 +6,7 @@
 
 If you're using a Jupyter notebook, add a line to install the `sklearn` and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
-```python
+```bash
 !pip install --upgrade sklearn truss
 ```
 {% hint style="warning" %}

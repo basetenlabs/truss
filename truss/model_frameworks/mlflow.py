@@ -3,7 +3,7 @@ from typing import Dict, Set
 
 from truss.constants import MLFLOW_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
-from truss.templates.server.common.util import model_supports_predict_proba
+from truss.server.common.util import model_supports_predict_proba
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 

@@ -30,9 +30,9 @@ In order to push to the registry, you'll need to authenticate your Docker client
 1. Click into your ECR registry
 2. At the top right, click on **Push commands**
 3. Copy the first command; the command that copies the auth token from AWS and authenticates the Docker client to your specific registry. It should look something like
-```
-aws ecr get-login-password --region [YOUR_REGION] | docker login --username AWS --password-stdin [AWS_ACCOUNT_ID].dkr.ecr.[AWS_REGION].amazonaws.com
-```
+    ```
+    aws ecr get-login-password --region [YOUR_REGION] | docker login --username AWS --password-stdin [AWS_ACCOUNT_ID].dkr.ecr.[AWS_REGION].amazonaws.com
+    ```
 4. You should see the command exit with "Login succeeded"
 
 ## Pushing our Docker image

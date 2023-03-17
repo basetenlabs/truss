@@ -6,7 +6,7 @@
 
 If you're using a Jupyter notebook, add a line to install the `mlflow` and `truss` packages. Otherwise, ensure the packages are installed in your Python environment.
 
-```python
+```bash
 !pip install --upgrade pip
 !pip install --upgrade mlflow truss
 ```

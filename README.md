@@ -51,7 +51,7 @@ Generate and serve predictions from a Truss with [this Jupyter notebook](docs/no
 
 ### Quickstart: making a Truss
 
-```python
+```bash
 !pip install --upgrade scikit-learn truss
 
 import truss

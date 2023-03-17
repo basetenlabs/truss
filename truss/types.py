@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, List
 
 from truss.patch.types import TrussSignature
-from truss.templates.control.control.helpers.types import Patch
+from truss.server.control.helpers.types import Patch
 
 
 class ModelFrameworkType(Enum):
