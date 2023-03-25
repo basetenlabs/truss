@@ -45,7 +45,7 @@ requests = "^2.28.1"
 torch = "^1.9.0"
 ipython = "^7.16"
 pytest = "7.2.0"
-tensorflow = { version = "^2.4.4", markers = "sys_platform == 'linux'" }
+tensorflow = { version = "^2.11.1", markers = "sys_platform == 'linux'" }
 tensorflow-macos = { version = "^2.4.4", markers = "sys_platform == 'darwin'" }
 pre-commit = "^2.18.1"
 scikit-learn = "1.0.2"
