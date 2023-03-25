@@ -9,21 +9,23 @@ from PIL import Image
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
+MODEL_ID = "stabilityai/stable-diffusion-2-1-base"
+
 
 class Model:
     def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._model_id = "stabilityai/stable-diffusion-2-1-base"
         self._model = None
-        self._scheduler = None
+        self._memory_model = None
 
     def load(self):
-        self._scheduler = EulerDiscreteScheduler.from_pretrained(
-            self._model_id, subfolder="scheduler"
-        )
-        self._model = StableDiffusionPipeline.from_pretrained(
-            self._model_id, scheduler=self._scheduler, torch_dtype=torch.float16
-        ).to("cuda")
+        if self._memory_model is None:
+            scheduler = EulerDiscreteScheduler.from_pretrained(
+                MODEL_ID, subfolder="scheduler"
+            )
+            self._memory_model = StableDiffusionPipeline.from_pretrained(
+                MODEL_ID, scheduler=scheduler, torch_dtype=torch.float16
+            )
+        self._model = self._memory_model.to("cuda")
         self._model.enable_xformers_memory_efficient_attention()
 
     def convert_to_b64(self, image: Image) -> str:
