@@ -1,4 +1,5 @@
 import threading
+import time
 from typing import Any, Dict, List
 
 import torch
@@ -21,9 +22,12 @@ class Model:
         self._prediction_lock = threading.Lock()
 
     def load(self):
-        # for model in self._models.values():
-        #     model.load()
-        pass
+        for model_name, model in self._models.items():
+            print(f"Loading model {model_name}")
+            model.load()
+            # Keep model in cpu memory, but evict from GPU memory
+            self.unload()
+            print(f"Model {model_name} loaded successfully")
 
     def unload(self):
         torch.cuda.empty_cache()
@@ -50,8 +54,12 @@ class Model:
             model_name = request.pop(MODEL_SUB_NAME_ARG)
             model = self._sub_model_for_request(model_name)
             if self._current_prediction_model_sub_name != model_name:
+                start_time = time.perf_counter()
                 self.unload()
                 model.load()
+                print(
+                    f"Time taken for model load {int((time.perf_counter() - start_time) * 1000)} ms"
+                )
                 self._current_prediction_model_sub_name = model_name
 
             resp = model.predict(request["response"])
