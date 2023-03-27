@@ -16,9 +16,16 @@ from truss.templates.control.control.helpers.types import (
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 
+PYCACHE_IGNORE_PATTERNS = [
+    "**/__pycache__/**/*",
+    "**/__pycache__/**",
+]
+
 
 def calc_truss_patch(
-    truss_dir: Path, previous_truss_signature: TrussSignature
+    truss_dir: Path,
+    previous_truss_signature: TrussSignature,
+    ignore_patterns: Optional[List[str]] = None,
 ) -> Optional[List[Patch]]:
     """
     Calculate patch for a truss from a previous state.
@@ -28,8 +35,13 @@ def calc_truss_patch(
         is limited and this usually indicates that the identified change cannot
         be expressed with currently supported patches.
     """
+    if ignore_patterns is None:
+        ignore_patterns = PYCACHE_IGNORE_PATTERNS
+
     changed_paths = _calc_changed_paths(
-        truss_dir, previous_truss_signature.content_hashes_by_path
+        truss_dir,
+        previous_truss_signature.content_hashes_by_path,
+        ignore_patterns,
     )
     # TODO(pankaj) Calculate model code patches only for now, add config changes
     # later.
@@ -100,21 +112,21 @@ def calc_truss_patch(
 
 
 def _calc_changed_paths(
-    root: Path, previous_root_path_content_hashes: Dict[str, str]
-) -> dict:
+    root: Path,
+    previous_root_path_content_hashes: Dict[str, str],
+    ignore_patterns: Optional[List[str]],
+) -> Dict[str, List[str]]:
     """
     TODO(pankaj) add support for directory creation in patch
     """
-    root_relative_paths = set(
-        (str(path.relative_to(root)) for path in root.glob("**/*"))
-    )
+    unignored_paths = _calc_unignored_paths(root, ignore_patterns)
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
 
-    added_paths = root_relative_paths - previous_root_relative_paths
-    removed_paths = previous_root_relative_paths - root_relative_paths
+    added_paths = unignored_paths - previous_root_relative_paths
+    removed_paths = previous_root_relative_paths - unignored_paths
 
     updated_paths = set()
-    common_paths = root_relative_paths.intersection(previous_root_relative_paths)
+    common_paths = unignored_paths.intersection(previous_root_relative_paths)
     for path in common_paths:
         full_path: Path = root / path
         if full_path.is_file():
@@ -128,6 +140,23 @@ def _calc_changed_paths(
         "updated": list(updated_paths),
         "removed": list(removed_paths),
     }
+
+
+def _calc_unignored_paths(
+    root: Path, ignore_patterns: Optional[List[str]] = None
+) -> Set[str]:
+    root_relative_ignored_paths = set()
+    if ignore_patterns is not None:
+        for ignore_pattern in ignore_patterns:
+            ignored_paths_for_pattern = set(
+                (str(path.relative_to(root)) for path in root.glob(ignore_pattern))
+            )
+            root_relative_ignored_paths.update(ignored_paths_for_pattern)
+
+    root_relative_paths = set(
+        (str(path.relative_to(root)) for path in root.glob("**/*"))
+    )
+    return root_relative_paths - root_relative_ignored_paths
 
 
 def _calc_config_patches(

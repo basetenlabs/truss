@@ -94,6 +94,22 @@ def test_calc_truss_patch_update_file(custom_model_truss_dir: Path):
     )
 
 
+def test_calc_truss_ignore_pycache(custom_model_truss_dir: Path):
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    top_pycache_path = custom_model_truss_dir / "__pycache__"
+    top_pycache_path.mkdir()
+    (top_pycache_path / "bla.pyc").touch()
+    model_pycache_path = custom_model_truss_dir / "model" / "__pycache__"
+    model_pycache_path.mkdir()
+    (model_pycache_path / "foo.pyo").touch()
+
+    patches = calc_truss_patch(
+        custom_model_truss_dir,
+        prev_sign,
+    )
+    assert len(patches) == 0
+
+
 def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path):
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
