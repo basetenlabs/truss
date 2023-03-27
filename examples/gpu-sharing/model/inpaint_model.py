@@ -21,6 +21,9 @@ class Model:
             )
         self._model = self._memory_model.to("cuda")
 
+    def standby(self):
+        self._model = self._model.to("cpu")
+
     def preprocess(self, request: Dict) -> Dict:
         # Convert from base64
         if "image" in request:

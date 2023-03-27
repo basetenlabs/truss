@@ -28,6 +28,9 @@ class Model:
         self._model = self._memory_model.to("cuda")
         self._model.enable_xformers_memory_efficient_attention()
 
+    def standby(self):
+        self._model = self._model.to("cpu")
+
     def convert_to_b64(self, image: Image) -> str:
         buffered = BytesIO()
         image.save(buffered, format="JPEG")
