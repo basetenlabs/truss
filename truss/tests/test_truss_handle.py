@@ -691,6 +691,15 @@ class Model:
         th.remove_system_package(pkg)
         return th.docker_predict([1], tag=tag, binary=binary)
 
+    def predict_with_ignored_changes():
+        top_pycache_path = custom_model_control / "__pycache__"
+        top_pycache_path.mkdir()
+        (top_pycache_path / "bla.pyc").touch()
+        model_pycache_path = custom_model_control / "model" / "__pycache__"
+        model_pycache_path.mkdir()
+        (model_pycache_path / "foo.pyc").touch()
+        return th.docker_predict([1], tag=tag, binary=binary)
+
     def current_num_docker_images() -> int:
         return len(th.get_all_docker_images())
 
@@ -732,6 +741,10 @@ class Model:
         _verify_system_requirement_not_installed_on_container(container, system_pkg)
 
         result = predict_with_unpatchable_change()
+        assert result[0] == 2
+        assert current_num_docker_images() == orig_num_truss_images + 1
+
+        result = predict_with_ignored_changes()
         assert result[0] == 2
         assert current_num_docker_images() == orig_num_truss_images + 1
 
