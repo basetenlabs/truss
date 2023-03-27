@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from model.dalle_mini_model import DallEModel
 
@@ -13,23 +13,22 @@ class Model:
         # Load model here and assign to self._model.
         self._model = DallEModel()
 
-    def preprocess(self, request: Dict) -> Dict:
+    def preprocess(self, model_input: Any) -> Any:
         """
         Incorporate pre-processing required by the model if desired here.
 
         These might be feature transformations that are tightly coupled to the model.
         """
-        return request
+        return model_input
 
-    def postprocess(self, request: Dict) -> Dict:
+    def postprocess(self, model_output: Dict) -> Dict:
         """
         Incorporate post-processing required by the model if desired here.
         """
-        return request
+        return model_output
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        response = {}
-        inputs = request["inputs"]  # noqa
+    def predict(self, model_input: Any) -> Dict[str, List]:
+        model_output = {}
         # Invoke model and calculate predictions here.
-        response["predictions"] = self._model.predict(inputs)
-        return response
+        model_output["predictions"] = self._model.predict(model_input)
+        return model_output

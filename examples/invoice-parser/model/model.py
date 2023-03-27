@@ -15,10 +15,9 @@ class InvoiceParserModel(object):
     def __init__(self, **kwargs) -> None:
         self._secrets = kwargs["secrets"]
 
-    def predict(self, request: Dict) -> Dict[str, List]:
-        inputs = request["inputs"]
+    def predict(self, model_input: List) -> Dict[str, List]:
         parsed_invoices = []
-        for url in inputs:
+        for url in model_input:
             parsed_invoices.append(
                 {
                     "parsed_data": extract_pdf_data(url, self._secrets),

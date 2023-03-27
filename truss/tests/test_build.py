@@ -95,10 +95,9 @@ def test_create(sklearn_rfc_model, tmp_path):
 
 
 def test_create_pipeline(sklearn_rfc_model, tmp_path):
-    def inference(request: dict):
-        inputs = request["inputs"]
-        response = sklearn_rfc_model.predict([inputs])[0]
-        return {"result": response}
+    def inference(model_input: dict):
+        model_output = sklearn_rfc_model.predict([model_input])[0]
+        return {"result": model_output}
 
     dir_path = tmp_path / "truss"
     data_file_path = tmp_path / "data.txt"
@@ -128,7 +127,7 @@ def test_create_pipeline(sklearn_rfc_model, tmp_path):
 
 
 def test_truss_sklearn_predict(sklearn_rfc_model):
-    with _model_server_predict(sklearn_rfc_model, {"inputs": [[0, 0, 0, 0]]}) as result:
+    with _model_server_predict(sklearn_rfc_model, [[0, 0, 0, 0]]) as result:
         assert "predictions" in result
         assert "probabilities" in result
         probabilities = result["probabilities"]
@@ -136,12 +135,11 @@ def test_truss_sklearn_predict(sklearn_rfc_model):
 
 
 def test_truss_sklearn_predict_pipeline(sklearn_rfc_model):
-    def inference(request: dict):
-        inputs = request["inputs"]
-        response = sklearn_rfc_model.predict([inputs])[0]
-        return {"result": response}
+    def inference(model_input: dict):
+        model_output = sklearn_rfc_model.predict([model_input])[0]
+        return {"result": model_output}
 
-    with _model_server_predict_pipeline(inference, {"inputs": [0, 0, 0, 0]}) as result:
+    with _model_server_predict_pipeline(inference, [0, 0, 0, 0]) as result:
         assert "result" in result
         assert result["result"] == 0
 
@@ -149,7 +147,7 @@ def test_truss_sklearn_predict_pipeline(sklearn_rfc_model):
 def test_truss_keras_predict(keras_mpg_model):
     with _model_server_predict(
         keras_mpg_model,
-        {"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]},
+        [0, 0, 0, 0, 0, 0, 0, 0, 0],
     ) as result:
         assert "predictions" in result
         predictions = result["predictions"]
@@ -157,14 +155,13 @@ def test_truss_keras_predict(keras_mpg_model):
 
 
 def test_truss_keras_predict_pipeline(keras_mpg_model):
-    def inference(request: dict):
-        inputs = request["inputs"]
-        response = keras_mpg_model.predict(inputs)
-        return {"result": response}
+    def inference(model_input: dict):
+        model_output = keras_mpg_model.predict(model_input)
+        return {"result": model_output}
 
     with _model_server_predict_pipeline(
         inference,
-        {"inputs": [0, 0, 0, 0, 0, 0, 0, 0, 0]},
+        [0, 0, 0, 0, 0, 0, 0, 0, 0],
     ) as result:
         assert "result" in result
         predictions = result["result"]
@@ -175,7 +172,7 @@ def test_truss_pytorch_predict(pytorch_model):
     model = pytorch_model[0]
     with _model_server_predict(
         model,
-        {"inputs": [[0, 0, 0]]},
+        [[0, 0, 0]],
     ) as result:
         assert "predictions" in result
         assert len(result["predictions"]) == 1
@@ -186,7 +183,7 @@ def test_truss_huggingface_transformer_predict(
 ):
     with _model_server_predict(
         huggingface_transformer_t5_small_pipeline,
-        {"inputs": ["My name is Sarah and I live in London"]},
+        "My name is Sarah and I live in London",
     ) as result:
         assert "predictions" in result
         predictions = result["predictions"]

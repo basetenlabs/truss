@@ -71,7 +71,7 @@ rfc.fit(data_x, data_y)
 tr = truss.create(rfc, target_directory="iris_rfc_truss")
 
 # Serve a prediction from the model
-tr.predict({"inputs": [[0, 0, 0, 0]]})
+tr.predict([[0, 0, 0, 0]])
 ```
 
 ### Package your model
@@ -80,6 +80,7 @@ The `truss.create()` command can be used with any supported framework:
 
 * [Hugging Face](https://truss.baseten.co/create/huggingface)
 * [LightGBM](https://truss.baseten.co/create/lightgbm)
+* [MLflow](https://truss.baseten.co/create/mlflow)
 * [PyTorch](https://truss.baseten.co/create/pytorch)
 * [scikit-learn](https://truss.baseten.co/create/sklearn)
 * [Tensorflow](https://truss.baseten.co/create/tensorflow)
@@ -98,7 +99,7 @@ truss run-image iris_rfc_truss
 Then, as long as the container is running, you can invoke the model as an API as follows:
 
 ```
-curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '{"inputs": [[0, 0, 0, 0]]}'
+curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '[[0, 0, 0, 0]]'
 ```
 
 ### Configure your model for deployment

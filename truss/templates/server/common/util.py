@@ -1,6 +1,3 @@
-from typing import Dict
-
-
 def model_supports_predict_proba(model: object) -> bool:
     if not hasattr(model, "predict_proba"):
         return False
@@ -13,12 +10,3 @@ def model_supports_predict_proba(model: object) -> bool:
         except AttributeError:
             return False
     return True
-
-
-def assign_request_to_inputs_instances_after_validation(body: Dict) -> dict:
-    # we will treat "instances" and "inputs" the same
-    if "instances" in body and "inputs" not in body:
-        body["inputs"] = body["instances"]
-    elif "inputs" in body and "instances" not in body:
-        body["instances"] = body["inputs"]
-    return body

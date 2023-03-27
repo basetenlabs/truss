@@ -13,6 +13,7 @@ If you're using a Jupyter notebook, add a line to install the `transformers` and
 {% hint style="warning" %}
 Truss officially supports `transformers` version 4.21.0 or higher. Especially if you're using an online notebook environment like Google Colab or a bundle of packages like Anaconda, ensure that the version you are using is supported. If it's not, use the `--upgrade` flag and pip will install the most recent version.
 {% endhint %}
+
 ### Create an in-memory model
 
 This is the part you want to replace with your own code. Using a Hugging Face transformer, build a machine learning model and keep it in-memory. In this example we're using [bert-base-uncased](https://huggingface.co/bert-base-uncased), which will fill in the missing word in a sentence.
@@ -44,7 +45,7 @@ Check the target directory to see your new Truss!
 To get a prediction from the Truss, try running:
 
 ```python
-tr.predict({"inputs": ["Donatello is a teenage mutant [MASK] turtle"]})
+tr.predict("Donatello is a teenage mutant [MASK] turtle")
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).

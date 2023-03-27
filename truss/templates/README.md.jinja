@@ -21,11 +21,11 @@ There are two ways to run inference on your Truss model.
 #### Via Truss CLI
 ```
 {%- if examples == None %}
-truss predict --target_directory ./  --request '{"inputs": YOUR_INPUT}'
+truss predict --target_directory ./  --request 'YOUR_INPUT'
 {% else %}
     {%- for example in examples %}
         {%- for second_key, second_value in example.input.items() %}
-truss predict --target_directory ./  --request '{"inputs": {{ second_value[0] }}}'
+truss predict --target_directory ./  --request '{{ second_value[0] }}'
         {%- endfor %}
     {%- endfor %}
 {%- endif %}
@@ -36,13 +36,13 @@ In order to run inference via CURL, we assume you've built and run the Docker im
 ```
 {%- if examples == None %}
 curl -H 'Content-Type: application/json' \
--d '{"inputs": YOUR_INPUT}' \
+-d 'YOUR_INPUT' \
 -X POST http://localhost:8080/v1/models/model:predict
 {% else %}
     {%- for example in examples %}
         {%- for second_key, second_value in example.input.items() %}
 curl -H 'Content-Type: application/json' \
--d '{"inputs": {{ second_value[0] }} }' \
+-d '{{ second_value[0] }}' \
 -X POST http://localhost:8080/v1/models/model:predict
         {%- endfor %}
     {%- endfor %}

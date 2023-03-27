@@ -53,8 +53,7 @@ To get a prediction from the Truss, try running:
 
 ```python
 data = np.array([-4, 1, 0, 10, -2, 1]).reshape(-1, 1)
-predictions = tr.predict({"inputs": data})
-print(predictions)
+tr.predict(data)
 ```
 
 For more on running the Truss locally, see [local development](../develop/localhost.md).

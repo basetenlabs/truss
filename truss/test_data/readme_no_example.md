@@ -17,7 +17,7 @@ truss run-image
 There are two ways to run inference on your Truss model.
 #### Via Truss CLI
 ```
-truss predict --target_directory ./  --request '{"inputs": YOUR_INPUT}'
+truss predict --target_directory ./  --request 'YOUR_INPUT'
 
 ```
 
@@ -25,7 +25,7 @@ truss predict --target_directory ./  --request '{"inputs": YOUR_INPUT}'
 In order to run inference via CURL, we assume you've built and run the Docker image generated from your Truss. Refer above for more instructions on how to do this.
 ```
 curl -H 'Content-Type: application/json' \
--d '{"inputs": YOUR_INPUT}' \
+-d 'YOUR_INPUT' \
 -X POST http://localhost:8080/v1/models/model:predict
 
 

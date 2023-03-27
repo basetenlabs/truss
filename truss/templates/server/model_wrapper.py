@@ -9,10 +9,7 @@ from threading import Lock, Thread
 from typing import Dict, Optional, Union
 
 import kserve
-import numpy as np
 from cloudevents.http import CloudEvent
-from common.util import assign_request_to_inputs_instances_after_validation
-from kserve.errors import InvalidInput
 from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
 
@@ -107,19 +104,6 @@ class ModelWrapper(kserve.Model):
 
         if hasattr(self._model, "load"):
             self._model.load()
-
-    def validate(self, payload):
-        if (
-            "instances" in payload
-            and not isinstance(payload["instances"], (list, np.ndarray))
-            or "inputs" in payload
-            and not isinstance(payload["inputs"], (list, np.ndarray))
-        ):
-            raise InvalidInput(
-                'Expected "instances" or "inputs" to be a list or NumPy ndarray'
-            )
-
-        return assign_request_to_inputs_instances_after_validation(payload)
 
     def preprocess(
         self,

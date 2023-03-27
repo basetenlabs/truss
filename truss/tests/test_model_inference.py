@@ -72,8 +72,6 @@ def test_binary_request(sklearn_rfc_model):
         sklearn_framework = SKLearn()
         sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)
         tr = TrussHandle(truss_dir)
-        predictions = tr.docker_predict(
-            {"inputs": [[0, 0, 0, 0]]}, local_port=8090, binary=True
-        )
+        predictions = tr.docker_predict([[0, 0, 0, 0]], local_port=8090, binary=True)
         assert len(predictions["probabilities"]) == 1
         assert np.shape(predictions["probabilities"]) == (1, 3)

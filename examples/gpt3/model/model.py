@@ -17,14 +17,14 @@ class GPT3Model(object):
         self._config = kwargs["config"]
         openai.api_key = self._config["secrets"]["openai_api_key"]
 
-    def predict(self, request: Dict) -> Dict[str, List]:
+    def predict(self, model_input: List) -> Dict[str, List]:
         """
-        request (Dict): Must have a key 'inputs' that maps to a list of
-            dicts that contain keys 'prompt' with a str value.
-            Example: {"inputs" : [{"prompt" : "Hello world!"}]}
+        Args:
+
+            * model_input (List): A list of dicts that contain keys 'prompt' with a str value.
+                Example: [{"prompt" : "Hello world!"}]
         """
-        inputs = request["inputs"]
         predictions = []
-        for gpt3_input in inputs:
+        for gpt3_input in model_input:
             predictions.append(_run_gpt3(gpt3_input))
         return {"predictions": predictions}
