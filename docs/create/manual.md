@@ -1,93 +1,182 @@
 # Manually
 
-Creating a Truss manually, from a serialized model, works with any model-building framework, including from-scratch bespoke models.
+You can package any model as a Truss. `truss.create()` is a convenient shortcut for packaging in-memory models built in supported frameworks, but the manual approach gives control and flexibility throughout the entire model packaging and deployment process.
+
+This doc walks through the process of manually creating a Truss, using Stable Diffusion v1.5 as an example.
 
 To get started, initialize the Truss with the following command in the CLI:
 
 ```
-truss init my_truss
+truss init sd_truss
 ```
 
-### Truss structure
-
-To build a Truss manually, you have to understand the package in much more detail than using it with a supported framework. Fortunately, that's what this doc is for!
-
-To familiarize yourself with the structure of Truss, review the [structure reference](../reference/structure.md). A Truss only has a few files that you need to interact with, and this tutorial is an opinionated guide to working through them.
-
-### Adding the model binary
-
-First, you'll need to add a model binary to your new Truss. On supported frameworks, this is provided automatically by the `create` command. For a custom Truss, it can come from many sources, such as:
-
-* Pickling your model
-* Serializing your model
-* Downloading a serialized model from the internet
-
-This file should be put in the folder `data/model/` as, for example, `model.joblib` (replace `joblib` with the appropriate extension for your serialized model).
-
-This model binary must be de-serialized in the model class.
-
-### Building the model
-
-The model file implements the following functions, in order of execution:
-
-* A constructor `__init__` to initiate the class
-* A function called `load`, called **only** once, and that call is guaranteed to happen before **any** predictions are run
-* A function `preprocess`, called once before **each** prediction
-* A function `predict` that actually runs the model to make a prediction
-* A function `postprocess`, called once after **each** prediction
-
-Having both a constructor and a load function means you have flexibility on when you download and/or deserialize your model. There are three possibilities here, and we strongly recommend the first one:
-
-1. Load in the load function
-2. Load model in the constructor, but it's not a good idea to block constructor
-3. Load lazily on first prediction, but this gives your model service a cold start issue
-
-Also, your model gets access to certain values, including the `config.yaml` file for configuration and the `data` folder where you previously put the serialized model.
-
-## Example code
-
-While XGBoost is a supported framework — you can make a Truss from an XGBoost model with `create` — we'll use the manual method here for demonstration.
-
-If you haven't already, create a Truss by running:
+This will create the following file structure:
 
 ```
-truss init my_truss
+sd_truss/       # Truss root
+  data/         # Stores serialized models/weights/binaries
+  model/        #
+    __init__.py #
+    model.py    # Implements Model class
+  packages/     # Stores utility code for model.py
+  config.yaml   # Config for model serving environment
+  examples.yaml # Invocation examples
 ```
 
-This is the part you want to replace with your own code. Build a machine learning model and keep it in-memory.
+Most of our development work will happen in `models/model.py` and `config.yaml`.
+
+### Loading your model
+
+In `models/model.py`, the first function you'll need to implement is `load()`.
+
+When the model is spun up to receive requests, `load()` is called exactly once and is guaranteed to finish before any predictions are attempted.
+
+The purpose of `load()` is to set a value for `self._model`. This requires deserializing your model or otherwise loading in your model weights.
+
+**Example: Stable Diffusion 1.5**
+
+The exact code you'll need will depend on your model and framework. In this example, model weights for Stable Diffusion 1.5 are coming from the HuggingFace `diffusors` package.
+
+This requires a couple of imports (don't worry, we'll cover adding Python requirements in a bit).
 
 ```python
-import xgboost as xgb
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
+from dataclasses import asdict
+from typing import Dict
 
-def create_data():
-    X, y = make_classification(n_samples=100,
-                               n_informative=5,
-                               n_classes=2)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
-    train = xgb.DMatrix(X_train, y_train)
-    test = xgb.DMatrix(X_test, y_test)
-    return train, test
-
-train, test = create_data()
-
-params = {
-    "learning_rate": 0.01,
-    "max_depth": 3
-}
-
-# training, we set the early stopping rounds parameter
-model = xgb.train(params,
-        train, evals=[(train, "train"), (test, "validation")],
-        num_boost_round=100, early_stopping_rounds=20)
+import torch
+from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
 ```
 
-Now, we'll serialize and save the model:
+The load function looks like:
 
 ```python
-import os
-model.save_model(os.path.join("my_truss", "data", "model", "xgboost.json"))
+def load(self):
+    scheduler = EulerDiscreteScheduler.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        subfolder="scheduler",
+    )
+    self._model = StableDiffusionPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        scheduler=scheduler,
+        torch_dtype=torch.float16,
+    )
+    self._model.unet.set_use_memory_efficient_attention_xformers(True)
+    self._model = self._model.to("cuda")
 ```
 
-Once your model is created, you'll likely need to develop it further, see the next section for everything you need to know about local development!
+`self._model` could be set using weights from anywhere. If you have custom weights, you can load them from your Truss' `data/` directory by [following this guide](https://github.com/basetenlabs/truss/blob/main/examples/stable-diffusion-1-5/data/README.md
+).
+
+
+### Implement model invocation
+
+The other key function in your Truss is `predict()`, which handles model invocation.
+
+As our loaded model is a `StableDiffusionPipeline` object, model invocation is pretty simple:
+
+```python
+def predict(self, model_input: Dict):
+    response = self._model(**model_input)
+    return response
+```
+
+All we have to do is pass the model input to the model.
+
+But how do we make sure the model input is a valid format, and that the model output is usable?
+
+### Implement processing functions
+
+By default, pre- and post-processing functions are passthroughs. But if needed, you can implement these functions to make your model input and output match the specification of whatever app or API you're building.
+
+There are [more in-depth docs on processing functions here](../develop/processing.md), but here's sample code for the Stable Diffusion example, which needs a postprocessing function but not a pre-processing function:
+
+```python
+def postprocess(self, model_output: Dict) -> Dict:
+    # Convert to base64
+    model_output["images"] = [pil_to_b64(img) for img in model_output["images"]]
+    return asdict(model_output)
+```
+
+Eagle-eyed readers will note that `pil_to_b64()` is not a function that has been defined anywhere. How can we use it?
+
+### Call upon shared packages
+
+Here's that `pil_to_b64()` function from the last step:
+
+```python
+import base64
+from io import BytesIO
+
+from PIL import Image
+
+def pil_to_b64(pil_img):
+    buffered = BytesIO()
+    pil_img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue())
+    return "data:image/png;base64," + str(img_str)[2:-1]
+```
+
+You could just paste this into `models/model.py` and call it a day. But its better to factor out helper functions and utilities so that they can be re-used between multiple Trusses.
+
+Let's create a folder `shared` at the same level as our root `sd_truss` directory (don't create it inside the Truss directory). Then create a file `shared/base64_utils.py`. It should look like this:
+
+```
+shared/
+  base64_utils.py
+sd_truss/
+  ...
+```
+
+Paste the code from above into `shared/base64_utils.py`.
+
+Let your Truss know where to look for external packages with the following lines in `config.yaml`:
+
+```yaml
+external_package_dirs:
+- ../shared/
+```
+
+Note that this is an array in yaml; your Truss can depend on multiple external directories for packages.
+
+Finally, at the top of `sd_truss/models/model.py`, add:
+
+```python
+from base64_utils import pil_to_b64
+```
+
+This will import your function from your external directory.
+
+For more details on bundled and shared packages, see [this demo repository](https://github.com/bolasim/truss-packages-example) and the [bundled packages docs](../develop/bundled-packages.md).
+
+### Set Python and system requirements
+
+Now, we switch our attention to `config.yaml`. You can use this file to customize a great deal about your packaged model — [here's a complete reference](../develop/configuration.md) — but right now we just care about setting our Python requirements up so the model can run.
+
+For that, find `requirements:` in the config file. In the Stable Diffusion 1.5 example, we set it to:
+
+```yaml
+requirements:
+- diffusers
+- transformers
+- accelerate
+- scipy
+- safetensors
+- xformers
+- triton
+```
+
+These requirements work just like `requirements.txt` in a Python project, and you can pin versions with `package==1.2.3`.
+
+### Set hardware requirements
+
+Large models like Stable Diffusion require powerful hardware to run invocations. Set your packaged model's hardware requirements in `config.yaml`:
+
+```yaml
+resources:
+  accelerator: A10G # Type of GPU required
+  cpu: "8" # Number of vCPU cores required
+  memory: 30Gi # Mibibytes (Mi) or Gibibytes (Gi) of RAM required
+  use_gpu: true # If false, set accelerator: null
+```
+
+You've successfully packaged a model! If you have the required hardware, you can [test it locally](../develop/localhost.md), or [deploy it to Baseten](https://docs.baseten.co/models/deploying-models/client#stage-2-deploying-a-draft) to get a draft model for rapid iteration in a production environment.
