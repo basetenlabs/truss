@@ -1,9 +1,14 @@
 import asyncio
+import concurrent.futures
 import json
-from typing import Dict, Optional, Union
+import logging
+import multiprocessing
+import socket
+from typing import Dict, List, Optional, Union
 
-import kserve
-import kserve.errors as errors
+import common.errors as errors
+import common.util as utils
+import uvicorn
 from common.logging import setup_logging
 from common.serialization import (
     DeepNumpyEncoder,
@@ -13,7 +18,6 @@ from common.serialization import (
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from kserve.handlers import DataPlane, ModelRepositoryExtension, V1Endpoints
 from model_wrapper import ModelWrapper
 from starlette.responses import Response
 
@@ -25,13 +29,42 @@ async def parse_body(request: Request) -> bytes:
     return await request.body()
 
 
-class BasetenEndpoints(V1Endpoints):
+FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
+
+
+class UvicornCustomServer(multiprocessing.Process):
     def __init__(
-        self,
-        dataplane: DataPlane,
-        model_repository_extension: Optional[ModelRepositoryExtension] = None,
+        self, config: uvicorn.Config, sockets: Optional[List[socket.socket]] = None
     ):
-        super().__init__(dataplane, model_repository_extension)
+        super().__init__()
+        self.sockets = sockets
+        self.config = config
+
+    def stop(self):
+        self.terminate()
+
+    def run(self):
+        server = uvicorn.Server(config=self.config)
+        asyncio.run(server.serve(sockets=self.sockets))
+
+
+class BasetenEndpoints:
+    """The implementation of the model server endpoints.
+
+    Historically, we relied on the kserve server interface, which assumes that
+    multiple models are running behind a registry. As a result, some arguments to
+    to functions will rename unused except for backwards compatibility checks.
+    """
+
+    def __init__(self, model: ModelWrapper) -> None:
+        self._model = model
+
+    def _safe_lookup_model(self, model_name: str) -> ModelWrapper:
+        if model_name != self._model.name:
+            raise errors.ModelMissingError(model_name)
+        return self._model
 
     @staticmethod
     def check_healthy(model: ModelWrapper):
@@ -42,9 +75,7 @@ class BasetenEndpoints(V1Endpoints):
             raise errors.ModelNotReady(model.name)
 
     async def model_ready(self, model_name: str) -> Dict[str, Union[str, bool]]:
-        model: ModelWrapper = self.dataplane.get_model_from_registry(model_name)
-
-        self.check_healthy(model)
+        self.check_healthy(self._safe_lookup_model(model_name))
 
         return {}
 
@@ -54,7 +85,7 @@ class BasetenEndpoints(V1Endpoints):
         """
         This method is called by FastAPI, which introspects that it's not async, and schedules it on a thread
         """
-        model: ModelWrapper = self.dataplane.get_model_from_registry(model_name)
+        model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
 
@@ -64,7 +95,7 @@ class BasetenEndpoints(V1Endpoints):
         else:
             body = json.loads(body_raw)
 
-        # calls kserve.model.Model.__call__, which runs validate, preprocess, predict, and postprocess
+        # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         response: Dict = asyncio.run(model(body, headers=dict(request.headers.items())))
 
         response_headers = {}
@@ -88,7 +119,7 @@ class BasetenEndpoints(V1Endpoints):
         )
 
 
-class TrussServer(kserve.ModelServer):
+class TrussServer:
 
     _endpoints: BasetenEndpoints
     _model: ModelWrapper
@@ -104,15 +135,7 @@ class TrussServer(kserve.ModelServer):
         )
 
         self._config = config
-        self._endpoints = BasetenEndpoints(
-            self.dataplane, self.model_repository_extension
-        )
-
-    def start_model(self) -> None:
-        """
-        Overloaded version of super().start to use instance model in TrussServer
-        """
-        super().start([])
+        self._endpoints = BasetenEndpoints(self._model)
 
     def on_startup(self):
         """
@@ -166,3 +189,78 @@ class TrussServer(kserve.ModelServer):
                 Exception: errors.generic_exception_handler,
             },
         )
+
+    def start(self):
+        cfg = uvicorn.Config(
+            self.create_application(),
+            host="0.0.0.0",
+            port=self.http_port,
+            workers=self.workers,
+            log_config={
+                "version": 1,
+                "formatters": {
+                    "default": {
+                        "()": "uvicorn.logging.DefaultFormatter",
+                        "datefmt": DATE_FORMAT,
+                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(message)s",
+                        "use_colors": None,
+                    },
+                    "access": {
+                        "()": "uvicorn.logging.AccessFormatter",
+                        "datefmt": DATE_FORMAT,
+                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(client_addr)s %(process)s - "
+                        '"%(request_line)s" %(status_code)s',
+                        # noqa: E501
+                    },
+                },
+                "handlers": {
+                    "default": {
+                        "formatter": "default",
+                        "class": "logging.StreamHandler",
+                        "stream": "ext://sys.stderr",
+                    },
+                    "access": {
+                        "formatter": "access",
+                        "class": "logging.StreamHandler",
+                        "stream": "ext://sys.stdout",
+                    },
+                },
+                "loggers": {
+                    "uvicorn": {"handlers": ["default"], "level": "INFO"},
+                    "uvicorn.error": {"level": "INFO"},
+                    "uvicorn.access": {
+                        "handlers": ["access"],
+                        "level": "INFO",
+                        "propagate": False,
+                    },
+                },
+            },
+        )
+
+        if self.max_asyncio_workers is None:
+            # formula as suggest in https://bugs.python.org/issue35279
+            self.max_asyncio_workers = min(32, utils.cpu_count() + 4)
+        logging.info(
+            f"Setting max asyncio worker threads as {self.max_asyncio_workers}"
+        )
+        asyncio.get_event_loop().set_default_executor(
+            concurrent.futures.ThreadPoolExecutor(max_workers=self.max_asyncio_workers)
+        )
+
+        async def serve():
+            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            serversocket.bind((cfg.host, cfg.port))
+            serversocket.listen(5)
+
+            logging.info(f"starting uvicorn with {self.workers} workers")
+            for _ in range(cfg.workers):
+                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
+                server.start()
+
+        async def servers_task():
+            servers = [serve()]
+            # TODO: handle enabling grpc here
+            await asyncio.gather(*servers)
+
+        asyncio.run(servers_task())

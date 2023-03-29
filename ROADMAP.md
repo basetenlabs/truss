@@ -51,10 +51,7 @@ Our goal is to support testing assertions on both the model and the data.
 
 Model deployments are a critical part of machine learning systems. We're working
 on a way to make it easier to deploy models on a variety of platforms. Each
-platform has its own set of performance tradeoffs. Today our model backend is a
-tornado server based heavily on kserve's implementation, and we're working on a
-way to make it easier to deploy models on other backends. This will allow truss
-users to exchange tornado for other API backends.
+platform has its own set of performance tradeoffs.
 
 ### GPU support
 

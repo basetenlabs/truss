@@ -1028,42 +1028,14 @@ class TrussHandle:
 
 
 def _prediction_flow(model, request: Dict):
-    """This flow attempts to mimic the request life-cycle of a kserve server"""
-    _validate_request_input(request)
-    _map_instances_inputs(request)
+    """This flow attempts to mimic the request life-cycle of a server"""
+    # TODO: can we just call ModelWrapper directly here?
     if hasattr(model, "preprocess"):
         request = model.preprocess(request)
     response = model.predict(request)
     if hasattr(model, "postprocess"):
         response = model.postprocess(response)
     return response
-
-
-def _map_instances_inputs(request: Dict) -> Dict[str, Any]:
-    # TODO(pankaj) Share this code with baseten deployed code
-    if "instances" in request and "inputs" not in request:
-        request["inputs"] = request["instances"]
-    elif "inputs" in request and "instances" not in request:
-        request["instances"] = request["inputs"]
-    return request
-
-
-def _validate_request_input(request: Dict) -> None:
-    # TODO(pankaj) Should these checks be there?
-    if _is_invalid_list_input_prop(request, "instances") or _is_invalid_list_input_prop(
-        request, "inputs"
-    ):
-        raise Exception('Expected "instances" or "inputs" to be a list')
-
-
-def _is_invalid_list_input_prop(request: Dict, prop: str) -> bool:
-    return prop in request and not _is_valid_list_type(request[prop])
-
-
-def _is_valid_list_type(obj) -> bool:
-    import numpy as np
-
-    return isinstance(obj, (list, np.ndarray))
 
 
 def _wait_for_docker_build(container) -> None:
