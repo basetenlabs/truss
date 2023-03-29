@@ -21,7 +21,7 @@ class ConfiguredTrussServer:
 
     def start(self):
         server = TrussServer(http_port=self._port, config=self._config)
-        server.start_model()
+        server.start()
 
 
 if __name__ == "__main__":

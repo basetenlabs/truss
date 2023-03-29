@@ -126,15 +126,14 @@ class TrussServer:
     _config: Dict
 
     def __init__(self, http_port: int, config: Dict):
-        super().__init__(
-            http_port=http_port,
-            enable_grpc=False,
-            workers=1,
-            enable_docs_url=False,
-            enable_latency_logging=False,
-        )
-
+        self.http_port = http_port
+        self.enable_grpc = False
+        self.workers = 1
+        self.enable_docs_url = False
+        self.enable_latency_logging = False
+        self.max_asyncio_workers = None
         self._config = config
+        self._model = ModelWrapper(self._config)
         self._endpoints = BasetenEndpoints(self._model)
 
     def on_startup(self):
@@ -142,9 +141,6 @@ class TrussServer:
         This method will be started inside the main process, so here is where we want to setup our logging and model
         """
         setup_logging()
-
-        self._model = ModelWrapper(self._config)
-        self.register_model(self._model)
 
         self._model.start_load()
 
@@ -157,7 +153,7 @@ class TrussServer:
             on_startup=[self.on_startup],
             routes=[
                 # liveness endpoint
-                FastAPIRoute(r"/", self.dataplane.live),
+                FastAPIRoute(r"/", lambda: True),
                 # readiness endpoint
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
@@ -174,19 +170,13 @@ class TrussServer:
                     methods=["POST"],
                     tags=["V1"],
                 ),
-                FastAPIRoute(
-                    r"/v1/models/{model_name}:explain",
-                    self._endpoints.explain,
-                    methods=["POST"],
-                    tags=["V1"],
-                ),
             ],
             exception_handlers={
-                errors.InferenceError: errors.inference_error_handler,
-                errors.ModelNotFound: errors.model_not_found_handler,
-                errors.ModelNotReady: errors.model_not_ready_handler,
-                NotImplementedError: errors.not_implemented_error_handler,
-                Exception: errors.generic_exception_handler,
+                # errors.InferenceError: errors.inference_error_handler,
+                # errors.ModelNotFound: errors.model_not_found_handler,
+                # errors.ModelNotReady: errors.model_not_ready_handler,
+                # NotImplementedError: errors.not_implemented_error_handler,
+                # Exception: errors.generic_exception_handler,
             },
         )
 
