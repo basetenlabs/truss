@@ -1,7 +1,7 @@
 from typing import Any, Dict, List
 
 MODEL_BASENAME = "model"
-MODEL_EXTENSIONS = list(set([".joblib", ".pkl", ".pickle"]))
+MODEL_EXTENSIONS = [".joblib", ".pkl", ".pickle"]
 
 
 class Model:

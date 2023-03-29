@@ -37,6 +37,7 @@ class ModelWrapper:
         self._config = config
         self.logger = logging.getLogger(__name__)
         self.name = MODEL_BASENAME
+        self.ready = False
 
     def load(self) -> bool:
         if self.ready:
