@@ -669,25 +669,13 @@ def truss_container_fs(tmp_path):
             "--filter",
             "label=truss_dir=truss/test_data/test_truss",
             "--format",
-            "'{{.Names}}'",
+            "'{{.Names}},{{.Image}}'",
         ]
     )
-    container_name = ps_output.decode("utf-8").strip()[1:-1]
-    subprocess.run(
-        [
-            "docker",
-            "cp",
-            f"{container_name}:/app",
-            str(truss_fs),
-        ]
-    )
-    subprocess.run(
-        [
-            "docker",
-            "kill",
-            container_name,
-        ]
-    )
+    container_name, image = ps_output.decode("utf-8").strip()[1:-1].split(",")
+    subprocess.run(["docker", "cp", f"{container_name}:/app", str(truss_fs)])
+    subprocess.run(["docker", "kill", container_name])
+    subprocess.run(["docker", "rmi", image, "-f"])
     return truss_fs
 
 
