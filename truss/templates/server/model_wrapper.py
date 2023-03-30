@@ -26,7 +26,7 @@ class ModelWrapper:
 
     def __init__(self, config: Dict):
         self._config = config
-        self.logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         self.name = MODEL_BASENAME
         self.ready = False
         self._load_lock = Lock()
@@ -42,7 +42,7 @@ class ModelWrapper:
 
         self._status = ModelWrapper.Status.LOADING
 
-        self.logger.info("Executing model.load()...")
+        self._logger.info("Executing model.load()...")
 
         try:
             start_time = time.perf_counter()
@@ -55,7 +55,7 @@ class ModelWrapper:
 
             return self.ready
         except Exception:
-            self.logger.exception("Exception while loading model")
+            self._logger.exception("Exception while loading model")
             self._status = ModelWrapper.Status.FAILED
         finally:
             self._load_lock.release()
