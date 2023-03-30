@@ -24,20 +24,13 @@ class ModelWrapper:
         READY = 2
         FAILED = 3
 
-    _config: Dict
-    _model: object
-    _load_lock: Lock = Lock()
-    _predict_lock: Lock = Lock()
-    _status: Status = Status.NOT_READY
-    _logger: logging.Logger
-    ready: bool
-    name: str
-
     def __init__(self, config: Dict):
         self._config = config
         self.logger = logging.getLogger(__name__)
         self.name = MODEL_BASENAME
         self.ready = False
+        self._load_lock = Lock()
+        self._predict_lock = Lock()
 
     def load(self) -> bool:
         if self.ready:
@@ -164,7 +157,7 @@ class ModelWrapper:
         Returns:
             Dict: Response output from preprocess -> predictor -> postprocess
         """
-        # TODO(bola): Do we need any of the timing stuff that was dropped here?
+
         payload = (
             await self.preprocess(body, headers)
             if inspect.iscoroutinefunction(self.preprocess)

@@ -120,18 +120,8 @@ class BasetenEndpoints:
 
 
 class TrussServer:
-
-    _endpoints: BasetenEndpoints
-    _model: ModelWrapper
-    _config: Dict
-
     def __init__(self, http_port: int, config: Dict):
         self.http_port = http_port
-        self.enable_grpc = False
-        self.workers = 1
-        self.enable_docs_url = False
-        self.enable_latency_logging = False
-        self.max_asyncio_workers = None
         self._config = config
         self._model = ModelWrapper(self._config)
         self._endpoints = BasetenEndpoints(self._model)
@@ -185,7 +175,7 @@ class TrussServer:
             self.create_application(),
             host="0.0.0.0",
             port=self.http_port,
-            workers=self.workers,
+            workers=1,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -227,14 +217,10 @@ class TrussServer:
             },
         )
 
-        if self.max_asyncio_workers is None:
-            # formula as suggest in https://bugs.python.org/issue35279
-            self.max_asyncio_workers = min(32, utils.cpu_count() + 4)
-        logging.info(
-            f"Setting max asyncio worker threads as {self.max_asyncio_workers}"
-        )
+        max_asyncio_workers = min(32, utils.cpu_count() + 4)
+        logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
         asyncio.get_event_loop().set_default_executor(
-            concurrent.futures.ThreadPoolExecutor(max_workers=self.max_asyncio_workers)
+            concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
         )
 
         async def serve():
@@ -243,14 +229,13 @@ class TrussServer:
             serversocket.bind((cfg.host, cfg.port))
             serversocket.listen(5)
 
-            logging.info(f"starting uvicorn with {self.workers} workers")
+            logging.info(f"starting uvicorn with {cfg.workers} workers")
             for _ in range(cfg.workers):
                 server = UvicornCustomServer(config=cfg, sockets=[serversocket])
                 server.start()
 
         async def servers_task():
             servers = [serve()]
-            # TODO: handle enabling grpc here
             await asyncio.gather(*servers)
 
         asyncio.run(servers_task())
