@@ -31,6 +31,7 @@ class ModelWrapper:
         self.ready = False
         self._load_lock = Lock()
         self._predict_lock = Lock()
+        self._status = ModelWrapper.Status.NOT_READY
 
     def load(self) -> bool:
         if self.ready:
