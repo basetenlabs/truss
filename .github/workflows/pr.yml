@@ -41,12 +41,18 @@ jobs:
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - name: run tests (poetry run pytest...)
-        run: poetry run pytest --junitxml=pytest.xml --cov-report=term-missing:skip-covered  -v --cov=truss -m 'not integration' | tee pytest-coverage.txt
-      - name: Pytest coverage comment
-        uses: MishaKav/pytest-coverage-comment@main
+        run: poetry run pytest --junitxml=pytest.xml --cov-report xml:./cov.xml  -v --cov=truss -m 'not integration'
+      # - name: Pytest coverage comment
+      #   uses: MishaKav/pytest-coverage-comment@main
+      #   with:
+      #     pytest-coverage-path: ./pytest-coverage.txt
+      #     junitxml-path: ./pytest.xml
+
+      - name: Post coverage diff
+        uses: orgoro/coverage@v3
         with:
-          pytest-coverage-path: ./pytest-coverage.txt
-          junitxml-path: ./pytest.xml
+            coverageFile: ./cov.xml
+            token: ${{ secrets.GITHUB_TOKEN }}
 
   markdown-link-check:
     runs-on: ubuntu-20.04
