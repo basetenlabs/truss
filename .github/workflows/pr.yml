@@ -41,12 +41,9 @@ jobs:
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - name: run tests (poetry run pytest...)
-        run: poetry run pytest -v --cov=truss -m 'not integration'
-      - name: Coverage comment
-        id: coverage_comment
-        uses: py-cov-action/python-coverage-comment-action@v3
-        with:
-          GITHUB_TOKEN: ${{ github.token }}
+        run: poetry run pytest -v --cov=truss -m 'not integration' > pytest-coverage.txt
+      - name: Comment coverage
+        uses: coroo/pytest-coverage-commentator@v1.0.2
 
   markdown-link-check:
     runs-on: ubuntu-20.04
