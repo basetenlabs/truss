@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - poetry.lock
-      - pyproject.yaml
+      - pyproject.toml
       - "truss/**"
       - "docs/**"
       - .github/workflows/pr.yml
@@ -42,6 +42,11 @@ jobs:
       - run: poetry install
       - name: run tests (poetry run pytest...)
         run: poetry run pytest -v --cov=truss -m 'not integration'
+      - name: Coverage comment
+        id: coverage_comment
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
 
   markdown-link-check:
     runs-on: ubuntu-20.04

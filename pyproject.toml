@@ -56,8 +56,6 @@ kserve = "0.10.0rc1"
 isort = "^5.10.1"
 flake8 = "^4.0.1"
 ipdb = "^0.13.9"
-coverage = "^6.4.1"
-pytest-cov = "^3.0.0"
 xgboost = "^1.6.1"
 lightgbm = "^3.3.2"
 transformers = "^4.20.1"
@@ -73,6 +71,8 @@ truss = 'truss.cli:cli_group'
 [tool.poetry.group.dev.dependencies]
 mlflow = "^1.29.0"
 mypy = "^1.0.0"
+coverage = {extras = ["toml"], version = "^7.2.2"}
+pytest-cov = "^4.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]
@@ -85,3 +85,6 @@ src_paths = ["isort", "test"]
 [tool.mypy]
 python_version = 3.8
 ignore_missing_imports = true
+
+[tool.coverage.run]
+relative_files = true
