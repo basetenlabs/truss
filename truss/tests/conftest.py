@@ -662,6 +662,8 @@ def truss_container_fs(tmp_path):
     ROOT = str(Path(__file__).parent.parent.parent.resolve())
     subprocess.run(["truss", "run-image", "truss/test_data/test_truss"], cwd=ROOT)
     truss_fs = tmp_path / "truss_fs"
+    truss_fs.mkdir()
+
     ps_output = subprocess.check_output(
         [
             "docker",
@@ -673,7 +675,7 @@ def truss_container_fs(tmp_path):
         ]
     )
     container_name, image = ps_output.decode("utf-8").strip()[1:-1].split(",")
-    subprocess.run(["docker", "cp", f"{container_name}:/app", str(truss_fs)])
+    subprocess.run(["docker", "cp", f"{container_name}:/app", str(truss_fs / "app")])
     subprocess.run(["docker", "kill", container_name])
     subprocess.run(["docker", "rmi", image, "-f"])
     return truss_fs
