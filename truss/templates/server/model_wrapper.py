@@ -147,7 +147,9 @@ class ModelWrapper:
         finally:
             self._predict_lock.release()
 
-    async def __call__(self, body: Any, headers: Dict[str, str] = None) -> Dict:
+    async def __call__(
+        self, body: Any, headers: Optional[Dict[str, str]] = None
+    ) -> Dict:
         """Method to call predictor or explainer with the given input.
 
         Args:

@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from typing import Optional
 
 from fastapi.responses import JSONResponse
 
@@ -46,7 +47,7 @@ class ModelNotFound(Exception):
 
 
 class ModelNotReady(RuntimeError):
-    def __init__(self, model_name: str, detail: str = None):
+    def __init__(self, model_name: str, detail: Optional[str] = None):
         self.model_name = model_name
         self.error_msg = f"Model with name {self.model_name} is not ready."
         if detail:
