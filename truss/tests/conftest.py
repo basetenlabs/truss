@@ -1,7 +1,6 @@
 import contextlib
 import importlib
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -660,11 +659,35 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 
 @pytest.fixture
 def truss_container_fs(tmp_path):
+    ROOT = str(Path(__file__).parent.parent.parent.resolve())
+    subprocess.run(["truss", "run-image", "truss/test_data/test_truss"], cwd=ROOT)
     truss_fs = tmp_path / "truss_fs"
-    truss_fs_test_data_path = (
-        Path(__file__).parent.parent / "test_data" / "truss_container_fs"
+    ps_output = subprocess.check_output(
+        [
+            "docker",
+            "ps",
+            "--filter",
+            "label=truss_dir=truss/test_data/test_truss",
+            "--format",
+            "'{{.Names}}'",
+        ]
     )
-    shutil.copytree(str(truss_fs_test_data_path), str(truss_fs))
+    container_name = ps_output.decode("utf-8").strip()[1:-1]
+    subprocess.run(
+        [
+            "docker",
+            "cp",
+            f"{container_name}:/app",
+            str(truss_fs),
+        ]
+    )
+    subprocess.run(
+        [
+            "docker",
+            "kill",
+            container_name,
+        ]
+    )
     return truss_fs
 
 
