@@ -18,8 +18,10 @@ from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
 from truss.build import create, init
+from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.types import Example
+from truss.utils import copy_path
 from xgboost import XGBClassifier
 
 PYTORCH_MODEL_FILE_CONTENTS = """
@@ -659,25 +661,32 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 
 @pytest.fixture
 def truss_container_fs(tmp_path):
-    ROOT = str(Path(__file__).parent.parent.parent.resolve())
-    subprocess.run(["truss", "run-image", "truss/test_data/test_truss"], cwd=ROOT)
+    # In the interest of speed, we're going to avoid doing the docker. To not
+    # duplicate too much code in the process, the approach will be to use
+    # the ImageBuilder to create a build directory and then simply run the
+    # relevant COPY commands.
+    truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+    test_truss_dir = truss_root / "test_data" / "test_truss"
     truss_fs = tmp_path / "truss_fs"
+    build_dir = tmp_path / "test_build_dir"
     truss_fs.mkdir()
+    build_dir.mkdir()
 
-    ps_output = subprocess.check_output(
-        [
-            "docker",
-            "ps",
-            "--filter",
-            "label=truss_dir=truss/test_data/test_truss",
-            "--format",
-            "'{{.Names}},{{.Image}}'",
-        ]
-    )
-    container_name, image = ps_output.decode("utf-8").strip()[1:-1].split(",")
-    subprocess.run(["docker", "cp", f"{container_name}:/app", str(truss_fs / "app")])
-    subprocess.run(["docker", "kill", container_name])
-    subprocess.run(["docker", "rmi", image, "-f"])
+    ServingImageBuilder(test_truss_dir).prepare_image_build_dir(build_dir)
+
+    # Now we extract and execute the relevant COPY statements from the templated DOCKERFILE
+    app_copies = []
+    with (build_dir / "Dockerfile").open() as f:
+        for line in f.readlines():
+            if line.startswith("COPY"):
+                app_copies.append(line)
+
+    for copy in app_copies:
+        _, src, dst = copy.split()
+        src = src.replace("./", "", 1)
+        dst = dst.replace("/", "", 1)
+        copy_path(build_dir / src, truss_fs / dst)
+
     return truss_fs
 
 

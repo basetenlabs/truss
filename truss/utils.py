@@ -18,6 +18,13 @@ def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest))
 
 
+def copy_path(src: Path, dest: Path):
+    if src.is_file():
+        copy_file(src, dest)
+    else:
+        copy_tree_path(src, dest)
+
+
 def remove_tree_path(target: Path) -> None:
     return remove_tree(str(target))
 
