@@ -20,7 +20,7 @@ def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
 
 def copy_path(src: Path, dest: Path):
     if src.is_file():
-        copy_file(src, dest)
+        copy_file_path(src, dest)
     else:
         copy_tree_path(src, dest)
 
