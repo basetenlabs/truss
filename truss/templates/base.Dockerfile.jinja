@@ -1,5 +1,9 @@
 ARG PYVERSION={{config.python_version}}
+
 FROM {{base_image_name_and_tag}}
+
+# All the file system contents are copied over (using multi-stage builds)
+COPY --from="nvcr.io/nvidia/nemo:23.01" / /
 
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
