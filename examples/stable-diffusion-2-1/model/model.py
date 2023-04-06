@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import time
 from io import BytesIO
 from pathlib import Path
 from shutil import copyfileobj
@@ -19,6 +20,9 @@ torch.backends.cudnn.benchmark = True
 
 
 def install_s5cmd(install_path="/usr/local/bin"):
+    if (Path(install_path) / "s5cmd").exists():
+        return
+
     url = "https://github.com/peak/s5cmd/releases/download/v2.1.0-beta.1/s5cmd_2.1.0-beta.1_Linux-64bit.tar.gz"
     # Download s5cmd binary
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -44,13 +48,17 @@ class Model:
 
     def load(self):
         # Download data dir
-        data_outer_dir = Path("/tmp") / "sd"
+        tt = TimeTracker()
+        data_outer_dir = Path("/cache") / "sd"
         data_dir = data_outer_dir / "data"
         data_dir.mkdir(exist_ok=True, parents=True)
 
         install_s5cmd()
+
+        tt.step("s5cmd install")
+
         data_url = "s3://baseten-dev-public/sd21.tar"
-        local_tar_path = "/tmp/sd21.tar"
+        local_tar_path = "/cache/sd21.tar"
         subprocess.run(
             [
                 "s5cmd",
@@ -60,19 +68,27 @@ class Model:
                 "cp",
                 data_url,
                 local_tar_path,
-            ]
+            ],
+            check=False,
         )
+        tt.step("model data download")
         with tarfile.open(local_tar_path) as data_tar:
             data_tar.extractall(str(data_outer_dir))
             Path(local_tar_path).unlink()
-
+        tt.step("tar extraction")
         self._scheduler = EulerDiscreteScheduler.from_pretrained(
             data_dir, subfolder="scheduler"
         )
+        tt.step("scheduler load")
         self._model = StableDiffusionPipeline.from_pretrained(
             data_dir, scheduler=self._scheduler, torch_dtype=torch.float16
-        ).to("cuda")
+        )
+
+        tt.step("model load to memory")
+        self._model = self._model.to("cuda")
+        tt.step("model load to GPU")
         shutil.rmtree(str(data_outer_dir))
+        tt.step("rmtree")
         self._model.enable_xformers_memory_efficient_attention()
 
     def convert_to_b64(self, image: Image) -> str:
@@ -96,3 +112,14 @@ class Model:
             return {"status": "error", "data": None, "message": str(exc)}
 
         return {"status": "success", "data": results, "message": None}
+
+
+class TimeTracker:
+    def __init__(self) -> None:
+        self._ctr = time.perf_counter()
+
+    def step(self, step_name: str):
+        prev = self._ctr
+        self._ctr = time.perf_counter()
+        ms = int((self._ctr - prev) * 1000)
+        print(f"Time taken for `{step_name}` is {ms} ms")

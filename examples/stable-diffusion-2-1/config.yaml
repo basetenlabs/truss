@@ -19,6 +19,7 @@ requirements:
 - xformers
 - triton
 - transformers
+- accelerate
 resources:
   accelerator: A10G
   cpu: "3"
