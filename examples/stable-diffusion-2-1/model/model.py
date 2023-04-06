@@ -1,6 +1,14 @@
 import base64
+import io
+import os
+import shutil
+import subprocess
+import tarfile
 from io import BytesIO
+from pathlib import Path
+from shutil import copyfileobj
 from typing import Dict, List
+from urllib.request import Request, urlopen
 
 import torch
 from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
@@ -8,6 +16,22 @@ from PIL import Image
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
+
+
+def install_s5cmd(install_path="/usr/local/bin"):
+    url = "https://github.com/peak/s5cmd/releases/download/v2.1.0-beta.1/s5cmd_2.1.0-beta.1_Linux-64bit.tar.gz"
+    # Download s5cmd binary
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    binary_tar = io.BytesIO(urlopen(req).read())
+
+    # Extract the binary
+    with tarfile.open(fileobj=binary_tar, mode="r:gz") as tar:
+        s5cmd_binary = tar.extractfile("s5cmd")
+
+        # Save the binary to the install path
+        with open(os.path.join(install_path, "s5cmd"), "wb") as outfile:
+            copyfileobj(s5cmd_binary, outfile)
+            os.chmod(outfile.name, 0o755)
 
 
 class Model:
@@ -19,12 +43,36 @@ class Model:
         self._scheduler = None
 
     def load(self):
+        # Download data dir
+        data_outer_dir = Path("/tmp") / "sd"
+        data_dir = data_outer_dir / "data"
+        data_dir.mkdir(exist_ok=True, parents=True)
+
+        install_s5cmd()
+        data_url = "s3://baseten-dev-public/sd21.tar"
+        local_tar_path = "/tmp/sd21.tar"
+        subprocess.run(
+            [
+                "s5cmd",
+                "--numworkers",
+                "10",
+                "--no-sign-request",
+                "cp",
+                data_url,
+                local_tar_path,
+            ]
+        )
+        with tarfile.open(local_tar_path) as data_tar:
+            data_tar.extractall(str(data_outer_dir))
+            Path(local_tar_path).unlink()
+
         self._scheduler = EulerDiscreteScheduler.from_pretrained(
-            self._data_dir, subfolder="scheduler"
+            data_dir, subfolder="scheduler"
         )
         self._model = StableDiffusionPipeline.from_pretrained(
-            self._data_dir, scheduler=self._scheduler, torch_dtype=torch.float16
+            data_dir, scheduler=self._scheduler, torch_dtype=torch.float16
         ).to("cuda")
+        shutil.rmtree(str(data_outer_dir))
         self._model.enable_xformers_memory_efficient_attention()
 
     def convert_to_b64(self, image: Image) -> str:
