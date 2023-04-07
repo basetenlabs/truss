@@ -19,25 +19,6 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
 
-def install_s5cmd(install_path="/usr/local/bin"):
-    if (Path(install_path) / "s5cmd").exists():
-        return
-
-    url = "https://github.com/peak/s5cmd/releases/download/v2.1.0-beta.1/s5cmd_2.1.0-beta.1_Linux-64bit.tar.gz"
-    # Download s5cmd binary
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    binary_tar = io.BytesIO(urlopen(req).read())
-
-    # Extract the binary
-    with tarfile.open(fileobj=binary_tar, mode="r:gz") as tar:
-        s5cmd_binary = tar.extractfile("s5cmd")
-
-        # Save the binary to the install path
-        with open(os.path.join(install_path, "s5cmd"), "wb") as outfile:
-            copyfileobj(s5cmd_binary, outfile)
-            os.chmod(outfile.name, 0o755)
-
-
 class Model:
     def __init__(self, **kwargs) -> None:
         self._data_dir = kwargs["data_dir"]
@@ -47,7 +28,6 @@ class Model:
         self._scheduler = None
 
     def load(self):
-        # Download data dir
         tt = TimeTracker()
         data_outer_dir = Path("/cache") / "sd"
         data_dir = data_outer_dir / "data"
@@ -123,3 +103,22 @@ class TimeTracker:
         self._ctr = time.perf_counter()
         ms = int((self._ctr - prev) * 1000)
         print(f"Time taken for `{step_name}` is {ms} ms")
+
+
+def install_s5cmd(install_path="/usr/local/bin"):
+    if (Path(install_path) / "s5cmd").exists():
+        return
+
+    url = "https://github.com/peak/s5cmd/releases/download/v2.1.0-beta.1/s5cmd_2.1.0-beta.1_Linux-64bit.tar.gz"
+    # Download s5cmd binary
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    binary_tar = io.BytesIO(urlopen(req).read())
+
+    # Extract the binary
+    with tarfile.open(fileobj=binary_tar, mode="r:gz") as tar:
+        s5cmd_binary = tar.extractfile("s5cmd")
+
+        # Save the binary to the install path
+        with open(os.path.join(install_path, "s5cmd"), "wb") as outfile:
+            copyfileobj(s5cmd_binary, outfile)
+            os.chmod(outfile.name, 0o755)
