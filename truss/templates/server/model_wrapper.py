@@ -2,6 +2,7 @@ import importlib
 import inspect
 import logging
 import sys
+import time
 import traceback
 from enum import Enum
 from pathlib import Path
@@ -49,11 +50,13 @@ class ModelWrapper(kserve.Model):
         self.logger.info("Executing model.load()...")
 
         try:
+            start_time = time.perf_counter()
             self.try_load()
             self.ready = True
             self._status = ModelWrapper.Status.READY
-
-            self.logger.info("Completed model.load() execution")
+            self.logger.info(
+                f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
+            )
 
             return self.ready
         except Exception:
@@ -149,3 +152,7 @@ def _signature_accepts_kwargs(signature: inspect.Signature) -> bool:
         if param.kind == inspect.Parameter.VAR_KEYWORD:
             return True
     return False
+
+
+def _elapsed_ms(since_micro_seconds: float) -> int:
+    return int((time.perf_counter() - since_micro_seconds) * 1000)
