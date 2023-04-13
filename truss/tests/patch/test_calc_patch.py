@@ -16,14 +16,23 @@ from truss.truss_config import TrussConfig
 
 def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):
     prev_sign = calc_truss_signature(custom_model_truss_dir)
-    (custom_model_truss_dir / "dummy").touch()
+
+    # Unsupported directory should result in no patches
+    (custom_model_truss_dir / "data").touch()
+    patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
+    assert len(patches) == 0
+
+    # Changes under unsupported directory should return None to reflect
+    # inability to calculate patch.
+    (custom_model_truss_dir / "data" / "dummy").touch()
     patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
     assert patches is None
 
 
 def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
     prev_sign = calc_truss_signature(custom_model_truss_dir)
-    (custom_model_truss_dir / "model" / "dummy").touch()
+    with (custom_model_truss_dir / "model" / "dummy").open("w") as file:
+        file.write("content")
     patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
 
     assert len(patches) == 1
@@ -33,7 +42,7 @@ def test_calc_truss_patch_add_file(custom_model_truss_dir: Path):
         body=ModelCodePatch(
             action=Action.ADD,
             path="dummy",
-            content="",
+            content="content",
         ),
     )
 
@@ -106,6 +115,33 @@ def test_calc_truss_ignore_pycache(custom_model_truss_dir: Path):
     patches = calc_truss_patch(
         custom_model_truss_dir,
         prev_sign,
+    )
+    assert len(patches) == 0
+
+
+def test_calc_truss_ignore_changes_outside_patch_relevant_dirs(
+    custom_model_truss_dir: Path,
+):
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    top_pycache_path = custom_model_truss_dir / "__pycache__"
+    top_pycache_path.mkdir()
+    (top_pycache_path / "README.md").touch()
+    git_dir = custom_model_truss_dir / ".git"
+    git_dir.mkdir()
+    (git_dir / "dummy").touch()
+
+    patches = calc_truss_patch(
+        custom_model_truss_dir,
+        prev_sign,
+    )
+    assert len(patches) == 0
+
+    # Removing should also be ignored
+    new_sign = calc_truss_signature(custom_model_truss_dir)
+    (git_dir / "dummy").unlink()
+    patches = calc_truss_patch(
+        custom_model_truss_dir,
+        new_sign,
     )
     assert len(patches) == 0
 
