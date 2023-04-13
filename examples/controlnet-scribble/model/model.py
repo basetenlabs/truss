@@ -13,13 +13,10 @@ from diffusers import (
 
 class Model:
     def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
         self._model = None
 
     def load(self):
-        # Load model here and assign to self._model.
+        # Load model here and assign to self._model
         controlnet = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-scribble",
             torch_dtype=torch.float16,
@@ -36,12 +33,12 @@ class Model:
         self._model = pipe
 
     def postprocess(self, request: Dict) -> Dict:
-        # Convert PIL to Base64
+        # Convert PIL output image(s) to Base64
         request.images = [pil_to_b64(image) for image in request.images]
         return asdict(request)
 
     def predict(self, request: Dict) -> Dict[str, List]:
-        # Invoke model and calculate predictions here.
+        # Invoke model and run predictions here
         input_image = b64_to_pil(request["image"])
         hed = HEDdetector.from_pretrained("lllyasviel/ControlNet")
         image = hed(input_image, scribble=True)
