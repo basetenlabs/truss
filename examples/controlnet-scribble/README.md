@@ -1,6 +1,6 @@
 # ControlNet
 
-This is an example Truss for a [ControlNet](https://github.com/lllyasviel/ControlNet) model trained on Stable Diffusion 1.5 using the `StableDiffusionControlNetPipeline` diffusers pipeline.
+This is an example truss for a [ControlNet](https://github.com/lllyasviel/ControlNet) model trained on Stable Diffusion 1.5 using the `StableDiffusionControlNetPipeline` diffusers pipeline.
 
 We've used the [`sd-controlnet-scribble`](https://huggingface.co/lllyasviel/sd-controlnet-scribble) model for this truss.
 
@@ -16,7 +16,7 @@ import os
 
 controlnet_truss = truss.load("controlnet-scribble")
 
-# Make sure you grab a Baseten API key from your account (follow the instructions here: )
+# Make sure you create a Baseten API key (follow the instructions here: https://docs.baseten.co/settings/api-keys)
 baseten.login(os.environ["BASETEN_API_KEY"])
 
 baseten.deploy(controlnet_truss, model_name="ControlNet Scribble", publish=True)
@@ -40,7 +40,7 @@ You can iteratively test your truss to make sure its configured properly. Modify
 ```
 import truss
 import urllib
-from shared.base64_utils import b64_to_pil
+from shared.base64_utils import b64_to_pil, pil_to_b64
 from PIL import Image
 
 # Load your "my-controlnet-truss" here
