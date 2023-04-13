@@ -1,8 +1,10 @@
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 import pkg_resources
 import yaml
+from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import (
@@ -16,6 +18,7 @@ from truss.templates.control.control.helpers.types import (
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
 
+logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
     "**/__pycache__/**/*",
     "**/__pycache__/**",
@@ -31,10 +34,18 @@ def calc_truss_patch(
     Calculate patch for a truss from a previous state.
 
     Returns: None if patch cannot be calculated, otherwise a list of patches.
-        Note that the none return value is pretty important, patch coverage
-        is limited and this usually indicates that the identified change cannot
-        be expressed with currently supported patches.
+        Note that the none return value is pretty important, patch coverage is
+        limited and this usually indicates that the identified change cannot be
+        expressed with currently supported patches.
+
+        Only standard and relevant truss paths are scanned for changes, rest
+        ignored. E.g. at the root level, only changes to config.yaml are
+        checked, any other changes are ignored.
     """
+
+    def _relative_to_root(path: Path) -> str:
+        return str(path.relative_to(truss_dir))
+
     if ignore_patterns is None:
         ignore_patterns = PYCACHE_IGNORE_PATTERNS
 
@@ -45,68 +56,72 @@ def calc_truss_patch(
     )
     # TODO(pankaj) Calculate model code patches only for now, add config changes
     # later.
+
     truss_spec = TrussSpec(truss_dir)
-    model_module_path = str(truss_spec.model_module_dir.relative_to(truss_dir))
-    training_module_path = str(truss_spec.training_module_dir.relative_to(truss_dir))
+    model_module_path = _relative_to_root(truss_spec.model_module_dir)
+    data_dir_path = _relative_to_root(truss_spec.data_dir)
+    bundled_packages_path = _relative_to_root(truss_spec.bundled_packages_dir)
+
+    def _under_unsupported_patch_dir(path: str) -> bool:
+        """
+        Checks if the given path is under one of the directories that don't
+        support patching. Note that if path `is` one of those directories that's
+        ok, because those empty directories can be ignored from patching point
+        of view.
+        """
+        return _strictly_under(path, [data_dir_path, bundled_packages_path])
 
     patches = []
     for path in changed_paths["removed"]:
         if path.startswith(model_module_path):
-            relative_to_model_module_path = str(
-                Path(path).relative_to(model_module_path)
-            )
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=Action.REMOVE,
-                        path=relative_to_model_module_path,
+                        path=_relative_to(path, model_module_path),
                     ),
                 )
             )
-        elif path.startswith(training_module_path):
-            # Ignore training changes from patch
-            continue
-        else:
+        elif path == CONFIG_FILE:
+            # Don't support removal of config file
+            logger.info(f"Patching not supported for removing {path}")
+            return None
+        elif _under_unsupported_patch_dir(path):
+            logger.info(f"Patching not supported for removing {path}")
             return None
 
     for path in changed_paths["added"] + changed_paths["updated"]:
         if path.startswith(model_module_path):
             full_path = truss_dir / path
-            relative_to_model_module_path = str(
-                Path(path).relative_to(model_module_path)
-            )
 
             # TODO(pankaj) Add support for empty directories, skip them for now.
             if not full_path.is_file():
                 continue
 
-            with full_path.open() as file:
-                content = file.read()
             action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
                         action=action,
-                        path=relative_to_model_module_path,
-                        content=content,
+                        path=_relative_to(path, model_module_path),
+                        content=_file_content(full_path),
                     ),
                 )
             )
-        elif path.startswith(training_module_path):
-            # Ignore training changes from patch
-            continue
-        elif str(path) == "config.yaml":
-            new_config = TrussConfig.from_yaml(truss_dir / "config.yaml")
+        elif path == CONFIG_FILE:
+            new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
             prev_config = TrussConfig.from_dict(
                 yaml.safe_load(previous_truss_signature.config)
             )
             config_patches = _calc_config_patches(prev_config, new_config)
             if config_patches is None:
+                logger.info(f"Unable to patch update to {path}")
                 return None
             patches.extend(config_patches)
-        else:
+        elif _under_unsupported_patch_dir(path):
+            logger.info(f"Patching not supported for updating {path}")
             return None
     return patches
 
@@ -280,3 +295,23 @@ def _mk_system_package_patch(action: Action, package: str) -> Patch:
             package=package,
         ),
     )
+
+
+def _relative_to(path: str, relative_to_path: str):
+    return str(Path(path).relative_to(relative_to_path))
+
+
+def _strictly_under(path: str, parent_paths: List[str]) -> bool:
+    """
+    Checks if given path is under one of the given paths, but not the same as
+    them. Assumes that parent paths themselves are not under each other.
+    """
+    for dir_path in parent_paths:
+        if path.startswith(dir_path) and not path == dir_path:
+            return True
+    return False
+
+
+def _file_content(path: Path) -> str:
+    with path.open() as file:
+        return file.read()
