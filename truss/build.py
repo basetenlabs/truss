@@ -17,12 +17,8 @@ from truss.notebook import is_notebook_or_ipython
 from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
-from truss.utils import (
-    build_truss_target_directory,
-    copy_file_path,
-    copy_tree_path,
-    get_gpu_memory,
-)
+from truss.util.gpu import get_gpu_memory
+from truss.util.path import build_truss_target_directory, copy_file_path, copy_tree_path
 
 logger: logging.Logger = logging.getLogger(__name__)
 

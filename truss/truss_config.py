@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
+from truss.util.data_structures import transform_optional
 from truss.validation import (
     validate_cpu_spec,
     validate_memory_spec,
@@ -140,6 +141,70 @@ class Train:
 
 
 @dataclass
+class ExternalDataItem:
+    """A piece of remote data, to be made available to the Truss at serving time.
+
+    Data is downloaded and stored under Truss's data directory. Care should be taken
+    to make sure there's no overlap with any data there. This will get precedence
+    if there's overlap.
+    """
+
+    # Url to download the data from.
+    # Currently only files are allowed.
+    URL: str
+
+    # This should be relative path. This is where the remote file will be downloaded.
+    at: str
+
+    # A name can be given to a data item for readability purposes. It's not used
+    # in the download process.
+    name: Optional[str] = None
+
+    @staticmethod
+    def from_dict(d: Dict[str, str]) -> "ExternalDataItem":
+        URL = d.get("URL")
+        if URL is None or URL == "":
+            raise ValueError("URL of an external data item cannot be empty")
+        at = d.get("at")
+        if at is None or at == "":
+            raise ValueError("The `at` field of an external data item cannot be empty")
+
+        item = ExternalDataItem(
+            URL=d["URL"],
+            at=d["at"],
+            name=d.get("name"),
+        )
+        return item
+
+    def to_dict(self):
+        d = {
+            "URL": self.URL,
+            "at": self.at,
+        }
+        if self.name is not None:
+            d["name"] = self.name
+        return d
+
+
+@dataclass
+class ExternalData:
+    """[Experimental] External data is data that is not contained in the Truss folder.
+
+    Typically this will be data stored remotely. This data is guaranteed to be made
+    available under the data directory of the truss.
+    """
+
+    items: List[ExternalDataItem]
+
+    @staticmethod
+    def from_list(items: List[Dict[str, str]]) -> "ExternalData":
+        return ExternalData([ExternalDataItem.from_dict(item) for item in items])
+
+    def to_list(self) -> List[Dict[str, str]]:
+        return [item.to_dict() for item in self.items]
+
+
+@dataclass
 class TrussConfig:
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
@@ -150,6 +215,7 @@ class TrussConfig:
     model_class_name: str = DEFAULT_MODEL_CLASS_NAME
 
     data_dir: str = DEFAULT_DATA_DIRECTORY
+    external_data: Optional[ExternalData] = None
 
     # Python types for what the model expects as input
     input_type: str = DEFAULT_MODEL_INPUT_TYPE
@@ -211,6 +277,10 @@ class TrussConfig:
             external_package_dirs=d.get("external_package_dirs", []),
             live_reload=d.get("live_reload", False),
             train=Train.from_dict(d.get("train", {})),
+            external_data=transform_optional(
+                d.get("external_data"),
+                lambda ext_data_list: ExternalData.from_list(ext_data_list),
+            ),
         )
         config.validate()
         return config

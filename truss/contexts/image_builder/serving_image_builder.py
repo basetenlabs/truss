@@ -28,7 +28,7 @@ from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
-from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
+from truss.util.path import build_truss_target_directory, copy_file_path, copy_tree_path
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
