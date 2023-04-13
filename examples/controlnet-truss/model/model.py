@@ -36,9 +36,6 @@ class Model:
         self._model = pipe
 
     def postprocess(self, request: Dict) -> Dict:
-        """
-        Incorporate post-processing required by the model if desired here.
-        """
         # Convert PIL to Base64
         request.images = [pil_to_b64(image) for image in request.images]
         return asdict(request)
