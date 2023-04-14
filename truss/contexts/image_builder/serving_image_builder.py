@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Optional
 
 import click
-from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
     CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
@@ -28,7 +27,12 @@ from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.readme_generator import generate_readme
 from truss.truss_spec import TrussSpec
-from truss.util.path import build_truss_target_directory, copy_file_path, copy_tree_path
+from truss.util.jinja import read_template_from_fs
+from truss.util.path import (
+    build_truss_target_directory,
+    copy_tree_or_file,
+    copy_tree_path,
+)
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
@@ -55,56 +59,53 @@ class ServingImageBuilder(ImageBuilder):
         Returns:
             docker command to build the docker image.
         """
+        spec = self._spec
+        config = spec.config
+        model_framework_name = spec.model_framework_name
+        truss_dir = spec.truss_dir
+
         if build_dir is None:
-            build_dir = build_truss_target_directory(self._spec.model_framework_name)
-            # todo: Add a logging statement here, suggesting how to clean up the directory.
+            build_dir = build_truss_target_directory(model_framework_name)
 
-        copy_tree_path(self._spec.truss_dir, build_dir)
-        copy_tree_path(
-            SERVER_CODE_DIR,
-            build_dir / BUILD_SERVER_DIR_NAME,
-        )
-        copy_tree_path(
+        def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
+            copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+
+        # Copy over truss
+        copy_tree_path(truss_dir, build_dir)
+
+        # Copy inference server code
+        copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
+        copy_into_build_dir(
             SHARED_SERVING_AND_TRAINING_CODE_DIR,
-            build_dir
-            / BUILD_SERVER_DIR_NAME
-            / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+            BUILD_SERVER_DIR_NAME + "/" + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
         )
+
+        # Copy control server code
         if self._spec.config.live_reload:
-            copy_tree_path(
-                CONTROL_SERVER_CODE_DIR,
-                build_dir / BUILD_CONTROL_SERVER_DIR_NAME,
-            )
+            copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
+
+        # Copy model framework specific requirements file
         server_reqs_filepath = (
-            TEMPLATES_DIR / self._spec.model_framework_name / REQUIREMENTS_TXT_FILENAME
+            TEMPLATES_DIR / model_framework_name / REQUIREMENTS_TXT_FILENAME
         )
-        should_install_server_requirements = (
-            server_reqs_filepath.exists() and file_is_not_empty(server_reqs_filepath)
-        )
+        should_install_server_requirements = file_is_not_empty(server_reqs_filepath)
         if should_install_server_requirements:
-            copy_file_path(
-                TEMPLATES_DIR
-                / self._spec.model_framework_name
-                / REQUIREMENTS_TXT_FILENAME,
-                build_dir / SERVER_REQUIREMENTS_TXT_FILENAME,
-            )
+            copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
 
+        # Write truss python requirements
         with (build_dir / REQUIREMENTS_TXT_FILENAME).open("w") as req_file:
-            req_file.write(self._spec.requirements_txt)
+            req_file.write(spec.requirements_txt)
 
+        # Write truss system packages
         with (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).open("w") as req_file:
-            req_file.write(self._spec.system_packages_txt)
+            req_file.write(spec.system_packages_txt)
 
-        data_dir_exists = (build_dir / self._spec.config.data_dir).exists()
-        bundled_packages_dir_exists = (
-            build_dir / self._spec.config.bundled_packages_dir
-        ).exists()
-
-        template_loader = FileSystemLoader(str(TEMPLATES_DIR))
-        template_env = Environment(loader=template_loader)
-        dockerfile_template = template_env.get_template(SERVER_DOCKERFILE_TEMPLATE_NAME)
-        config = self._spec.config
-
+        # Render dockerfile
+        data_dir_exists = (build_dir / config.data_dir).exists()
+        bundled_packages_dir_exists = (build_dir / config.bundled_packages_dir).exists()
+        dockerfile_template = read_template_from_fs(
+            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
+        )
         base_image_name = truss_base_image_name(job_type="server")
         tag = truss_base_image_tag(
             python_version=to_dotted_python_version(config.python_version),
@@ -133,6 +134,7 @@ class ServingImageBuilder(ImageBuilder):
         with docker_file_path.open("w") as docker_file:
             docker_file.write(dockerfile_contents)
 
+        # Write readme
         readme_file_path = build_dir / MODEL_README_NAME
         try:
             readme_contents = generate_readme(self._spec)
