@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
 from truss.util.data_structures import transform_optional
@@ -34,6 +35,8 @@ DEFAULT_USE_GPU = False
 DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
 DEFAULT_TRAINING_CLASS_NAME = "Train"
 DEFAULT_TRAINING_MODULE_DIR = "train"
+
+DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
 
 class Accelerator(Enum):
@@ -156,6 +159,9 @@ class ExternalDataItem:
     # This should be relative path. This is where the remote file will be downloaded.
     at: str
 
+    # The backend used to download files
+    backend: str = DEFAULT_BLOB_BACKEND
+
     # A name can be given to a data item for readability purposes. It's not used
     # in the download process.
     name: Optional[str] = None
@@ -173,6 +179,7 @@ class ExternalDataItem:
             URL=d["URL"],
             at=d["at"],
             name=d.get("name"),
+            backend=d.get("backend", DEFAULT_BLOB_BACKEND),
         )
         return item
 
@@ -180,6 +187,7 @@ class ExternalDataItem:
         d = {
             "URL": self.URL,
             "at": self.at,
+            "backend": self.backend,
         }
         if self.name is not None:
             d["name"] = self.name
