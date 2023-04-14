@@ -4,8 +4,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
+from truss.util.data_structures import transform_optional
 from truss.validation import (
     validate_cpu_spec,
     validate_memory_spec,
@@ -33,6 +35,8 @@ DEFAULT_USE_GPU = False
 DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
 DEFAULT_TRAINING_CLASS_NAME = "Train"
 DEFAULT_TRAINING_MODULE_DIR = "train"
+
+DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
 
 class Accelerator(Enum):
@@ -140,6 +144,74 @@ class Train:
 
 
 @dataclass
+class ExternalDataItem:
+    """A piece of remote data, to be made available to the Truss at serving time.
+
+    Remote data is downloaded and stored under Truss's data directory. Care should be taken
+    to avoid conflicts. This will get precedence if there's overlap.
+    """
+
+    # Url to download the data from.
+    # Currently only files are allowed.
+    url: str
+
+    # This should be relative path. This is where the remote file will be downloaded.
+    at: str
+
+    # The backend used to download files
+    backend: str = DEFAULT_BLOB_BACKEND
+
+    # A name can be given to a data item for readability purposes. It's not used
+    # in the download process.
+    name: Optional[str] = None
+
+    @staticmethod
+    def from_dict(d: Dict[str, str]) -> "ExternalDataItem":
+        url = d.get("url")
+        if url is None or url == "":
+            raise ValueError("URL of an external data item cannot be empty")
+        at = d.get("at")
+        if at is None or at == "":
+            raise ValueError("The `at` field of an external data item cannot be empty")
+
+        item = ExternalDataItem(
+            url=d["url"],
+            at=d["at"],
+            name=d.get("name"),
+            backend=d.get("backend", DEFAULT_BLOB_BACKEND),
+        )
+        return item
+
+    def to_dict(self):
+        d = {
+            "url": self.url,
+            "at": self.at,
+            "backend": self.backend,
+        }
+        if self.name is not None:
+            d["name"] = self.name
+        return d
+
+
+@dataclass
+class ExternalData:
+    """[Experimental] External data is data that is not contained in the Truss folder.
+
+    Typically this will be data stored remotely. This data is guaranteed to be made
+    available under the data directory of the truss.
+    """
+
+    items: List[ExternalDataItem]
+
+    @staticmethod
+    def from_list(items: List[Dict[str, str]]) -> "ExternalData":
+        return ExternalData([ExternalDataItem.from_dict(item) for item in items])
+
+    def to_list(self) -> List[Dict[str, str]]:
+        return [item.to_dict() for item in self.items]
+
+
+@dataclass
 class TrussConfig:
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
@@ -150,6 +222,7 @@ class TrussConfig:
     model_class_name: str = DEFAULT_MODEL_CLASS_NAME
 
     data_dir: str = DEFAULT_DATA_DIRECTORY
+    external_data: Optional[ExternalData] = None
 
     # Python types for what the model expects as input
     input_type: str = DEFAULT_MODEL_INPUT_TYPE
@@ -211,6 +284,9 @@ class TrussConfig:
             external_package_dirs=d.get("external_package_dirs", []),
             live_reload=d.get("live_reload", False),
             train=Train.from_dict(d.get("train", {})),
+            external_data=transform_optional(
+                d.get("external_data"), ExternalData.from_list
+            ),
         )
         config.validate()
         return config
@@ -225,7 +301,7 @@ class TrussConfig:
             yaml.dump(self.to_dict(), config_file)
 
     def to_dict(self):
-        return {
+        d = {
             "model_type": self.model_type,
             "model_framework": self.model_framework.value,
             "model_module_dir": self.model_module_dir,
@@ -249,6 +325,11 @@ class TrussConfig:
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),
         }
+        if self.external_data is not None:
+            d["external_data"] = transform_optional(
+                self.external_data, lambda data: data.to_list()
+            )
+        return d
 
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())

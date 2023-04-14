@@ -24,7 +24,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.truss_spec import TrussSpec
-from truss.utils import build_truss_target_directory, copy_file_path, copy_tree_path
+from truss.util.path import build_truss_target_directory, copy_file_path, copy_tree_path
 
 BUILD_TRAINING_DIR_NAME = "training"
 

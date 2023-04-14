@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from truss.docker import Docker
-from truss.utils import given_or_temporary_dir
+from truss.util.path import given_or_temporary_dir
 
 
 class ImageBuilder(ABC):
