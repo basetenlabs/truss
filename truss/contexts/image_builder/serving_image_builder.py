@@ -145,4 +145,4 @@ class ServingImageBuilder(ImageBuilder):
 
         for item in external_data.items:
             blob_backend = BLOB_BACKEND_REGISTRY.get_backend(item.backend)
-            blob_backend.download(item.url, data_dir / item.at)
+            blob_backend.download(item.url, data_dir / item.local_data_path)

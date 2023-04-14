@@ -464,12 +464,12 @@ class TrussHandle:
     def add_external_data_item(
         self,
         url: str,
-        at: str,
+        local_data_path: str,
         backend: Optional[str] = None,
         name: Optional[str] = None,
     ):
         # todo: write tests for this
-        item = ExternalDataItem(url=url, at=at)
+        item = ExternalDataItem(url=url, local_data_path=local_data_path)
         if backend is not None:
             item = replace(item, backend=backend)
         if name is not None:

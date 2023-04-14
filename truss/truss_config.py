@@ -155,8 +155,9 @@ class ExternalDataItem:
     # Currently only files are allowed.
     url: str
 
-    # This should be relative path. This is where the remote file will be downloaded.
-    at: str
+    # This should be path relative to data directory. This is where the remote
+    # file will be downloaded.
+    local_data_path: str
 
     # The backend used to download files
     backend: str = DEFAULT_BLOB_BACKEND
@@ -170,13 +171,15 @@ class ExternalDataItem:
         url = d.get("url")
         if url is None or url == "":
             raise ValueError("URL of an external data item cannot be empty")
-        at = d.get("at")
-        if at is None or at == "":
-            raise ValueError("The `at` field of an external data item cannot be empty")
+        local_data_path = d.get("local_data_path")
+        if local_data_path is None or local_data_path == "":
+            raise ValueError(
+                "The `local_data_path` field of an external data item cannot be empty"
+            )
 
         item = ExternalDataItem(
             url=d["url"],
-            at=d["at"],
+            local_data_path=d["local_data_path"],
             name=d.get("name"),
             backend=d.get("backend", DEFAULT_BLOB_BACKEND),
         )
@@ -185,7 +188,7 @@ class ExternalDataItem:
     def to_dict(self):
         d = {
             "url": self.url,
-            "at": self.at,
+            "local_data_path": self.local_data_path,
             "backend": self.backend,
         }
         if self.name is not None:

@@ -366,7 +366,7 @@ def custom_model_external_data_access_tuple_fixture(tmp_path: Path):
                 "external_data_access",
                 EXTERNAL_DATA_ACCESS,
                 handle_ops=lambda handle: handle.add_external_data_item(
-                    url=url, at="test.txt"
+                    url=url, local_data_path="test.txt"
                 ),
             ),
             content,
