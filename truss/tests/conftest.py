@@ -272,25 +272,27 @@ class Train:
 """
 
 
+EXTERNAL_DATA_ACCESS = """
+class Model:
+    def __init__(self, data_dir):
+        self._data_dir = data_dir
+        pass
+
+    def predict(self, model_input):
+        with (self._data_dir / 'test.txt').open() as file:
+            return file.read()
+"""
+
+
 @pytest.fixture
 def pytorch_model(tmp_path):
-    return _pytorch_model_from_content(
-        tmp_path,
-        PYTORCH_MODEL_FILE_CONTENTS,
-        model_module_name="my_model",
-        model_class_name="MyModel",
-        model_filename="my_model.py",
-    )
+    return _pytorch_model_from_content(tmp_path, PYTORCH_MODEL_FILE_CONTENTS)
 
 
 @pytest.fixture
 def pytorch_model_with_numpy_import(tmp_path):
     return _pytorch_model_from_content(
-        tmp_path,
-        PYTORCH_MODEL_FILE_WITH_NUMPY_IMPORT_CONTENTS,
-        model_module_name="my_model",
-        model_class_name="MyModel",
-        model_filename="my_model.py",
+        tmp_path, PYTORCH_MODEL_FILE_WITH_NUMPY_IMPORT_CONTENTS
     )
 
 
@@ -344,6 +346,33 @@ def custom_model_control(tmp_path):
         CUSTOM_MODEL_CODE,
         handle_ops=lambda handle: handle.live_reload(),
     )
+
+
+@pytest.fixture
+def custom_model_external_data_access_tuple_fixture(tmp_path: Path):
+    content = "test"
+    filename = "test.txt"
+    (tmp_path / filename).write_text(content)
+    port = 9089
+    proc = subprocess.Popen(
+        ["python", "-m", "http.server", str(port)],
+        cwd=tmp_path,
+    )
+    try:
+        url = f"http://localhost:{port}/{filename}"
+        yield (
+            _custom_model_from_code(
+                tmp_path,
+                "external_data_access",
+                EXTERNAL_DATA_ACCESS,
+                handle_ops=lambda handle: handle.add_external_data_item(
+                    URL=url, at="test.txt"
+                ),
+            ),
+            content,
+        )
+    finally:
+        proc.kill()
 
 
 @pytest.fixture
@@ -556,8 +585,9 @@ def huggingface_transformer_t5_small_tokenizer():
 def custom_model_truss_dir_with_pre_and_post_no_example(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post_no_example"
     handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    handle.spec.model_class_filepath.write_text(
+        CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS
+    )
     yield dir_path
 
 
@@ -576,8 +606,9 @@ def huggingface_truss_handle_small_model(
 def custom_model_truss_dir_with_pre_and_post(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post"
     handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    handle.spec.model_class_filepath.write_text(
+        CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS
+    )
     handle.update_examples([Example("example1", {"inputs": [[0]]})])
     yield dir_path
 
@@ -586,8 +617,7 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
 def variables_to_artifacts_training_truss(tmp_path):
     dir_path = tmp_path / "training_truss"
     handle = init(str(dir_path), trainable=True)
-    with handle.spec.train_class_filepath.open("w") as file:
-        file.write(VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE)
+    handle.spec.train_class_filepath.write_text(VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE)
     yield dir_path
 
 
@@ -595,8 +625,7 @@ def variables_to_artifacts_training_truss(tmp_path):
 def custom_model_truss_dir_with_bundled_packages(tmp_path):
     truss_dir_path: Path = tmp_path / "custom_model_truss_dir_with_bundled_packages"
     handle = init(str(truss_dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_USING_BUNDLED_PACKAGE)
+    handle.spec.model_class_filepath.write_text(CUSTOM_MODEL_CODE_USING_BUNDLED_PACKAGE)
     packages_path = truss_dir_path / DEFAULT_BUNDLED_PACKAGES_DIR / "test_package"
     packages_path.mkdir(parents=True)
     with (packages_path / "test.py").open("w") as file:
@@ -608,8 +637,9 @@ def custom_model_truss_dir_with_bundled_packages(tmp_path):
 def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post_str_example"
     handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    handle.spec.model_class_filepath.write_text(
+        CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS
+    )
     handle.update_examples(
         [
             Example(
@@ -631,8 +661,9 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
 def custom_model_truss_dir_with_pre_and_post_description(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post"
     handle = init(str(dir_path))
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS)
+    handle.spec.model_class_filepath.write_text(
+        CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS
+    )
     handle.update_description("This model adds 3 to all inputs")
     yield dir_path
 
@@ -642,8 +673,7 @@ def custom_model_truss_dir_for_gpu(tmp_path):
     dir_path = tmp_path / "custom_truss"
     handle = init(str(dir_path))
     handle.enable_gpu()
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_FOR_GPU_TESTING)
+    handle.spec.model_class_filepath.write_text(CUSTOM_MODEL_CODE_FOR_GPU_TESTING)
     yield dir_path
 
 
@@ -652,8 +682,7 @@ def custom_model_truss_dir_for_secrets(tmp_path):
     dir_path = tmp_path / "custom_truss"
     handle = init(str(dir_path))
     handle.add_secret("secret_name", "default_secret_value")
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(CUSTOM_MODEL_CODE_FOR_SECRETS_TESTING)
+    handle.spec.model_class_filepath.write_text(CUSTOM_MODEL_CODE_FOR_SECRETS_TESTING)
     yield dir_path
 
 
@@ -718,9 +747,9 @@ def patch_ping_test_server():
 def _pytorch_model_from_content(
     path: Path,
     content: str,
-    model_module_name: str,
-    model_class_name: str,
-    model_filename: str,
+    model_module_name: str = "my_model",
+    model_class_name: str = "MyModel",
+    model_filename: str = "my_model.py",
 ):
     f = path / model_filename
     f.write_text(content)
@@ -740,6 +769,5 @@ def _custom_model_from_code(
     handle = init(str(dir_path))
     if handle_ops is not None:
         handle_ops(handle)
-    with handle.spec.model_class_filepath.open("w") as file:
-        file.write(model_code)
+    handle.spec.model_class_filepath.write_text(model_code)
     return dir_path

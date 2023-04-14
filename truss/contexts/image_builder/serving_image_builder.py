@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from truss.blob.blob_backend_registry import BlobBackendRegistry
+from truss.blob.blob_backend_registry import BLOB_BACKEND_REGISTRY
 from truss.constants import (
     CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
@@ -25,7 +25,6 @@ from truss.contexts.image_builder.util import (
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.truss_spec import TrussSpec
-from truss.util.file import write_str_to_file
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -95,10 +94,8 @@ class ServingImageBuilder(ImageBuilder):
         if should_install_server_requirements:
             copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
 
-        write_str_to_file(build_dir / REQUIREMENTS_TXT_FILENAME, spec.requirements_txt)
-        write_str_to_file(
-            build_dir / SYSTEM_PACKAGES_TXT_FILENAME, spec.system_packages_txt
-        )
+        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
+        (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(build_dir, should_install_server_requirements)
 
@@ -139,7 +136,7 @@ class ServingImageBuilder(ImageBuilder):
             truss_hash=directory_content_hash(self._truss_dir),
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
-        write_str_to_file(docker_file_path, dockerfile_contents)
+        docker_file_path.write_text(dockerfile_contents)
 
     def _download_external_data(self, data_dir: Path):
         external_data = self._spec.external_data
@@ -147,5 +144,5 @@ class ServingImageBuilder(ImageBuilder):
             return
 
         for item in external_data.items:
-            blob_backend = BlobBackendRegistry.get_backend(item.backend)
+            blob_backend = BLOB_BACKEND_REGISTRY.get_backend(item.backend)
             blob_backend.download(item.URL, data_dir / item.at)

@@ -326,6 +326,9 @@ class TrussConfig:
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),
+            "external_data": transform_optional(
+                self.external_data, lambda data: data.to_list()
+            ),
         }
 
     def clone(self):

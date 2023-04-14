@@ -461,20 +461,26 @@ class TrussHandle:
             )
         )
 
-    def add_external_data_item(self, URL: str, at: str, name: Optional[str] = None):
+    def add_external_data_item(
+        self,
+        URL: str,
+        at: str,
+        backend: Optional[str] = None,
+        name: Optional[str] = None,
+    ):
+        # todo: write tests for this
+        item = ExternalDataItem(URL=URL, at=at)
+        if backend is not None:
+            item = replace(item, backend=backend)
+        if name is not None:
+            item = replace(item, name=name)
+
         current_external_data: ExternalData = (
             self._spec.config.external_data or ExternalData([])
         )
         new_external_data = replace(
             current_external_data,
-            items=[
-                *current_external_data.items,
-                ExternalDataItem(
-                    URL=URL,
-                    at=at,
-                    name=name,
-                ),
-            ],
+            items=current_external_data.items + [item],
         )
         self._update_config(
             lambda conf: replace(

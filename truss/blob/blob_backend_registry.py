@@ -1,17 +1,23 @@
 from typing import Dict
 
 from truss.blob.blob_backend import BlobBackend
+from truss.blob.http_public_blob_backend import HttpPublic
+from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 
 
-class BlobBackendRegistry:
-    backends: Dict[str, BlobBackend]
+class _BlobBackendRegistry:
+    def __init__(self) -> None:
+        self._backends: Dict[str, BlobBackend] = {}
+        # Register default backend
+        self._backends[HTTP_PUBLIC_BLOB_BACKEND] = HttpPublic()
 
-    @staticmethod
-    def register_backend(name: str, backend: BlobBackend):
-        BlobBackendRegistry.backends[name] = backend
+    def register_backend(self, name: str, backend: BlobBackend):
+        self._backends[name] = backend
 
-    @staticmethod
-    def get_backend(name: str):
-        if name not in BlobBackendRegistry.backends:
+    def get_backend(self, name: str):
+        if name not in self._backends:
             raise ValueError(f"Backend {name} is not registered.")
-        return BlobBackendRegistry.backends[name]
+        return self._backends[name]
+
+
+BLOB_BACKEND_REGISTRY = _BlobBackendRegistry()

@@ -3,8 +3,6 @@ from pathlib import Path
 
 import requests
 from truss.blob.blob_backend import BlobBackend
-from truss.blob.blob_backend_registry import BlobBackendRegistry
-from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 
 BLOB_DOWNLOAD_TIMEOUT_SECS = 600  # 10 minutes
 
@@ -21,6 +19,3 @@ class HttpPublic(BlobBackend):
         resp.raise_for_status()
         with download_to.open("wb") as file:
             shutil.copyfileobj(resp.raw, file)
-
-
-BlobBackendRegistry.register_backend(HTTP_PUBLIC_BLOB_BACKEND, HttpPublic())
