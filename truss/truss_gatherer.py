@@ -4,7 +4,7 @@ import yaml
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch.hash import str_hash_str
 from truss.truss_handle import TrussHandle
-from truss.utils import copy_file_path, copy_tree_path, remove_tree_path
+from truss.util.path import copy_file_path, copy_tree_path, remove_tree_path
 
 
 def gather(truss_path: Path) -> Path:

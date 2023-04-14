@@ -66,10 +66,10 @@ from truss.templates.server.common.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from truss.truss_config import TrussConfig
+from truss.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
-from truss.utils import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
+from truss.util.path import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -458,6 +458,42 @@ class TrussHandle:
                         var_name: default_var_value,
                     },
                 ),
+            )
+        )
+
+    def add_external_data_item(
+        self,
+        url: str,
+        local_data_path: str,
+        backend: Optional[str] = None,
+        name: Optional[str] = None,
+    ):
+        # todo: write tests for this
+        item = ExternalDataItem(url=url, local_data_path=local_data_path)
+        if backend is not None:
+            item = replace(item, backend=backend)
+        if name is not None:
+            item = replace(item, name=name)
+
+        current_external_data: ExternalData = (
+            self._spec.config.external_data or ExternalData([])
+        )
+        new_external_data = replace(
+            current_external_data,
+            items=current_external_data.items + [item],
+        )
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                external_data=new_external_data,
+            )
+        )
+
+    def remove_all_external_data(self):
+        self._update_config(
+            lambda conf: replace(
+                conf,
+                external_data=None,
             )
         )
 

@@ -852,6 +852,16 @@ def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
     kill_all_with_retries()
 
 
+@pytest.mark.integration
+def test_external_data(custom_model_external_data_access_tuple_fixture):
+    truss_dir, expected_content = custom_model_external_data_access_tuple_fixture
+    th = TrussHandle(truss_dir)
+    tag = "test-external-data-access-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict([], tag=tag)
+        assert result == expected_content
+
+
 def _container_exists(container) -> bool:
     for row in Docker.client().ps():
         if row.id.startswith(container.id):

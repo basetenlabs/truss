@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import yaml
 from truss.constants import CONFIG_FILE
 from truss.errors import ValidationError
-from truss.truss_config import TrussConfig
+from truss.truss_config import ExternalData, TrussConfig
 from truss.types import Example, ModelFrameworkType
 
 
@@ -29,6 +29,10 @@ class TrussSpec:
     @property
     def data_dir(self) -> Path:
         return self._truss_dir / self._config.data_dir
+
+    @property
+    def external_data(self) -> Optional[ExternalData]:
+        return self._config.external_data
 
     @property
     def model_module_dir(self) -> Path:
