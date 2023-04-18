@@ -11,6 +11,7 @@ from typing import Dict, Optional, Union
 
 import kserve
 from cloudevents.http import CloudEvent
+from common.external_data_resolver import download_external_data  # noqa: E402
 from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
 
@@ -84,6 +85,9 @@ class ModelWrapper(kserve.Model):
         )
 
     def try_load(self):
+        data_dir = Path("data")
+        download_external_data(data_dir, self._config)
+
         if "bundled_packages_dir" in self._config:
             bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
@@ -100,7 +104,7 @@ class ModelWrapper(kserve.Model):
         if _signature_accepts_keyword_arg(model_class_signature, "config"):
             model_init_params["config"] = self._config
         if _signature_accepts_keyword_arg(model_class_signature, "data_dir"):
-            model_init_params["data_dir"] = Path("data")
+            model_init_params["data_dir"] = data_dir
         if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
         self._model = model_class(**model_init_params)
