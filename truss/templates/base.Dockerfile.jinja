@@ -1,6 +1,7 @@
 ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}}
 
+{% if config.base_image %}
 {% block rebuild_base %}
 {% if use_gpu %}
 # Allow statements and log messages to immediately appear in the Knative logs
@@ -60,6 +61,7 @@ RUN major=$(python -c"import sys; print(sys.version_info.major)") && [ $major -e
 RUN minor=$(python -c"import sys; print(sys.version_info.minor)") && [ $minor -ge 8 && $minor -le 10 ] || { echo "WARNING: Supplied base image does not have 3.8 <= python <= 3.10"; unset minor; }
 {% endblock %}
 {% endblock %}
+{% endif %}
 
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
