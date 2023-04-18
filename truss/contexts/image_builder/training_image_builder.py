@@ -99,17 +99,23 @@ class TrainingImageBuilder(ImageBuilder):
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
         config = self._spec.config
-        base_image_name = truss_base_image_name(job_type="training")
-        tag = truss_base_image_tag(
-            python_version=to_dotted_python_version(config.python_version),
-            use_gpu=config.resources.use_gpu,
-            live_reload=config.live_reload,
-            version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
-        )
-        base_image_name_and_tag = f"{base_image_name}:{tag}"
+        python_version = to_dotted_python_version(config.python_version)
+        if config.base_image:
+            base_image_name_and_tag = config.base_image
+        else:
+            base_image_name = truss_base_image_name(job_type="training")
+            tag = truss_base_image_tag(
+                python_version=python_version,
+                use_gpu=config.resources.use_gpu,
+                live_reload=config.live_reload,
+                version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
+            )
+            base_image_name_and_tag = f"{base_image_name}:{tag}"
         dockerfile_contents = dockerfile_template.render(
             base_image_name_and_tag=base_image_name_and_tag,
             config=self._spec.config,
+            python_version=python_version,
+            live_reload=config.live_reload,
             bundled_packages_dir_exists=bundled_packages_dir_exists,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_requirements,
