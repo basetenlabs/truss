@@ -13,6 +13,7 @@ from truss.constants import (
     TRAINING_JOB_WRAPPER_CODE_DIR,
     TRAINING_JOB_WRAPPER_CODE_DIR_NAME,
     TRAINING_REQUIREMENTS_TXT_FILENAME,
+    TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
@@ -92,6 +93,7 @@ class TrainingImageBuilder(ImageBuilder):
         dockerfile_template = template_env.get_template(
             TRAINING_DOCKERFILE_TEMPLATE_NAME
         )
+        truss_build_template_path = TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
@@ -114,6 +116,7 @@ class TrainingImageBuilder(ImageBuilder):
         dockerfile_contents = dockerfile_template.render(
             base_image_name_and_tag=base_image_name_and_tag,
             config=self._spec.config,
+            truss_build_template_path=truss_build_template_path,
             python_version=python_version,
             live_reload=config.live_reload,
             bundled_packages_dir_exists=bundled_packages_dir_exists,

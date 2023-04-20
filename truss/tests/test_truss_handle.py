@@ -100,6 +100,7 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
     [
         ("baseten/truss-server-base:3.9-v0.4.3", False),
         ("baseten/truss-training-base:3.9-v0.4.3", False),
+        ("python:3.8.3", False),
         ("alpine", True),
         ("python:2.7-slim", True),
         ("python:3.5-slim", True),
