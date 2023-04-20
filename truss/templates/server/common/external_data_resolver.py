@@ -25,5 +25,6 @@ def _download(URL: str, download_to: Path):
         timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
     )
     resp.raise_for_status()
+    download_to.parent.mkdir(exist_ok=True, parents=True)
     with download_to.open("wb") as file:
         shutil.copyfileobj(resp.raw, file)

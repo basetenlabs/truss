@@ -86,6 +86,7 @@ class ModelWrapper(kserve.Model):
 
     def try_load(self):
         data_dir = Path("data")
+        data_dir.mkdir(exist_ok=True)
         download_external_data(data_dir, self._config)
 
         if "bundled_packages_dir" in self._config:
