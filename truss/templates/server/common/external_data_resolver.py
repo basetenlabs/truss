@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 from pathlib import Path
+from typing import List, Tuple
 
 import requests
 
@@ -9,8 +10,14 @@ B10CP_PATH = "/app/bin/b10cp"
 
 
 def download_external_data(data_dir: Path, config: dict):
+    for item in _external_data_items(data_dir, config):
+        _download(*item)
+
+
+def _external_data_items(data_dir: Path, config: dict) -> List[Tuple[str, Path]]:
+    items: List[Tuple[str, Path]] = []
     if "external_data" not in config:
-        return
+        return items
 
     for item in config["external_data"]:
         backend = item.get("backend", "http_public")
@@ -18,7 +25,8 @@ def download_external_data(data_dir: Path, config: dict):
         local_data_path = item["local_data_path"]
         if backend != "http_public":
             raise ValueError(f"Unknown backend {backend}")
-        _download(item_url, data_dir / local_data_path)
+        items.append((item_url, data_dir / local_data_path))
+    return items
 
 
 def _download(URL: str, download_to: Path):
@@ -29,6 +37,10 @@ def _download(URL: str, download_to: Path):
         return
 
     # Fallback if b10cp can't handle the url
+    _download_using_requests(URL, download_to)
+
+
+def _download_using_requests(URL: str, download_to: Path):
     # Streaming download to keep memory usage low
     resp = requests.get(
         URL,
