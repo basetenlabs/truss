@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Optional
 
-from truss.blob.blob_backend_registry import BLOB_BACKEND_REGISTRY
 from truss.constants import (
     CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
@@ -59,21 +58,16 @@ class ServingImageBuilder(ImageBuilder):
         """
         truss_dir = self._truss_dir
         spec = self._spec
-        config = spec.config
         model_framework_name = spec.model_framework_name
         if build_dir is None:
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
-        data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
         def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
             copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir)
-
-        # Download external data
-        self._download_external_data(data_dir)
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
@@ -137,12 +131,3 @@ class ServingImageBuilder(ImageBuilder):
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
-
-    def _download_external_data(self, data_dir: Path):
-        external_data = self._spec.external_data
-        if external_data is None:
-            return
-
-        for item in external_data.items:
-            blob_backend = BLOB_BACKEND_REGISTRY.get_backend(item.backend)
-            blob_backend.download(item.url, data_dir / item.local_data_path)
