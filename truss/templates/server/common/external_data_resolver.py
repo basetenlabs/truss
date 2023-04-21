@@ -9,8 +9,11 @@ B10CP_PATH = "/app/bin/b10cp"
 
 
 def download_external_data(data_dir: Path, config: dict):
+    if "external_data" not in config:
+        return
+
     for item in config["external_data"]:
-        backend = item["backend"]
+        backend = item.get("backend", "http_public")
         item_url = item["url"]
         local_data_path = item["local_data_path"]
         if backend != "http_public":
