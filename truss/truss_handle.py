@@ -131,13 +131,17 @@ class TrussHandle:
 
     @proxy_to_shadow_if_scattered
     def build_serving_docker_image(
-        self, build_dir: Optional[Path] = None, tag: Optional[str] = None
+        self,
+        build_dir: Optional[Path] = None,
+        tag: Optional[str] = None,
+        cache: bool = True,
     ):
         image = self._build_image(
             builder_context=ServingImageBuilderContext,
             labels=self._get_serving_lookup_labels(),
             build_dir=build_dir,
             tag=tag,
+            cache=cache,
         )
         self._store_signature()
         return image
@@ -689,6 +693,10 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
+    def set_base_image(self, base_image: str):
+        """Set the base image for a given truss"""
+        self._update_config(lambda conf: replace(conf, base_image=base_image))
+
     @proxy_to_shadow_if_scattered
     def patch_container(self, patch_request: Dict):
         """Patch changes onto the container running this Truss.
@@ -920,6 +928,7 @@ class TrussHandle:
         labels: Dict[str, str],
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
+        cache: bool = True,
     ):
         image = _docker_image_from_labels(labels=labels)
         if image is not None:
@@ -928,9 +937,7 @@ class TrussHandle:
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = builder_context.run(self._truss_dir)
         build_image_result = image_builder.build_image(
-            build_dir_path,
-            tag,
-            labels=labels,
+            build_dir_path, tag, labels=labels, cache=cache
         )
         return build_image_result
 
