@@ -2,9 +2,10 @@ ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}}
 
 {% block fail_fast %}
-        RUN grep -w ID=debian /etc/os-release || { echo "Supplied base image is not a debian image"; exit 1; }
-        RUN major=$(python -c"import sys; print(sys.version_info.major)") &&  [ $major = 3 ]  || { echo "ERROR: Supplied base image does not have python3"; unset major; exit 1; }
-        RUN minor=$(python -c"import sys; print(sys.version_info.minor)") && [ $minor >= 8] && [ $minor <= 10 ] || { echo "WARNING: Supplied base image does not have 3.8 <= python <= 3.10"; unset minor; }
+        RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
+        RUN which python && python --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
+            which python3 && python3 --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
+            { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
 {% endblock %}
 
 {% if config.base_image %}
