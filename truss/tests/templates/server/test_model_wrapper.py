@@ -39,6 +39,8 @@ def test_model_wrapper_load_error_once(app_path):
     config = yaml.safe_load((app_path / "config.yaml").read_text())
     model_wrapper = model_wraper_class(config)
     model_wrapper.load()
+    # Allow load thread to execute
+    time.sleep(0.1)
     output = model_wrapper.predict({})
     assert output == {}
     assert model_wrapper._model.load_count == 3
