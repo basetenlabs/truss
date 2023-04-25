@@ -1,0 +1,39 @@
+name: debug
+
+on:
+  push:
+    branches:
+      - pg/debug_retry_load
+  pull_request:
+    paths:
+      - poetry.lock
+      - pyproject.yaml
+      - "truss/**"
+      - "docs/**"
+      - .github/workflows/pr.yml
+
+concurrency:
+  group: pr-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+
+  test:
+    timeout-minutes: 30
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - name: run tests (poetry run pytest...)
+        run: poetry run pytest truss/tests/templates/server/test_model_wrapper.py
