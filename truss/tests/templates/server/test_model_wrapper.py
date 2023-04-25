@@ -40,7 +40,7 @@ def test_model_wrapper_load_error_once(app_path):
     model_wrapper = model_wraper_class(config)
     model_wrapper.load()
     # Allow load thread to execute
-    time.sleep(0.1)
+    time.sleep(1)
     output = model_wrapper.predict({})
     assert output == {}
     assert model_wrapper._model.load_count == 3
@@ -58,5 +58,5 @@ def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
         model_wrapper = model_wraper_class(config)
         model_wrapper.load()
         # Allow load thread to execute
-        time.sleep(0.1)
+        time.sleep(1)
         assert model_wrapper.load_failed()

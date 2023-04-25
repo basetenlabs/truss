@@ -120,6 +120,7 @@ class ModelWrapper(kserve.Model):
                 NUM_LOAD_RETRIES,
                 self.logger.warn,
                 "Failed to load model.",
+                gap_seconds=1.0,
             )
 
     def preprocess(

@@ -55,6 +55,15 @@ def test_retry_fail_twice():
     mock_logging_fn.assert_called_with("Failed Retrying. Retry count: 1")
 
 
+def test_retry_fail_twice_gap():
+    mock_logging_fn = Mock()
+    fail_mock = FailForCallCount(2)
+    retry(fail_mock, 3, mock_logging_fn, "Failed", gap_seconds=0.1)
+    assert fail_mock.call_count == 3
+    assert mock_logging_fn.call_count == 2
+    mock_logging_fn.assert_called_with("Failed Retrying. Retry count: 1")
+
+
 def test_retry_fail_more_than_limit():
     mock_logging_fn = Mock()
     fail_mock = FailForCallCount(3)
