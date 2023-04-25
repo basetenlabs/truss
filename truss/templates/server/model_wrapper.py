@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import logging
+import os
 import sys
 import time
 import traceback
@@ -12,10 +13,13 @@ from typing import Dict, Optional, Union
 import kserve
 from cloudevents.http import CloudEvent
 from common.external_data_resolver import download_external_data  # noqa: E402
+from common.retry import retry
 from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
+
+NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
 
 
 class ModelWrapper(kserve.Model):
@@ -111,7 +115,12 @@ class ModelWrapper(kserve.Model):
         self._model = model_class(**model_init_params)
 
         if hasattr(self._model, "load"):
-            self._model.load()
+            retry(
+                self._model.load,
+                NUM_LOAD_RETRIES,
+                self.logger.warn,
+                "Failed to load model.",
+            )
 
     def preprocess(
         self,

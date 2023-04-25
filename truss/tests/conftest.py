@@ -775,3 +775,40 @@ def _custom_model_from_code(
         handle_ops(handle)
     handle.spec.model_class_filepath.write_text(model_code)
     return dir_path
+
+
+class Helpers:
+    @staticmethod
+    @contextlib.contextmanager
+    def file_content(file_path: Path, content: str):
+        orig_content = file_path.read_text()
+        try:
+            file_path.write_text(content)
+            yield
+        finally:
+            file_path.write_text(orig_content)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def sys_path(path: Path):
+        try:
+            sys.path.append(str(path))
+            yield
+        finally:
+            sys.path.pop()
+
+    @staticmethod
+    @contextlib.contextmanager
+    def env_var(var: str, value: str):
+        orig_environ = os.environ.copy()
+        try:
+            os.environ[var] = value
+            yield
+        finally:
+            os.environ.clear()
+            os.environ.update(orig_environ)
+
+
+@pytest.fixture
+def helpers():
+    return Helpers()
