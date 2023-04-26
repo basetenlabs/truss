@@ -184,10 +184,6 @@ class TrussSpec:
     def live_reload(self) -> bool:
         return self._config.live_reload
 
-    @property
-    def base_image(self) -> Optional[str]:
-        return self._config.base_image
-
 
 def _join_lines(lines: List[str]) -> str:
     return "\n".join(lines) + "\n"

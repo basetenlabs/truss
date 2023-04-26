@@ -244,7 +244,6 @@ class TrussConfig:
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
-    base_image: Optional[str] = None
 
     @property
     def canonical_python_version(self) -> str:
@@ -291,7 +290,6 @@ class TrussConfig:
             external_data=transform_optional(
                 d.get("external_data"), ExternalData.from_list
             ),
-            base_image=d.get("base_image", None),
         )
         config.validate()
         return config
@@ -329,7 +327,6 @@ class TrussConfig:
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),
-            "base_image": self.base_image,
         }
         if self.external_data is not None:
             d["external_data"] = transform_optional(

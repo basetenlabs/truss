@@ -12,7 +12,6 @@ class ImageBuilder(ABC):
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
         labels: Optional[dict] = None,
-        cache: bool = True,
     ):
         """Build image.
 
@@ -28,7 +27,6 @@ class ImageBuilder(ABC):
                 str(build_dir_path),
                 labels=labels if labels else {},
                 tags=tag or self.default_tag,
-                cache=cache,
             )
 
     @property
