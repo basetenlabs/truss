@@ -119,6 +119,23 @@ def test_calc_truss_ignore_pycache(custom_model_truss_dir: Path):
     assert len(patches) == 0
 
 
+def test_calc_truss_ignore_pycache_existing(custom_model_truss_dir: Path):
+    # If __pycache__ existed before and there are no changes, there should be no
+    # patches.
+    top_pycache_path = custom_model_truss_dir / "__pycache__"
+    top_pycache_path.mkdir()
+    (top_pycache_path / "bla.pyc").touch()
+    model_pycache_path = custom_model_truss_dir / "model" / "__pycache__"
+    model_pycache_path.mkdir()
+    (model_pycache_path / "foo.pyo").touch()
+    sign = calc_truss_signature(custom_model_truss_dir)
+    patches = calc_truss_patch(
+        custom_model_truss_dir,
+        sign,
+    )
+    assert len(patches) == 0
+
+
 def test_calc_truss_ignore_changes_outside_patch_relevant_dirs(
     custom_model_truss_dir: Path,
 ):

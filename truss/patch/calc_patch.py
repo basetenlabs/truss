@@ -134,14 +134,22 @@ def _calc_changed_paths(
     """
     TODO(pankaj) add support for directory creation in patch
     """
-    unignored_paths = _calc_unignored_paths(root, ignore_patterns)
+    root_relative_new_paths = set(
+        (str(path.relative_to(root)) for path in root.glob("**/*"))
+    )
+    unignored_new_paths = _calc_unignored_paths(
+        root, root_relative_new_paths, ignore_patterns
+    )
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
+    new_uningored_path = _calc_unignored_paths(
+        root, previous_root_relative_paths, ignore_patterns
+    )
 
-    added_paths = unignored_paths - previous_root_relative_paths
-    removed_paths = previous_root_relative_paths - unignored_paths
+    added_paths = unignored_new_paths - new_uningored_path
+    removed_paths = new_uningored_path - unignored_new_paths
 
     updated_paths = set()
-    common_paths = unignored_paths.intersection(previous_root_relative_paths)
+    common_paths = unignored_new_paths.intersection(previous_root_relative_paths)
     for path in common_paths:
         full_path: Path = root / path
         if full_path.is_file():
@@ -158,7 +166,9 @@ def _calc_changed_paths(
 
 
 def _calc_unignored_paths(
-    root: Path, ignore_patterns: Optional[List[str]] = None
+    root: Path,
+    root_relative_paths: Set[str],
+    ignore_patterns: Optional[List[str]] = None,
 ) -> Set[str]:
     root_relative_ignored_paths = set()
     if ignore_patterns is not None:
@@ -168,9 +178,6 @@ def _calc_unignored_paths(
             )
             root_relative_ignored_paths.update(ignored_paths_for_pattern)
 
-    root_relative_paths = set(
-        (str(path.relative_to(root)) for path in root.glob("**/*"))
-    )
     return root_relative_paths - root_relative_ignored_paths
 
 
