@@ -1,0 +1,3 @@
+- input:
+    prompt: What is 1+1? Explain your reasoning
+  name: addition example
