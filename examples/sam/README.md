@@ -17,11 +17,12 @@ sam = truss.load("./examples/sam")
 
 baseten.login(os.environ["BASETEN_API_KEY"])
 
-baseten.deploy(sam, model_name"My SAM", publish=True)
+baseten.deploy(sam, model_name="My SAM", publish=True)
 ```
 
 ## Predict
 Example prediction:
+
 ```
 import baseten
 
