@@ -141,15 +141,15 @@ def _calc_changed_paths(
         root, root_relative_new_paths, ignore_patterns
     )
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
-    new_uningored_path = _calc_unignored_paths(
+    unignored_prev_paths = _calc_unignored_paths(
         root, previous_root_relative_paths, ignore_patterns
     )
 
-    added_paths = unignored_new_paths - new_uningored_path
-    removed_paths = new_uningored_path - unignored_new_paths
+    added_paths = unignored_new_paths - unignored_prev_paths
+    removed_paths = unignored_prev_paths - unignored_new_paths
 
     updated_paths = set()
-    common_paths = unignored_new_paths.intersection(previous_root_relative_paths)
+    common_paths = unignored_new_paths.intersection(unignored_prev_paths)
     for path in common_paths:
         full_path: Path = root / path
         if full_path.is_file():
