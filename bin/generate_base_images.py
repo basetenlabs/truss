@@ -53,7 +53,9 @@ def _render_dockerfile(
 ) -> str:
     # Render jinja
     jinja_env = Environment(
-        loader=FileSystemLoader(str(base_path / "docker" / "base_images")),
+        loader=FileSystemLoader(
+            [str(base_path / "docker" / "base_images"), templates_path]
+        ),
     )
     truss_build_template_path = TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
     template = jinja_env.get_template("base_image.Dockerfile.jinja")

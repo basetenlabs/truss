@@ -8,6 +8,7 @@ FROM {{base_image_name_and_tag}}
             { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
 {% endblock %}
 
+# If user base image is supplied in config, apply build commands from truss base image
 {% if config.base_image %}
     {% include truss_build_template_path %}
 {% endif %}
