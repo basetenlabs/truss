@@ -35,6 +35,7 @@ SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
 TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
+TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME = "_truss_build.Dockerfile.jinja"
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
 TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"

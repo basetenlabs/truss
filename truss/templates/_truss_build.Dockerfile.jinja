@@ -1,0 +1,50 @@
+{% if use_gpu %}
+    # Allow statements and log messages to immediately appear in the Knative logs
+    ENV PYTHONUNBUFFERED True
+    ENV DEBIAN_FRONTEND=noninteractive
+
+    RUN apt update && \
+        apt install -y bash \
+                    build-essential \
+                    git \
+                    curl \
+                    ca-certificates \
+                    software-properties-common && \
+        add-apt-repository -y ppa:deadsnakes/ppa && \
+        apt update -y && \
+        apt install -y python{{python_version}} && \
+        apt install -y python{{python_version}}-distutils && \
+        apt install -y python{{python_version}}-venv && \
+        rm -rf /var/lib/apt/lists
+
+    RUN ln -sf /usr/bin/python{{python_version}} /usr/bin/python3 && \
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+        python3 get-pip.py
+
+    RUN python3 -m pip install --no-cache-dir --upgrade pip
+{% else %}
+    RUN apt update && apt install -y
+
+    # Allow statements and log messages to immediately appear in the Knative logs
+    ENV PYTHONUNBUFFERED True
+{% endif %}
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && rm -rf /root/.cache/pip
+
+COPY ./requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && rm -rf /root/.cache/pip
+
+# This is a hack, kfserving uses table_logger, which doesn't work well with
+# numpy 1.24 onwards, where np.float and np.int have been remove.
+# https://github.com/AleksTk/table-logger/blob/v0.3.6/table_logger/table_logger.py#L80
+# Monkey patch table_logger here. Ultimately we should move away from kfserving,
+# perhaps to kserve.
+RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.float:/d' {} \;
+
+{% if live_reload %}
+COPY ./control /control
+RUN python3 -m venv /control/.env \
+    && /control/.env/bin/pip3 install -r /control/requirements.txt
+{% endif %}

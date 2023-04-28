@@ -95,6 +95,39 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "base_image, expected_fail",
+    [
+        ("baseten/truss-server-base:3.9-v0.4.3", False),
+        ("baseten/truss-training-base:3.9-v0.4.3", False),
+        ("python:3.8.3", False),
+        ("alpine", True),
+        ("python:2.7-slim", True),
+        ("python:3.5-slim", True),
+    ],
+)
+def test_build_docker_image_from_user_base_image(
+    custom_model_truss_dir, base_image, expected_fail
+):
+    th = TrussHandle(custom_model_truss_dir)
+    th.set_base_image(base_image)
+    try:
+        th.build_serving_docker_image(cache=False)
+    except DockerException as exc:
+        assert expected_fail is True
+        assert "It returned with code 1" in str(exc)
+
+
+@pytest.mark.integration
+def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    th.set_base_image("baseten/truss-server-base:3.9-v0.4.3")
+    with ensure_kill_all():
+        result = th.docker_predict([1, 2])
+        assert result == {"predictions": [4, 5]}
+
+
+@pytest.mark.integration
 def test_build_docker_image_gpu(custom_model_truss_dir_for_gpu, tmp_path):
     th = TrussHandle(custom_model_truss_dir_for_gpu)
     tag = "test-build-image-gpu-tag:0.0.1"

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from jinja2 import Environment, FileSystemLoader
+from truss.constants import TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
 from truss.contexts.image_builder.util import (
     truss_base_image_name,
     truss_base_image_tag,
@@ -52,14 +53,18 @@ def _render_dockerfile(
 ) -> str:
     # Render jinja
     jinja_env = Environment(
-        loader=FileSystemLoader(str(base_path / "docker" / "base_images")),
+        loader=FileSystemLoader(
+            [str(base_path / "docker" / "base_images"), templates_path]
+        ),
     )
+    truss_build_template_path = TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
     template = jinja_env.get_template("base_image.Dockerfile.jinja")
     return template.render(
         use_gpu=use_gpu,
         live_reload=live_reload,
         job_type=job_type,
         python_version=python_version,
+        truss_build_template_path=truss_build_template_path,
     )
 
 

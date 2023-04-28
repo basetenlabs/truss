@@ -12,6 +12,7 @@ from truss.constants import (
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
+    TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
@@ -104,15 +105,19 @@ class ServingImageBuilder(ImageBuilder):
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
-        base_image_name = truss_base_image_name(job_type="server")
+        truss_build_template_path = TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
         python_version = to_dotted_python_version(config.python_version)
-        tag = truss_base_image_tag(
-            python_version=python_version,
-            use_gpu=config.resources.use_gpu,
-            live_reload=config.live_reload,
-            version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
-        )
-        base_image_name_and_tag = f"{base_image_name}:{tag}"
+        if config.base_image:
+            base_image_name_and_tag = config.base_image
+        else:
+            base_image_name = truss_base_image_name(job_type="server")
+            tag = truss_base_image_tag(
+                python_version=python_version,
+                use_gpu=config.resources.use_gpu,
+                live_reload=config.live_reload,
+                version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
+            )
+            base_image_name_and_tag = f"{base_image_name}:{tag}"
         should_install_system_requirements = file_is_not_empty(
             build_dir / SYSTEM_PACKAGES_TXT_FILENAME
         )
@@ -125,6 +130,9 @@ class ServingImageBuilder(ImageBuilder):
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
             config=config,
+            truss_build_template_path=truss_build_template_path,
+            python_version=python_version,
+            live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(self._truss_dir),
