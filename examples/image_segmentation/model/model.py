@@ -28,12 +28,6 @@ class Model:
         self._model = models.segmentation.deeplabv3_resnet101(pretrained=1).eval()
         self._device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def preprocess(self, request: Dict) -> Dict:
-        return request
-
-    def postprocess(self, request: Dict) -> Dict:
-        return request
-
     def predict(self, request: Dict) -> Dict[str, List]:
         return [self._predict_single(instance) for instance in request["instances"]]
 
