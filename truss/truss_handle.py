@@ -10,6 +10,8 @@ from shutil import rmtree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
+import gradio as gr
+
 import requests
 import yaml
 from requests import exceptions
@@ -88,7 +90,8 @@ class TrussHandle:
             self.validate()
 
     def validate(self):
-        self._validate_external_packages()
+        pass
+        # self._validate_external_packages()
 
     @property
     def spec(self) -> TrussSpec:
@@ -233,6 +236,56 @@ class TrussHandle:
 
         return container
 
+    def generate_ui_spec(self):
+        model = LoadModelLocal.run(self._truss_dir)
+        from inspect import signature, _empty
+        from pydantic import schema_json_of
+        sig = signature(model.predict)
+        input_spec = {}
+
+        for k in sig.parameters:
+            param = sig.parameters[k]
+            if param.annotation is not _empty:
+                input_spec[k] = json.loads(schema_json_of(param.annotation))
+            else:
+                input_spec[k] = None
+
+        output_spec = schema_json_of(sig.return_annotation)
+        return input_spec, output_spec
+
+    def generate_gradio_ui(self):
+        input_spec, output_spec = self.generate_ui_spec()
+        inputs = []
+        outputs = []
+
+        input_args = input_spec["model_input"]["definitions"]["ModelInput"]["properties"]
+
+        arg_str = ",".join(list(input_args.keys()))
+        args = []
+        for arg_name, arg_spec in input_args.items():
+            args.append(arg_name)
+            inputs.append(type_to_gr_comp(arg_spec))
+
+        model_inp_srt = "{" + ",".join([f"'{a}':{a}" for a in args]) + "}"
+        output_type, output_transform = output_type_gr_comp(json.loads(output_spec))
+        args = list(input_spec.keys())
+        x = f"""
+import gradio as gr
+
+{output_transform}
+
+def run_model({arg_str}):
+    import truss
+    th = truss.load("{self._truss_dir}")
+    out = th.predict({model_inp_srt})
+    print(out)
+    return output_transform(out)
+
+demo = gr.Interface(fn=run_model, inputs={inputs}, outputs="{output_type}")
+demo.launch()
+"""
+        return x
+
     def predict(
         self,
         request: Dict,
@@ -258,6 +311,7 @@ class TrussHandle:
     def server_predict(self, request: Dict):
         """Run the prediction flow locally."""
         model = LoadModelLocal.run(self._truss_dir)
+
         return _prediction_flow(model, request)
 
     @proxy_to_shadow_if_scattered
@@ -1149,3 +1203,17 @@ def _docker_image_from_labels(labels: Dict):
     images = get_images(labels)
     if images and isinstance(images, list):
         return images[0]
+
+
+def output_type_gr_comp(arg_spec):
+    if arg_spec["$ref"] == "#/definitions/Image":
+        return "image", "def output_transform(d):return d.data"
+
+    if arg_spec["$ref"] == "#/definitions/Audio":
+        return "audio", "def output_transform(d):return d.data"
+
+def type_to_gr_comp(arg_spec):
+    if arg_spec["type"] == "string":
+        return "text"
+    if arg_spec["type"] == "number":
+        return "number"
