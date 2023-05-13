@@ -1,7 +1,8 @@
 import fnmatch
-import hashlib
 from pathlib import Path
 from typing import Any, List, Optional
+
+from blake3 import blake3
 
 
 def directory_content_hash(
@@ -17,7 +18,7 @@ def directory_content_hash(
     Also, note that name of the root directory is not taken into account, only the contents
     underneath. The (root) Directory will have the same hash, even if renamed.
     """
-    hasher = hashlib.sha256()
+    hasher = blake3()
     paths = [
         path
         for path in root.glob("**/*")
@@ -32,14 +33,14 @@ def directory_content_hash(
 
 
 def file_content_hash(file: Path) -> bytes:
-    """Calculate sha256 of file content.
+    """Calculate blake3 hash of file content.
     Returns: binary hash of content
     """
     return _file_content_hash_loaded_hasher(file).digest()
 
 
 def file_content_hash_str(file: Path) -> str:
-    """Calculate sha256 of file content.
+    """Calculate blake3 hash of file content.
 
     Returns: string hash of content
     """
@@ -47,7 +48,7 @@ def file_content_hash_str(file: Path) -> str:
 
 
 def _file_content_hash_loaded_hasher(file: Path) -> Any:
-    hasher = hashlib.sha256()
+    hasher = blake3()
     buffer = bytearray(128 * 1024)
     mem_view = memoryview(buffer)
     with file.open("rb") as f:
@@ -62,13 +63,13 @@ def _file_content_hash_loaded_hasher(file: Path) -> Any:
 
 
 def str_hash(content: str) -> bytes:
-    hasher = hashlib.sha256()
+    hasher = blake3()
     hasher.update(content.encode("utf-8"))
     return hasher.digest()
 
 
 def str_hash_str(content: str) -> str:
-    hasher = hashlib.sha256()
+    hasher = blake3()
     hasher.update(content.encode("utf-8"))
     return hasher.hexdigest()
 
