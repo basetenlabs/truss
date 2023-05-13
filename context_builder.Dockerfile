@@ -5,7 +5,12 @@
 
 # This step is to install blake3
 FROM python:3.9-alpine
-RUN apk add cargo && pip install blake3
+RUN apk add curl cargo
+ENV PATH="/root/.local/bin:${PATH}"
+RUN curl -sSL https://install.python-poetry.org | python -
+COPY . .
+RUN poetry add blake3 --group=builder --lock
+RUN poetry install --only builder
 
 FROM python:3.9-alpine
 
@@ -15,6 +20,6 @@ RUN curl -sSL https://install.python-poetry.org | python -
 ENV PATH="/root/.local/bin:${PATH}"
 COPY . .
 
-# Copy over blake3 from previous stage
-COPY --from=0 /usr/local/lib/python3.9/site-packages/blake3 /usr/local/lib/python3.9/site-packages/blake3
-RUN poetry install --only builder
+COPY --from=0 /root/.cache/pypoetry/virtualenvs/truss-il7asoJj-py3.9 /root/.cache/pypoetry/virtualenvs/truss-il7asoJj-py3.9
+COPY --from=0 /pyproject.toml /pyproject.toml
+COPY --from=0 /poetry.lock /poetry.lock
