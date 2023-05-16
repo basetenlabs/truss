@@ -13,7 +13,6 @@ from truss.constants import (
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
@@ -114,7 +113,6 @@ class ServingImageBuilder(ImageBuilder):
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
-        truss_build_template_path = TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
         python_version = to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image
@@ -139,7 +137,6 @@ class ServingImageBuilder(ImageBuilder):
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
             config=config,
-            truss_build_template_path=truss_build_template_path,
             python_version=python_version,
             live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
