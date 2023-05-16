@@ -1,8 +1,15 @@
-{% extends "base.Dockerfile.jinja" %}
+ARG PYVERSION=py39
+FROM baseten/truss-server-base:3.9-v0.4.3
 
-{% block base_image_patch %}
+RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
+RUN which python && python --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
+    which python3 && python3 --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
+    { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
+
+RUN pip install --upgrade pip --no-cache-dir \
+    && rm -rf /root/.cache/pip
+
 # If user base image is supplied in config, apply build commands from truss base image
-{% if config.base_image %}
 ENV PYTHONUNBUFFERED True
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,47 +31,19 @@ RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.
 # perhaps to kserve.
 RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.float:/d' {} \;
 
-{% if live_reload %}
-COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-{% endif %}
-{% endif %}
-
-{% endblock %}
-
-{% block install_requirements %}
-    {%- if should_install_server_requirements %}
-COPY ./server_requirements.txt server_requirements.txt
-RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-    {%- endif %}
-{{ super() }}
-{% endblock %}
-
-{% block b10cp %}
 RUN mkdir -p /app/bin \
     && curl https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.0.2-linux-amd64 -o /app/bin/b10cp \
     && chmod +x /app/bin/b10cp
-{% endblock %}
 
-{% block app_copy %}
+ENV APP_HOME /app
+WORKDIR $APP_HOME
+
 COPY ./server /app
-COPY ./{{ config.model_module_dir }} /app/model
+COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
-    {%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
-    {%- endif %}
-{% endblock %}
+COPY ./data /app/data
 
+COPY ./packages /packages
 
-{% block run %}
-    {%- if config.live_reload %}
-ENV HASH_TRUSS {{truss_hash}}
-ENV CONTROL_SERVER_PORT 8080
-ENV INFERENCE_SERVER_PORT 8090
-CMD exec /control/.env/bin/python3 /control/control/server.py
-    {%- else %}
 ENV INFERENCE_SERVER_PORT 8080
 CMD exec python3 /app/inference_server.py
-    {%- endif %}
-{% endblock %}

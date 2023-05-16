@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 from truss.constants import (
+    BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -12,7 +13,6 @@ from truss.constants import (
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
@@ -52,13 +52,12 @@ class ServingImageBuilder(ImageBuilder):
         return f"{self._spec.model_framework_name}-model:latest"
 
     def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
-        """Prepare a directory for building the docker image from.
-
-        Returns:
-            docker command to build the docker image.
+        """
+        Prepare a directory for building the docker image from.
         """
         truss_dir = self._truss_dir
         spec = self._spec
+        config = spec.config
         model_framework_name = spec.model_framework_name
         if build_dir is None:
             # TODO(pankaj) We probably don't need model framework specific directory.
@@ -78,8 +77,17 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         # Copy control server code
-        if self._spec.config.live_reload:
+        if config.live_reload:
             copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
+
+        # Copy base TrussServer requirements if supplied custom base image
+        if config.base_image:
+            base_truss_server_reqs_filepath = (
+                SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
+            )
+            copy_into_build_dir(
+                base_truss_server_reqs_filepath, BASE_SERVER_REQUIREMENTS_TXT_FILENAME
+            )
 
         # Copy model framework specific requirements file
         server_reqs_filepath = (
@@ -105,7 +113,6 @@ class ServingImageBuilder(ImageBuilder):
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
-        truss_build_template_path = TRUSS_BUILD_DOCKERFILE_TEMPLATE_NAME
         python_version = to_dotted_python_version(config.python_version)
         if config.base_image:
             base_image_name_and_tag = config.base_image
@@ -130,7 +137,6 @@ class ServingImageBuilder(ImageBuilder):
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
             config=config,
-            truss_build_template_path=truss_build_template_path,
             python_version=python_version,
             live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
