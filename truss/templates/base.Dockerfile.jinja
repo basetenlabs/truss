@@ -8,6 +8,9 @@ RUN which python && python --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
     { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
 {% endblock %}
 
+RUN pip install --upgrade pip --no-cache-dir \
+    && rm -rf /root/.cache/pip
+
 # If user base image is supplied in config, apply build commands from truss base image
 {% if config.base_image %}
 ENV PYTHONUNBUFFERED True
@@ -21,12 +24,8 @@ RUN apt update && \
                 ca-certificates \
                 software-properties-common
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && rm -rf /root/.cache/pip
-
-COPY ./requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt \
-    && rm -rf /root/.cache/pip
+COPY ./base_server_requirements.txt base_server_requirements.txt
+RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
 # This is a hack, kfserving uses table_logger, which doesn't work well with
 # numpy 1.24 onwards, where np.float and np.int have been remove.
@@ -42,8 +41,6 @@ RUN python3 -m venv /control/.env \
 {% endif %}
 {% endif %}
 
-RUN pip install --upgrade pip --no-cache-dir \
-    && rm -rf /root/.cache/pip
 {% if config.model_framework.value == 'huggingface_transformer' %}
     {% if config.resources.use_gpu %}
 # HuggingFace pytorch gpu support needs mkl

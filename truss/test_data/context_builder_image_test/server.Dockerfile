@@ -8,6 +8,9 @@ RUN which python && python --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
     { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
 
 
+RUN pip install --upgrade pip --no-cache-dir \
+    && rm -rf /root/.cache/pip
+
 # If user base image is supplied in config, apply build commands from truss base image
 
 ENV PYTHONUNBUFFERED True
@@ -21,12 +24,8 @@ RUN apt update && \
                 ca-certificates \
                 software-properties-common
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && rm -rf /root/.cache/pip
-
-COPY ./requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt \
-    && rm -rf /root/.cache/pip
+COPY ./base_server_requirements.txt base_server_requirements.txt
+RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
 # This is a hack, kfserving uses table_logger, which doesn't work well with
 # numpy 1.24 onwards, where np.float and np.int have been remove.
@@ -38,8 +37,6 @@ RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.fl
 
 
 
-RUN pip install --upgrade pip --no-cache-dir \
-    && rm -rf /root/.cache/pip
 
 
 
@@ -50,10 +47,6 @@ RUN pip install --upgrade pip --no-cache-dir \
 
 
 
-    
-COPY ./base_server_requirements.txt base_server_requirements.txt
-RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-    
 
 
 
