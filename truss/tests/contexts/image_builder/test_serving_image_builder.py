@@ -1,4 +1,3 @@
-import filecmp
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,7 +17,17 @@ def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path)
-        assert filecmp.cmp(
-            tmp_path / "Dockerfile",
+        with open(tmp_path / "Dockerfile", "r") as f:
+            gen_docker_lines = f.readlines()
+        with open(
             f"{BASE_DIR}/../../../test_data/context_builder_image_test/server.Dockerfile",
-        )
+            "r",
+        ) as f:
+            server_docker_lines = f.readlines()
+
+        def filter_empty_lines(lines):
+            return list(filter(lambda x: x and x != "\n", lines))
+
+        gen_docker_lines = filter_empty_lines(gen_docker_lines)
+        server_docker_lines = filter_empty_lines(server_docker_lines)
+        assert gen_docker_lines == server_docker_lines

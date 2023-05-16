@@ -1,18 +1,15 @@
 ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3
 
-
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
 RUN which python && python --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
     which python3 && python3 --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
     { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
 
-
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 
 # If user base image is supplied in config, apply build commands from truss base image
-
 ENV PYTHONUNBUFFERED True
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -34,49 +31,19 @@ RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.
 # perhaps to kserve.
 RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.float:/d' {} \;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 RUN mkdir -p /app/bin \
     && curl https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.0.2-linux-amd64 -o /app/bin/b10cp \
     && chmod +x /app/bin/b10cp
 
-
-
 ENV APP_HOME /app
 WORKDIR $APP_HOME
-
-
 
 COPY ./server /app
 COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
 COPY ./data /app/data
 
-
-
 COPY ./packages /packages
-
-
-
-
-
-
 
 ENV INFERENCE_SERVER_PORT 8080
 CMD exec python3 /app/inference_server.py
