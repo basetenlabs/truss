@@ -23,4 +23,6 @@
     FROM python:{{python_version}}
 {% endif %}
 
-{% include truss_build_template_path %}
+{% with use_gpu=use_gpu, python_version=python_version, live_reload=live_reload %}
+    {% include truss_build_template_path %}
+{% endwith %}

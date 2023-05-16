@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 from truss.constants import (
+    BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -52,13 +53,12 @@ class ServingImageBuilder(ImageBuilder):
         return f"{self._spec.model_framework_name}-model:latest"
 
     def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
-        """Prepare a directory for building the docker image from.
-
-        Returns:
-            docker command to build the docker image.
+        """
+        Prepare a directory for building the docker image from.
         """
         truss_dir = self._truss_dir
         spec = self._spec
+        config = spec.config
         model_framework_name = spec.model_framework_name
         if build_dir is None:
             # TODO(pankaj) We probably don't need model framework specific directory.
@@ -78,8 +78,17 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         # Copy control server code
-        if self._spec.config.live_reload:
+        if config.live_reload:
             copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
+
+        # Copy base TrussServer requirements if supplied custom base image
+        if config.base_image:
+            base_truss_server_reqs_filepath = (
+                SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
+            )
+            copy_into_build_dir(
+                base_truss_server_reqs_filepath, BASE_SERVER_REQUIREMENTS_TXT_FILENAME
+            )
 
         # Copy model framework specific requirements file
         server_reqs_filepath = (

@@ -31,6 +31,7 @@ CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 SERVING_DIR: pathlib.Path = TEMPLATES_DIR
 
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
+BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
 TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"

@@ -99,14 +99,13 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
     "base_image, expected_fail",
     [
         ("baseten/truss-server-base:3.9-v0.4.3", False),
-        ("baseten/truss-training-base:3.9-v0.4.3", False),
         ("python:3.8.3", False),
         ("alpine", True),
         ("python:2.7-slim", True),
         ("python:3.5-slim", True),
     ],
 )
-def test_build_docker_image_from_user_base_image(
+def test_build_serving_docker_image_from_user_base_image(
     custom_model_truss_dir, base_image, expected_fail
 ):
     th = TrussHandle(custom_model_truss_dir)
@@ -119,9 +118,16 @@ def test_build_docker_image_from_user_base_image(
 
 
 @pytest.mark.integration
+def test_build_training_docker_image_from_user_base_image(custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    th.set_base_image("baseten/truss-training-base:3.9-v0.4.3")
+    th.build_training_docker_image()
+
+
+@pytest.mark.integration
 def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.set_base_image("baseten/truss-server-base:3.9-v0.4.3")
+    th.set_base_image("pytorch/pytorch")
     with ensure_kill_all():
         result = th.docker_predict([1, 2])
         assert result == {"predictions": [4, 5]}
