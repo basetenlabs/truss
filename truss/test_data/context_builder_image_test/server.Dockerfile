@@ -2,9 +2,14 @@ ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3
 
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN which python && python --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
-    which python3 && python3 --version | grep -E '3\.[0-9]|10\.[0-9][0-9]' || \
-    { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
+RUN pythonVersion=$(echo $(command -v python >/dev/null 2>&1 && python --version || python3 --version) | cut -d" " -f2 | cut -d"." -f1,2) \
+    && echo $pythonVersion | grep -E '3\.[0-9]|10\.[0-9][0-9]' \
+    && apt-get update && ( apt-get install -y --no-install-recommends python$pythonVersion-venv || apt-get install -y --no-install-recommends python3-venv )  \
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/* \
+    || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.10"; exit 1; }
+
 
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
@@ -19,7 +24,10 @@ RUN apt update && \
                 git \
                 curl \
                 ca-certificates \
-                software-properties-common
+                software-properties-common \
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
