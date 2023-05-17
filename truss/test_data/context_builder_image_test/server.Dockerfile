@@ -2,7 +2,7 @@ ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3
 
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN pythonVersion=$(echo $(python --version) | cut -d" " -f2 | cut -d"." -f1,2 || echo $(python3 --version) | cut -d" " -f2 | cut -d"." -f1,2) \
+RUN pythonVersion=$(echo $(command -v python >/dev/null 2>&1 && python --version || python3 --version) | cut -d" " -f2 | cut -d"." -f1,2) \
     && echo $pythonVersion | grep -E '3\.[0-9]|10\.[0-9][0-9]' \
     && apt-get update && ( apt-get install -y --no-install-recommends python$pythonVersion-venv || apt-get install -y --no-install-recommends python3-venv )  \
     && apt-get autoremove -y \
