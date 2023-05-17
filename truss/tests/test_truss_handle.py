@@ -99,17 +99,18 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
     "base_image, expected_fail",
     [
         ("baseten/truss-server-base:3.9-v0.4.3", False),
-        ("python:3.8.3", False),
+        ("python:3.8", False),
         ("alpine", True),
         ("python:2.7-slim", True),
         ("python:3.5-slim", True),
     ],
 )
-def test_build_serving_docker_image_from_user_base_image(
+def test_build_serving_docker_image_from_user_base_image_live_reload(
     custom_model_truss_dir, base_image, expected_fail
 ):
     th = TrussHandle(custom_model_truss_dir)
     th.set_base_image(base_image)
+    th.live_reload()
     try:
         th.build_serving_docker_image(cache=False)
     except DockerException as exc:
