@@ -10,6 +10,8 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Dict, Optional
 
+from common.external_data_resolver import download_external_data
+from common.retry import retry
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -50,7 +52,7 @@ class ModelWrapper:
             self.try_load()
             self.ready = True
             self._status = ModelWrapper.Status.READY
-            self.logger.info(
+            self._logger.info(
                 f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
             )
 
@@ -109,7 +111,7 @@ class ModelWrapper:
             retry(
                 self._model.load,
                 NUM_LOAD_RETRIES,
-                self.logger.warn,
+                self._logger.warn,
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
