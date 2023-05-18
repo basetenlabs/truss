@@ -183,7 +183,7 @@ class TrussHandle:
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
                              by hitting this url.
-            wait_for_server_ready: Used for testing liveness/readiness probes.
+            wait_for_server_ready: If true, wait for server to pass readiness probe before returning.
 
         Returns:
             Container, which can be used to get information about the running,

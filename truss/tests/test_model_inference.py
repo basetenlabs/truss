@@ -87,31 +87,36 @@ def test_slow_truss():
         truss_dir = truss_root / "test_data" / "server_conformance_test_truss"
         tr = TrussHandle(truss_dir)
 
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=False
-        )
-        print(f"\n\nContainer: {container}\n\n")
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
 
         truss_server_addr = "http://localhost:8090"
 
+        def _test_liveness_probe(expected_code):
+            live = requests.get(f"{truss_server_addr}/")
+            assert live.status_code == expected_code
+
+        def _test_readiness_probe(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == expected_code
+
+        SERVER_WARMUP_TIME = 3
+        LOAD_TEST_TIME = 12
+        LOAD_BUFFER_TIME = 7
+        PREDICT_TEST_TIME = 15
+
         # Sleep a few seconds to get the server some time to wake up
-        time.sleep(3)
+        time.sleep(SERVER_WARMUP_TIME)
 
         # The truss takes about 30 seconds to load.
         # We want to make sure that it's not ready for that time.
-        for _ in range(12):
-            live = requests.get(f"{truss_server_addr}/")
-            assert live.status_code == 200
-            ready = requests.get(f"{truss_server_addr}/v1/models/model")
-            assert ready.status_code == 503
+        for _ in range(LOAD_TEST_TIME):
+            _test_liveness_probe(200)
+            _test_readiness_probe(503)
             time.sleep(1)
 
-        time.sleep(7)
-        live = requests.get(f"{truss_server_addr}/")
-        assert live.status_code == 200
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 200
-        time.sleep(1)
+        time.sleep(LOAD_BUFFER_TIME)
+        _test_liveness_probe(200)
+        _test_readiness_probe(200)
 
         predict_call = Thread(
             target=lambda: requests.post(
@@ -120,11 +125,9 @@ def test_slow_truss():
         )
         predict_call.start()
 
-        for _ in range(15):
-            live = requests.get(f"{truss_server_addr}/")
-            assert live.status_code == 200
-            ready = requests.get(f"{truss_server_addr}/v1/models/model")
-            assert ready.status_code == 200
+        for _ in range(PREDICT_TEST_TIME):
+            _test_liveness_probe(200)
+            _test_readiness_probe(200)
             time.sleep(1)
 
         predict_call.join()
