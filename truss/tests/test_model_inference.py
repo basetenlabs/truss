@@ -55,12 +55,13 @@ def test_infer_model_information(pytorch_model_with_init_args):
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
-        ("py37", "py37"),
+        ("py37", "py38"),
         ("py38", "py38"),
         ("py39", "py39"),
-        ("py310", "py39"),
-        ("py311", "py39"),
-        ("py36", "py37"),
+        ("py310", "py310"),
+        ("py311", "py311"),
+        ("py312", "py311"),
+        ("py36", "py38"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):
