@@ -1,9 +1,12 @@
 import logging
 import tempfile
+import time
 from pathlib import Path
+from threading import Thread
 
 import numpy as np
 import pytest
+import requests
 from truss.constants import PYTORCH
 from truss.model_frameworks import SKLearn
 from truss.model_inference import (
@@ -75,3 +78,53 @@ def test_binary_request(sklearn_rfc_model):
         predictions = tr.docker_predict([[0, 0, 0, 0]], local_port=8090, binary=True)
         assert len(predictions["probabilities"]) == 1
         assert np.shape(predictions["probabilities"]) == (1, 3)
+
+
+@pytest.mark.integration
+def test_slow_truss():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "server_conformance_test_truss"
+        tr = TrussHandle(truss_dir)
+
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        print(f"\n\nContainer: {container}\n\n")
+
+        truss_server_addr = "http://localhost:8090"
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(3)
+
+        # The truss takes about 30 seconds to load.
+        # We want to make sure that it's not ready for that time.
+        for _ in range(12):
+            live = requests.get(f"{truss_server_addr}/")
+            assert live.status_code == 200
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == 503
+            time.sleep(1)
+
+        time.sleep(7)
+        live = requests.get(f"{truss_server_addr}/")
+        assert live.status_code == 200
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 200
+        time.sleep(1)
+
+        predict_call = Thread(
+            target=lambda: requests.post(
+                f"{truss_server_addr}/v1/models/model:predict", json={}
+            )
+        )
+        predict_call.start()
+
+        for _ in range(15):
+            live = requests.get(f"{truss_server_addr}/")
+            assert live.status_code == 200
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == 200
+            time.sleep(1)
+
+        predict_call.join()
