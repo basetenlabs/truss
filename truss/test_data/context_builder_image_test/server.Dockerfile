@@ -32,13 +32,6 @@ RUN apt update && \
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
-# This is a hack, kfserving uses table_logger, which doesn't work well with
-# numpy 1.24 onwards, where np.float and np.int have been remove.
-# https://github.com/AleksTk/table-logger/blob/v0.3.6/table_logger/table_logger.py#L80
-# Monkey patch table_logger here. Ultimately we should move away from kfserving,
-# perhaps to kserve.
-RUN find /usr/local/lib/ -name table_logger.py -exec sed -i '/np\.int:/d;/np\.float:/d' {} \;
-
 RUN mkdir -p /app/bin \
     && curl https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.0.2-linux-amd64 -o /app/bin/b10cp \
     && chmod +x /app/bin/b10cp

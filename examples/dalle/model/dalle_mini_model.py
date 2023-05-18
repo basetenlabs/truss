@@ -60,7 +60,7 @@ class Singleton(object):
         pass
 
 
-# kserve forks a child process. a HuggingFace parallelizer/tokenizer will disable any parallelism if it
+# a HuggingFace parallelizer/tokenizer will disable any parallelism if it
 # detects that it is in a forked process; so we ensure that there is at most one object per process, and
 # initiate it lazily with this singleton pattern
 class DalleTokenizer(Singleton):
