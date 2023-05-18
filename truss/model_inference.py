@@ -24,6 +24,8 @@ PYTHON_VERSIONS = {
     "py37",
     "py38",
     "py39",
+    "py310",
+    "py311",
 }
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -88,20 +90,19 @@ def map_to_supported_python_version(python_version: str) -> str:
     if python_major_version > 3:
         raise NotImplementedError("Only python version 3 is supported")
 
-    # TODO(pankaj) Add full support for 3.10 and 3.11, this is stop-gap.
-    if python_minor_version > 9:
+    if python_minor_version > 11:
         logger.info(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.9, the highest version that Truss currently supports."
+            " to 3.11, the highest version that Truss currently supports."
         )
-        return "py39"
+        return "py311"
 
-    if python_minor_version < 7:
+    if python_minor_version < 8:
         logger.info(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.7, the lowest version that Truss currently supports."
+            " to 3.8, the lowest version that Truss currently supports."
         )
-        return "py37"
+        return "py38"
 
     return python_version
 

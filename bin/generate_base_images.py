@@ -19,10 +19,7 @@ templates_path = base_path / "truss" / "templates"
 sys.path.append(str(base_path))
 
 
-PYTHON_VERSIONS = {
-    "3.8",
-    "3.9",
-}
+PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
 
 
 def _bool_arg_str_to_values(bool_arg_str: str) -> List[bool]:
