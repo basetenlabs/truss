@@ -169,6 +169,7 @@ class TrussHandle:
         local_port: int = INFERENCE_SERVER_PORT,
         detach=True,
         patch_ping_url: Optional[str] = None,
+        wait_for_server_ready: bool = True,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -182,6 +183,7 @@ class TrussHandle:
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
                              by hitting this url.
+            wait_for_server_ready: If true, wait for server to pass readiness probe before returning.
 
         Returns:
             Container, which can be used to get information about the running,
@@ -224,7 +226,7 @@ class TrussHandle:
             )
         model_base_url = f"http://localhost:{local_port}/v1/models/model"
         try:
-            wait_for_truss(model_base_url, container)
+            wait_for_truss(model_base_url, container, wait_for_server_ready)
         except ContainerNotFoundError as err:
             raise err
         except (ContainerIsDownError, HTTPError, ConnectionError) as err:
@@ -1028,42 +1030,14 @@ class TrussHandle:
 
 
 def _prediction_flow(model, request: Dict):
-    """This flow attempts to mimic the request life-cycle of a kserve server"""
-    _validate_request_input(request)
-    _map_instances_inputs(request)
+    """This flow attempts to mimic the request life-cycle of a server"""
+    # TODO: can we just call ModelWrapper directly here?
     if hasattr(model, "preprocess"):
         request = model.preprocess(request)
     response = model.predict(request)
     if hasattr(model, "postprocess"):
         response = model.postprocess(response)
     return response
-
-
-def _map_instances_inputs(request: Dict) -> Dict[str, Any]:
-    # TODO(pankaj) Share this code with baseten deployed code
-    if "instances" in request and "inputs" not in request:
-        request["inputs"] = request["instances"]
-    elif "inputs" in request and "instances" not in request:
-        request["instances"] = request["inputs"]
-    return request
-
-
-def _validate_request_input(request: Dict) -> None:
-    # TODO(pankaj) Should these checks be there?
-    if _is_invalid_list_input_prop(request, "instances") or _is_invalid_list_input_prop(
-        request, "inputs"
-    ):
-        raise Exception('Expected "instances" or "inputs" to be a list')
-
-
-def _is_invalid_list_input_prop(request: Dict, prop: str) -> bool:
-    return prop in request and not _is_valid_list_type(request[prop])
-
-
-def _is_valid_list_type(obj) -> bool:
-    import numpy as np
-
-    return isinstance(obj, (list, np.ndarray))
 
 
 def _wait_for_docker_build(container) -> None:
@@ -1089,7 +1063,9 @@ def _wait_for_model_server(url: str) -> Response:
     return requests.get(url)
 
 
-def wait_for_truss(url: str, container) -> None:
+def wait_for_truss(
+    url: str, container: str, wait_for_server_ready: bool = True
+) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
     try:
@@ -1098,8 +1074,8 @@ def wait_for_truss(url: str, container) -> None:
         raise ContainerNotFoundError(message=f"Container {container} was not found")
     except RetryError as retry_err:
         retry_err.reraise()
-
-    _wait_for_model_server(url)
+    if wait_for_server_ready:
+        _wait_for_model_server(url)
 
 
 def _prepare_secrets_mount_dir() -> Path:

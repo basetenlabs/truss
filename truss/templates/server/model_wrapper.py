@@ -8,13 +8,10 @@ import traceback
 from enum import Enum
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional
 
-import kserve
-from cloudevents.http import CloudEvent
-from common.external_data_resolver import download_external_data  # noqa: E402
+from common.external_data_resolver import download_external_data
 from common.retry import retry
-from kserve.grpc.grpc_predict_v2_pb2 import ModelInferRequest, ModelInferResponse
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -22,25 +19,21 @@ MODEL_BASENAME = "model"
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
 
 
-class ModelWrapper(kserve.Model):
+class ModelWrapper:
     class Status(Enum):
         NOT_READY = 0
         LOADING = 1
         READY = 2
         FAILED = 3
 
-    _config: Dict
-    _model: object
-    _load_lock: Lock = Lock()
-    _predict_lock: Lock = Lock()
-    _status: Status = Status.NOT_READY
-    _logger: logging.Logger
-    ready: bool
-
     def __init__(self, config: Dict):
-        super().__init__(MODEL_BASENAME)
         self._config = config
-        self.logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
+        self.name = MODEL_BASENAME
+        self.ready = False
+        self._load_lock = Lock()
+        self._predict_lock = Lock()
+        self._status = ModelWrapper.Status.NOT_READY
 
     def load(self) -> bool:
         if self.ready:
@@ -52,20 +45,20 @@ class ModelWrapper(kserve.Model):
 
         self._status = ModelWrapper.Status.LOADING
 
-        self.logger.info("Executing model.load()...")
+        self._logger.info("Executing model.load()...")
 
         try:
             start_time = time.perf_counter()
             self.try_load()
             self.ready = True
             self._status = ModelWrapper.Status.READY
-            self.logger.info(
+            self._logger.info(
                 f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
             )
 
             return self.ready
         except Exception:
-            self.logger.exception("Exception while loading model")
+            self._logger.exception("Exception while loading model")
             self._status = ModelWrapper.Status.FAILED
         finally:
             self._load_lock.release()
@@ -118,34 +111,34 @@ class ModelWrapper(kserve.Model):
             retry(
                 self._model.load,
                 NUM_LOAD_RETRIES,
-                self.logger.warn,
+                self._logger.warn,
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
 
     def preprocess(
         self,
-        payload: Union[Dict, CloudEvent, ModelInferRequest],
+        payload: Any,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Union[Dict, ModelInferRequest]:
+    ) -> Any:
         if not hasattr(self._model, "preprocess"):
             return payload
         return self._model.preprocess(payload)  # type: ignore
 
     def postprocess(
         self,
-        response: Union[Dict, ModelInferResponse],
+        response: Any,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Dict:
+    ) -> Any:
         if not hasattr(self._model, "postprocess"):
             return response
         return self._model.postprocess(response)  # type: ignore
 
     def predict(
         self,
-        payload: Union[Dict, ModelInferRequest],
+        payload: Any,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Union[Dict, ModelInferResponse]:
+    ) -> Any:
         try:
             self._predict_lock.acquire()
             return self._model.predict(payload)  # type: ignore
@@ -156,6 +149,35 @@ class ModelWrapper(kserve.Model):
             return response
         finally:
             self._predict_lock.release()
+
+    async def __call__(
+        self, body: Any, headers: Optional[Dict[str, str]] = None
+    ) -> Dict:
+        """Method to call predictor or explainer with the given input.
+
+        Args:
+            body (Any): Request payload body.
+            headers (Dict): Request headers.
+
+        Returns:
+            Dict: Response output from preprocess -> predictor -> postprocess
+        """
+
+        payload = (
+            await self.preprocess(body, headers)
+            if inspect.iscoroutinefunction(self.preprocess)
+            else self.preprocess(body, headers)
+        )
+
+        response = (
+            (await self.predict(payload, headers))
+            if inspect.iscoroutinefunction(self.predict)
+            else self.predict(payload, headers)
+        )
+
+        response = self.postprocess(response, headers)
+
+        return response
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:

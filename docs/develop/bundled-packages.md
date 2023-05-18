@@ -8,7 +8,7 @@ When you import your Truss, the import mechanism add the packages in the Truss' 
 
 Great care should be taken to avoid conflicts between these packages with any
 python requirements. Note that the serving environment may itself be dependent
-on some standard Python modules such as `requests` and `kserve`, so it's best to
+on some standard Python modules such as `requests`, so it's best to
 avoid using package names that may conflict with any standard or popular Python
 packages.
 
