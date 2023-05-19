@@ -24,5 +24,4 @@ resources:
   memory: 512Mi
   use_gpu: false
 secrets: {}
-spec_version: '2.0'
 system_packages: []
