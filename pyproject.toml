@@ -34,7 +34,7 @@ uvicorn = "^0.21.1"
 psutil = "^5.9.4"
 
 [tool.poetry.group.builder.dependencies]
-python = ">=3.8,<=3.11"
+python = ">=3.8,<3.11"
 packaging = "^20.9"
 python-json-logger = ">=2.0.2"
 PyYAML = "^6.0"
