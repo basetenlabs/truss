@@ -100,6 +100,14 @@ def test_slow_truss():
             ready = requests.get(f"{truss_server_addr}/v1/models/model")
             assert ready.status_code == expected_code
 
+        def _test_ping(expected_code):
+            ping = requests.get(f"{truss_server_addr}/ping")
+            assert ping.status_code == expected_code
+
+        def _test_invocations(expected_code):
+            invocations = requests.post(f"{truss_server_addr}/invocations", json={})
+            assert invocations.status_code == expected_code
+
         SERVER_WARMUP_TIME = 3
         LOAD_TEST_TIME = 12
         LOAD_BUFFER_TIME = 7
@@ -113,11 +121,14 @@ def test_slow_truss():
         for _ in range(LOAD_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(503)
+            _test_ping(503)
+            _test_invocations(503)
             time.sleep(1)
 
         time.sleep(LOAD_BUFFER_TIME)
         _test_liveness_probe(200)
         _test_readiness_probe(200)
+        _test_ping(200)
 
         predict_call = Thread(
             target=lambda: requests.post(
@@ -129,6 +140,9 @@ def test_slow_truss():
         for _ in range(PREDICT_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(200)
+            _test_ping(200)
             time.sleep(1)
 
         predict_call.join()
+
+        _test_invocations(200)
