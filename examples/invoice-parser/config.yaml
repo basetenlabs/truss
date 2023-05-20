@@ -46,4 +46,5 @@ secrets:
     token_uri: samplevalue
     auth_provider_x509_cert_url: samplevalue
     client_x509_cert_url: samplevalue
+spec_version: '2.0'
 system_packages: []

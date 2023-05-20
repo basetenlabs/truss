@@ -18,4 +18,5 @@ resources:
   memory: 3000Mi
   use_gpu: false
 secrets: {}
+spec_version: '2.0'
 system_packages: []
