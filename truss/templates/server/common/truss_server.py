@@ -160,6 +160,14 @@ class TrussServer:
                     methods=["POST"],
                     tags=["V1"],
                 ),
+                # Endpoint aliases for Sagemaker hosting
+                FastAPIRoute(r"/ping", self._endpoints.model_ready, tags=["V1"]),
+                FastAPIRoute(
+                    r"/invocations",
+                    self._endpoints.predict,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
             ],
             exception_handlers={
                 errors.InferenceError: errors.inference_error_handler,
