@@ -21,5 +21,4 @@ resources:
   cpu: 500m
   memory: 512Mi
   use_gpu: false
-spec_version: '2.0'
 system_packages: []
