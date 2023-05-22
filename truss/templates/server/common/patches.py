@@ -17,7 +17,6 @@ def _download(url: str, root: str, in_memory: bool) -> Union[bytes, str]:
     from tqdm import tqdm
 
     os.makedirs(root, exist_ok=True)
-    print("DOWNLOADING")
     expected_sha256 = url.split("/")[-2]
     download_target = os.path.join(root, os.path.basename(url))
 
