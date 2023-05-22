@@ -17,7 +17,7 @@ def _download(url: str, root: str, in_memory: bool) -> Union[bytes, str]:
     from tqdm import tqdm
 
     os.makedirs(root, exist_ok=True)
-
+    print("DOWNLOADING")
     expected_sha256 = url.split("/")[-2]
     download_target = os.path.join(root, os.path.basename(url))
 
@@ -173,10 +173,13 @@ def apply_patches(enabled: bool, requirements: list):
     if not enabled:
         return
     for requirement in requirements:
-        if requirement in PATCHES:
-            try:
-                PATCHES[requirement]()
-            except Exception as e:
-                logger.debug(
-                    f"{requirement} patch could not be applied. Exception: {str(e)}"
-                )
+        # We iterate over patches so that we can check if the patch_name exists as a substring
+        # of the requirement such as for git url requirements.
+        for patch_name in PATCHES:
+            if patch_name in requirement:
+                try:
+                    PATCHES[patch_name]()
+                except Exception as e:
+                    logger.debug(
+                        f"{patch_name} patch could not be applied. Exception: {str(e)}"
+                    )
