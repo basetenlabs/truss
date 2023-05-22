@@ -20,7 +20,7 @@ def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_lines = f.readlines()
         with open(
-            f"{BASE_DIR}/../../../test_data/context_builder_image_test/server.Dockerfile",
+            f"{BASE_DIR}/../../../test_data/server.Dockerfile",
             "r",
         ) as f:
             server_docker_lines = f.readlines()
