@@ -106,7 +106,9 @@ class ModelWrapper:
             model_init_params["data_dir"] = data_dir
         if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
-        apply_patches()
+        apply_patches(
+            self._config.get("enable_patches", True), self._config["requirements"]
+        )
         self._model = model_class(**model_init_params)
 
         if hasattr(self._model, "load"):

@@ -264,6 +264,7 @@ class TrussConfig:
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
     external_package_dirs: List[str] = field(default_factory=list)
     live_reload: bool = False
+    enable_patches: bool = True
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
@@ -310,6 +311,7 @@ class TrussConfig:
             ),
             external_package_dirs=d.get("external_package_dirs", []),
             live_reload=d.get("live_reload", False),
+            enable_patches=d.get("enable_patches", True),
             train=Train.from_dict(d.get("train", {})),
             external_data=transform_optional(
                 d.get("external_data"), ExternalData.from_list

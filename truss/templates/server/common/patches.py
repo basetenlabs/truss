@@ -100,16 +100,19 @@ def huggingface_patch():
     hub.get_checkpoint_shard_files = get_checkpoint_shard_files
 
 
-def apply_patches():
+def apply_patches(enabled: bool, requirements: list):
     """
     Apply patches to certain functions. The patches are contained in the PATCHES list.
     If a patch cannot be applied, it logs the name of the function and the exception details.
     """
-    PATCHES = [
-        huggingface_patch,
-    ]
-    for patch in PATCHES:
-        try:
-            patch()
-        except Exception as e:
-            logger.error(f"{patch.__name__} could not be applied. Exception: {str(e)}")
+    PATCHES = {"transformers": huggingface_patch}
+    if not enabled:
+        return
+    for requirement in requirements:
+        if requirement in PATCHES:
+            try:
+                PATCHES[requirement]()
+            except Exception as e:
+                logger.debug(
+                    f"{requirement} patch could not be applied. Exception: {str(e)}"
+                )

@@ -38,7 +38,7 @@ class LoadModelLocal(TrussContext):
                 model_init_params["data_dir"] = truss_dir / "data"
             if signature_accepts_keyword_arg(model_class_signature, "secrets"):
                 model_init_params["secrets"] = prepare_secrets(spec)
-            apply_patches()
+            apply_patches(spec.enable_patches, spec.requirements)
             model = model_class(**model_init_params)
             if hasattr(model, "load"):
                 model.load()
