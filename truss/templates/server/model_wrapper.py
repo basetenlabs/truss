@@ -11,6 +11,7 @@ from threading import Lock, Thread
 from typing import Any, Dict, Optional
 
 from common.external_data_resolver import download_external_data
+from common.patches import apply_patches
 from common.retry import retry
 from shared.secrets_resolver import SecretsResolver
 
@@ -105,6 +106,7 @@ class ModelWrapper:
             model_init_params["data_dir"] = data_dir
         if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
+        apply_patches()
         self._model = model_class(**model_init_params)
 
         if hasattr(self._model, "load"):
