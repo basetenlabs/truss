@@ -15,4 +15,5 @@ RUN curl -sSL https://install.python-poetry.org | python -
 ENV PATH="/root/.local/bin:${PATH}"
 COPY . .
 
-RUN poetry install --only builder
+RUN poetry config virtualenvs.in-project true \
+    && poetry install --only builder
