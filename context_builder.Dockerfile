@@ -15,5 +15,7 @@ RUN curl -sSL https://install.python-poetry.org | python -
 ENV PATH="/root/.local/bin:${PATH}"
 COPY . .
 
+# https://python-poetry.org/docs/configuration/#virtualenvsin-project
+# to write to project root .venv file to be used for context builder test
 RUN poetry config virtualenvs.in-project true \
     && poetry install --only builder
