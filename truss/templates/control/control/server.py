@@ -37,7 +37,7 @@ if __name__ == "__main__":
                 python_executable_path,
                 f"{inf_serv_home}/inference_server.py",
             ],
-            "control_server_host": "0.0.0.0",
+            "control_server_host": "*",
             "control_server_port": CONTROL_SERVER_PORT,
             "inference_server_port": INFERENCE_SERVER_PORT,
         }
