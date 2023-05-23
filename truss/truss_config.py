@@ -353,6 +353,7 @@ class TrussConfig:
             "external_package_dirs": self.external_package_dirs,
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
+            "enable_patches": self.enable_patches,
             "train": self.train.to_dict(),
         }
         if self.external_data is not None:
