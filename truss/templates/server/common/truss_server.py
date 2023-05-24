@@ -79,6 +79,24 @@ class BasetenEndpoints:
 
         return {}
 
+    async def invocations_ready(self) -> Dict[str, Union[str, bool]]:
+        """
+        This method provides compatibility with Sagemaker hosting for the 'ping' endpoint.
+        """
+        if self._model is None:
+            raise errors.ModelMissingError("model")
+        self.check_healthy(self._model)
+
+        return {}
+
+    def invocations(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        """
+        This method provides compatibility with Sagemaker hosting for the 'invocations' endpoint.
+        """
+        return self.predict(self._model.name, request, body_raw)
+
     def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
@@ -159,6 +177,13 @@ class TrussServer:
                     self._endpoints.predict,
                     methods=["POST"],
                     tags=["V1"],
+                ),
+                # Endpoint aliases for Sagemaker hosting
+                FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
+                FastAPIRoute(
+                    r"/invocations",
+                    self._endpoints.invocations,
+                    methods=["POST"],
                 ),
             ],
             exception_handlers={
