@@ -69,7 +69,7 @@ class BasetenEndpoints:
     @staticmethod
     def check_healthy(model: ModelWrapper):
         if model.load_failed():
-            raise errors.InferenceError("Model load failed")
+            raise errors.ModelNotLive(model.name)
 
         if not model.ready:
             raise errors.ModelNotReady(model.name)
@@ -78,6 +78,16 @@ class BasetenEndpoints:
         self.check_healthy(self._safe_lookup_model(model_name))
 
         return {}
+
+    async def model_live(self, model_name: str) -> Dict[str, Union[str, bool]]:
+        try:
+            self.check_healthy(self._safe_lookup_model(model_name))
+            return {}
+        except Exception as e:
+            # If the exception is errors.ModelNotLive, then we want to propogate the exception
+            if isinstance(e, errors.ModelNotLive):
+                raise e
+            return {}
 
     async def invocations_ready(self) -> Dict[str, Union[str, bool]]:
         """
@@ -161,7 +171,7 @@ class TrussServer:
             on_startup=[self.on_startup],
             routes=[
                 # liveness endpoint
-                FastAPIRoute(r"/", lambda: True),
+                FastAPIRoute(r"/", self._endpoints.model_live),
                 # readiness endpoint
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
@@ -190,6 +200,7 @@ class TrussServer:
                 errors.InferenceError: errors.inference_error_handler,
                 errors.ModelNotFound: errors.model_not_found_handler,
                 errors.ModelNotReady: errors.model_not_ready_handler,
+                errors.ModelNotLive: errors.model_not_live_handler,
                 NotImplementedError: errors.not_implemented_error_handler,
                 Exception: errors.generic_exception_handler,
             },

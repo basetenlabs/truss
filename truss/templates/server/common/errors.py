@@ -57,6 +57,17 @@ class ModelNotReady(RuntimeError):
         return self.error_msg
 
 
+class ModelNotLive(RuntimeError):
+    def __init__(self, model_name: str, detail: Optional[str] = None):
+        self.model_name = model_name
+        self.error_msg = f"Model with name {self.model_name} is not alive."
+        if detail:
+            self.error_msg = self.error_msg + " " + detail
+
+    def __str__(self):
+        return self.error_msg
+
+
 async def exception_handler(_, exc):
     return JSONResponse(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content={"error": str(exc)}
@@ -85,6 +96,12 @@ async def model_not_found_handler(_, exc):
 
 
 async def model_not_ready_handler(_, exc):
+    return JSONResponse(
+        status_code=HTTPStatus.SERVICE_UNAVAILABLE, content={"error": str(exc)}
+    )
+
+
+async def model_not_live_handler(_, exc):
     return JSONResponse(
         status_code=HTTPStatus.SERVICE_UNAVAILABLE, content={"error": str(exc)}
     )
