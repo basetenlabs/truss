@@ -28,7 +28,7 @@ class ModelWrapper:
 
     def __init__(self, config: Dict):
         self._config = config
-        self._logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger()
         self.name = MODEL_BASENAME
         self.ready = False
         self._load_lock = Lock()
