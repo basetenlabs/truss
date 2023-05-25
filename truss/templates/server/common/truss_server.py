@@ -79,9 +79,11 @@ class BasetenEndpoints:
 
         return {}
 
-    async def model_live(self, model_name: str) -> Dict[str, Union[str, bool]]:
+    async def model_live(
+        self,
+    ) -> Dict[str, Union[str, bool]]:
         try:
-            self.check_healthy(self._safe_lookup_model(model_name))
+            self.check_healthy(self._model)
             return {}
         except Exception as e:
             # If the exception is errors.ModelNotLive, then we want to propogate the exception
@@ -170,7 +172,6 @@ class TrussServer:
             default_response_class=ORJSONResponse,
             on_startup=[self.on_startup],
             routes=[
-                # liveness endpoint
                 FastAPIRoute(r"/", self._endpoints.model_live),
                 # readiness endpoint
                 FastAPIRoute(
