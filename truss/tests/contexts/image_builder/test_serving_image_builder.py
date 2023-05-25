@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).parent
 def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.set_base_image("baseten/truss-server-base:3.9-v0.4.3")
+    th.set_python_executable_path("/usr/local/bin/python")
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(th.spec.truss_dir)
     with TemporaryDirectory() as tmp_dir:

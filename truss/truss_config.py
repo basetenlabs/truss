@@ -245,6 +245,7 @@ class TrussConfig:
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
     base_image: Optional[str] = None
+    python_executable_path: Optional[str] = None
 
     @property
     def canonical_python_version(self) -> str:
@@ -292,6 +293,7 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=d.get("base_image", None),
+            python_executable_path=d.get("python_executable_path", None),
         )
         config.validate()
         return config
@@ -330,6 +332,7 @@ class TrussConfig:
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),
             "base_image": self.base_image,
+            "python_executable_path": self.python_executable_path,
         }
         if self.external_data is not None:
             d["external_data"] = transform_optional(

@@ -188,6 +188,10 @@ class TrussSpec:
     def base_image(self) -> Optional[str]:
         return self._config.base_image
 
+    @property
+    def python_executable_path(self) -> Optional[str]:
+        return self._config.python_executable_path
+
 
 def _join_lines(lines: List[str]) -> str:
     return "\n".join(lines) + "\n"

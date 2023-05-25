@@ -699,6 +699,10 @@ class TrussHandle:
         """Set the base image for a given truss"""
         self._update_config(lambda conf: replace(conf, base_image=base_image))
 
+    def set_python_executable_path(self, path: str):
+        """Set the python executable path for a given truss"""
+        self._update_config(lambda conf: replace(conf, python_executable_path=path))
+
     @proxy_to_shadow_if_scattered
     def patch_container(self, patch_request: Dict):
         """Patch changes onto the container running this Truss.

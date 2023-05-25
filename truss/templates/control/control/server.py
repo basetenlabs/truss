@@ -29,7 +29,9 @@ if __name__ == "__main__":
     from waitress import create_server
 
     inf_serv_home: str = os.environ["APP_HOME"]
-    python_executable_path: str = _identify_python_executable_path()
+    python_executable_path: str = os.environ.get(
+        "PYTHON_EXECUTABLE", _identify_python_executable_path()
+    )
     application = create_app(
         {
             "inference_server_home": inf_serv_home,
