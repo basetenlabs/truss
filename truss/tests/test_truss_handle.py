@@ -96,21 +96,21 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "base_image, expected_fail",
+    "base_image, path, expected_fail",
     [
-        ("baseten/truss-server-base:3.9-v0.4.3", False),
-        ("python:3.8", False),
-        ("python:3.11", False),
-        ("alpine", True),
-        ("python:2.7-slim", True),
-        ("python:3.7-slim", True),
+        ("baseten/truss-server-base:3.9-v0.4.3", "usr/local/bin/python3", False),
+        ("python:3.8", "usr/local/bin/python3", False),
+        ("python:3.11", "usr/local/bin/python3", False),
+        ("python:alpine", "/usr/local/bin/python3", True),
+        ("python:2.7-slim", "/usr/local/bin/python", True),
+        ("python:3.7-slim", "usr/local/bin/python3", True),
     ],
 )
 def test_build_serving_docker_image_from_user_base_image_live_reload(
-    custom_model_truss_dir, base_image, expected_fail
+    custom_model_truss_dir, base_image, path, expected_fail
 ):
     th = TrussHandle(custom_model_truss_dir)
-    th.set_base_image(base_image)
+    th.set_base_image(base_image, path)
     th.live_reload()
     try:
         th.build_serving_docker_image(cache=False)
@@ -122,14 +122,25 @@ def test_build_serving_docker_image_from_user_base_image_live_reload(
 @pytest.mark.integration
 def test_build_training_docker_image_from_user_base_image(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
-    th.set_base_image("baseten/truss-training-base:3.9-v0.4.3")
+    th.set_base_image("baseten/truss-training-base:3.9-v0.4.3", "usr/local/bin/python3")
     th.build_training_docker_image()
 
 
 @pytest.mark.integration
 def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.set_base_image("pytorch/pytorch")
+    th.set_base_image("pytorch/pytorch", "/opt/conda/bin/python")
+    with ensure_kill_all():
+        result = th.docker_predict([1, 2])
+        assert result == {"predictions": [4, 5]}
+
+
+@pytest.mark.integration
+def test_docker_predict_custom_base_image_with_python_executable_path(
+    custom_model_truss_dir_with_pre_and_post,
+):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+    th.set_base_image("pytorch/pytorch", "/opt/conda/bin/python")
     with ensure_kill_all():
         result = th.docker_predict([1, 2])
         assert result == {"predictions": [4, 5]}

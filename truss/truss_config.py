@@ -215,6 +215,28 @@ class ExternalData:
 
 
 @dataclass
+class BaseImage:
+    name: str = ""
+    python_executable_path: str = ""
+
+    @staticmethod
+    def from_dict(d):
+        name = d.get("name")
+        python_executable_path = d.get("python_executable_path")
+
+        return BaseImage(
+            name=name,
+            python_executable_path=python_executable_path,
+        )
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "python_executable_path": self.python_executable_path,
+        }
+
+
+@dataclass
 class TrussConfig:
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
@@ -244,7 +266,7 @@ class TrussConfig:
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
-    base_image: Optional[str] = None
+    base_image: Optional[BaseImage] = None
 
     @property
     def canonical_python_version(self) -> str:
@@ -291,7 +313,7 @@ class TrussConfig:
             external_data=transform_optional(
                 d.get("external_data"), ExternalData.from_list
             ),
-            base_image=d.get("base_image", None),
+            base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
         )
         config.validate()
         return config
@@ -329,11 +351,14 @@ class TrussConfig:
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
             "train": self.train.to_dict(),
-            "base_image": self.base_image,
         }
         if self.external_data is not None:
             d["external_data"] = transform_optional(
                 self.external_data, lambda data: data.to_list()
+            )
+        if self.external_data is not None:
+            d["base_image"] = transform_optional(
+                self.base_image, lambda data: data.to_dict()
             )
         return d
 

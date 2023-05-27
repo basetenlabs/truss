@@ -5,6 +5,7 @@ from truss.truss_config import (
     DEFAULT_USE_GPU,
     Accelerator,
     AcceleratorSpec,
+    BaseImage,
     Resources,
 )
 
@@ -81,3 +82,30 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
 )
 def test_acc_spec_from_str(input_str, expected_acc):
     assert AcceleratorSpec.from_str(input_str) == expected_acc
+
+
+@pytest.mark.parametrize(
+    "input_dict, expect_base_image, output_dict",
+    [
+        (
+            {},
+            BaseImage(),
+            {
+                "name": None,
+                "python_executable_path": None,
+            },
+        ),
+        (
+            {"name": "custom_base_image", "python_executable_path": "path/python"},
+            BaseImage(name="custom_base_image", python_executable_path="path/python"),
+            {
+                "name": "custom_base_image",
+                "python_executable_path": "path/python",
+            },
+        ),
+    ],
+)
+def test_parse_base_image(input_dict, expect_base_image, output_dict):
+    parsed_result = BaseImage.from_dict(input_dict)
+    assert parsed_result == expect_base_image
+    assert parsed_result.to_dict() == output_dict
