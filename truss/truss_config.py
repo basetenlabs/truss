@@ -221,8 +221,8 @@ class BaseImage:
 
     @staticmethod
     def from_dict(d):
-        name = d.get("name")
-        python_executable_path = d.get("python_executable_path")
+        name = d.get("name", "")
+        python_executable_path = d.get("python_executable_path", "")
 
         return BaseImage(
             name=name,
@@ -356,7 +356,7 @@ class TrussConfig:
             d["external_data"] = transform_optional(
                 self.external_data, lambda data: data.to_list()
             )
-        if self.external_data is not None:
+        if self.base_image is not None:
             d["base_image"] = transform_optional(
                 self.base_image, lambda data: data.to_dict()
             )

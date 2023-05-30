@@ -1,7 +1,7 @@
 ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3
 
-ENV PYTHON_EXECUTABLE python3
+ENV PYTHON_EXECUTABLE /usr/local/bin/python3
 
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
 RUN pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
@@ -48,4 +48,4 @@ COPY ./data /app/data
 COPY ./packages /packages
 
 ENV INFERENCE_SERVER_PORT 8080
-ENTRYPOINT ["python3", "/app/inference_server.py"]
+ENTRYPOINT $PYTHON_EXECUTABLE /app/inference_server.py

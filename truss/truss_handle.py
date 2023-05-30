@@ -705,10 +705,13 @@ class TrussHandle:
                     name=name,
                     python_executable_path=python_executable_path,
                 )
+                print(new_base_image)
                 return replace(conf, base_image=new_base_image)
-            else:
-                base_image: BaseImage = BaseImage(name, python_executable_path)
-                return replace(conf, base_image=base_image)
+            new_base_image = BaseImage(
+                name,
+                python_executable_path,
+            )
+            return replace(conf, base_image=new_base_image)
 
         self._update_config(define_base_image_fn)
 
@@ -958,6 +961,7 @@ class TrussHandle:
 
     def _update_config(self, update_config_fn: Callable[[TrussConfig], TrussConfig]):
         config = update_config_fn(self._spec.config)
+        print(config)
         config.write_to_yaml_file(self._spec.config_path)
         # reload spec
         self._spec = TrussSpec(self._truss_dir)

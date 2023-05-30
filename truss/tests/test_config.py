@@ -91,8 +91,8 @@ def test_acc_spec_from_str(input_str, expected_acc):
             {},
             BaseImage(),
             {
-                "name": None,
-                "python_executable_path": None,
+                "name": "",
+                "python_executable_path": "",
             },
         ),
         (
