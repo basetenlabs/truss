@@ -695,20 +695,19 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
-    def set_base_image(self, name: str, python_executable_path: str):
+    def set_base_image(self, image: str, python_executable_path: str):
         """Set the base image for a given truss"""
 
         def define_base_image_fn(conf: TrussConfig):
             if conf.base_image:
                 new_base_image = replace(
                     conf.base_image,
-                    name=name,
+                    image=image,
                     python_executable_path=python_executable_path,
                 )
-                print(new_base_image)
                 return replace(conf, base_image=new_base_image)
             new_base_image = BaseImage(
-                name,
+                image,
                 python_executable_path,
             )
             return replace(conf, base_image=new_base_image)
@@ -961,7 +960,6 @@ class TrussHandle:
 
     def _update_config(self, update_config_fn: Callable[[TrussConfig], TrussConfig]):
         config = update_config_fn(self._spec.config)
-        print(config)
         config.write_to_yaml_file(self._spec.config_path)
         # reload spec
         self._spec = TrussSpec(self._truss_dir)

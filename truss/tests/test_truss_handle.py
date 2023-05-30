@@ -122,7 +122,9 @@ def test_build_serving_docker_image_from_user_base_image_live_reload(
 @pytest.mark.integration
 def test_build_training_docker_image_from_user_base_image(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
-    th.set_base_image("baseten/truss-training-base:3.9-v0.4.3", "usr/local/bin/python3")
+    th.set_base_image(
+        "baseten/truss-training-base:3.9-v0.4.3", "/usr/local/bin/python3"
+    )
     th.build_training_docker_image()
 
 

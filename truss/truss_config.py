@@ -11,6 +11,7 @@ from truss.util.data_structures import transform_optional
 from truss.validation import (
     validate_cpu_spec,
     validate_memory_spec,
+    validate_python_executable_path,
     validate_secret_name,
 )
 
@@ -216,22 +217,22 @@ class ExternalData:
 
 @dataclass
 class BaseImage:
-    name: str = ""
+    image: str = ""
     python_executable_path: str = ""
 
     @staticmethod
     def from_dict(d):
-        name = d.get("name", "")
+        image = d.get("image", "")
         python_executable_path = d.get("python_executable_path", "")
-
+        validate_python_executable_path(python_executable_path)
         return BaseImage(
-            name=name,
+            image=image,
             python_executable_path=python_executable_path,
         )
 
     def to_dict(self):
         return {
-            "name": self.name,
+            "image": self.image,
             "python_executable_path": self.python_executable_path,
         }
 

@@ -91,16 +91,16 @@ def test_acc_spec_from_str(input_str, expected_acc):
             {},
             BaseImage(),
             {
-                "name": "",
+                "image": "",
                 "python_executable_path": "",
             },
         ),
         (
-            {"name": "custom_base_image", "python_executable_path": "path/python"},
-            BaseImage(name="custom_base_image", python_executable_path="path/python"),
+            {"image": "custom_base_image", "python_executable_path": "/path/python"},
+            BaseImage(image="custom_base_image", python_executable_path="/path/python"),
             {
-                "name": "custom_base_image",
-                "python_executable_path": "path/python",
+                "image": "custom_base_image",
+                "python_executable_path": "/path/python",
             },
         ),
     ],
