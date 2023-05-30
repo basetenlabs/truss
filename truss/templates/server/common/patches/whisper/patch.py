@@ -1,3 +1,12 @@
+"""
+Patch for OpenAi/Whisper:
+
+Whisper currently uses tqdm for the progress bar during the download of Whisper weights from Azure.
+However, when Transfer-Encoding=Chunked, the Content-Length is not set, causing the loading process
+to fail. This patch makes the download more defensive, addressing this issue. tqdm progress bar still
+works when the Content-Length is None.
+Open PR (https://github.com/openai/whisper/pull/1366) - once merged we can remove the patch.
+"""
 import os
 from typing import Union
 

@@ -1,3 +1,11 @@
+"""
+Patch for Huggingface/Transformer:
+
+The Transformer's library currently performs serial downloads of weights, which can
+be time-consuming when there are multiple weights to be fetched. This patch aims to
+parallelize the downloads using joblib, allowing the downloads to be spread across
+multiple cores and improving overall performance.
+"""
 import os
 
 from joblib import Parallel, delayed
@@ -47,8 +55,6 @@ def get_checkpoint_shard_files(
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     cached_filenames = []
-
-    print("Using parallel version")
 
     # Function to load file from url
     def load_file_from_url(shard_filename):
