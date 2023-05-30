@@ -186,7 +186,7 @@ class TrussSpec:
 
     @property
     def base_image_name(self) -> Optional[str]:
-        return self._config.base_image.name
+        return self._config.base_image.image
 
     @property
     def python_executable_path(self) -> str:
