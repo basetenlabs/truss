@@ -98,12 +98,12 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
 @pytest.mark.parametrize(
     "base_image, path, expected_fail",
     [
-        ("baseten/truss-server-base:3.9-v0.4.3", "usr/local/bin/python3", False),
-        ("python:3.8", "usr/local/bin/python3", False),
-        ("python:3.11", "usr/local/bin/python3", False),
+        ("baseten/truss-server-base:3.9-v0.4.3", "/usr/local/bin/python3", False),
+        ("python:3.8", "/usr/local/bin/python3", False),
+        ("python:3.11", "/usr/local/bin/python3", False),
         ("python:alpine", "/usr/local/bin/python3", True),
         ("python:2.7-slim", "/usr/local/bin/python", True),
-        ("python:3.7-slim", "usr/local/bin/python3", True),
+        ("python:3.7-slim", "/usr/local/bin/python3", True),
     ],
 )
 def test_build_serving_docker_image_from_user_base_image_live_reload(
