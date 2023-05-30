@@ -11,6 +11,8 @@ RUN pythonVersion=$(echo $(command -v python >/dev/null 2>&1 && python --version
     && rm -rf /var/lib/apt/lists/* \
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.11"; exit 1; }
 
+RUN echo "* hard core 0" >> /etc/security/limits.conf
+
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 

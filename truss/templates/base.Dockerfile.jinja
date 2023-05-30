@@ -13,6 +13,10 @@ RUN pythonVersion=$(echo $(command -v python >/dev/null 2>&1 && python --version
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.11"; exit 1; }
 {% endblock %}
 
+{% block disable_core_dump %}
+RUN echo "* hard core 0" >> /etc/security/limits.conf
+{% endblock %}
+
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 
