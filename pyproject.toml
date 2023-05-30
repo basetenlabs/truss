@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.4.6dev5"
+version = "0.4.6dev6"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -35,7 +35,7 @@ psutil = "^5.9.4"
 joblib = "^1.2.0"
 
 [tool.poetry.group.builder.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8,<3.12"
 packaging = "^20.9"
 python-json-logger = ">=2.0.2"
 PyYAML = "^6.0"
