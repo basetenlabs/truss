@@ -107,7 +107,8 @@ class ModelWrapper:
         if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
         apply_patches(
-            self._config.get("enable_patches", True), self._config["requirements"]
+            self._config.get("apply_library_patches", True),
+            self._config["requirements"],
         )
         self._model = model_class(**model_init_params)
 

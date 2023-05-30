@@ -193,8 +193,8 @@ class TrussSpec:
         return self._config.base_image.python_executable_path
 
     @property
-    def enable_patches(self) -> bool:
-        return self._config.enable_patches
+    def apply_library_patches(self) -> bool:
+        return self._config.apply_library_patches
 
 
 def _join_lines(lines: List[str]) -> str:

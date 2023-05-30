@@ -7,9 +7,8 @@ from truss.contexts.local_loader.utils import (
     signature_accepts_keyword_arg,
 )
 from truss.contexts.truss_context import TrussContext
+from truss.templates.server.common.patches import apply_patches
 from truss.truss_spec import TrussSpec
-
-from ...templates.server.common.patches import apply_patches
 
 
 class LoadModelLocal(TrussContext):
@@ -38,7 +37,7 @@ class LoadModelLocal(TrussContext):
                 model_init_params["data_dir"] = truss_dir / "data"
             if signature_accepts_keyword_arg(model_class_signature, "secrets"):
                 model_init_params["secrets"] = prepare_secrets(spec)
-            apply_patches(spec.enable_patches, spec.requirements)
+            apply_patches(spec.apply_library_patches, spec.requirements)
             model = model_class(**model_init_params)
             if hasattr(model, "load"):
                 model.load()

@@ -1,6 +1,5 @@
 import importlib.util
 import logging
-import os
 from pathlib import Path
 
 # Set up logging
@@ -17,12 +16,11 @@ def apply_patches(enabled: bool, requirements: list):
     if not enabled:
         return
     for requirement in requirements:
-        for patch_name in os.listdir(PATCHES_DIR):
+        for patch_name in PATCHES_DIR.iterdir():
             if patch_name in requirement:
                 try:
-                    patch_dir = os.path.join(PATCHES_DIR, patch_name)
-                    patch_file = os.path.join(patch_dir, "patch.py")
-                    if os.path.isfile(patch_file):
+                    patch_file = PATCHES_DIR / patch_name / "patch.py"
+                    if patch_file.exists():
                         spec = importlib.util.spec_from_file_location(
                             f"{patch_name}_patch", patch_file
                         )
@@ -31,7 +29,6 @@ def apply_patches(enabled: bool, requirements: list):
                         patch_module.patch()  # Apply the patch
                         logger.info(f"{patch_name} patch applied successfully")
                 except Exception as e:
-                    print(e)
                     logger.debug(
                         f"{patch_name} patch could not be applied. Exception: {str(e)}"
                     )
