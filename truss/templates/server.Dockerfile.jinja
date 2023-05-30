@@ -22,6 +22,8 @@ RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.
 
 {% if live_reload %}
 {% if config.base_image %}
+RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
+    && echo "WARNING: Overwriting existing link /usr/local/bin/python"
 RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
 {% endif %}
 COPY ./control /control
