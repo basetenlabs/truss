@@ -21,6 +21,12 @@ COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
 {% if live_reload %}
+{% if config.base_image %}
+# Create symlink for control server to start inference server process with correct python executable
+RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
+    && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
+RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
+{% endif %}
 COPY ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
@@ -61,6 +67,6 @@ ENV INFERENCE_SERVER_PORT 8090
 ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
     {%- else %}
 ENV INFERENCE_SERVER_PORT 8080
-ENTRYPOINT ["python3", "/app/inference_server.py"]
+ENTRYPOINT $PYTHON_EXECUTABLE /app/inference_server.py
     {%- endif %}
 {% endblock %}

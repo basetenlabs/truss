@@ -101,7 +101,7 @@ class TrainingImageBuilder(ImageBuilder):
         config = self._spec.config
         python_version = to_dotted_python_version(config.python_version)
         if config.base_image:
-            base_image_name_and_tag = config.base_image
+            base_image_name_and_tag = config.base_image.image
         else:
             base_image_name = truss_base_image_name(job_type="training")
             tag = truss_base_image_tag(

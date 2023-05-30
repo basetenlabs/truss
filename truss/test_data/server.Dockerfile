@@ -1,10 +1,11 @@
 ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3
 
+ENV PYTHON_EXECUTABLE /usr/local/bin/python3
+
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN pythonVersion=$(echo $(command -v python >/dev/null 2>&1 && python --version || python3 --version) | cut -d" " -f2 | cut -d"." -f1,2) \
-    && { python -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)" \
-    || python3 -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)"; } \
+RUN pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
+    && $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)" \
     && apt-get update && ( apt-get install -y --no-install-recommends python$pythonVersion-venv || apt-get install -y --no-install-recommends python3-venv )  \
     && apt-get autoremove -y \
     && apt-get clean -y \
@@ -47,4 +48,4 @@ COPY ./data /app/data
 COPY ./packages /packages
 
 ENV INFERENCE_SERVER_PORT 8080
-ENTRYPOINT ["python3", "/app/inference_server.py"]
+ENTRYPOINT $PYTHON_EXECUTABLE /app/inference_server.py
