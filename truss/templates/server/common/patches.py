@@ -17,7 +17,7 @@ def apply_patches(enabled: bool, requirements: list):
         return
     for requirement in requirements:
         for patch_name in PATCHES_DIR.iterdir():
-            if patch_name in requirement:
+            if patch_name.name in requirement:
                 try:
                     patch_file = PATCHES_DIR / patch_name / "patch.py"
                     if patch_file.exists():
