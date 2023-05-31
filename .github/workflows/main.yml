@@ -63,7 +63,8 @@ jobs:
               --skip-login --push
           fi
   integration-tests:
-    needs: [build-and-push-truss-base-images-if-needed]
+    needs: [build-and-push-truss-base-images-if-needed, detect-version-changed]
+    if: ! contains( needs.detect-version-changed.outputs.new_version, "dev" )
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -73,7 +74,7 @@ jobs:
 
   git-tag-if-version-changed:
     needs: [integration-tests, detect-version-changed]
-    if: needs.detect-version-changed.outputs.version_changed == 'true'
+    if: needs.detect-version-changed.outputs.version_changed == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped')
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -90,7 +91,7 @@ jobs:
 
   build-n-push-context-builder-image:
     needs: [integration-tests, detect-version-changed]
-    if: needs.detect-version-changed.outputs.version_changed == 'true'
+    if: needs.detect-version-changed.outputs.version_changed == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped')
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v3
