@@ -13,11 +13,6 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
-  - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.23.0
-    hooks:
-      - id: check-github-actions
-      - id: check-github-workflows
   - repo: local
     hooks:
       - id: isort
