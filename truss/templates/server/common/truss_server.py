@@ -3,6 +3,8 @@ import concurrent.futures
 import json
 import logging
 import multiprocessing
+import os
+import signal
 import socket
 from typing import Dict, List, Optional, Union
 
@@ -69,7 +71,7 @@ class BasetenEndpoints:
     @staticmethod
     def check_healthy(model: ModelWrapper):
         if model.load_failed():
-            raise errors.InferenceError("Model load failed")
+            os.kill(os.getpid(), signal.SIGKILL)
 
         if not model.ready:
             raise errors.ModelNotReady(model.name)
