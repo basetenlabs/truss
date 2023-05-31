@@ -64,7 +64,7 @@ jobs:
           fi
   integration-tests:
     needs: [build-and-push-truss-base-images-if-needed, detect-version-changed]
-    if: ! contains( needs.detect-version-changed.outputs.new_version, "dev" )
+    if: ${{ ! contains( needs.detect-version-changed.outputs.new_version, "dev" ) }}
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
