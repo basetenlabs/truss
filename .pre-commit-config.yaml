@@ -13,6 +13,11 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.23.0
+    hooks:
+      - id: check-github-actions
+      - id: check-github-workflows
   - repo: local
     hooks:
       - id: isort
@@ -36,11 +41,11 @@ repos:
         exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true
   - repo: https://github.com/tcort/markdown-link-check
-    rev: "v3.10.3"
+    rev: "v3.11.2"
     hooks:
       - id: markdown-link-check
   - repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 23.3.0
     hooks:
       - id: black
         # It is recommended to specify the latest version of Python
