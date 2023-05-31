@@ -36,11 +36,11 @@ repos:
         exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true
   - repo: https://github.com/tcort/markdown-link-check
-    rev: "v3.11.2"
+    rev: "v3.10.3"
     hooks:
       - id: markdown-link-check
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 22.10.0
     hooks:
       - id: black
         # It is recommended to specify the latest version of Python
