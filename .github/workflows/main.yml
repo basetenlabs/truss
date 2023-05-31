@@ -1,6 +1,7 @@
 name: main
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -40,6 +41,13 @@ jobs:
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
           fi
+
+          if [[ "$NEW_VERSION" == *"dev"* ]]; then
+            echo "dev_version=true" >> $GITHUB_OUTPUT
+          else
+            echo "dev_version=false" >> $GITHUB_OUTPUT
+          fi
+
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
     runs-on: ubuntu-20.04
@@ -64,7 +72,7 @@ jobs:
           fi
   integration-tests:
     needs: [build-and-push-truss-base-images-if-needed, detect-version-changed]
-    if:  ! contains( "${{needs.detect-version-changed.outputs.new_version}}", "dev" )
+    if: needs.detect-version-changed.outputs.dev_version == 'false'
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
