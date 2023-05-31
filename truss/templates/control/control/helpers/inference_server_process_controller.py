@@ -8,7 +8,6 @@ from helpers.context_managers import current_directory
 
 
 class InferenceServerProcessController:
-
     _inference_server_process: Optional[subprocess.Popen] = None
     _inference_server_port: int
     _inference_server_home: str
@@ -31,6 +30,8 @@ class InferenceServerProcessController:
 
     def start(self):
         with current_directory(self._inference_server_home):
+            if os.path.isfile("inference_server_crashed.txt"):
+                os.remove("inference_server_crashed.txt")
             inf_env = os.environ.copy()
             inf_env["INFERENCE_SERVER_PORT"] = str(self._inference_server_port)
             self._inference_server_process = subprocess.Popen(
@@ -69,7 +70,8 @@ class InferenceServerProcessController:
 
     def check_and_recover_inference_server(self):
         if self.inference_server_started() and not self.is_inference_server_running():
-            self._app_logger.warning(
-                "Inference server seems to have crashed, restarting"
-            )
-            self.start()
+            if not os.path.isfile("inference_server_crashed.txt"):
+                self._app_logger.warning(
+                    "Inference server seems to have crashed, restarting"
+                )
+                self.start()

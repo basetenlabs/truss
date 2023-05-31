@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import signal
 import socket
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import common.errors as errors
@@ -71,6 +72,7 @@ class BasetenEndpoints:
     @staticmethod
     def check_healthy(model: ModelWrapper):
         if model.load_failed():
+            Path("inference_server_crashed.txt").touch()
             os.kill(os.getpid(), signal.SIGKILL)
 
         if not model.ready:
