@@ -73,8 +73,8 @@ jobs:
       - run: poetry run pytest truss/tests  -m 'integration'
 
   git-tag-if-version-changed:
-    needs: [detect-version-changed]
-    if: needs.detect-version-changed.outputs.version_changed == 'true'
+    needs: [integration-tests, detect-version-changed]
+    if: needs.detect-version-changed.outputs.version_changed == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped')
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
