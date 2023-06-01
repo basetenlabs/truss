@@ -4,11 +4,12 @@ from pathlib import Path
 from typing import Dict
 
 from endpoints import control_app
-from flask import Flask
+from flask import Flask, jsonify, request
 from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
+from truss.templates.server.common.serialization import truss_msgpack_serialize
 from werkzeug.exceptions import HTTPException
 
 
@@ -42,24 +43,26 @@ def create_app(base_config: Dict):
         try:
             raise exc
         except HTTPException:
-            return exc
+            return _create_error_response(exc)
         except PatchApplicatonError:
             app.logger.exception(exc)
             error_type = _camel_to_snake_case(type(exc).__name__)
-            return {
+            content = {
                 "error": {
                     "type": error_type,
                     "msg": str(exc),
                 }
             }
+            return _create_error_response(content)
         except Exception:
             app.logger.exception(exc)
-            return {
+            content = {
                 "error": {
                     "type": "unknown",
                     "msg": f"{type(exc)}: {exc}",
                 }
             }
+            return _create_error_response(content)
 
     app.register_error_handler(Exception, handle_error)
     return app
@@ -67,3 +70,13 @@ def create_app(base_config: Dict):
 
 def _camel_to_snake_case(camel_cased: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", camel_cased).lower()
+
+
+def _create_error_response(content):
+    if (
+        "Content-Type" in request.headers
+        and request.headers["Content-Type"] == "application/json"
+    ):
+        return jsonify(content)
+    else:
+        return truss_msgpack_serialize(content)

@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Dict, List
 
 import pytest
+from truss.templates.server.common.serialization import (
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 
 # Needed to simulate the set up on the model docker container
 sys.path.append(
@@ -116,6 +120,63 @@ class Model:
     resp = client.post("/v1/models/model:predict", json={})
     resp.status_code == 200
     assert resp.json == {"prediction": [1]}
+
+
+def test_patch_model_code_update_predict_model_not_ready(app, client):
+    mock_model_file_content = """
+class Model:
+    def load(self):
+        import time
+        time.sleep(61) # longer than INFERENCE_SERVER_START_WAIT_SECS
+
+    def predict(self, request):
+        return {'prediction': [1]}
+"""
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+        ),
+    )
+    _verify_apply_patch_success(client, patch)
+    resp = client.post("/v1/models/model:predict", json={})
+    resp.status_code == 200
+    assert type(resp.data) == bytes
+    assert type(resp.json) == dict
+    assert resp.json["error"]["type"] == "unknown"
+    assert "ModelNotReady" in resp.json["error"]["msg"]
+
+
+def test_patch_model_code_update_predict_binary_model_not_ready(app, client):
+    mock_model_file_content = """
+class Model:
+    def load(self):
+        import time
+        time.sleep(61) # longer than INFERENCE_SERVER_START_WAIT_SECS
+
+    def predict(self, request):
+        return {'prediction': [1]}
+"""
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+        ),
+    )
+    _verify_apply_patch_success(client, patch)
+    resp = client.post(
+        "/v1/models/model:predict_binary", data=truss_msgpack_serialize({})
+    )
+    resp.status_code == 200
+    assert type(resp.data) == bytes
+    deserialized_resp = truss_msgpack_deserialize(resp.data)
+    assert type(deserialized_resp) == dict
+    assert deserialized_resp["error"]["type"] == "unknown"
+    assert "ModelNotReady" in deserialized_resp["error"]["msg"]
 
 
 def test_patch_model_code_create_new(app, client):
