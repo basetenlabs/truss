@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from helpers.context_managers import current_directory
 
-INFERECE_SERVER_FAILED_FILE = Path("~/.inference_server_crashed.txt")
+INFERENCE_SERVER_FAILED_FILE = Path("~/.inference_server_crashed.txt")
 
 
 class InferenceServerProcessController:
@@ -71,7 +71,7 @@ class InferenceServerProcessController:
 
     def check_and_recover_inference_server(self):
         if self.inference_server_started() and not self.is_inference_server_running():
-            if not INFERECE_SERVER_FAILED_FILE.exists():
+            if not INFERENCE_SERVER_FAILED_FILE.exists():
                 self._app_logger.warning(
                     "Inference server seems to have crashed, restarting"
                 )

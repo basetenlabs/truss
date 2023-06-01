@@ -34,7 +34,7 @@ async def parse_body(request: Request) -> bytes:
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-INFERECE_SERVER_FAILED_FILE = Path("~/.inference_server_crashed.txt")
+INFERENCE_SERVER_FAILED_FILE = Path("~/.inference_server_crashed.txt")
 logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
 
 
@@ -73,7 +73,7 @@ class BasetenEndpoints:
     @staticmethod
     def check_healthy(model: ModelWrapper):
         if model.load_failed():
-            INFERECE_SERVER_FAILED_FILE.touch()
+            INFERENCE_SERVER_FAILED_FILE.touch()
             os.kill(os.getpid(), signal.SIGKILL)
 
         if not model.ready:
@@ -150,8 +150,8 @@ class TrussServer:
         self._endpoints = BasetenEndpoints(self._model)
 
     def cleanup(self):
-        if INFERECE_SERVER_FAILED_FILE.exists():
-            INFERECE_SERVER_FAILED_FILE.unlink()
+        if INFERENCE_SERVER_FAILED_FILE.exists():
+            INFERENCE_SERVER_FAILED_FILE.unlink()
 
     def on_startup(self):
         """
