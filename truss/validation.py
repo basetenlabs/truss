@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from typing import Pattern, Set
 
 from truss.errors import ValidationError
@@ -72,3 +73,14 @@ def _is_numeric(number_like: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def validate_python_executable_path(path: str) -> None:
+    """
+    This python executable path determines the python executable
+    used to run the inference server - check to see that it is an absolute path
+    """
+    if path and not Path(path).is_absolute():
+        raise ValidationError(
+            f"Invalid relative python executable path {path}. Provide an absolute path"
+        )

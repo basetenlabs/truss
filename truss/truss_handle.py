@@ -66,7 +66,7 @@ from truss.templates.server.common.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from truss.truss_config import ExternalData, ExternalDataItem, TrussConfig
+from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails
 from truss.util.path import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
@@ -695,9 +695,24 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
-    def set_base_image(self, base_image: str):
+    def set_base_image(self, image: str, python_executable_path: str):
         """Set the base image for a given truss"""
-        self._update_config(lambda conf: replace(conf, base_image=base_image))
+
+        def define_base_image_fn(conf: TrussConfig):
+            if conf.base_image:
+                new_base_image = replace(
+                    conf.base_image,
+                    image=image,
+                    python_executable_path=python_executable_path,
+                )
+                return replace(conf, base_image=new_base_image)
+            new_base_image = BaseImage(
+                image,
+                python_executable_path,
+            )
+            return replace(conf, base_image=new_base_image)
+
+        self._update_config(define_base_image_fn)
 
     @proxy_to_shadow_if_scattered
     def patch_container(self, patch_request: Dict):
