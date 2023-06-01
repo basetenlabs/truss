@@ -35,7 +35,7 @@ tr.predict([[0, 0, 0, 0]])
 Alternately, you can run your Truss from the command line.
 
 ```
-truss predict path_to_my_truss '[[0, 0, 0, 0]]'
+truss predict --target_directory path_to_my_truss --request '[[0, 0, 0, 0]]'
 ```
 
 You can also specify examples for the model and run them instead. It's much easier to express request data in the example file. Running the example provides for a good dev loop.
@@ -51,7 +51,7 @@ truss run-image path_to_my_truss
 Then, as long as the container is running, you can invoke the model as an API as follows:
 
 ```
-curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '{[[0, 0, 0, 0]]'
+curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '[[0, 0, 0, 0]]'
 ```
 
 ## Setting up local dev
