@@ -179,4 +179,4 @@ resources:
   use_gpu: true # If false, set accelerator: null
 ```
 
-You've successfully packaged a model! If you have the required hardware, you can [test it locally](../develop/localhost.md), or [deploy it to Baseten](https://docs.baseten.co/deploying-models/deploy#stage-1-deploying-a-draft) to get a draft model for rapid iteration in a production environment.
+You've successfully packaged a model! If you have the required hardware, you can [test it locally](../develop/localhost.md), or [deploy it to Baseten](https://docs.baseten.co/models/deploying-models/client#stage-2-deploying-a-draft) to get a draft model for rapid iteration in a production environment.
