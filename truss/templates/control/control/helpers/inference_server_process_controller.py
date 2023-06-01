@@ -2,9 +2,12 @@ import logging
 import os
 import signal
 import subprocess
+from pathlib import Path
 from typing import List, Optional
 
 from helpers.context_managers import current_directory
+
+INFERECE_SERVER_FAILED_FILE = Path("~/.inference_server_crashed.txt")
 
 
 class InferenceServerProcessController:
@@ -30,8 +33,6 @@ class InferenceServerProcessController:
 
     def start(self):
         with current_directory(self._inference_server_home):
-            if os.path.isfile("inference_server_crashed.txt"):
-                os.remove("inference_server_crashed.txt")
             inf_env = os.environ.copy()
             inf_env["INFERENCE_SERVER_PORT"] = str(self._inference_server_port)
             self._inference_server_process = subprocess.Popen(
@@ -70,7 +71,7 @@ class InferenceServerProcessController:
 
     def check_and_recover_inference_server(self):
         if self.inference_server_started() and not self.is_inference_server_running():
-            if not os.path.isfile("inference_server_crashed.txt"):
+            if not INFERECE_SERVER_FAILED_FILE.exists():
                 self._app_logger.warning(
                     "Inference server seems to have crashed, restarting"
                 )
