@@ -58,13 +58,6 @@ COPY ./{{config.data_dir}} /app/data
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml
-
-{% if live_reload %}
-COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-{% endif %}
-
 {% endblock %}
 
 
