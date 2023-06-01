@@ -50,12 +50,21 @@ RUN mkdir -p /app/bin \
 {% endblock %}
 
 {% block app_copy %}
+# Copy data before code for better caching
+{%- if data_dir_exists %}
+COPY ./{{config.data_dir}} /app/data
+{%- endif %}
+
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml
-    {%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
-    {%- endif %}
+
+{% if live_reload %}
+COPY ./control /control
+RUN python3 -m venv /control/.env \
+    && /control/.env/bin/pip3 install -r /control/requirements.txt
+{% endif %}
+
 {% endblock %}
 
 
