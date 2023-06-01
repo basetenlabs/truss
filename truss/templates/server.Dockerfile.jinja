@@ -67,6 +67,6 @@ ENV INFERENCE_SERVER_PORT 8090
 ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
     {%- else %}
 ENV INFERENCE_SERVER_PORT 8080
-ENTRYPOINT [$PYTHON_EXECUTABLE, "/app/inference_server.py"]
+ENTRYPOINT ["$PYTHON_EXECUTABLE", "/app/inference_server.py"]
     {%- endif %}
 {% endblock %}
