@@ -91,7 +91,7 @@ def test_model_load_failure_truss():
 
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
 
-        # Sleep a few seconds to get the server some time to wake up
+        # Sleep a few seconds to get the server some time to  wake up
         time.sleep(10)
 
         truss_server_addr = "http://localhost:8090"
@@ -110,26 +110,30 @@ def test_model_load_failure_truss():
         def _test_liveness_probe(expected_code):
             live = requests.get(f"{truss_server_addr}/")
             assert live.status_code == expected_code
+            return True
 
         @handle_request_exception
         def _test_readiness_probe(expected_code):
             ready = requests.get(f"{truss_server_addr}/v1/models/model")
             assert ready.status_code == expected_code
+            return True
 
         @handle_request_exception
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
+            return True
 
         @handle_request_exception
         def _test_invocations(expected_code):
             invocations = requests.post(f"{truss_server_addr}/invocations", json={})
             assert invocations.status_code == expected_code
+            return True
 
         # The server should be completely down so all requests should result in a RequestException.
         # The decorator handle_request_exception catches the RequestException and returns False.
-        assert not _test_liveness_probe(expected_code=200)
         assert not _test_readiness_probe(expected_code=200)
+        assert not _test_liveness_probe(expected_code=200)
         assert not _test_ping(expected_code=200)
         assert not _test_invocations(expected_code=200)
 
