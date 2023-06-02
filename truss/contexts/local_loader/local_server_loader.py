@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import dockerfile
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
-from truss.util.path import build_truss_target_directory, copy_path
+from truss.util.path import build_truss_target_directory, copy_tree_or_file
 
 
 class EnvBuilder(venv.EnvBuilder):
@@ -37,8 +37,7 @@ class DockerBuildEmulator:
                 src, dst = cmd.value
                 src = src.replace("./", "", 1)
                 dst = dst.replace("/", "", 1)
-                copy_path(context_dir / src, fs_root_dir / dst)
-        pass
+                copy_tree_or_file(context_dir / src, fs_root_dir / dst)
 
 
 class LocalServerLoader:
@@ -48,9 +47,15 @@ class LocalServerLoader:
     def watch(self, build_dir: Optional[Path] = None, venv_dir: Optional[Path] = None):
         if build_dir is None:
             build_dir = build_truss_target_directory("build_dir")
+        else:
+            if not build_dir.exists():
+                build_dir.mkdir(parents=True)
 
         if venv_dir is None:
             venv_dir = build_truss_target_directory("venv")
+        else:
+            if not venv_dir.exists():
+                venv_dir.mkdir(parents=True)
 
         self.context_builder.prepare_image_build_dir(build_dir)
         dockerfile_path = build_dir / "Dockerfile"
@@ -65,8 +70,7 @@ class LocalServerLoader:
         venv_context = venv_builder.context
 
         requirements_files = [
-            "server/requirements.txt",
-            "control/requirements.txt",
+            "app/requirements.txt",
             "requirements.txt",
         ]
         for req_file in requirements_files:
@@ -83,19 +87,22 @@ class LocalServerLoader:
                     str(req_file_path.absolute()),
                 ]
                 subprocess.check_call(pip_install_command)
+
         # Drop python cmd from entrypoint
         _ = docker_build.entry_point.pop(0)
+
+        # Modify path to run in proper root
         f_path = docker_build.entry_point.pop(0)
         f_path = f_path.replace("/", "", 1)
         venv_entry_point = [
             venv_context.env_exe,
-            f_path,
+            (venv_dir / f_path).absolute(),
             *docker_build.entry_point,
         ]
         print(venv_entry_point)
         subprocess.check_call(
             venv_entry_point,
-            cwd=str(venv_dir),
+            cwd=str(venv_dir / "app"),
             env=execution_env_vars,
             stdin=sys.stdin,
             stdout=sys.stdout,

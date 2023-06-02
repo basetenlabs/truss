@@ -17,13 +17,6 @@ def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest))
 
 
-def copy_path(src: Path, dest: Path):
-    if src.is_file():
-        copy_file_path(src, dest)
-    else:
-        copy_tree_path(src, dest)
-
-
 def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
     if src.is_file():
         return copy_file_path(src, dest)
