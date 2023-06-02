@@ -48,5 +48,4 @@ COPY ./data /app/data
 COPY ./packages /packages
 
 ENV INFERENCE_SERVER_PORT 8080
-ENV SERVER_START_CMD="/usr/local/bin/python3 /app/inference_server.py"
-ENTRYPOINT ["/usr/local/bin/python3", "/app/inference_server.py"]
+ENTRYPOINT $PYTHON_EXECUTABLE /app/inference_server.py
