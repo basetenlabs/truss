@@ -34,7 +34,7 @@ async def parse_body(request: Request) -> bytes:
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-INFERENCE_SERVER_FAILED_FILE = Path("~/.inference_server_crashed.txt")
+INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
 
 
