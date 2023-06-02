@@ -24,20 +24,35 @@ class DockerBuildEmulator:
         self.commands = dockerfile.parse_file(str(dockerfile_path))
         self.env_vars: Dict[str, str] = {}
         self.entry_point: List[str] = []
+        self.work_dir: Path = Path("/")
+
+    def _resolve_env(self, key: str) -> str:
+        if key.startswith("$"):
+            key = key.replace("$", "", 1)
+            print(f"cleaned key: {key}")
+            v = self.env_vars[key]
+            print(f"value: {v}")
+            return v
+        return key
+
+    def _resolve_values(self, keys: List[str]) -> List[str]:
+        return list(map(self._resolve_env, keys))
 
     def run(self, context_dir: Path, fs_root_dir: Path):
         for cmd in self.commands:
+            values = self._resolve_values(cmd.value)
             if cmd.cmd == "ENV":
-                values = cmd.value
                 self.env_vars[values[0]] = values[1]
             if cmd.cmd == "ENTRYPOINT":
-                self.entry_point = list(cmd.value)
+                self.entry_point = list(values)
             if cmd.cmd == "COPY":
                 # symlink to path
-                src, dst = cmd.value
+                src, dst = values
                 src = src.replace("./", "", 1)
                 dst = dst.replace("/", "", 1)
                 copy_tree_or_file(context_dir / src, fs_root_dir / dst)
+            if cmd.cmd == "WORKDIR":
+                self.work_dir = self.work_dir / values[0]
 
 
 class LocalServerLoader:
@@ -99,10 +114,9 @@ class LocalServerLoader:
             (venv_dir / f_path).absolute(),
             *docker_build.entry_point,
         ]
-        print(venv_entry_point)
         subprocess.check_call(
             venv_entry_point,
-            cwd=str(venv_dir / "app"),
+            cwd=str(venv_dir / str(docker_build.work_dir).replace("/", "", 1)),
             env=execution_env_vars,
             stdin=sys.stdin,
             stdout=sys.stdout,
