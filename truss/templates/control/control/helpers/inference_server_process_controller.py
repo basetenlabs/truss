@@ -77,6 +77,4 @@ class InferenceServerProcessController:
                 )
                 self.start()
             else:
-                self._app_logger.warning(
-                    "Inference server volunatrily crashed, not restarting"
-                )
+                self._app_logger.warning("Inference server unrecoverable. Try patching")
