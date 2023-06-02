@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict
 
 from endpoints import control_app
-from flask import Flask, jsonify, request
+from flask import Flask, request
 from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
@@ -75,8 +75,7 @@ def _camel_to_snake_case(camel_cased: str) -> str:
 def _create_error_response(content):
     if (
         "Content-Type" in request.headers
-        and request.headers["Content-Type"] == "application/json"
+        and request.headers["Content-Type"] == "application/octet-stream"
     ):
-        return jsonify(content)
-    else:
         return truss_msgpack_serialize(content)
+    return content

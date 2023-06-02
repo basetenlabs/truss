@@ -122,6 +122,7 @@ class Model:
     assert resp.json == {"prediction": [1]}
 
 
+@pytest.mark.integration
 def test_patch_model_code_update_predict_model_not_ready(app, client):
     mock_model_file_content = """
 class Model:
@@ -149,6 +150,7 @@ class Model:
     assert "ModelNotReady" in resp.json["error"]["msg"]
 
 
+@pytest.mark.integration
 def test_patch_model_code_update_predict_binary_model_not_ready(app, client):
     mock_model_file_content = """
 class Model:
@@ -169,7 +171,9 @@ class Model:
     )
     _verify_apply_patch_success(client, patch)
     resp = client.post(
-        "/v1/models/model:predict_binary", data=truss_msgpack_serialize({})
+        "/v1/models/model:predict_binary",
+        data=truss_msgpack_serialize({}),
+        headers={"Content-type": "application/octet-stream"},
     )
     resp.status_code == 200
     assert type(resp.data) == bytes
@@ -210,7 +214,7 @@ def test_patch_model_code_create_in_new_dir(app, client):
 
 
 def test_404(client):
-    resp = client.post("/control/nonexitant")
+    resp = client.post("/control/nonexistant")
     assert resp.status_code == 404
 
 
