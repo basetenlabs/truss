@@ -138,7 +138,12 @@ class BasetenEndpoints:
 
 
 class TrussServer:
-    def __init__(self, http_port: int, config: Dict, setup_json_logger: bool = True):
+    def __init__(
+        self,
+        http_port: int,
+        config: Dict,
+        setup_json_logger: bool = True,
+    ):
         self.http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config)
