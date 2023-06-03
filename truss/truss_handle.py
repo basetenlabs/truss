@@ -398,7 +398,7 @@ class TrussHandle:
         if work_dir:
             work_dir = Path(work_dir)
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
-        server_loader = LocalServerLoader(image_builder)
+        server_loader = LocalServerLoader(self._truss_dir, image_builder)
         server_loader.watch(build_dir, work_dir)
 
     @proxy_to_shadow_if_scattered

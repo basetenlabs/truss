@@ -3,11 +3,17 @@ import subprocess
 import sys
 import venv
 from pathlib import Path
+from threading import Thread
 from typing import Dict, List, Optional
 
 import dockerfile
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
-from truss.util.path import build_truss_target_directory, copy_tree_or_file
+from truss.util.path import (
+    build_truss_target_directory,
+    copy_file_path,
+    copy_tree_or_file,
+)
+from watchfiles import Change, watch
 
 
 class EnvBuilder(venv.EnvBuilder):
@@ -29,9 +35,7 @@ class DockerBuildEmulator:
     def _resolve_env(self, key: str) -> str:
         if key.startswith("$"):
             key = key.replace("$", "", 1)
-            print(f"cleaned key: {key}")
             v = self.env_vars[key]
-            print(f"value: {v}")
             return v
         return key
 
@@ -55,8 +59,35 @@ class DockerBuildEmulator:
                 self.work_dir = self.work_dir / values[0]
 
 
+class TrussFilesWatcher(Thread):
+    def __init__(self, watch_path: Path, mirror_path: Path) -> None:
+        super().__init__()
+        self.watch_path = watch_path
+        self.mirror_path = mirror_path
+
+    def run(self):
+        for changes in watch(str(self.watch_path)):
+            for change in changes:
+                op, path = change
+                rel_path = Path(path).relative_to(self.watch_path.resolve())
+                if op == Change.modified:
+                    print(rel_path)
+                    copy_file_path(
+                        self.watch_path / rel_path, self.mirror_path / rel_path
+                    )
+            #  print(path)
+            #  print(self.watch_path.resolve())
+            #  print(op, )
+            # print(changes)
+
+    def stop(self):
+        self._stop()
+        self.join()
+
+
 class LocalServerLoader:
-    def __init__(self, context_builder: ServingImageBuilder) -> None:
+    def __init__(self, truss_path: Path, context_builder: ServingImageBuilder) -> None:
+        self.truss_path = truss_path
         self.context_builder = context_builder
 
     def watch(self, build_dir: Optional[Path] = None, venv_dir: Optional[Path] = None):
@@ -103,17 +134,22 @@ class LocalServerLoader:
                 ]
                 subprocess.check_call(pip_install_command)
 
-        # Drop python cmd from entrypoint
-        _ = docker_build.entry_point.pop(0)
-
         # Modify path to run in proper root
-        f_path = docker_build.entry_point.pop(0)
-        f_path = f_path.replace("/", "", 1)
         venv_entry_point = [
             venv_context.env_exe,
-            (venv_dir / f_path).absolute(),
-            *docker_build.entry_point,
+            "-m",
+            "uvicorn",
+            "local_inference_server:app",
+            "--reload",
         ]
+        t = TrussFilesWatcher(self.truss_path, venv_dir / "app/")
+        t.start()
+        execution_env_vars = {
+            **execution_env_vars,
+            "RELOAD": "True",
+            "RELOAD_DIRS": str(venv_dir.resolve()),
+        }
+
         subprocess.check_call(
             venv_entry_point,
             cwd=str(venv_dir / str(docker_build.work_dir).replace("/", "", 1)),
@@ -122,3 +158,4 @@ class LocalServerLoader:
             stdout=sys.stdout,
             stderr=sys.stderr,
         )
+        t.stop()
