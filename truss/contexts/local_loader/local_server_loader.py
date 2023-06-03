@@ -61,7 +61,7 @@ class DockerBuildEmulator:
 
 class TrussFilesWatcher(Thread):
     def __init__(self, watch_path: Path, mirror_path: Path) -> None:
-        super().__init__()
+        super().__init__(daemon=True)
         self.watch_path = watch_path
         self.mirror_path = mirror_path
 
@@ -91,7 +91,11 @@ class LocalServerLoader:
         self.context_builder = context_builder
         self.port = port or 8080
 
-    def watch(self, build_dir: Optional[Path] = None, venv_dir: Optional[Path] = None):
+    def watch(
+        self,
+        build_dir: Optional[Path] = None,
+        venv_dir: Optional[Path] = None,
+    ):
         if build_dir is None:
             build_dir = build_truss_target_directory("build_dir")
         else:
@@ -159,4 +163,3 @@ class LocalServerLoader:
             stdout=sys.stdout,
             stderr=sys.stderr,
         )
-        t.stop()
