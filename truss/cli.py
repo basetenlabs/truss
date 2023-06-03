@@ -151,6 +151,24 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 
 
 @cli_group.command()
+@click.argument("target_directory", required=False)
+@click.option("--build-dir", type=Path, required=False)
+@click.option("--venv-dir", type=Path, required=False)
+@click.option("--port", type=int, default=8080, help="Local port used to run image")
+@error_handling
+def watch(target_directory: str, build_dir: Path, venv_dir: Path, port: int) -> None:
+    """
+    Runs the model server for a Truss.
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+
+    BUILD_DIR: Image context. If none, a temp directory is created.
+    """
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    tr.run_watch_server(build_dir=build_dir, work_dir=venv_dir)  # , port=port)
+
+
+@cli_group.command()
 @click.option("--target_directory", required=False, help="Directory of truss")
 @click.option(
     "--request",

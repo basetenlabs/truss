@@ -71,14 +71,9 @@ class TrussFilesWatcher(Thread):
                 op, path = change
                 rel_path = Path(path).relative_to(self.watch_path.resolve())
                 if op == Change.modified:
-                    print(rel_path)
                     copy_file_path(
                         self.watch_path / rel_path, self.mirror_path / rel_path
                     )
-            #  print(path)
-            #  print(self.watch_path.resolve())
-            #  print(op, )
-            # print(changes)
 
     def stop(self):
         self._stop()
