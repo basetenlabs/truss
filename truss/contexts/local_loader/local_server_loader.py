@@ -72,7 +72,8 @@ class TrussFilesWatcher(Thread):
                 rel_path = Path(path).relative_to(self.watch_path.resolve())
                 if op == Change.modified:
                     copy_file_path(
-                        self.watch_path / rel_path, self.mirror_path / rel_path
+                        self.watch_path / rel_path,
+                        self.mirror_path / rel_path,
                     )
 
     def stop(self):
@@ -119,7 +120,16 @@ class LocalServerLoader:
         venv_builder = EnvBuilder(with_pip=True)
         venv_builder.create(str(venv_dir / ".env"))
         venv_context = venv_builder.context
-
+        subprocess.check_call(
+            [
+                venv_context.env_exe,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "pip",
+            ]
+        )
         requirements_files = [
             "app/requirements.txt",
             "requirements.txt",
@@ -153,6 +163,7 @@ class LocalServerLoader:
         t.start()
         execution_env_vars = {
             **execution_env_vars,
+            "SETUP_JSON_LOGGER": "False",
         }
 
         subprocess.check_call(
