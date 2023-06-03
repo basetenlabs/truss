@@ -3,7 +3,7 @@ import subprocess
 import sys
 import venv
 from pathlib import Path
-from typing import Optional
+from typing import Any, List, Optional
 
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
@@ -12,12 +12,44 @@ from truss.util.path import build_truss_target_directory
 
 
 class EnvBuilder(venv.EnvBuilder):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, venv_dir: Path, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.context = None
+        self.context: Any = None
+        self.venv_dir = venv_dir
 
     def post_setup(self, context):
         self.context = context
+
+    def setup(self, req_files: List[str]) -> None:
+        env_dir = str(self.venv_dir / ".env")
+        super().create(env_dir)
+        self._upgrade_pip()
+        for req_file in req_files:
+            self._install_pip_requirements(self.venv_dir / req_file)
+
+    def _upgrade_pip(self):
+        subprocess.check_call(
+            [
+                self.context.env_exe,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "pip",
+            ]
+        )
+
+    def _install_pip_requirements(self, req_file: Path):
+        if req_file.exists():
+            pip_install_command = [
+                self.context.env_exe,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                str(req_file.absolute()),
+            ]
+            subprocess.check_call(pip_install_command)
 
 
 class LocalServerLoader:
@@ -53,61 +85,30 @@ class LocalServerLoader:
         docker_build = DockerBuildEmulator(dockerfile_path)
         docker_build.run(build_dir, venv_dir)
 
-        execution_env_vars = docker_build.env_vars
-
-        # print(f" *** Created temporary directory '{target_dir_path}'.")
-        venv_builder = EnvBuilder(with_pip=True)
-        venv_builder.create(str(venv_dir / ".env"))
-        venv_context = venv_builder.context
-        subprocess.check_call(
-            [
-                venv_context.env_exe,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "pip",
-            ]
-        )
+        venv_builder = EnvBuilder(venv_dir, with_pip=True)
         requirements_files = [
             "app/requirements.txt",
             "requirements.txt",
         ]
-        for req_file in requirements_files:
-            req_file_path = venv_dir / req_file
+        venv_builder.setup(requirements_files)
 
-            if req_file_path.exists():
-                print(f"Installing requirements for {req_file_path}")
-                pip_install_command = [
-                    venv_context.env_exe,
-                    "-m",
-                    "pip",
-                    "install",
-                    "-r",
-                    str(req_file_path.absolute()),
-                ]
-                subprocess.check_call(pip_install_command)
-
-        # Modify path to run in proper root
-        venv_entry_point = [
-            venv_context.env_exe,
-            "-m",
-            "uvicorn",
-            "local_inference_server:app",
-            "--reload",
-            "--port",
-            str(self.port),
-        ]
         TrussFilesWatcher(self.truss_path, venv_dir / "app/").start()
-        execution_env_vars = {
-            **execution_env_vars,
-            "SETUP_JSON_LOGGER": "False",
-        }
 
         subprocess.check_call(
-            venv_entry_point,
+            [
+                venv_builder.context.env_exe,
+                "-m",
+                "uvicorn",
+                "local_inference_server:app",
+                "--reload",
+                "--port",
+                str(self.port),
+            ],
             cwd=str(venv_dir / str(docker_build.work_dir).replace("/", "", 1)),
-            env=execution_env_vars,
+            env={
+                **docker_build.env_vars,
+                "SETUP_JSON_LOGGER": "False",
+            },
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,
