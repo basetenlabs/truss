@@ -81,9 +81,15 @@ class TrussFilesWatcher(Thread):
 
 
 class LocalServerLoader:
-    def __init__(self, truss_path: Path, context_builder: ServingImageBuilder) -> None:
+    def __init__(
+        self,
+        truss_path: Path,
+        context_builder: ServingImageBuilder,
+        port: Optional[int] = None,
+    ) -> None:
         self.truss_path = truss_path
         self.context_builder = context_builder
+        self.port = port or 8080
 
     def watch(self, build_dir: Optional[Path] = None, venv_dir: Optional[Path] = None):
         if build_dir is None:
@@ -136,13 +142,13 @@ class LocalServerLoader:
             "uvicorn",
             "local_inference_server:app",
             "--reload",
+            "--port",
+            str(self.port),
         ]
         t = TrussFilesWatcher(self.truss_path, venv_dir / "app/")
         t.start()
         execution_env_vars = {
             **execution_env_vars,
-            "RELOAD": "True",
-            "RELOAD_DIRS": str(venv_dir.resolve()),
         }
 
         subprocess.check_call(

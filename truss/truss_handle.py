@@ -390,7 +390,10 @@ class TrussHandle:
         return image_builder.docker_build_command(build_dir)
 
     def run_watch_server(
-        self, build_dir: Optional[Path] = None, work_dir: Optional[Path] = None
+        self,
+        build_dir: Optional[Path] = None,
+        work_dir: Optional[Path] = None,
+        port: Optional[int] = None,
     ):
         if build_dir:
             build_dir = Path(build_dir)
@@ -398,7 +401,7 @@ class TrussHandle:
         if work_dir:
             work_dir = Path(work_dir)
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
-        server_loader = LocalServerLoader(self._truss_dir, image_builder)
+        server_loader = LocalServerLoader(self._truss_dir, image_builder, port=port)
         server_loader.watch(build_dir, work_dir)
 
     @proxy_to_shadow_if_scattered
