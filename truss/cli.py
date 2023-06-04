@@ -165,7 +165,7 @@ def watch(target_directory: str, build_dir: Path, venv_dir: Path, port: int) -> 
     BUILD_DIR: Image context. If none, a temp directory is created.
     """
     tr = _get_truss_from_directory(target_directory=target_directory)
-    tr.run_watch_server(build_dir=build_dir, work_dir=venv_dir, port=port)
+    tr.run_local_server_with_reload(build_dir=build_dir, work_dir=venv_dir, port=port)
 
 
 @cli_group.command()

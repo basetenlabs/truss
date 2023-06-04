@@ -389,7 +389,7 @@ class TrussHandle:
         image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
 
-    def run_watch_server(
+    def run_local_server_with_reload(
         self,
         build_dir: Optional[Path] = None,
         work_dir: Optional[Path] = None,

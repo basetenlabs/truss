@@ -5,7 +5,7 @@ from truss.util.path import copy_file_path
 from watchfiles import Change, watch
 
 
-class TrussFilesWatcher(Thread):
+class TrussFilesSyncer(Thread):
     def __init__(self, watch_path: Path, mirror_path: Path) -> None:
         super().__init__(daemon=True)
         self.watch_path = watch_path

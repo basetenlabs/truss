@@ -7,11 +7,11 @@ from typing import Any, List, Optional
 
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
-from truss.contexts.local_loader.truss_file_watcher import TrussFilesWatcher
+from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.util.path import build_truss_target_directory
 
 
-class EnvBuilder(venv.EnvBuilder):
+class VenvBuilder(venv.EnvBuilder):
     def __init__(self, venv_dir: Path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.context: Any = None
@@ -82,17 +82,17 @@ class LocalServerLoader:
 
         self.context_builder.prepare_image_build_dir(build_dir)
         dockerfile_path = build_dir / "Dockerfile"
-        docker_build = DockerBuildEmulator(dockerfile_path)
-        docker_build.run(build_dir, venv_dir)
+        docker_build_emulator = DockerBuildEmulator(dockerfile_path, build_dir)
+        docker_build_emulator.run(venv_dir)
 
-        venv_builder = EnvBuilder(venv_dir, with_pip=True)
+        venv_builder = VenvBuilder(venv_dir, with_pip=True)
         requirements_files = [
             "app/requirements.txt",
             "requirements.txt",
         ]
         venv_builder.setup(requirements_files)
 
-        TrussFilesWatcher(self.truss_path, venv_dir / "app/").start()
+        TrussFilesSyncer(self.truss_path, venv_dir / "app/").start()
 
         subprocess.check_call(
             [
@@ -104,9 +104,9 @@ class LocalServerLoader:
                 "--port",
                 str(self.port),
             ],
-            cwd=str(venv_dir / str(docker_build.work_dir).replace("/", "", 1)),
+            cwd=str(venv_dir / str(docker_build_emulator.work_dir).replace("/", "", 1)),
             env={
-                **docker_build.env_vars,
+                **docker_build_emulator.env_vars,
                 "SETUP_JSON_LOGGER": "False",
             },
             stdin=sys.stdin,
