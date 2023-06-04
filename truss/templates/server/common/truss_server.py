@@ -155,7 +155,6 @@ class TrussServer:
         This method will be started inside the main process, so here is where we want to setup our logging and model
         """
         if self._setup_json_logger:
-            print("SETTING UP THE LOGGER")
             setup_logging()
 
         self._model.start_load()
