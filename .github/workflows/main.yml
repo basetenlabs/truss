@@ -29,11 +29,11 @@ jobs:
       - id: versions
         run: |
           NEW_VERSION=$(poetry version | awk '{print $2}')
-          NEW_BASE_IMAGE_VERSION=$(poetry run python -c "from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG; print(TRUSS_BASE_IMAGE_VERSION_TAG)")
+          NEW_BASE_IMAGE_VERSION=$(grep TRUSS_BASE_IMAGE_VERSION_TAG truss/contexts/image_builder/util.py | cut -d'=' -f2 | cut -d'"' -f2)
 
           git checkout HEAD^1 -- pyproject.toml truss/contexts/image_builder/util.py
           OLD_VERSION=$(poetry version | awk '{print $2}')
-          OLD_BASE_IMAGE_VERSION=$(poetry run python -c "from truss.contexts.image_builder.util import TRUSS_BASE_IMAGE_VERSION_TAG; print(TRUSS_BASE_IMAGE_VERSION_TAG)")
+          OLD_BASE_IMAGE_VERSION=$(grep TRUSS_BASE_IMAGE_VERSION_TAG truss/contexts/image_builder/util.py | cut -d'=' -f2 | cut -d'"' -f2)
 
           # Put back things into place
           git checkout HEAD -- pyproject.toml truss/contexts/image_builder/util.py
