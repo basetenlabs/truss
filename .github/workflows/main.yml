@@ -92,7 +92,10 @@ jobs:
 
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: always() && needs.detect-version-changed.outputs.dev_version == 'false' && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped')
+    if: |
+      always() && \
+      (needs.detect-version-changed.outputs.version_changed == 'true' && needs.detect-version-changed.outputs.dev_version == 'false') && \
+      (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped')
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
