@@ -83,6 +83,7 @@ jobs:
       - shell: bash
         run: |
           poetry run bin/generate_base_images.py \
+            --live-reload both \
             --use-gpu ${{ matrix.use_gpu }}  \
             --python-version ${{ matrix.python_version }} \
             --job-type ${{ matrix.job_type }} \
