@@ -58,3 +58,36 @@ a change that needs publishing base images do the following:
 6. Make sure integration tests pass
     - Integration tests need the new images to be published, so this is a good
       test for publication as well
+      
+### Use of `TRUSS_BASE_IMAGE_VERSION_TAG`
+`TRUSS_BASE_IMAGE_VERSION_TAG` is used by the truss library to pick the base images for
+the final model's Dockerfile. This is a constant and as such gets bundled with the truss
+library. A specific version of Truss library has a fixed value of `TRUSS_BASE_IMAGE_VERSION_TAG`
+and thus it always refers to the corresponding base images that have the matching tag.
+
+Let's look at two practical scenrios:
+1. You have a change that needs to go into base images
+2. You have a change to Truss library that doesn't affect base images, so you don't want to publish them
+
+#### Change needs to go into base images
+Clearly, you'll need new base images for this. So you'll need to generate the new base images using
+the `generate_images` script. You will also need to update `TRUSS_BASE_IMAGE_VERSION_TAG`, so that the truss
+library starts using the new base images. Lastly, you need a new truss library version to pick up that
+new value of `TRUSS_BASE_IMAGE_VERSION_TAG` value. Truss context builder is just a bundling of truss library
+so that needs publishing as well. In short, everything needs publishing and they should use the same version
+to avoid confusion. The version in pyproject.toml should match `TRUSS_BASE_IMAGE_VERSION_TAG`.
+Integration tests work just like the truss library, they use `TRUSS_BASE_IMAGE_VERSION_TAG` to look up base images
+to build models. When `TRUSS_BASE_IMAGE_VERSION_TAG` is incremented, they'll start looking for these
+new base images. So the images need to be pushed before the integration tests can run and pass. That's
+the reason for the suggested flow above, and the corresponding github action. In the gh action, the 
+images are built first, then integration tests are run and then library and context builder are published.
+If we publish the images but the integration tests fail after, that's ok. These new images are not used 
+until the Truss library and the context builder are published. 
+From building images on Baseten point of view, the new images become effectively available when Truss context builder
+version is incremented in the Baseten Django app.
+
+#### Change Truss without changing base images
+Say you have a small change that doesn't touch what goes into base images, and you want to release it
+without creating new base images. In this case, you can leave `TRUSS_BASE_IMAGE_VERSION_TAG` untouched, Truss
+library will continue to use the existing value which will continue to point to existing base images.
+Your other changes can be published to pypi and to context builder image. Overall, there's less to do here.
