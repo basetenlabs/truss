@@ -62,6 +62,11 @@ jobs:
     needs: [detect-version-changed]
     if: needs.detect-version-changed.outputs.build_base_images == 'true'
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python_version: ["3.8", "3.9", "3.10", "3.11"]
+        use_gpu: ['y', 'n']
+        job_type: ['server', 'training']
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -77,7 +82,11 @@ jobs:
       - run: poetry install
       - shell: bash
         run: |
-          poetry run bin/generate_base_images.py --version-tag ${{ needs.detect-version-changed.outputs.new_vernew_base_image_versionsion }} \
+          poetry run bin/generate_base_images.py \
+            --use-gpu ${{ matrix.use_gpu }}  \
+            --python-version ${{ matrix.python_version }} \
+            --job-type ${{ matrix.job_type }} \
+            --version-tag ${{ needs.detect-version-changed.outputs.new_vernew_base_image_versionsion }} \
             --skip-login --push
 
   integration-tests:
