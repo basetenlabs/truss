@@ -363,7 +363,7 @@ def custom_model_external_data_access_tuple_fixture(tmp_path: Path):
         cwd=tmp_path,
     )
     try:
-        url = f"http://host.docker.internal:{port}/{filename}"
+        url = f"http://localhost:{port}/{filename}"
         # Add arbitrary get params to get that they don't cause issues, the
         # server above ignores them.
         # url_with_get_params = f"{url}?foo=bar&baz=bla"
