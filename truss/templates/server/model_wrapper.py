@@ -10,7 +10,6 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Dict, Optional
 
-from common.external_data_resolver import download_external_data
 from common.patches import apply_patches
 from common.retry import retry
 from shared.secrets_resolver import SecretsResolver
@@ -85,7 +84,6 @@ class ModelWrapper:
     def try_load(self):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
-        download_external_data(data_dir, self._config)
 
         if "bundled_packages_dir" in self._config:
             bundled_packages_path = Path("/packages")
