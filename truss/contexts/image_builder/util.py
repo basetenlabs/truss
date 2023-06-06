@@ -11,7 +11,7 @@ from truss import __version__
 # [IMPORTANT] Make sure all images for this version are published to dockerhub
 # before change to this value lands. This value is used to look for base images
 # when building docker image for a truss.
-TRUSS_BASE_IMAGE_VERSION_TAG = "v0.4.8dev1"
+TRUSS_BASE_IMAGE_VERSION_TAG = "v0.4.8dev4"
 
 
 def file_is_empty(path: Path, ignore_hash_style_comments: bool = True) -> bool:
