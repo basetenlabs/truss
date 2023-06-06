@@ -14,10 +14,10 @@ to generate.
 
 Examples:
 ```
-# To generate base image for live reloadable truss, with gpu support, for python
+# To generate base image with gpu support, for python
 # version 3.9, for model serving and with a version tag v0.2.2
-poetry run bin/generate_base_images.py --live-reload y --use-gpu y --python-version 3.9 --version-tag v0.2.2 --job-type server
-# Generates image named baseten/truss-server-base:3.9-gpu-reload-v0.2.2
+poetry run bin/generate_base_images.py --use-gpu y --python-version 3.9 --version-tag v0.2.2 --job-type server
+# Generates image named baseten/truss-server-base:3.9-gpu-v0.2.2
 ```
 
 ```
@@ -30,8 +30,8 @@ poetry run bin/generate_base_images.py  --version-tag v0.2.2 --push
 ## Working with base images
 
 ### Testing with base images
-Say you're making a change that goes into base images, e.g. any improvements to
-live reload. One thing you could do is build all the base images locally. Once
+Say you're making a change that goes into base images.
+One thing you could do is build all the base images locally. Once
 the images are available on your local docker, you'll be able to test them. But
 building all images can take a long time, so you may want to be selective. e.g.
 you may want to build only serving images for python version 3.9 and without gpu
