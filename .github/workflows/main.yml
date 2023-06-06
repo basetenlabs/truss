@@ -1,4 +1,4 @@
-name: main
+name: Release CI
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 concurrency:
-  group: main-${{ github.ref_name }}
+  group: main-${{ github.head_ref || github.run_id }}
   cancel-in-progress: false
 
 jobs:
