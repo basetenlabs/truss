@@ -10,10 +10,13 @@ concurrency:
 jobs:
   integration_tests:
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v3
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests -m 'integration'
+      - run: poetry run pytest truss/tests -m 'integration' --splits 5 --group ${{ matrix.split_group }}

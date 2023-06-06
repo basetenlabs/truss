@@ -2756,6 +2756,21 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
 
 [[package]]
+name = "pytest-split"
+version = "0.8.1"
+description = "Pytest plugin which splits the test suite to equally sized sub suites based on test execution time."
+category = "dev"
+optional = false
+python-versions = ">=3.7.1,<4.0"
+files = [
+    {file = "pytest_split-0.8.1-py3-none-any.whl", hash = "sha256:74b110ea091bd147cc1c5f9665a59506e5cedfa66f96a89fb03e4ab447c2c168"},
+    {file = "pytest_split-0.8.1.tar.gz", hash = "sha256:2d88bd3dc528689a7a3f58fc12ea165c3aa62e90795e420dfad920afe5612d6d"},
+]
+
+[package.dependencies]
+pytest = ">=5,<8"
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -4232,4 +4247,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "beec5d2a44dc9d4cf5c389ea19af29f7412f033dc5d49f54ff521d246d13fb6f"
+content-hash = "d9d78cc06e05be12f0d416e759746d0e3e541603dff69fbed09ce093c797da70"
