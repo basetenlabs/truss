@@ -11,3 +11,4 @@ fastapi==0.95.0
 uvicorn==0.21.1
 psutil==5.9.4
 joblib==1.2.0
+requests==2.31.0
