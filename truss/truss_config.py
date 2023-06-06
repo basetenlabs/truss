@@ -81,7 +81,7 @@ class Resources:
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
     use_gpu: bool = DEFAULT_USE_GPU
-    accelerator: AcceleratorSpec = AcceleratorSpec()
+    accelerator: AcceleratorSpec = field(default_factory=AcceleratorSpec)
 
     @staticmethod
     def from_dict(d):
