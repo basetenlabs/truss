@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.4.6dev3"
+version = "0.4.8rc0"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -32,10 +32,11 @@ blake3 = "^0.3.3"
 fastapi = "^0.95.0"
 uvicorn = "^0.21.1"
 psutil = "^5.9.4"
-urllib3 = "1.26.15"
+joblib = "^1.2.0"
+dockerfile = "^3.2.0"
 
 [tool.poetry.group.builder.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8,<3.12"
 packaging = "^20.9"
 python-json-logger = ">=2.0.2"
 PyYAML = "^6.0"

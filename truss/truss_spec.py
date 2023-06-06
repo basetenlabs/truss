@@ -185,8 +185,16 @@ class TrussSpec:
         return self._config.live_reload
 
     @property
-    def base_image(self) -> Optional[str]:
-        return self._config.base_image
+    def base_image_name(self) -> Optional[str]:
+        return self._config.base_image.image
+
+    @property
+    def python_executable_path(self) -> str:
+        return self._config.base_image.python_executable_path
+
+    @property
+    def apply_library_patches(self) -> bool:
+        return self._config.apply_library_patches
 
 
 def _join_lines(lines: List[str]) -> str:

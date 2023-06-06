@@ -18,6 +18,10 @@ from tensorflow.keras import layers
 from tensorflow.keras.layers.experimental import preprocessing
 from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
 from truss.build import create, init
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
+from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.types import Example
 from xgboost import XGBClassifier
@@ -692,25 +696,19 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 
 @pytest.fixture
 def truss_container_fs(tmp_path):
-    ROOT = str(Path(__file__).parent.parent.parent.resolve())
-    subprocess.run(["truss", "run-image", "truss/test_data/test_truss"], cwd=ROOT)
+    ROOT = Path(__file__).parent.parent.parent.resolve()
     truss_fs = tmp_path / "truss_fs"
     truss_fs.mkdir()
-
-    ps_output = subprocess.check_output(
-        [
-            "docker",
-            "ps",
-            "--filter",
-            "label=truss_dir=truss/test_data/test_truss",
-            "--format",
-            "'{{.Names}},{{.Image}}'",
-        ]
+    truss_build_dir = tmp_path / "truss_fs_build"
+    truss_build_dir.mkdir()
+    image_builder = ServingImageBuilderContext.run(
+        ROOT / "truss" / "test_data" / "test_truss",
     )
-    container_name, image = ps_output.decode("utf-8").strip()[1:-1].split(",")
-    subprocess.run(["docker", "cp", f"{container_name}:/app", str(truss_fs / "app")])
-    subprocess.run(["docker", "kill", container_name])
-    subprocess.run(["docker", "rmi", image, "-f"])
+    image_builder.prepare_image_build_dir(truss_build_dir)
+    dockerfile_path = truss_build_dir / "Dockerfile"
+
+    docker_build_emulator = DockerBuildEmulator(dockerfile_path, truss_build_dir)
+    docker_build_emulator.run(truss_fs)
     return truss_fs
 
 

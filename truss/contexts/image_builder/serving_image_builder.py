@@ -115,13 +115,12 @@ class ServingImageBuilder(ImageBuilder):
         )
         python_version = to_dotted_python_version(config.python_version)
         if config.base_image:
-            base_image_name_and_tag = config.base_image
+            base_image_name_and_tag = config.base_image.image
         else:
             base_image_name = truss_base_image_name(job_type="server")
             tag = truss_base_image_tag(
                 python_version=python_version,
                 use_gpu=config.resources.use_gpu,
-                live_reload=config.live_reload,
                 version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
             )
             base_image_name_and_tag = f"{base_image_name}:{tag}"

@@ -11,7 +11,7 @@ from truss import __version__
 # [IMPORTANT] Make sure all images for this version are published to dockerhub
 # before change to this value lands. This value is used to look for base images
 # when building docker image for a truss.
-TRUSS_BASE_IMAGE_VERSION_TAG = "v0.3.4"
+TRUSS_BASE_IMAGE_VERSION_TAG = "v0.4.8rc0"
 
 
 def file_is_empty(path: Path, ignore_hash_style_comments: bool = True) -> bool:
@@ -43,7 +43,6 @@ def truss_base_image_name(job_type: str) -> str:
 def truss_base_image_tag(
     python_version: str,
     use_gpu: bool,
-    live_reload: bool,
     version_tag: Optional[str] = None,
 ) -> str:
     if version_tag is None:
@@ -52,8 +51,6 @@ def truss_base_image_tag(
     base_tag = python_version
     if use_gpu:
         base_tag = f"{base_tag}-gpu"
-    if live_reload:
-        base_tag = f"{base_tag}-reload"
     return f"{base_tag}-{version_tag}"
 
 
