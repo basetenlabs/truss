@@ -193,6 +193,7 @@ def _download_external_data_using_b10cp(
     external_data: ExternalData,
 ):
     procs = []
+    # TODO(pankaj) Limit concurrency here
     for item in external_data.items:
         path = (data_dir / item.local_data_path).resolve()
         proc = _download_from_url_using_b10cp(b10cp_path, item.url, path)
