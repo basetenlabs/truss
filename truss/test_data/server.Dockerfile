@@ -40,12 +40,14 @@ RUN mkdir -p /app/bin \
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 
+# Copy data before code for better caching
+COPY ./data /app/data
 COPY ./server /app
 COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
-COPY ./data /app/data
 
 COPY ./packages /packages
 
 ENV INFERENCE_SERVER_PORT 8080
-ENTRYPOINT $PYTHON_EXECUTABLE /app/inference_server.py
+ENV SERVER_START_CMD="/usr/local/bin/python3 /app/inference_server.py"
+ENTRYPOINT ["/usr/local/bin/python3", "/app/inference_server.py"]
