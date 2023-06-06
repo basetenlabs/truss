@@ -162,9 +162,20 @@ class ServingImageBuilder(ImageBuilder):
         external_data = self._spec.external_data
         if external_data is None:
             return
-
+        data_dir.mkdir(exist_ok=True)
         b10cp_path = _b10cp_path()
+
+        # ensure parent directories exist
+        for item in external_data.items:
+            path = data_dir / item.local_data_path
+            if data_dir not in path.parents:
+                raise ValueError(
+                    "Local data path of external data cannot point to outside data directory"
+                )
+            path.parent.mkdir(exist_ok=True)
+
         if b10cp_path is not None:
+            print("b10cp found, using it to download external data")
             _download_external_data_using_b10cp(b10cp_path, data_dir, external_data)
             return
 
