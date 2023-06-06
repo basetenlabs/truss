@@ -167,9 +167,9 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 @click.option("--tag", help="Docker build image tag")
 @click.option("--port", type=int, default=8080, help="Local port used to run image")
 @click.option(
-    "--use-docker",
+    "--no-docker",
     is_flag=True,
-    default=True,
+    default=False,
     help="Flag to run prediction with a docker container",
 )
 @click.option(
@@ -185,7 +185,7 @@ def predict(
     build_dir,
     tag,
     port,
-    use_docker,
+    no_docker,
     request_file,
 ):
     """
@@ -201,7 +201,7 @@ def predict(
 
     PORT: Local port used to run image
 
-    USE_DOCKER: Flag to run prediction with a docker container
+    NO_DOCKER: Flag to run prediction without a docker container
 
     REQUEST_FILE: Path to json file containing the request
     """
@@ -214,12 +214,12 @@ def predict(
         raise ValueError("At least one of request or request-file must be supplied.")
 
     tr = _get_truss_from_directory(target_directory=target_directory)
-    if use_docker:
+    if no_docker:
+        return tr.server_predict(request_data)
+    else:
         return tr.docker_predict(
             request_data, build_dir=build_dir, tag=tag, local_port=port, detach=True
         )
-    else:
-        return tr.server_predict(request_data)
 
 
 @cli_group.command()
