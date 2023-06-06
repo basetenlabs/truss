@@ -87,7 +87,7 @@ jobs:
             --use-gpu ${{ matrix.use_gpu }}  \
             --python-version ${{ matrix.python_version }} \
             --job-type ${{ matrix.job_type }} \
-            --version-tag ${{ needs.detect-version-changed.outputs.new_vernew_base_image_versionsion }} \
+            --version-tag ${{ needs.detect-version-changed.outputs.new_base_image_version }} \
             --skip-login --push
 
   integration-tests:
