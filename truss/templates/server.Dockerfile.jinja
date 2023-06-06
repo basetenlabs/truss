@@ -20,17 +20,12 @@ RUN apt update && \
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
-{% if live_reload %}
-{% if config.base_image %}
+    {%- if config.live_reload %}
 # Create symlink for control server to start inference server process with correct python executable
 RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
     && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
 RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
-{% endif %}
-COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-{% endif %}
+    {%- endif %}
 {% endif %}
 
 {% endblock %}
@@ -50,11 +45,18 @@ RUN mkdir -p /app/bin \
 {% endblock %}
 
 {% block app_copy %}
+# Copy data before code for better caching
+{%- if data_dir_exists %}
+COPY ./{{config.data_dir}} /app/data
+{%- endif %}
+
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml
-    {%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
+    {%- if config.live_reload %}
+COPY ./control /control
+RUN python3 -m venv /control/.env \
+    && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
 {% endblock %}
 

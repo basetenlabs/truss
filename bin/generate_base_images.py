@@ -44,7 +44,6 @@ def _docker_login():
 def _render_dockerfile(
     job_type: str,
     python_version: str,
-    live_reload: bool,
     use_gpu: bool,
 ) -> str:
     # Render jinja
@@ -54,7 +53,6 @@ def _render_dockerfile(
     template = jinja_env.get_template("base_image.Dockerfile.jinja")
     return template.render(
         use_gpu=use_gpu,
-        live_reload=live_reload,
         job_type=job_type,
         python_version=python_version,
     )
@@ -62,7 +60,6 @@ def _render_dockerfile(
 
 def _build(
     python_version: str,
-    live_reload: bool = False,
     use_gpu: bool = False,
     job_type: str = "server",
     push: bool = False,
@@ -73,7 +70,6 @@ def _build(
     tag = truss_base_image_tag(
         python_version=python_version,
         use_gpu=use_gpu,
-        live_reload=live_reload,
         version_tag=version_tag,
     )
     image_with_tag = f"{image_name}:{tag}"
@@ -84,7 +80,6 @@ def _build(
     dockerfile_content = _render_dockerfile(
         job_type=job_type,
         python_version=python_version,
-        live_reload=live_reload,
         use_gpu=use_gpu,
     )
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -124,7 +119,6 @@ def _build(
 def _build_all(
     job_types: Optional[List[str]] = None,
     python_versions: Optional[Set[str]] = None,
-    live_reload_values: Optional[List[bool]] = None,
     use_gpu_values: Optional[List[bool]] = None,
     push: bool = False,
     version_tag: Optional[str] = None,
@@ -136,25 +130,20 @@ def _build_all(
     if python_versions is None:
         python_versions = PYTHON_VERSIONS
 
-    if live_reload_values is None:
-        live_reload_values = [True, False]
-
     if use_gpu_values is None:
         use_gpu_values = [True, False]
 
     for job_type in job_types:
         for python_version in python_versions:
-            for live_reload in live_reload_values:
-                for use_gpu in use_gpu_values:
-                    _build(
-                        job_type=job_type,
-                        python_version=python_version,
-                        use_gpu=use_gpu,
-                        live_reload=live_reload,
-                        push=push,
-                        version_tag=version_tag,
-                        dry_run=dry_run,
-                    )
+            for use_gpu in use_gpu_values:
+                _build(
+                    job_type=job_type,
+                    python_version=python_version,
+                    use_gpu=use_gpu,
+                    push=push,
+                    version_tag=version_tag,
+                    dry_run=dry_run,
+                )
 
 
 if __name__ == "__main__":
@@ -183,13 +172,6 @@ if __name__ == "__main__":
         default="all",
         choices=["server", "training", "all"],
         help="Create images for server",
-    )
-    parser.add_argument(
-        "--live-reload",
-        nargs="?",
-        default="both",
-        choices=["y", "n", "both"],
-        help="Whether to create live-reload capable, incapable or both images",
     )
     parser.add_argument(
         "--use-gpu",
@@ -224,7 +206,6 @@ if __name__ == "__main__":
         job_types = [args.job_type]
 
     use_gpu_values = _bool_arg_str_to_values(args.use_gpu)
-    live_reload_values = _bool_arg_str_to_values(args.live_reload)
 
     if args.push and not args.skip_login:
         _docker_login()
@@ -233,7 +214,6 @@ if __name__ == "__main__":
         python_versions=python_versions,
         job_types=job_types,
         use_gpu_values=use_gpu_values,
-        live_reload_values=live_reload_values,
         push=args.push,
         version_tag=args.version_tag,
         dry_run=args.dry_run,

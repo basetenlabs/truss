@@ -134,7 +134,6 @@ class ServingImageBuilder(ImageBuilder):
             tag = truss_base_image_tag(
                 python_version=python_version,
                 use_gpu=config.resources.use_gpu,
-                live_reload=config.live_reload,
                 version_tag=TRUSS_BASE_IMAGE_VERSION_TAG,
             )
             base_image_name_and_tag = f"{base_image_name}:{tag}"

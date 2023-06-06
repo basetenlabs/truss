@@ -59,9 +59,3 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY ./requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /root/.cache/pip
-
-{% if live_reload %}
-COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-{% endif %}
