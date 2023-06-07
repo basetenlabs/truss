@@ -44,12 +44,6 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {{ super() }}
 {% endblock %}
 
-{% block b10cp %}
-RUN mkdir -p /app/bin \
-    && curl https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.0.2-linux-amd64 -o /app/bin/b10cp \
-    && chmod +x /app/bin/b10cp
-{% endblock %}
-
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
