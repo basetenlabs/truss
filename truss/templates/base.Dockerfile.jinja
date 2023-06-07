@@ -43,9 +43,6 @@ RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 {% endblock %}
 
-{% block b10cp %}
-{% endblock %}
-
 
 ENV APP_HOME /app
 WORKDIR $APP_HOME
