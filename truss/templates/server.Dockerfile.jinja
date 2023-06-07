@@ -21,8 +21,9 @@ COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
     {%- if config.live_reload %}
-RUN add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt update -y && ( apt install -y --no-install-recommends python$pythonVersion-venv)  \
+RUN pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
+    && add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt update -y && apt install -y --no-install-recommends python$pythonVersion-venv \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
