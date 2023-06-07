@@ -31,11 +31,16 @@ jobs:
   test:
     timeout-minutes: 30
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python_version: ["3.8", "3.9.9", "3.10", "3.11"]
     steps:
       - uses: actions/checkout@v2
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
+        with:
+          python-version: ${{ matrix.python_version }}
       - run: poetry install
       - name: run tests (poetry run pytest...)
         run: poetry run pytest -v --cov=truss -m 'not integration'
