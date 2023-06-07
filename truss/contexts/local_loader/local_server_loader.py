@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
-from truss.util.path import build_truss_target_directory
+from truss.util.path import build_truss_shadow_target_directory
 
 
 class VenvBuilder(venv.EnvBuilder):
@@ -69,13 +69,18 @@ class LocalServerLoader:
         venv_dir: Optional[Path] = None,
     ):
         if build_dir is None:
-            build_dir = build_truss_target_directory("build_dir")
+            build_dir = build_truss_shadow_target_directory(
+                "build_dir", self.truss_path
+            )
         else:
             if not build_dir.exists():
                 build_dir.mkdir(parents=True)
 
         if venv_dir is None:
-            venv_dir = build_truss_target_directory("venv")
+            venv_dir = build_truss_shadow_target_directory(
+                "venv",
+                self.truss_path,
+            )
         else:
             if not venv_dir.exists():
                 venv_dir.mkdir(parents=True)
@@ -83,7 +88,7 @@ class LocalServerLoader:
         self.context_builder.prepare_image_build_dir(build_dir)
         dockerfile_path = build_dir / "Dockerfile"
         docker_build_emulator = DockerBuildEmulator(dockerfile_path, build_dir)
-        docker_build_emulator.run(venv_dir)
+        build_result = docker_build_emulator.run(venv_dir)
 
         venv_builder = VenvBuilder(venv_dir, with_pip=True)
         requirements_files = [
@@ -104,9 +109,9 @@ class LocalServerLoader:
                 "--port",
                 str(self.port),
             ],
-            cwd=str(venv_dir / str(docker_build_emulator.work_dir).replace("/", "", 1)),
+            cwd=str(venv_dir / str(build_result.workdir).replace("/", "", 1)),
             env={
-                **docker_build_emulator.env_vars,
+                **build_result.env,
                 "SETUP_JSON_LOGGER": "False",
             },
             stdin=sys.stdin,

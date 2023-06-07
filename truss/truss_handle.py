@@ -395,11 +395,6 @@ class TrussHandle:
         work_dir: Optional[Path] = None,
         port: Optional[int] = None,
     ):
-        if build_dir:
-            build_dir = Path(build_dir)
-
-        if work_dir:
-            work_dir = Path(work_dir)
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
         server_loader = LocalServerLoader(self._truss_dir, image_builder, port=port)
         server_loader.watch(build_dir, work_dir)

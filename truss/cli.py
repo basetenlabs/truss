@@ -156,7 +156,12 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 @click.option("--venv-dir", type=Path, required=False)
 @click.option("--port", type=int, default=8080, help="Local port used to run image")
 @error_handling
-def watch(target_directory: str, build_dir: Path, venv_dir: Path, port: int) -> None:
+def watch(
+    target_directory: str,
+    build_dir: Optional[Path],
+    venv_dir: Optional[Path],
+    port: int,
+) -> None:
     """
     Runs the model server for a Truss.
 
@@ -164,6 +169,11 @@ def watch(target_directory: str, build_dir: Path, venv_dir: Path, port: int) -> 
 
     BUILD_DIR: Image context. If none, a temp directory is created.
     """
+    if build_dir:
+        build_dir = Path(build_dir)
+
+    if venv_dir:
+        venv_dir = Path(venv_dir)
     tr = _get_truss_from_directory(target_directory=target_directory)
     tr.run_local_server_with_reload(build_dir=build_dir, work_dir=venv_dir, port=port)
 

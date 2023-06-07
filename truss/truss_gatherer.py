@@ -2,14 +2,18 @@ from pathlib import Path
 
 import yaml
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.patch.hash import str_hash_str
 from truss.truss_handle import TrussHandle
-from truss.util.path import copy_file_path, copy_tree_path, remove_tree_path
+from truss.util.path import (
+    calc_shadow_truss_dirname,
+    copy_file_path,
+    copy_tree_path,
+    remove_tree_path,
+)
 
 
 def gather(truss_path: Path) -> Path:
     handle = TrussHandle(truss_path)
-    shadow_truss_dir_name = _calc_shadow_truss_dirname(truss_path)
+    shadow_truss_dir_name = calc_shadow_truss_dirname(truss_path)
     shadow_truss_metdata_file_path = (
         LocalConfigHandler.shadow_trusses_dir_path()
         / f"{shadow_truss_dir_name}.metadata.yaml"
@@ -60,8 +64,3 @@ def gather(truss_path: Path) -> Path:
     with shadow_truss_metdata_file_path.open("w") as fp:
         yaml.safe_dump({"max_mod_time": handle.max_modified_time}, fp)
     return shadow_truss_path
-
-
-def _calc_shadow_truss_dirname(truss_path: Path) -> str:
-    resolved_path_str = str(truss_path.resolve())
-    return str_hash_str(resolved_path_str)
