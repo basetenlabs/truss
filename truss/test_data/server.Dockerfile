@@ -28,6 +28,10 @@ RUN apt update && \
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
+RUN mkdir -p /app/bin \
+    && curl https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.0.2-linux-amd64 -o /app/bin/b10cp \
+    && chmod +x /app/bin/b10cp
+
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 
