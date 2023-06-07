@@ -44,6 +44,8 @@ class DockerBuildEmulator:
 
         result = DockerBuildEmulatorResult()
         for cmd in self._commands:
+            if cmd.cmd not in ["ENV", "ENTRYPOINT", "COPY", "WORKDIR"]:
+                continue
             values = _resolve_values(cmd.value)
             if cmd.cmd == "ENV":
                 result.env[values[0]] = values[1]
