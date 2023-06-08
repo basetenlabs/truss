@@ -6,7 +6,7 @@ from watchfiles import Change, watch
 
 
 class TrussFilesSyncer(Thread):
-    """Deamon thread that watches for changes in the user's Truss and syncs to running service."""
+    """Daemon thread that watches for changes in the user's Truss and syncs to running service."""
 
     def __init__(self, watch_path: Path, mirror_path: Path) -> None:
         super().__init__(daemon=True)
