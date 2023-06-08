@@ -13,15 +13,26 @@ from yaspin import yaspin
 
 
 class VenvBuilder(venv.EnvBuilder):
+    """Virtual Environment Builder
+
+    This class handles setting up a virtual environment in `venv_dir`.
+    """
+
     def __init__(self, venv_dir: Path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.context: Any = None
         self.venv_dir = venv_dir
 
     def post_setup(self, context):
+        """Implement base class `post_setup` hook to store venv context."""
         self.context = context
 
-    def setup(self, req_files: List[str]) -> None:
+    def create_with_requirements(self, req_files: List[str]) -> None:
+        """Create virtualenv with the requirements specified in the files provided.
+
+        Args:
+            `req_file` (List[str]): List of requirement files as subpaths to `self.venv_dir`.
+        """
         with yaspin(text="Creating virtual environment") as spinner:
             env_dir = str(self.venv_dir / ".env")
             super().create(env_dir)
@@ -33,6 +44,7 @@ class VenvBuilder(venv.EnvBuilder):
             spinner.ok("✅")
 
     def _upgrade_pip(self):
+        """Helper function to upgrade pip."""
         subprocess.check_call(
             [
                 self.context.env_exe,
@@ -46,6 +58,7 @@ class VenvBuilder(venv.EnvBuilder):
         )
 
     def _install_pip_requirements(self, req_file: Path):
+        """Helper function to install requirements from file."""
         if req_file.exists():
             pip_install_command = [
                 self.context.env_exe,
@@ -62,6 +75,8 @@ class VenvBuilder(venv.EnvBuilder):
 
 
 class LocalServerLoader:
+    """Handle the setup and loading of truss server locally."""
+
     def __init__(
         self,
         truss_path: Path,
@@ -77,22 +92,19 @@ class LocalServerLoader:
         build_dir: Optional[Path] = None,
         venv_dir: Optional[Path] = None,
     ):
-        if build_dir is None:
-            build_dir = build_truss_shadow_target_directory(
-                "build_dir", self.truss_path
-            )
-        else:
-            if not build_dir.exists():
-                build_dir.mkdir(parents=True)
+        """Run the server and watch for changes"""
 
-        if venv_dir is None:
-            venv_dir = build_truss_shadow_target_directory(
-                "venv",
-                self.truss_path,
-            )
-        else:
-            if not venv_dir.exists():
-                venv_dir.mkdir(parents=True)
+        def _prep_or_create_dir(location: Optional[Path], stub: str) -> Path:
+            if location is None:
+                location = build_truss_shadow_target_directory(stub, self.truss_path)
+            else:
+                if not location.exists():
+                    location.mkdir(parents=True)
+            return location
+
+        build_dir = _prep_or_create_dir(build_dir, "build")
+        venv_dir = _prep_or_create_dir(build_dir, "server_venv")
+
         with yaspin(text="Preparing truss context") as spinner:
             self.context_builder.prepare_image_build_dir(build_dir)
             dockerfile_path = build_dir / "Dockerfile"
@@ -105,7 +117,7 @@ class LocalServerLoader:
             "app/requirements.txt",
             "requirements.txt",
         ]
-        venv_builder.setup(requirements_files)
+        venv_builder.create_with_requirements(requirements_files)
 
         TrussFilesSyncer(self.truss_path, venv_dir / "app/").start()
 

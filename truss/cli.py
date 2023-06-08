@@ -154,7 +154,7 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 @click.argument("target_directory", required=False)
 @click.option("--build-dir", type=Path, required=False)
 @click.option("--venv-dir", type=Path, required=False)
-@click.option("--port", type=int, default=8080, help="Local port used to run image")
+@click.option("--port", type=int, default=8080, help="Local port used to run server")
 @error_handling
 def watch(
     target_directory: str,
