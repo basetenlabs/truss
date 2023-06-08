@@ -3668,7 +3668,7 @@ wrapt = ">=1.11.0,<1.15"
 name = "termcolor"
 version = "2.3.0"
 description = "ANSI color formatting for output in terminal"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -4265,6 +4265,21 @@ pyspark = ["cloudpickle", "pyspark", "scikit-learn"]
 scikit-learn = ["scikit-learn"]
 
 [[package]]
+name = "yaspin"
+version = "2.3.0"
+description = "Yet Another Terminal Spinner"
+category = "main"
+optional = false
+python-versions = ">=3.7.2,<4.0.0"
+files = [
+    {file = "yaspin-2.3.0-py3-none-any.whl", hash = "sha256:17b5548479b3d5b30adec7a87ffcdcddb403d14a2bb86fbcee97f37951e13427"},
+    {file = "yaspin-2.3.0.tar.gz", hash = "sha256:547afd1a9700ac3a29a9f5591c70343bef186ed5dfb5e545a9bb0c77e561a1c9"},
+]
+
+[package.dependencies]
+termcolor = ">=2.2,<3.0"
+
+[[package]]
 name = "zipp"
 version = "3.15.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -4283,4 +4298,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "bee85dee82aa1db12dfb9519dbca027d359b640122d5bc475a4c49256c7cde4f"
+content-hash = "7ef76fd04554d648d9c4393c5a35d09951cef0a3b1afce1031ff100517227dfa"

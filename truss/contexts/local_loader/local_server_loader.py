@@ -9,6 +9,7 @@ from truss.contexts.image_builder.serving_image_builder import ServingImageBuild
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.util.path import build_truss_shadow_target_directory
+from yaspin import yaspin
 
 
 class VenvBuilder(venv.EnvBuilder):
@@ -21,11 +22,15 @@ class VenvBuilder(venv.EnvBuilder):
         self.context = context
 
     def setup(self, req_files: List[str]) -> None:
-        env_dir = str(self.venv_dir / ".env")
-        super().create(env_dir)
-        self._upgrade_pip()
-        for req_file in req_files:
-            self._install_pip_requirements(self.venv_dir / req_file)
+        with yaspin(text="Creating virtual environment") as spinner:
+            env_dir = str(self.venv_dir / ".env")
+            super().create(env_dir)
+            spinner.ok("✅")
+        with yaspin(text="Installing depedencies") as spinner:
+            self._upgrade_pip()
+            for req_file in req_files:
+                self._install_pip_requirements(self.venv_dir / req_file)
+            spinner.ok("✅")
 
     def _upgrade_pip(self):
         subprocess.check_call(
@@ -36,7 +41,8 @@ class VenvBuilder(venv.EnvBuilder):
                 "install",
                 "--upgrade",
                 "pip",
-            ]
+            ],
+            stdout=subprocess.PIPE,
         )
 
     def _install_pip_requirements(self, req_file: Path):
@@ -49,7 +55,10 @@ class VenvBuilder(venv.EnvBuilder):
                 "-r",
                 str(req_file.absolute()),
             ]
-            subprocess.check_call(pip_install_command)
+            subprocess.check_call(
+                pip_install_command,
+                stdout=subprocess.PIPE,
+            )
 
 
 class LocalServerLoader:
@@ -84,11 +93,12 @@ class LocalServerLoader:
         else:
             if not venv_dir.exists():
                 venv_dir.mkdir(parents=True)
-
-        self.context_builder.prepare_image_build_dir(build_dir)
-        dockerfile_path = build_dir / "Dockerfile"
-        docker_build_emulator = DockerBuildEmulator(dockerfile_path, build_dir)
-        build_result = docker_build_emulator.run(venv_dir)
+        with yaspin(text="Preparing truss context") as spinner:
+            self.context_builder.prepare_image_build_dir(build_dir)
+            dockerfile_path = build_dir / "Dockerfile"
+            docker_build_emulator = DockerBuildEmulator(dockerfile_path, build_dir)
+            build_result = docker_build_emulator.run(venv_dir)
+            spinner.ok("✅")
 
         venv_builder = VenvBuilder(venv_dir, with_pip=True)
         requirements_files = [
