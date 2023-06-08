@@ -113,7 +113,7 @@ def _build(
         ]
         if push:
             cmd.append("--push")
-        subprocess.run(cmd, cwd=build_ctx_path)
+        subprocess.run(cmd, cwd=build_ctx_path, check=True)
 
 
 def _build_all(

@@ -4,12 +4,7 @@ FROM baseten/truss-server-base:3.9-v0.4.3
 ENV PYTHON_EXECUTABLE /usr/local/bin/python3
 
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
-    && $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)" \
-    && apt-get update && ( apt-get install -y --no-install-recommends python$pythonVersion-venv || apt-get install -y --no-install-recommends python3-venv )  \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* \
+RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)" \
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.11"; exit 1; }
 
 RUN pip install --upgrade pip --no-cache-dir \
@@ -32,10 +27,6 @@ RUN apt update && \
 
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-
-RUN mkdir -p /app/bin \
-    && curl https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.0.2-linux-amd64 -o /app/bin/b10cp \
-    && chmod +x /app/bin/b10cp
 
 ENV APP_HOME /app
 WORKDIR $APP_HOME

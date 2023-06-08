@@ -46,7 +46,9 @@ if __name__ == "__main__":
     # Perform inference server startup flow in background
     Thread(target=inference_server_startup_flow, args=(application,)).start()
 
-    application.logger.info(f"Starting control server on port {CONTROL_SERVER_PORT}")
+    application.logger.info(
+        f"Starting live reload server on port {CONTROL_SERVER_PORT}"
+    )
     server: Union[BaseWSGIServer, MultiSocketServer] = create_server(
         application,
         host=application.config["control_server_host"],

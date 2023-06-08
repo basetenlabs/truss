@@ -1,4 +1,4 @@
-name: main
+name: Release CI
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 concurrency:
-  group: main-${{ github.ref_name }}
+  group: main-${{ github.head_ref || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -16,7 +16,6 @@ jobs:
       version_changed: ${{ steps.versions.outputs.version_changed }}
       new_version: ${{ steps.versions.outputs.new_version }}
       new_base_image_version: ${{ steps.versions.outputs.new_base_image_version }}
-      dev_version: ${{ steps.versions.outputs.dev_version }}
       build_base_images: ${{ steps.versions.outputs.build_base_images }}
     steps:
       - uses: actions/checkout@v3
@@ -45,12 +44,6 @@ jobs:
             echo "version_changed=true" >> $GITHUB_OUTPUT
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
-          fi
-
-          if [[ "$NEW_VERSION" == *"dev"* ]]; then
-            echo "dev_version=true" >> $GITHUB_OUTPUT
-          else
-            echo "dev_version=false" >> $GITHUB_OUTPUT
           fi
 
           if [[ "$NEW_BASE_IMAGE_VERSION" != "$OLD_BASE_IMAGE_VERSION" ]]; then
@@ -91,13 +84,17 @@ jobs:
 
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.dev_version == 'false' && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests  -m 'integration'
+      - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
 
 
   git-tag-if-version-changed:

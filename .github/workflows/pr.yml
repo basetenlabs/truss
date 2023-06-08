@@ -1,9 +1,6 @@
 name: PR
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     paths:
       - poetry.lock
