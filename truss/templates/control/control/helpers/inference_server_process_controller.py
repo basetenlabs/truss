@@ -69,9 +69,12 @@ class InferenceServerProcessController:
 
         return self._inference_server_process.poll() is None
 
+    def is_inference_server_intentionally_stopped(self) -> bool:
+        return INFERENCE_SERVER_FAILED_FILE.exists()
+
     def check_and_recover_inference_server(self):
         if self.inference_server_started() and not self.is_inference_server_running():
-            if not INFERENCE_SERVER_FAILED_FILE.exists():
+            if not self.is_inference_server_intentionally_stopped():
                 self._app_logger.warning(
                     "Inference server seems to have crashed, restarting"
                 )
