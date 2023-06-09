@@ -7,8 +7,8 @@ from truss.util.path import (
     calc_shadow_truss_dirname,
     copy_file_path,
     copy_tree_path,
-    remove_tree_path,
     remove_ignored_files,
+    remove_tree_path,
 )
 
 
@@ -27,7 +27,6 @@ def gather(truss_path: Path) -> Path:
             metadata = yaml.safe_load(fp)
         max_mod_time = metadata["max_mod_time"]
         if max_mod_time == handle.max_modified_time:
-            print("Releasing early")
             return shadow_truss_path
 
         # Shadow truss is out of sync, clear it
