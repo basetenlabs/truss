@@ -69,7 +69,7 @@ from truss.templates.server.common.serialization import (
 )
 from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.types import Example, PatchDetails
+from truss.types import Example, PatchDetails, PatchRequest
 from truss.util.path import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
@@ -726,11 +726,10 @@ class TrussHandle:
         self._update_config(define_base_image_fn)
 
     @proxy_to_shadow_if_scattered
-    def patch_container(self, patch_request: Dict):
+    def patch_container(self, patch_request: PatchRequest):
         """Patch changes onto the container running this Truss.
 
         Useful for local incremental development.
-        TODO(pankaj): Turn patch_request into a dataclass
         """
         if not self.spec.live_reload:
             raise ValueError("Not a control truss: applying patch is not supported.")
@@ -743,7 +742,9 @@ class TrussHandle:
             )
 
         model_base_url = _get_url_from_container(container)
-        resp = requests.post(f"{model_base_url}/control/patch", json=patch_request)
+        resp = requests.post(
+            f"{model_base_url}/control/patch", json=patch_request.to_dict()
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -1013,11 +1014,9 @@ class TrussHandle:
             )
             return container
 
-        patch_request = {
-            "hash": current_hash,
-            "prev_hash": running_truss_hash,
-            "patches": [patch.to_dict() for patch in patch_details.patch_ops],
-        }
+        patch_request = PatchRequest(
+            current_hash, running_truss_hash, patch_details.patch_ops
+        )
         resp = self.patch_container(patch_request)
         if "error" in resp:
             raise RuntimeError(f'Failed to patch control truss {resp["error"]}')
