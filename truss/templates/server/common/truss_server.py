@@ -111,17 +111,14 @@ class BasetenEndpoints:
 
         self.check_healthy(model)
 
-        body: dict
         body = json.loads(body_raw)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         response: Dict = asyncio.run(model(body, headers=dict(request.headers.items())))
 
-        response_headers = {}
-        response_headers["Content-Type"] = "application/json"
         return Response(
             content=json.dumps(response, cls=DeepNumpyEncoder),
-            headers=response_headers,
+            headers={"Content-Type": "application/json"},
         )
 
 
