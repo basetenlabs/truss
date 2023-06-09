@@ -42,6 +42,7 @@ from truss.contexts.image_builder.training_image_builder import (
     TrainingImageBuilderContext,
 )
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
+from truss.contexts.local_loader.local_server_loader import LocalServerLoader
 from truss.contexts.local_loader.train_local import LocalTrainer
 from truss.decorators import proxy_to_shadow_if_scattered
 from truss.docker import (
@@ -387,6 +388,16 @@ class TrussHandle:
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
+
+    def run_local_server_with_reload(
+        self,
+        build_dir: Optional[Path] = None,
+        work_dir: Optional[Path] = None,
+        port: Optional[int] = None,
+    ):
+        image_builder = ServingImageBuilderContext.run(self._truss_dir)
+        server_loader = LocalServerLoader(self._truss_dir, image_builder, port=port)
+        server_loader.watch(build_dir, work_dir)
 
     @proxy_to_shadow_if_scattered
     def training_docker_build_setup(self, build_dir: Optional[Path] = None):

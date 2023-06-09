@@ -4,7 +4,7 @@ This is an example truss for a [ControlNet](https://github.com/lllyasviel/Contro
 
 We've used the [`sd-controlnet-scribble`](https://huggingface.co/lllyasviel/sd-controlnet-scribble) model for this truss.
 
-We encourage you to make trusses for any ControlNet model using this one as a baseline example. You can explore more [ControlNet model checkpoints here](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/controlnet#available-checkpoints)!
+We encourage you to make trusses for any ControlNet model using this one as a baseline example.
 
 
 # Deploy this ControlNet truss
@@ -34,7 +34,7 @@ Run the following to initialize an empty truss:
 import truss
 truss.init("my-controlnet-truss")
 ```
-Inside the `my-controlnet-truss/model/model.py` file, replace the `load()` and `predict()` methods with the appropriate model code taken from one of the [model checkpoint examples](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/controlnet#available-checkpoints). For example, we used [the example code here](https://huggingface.co/lllyasviel/sd-controlnet-scribble#example) for the `controlnet-scribble` truss.
+Inside the `my-controlnet-truss/model/model.py` file, replace the `load()` and `predict()` methods with the appropriate model code taken from one of the model checkpoint examples. For example, we used [the example code here](https://huggingface.co/lllyasviel/sd-controlnet-scribble#example) for the `controlnet-scribble` truss.
 
 You can iteratively test your truss to make sure its configured properly. Modify the following to test your truss:
 ```

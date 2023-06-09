@@ -143,11 +143,17 @@ class BasetenEndpoints:
 
 
 class TrussServer:
-    def __init__(self, http_port: int, config: Dict):
+    def __init__(
+        self,
+        http_port: int,
+        config: Dict,
+        setup_json_logger: bool = True,
+    ):
         self.http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config)
         self._endpoints = BasetenEndpoints(self._model)
+        self._setup_json_logger = setup_json_logger
 
     def cleanup(self):
         if INFERENCE_SERVER_FAILED_FILE.exists():
@@ -158,7 +164,10 @@ class TrussServer:
         This method will be started inside the main process, so here is where we want to setup our logging and model
         """
         self.cleanup()
-        setup_logging()
+
+        if self._setup_json_logger:
+            setup_logging()
+
         self._model.start_load()
 
     def create_application(self):

@@ -34,6 +34,9 @@ uvicorn = "^0.21.1"
 psutil = "^5.9.4"
 joblib = "^1.2.0"
 dockerfile = "^3.2.0"
+virtualenv = "^20.23.0"
+watchfiles = "^0.19.0"
+yaspin = "^2.3.0"
 
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"

@@ -2,6 +2,23 @@
 
 Release notes for new versions of Truss, in reverse chronological order.
 
+### Version 0.4.8
+
+Base image improvements:
+
+* Updated base images now use Ubuntu 20.04 and support new Python versions (Truss supports Python 3.8 through Python 3.11)
+* GPU base images now have python#.#-dev to support more Python libraries
+* Both draft and published models can now use custom base images
+
+Truss package cleanup:
+
+* Dropped kserve as the base server framework
+
+Model weight and data speedups:
+
+* Model weight downloads for Whisper and other open-source OpenAI models are now concurrent
+* External data is now packaged at build time instead of at runtime
+
 ### Version 0.4.0
 
 This release updates the model invocation interface in Truss templates, affecting **only newly created Trusses**.

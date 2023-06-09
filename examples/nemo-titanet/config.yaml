@@ -1,0 +1,18 @@
+base_image:
+  image: nvcr.io/nvidia/nemo:23.03
+  python_executable_path: /usr/bin/python
+apply_library_patches: true
+bundled_packages_dir: packages
+data_dir: data
+requirements:
+- PySoundFile
+live_reload: false
+resources:
+  accelerator: T4
+  cpu: 2500m
+  memory: 4512Mi
+  use_gpu: true
+secrets: {}
+spec_version: '2.0'
+system_packages:
+- python3.8-venv
