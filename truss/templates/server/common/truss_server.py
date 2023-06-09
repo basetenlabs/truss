@@ -7,22 +7,20 @@ import os
 import signal
 import socket
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import common.errors as errors
 import common.util as utils
 import uvicorn
 from common.logging import setup_logging
-from common.serialization import (
-    DeepNumpyEncoder,
-    truss_msgpack_deserialize,
-    truss_msgpack_serialize,
-)
+from common.serialization import DeepNumpyEncoder
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from msgpack_asgi import MessagePackMiddleware
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 
@@ -113,34 +111,41 @@ class BasetenEndpoints:
 
         self.check_healthy(model)
 
-        body: Dict
-        if self.is_binary(request):
-            body = truss_msgpack_deserialize(body_raw)
-        else:
-            body = json.loads(body_raw)
+        body: dict
+        body = json.loads(body_raw)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         response: Dict = asyncio.run(model(body, headers=dict(request.headers.items())))
 
         response_headers = {}
-        if self.is_binary(request):
-            response_headers["Content-Type"] = "application/octet-stream"
-            return Response(
-                content=truss_msgpack_serialize(response), headers=response_headers
-            )
-        else:
-            response_headers["Content-Type"] = "application/json"
-            return Response(
-                content=json.dumps(response, cls=DeepNumpyEncoder),
-                headers=response_headers,
-            )
-
-    @staticmethod
-    def is_binary(request: Request):
-        return (
-            "Content-Type" in request.headers
-            and request.headers["Content-Type"] == "application/octet-stream"
+        response_headers["Content-Type"] = "application/json"
+        return Response(
+            content=json.dumps(response, cls=DeepNumpyEncoder),
+            headers=response_headers,
         )
+
+
+class BinaryHeaderMiddleware(BaseHTTPMiddleware):
+    @staticmethod
+    def is_binary(request: Request) -> Tuple[bool, Optional[str]]:
+        content_type_header = request.headers.get("content-type")
+        return (content_type_header == "application/octet-stream", content_type_header)
+
+    async def dispatch(self, request, call_next):
+        is_binary, original_content_type = self.is_binary(request)
+        # update request headers
+        headers = dict(request.scope["headers"])
+
+        headers = dict(request.scope["headers"])
+        if is_binary:
+            headers[b"accept"] = b"application/x-msgpack"
+            headers[b"content-type"] = b"application/x-msgpack"
+            request.scope["headers"] = [(k, v) for k, v in headers.items()]
+
+        response = await call_next(request)
+        if is_binary:
+            response.headers.append("content-type", original_content_type)
+        return response
 
 
 class TrussServer:
@@ -178,7 +183,11 @@ class TrussServer:
             redoc_url=None,
             default_response_class=ORJSONResponse,
             on_startup=[self.on_startup],
-            middleware=[MessagePackMiddleware],
+            middleware=[
+                Middleware(BinaryHeaderMiddleware),
+                # TODO: add packb, unpackb to middleware
+                Middleware(MessagePackMiddleware),
+            ],
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),
