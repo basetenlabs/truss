@@ -22,6 +22,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from msgpack_asgi import MessagePackMiddleware
 from starlette.responses import Response
 
 
@@ -177,6 +178,7 @@ class TrussServer:
             redoc_url=None,
             default_response_class=ORJSONResponse,
             on_startup=[self.on_startup],
+            middleware=[MessagePackMiddleware],
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),
