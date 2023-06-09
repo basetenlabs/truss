@@ -3,7 +3,10 @@ import concurrent.futures
 import json
 import logging
 import multiprocessing
+import os
+import signal
 import socket
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import common.errors as errors
@@ -31,6 +34,7 @@ async def parse_body(request: Request) -> bytes:
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
 
 
@@ -69,7 +73,8 @@ class BasetenEndpoints:
     @staticmethod
     def check_healthy(model: ModelWrapper):
         if model.load_failed():
-            raise errors.InferenceError("Model load failed")
+            INFERENCE_SERVER_FAILED_FILE.touch()
+            os.kill(os.getpid(), signal.SIGKILL)
 
         if not model.ready:
             raise errors.ModelNotReady(model.name)
@@ -150,10 +155,16 @@ class TrussServer:
         self._endpoints = BasetenEndpoints(self._model)
         self._setup_json_logger = setup_json_logger
 
+    def cleanup(self):
+        if INFERENCE_SERVER_FAILED_FILE.exists():
+            INFERENCE_SERVER_FAILED_FILE.unlink()
+
     def on_startup(self):
         """
         This method will be started inside the main process, so here is where we want to setup our logging and model
         """
+        self.cleanup()
+
         if self._setup_json_logger:
             setup_logging()
 

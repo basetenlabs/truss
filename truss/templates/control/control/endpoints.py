@@ -1,8 +1,8 @@
 from typing import Any, Dict
 
 import requests
-from flask import Blueprint, Response, current_app, jsonify, request
-from helpers.errors import ModelNotReady
+from flask import Blueprint, Response, current_app, jsonify, make_response, request
+from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
@@ -10,6 +10,12 @@ INFERENCE_SERVER_START_WAIT_SECS = 60
 
 
 control_app = Blueprint("control", __name__)
+
+
+@control_app.errorhandler(ModelLoadFailed)
+def handle_model_load_failed(error):
+    # Model load failures should result in 503 status
+    return make_response(jsonify(error=str(error)), 503)
 
 
 @control_app.route("/")
@@ -35,6 +41,11 @@ def proxy(path):
     ):
         with attempt:
             try:
+                if (
+                    inference_server_process_controller.is_inference_server_intentionally_stopped()
+                ):
+                    raise ModelLoadFailed("Model load failed")
+
                 resp = requests.request(
                     method=request.method,
                     url=f"http://localhost:{inference_server_port}/v1/{path}",
