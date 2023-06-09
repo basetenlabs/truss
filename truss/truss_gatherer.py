@@ -8,6 +8,7 @@ from truss.util.path import (
     copy_file_path,
     copy_tree_path,
     remove_tree_path,
+    remove_ignored_files,
 )
 
 
@@ -26,6 +27,7 @@ def gather(truss_path: Path) -> Path:
             metadata = yaml.safe_load(fp)
         max_mod_time = metadata["max_mod_time"]
         if max_mod_time == handle.max_modified_time:
+            print("Releasing early")
             return shadow_truss_path
 
         # Shadow truss is out of sync, clear it
@@ -55,6 +57,9 @@ def gather(truss_path: Path) -> Path:
                 copy_tree_path(sub_path, packages_dir_path_in_shadow / sub_path.name)
             if sub_path.is_file():
                 copy_file_path(sub_path, packages_dir_path_in_shadow / sub_path.name)
+
+    # Once all files are copied over, remove unnecessary files
+    remove_ignored_files(shadow_truss_path)
 
     # Don't run validation because they will fail until we clear external
     # packages. We do it after.

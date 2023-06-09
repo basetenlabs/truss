@@ -7,6 +7,9 @@ from distutils.dir_util import copy_tree, remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
+import fnmatch
+
+PYTHON_GITIGNORE_PATH = Path(__file__).parent / "python.gitignore"
 
 from truss.patch.hash import str_hash_str
 
@@ -75,3 +78,51 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
     target_directory_path = Path(Path.home(), ".truss", "models", f"{stub}-{suffix}")
     target_directory_path.mkdir(parents=True, exist_ok=True)
     return target_directory_path
+
+
+def load_gitignore_patterns(gitignore_file: Path):
+    """Load patterns from a .gitignore file"""
+    patterns = []
+    with open(gitignore_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                patterns.append(line)
+    return patterns
+
+
+def is_ignored(path: Path, patterns: List[str]) -> bool:
+    print(patterns)
+    """Check if a given path or any of its parts matches any pattern in .gitignore"""
+    for pattern in patterns:
+        path_str = str(path)
+        if path.is_dir():
+            path_str += "/"
+        if fnmatch.fnmatch(path_str, pattern):
+            return True
+        for part in path.parts:
+            part_str = part + "/" if (path / part).is_dir() else part
+            if fnmatch.fnmatch(part_str, pattern):
+                return True
+    return False
+
+
+def remove_ignored_files(
+    directory: Path, gitignore_file: Path = PYTHON_GITIGNORE_PATH
+) -> None:
+    """Traverse a directory and remove any files that match patterns"""
+    print("Ignoring files!!")
+    patterns = load_gitignore_patterns(gitignore_file)
+    for root, dirs, files in os.walk(directory, topdown=False):
+        for name in files:
+            file_path = Path(root) / name
+            print(file_path)
+            if is_ignored(file_path, patterns):
+                file_path.unlink()
+        for name in dirs:
+            print(f"Checking {name}")
+            dir_path = Path(root) / name
+            print(f"Checking {dir_path}")
+            if is_ignored(dir_path, patterns):
+                print(f"Removing {dir_path}")
+                remove_tree_path(dir_path)
