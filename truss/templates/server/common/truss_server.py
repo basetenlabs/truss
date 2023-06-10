@@ -262,6 +262,8 @@ class TrussServer:
 
         max_asyncio_workers = min(32, utils.cpu_count() + 4)
         logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
+        # Call this so uvloop gets used
+        cfg.setup_event_loop()
         asyncio.get_event_loop().set_default_executor(
             concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
         )
