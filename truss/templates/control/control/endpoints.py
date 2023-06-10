@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 import requests
-from flask import Blueprint, Response, current_app, jsonify, make_response, request
+from fastapi import APIRouter, Request, Response
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -9,24 +9,25 @@ from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait
 INFERENCE_SERVER_START_WAIT_SECS = 60
 
 
-control_app = Blueprint("control", __name__)
+control_app = APIRouter()
 
 
-@control_app.errorhandler(ModelLoadFailed)
-def handle_model_load_failed(error):
-    # Model load failures should result in 503 status
-    return make_response(jsonify(error=str(error)), 503)
+# TODO(bola): handle the error properly at a higher level
+# @control_app.errorhandler(ModelLoadFailed)
+# def handle_model_load_failed(error):
+#     # Model load failures should result in 503 status
+#     return make_response(jsonify(error=str(error)), 503)
 
 
-@control_app.route("/")
+@control_app.get("/")
 def index():
-    return jsonify({})
+    return {}
 
 
 @control_app.route("/v1/<path:path>", methods=["GET", "POST"])
-def proxy(path):
-    inference_server_port = current_app.config["inference_server_port"]
-    inference_server_process_controller = current_app.config[
+def proxy(path, request: Request):
+    inference_server_port = request.app.state["inference_server_port"]
+    inference_server_process_controller = request.app.state[
         "inference_server_process_controller"
     ]
 
@@ -75,38 +76,38 @@ def proxy(path):
 
 
 @control_app.route("/control/patch", methods=["POST"])
-def patch() -> Dict[str, str]:
-    current_app.logger.info("Patch request received.")
-    patch_request = request.get_json()
-    current_app.config["inference_server_controller"].apply_patch(patch_request)
-    current_app.logger.info("Patch applied successfully")
+async def patch(request: Request) -> Dict[str, str]:
+    request.app.state["logger"].info("Patch request received.")
+    patch_request = await request.json()
+    request.app.state["inference_server_controller"].apply_patch(patch_request)
+    request.app.state["logger"].info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
 
 @control_app.route("/control/truss_hash", methods=["GET"])
-def truss_hash() -> Dict[str, Any]:
-    t_hash = current_app.config["inference_server_controller"].truss_hash()
+def truss_hash(request: Request) -> Dict[str, Any]:
+    t_hash = request.app.state["inference_server_controller"].truss_hash()
     return {"result": t_hash}
 
 
 @control_app.route("/control/restart_inference_server", methods=["POST"])
-def restart_inference_server() -> Dict[str, str]:
-    current_app.config["inference_server_controller"].restart()
+def restart_inference_server(request: Request) -> Dict[str, str]:
+    request.app.state["inference_server_controller"].restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.route("/control/has_partially_applied_patch", methods=["GET"])
-def has_partially_applied_patch() -> Dict[str, Any]:
-    app_has_partially_applied_patch = current_app.config[
+def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
+    app_has_partially_applied_patch = request.app.state[
         "inference_server_controller"
     ].has_partially_applied_patch()
     return {"result": app_has_partially_applied_patch}
 
 
 @control_app.route("/control/stop_inference_server", methods=["POST"])
-def stop_inference_server() -> Dict[str, str]:
-    current_app.config["inference_server_controller"].stop()
+def stop_inference_server(request: Request) -> Dict[str, str]:
+    request.app.state["inference_server_controller"].stop()
     return {"msg": "Inference server stopped successfully"}
 
 
