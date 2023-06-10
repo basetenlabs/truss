@@ -48,13 +48,13 @@ if __name__ == "__main__":
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
     )
     uvicorn.run(
-        "server:application",
+        application,
         host=application.state["control_server_host"],
         port=application.state["control_server_port"],
+        loop="uvloop",
         reload=False,
         # TODO(pankaj): change this back to info once things are stable
         log_level="debug",
-        debug=True,
         workers=1,
         limit_concurrency=1,
         limit_max_requests=1,
