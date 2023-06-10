@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # Perform inference server startup flow in background
     Thread(target=inference_server_startup_flow, args=(application,)).start()
 
-    application.state["logger"].info(
+    application.state.logger.info(
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
     )
     uvicorn.run(

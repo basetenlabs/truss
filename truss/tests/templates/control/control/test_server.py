@@ -88,9 +88,7 @@ class Model:
         ),
     )
     _verify_apply_patch_success(client, patch)
-    with (
-        app.config["inference_server_home"] / "model" / "model.py"
-    ).open() as model_file:
+    with (app.state.inference_server_home / "model" / "model.py").open() as model_file:
         new_model_file_content = model_file.read()
     assert new_model_file_content == mock_model_file_content
 
@@ -130,7 +128,7 @@ def test_patch_model_code_create_new(app, client):
         ),
     )
     _verify_apply_patch_success(client, patch)
-    assert (app.config["inference_server_home"] / "model" / "touched").exists()
+    assert (app.state.inference_server_home / "model" / "touched").exists()
 
 
 def test_patch_model_code_create_in_new_dir(app, client):
@@ -145,7 +143,7 @@ def test_patch_model_code_create_in_new_dir(app, client):
     )
     _verify_apply_patch_success(client, patch)
     assert (
-        app.config["inference_server_home"] / "model" / "new_directory" / "touched"
+        app.state.inference_server_home / "model" / "new_directory" / "touched"
     ).exists()
 
 
