@@ -24,7 +24,7 @@ def index():
     return {}
 
 
-@control_app.route("/v1/<path:path>", methods=["GET", "POST"])
+@control_app.route("/v1/{path}", methods=["GET", "POST"])
 async def proxy(path, request: Request):
     inference_server_port = request.app.state.inference_server_port
     inference_server_process_controller = request.app.state[
@@ -74,7 +74,7 @@ async def proxy(path, request: Request):
     return response
 
 
-@control_app.route("/control/patch", methods=["POST"])
+@control_app.post("/control/patch")
 async def patch(request: Request) -> Dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
@@ -83,20 +83,20 @@ async def patch(request: Request) -> Dict[str, str]:
     return {"msg": "Patch applied successfully"}
 
 
-@control_app.route("/control/truss_hash", methods=["GET"])
+@control_app.get("/control/truss_hash")
 def truss_hash(request: Request) -> Dict[str, Any]:
     t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
-@control_app.route("/control/restart_inference_server", methods=["POST"])
+@control_app.post("/control/restart_inference_server")
 def restart_inference_server(request: Request) -> Dict[str, str]:
     request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
 
-@control_app.route("/control/has_partially_applied_patch", methods=["GET"])
+@control_app.get("/control/has_partially_applied_patch")
 def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
     app_has_partially_applied_patch = request.app.state[
         "inference_server_controller"
@@ -104,7 +104,7 @@ def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
     return {"result": app_has_partially_applied_patch}
 
 
-@control_app.route("/control/stop_inference_server", methods=["POST"])
+@control_app.post("/control/stop_inference_server")
 def stop_inference_server(request: Request) -> Dict[str, str]:
     request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}

@@ -63,14 +63,14 @@ def client(app):
 def test_restart_server(client):
     resp = client.post("/control/stop_inference_server")
     assert resp.status_code == 200
-    assert "error" not in resp.json
-    assert "msg" in resp.json
+    assert "error" not in resp.json()
+    assert "msg" in resp.json()
 
     # Try second restart
     resp = client.post("/control/stop_inference_server")
     assert resp.status_code == 200
-    assert "error" not in resp.json
-    assert "msg" in resp.json
+    assert "error" not in resp.json()
+    assert "msg" in resp.json()
 
 
 def test_patch_model_code_update_existing(app, client):
@@ -116,7 +116,7 @@ class Model:
     _verify_apply_patch_success(client, patch)
     resp = client.post("/v1/models/model:predict", json={})
     resp.status_code == 200
-    assert resp.json == {"prediction": [1]}
+    assert resp.json() == {"prediction": [1]}
 
 
 def test_patch_model_code_create_new(app, client):
@@ -162,9 +162,9 @@ def test_invalid_patch(client):
     }
     resp = client.post("/control/patch", json=patch_request)
     assert resp.status_code == 200
-    assert "error" in resp.json
-    assert resp.json["error"]["type"] == "inadmissible_patch"
-    assert "msg" not in resp.json
+    assert "error" in resp.json()
+    assert resp.json()["error"]["type"] == "inadmissible_patch"
+    assert "msg" not in resp.json()
 
 
 def test_unsupported_patch(client):
@@ -174,8 +174,8 @@ def test_unsupported_patch(client):
     }
     resp = _apply_patches(client, [unsupported_patch])
     assert resp.status_code == 200
-    assert "error" in resp.json
-    assert resp.json["error"]["type"] == "unsupported_patch"
+    assert "error" in resp.json()
+    assert resp.json()["error"]["type"] == "unsupported_patch"
 
 
 def test_patch_failed_recoverable(client):
@@ -187,8 +187,8 @@ def test_patch_failed_recoverable(client):
     )
     resp = _apply_patches(client, [will_fail_patch.to_dict()])
     assert resp.status_code == 200
-    assert "error" in resp.json
-    assert resp.json["error"]["type"] == "patch_failed_recoverable"
+    assert "error" in resp.json()
+    assert resp.json()["error"]["type"] == "patch_failed_recoverable"
 
 
 def test_patch_failed_unrecoverable(client):
@@ -206,12 +206,12 @@ def test_patch_failed_unrecoverable(client):
         client, [will_pass_patch.to_dict(), will_fail_patch.to_dict()]
     )
     assert resp.status_code == 200
-    assert "error" in resp.json
-    assert resp.json["error"]["type"] == "patch_failed_unrecoverable"
+    assert "error" in resp.json()
+    assert resp.json()["error"]["type"] == "patch_failed_unrecoverable"
 
 
 def _verify_apply_patch_success(client, patch: Patch):
-    original_hash = client.get("/control/truss_hash").json["result"]
+    original_hash = client.get("/control/truss_hash").json()["result"]
     patch_request = {
         "hash": "dummy",
         "prev_hash": original_hash,
@@ -220,12 +220,12 @@ def _verify_apply_patch_success(client, patch: Patch):
     resp = client.post("/control/patch", json=patch_request)
     resp = _apply_patches(client, [patch.to_dict()])
     assert resp.status_code == 200
-    assert "error" not in resp.json
-    assert "msg" in resp.json
+    assert "error" not in resp.json()
+    assert "msg" in resp.json()
 
 
 def _apply_patches(client, patches: List[dict]):
-    original_hash = client.get("/control/truss_hash").json["result"]
+    original_hash = client.get("/control/truss_hash").json()["result"]
     patch_request = {
         "hash": "dummy",
         "prev_hash": original_hash,
