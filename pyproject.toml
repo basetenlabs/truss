@@ -87,6 +87,7 @@ truss = 'truss.cli:cli_group'
 mlflow = "^1.29.0"
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
+httpx = "^0.24.1"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]

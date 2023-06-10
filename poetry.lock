@@ -1105,6 +1105,50 @@ files = [
 numpy = ">=1.14.5"
 
 [[package]]
+name = "httpcore"
+version = "0.17.2"
+description = "A minimal low-level HTTP client."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "httpcore-0.17.2-py3-none-any.whl", hash = "sha256:5581b9c12379c4288fe70f43c710d16060c10080617001e6b22a3b6dbcbefd36"},
+    {file = "httpcore-0.17.2.tar.gz", hash = "sha256:125f8375ab60036db632f34f4b627a9ad085048eef7cb7d2616fea0f739f98af"},
+]
+
+[package.dependencies]
+anyio = ">=3.0,<5.0"
+certifi = "*"
+h11 = ">=0.13,<0.15"
+sniffio = "==1.*"
+
+[package.extras]
+http2 = ["h2 (>=3,<5)"]
+socks = ["socksio (==1.*)"]
+
+[[package]]
+name = "httpx"
+version = "0.24.1"
+description = "The next generation HTTP client."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "httpx-0.24.1-py3-none-any.whl", hash = "sha256:06781eb9ac53cde990577af654bd990a4949de37a28bdb4a230d434f3a30b9bd"},
+    {file = "httpx-0.24.1.tar.gz", hash = "sha256:5853a43053df830c20f8110c5e69fe44d035d850b2dfe795e196f00fdb774bdd"},
+]
+
+[package.dependencies]
+certifi = "*"
+httpcore = ">=0.15.0,<0.18.0"
+idna = "*"
+sniffio = "*"
+
+[package.extras]
+brotli = ["brotli", "brotlicffi"]
+cli = ["click (==8.*)", "pygments (==2.*)", "rich (>=10,<14)"]
+http2 = ["h2 (>=3,<5)"]
+socks = ["socksio (==1.*)"]
+
+[[package]]
 name = "huggingface-hub"
 version = "0.15.1"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
@@ -1804,21 +1848,6 @@ files = [
     {file = "msgpack-1.0.5-cp39-cp39-win_amd64.whl", hash = "sha256:06f5174b5f8ed0ed919da0e62cbd4ffde676a374aba4020034da05fab67b9164"},
     {file = "msgpack-1.0.5.tar.gz", hash = "sha256:c075544284eadc5cddc70f4757331d99dcbc16b2bbd4849d15f8aae4cf36d31c"},
 ]
-
-[[package]]
-name = "msgpack-asgi"
-version = "1.1.0"
-description = "Drop-in MessagePack support for ASGI applications and frameworks"
-optional = false
-python-versions = ">=3.6"
-files = [
-    {file = "msgpack-asgi-1.1.0.tar.gz", hash = "sha256:5ed5a2f4050f28dd9388d38555f059ce05498f176642053ba9f08bb7a1e02221"},
-    {file = "msgpack_asgi-1.1.0-py3-none-any.whl", hash = "sha256:47fe50fb58b310c1f73721406638a790bdf565ae555e09587c3ddfbe7eb9da8d"},
-]
-
-[package.dependencies]
-msgpack = "*"
-starlette = "==0.*"
 
 [[package]]
 name = "msgpack-numpy"
@@ -4191,4 +4220,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "cc154200c932ee7f16d1d59d14fa2405d0faec1d645b41ea7aef1ad0ebed1789"
+content-hash = "9b7c46204fa47b26353e97750f7a1aaa7a913455adaf59ae9564a3d35a507001"

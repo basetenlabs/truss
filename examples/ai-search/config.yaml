@@ -6,7 +6,7 @@ environment_variables: {}
 examples_filename: examples.yaml
 external_package_dirs: []
 input_type: Any
-live_reload: false
+live_reload: true
 model_class_filename: model.py
 model_class_name: Model
 model_framework: custom

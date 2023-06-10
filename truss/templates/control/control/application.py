@@ -19,27 +19,39 @@ def create_app(base_config: Dict):
     # TODO(pankaj): change this back to info once things are stable
     app_logger.setLevel(logging.DEBUG)
 
-    app.state["logger"] = app_logger
+    app.state.logger = app_logger
 
     for k, v in base_config.items():
-        app.state[k] = v
+        setattr(app.state, k, v)
 
-    app.state["inference_server_process_controller"] = InferenceServerProcessController(
-        app.state["inference_server_home"],
-        app.state["inference_server_process_args"],
-        app.state["inference_server_port"],
+    app.state.inference_server_process_controller = InferenceServerProcessController(
+        app.state.inference_server_home,
+        app.state.inference_server_process_args,
+        app.state.inference_server_port,
         app_logger=app_logger,
     )
+    pip_path = None
+    try:
+        pip_path = app.state.pip_path
+    except AttributeError:
+        pass
+
     patch_applier = PatchApplier(
-        Path(app.state["inference_server_home"]),
+        Path(app.state.inference_server_home),
         app_logger,
-        app.state.get("pip_path"),
+        pip_path,
     )
-    app.state["inference_server_controller"] = InferenceServerController(
-        app.state["inference_server_process_controller"],
+    oversee_inference_server = True
+    try:
+        oversee_inference_server = app.state.oversee_inference_server
+    except AttributeError:
+        pass
+
+    app.state.inference_server_controller = InferenceServerController(
+        app.state.inference_server_process_controller,
         patch_applier,
         app_logger,
-        app.state.get("oversee_inference_server", True),
+        oversee_inference_server,
     )
     app.include_router(control_app)
 

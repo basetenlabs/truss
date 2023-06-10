@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import pytest
+from fastapi.testclient import TestClient
 
 # Needed to simulate the set up on the model docker container
 sys.path.append(
@@ -46,7 +47,7 @@ def app(truss_container_fs, truss_original_hash):
                 "pip_path": "pip",
             }
         )
-        inference_server_controller = control_app.config["inference_server_controller"]
+        inference_server_controller = control_app.state.inference_server_controller
         try:
             inference_server_controller.start()
             yield control_app
@@ -56,7 +57,7 @@ def app(truss_container_fs, truss_original_hash):
 
 @pytest.fixture()
 def client(app):
-    return app.test_client()
+    return TestClient(app)
 
 
 def test_restart_server(client):

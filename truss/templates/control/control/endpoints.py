@@ -25,8 +25,8 @@ def index():
 
 
 @control_app.route("/v1/<path:path>", methods=["GET", "POST"])
-def proxy(path, request: Request):
-    inference_server_port = request.app.state["inference_server_port"]
+async def proxy(path, request: Request):
+    inference_server_port = request.app.state.inference_server_port
     inference_server_process_controller = request.app.state[
         "inference_server_process_controller"
     ]
@@ -50,7 +50,7 @@ def proxy(path, request: Request):
                 resp = requests.request(
                     method=request.method,
                     url=f"http://localhost:{inference_server_port}/v1/{path}",
-                    data=request.get_data(),
+                    data=await request.body(),
                     cookies=request.cookies,
                     headers=request.headers,
                 )
@@ -70,29 +70,28 @@ def proxy(path, request: Request):
                     return Response(error_msg, 503)
                 raise exp
 
-    headers = [(name, value) for (name, value) in resp.raw.headers.items()]
-    response = Response(resp.content, resp.status_code, headers)
+    response = Response(resp.content, resp.status_code, resp.raw.headers.items())
     return response
 
 
 @control_app.route("/control/patch", methods=["POST"])
 async def patch(request: Request) -> Dict[str, str]:
-    request.app.state["logger"].info("Patch request received.")
+    request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
-    request.app.state["inference_server_controller"].apply_patch(patch_request)
-    request.app.state["logger"].info("Patch applied successfully")
+    request.app.state.inference_server_controller.apply_patch(patch_request)
+    request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
 
 @control_app.route("/control/truss_hash", methods=["GET"])
 def truss_hash(request: Request) -> Dict[str, Any]:
-    t_hash = request.app.state["inference_server_controller"].truss_hash()
+    t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
 @control_app.route("/control/restart_inference_server", methods=["POST"])
 def restart_inference_server(request: Request) -> Dict[str, str]:
-    request.app.state["inference_server_controller"].restart()
+    request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
@@ -107,7 +106,7 @@ def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
 
 @control_app.route("/control/stop_inference_server", methods=["POST"])
 def stop_inference_server(request: Request) -> Dict[str, str]:
-    request.app.state["inference_server_controller"].stop()
+    request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}
 
 
