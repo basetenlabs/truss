@@ -8,7 +8,7 @@ from flask import Flask
 from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
-from helpers.patch_applier import PatchApplier
+from helpers.truss_patch.model_container_patch_applier import PatchApplier
 from werkzeug.exceptions import HTTPException
 
 

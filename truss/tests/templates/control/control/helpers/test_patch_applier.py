@@ -15,7 +15,7 @@ sys.path.append(
 )
 
 # Have to use imports in this form, otherwise isinstance checks fail on helper classes
-from helpers.patch_applier import PatchApplier  # noqa
+from helpers.truss_patch.model_container_patch_applier import PatchApplier  # noqa
 from helpers.types import Action, ModelCodePatch, Patch, PatchType  # noqa
 
 
