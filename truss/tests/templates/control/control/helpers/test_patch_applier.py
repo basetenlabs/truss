@@ -33,7 +33,7 @@ def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):
             content="",
         ),
     )
-    patch_applier.apply_patch(patch)
+    patch_applier(patch)
     assert (truss_container_fs / "app" / "model" / "dummy").exists()
 
 
@@ -46,7 +46,7 @@ def test_patch_applier_remove(patch_applier: PatchApplier, truss_container_fs):
         ),
     )
     assert (truss_container_fs / "app" / "model" / "model.py").exists()
-    patch_applier.apply_patch(patch)
+    patch_applier(patch)
     assert not (truss_container_fs / "app" / "model" / "model.py").exists()
 
 
@@ -63,6 +63,6 @@ def test_patch_applier_update(patch_applier: PatchApplier, truss_container_fs):
             content=new_model_file_content,
         ),
     )
-    patch_applier.apply_patch(patch)
+    patch_applier(patch)
     with (truss_container_fs / "app" / "model" / "model.py").open() as model_file:
         assert model_file.read() == new_model_file_content

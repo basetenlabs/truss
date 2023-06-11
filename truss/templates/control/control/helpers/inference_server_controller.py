@@ -86,7 +86,7 @@ class InferenceServerController:
             try:
                 patches_executed = 0
                 for patch in patches:
-                    self._patch_applier.apply_patch(patch)
+                    self._patch_applier(patch)
                     patches_executed += 1
             except Exception as exc:
                 if patches_executed > 0:

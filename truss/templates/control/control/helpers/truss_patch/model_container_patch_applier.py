@@ -29,7 +29,7 @@ class PatchApplier:
         if pip_path is not None:
             self._pip_path_cached = "pip"
 
-    def apply_patch(self, patch: Patch):
+    def __call__(self, patch: Patch):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body

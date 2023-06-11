@@ -1,0 +1,2 @@
+class TrussDirPatchApplier:
+    pass
