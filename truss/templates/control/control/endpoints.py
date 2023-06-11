@@ -1,7 +1,8 @@
 from typing import Any, Dict
 
 import requests
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -12,19 +13,13 @@ INFERENCE_SERVER_START_WAIT_SECS = 60
 control_app = APIRouter()
 
 
-# TODO(bola): handle the error properly at a higher level
-# @control_app.errorhandler(ModelLoadFailed)
-# def handle_model_load_failed(error):
-#     # Model load failures should result in 503 status
-#     return make_response(jsonify(error=str(error)), 503)
-
-
 @control_app.get("/")
 def index():
     return {}
 
 
-@control_app.route("/v1/{path}", methods=["GET", "POST"])
+@control_app.post("/v1/{path}")
+@control_app.get("/v1/{path}")
 async def proxy(path, request: Request):
     inference_server_port = request.app.state.inference_server_port
     inference_server_process_controller = request.app.state[
@@ -67,10 +62,10 @@ async def proxy(path, request: Request):
                 ):
                     error_msg = "It appears your model has stopped running. This often means' \
                         ' it crashed and may need a fix to get it running again."
-                    return Response(error_msg, 503)
+                    return JSONResponse(error_msg, 503)
                 raise exp
 
-    response = Response(resp.content, resp.status_code, resp.raw.headers.items())
+    response = JSONResponse(resp.content, resp.status_code, resp.raw.headers.items())
     return response
 
 
