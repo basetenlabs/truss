@@ -1,13 +1,10 @@
 import inspect
 import logging
-import pathlib
 import sys
 from ast import ClassDef, FunctionDef
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-import pkg_resources  # type: ignore
-from pkg_resources.extern.packaging import requirements  # type: ignore
 from truss.constants import (
     HUGGINGFACE_TRANSFORMER,
     KERAS,
@@ -116,27 +113,6 @@ def infer_model_information(model: Any) -> ModelBuildStageOne:
         model_type,
         model_framework,
     )
-
-
-def parse_requirements_file(requirements_file: str) -> dict:
-    name_to_req_str = {}
-    with pathlib.Path(requirements_file).open() as reqs_file:
-        for raw_req in reqs_file.readlines():
-            try:
-                req = pkg_resources.Requirement.parse(raw_req)
-                if req.specifier:  # type: ignore
-                    name_to_req_str[req.name] = str(req)  # type: ignore
-                else:
-                    name_to_req_str[str(req)] = str(req)
-            except requirements.InvalidRequirement:
-                # there might be pip requirements that do not conform
-                raw_req = str(raw_req).strip()
-                name_to_req_str[f"custom_{raw_req}"] = raw_req
-            except ValueError:
-                # can't parse empty lines
-                pass
-
-    return name_to_req_str
 
 
 def _infer_model_init_parameters(model_class: Any) -> Tuple[List, List]:
