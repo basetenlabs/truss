@@ -62,6 +62,3 @@ def test_remove_ignored_files(custom_model_truss_dir_with_hidden_files):
 
 
 test_max_modified()
-test_load_gitignore_patterns
-test_is_ignored()
-test_remove_ignored_files()
