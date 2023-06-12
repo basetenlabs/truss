@@ -1,8 +1,10 @@
+import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 from helpers.errors import UnsupportedPatch
+from helpers.truss_patch.model_code_patch_applier import apply_model_code_patch
 from helpers.types import (
     Action,
     ModelCodePatch,
@@ -17,7 +19,7 @@ class PatchApplier:
     def __init__(
         self,
         inference_server_home: Path,
-        app_logger,
+        app_logger: logging.Logger,
         pip_path: Optional[str] = None,  # Only meant for testing
     ) -> None:
         self._inference_server_home = inference_server_home
@@ -34,6 +36,9 @@ class PatchApplier:
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
             self._apply_model_code_patch(model_code_patch)
+            apply_model_code_patch(
+                self._model_module_dir, model_code_patch, self._app_logger
+            )
         elif isinstance(patch.body, PythonRequirementPatch):
             py_req_patch: PythonRequirementPatch = patch.body
             self._apply_python_requirement_patch(py_req_patch)
