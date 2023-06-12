@@ -7,16 +7,16 @@ from endpoints import control_app, proxy
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
+from helpers.errors import (
+    ModelLoadFailed,
+    PatchApplicatonError,
+    PatchFailedUnrecoverable,
+)
 
 # from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
-from truss.templates.control.control.helpers.errors import (
-    ModelLoadFailed,
-    PatchApplicatonError,
-    PatchFailedUnrecoverable,
-)
 
 
 async def handle_patch_error(_, exc):
