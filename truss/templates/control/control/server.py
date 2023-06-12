@@ -49,13 +49,12 @@ if __name__ == "__main__":
     )
     uvicorn.run(
         application,
-        host=application.state["control_server_host"],
-        port=application.state["control_server_port"],
+        host=application.state.control_server_host,
+        port=application.state.control_server_port,
         loop="uvloop",
         reload=False,
         # TODO(pankaj): change this back to info once things are stable
         log_level="debug",
         workers=1,
-        limit_concurrency=1,
-        limit_max_requests=1,
+        limit_concurrency=32,
     )

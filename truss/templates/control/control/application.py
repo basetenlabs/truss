@@ -3,24 +3,67 @@ import re
 from pathlib import Path
 from typing import Dict
 
-from endpoints import control_app
-from fastapi import FastAPI, HTTPException
+from endpoints import control_app, proxy
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute as FastAPIRoute
 
 # from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
 from truss.templates.control.control.helpers.errors import (
-    InadmissiblePatch,
     ModelLoadFailed,
     PatchApplicatonError,
-    UnsupportedPatch,
+    PatchFailedUnrecoverable,
 )
 
 
+async def handle_patch_error(_, exc):
+    error_type = _camel_to_snake_case(type(exc).__name__)
+    return JSONResponse(
+        content={
+            "error": {
+                "type": error_type,
+                "msg": str(exc),
+            }
+        }
+    )
+
+
+async def generic_error_handler(_, exc):
+    return JSONResponse(
+        content={
+            "error": {
+                "type": "unknown",
+                "msg": f"{type(exc)}: {exc}",
+            }
+        }
+    )
+
+
+def handle_model_load_failed(_, error):
+    # Model load failures should result in 503 status
+    return JSONResponse({"error": str(error)}, 503)
+
+
 def create_app(base_config: Dict):
-    app = FastAPI(title="Truss Live Reload Server")
+    app = FastAPI(
+        title="Truss Live Reload Server",
+        routes=[
+            FastAPIRoute(
+                r"/v1/{path}",
+                proxy,
+                methods=["POST", "GET"],
+            ),
+        ],
+        exception_handlers={
+            PatchFailedUnrecoverable: handle_patch_error,
+            PatchApplicatonError: handle_patch_error,
+            ModelLoadFailed: handle_model_load_failed,
+            Exception: generic_error_handler,
+        },
+    )
 
     app_logger = logging.getLogger(__name__)
     # TODO(pankaj): change this back to info once things are stable
@@ -61,44 +104,6 @@ def create_app(base_config: Dict):
         oversee_inference_server,
     )
     app.include_router(control_app)
-
-    async def handle_patch_error(_, exc):
-        # app.state.logger.exception(exc)
-        error_type = _camel_to_snake_case(type(exc).__name__)
-        return JSONResponse(
-            content={
-                "error": {
-                    "type": error_type,
-                    "msg": str(exc),
-                }
-            }
-        )
-        # try:
-        #     raise exc
-        # except HTTPException:
-        #     return exc
-        # except PatchApplicatonError:
-
-        # except Exception:
-        #     app.state.logger.exception(exc)
-        #     return JSONResponse(
-        #         content={
-        #             "error": {
-        #                 "type": "unknown",
-        #                 "msg": f"{type(exc)}: {exc}",
-        #             }
-        #         }
-        #     )
-
-    # def handle_model_load_failed(_, error):
-    #     # Model load failures should result in 503 status
-    #     return JSONResponse({"error": str(error)}, 503)
-
-    # app.add_exception_handler(ModelLoadFailed, handle_model_load_failed)
-    # app.add_exception_handler(InadmissiblePatch, handle_error)
-    # app.add_exception_handler(PatchApplicatonError, handle_error)
-
-    app.add_exception_handler(UnsupportedPatch, handle_patch_error)
     return app
 
 

@@ -18,13 +18,11 @@ def index():
     return {}
 
 
-@control_app.post("/v1/{path}")
-@control_app.get("/v1/{path}")
 async def proxy(path, request: Request):
     inference_server_port = request.app.state.inference_server_port
-    inference_server_process_controller = request.app.state[
-        "inference_server_process_controller"
-    ]
+    inference_server_process_controller = (
+        request.app.state.inference_server_process_controller
+    )
 
     # Wait a bit for inference server to start
     for attempt in Retrying(
@@ -93,9 +91,9 @@ def restart_inference_server(request: Request) -> Dict[str, str]:
 
 @control_app.get("/control/has_partially_applied_patch")
 def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
-    app_has_partially_applied_patch = request.app.state[
-        "inference_server_controller"
-    ].has_partially_applied_patch()
+    app_has_partially_applied_patch = (
+        request.app.state.inference_server_controller.has_partially_applied_patch()
+    )
     return {"result": app_has_partially_applied_patch}
 
 
