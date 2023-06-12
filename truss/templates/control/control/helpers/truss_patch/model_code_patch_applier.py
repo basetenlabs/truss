@@ -1,7 +1,11 @@
 import logging
 from pathlib import Path
 
-from helpers.types import Action, ModelCodePatch
+# TODO(pankaj) In desparate need of refactoring into separate library
+try:
+    from helpers.types import Action, ModelCodePatch
+except ModuleNotFoundError:
+    from truss.templates.control.control.helpers.types import Action, ModelCodePatch
 
 
 def apply_model_code_patch(
