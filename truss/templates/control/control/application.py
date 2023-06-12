@@ -3,17 +3,14 @@ import re
 from pathlib import Path
 from typing import Dict
 
-from endpoints import control_app, proxy
+from endpoints import control_app
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute as FastAPIRoute
 from helpers.errors import (
     ModelLoadFailed,
     PatchApplicatonError,
     PatchFailedUnrecoverable,
 )
-
-# from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
@@ -42,7 +39,7 @@ async def generic_error_handler(_, exc):
     )
 
 
-def handle_model_load_failed(_, error):
+async def handle_model_load_failed(_, error):
     # Model load failures should result in 503 status
     return JSONResponse({"error": str(error)}, 503)
 
@@ -50,13 +47,6 @@ def handle_model_load_failed(_, error):
 def create_app(base_config: Dict):
     app = FastAPI(
         title="Truss Live Reload Server",
-        routes=[
-            FastAPIRoute(
-                r"/v1/{path}",
-                proxy,
-                methods=["POST", "GET"],
-            ),
-        ],
         exception_handlers={
             PatchFailedUnrecoverable: handle_patch_error,
             PatchApplicatonError: handle_patch_error,

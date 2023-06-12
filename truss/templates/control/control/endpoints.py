@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 import requests
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
@@ -18,7 +18,9 @@ def index():
     return {}
 
 
-async def proxy(path, request: Request):
+@control_app.get("/v1/{full_path:path}")
+@control_app.post("/v1/{full_path:path}")
+async def proxy(full_path: str, request: Request):
     inference_server_port = request.app.state.inference_server_port
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
@@ -42,7 +44,7 @@ async def proxy(path, request: Request):
 
                 resp = requests.request(
                     method=request.method,
-                    url=f"http://localhost:{inference_server_port}/v1/{path}",
+                    url=f"http://localhost:{inference_server_port}/v1/{full_path}",
                     data=await request.body(),
                     cookies=request.cookies,
                     headers=request.headers,
@@ -63,7 +65,7 @@ async def proxy(path, request: Request):
                     return JSONResponse(error_msg, 503)
                 raise exp
 
-    response = JSONResponse(resp.content, resp.status_code, resp.raw.headers.items())
+    response = Response(resp.content, resp.status_code, resp.headers)
     return response
 
 
