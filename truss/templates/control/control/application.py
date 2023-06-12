@@ -10,7 +10,7 @@ from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
-from truss.templates.shared.logging import setup_logging
+from shared.logging import setup_logging
 
 
 async def handle_patch_error(_, exc):
