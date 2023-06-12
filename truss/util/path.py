@@ -83,7 +83,7 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
 def load_gitignore_patterns(gitignore_file: Path):
     """Load patterns from a .gitignore file"""
     patterns = []
-    with open(gitignore_file, "r") as f:
+    with gitignore_file.open("r") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#"):
