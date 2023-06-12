@@ -6,11 +6,7 @@ from typing import Dict
 from endpoints import control_app
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from helpers.errors import (
-    ModelLoadFailed,
-    PatchApplicatonError,
-    PatchFailedUnrecoverable,
-)
+from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
@@ -48,7 +44,6 @@ def create_app(base_config: Dict):
     app = FastAPI(
         title="Truss Live Reload Server",
         exception_handlers={
-            PatchFailedUnrecoverable: handle_patch_error,
             PatchApplicatonError: handle_patch_error,
             ModelLoadFailed: handle_model_load_failed,
             Exception: generic_error_handler,
