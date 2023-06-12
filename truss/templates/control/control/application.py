@@ -10,6 +10,7 @@ from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
+from truss.templates.shared.logging import setup_logging
 
 
 async def handle_patch_error(_, exc):
@@ -49,11 +50,9 @@ def create_app(base_config: Dict):
             Exception: generic_error_handler,
         },
     )
+    setup_logging()
 
     app_logger = logging.getLogger(__name__)
-    # TODO(pankaj): change this back to info once things are stable
-    app_logger.setLevel(logging.DEBUG)
-
     app.state.logger = app_logger
 
     for k, v in base_config.items():

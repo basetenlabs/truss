@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Union
 import common.errors as errors
 import common.util as utils
 import uvicorn
-from common.logging import setup_logging
 from common.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
@@ -23,6 +22,7 @@ from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from starlette.responses import Response
+from truss.templates.shared.logging import setup_logging
 
 
 async def parse_body(request: Request) -> bytes:
