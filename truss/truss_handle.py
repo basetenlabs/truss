@@ -868,12 +868,7 @@ class TrussHandle:
         are caches and resused.
         """
         from truss.truss_gatherer import gather
-        from truss.util.path import remove_ignored_files
-
-        if not self.is_scattered():
-            remove_ignored_files(self._truss_dir)
-            return self._truss_dir
-
+        
         return gather(self._truss_dir)
 
     @property
