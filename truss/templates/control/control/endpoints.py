@@ -5,8 +5,8 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
+from shared.serialization import truss_msgpack_deserialize
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
-from truss.templates.server.common.serialization import truss_msgpack_deserialize
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 
@@ -119,9 +119,8 @@ def _decode_body(resp):
 
 
 def _is_model_not_ready(resp) -> bool:
-    if resp.status_code != 503:
-        return False
-    if resp.content is None:
-        return False
-    decoded_content = _decode_body(resp)
-    return "model is not ready" in decoded_content["error"]
+    return (
+        resp.status_code == 503
+        and resp.content is not None
+        and "model is not ready" in _decode_body(resp)["error"]
+    )

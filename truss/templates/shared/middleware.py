@@ -1,7 +1,10 @@
 from typing import Optional, Tuple
 
+from msgpack_asgi import MessagePackMiddleware
+from shared.serialization import truss_msgpack_deserialize, truss_msgpack_serialize
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp
 
 
 class BinaryHeaderMiddleware(BaseHTTPMiddleware):
@@ -33,3 +36,12 @@ class BinaryHeaderMiddleware(BaseHTTPMiddleware):
         if is_binary:
             response.headers.append("content-type", original_content_type)
         return response
+
+
+class TrussMsgpackMiddleware(MessagePackMiddleware):
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(
+            app,
+            packb=truss_msgpack_serialize,
+            unpackb=truss_msgpack_deserialize,
+        )

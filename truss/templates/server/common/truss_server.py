@@ -18,8 +18,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
-from msgpack_asgi import MessagePackMiddleware
-from shared.middleware.binary_header_middleware import BinaryHeaderMiddleware
+from shared.middleware import BinaryHeaderMiddleware, TrussMsgpackMiddleware
 from starlette.middleware import Middleware
 from starlette.responses import Response
 
@@ -159,8 +158,7 @@ class TrussServer:
             on_startup=[self.on_startup],
             middleware=[
                 Middleware(BinaryHeaderMiddleware),
-                # TODO: add packb, unpackb to middleware
-                Middleware(MessagePackMiddleware),
+                Middleware(TrussMsgpackMiddleware),
             ],
             routes=[
                 # liveness endpoint

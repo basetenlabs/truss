@@ -11,8 +11,7 @@ from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.logging import setup_logging
 from helpers.patch_applier import PatchApplier
-from msgpack_asgi import MessagePackMiddleware
-from shared.middleware.binary_header_middleware import BinaryHeaderMiddleware
+from shared.middleware import BinaryHeaderMiddleware, TrussMsgpackMiddleware
 from starlette.middleware import Middleware
 
 
@@ -49,8 +48,7 @@ def create_app(base_config: Dict):
         title="Truss Live Reload Server",
         middleware=[
             Middleware(BinaryHeaderMiddleware, map_input=False, map_output=True),
-            # TODO: add packb, unpackb to middleware
-            Middleware(MessagePackMiddleware),
+            Middleware(TrussMsgpackMiddleware),
         ],
         exception_handlers={
             PatchApplicatonError: handle_known_error,
