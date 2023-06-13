@@ -69,7 +69,7 @@ def test_removing_from_gathered_truss_not_original_truss(
     # Call a function that is wrapped in a proxy_to_shadow decorator
     # so that we mimic the behavior of a gathered truss
     tr = load(custom_model_truss_dir_with_hidden_files)
-    _ = tr.docker_predict({"x": 1})
+    _ = tr.kill_container()
 
     # Calculate the shadow path for the original truss
     shadow_truss_dir_name = path.calc_shadow_truss_dirname(
@@ -84,14 +84,14 @@ def test_removing_from_gathered_truss_not_original_truss(
     assert not (shadow_truss_path / "__pycache__" / "test.cpython-38.pyc").exists()
     assert not (shadow_truss_path / ".DS_Store").exists()
     assert not (shadow_truss_path / ".git").exists()
+    assert (shadow_truss_path / "model").exists()
 
     assert (
         custom_model_truss_dir_with_hidden_files / "__pycache__" / "test.cpython-38.pyc"
     ).exists()
     assert (custom_model_truss_dir_with_hidden_files / ".DS_Store").exists()
     assert (custom_model_truss_dir_with_hidden_files / ".git").exists()
-
-    tr.kill_container()
+    assert (custom_model_truss_dir_with_hidden_files / "model").exists()
 
 
 test_max_modified()
