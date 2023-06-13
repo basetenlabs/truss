@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List
 
+from pydantic import BaseModel
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import Patch
 
@@ -73,8 +74,7 @@ class PatchDetails:
         )
 
 
-@dataclass
-class PatchRequest:
+class PatchRequest(BaseModel):
     """Request to patch running container"""
 
     hash: str
@@ -93,4 +93,4 @@ class PatchRequest:
         current_hash = patch_request_dict["hash"]
         prev_hash = patch_request_dict["prev_hash"]
         patches = patch_request_dict["patches"]
-        return PatchRequest(current_hash, prev_hash, patches)
+        return PatchRequest(hash=current_hash, prev_hash=prev_hash, patches=patches)

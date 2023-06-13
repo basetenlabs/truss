@@ -155,7 +155,7 @@ def test_404(client):
 
 
 def test_invalid_patch(client):
-    patch_request = PatchRequest("dummy", "invalid", [])
+    patch_request = PatchRequest(hash="dummy", prev_hash="invalid", patches=[])
     resp = client.post("/control/patch", json=patch_request.to_dict())
     assert resp.status_code == 200
     assert "error" in resp.json()
@@ -195,7 +195,7 @@ def test_patch_failed_unrecoverable(client):
 
 def _verify_apply_patch_success(client, patch: Patch):
     original_hash = client.get("/control/truss_hash").json()["result"]
-    patch_request = PatchRequest("dummy", original_hash, [patch])
+    patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=[patch])
     resp = client.post("/control/patch", json=patch_request.to_dict())
     resp = _apply_patches(client, [patch])
     assert resp.status_code == 200
@@ -205,7 +205,7 @@ def _verify_apply_patch_success(client, patch: Patch):
 
 def _apply_patches(client, patches: List[Patch]):
     original_hash = client.get("/control/truss_hash").json()["result"]
-    patch_request = PatchRequest("dummy", original_hash, patches)
+    patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=patches)
     return client.post("/control/patch", json=patch_request.to_dict())
 
 

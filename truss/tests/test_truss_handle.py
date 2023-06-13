@@ -612,9 +612,9 @@ class Model:
         return [2 for i in model_input]
 """
         patch_request = PatchRequest(
-            "dummy",
-            running_hash,
-            [
+            hash="dummy",
+            prev_hash=running_hash,
+            patches=[
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(

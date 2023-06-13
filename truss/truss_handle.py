@@ -1015,7 +1015,9 @@ class TrussHandle:
             return container
 
         patch_request = PatchRequest(
-            current_hash, running_truss_hash, patch_details.patch_ops
+            hash=current_hash,
+            prev_hash=running_truss_hash,
+            patches=patch_details.patch_ops,
         )
         resp = self.patch_container(patch_request)
         if "error" in resp:
