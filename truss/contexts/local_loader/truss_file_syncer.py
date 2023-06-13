@@ -34,7 +34,7 @@ class TrussPatchEmitter:
         self._config = TrussConfig.from_yaml(self._truss_dir / CONFIG_FILE)
         self._logger = logger
 
-    def emit(self, op, path: Path) -> Optional[Patch]:
+    def __call__(self, op, path: Path) -> Optional[Patch]:
         truss_spec = TrussSpec(self._truss_dir)
         model_module_path = str(
             truss_spec.model_module_dir.relative_to(self._truss_dir)
@@ -74,7 +74,7 @@ class TrussFilesSyncer(Thread):
                 # vscode seems to add these .tmp files intermittently upon save
                 if not str(path).endswith(".tmp"):
                     rel_path = Path(path).relative_to(self.watch_path.resolve())
-                    patch = self.patch_emitter.emit(op, rel_path)
+                    patch = self.patch_emitter(op, rel_path)
                     if patch:
                         logging.Logger(__name__).info(patch)
                         self.patch_applier(patch)
