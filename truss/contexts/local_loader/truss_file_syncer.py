@@ -52,6 +52,7 @@ class TrussPatchEmitter:
         if str(path) == CONFIG_FILE:
             new_config = TrussConfig.from_yaml(self._truss_dir / CONFIG_FILE)
             config_patches = calc_config_patches(self._config, new_config)
+            self._config = new_config
             return config_patches[0] if config_patches else None
         return None
 

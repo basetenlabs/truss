@@ -597,7 +597,6 @@ def test_docker_predict_model_without_pre_post(custom_model_truss_dir):
         assert resp == [1, 1, 1, 1]
 
 
-# TODO(justin): refactor test
 @pytest.mark.integration
 def test_control_truss_apply_patch(custom_model_control):
     th = TrussHandle(custom_model_control)
