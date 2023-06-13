@@ -1,11 +1,12 @@
-from typing import Optional, Tuple
-
 from msgpack_asgi import MessagePackMiddleware
 from shared.serialization import truss_msgpack_deserialize, truss_msgpack_serialize
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
+
+OCTET_STREAN_CONTENT_TYPE = "application/octet-stream"
+MSGPACK_CONTENT_TYPE = b"application/x-msgpack"
 
 
 class BinaryHeaderMiddleware(BaseHTTPMiddleware):
@@ -30,32 +31,29 @@ class BinaryHeaderMiddleware(BaseHTTPMiddleware):
         self.map_input = map_input
         self.map_output = map_output
 
-    @staticmethod
-    def is_binary(request: Request) -> Tuple[bool, Optional[str]]:
-        content_type_header = request.headers.get("content-type")
-        return (content_type_header == "application/octet-stream", content_type_header)
-
     async def dispatch(
         self,
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        is_binary, original_content_type = self.is_binary(request)
+        is_binary = OCTET_STREAN_CONTENT_TYPE in (
+            request.headers.get("content-type") or []
+        )
 
         headers = dict(request.scope["headers"])
 
         if is_binary and self.map_input:
-            headers[b"content-type"] = b"application/x-msgpack"
+            headers[b"content-type"] = MSGPACK_CONTENT_TYPE
 
         if is_binary and self.map_output:
-            headers[b"accept"] = b"application/x-msgpack"
+            headers[b"accept"] = MSGPACK_CONTENT_TYPE
 
         request.scope["headers"] = [(k, v) for k, v in headers.items()]
 
         response = await call_next(request)
 
         if is_binary:
-            response.headers.append("content-type", original_content_type)
+            response.headers.append("content-type", OCTET_STREAN_CONTENT_TYPE)
         return response
 
 
