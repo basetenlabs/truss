@@ -75,3 +75,8 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
     target_directory_path = Path(Path.home(), ".truss", "models", f"{stub}-{suffix}")
     target_directory_path.mkdir(parents=True, exist_ok=True)
     return target_directory_path
+
+
+def file_content(path: Path) -> str:
+    with path.open() as file:
+        return file.read()

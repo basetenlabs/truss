@@ -22,6 +22,7 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
+from truss.util.path import file_content
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
@@ -111,7 +112,7 @@ def calc_truss_patch(
                     body=ModelCodePatch(
                         action=action,
                         path=_relative_to(path, model_module_path),
-                        content=_file_content(full_path),
+                        content=file_content(full_path),
                     ),
                 )
             )
@@ -120,7 +121,7 @@ def calc_truss_patch(
             prev_config = TrussConfig.from_dict(
                 yaml.safe_load(previous_truss_signature.config)
             )
-            config_patches = _calc_config_patches(prev_config, new_config)
+            config_patches = calc_config_patches(prev_config, new_config)
             if config_patches is None:
                 logger.info(f"Unable to patch update to {path}")
                 return None
@@ -186,7 +187,7 @@ def _calc_unignored_paths(
     return root_relative_paths - root_relative_ignored_paths
 
 
-def _calc_config_patches(
+def calc_config_patches(
     prev_config: TrussConfig, new_config: TrussConfig
 ) -> Optional[List[Patch]]:
     """Calculate patch based on changes to config.
@@ -303,8 +304,3 @@ def _strictly_under(path: str, parent_paths: List[str]) -> bool:
         if path.startswith(dir_path) and not path == dir_path:
             return True
     return False
-
-
-def _file_content(path: Path) -> str:
-    with path.open() as file:
-        return file.read()
