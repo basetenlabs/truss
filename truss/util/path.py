@@ -108,7 +108,7 @@ def is_ignored(path: Path, patterns: List[str]) -> bool:
 def remove_ignored_files(
     directory: Path, truss_ignore_file: Path = TRUSS_IGNORE_PATH
 ) -> None:
-    """Traverse a directory and remove any files that match patterns"""
+    """Traverse a directory and remove any files that match patterns in .truss_ignore"""
     patterns = load_trussignore_patterns(truss_ignore_file)
     for root, dirs, files in os.walk(directory, topdown=False):
         for name in files:
@@ -118,5 +118,4 @@ def remove_ignored_files(
         for name in dirs:
             dir_path = Path(root) / name
             if is_ignored(dir_path, patterns):
-                print(f"Removing {dir_path}")
                 remove_tree_path(dir_path)

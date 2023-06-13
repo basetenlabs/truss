@@ -858,7 +858,7 @@ class TrussHandle:
         )
 
     def gather(self) -> Path:
-        """Convert a Truss with external dependencies into one without and filters out
+        """Convert a Truss with external dependencies into one without and filter out
         any files that are defined in the .truss_ignore file.
 
         Any external packages are copied under packages folder to form a Truss,
