@@ -26,6 +26,11 @@ from truss.templates.control.control.helpers.types import (  # noqa
     PythonRequirementPatch,
 )
 
+from truss.templates.server.common.serialization import (
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
+
 
 @pytest.fixture
 def truss_original_hash():
@@ -274,16 +279,17 @@ def test_patch_model_code_update_predict_model_not_ready(app, client):
     assert "ModelNotReady" in resp.json()["error"]["msg"]
 
 
-# def test_patch_model_code_update_predict_binary_model_not_ready(app, client):
-#     _patch_slow_model(client)
-#     resp = client.post(
-#         "/v1/models/model:predict_binary",
-#         data=truss_msgpack_serialize({}),
-#         headers={"Content-type": "application/octet-stream"},
-#     )
-#     resp.status_code == 200
-#     assert type(resp.data) == bytes
-#     deserialized_resp = truss_msgpack_deserialize(resp.data)
-#     assert type(deserialized_resp) == dict
-#     assert deserialized_resp["error"]["type"] == "unknown"
-#     assert "ModelNotReady" in deserialized_resp["error"]["msg"]
+def test_patch_model_code_update_predict_binary_model_not_ready(app, client):
+    _patch_slow_model(client)
+    resp = client.post(
+        "/v1/models/model:predict_binary",
+        data=truss_msgpack_serialize({}),
+        headers={"Content-type": "application/octet-stream"},
+    )
+    resp.status_code == 200
+    assert type(resp.content) == bytes
+    print(resp)
+    deserialized_resp = truss_msgpack_deserialize(resp.content)
+    assert type(deserialized_resp) == dict
+    assert deserialized_resp["error"]["type"] == "unknown"
+    assert "ModelNotReady" in deserialized_resp["error"]["msg"]

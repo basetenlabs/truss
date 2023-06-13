@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
+from truss.templates.server.common.serialization import truss_msgpack_deserialize
 
 control_app = APIRouter()
 
@@ -104,9 +105,16 @@ def stop_inference_server(request: Request) -> Dict[str, str]:
     return {"msg": "Inference server stopped successfully"}
 
 
+def _decode_body(resp):
+    if "application/x-msgpack" in resp.headers["content-type"]:
+        return truss_msgpack_deserialize(resp.content)
+    return resp.content.decode("utf-8")
+
+
 def _is_model_not_ready(resp) -> bool:
-    return (
-        resp.status_code == 503
-        and resp.content is not None
-        and "model is not ready" in resp.content.decode("utf-8")
-    )
+    if resp.status_code != 503:
+        return False
+    if resp.content is None:
+        return False
+    decoded_content = _decode_body(resp)
+    return "model is not ready" in decoded_content
