@@ -7,9 +7,6 @@ from helpers.errors import ModelLoadFailed, ModelNotReady
 from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
-INFERENCE_SERVER_START_WAIT_SECS = 60
-
-
 control_app = APIRouter()
 
 
@@ -25,6 +22,7 @@ async def proxy(full_path: str, request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
+    retry_attempt_max_timeout = request.app.state.retry_attempt_max_timeout
 
     # Wait a bit for inference server to start
     for attempt in Retrying(
@@ -32,8 +30,9 @@ async def proxy(full_path: str, request: Request):
             retry_if_exception_type(ConnectionError)
             | retry_if_exception_type(ModelNotReady)
         ),
-        stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
+        stop=stop_after_attempt(retry_attempt_max_timeout),
         wait=wait_fixed(1),
+        reraise=True,
     ):
         with attempt:
             try:

@@ -6,13 +6,15 @@ from typing import Dict
 from endpoints import control_app
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from helpers.errors import ModelLoadFailed, PatchApplicatonError
+from helpers.errors import ModelLoadFailed, ModelNotReady, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.patch_applier import PatchApplier
 
+INFERENCE_SERVER_START_WAIT_SECS = 60
 
-async def handle_patch_error(_, exc):
+
+async def handle_patch_error(_, exc: PatchApplicatonError):
     error_type = _camel_to_snake_case(type(exc).__name__)
     return JSONResponse(
         content={
@@ -24,7 +26,7 @@ async def handle_patch_error(_, exc):
     )
 
 
-async def generic_error_handler(_, exc):
+async def generic_error_handler(_, exc: Exception):
     return JSONResponse(
         content={
             "error": {
@@ -35,7 +37,7 @@ async def generic_error_handler(_, exc):
     )
 
 
-async def handle_model_load_failed(_, error):
+async def handle_model_load_failed(_, error: ModelLoadFailed):
     # Model load failures should result in 503 status
     return JSONResponse({"error": str(error)}, 503)
 
@@ -46,6 +48,7 @@ def create_app(base_config: Dict):
         exception_handlers={
             PatchApplicatonError: handle_patch_error,
             ModelLoadFailed: handle_model_load_failed,
+            ModelNotReady: generic_error_handler,
             Exception: generic_error_handler,
         },
     )
@@ -58,7 +61,9 @@ def create_app(base_config: Dict):
 
     for k, v in base_config.items():
         setattr(app.state, k, v)
-
+    app.state.retry_attempt_max_timeout = base_config.get(
+        "retry_attempt_max_timeout", INFERENCE_SERVER_START_WAIT_SECS
+    )
     app.state.inference_server_process_controller = InferenceServerProcessController(
         app.state.inference_server_home,
         app.state.inference_server_process_args,

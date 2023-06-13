@@ -44,6 +44,7 @@ def app(truss_container_fs, truss_original_hash):
                 "control_server_port": 8081,
                 "inference_server_port": 8082,
                 "oversee_inference_server": False,
+                "retry_attempt_max_timeout": 5,
                 "pip_path": "pip",
             }
         )
@@ -241,3 +242,48 @@ def _env_var(kvs: Dict[str, str]):
     finally:
         os.environ.clear()
         os.environ.update(orig_env)
+
+
+def _patch_slow_model(client):
+    mock_model_file_content = """
+class Model:
+    def load(self):
+        import time
+        time.sleep(6) # longer than INFERENCE_SERVER_START_WAIT_SECS
+    def predict(self, request):
+        return {'prediction': [1]}
+"""
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+        ),
+    )
+    _verify_apply_patch_success(client, patch)
+
+
+def test_patch_model_code_update_predict_model_not_ready(app, client):
+    _patch_slow_model(client)
+    resp = client.post("/v1/models/model:predict", json={})
+    resp.status_code == 200
+    assert type(resp.content) == bytes
+    assert type(resp.json()) == dict
+    assert resp.json()["error"]["type"] == "unknown"
+    assert "ModelNotReady" in resp.json()["error"]["msg"]
+
+
+# def test_patch_model_code_update_predict_binary_model_not_ready(app, client):
+#     _patch_slow_model(client)
+#     resp = client.post(
+#         "/v1/models/model:predict_binary",
+#         data=truss_msgpack_serialize({}),
+#         headers={"Content-type": "application/octet-stream"},
+#     )
+#     resp.status_code == 200
+#     assert type(resp.data) == bytes
+#     deserialized_resp = truss_msgpack_deserialize(resp.data)
+#     assert type(deserialized_resp) == dict
+#     assert deserialized_resp["error"]["type"] == "unknown"
+#     assert "ModelNotReady" in deserialized_resp["error"]["msg"]
