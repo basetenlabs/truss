@@ -66,22 +66,16 @@ def create_app(base_config: Dict):
         app.state.inference_server_port,
         app_logger=app_logger,
     )
-    pip_path = None
-    try:
-        pip_path = app.state.pip_path
-    except AttributeError:
-        pass
+
+    pip_path = getattr(app.state, "pip_path", None)
 
     patch_applier = PatchApplier(
         Path(app.state.inference_server_home),
         app_logger,
         pip_path,
     )
-    oversee_inference_server = True
-    try:
-        oversee_inference_server = app.state.oversee_inference_server
-    except AttributeError:
-        pass
+
+    oversee_inference_server = getattr(app.state, "oversee_inference_server", True)
 
     app.state.inference_server_controller = InferenceServerController(
         app.state.inference_server_process_controller,
