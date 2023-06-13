@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple, Union
 
 from truss.patch.hash import str_hash_str
 
-TRUSS_GITINORE_PATH = Path(__file__).parent / ".truss_ignore"
+TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 
 def copy_tree_path(src: Path, dest: Path) -> List[str]:
@@ -80,10 +80,10 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
     return target_directory_path
 
 
-def load_gitignore_patterns(gitignore_file: Path):
-    """Load patterns from a .gitignore file"""
+def load_trussignore_patterns(truss_ignore_file: Path):
+    """Load patterns from a .truss_ignore file"""
     patterns = []
-    with gitignore_file.open("r") as f:
+    with truss_ignore_file.open("r") as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#"):
@@ -106,10 +106,10 @@ def is_ignored(path: Path, patterns: List[str]) -> bool:
 
 
 def remove_ignored_files(
-    directory: Path, gitignore_file: Path = TRUSS_GITINORE_PATH
+    directory: Path, truss_ignore_file: Path = TRUSS_IGNORE_PATH
 ) -> None:
     """Traverse a directory and remove any files that match patterns"""
-    patterns = load_gitignore_patterns(gitignore_file)
+    patterns = load_trussignore_patterns(truss_ignore_file)
     for root, dirs, files in os.walk(directory, topdown=False):
         for name in files:
             file_path = Path(root) / name
