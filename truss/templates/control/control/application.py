@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
+from helpers.logging import setup_logging
 from helpers.patch_applier import PatchApplier
 
 
@@ -50,9 +51,9 @@ def create_app(base_config: Dict):
         },
     )
 
+    setup_logging()
+
     app_logger = logging.getLogger(__name__)
-    # TODO(pankaj): change this back to info once things are stable
-    app_logger.setLevel(logging.DEBUG)
 
     app.state.logger = app_logger
 
