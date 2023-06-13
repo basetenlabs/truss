@@ -17,6 +17,8 @@ sys.path.append(
     )
 )
 
+sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
+
 from truss.templates.control.control.application import create_app  # noqa
 from truss.templates.control.control.helpers.types import (  # noqa
     Action,
@@ -25,8 +27,7 @@ from truss.templates.control.control.helpers.types import (  # noqa
     PatchType,
     PythonRequirementPatch,
 )
-
-from truss.templates.server.common.serialization import (
+from truss.templates.server.common.serialization import (  # noqa
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
@@ -254,7 +255,7 @@ def _patch_slow_model(client):
 class Model:
     def load(self):
         import time
-        time.sleep(6) # longer than INFERENCE_SERVER_START_WAIT_SECS
+        time.sleep(9) # longer than INFERENCE_SERVER_START_WAIT_SECS
     def predict(self, request):
         return {'prediction': [1]}
 """
@@ -269,27 +270,28 @@ class Model:
     _verify_apply_patch_success(client, patch)
 
 
-def test_patch_model_code_update_predict_model_not_ready(app, client):
+def test_patch_model_code_update_predict_model_not_ready(client):
     _patch_slow_model(client)
     resp = client.post("/v1/models/model:predict", json={})
-    resp.status_code == 200
-    assert type(resp.content) == bytes
-    assert type(resp.json()) == dict
-    assert resp.json()["error"]["type"] == "unknown"
-    assert "ModelNotReady" in resp.json()["error"]["msg"]
+    assert resp.status_code == 200
+    assert resp.json()["error"]["type"] == "model_not_ready"
+    assert (
+        "Model has started running, but not ready yet." in resp.json()["error"]["msg"]
+    )
 
 
-def test_patch_model_code_update_predict_binary_model_not_ready(app, client):
+def test_patch_model_code_update_predict_binary_model_not_ready(client):
     _patch_slow_model(client)
     resp = client.post(
         "/v1/models/model:predict_binary",
         data=truss_msgpack_serialize({}),
         headers={"Content-type": "application/octet-stream"},
     )
-    resp.status_code == 200
-    assert type(resp.content) == bytes
-    print(resp)
+    assert resp.status_code == 200
     deserialized_resp = truss_msgpack_deserialize(resp.content)
     assert type(deserialized_resp) == dict
-    assert deserialized_resp["error"]["type"] == "unknown"
-    assert "ModelNotReady" in deserialized_resp["error"]["msg"]
+    assert deserialized_resp["error"]["type"] == "model_not_ready"
+    assert (
+        "Model has started running, but not ready yet."
+        in deserialized_resp["error"]["msg"]
+    )

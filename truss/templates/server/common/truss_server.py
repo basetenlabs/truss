@@ -7,7 +7,7 @@ import os
 import signal
 import socket
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import common.errors as errors
 import common.util as utils
@@ -19,8 +19,8 @@ from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from msgpack_asgi import MessagePackMiddleware
+from shared.middleware.binary_header_middleware import BinaryHeaderMiddleware
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 
@@ -120,29 +120,6 @@ class BasetenEndpoints:
             content=json.dumps(response, cls=DeepNumpyEncoder),
             headers={"Content-Type": "application/json"},
         )
-
-
-class BinaryHeaderMiddleware(BaseHTTPMiddleware):
-    @staticmethod
-    def is_binary(request: Request) -> Tuple[bool, Optional[str]]:
-        content_type_header = request.headers.get("content-type")
-        return (content_type_header == "application/octet-stream", content_type_header)
-
-    async def dispatch(self, request, call_next):
-        is_binary, original_content_type = self.is_binary(request)
-        # update request headers
-        headers = dict(request.scope["headers"])
-
-        headers = dict(request.scope["headers"])
-        if is_binary:
-            headers[b"accept"] = b"application/x-msgpack"
-            headers[b"content-type"] = b"application/x-msgpack"
-            request.scope["headers"] = [(k, v) for k, v in headers.items()]
-
-        response = await call_next(request)
-        if is_binary:
-            response.headers.append("content-type", original_content_type)
-        return response
 
 
 class TrussServer:

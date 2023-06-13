@@ -11,9 +11,12 @@ from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.logging import setup_logging
 from helpers.patch_applier import PatchApplier
+from msgpack_asgi import MessagePackMiddleware
+from shared.middleware.binary_header_middleware import BinaryHeaderMiddleware
+from starlette.middleware import Middleware
 
 
-async def handle_patch_error(_, exc: PatchApplicatonError):
+async def handle_known_error(_, exc: Exception):
     error_type = _camel_to_snake_case(type(exc).__name__)
     return JSONResponse(
         content={
@@ -44,10 +47,15 @@ async def handle_model_load_failed(_, error: ModelLoadFailed):
 def create_app(base_config: Dict):
     app = FastAPI(
         title="Truss Live Reload Server",
+        middleware=[
+            Middleware(BinaryHeaderMiddleware, map_input=False, map_output=True),
+            # TODO: add packb, unpackb to middleware
+            Middleware(MessagePackMiddleware),
+        ],
         exception_handlers={
-            PatchApplicatonError: handle_patch_error,
+            PatchApplicatonError: handle_known_error,
             ModelLoadFailed: handle_model_load_failed,
-            ModelNotReady: generic_error_handler,
+            ModelNotReady: handle_known_error,
             Exception: generic_error_handler,
         },
     )

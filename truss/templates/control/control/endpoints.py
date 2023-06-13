@@ -113,9 +113,9 @@ def stop_inference_server(request: Request) -> Dict[str, str]:
 
 
 def _decode_body(resp):
-    if "application/x-msgpack" in resp.headers["content-type"]:
+    if "application/octet-stream" in resp.headers["content-type"]:
         return truss_msgpack_deserialize(resp.content)
-    return resp.content.decode("utf-8")
+    return resp.json()
 
 
 def _is_model_not_ready(resp) -> bool:
@@ -124,4 +124,4 @@ def _is_model_not_ready(resp) -> bool:
     if resp.content is None:
         return False
     decoded_content = _decode_body(resp)
-    return "model is not ready" in decoded_content
+    return "model is not ready" in decoded_content["error"]
