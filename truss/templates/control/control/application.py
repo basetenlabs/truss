@@ -9,8 +9,8 @@ from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
-from helpers.logging import setup_logging
-from helpers.patch_applier import PatchApplier
+from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
+from shared.logging import setup_logging
 from shared.middleware import BinaryHeaderMiddleware, TrussMsgpackMiddleware
 from starlette.middleware import Middleware
 
@@ -76,7 +76,7 @@ def create_app(base_config: Dict):
 
     pip_path = getattr(app.state, "pip_path", None)
 
-    patch_applier = PatchApplier(
+    patch_applier = ModelContainerPatchApplier(
         Path(app.state.inference_server_home),
         app_logger,
         pip_path,
