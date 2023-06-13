@@ -47,7 +47,11 @@ def create_app(base_config: Dict):
     app = FastAPI(
         title="Truss Live Reload Server",
         middleware=[
-            Middleware(BinaryHeaderMiddleware, map_input=False, map_output=True),
+            Middleware(
+                BinaryHeaderMiddleware,
+                map_input=False,
+                map_output=True,
+            ),
             Middleware(TrussMsgpackMiddleware),
         ],
         exception_handlers={

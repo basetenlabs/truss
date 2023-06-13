@@ -16,8 +16,12 @@ sys.path.append(
         / "control"
     )
 )
-
-sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
+# Needed to simulate the set up on the model docker container
+sys.path.append(
+    str(
+        Path(__file__).parent.parent.parent.parent.parent / "templates",
+    )
+)
 
 from truss.templates.control.control.application import create_app  # noqa
 from truss.templates.control.control.helpers.types import (  # noqa
@@ -27,7 +31,7 @@ from truss.templates.control.control.helpers.types import (  # noqa
     PatchType,
     PythonRequirementPatch,
 )
-from truss.templates.server.common.serialization import (  # noqa
+from truss.templates.shared.serialization import (  # noqa
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )

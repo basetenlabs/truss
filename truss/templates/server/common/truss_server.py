@@ -12,13 +12,13 @@ from typing import Dict, List, Optional, Union
 import common.errors as errors
 import common.util as utils
 import uvicorn
-from common.logging import setup_logging
-from common.serialization import DeepNumpyEncoder
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from shared.logging import setup_logging
 from shared.middleware import BinaryHeaderMiddleware, TrussMsgpackMiddleware
+from shared.serialization import DeepNumpyEncoder
 from starlette.middleware import Middleware
 from starlette.responses import Response
 
