@@ -10,7 +10,7 @@ from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.logging import setup_logging
-from helpers.patch_applier import PatchApplier
+from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
 
 
 async def handle_patch_error(_, exc):
@@ -69,7 +69,7 @@ def create_app(base_config: Dict):
 
     pip_path = getattr(app.state, "pip_path", None)
 
-    patch_applier = PatchApplier(
+    patch_applier = ModelContainerPatchApplier(
         Path(app.state.inference_server_home),
         app_logger,
         pip_path,

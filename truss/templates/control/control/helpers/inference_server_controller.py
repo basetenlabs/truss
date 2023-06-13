@@ -11,7 +11,7 @@ from helpers.errors import (
     UnsupportedPatch,
 )
 from helpers.inference_server_process_controller import InferenceServerProcessController
-from helpers.patch_applier import PatchApplier
+from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
 from helpers.types import Patch, PatchType
 
 INFERENCE_SERVER_CHECK_INTERVAL_SECS = 10
@@ -25,14 +25,14 @@ class InferenceServerController:
     """
 
     _process_controller: InferenceServerProcessController
-    _patch_applier: PatchApplier
+    _patch_applier: ModelContainerPatchApplier
     _app_logger: logging.Logger
     _oversee_inference_server: bool
 
     def __init__(
         self,
         process_controller: InferenceServerProcessController,
-        patch_applier: PatchApplier,
+        patch_applier: ModelContainerPatchApplier,
         app_logger: logging.Logger,
         oversee_inference_server: bool = True,
     ):
@@ -86,7 +86,7 @@ class InferenceServerController:
             try:
                 patches_executed = 0
                 for patch in patches:
-                    self._patch_applier.apply_patch(patch)
+                    self._patch_applier(patch)
                     patches_executed += 1
             except Exception as exc:
                 if patches_executed > 0:

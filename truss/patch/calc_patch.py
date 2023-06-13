@@ -1,12 +1,17 @@
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
-import pkg_resources
 import yaml
 from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
+from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
+    reqs_by_name,
+)
+from truss.templates.control.control.helpers.truss_patch.system_packages import (
+    system_packages_set,
+)
 from truss.templates.control.control.helpers.types import (
     Action,
     ModelCodePatch,
@@ -210,9 +215,9 @@ def _calc_python_requirements_patches(
     differences found.
     """
     patches = []
-    prev_reqs = _parsed_reqs_by_name(prev_config.requirements)
+    prev_reqs = reqs_by_name(prev_config.requirements)
     prev_req_names = set(prev_reqs.keys())
-    new_reqs = _parsed_reqs_by_name(new_config.requirements)
+    new_reqs = reqs_by_name(new_config.requirements)
     new_req_names = set(new_reqs.keys())
     removed_reqs = prev_req_names.difference(new_req_names)
     for removed_req in removed_reqs:
@@ -220,15 +225,11 @@ def _calc_python_requirements_patches(
 
     added_reqs = new_req_names.difference(prev_req_names)
     for added_req in added_reqs:
-        patches.append(
-            _mk_python_requirement_patch(Action.ADD, str(new_reqs[added_req]))
-        )
+        patches.append(_mk_python_requirement_patch(Action.ADD, new_reqs[added_req]))
 
     for req in new_req_names.intersection(prev_req_names):
         if new_reqs[req] != prev_reqs[req]:
-            patches.append(
-                _mk_python_requirement_patch(Action.UPDATE, str(new_reqs[req]))
-            )
+            patches.append(_mk_python_requirement_patch(Action.UPDATE, new_reqs[req]))
 
     return patches
 
@@ -242,8 +243,8 @@ def _calc_system_packages_patches(
     differences found.
     """
     patches = []
-    prev_pkgs = _system_pacakges_set(prev_config)
-    new_pkgs = _system_pacakges_set(new_config)
+    prev_pkgs = system_packages_set(prev_config.system_packages)
+    new_pkgs = system_packages_set(new_config.system_packages)
     removed_pkgs = prev_pkgs.difference(new_pkgs)
     for removed_pkg in removed_pkgs:
         patches.append(_mk_system_package_patch(Action.REMOVE, removed_pkg))
@@ -253,21 +254,6 @@ def _calc_system_packages_patches(
         patches.append(_mk_system_package_patch(Action.ADD, added_pkg))
 
     return patches
-
-
-def _system_pacakges_set(config: TrussConfig) -> Set[str]:
-    pkgs = []
-    for sys_pkg_line in config.system_packages:
-        pkgs.extend(sys_pkg_line.strip().split())
-    return set(pkgs)
-
-
-def _parsed_reqs_by_name(reqs: List[str]) -> Dict[str, Any]:
-    parsed_reqs_by_name = {}
-    for req in reqs:
-        parsed_req = pkg_resources.Requirement.parse(req)
-        parsed_reqs_by_name[parsed_req.name] = parsed_req  # type: ignore
-    return parsed_reqs_by_name
 
 
 def _only_expected_config_differences(
