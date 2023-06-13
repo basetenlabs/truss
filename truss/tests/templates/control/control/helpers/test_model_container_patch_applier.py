@@ -15,16 +15,20 @@ sys.path.append(
 )
 
 # Have to use imports in this form, otherwise isinstance checks fail on helper classes
-from helpers.patch_applier import PatchApplier  # noqa
+from helpers.truss_patch.model_container_patch_applier import (  # noqa
+    ModelContainerPatchApplier,
+)
 from helpers.types import Action, ModelCodePatch, Patch, PatchType  # noqa
 
 
 @pytest.fixture
 def patch_applier(truss_container_fs):
-    return PatchApplier(truss_container_fs / "app", Mock())
+    return ModelContainerPatchApplier(truss_container_fs / "app", Mock())
 
 
-def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):
+def test_patch_applier_add(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
@@ -33,11 +37,13 @@ def test_patch_applier_add(patch_applier: PatchApplier, truss_container_fs):
             content="",
         ),
     )
-    patch_applier.apply_patch(patch)
+    patch_applier(patch)
     assert (truss_container_fs / "app" / "model" / "dummy").exists()
 
 
-def test_patch_applier_remove(patch_applier: PatchApplier, truss_container_fs):
+def test_patch_applier_remove(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
@@ -46,11 +52,13 @@ def test_patch_applier_remove(patch_applier: PatchApplier, truss_container_fs):
         ),
     )
     assert (truss_container_fs / "app" / "model" / "model.py").exists()
-    patch_applier.apply_patch(patch)
+    patch_applier(patch)
     assert not (truss_container_fs / "app" / "model" / "model.py").exists()
 
 
-def test_patch_applier_update(patch_applier: PatchApplier, truss_container_fs):
+def test_patch_applier_update(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
     new_model_file_content = """
     class Model:
         pass
@@ -63,6 +71,6 @@ def test_patch_applier_update(patch_applier: PatchApplier, truss_container_fs):
             content=new_model_file_content,
         ),
     )
-    patch_applier.apply_patch(patch)
+    patch_applier(patch)
     with (truss_container_fs / "app" / "model" / "model.py").open() as model_file:
         assert model_file.read() == new_model_file_content

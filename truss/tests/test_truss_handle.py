@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 from python_on_whales.exceptions import DockerException
+from tenacity import RetryError
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
@@ -836,10 +837,10 @@ class Model:
         model_code_file_path = custom_model_control / "model" / "model.py"
         with model_code_file_path.open("w") as model_code_file:
             model_code_file.write(bad_model_code)
-        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
+        with pytest.raises(RetryError) as exc_info:
             th.docker_predict([1], tag=tag)
-        resp = exc_info.value.response
-        assert resp.status_code == 500
+        resp = exc_info.value.last_attempt.result()
+        assert resp.status_code == 503
         assert "Model load failed" in resp.text
 
         # Should be able to fix code after
