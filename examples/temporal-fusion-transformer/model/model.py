@@ -20,7 +20,5 @@ class Model:
     def predict(self, model_input: Any) -> Any:
         # Invoke model on model_input and calculate predictions here.
         prediction_data = pd.DataFrame.from_dict(loads(model_input.pop("data")))
-        raw_predictions = self._model.predict(
-            prediction_data, mode="raw", return_x=True
-        )
-        return raw_predictions.output.prediction.numpy()
+        predictions = self._model.predict(prediction_data, mode="prediction")
+        return predictions.numpy()
