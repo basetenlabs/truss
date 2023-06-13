@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import subprocess
 import sys
 import venv
@@ -8,6 +9,7 @@ from typing import Any, List, Optional
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
+from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
 from truss.util.path import build_truss_shadow_target_directory
 from yaspin import yaspin
 
@@ -119,7 +121,10 @@ class LocalServerLoader:
         ]
         venv_builder.create_with_requirements(requirements_files)
 
-        TrussFilesSyncer(self.truss_path, venv_dir / "app/").start()
+        TrussFilesSyncer(
+            self.truss_path,
+            TrussDirPatchApplier(venv_dir / "app/", logging.Logger(__name__)),
+        ).start()
 
         subprocess.check_call(
             [
