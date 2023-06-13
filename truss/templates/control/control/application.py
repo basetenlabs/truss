@@ -9,9 +9,8 @@ from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
+from helpers.logging import setup_logging
 from helpers.patch_applier import PatchApplier
-
-INFERENCE_SERVER_START_WAIT_SECS = 60
 
 
 async def handle_patch_error(_, exc: PatchApplicatonError):
@@ -53,39 +52,31 @@ def create_app(base_config: Dict):
         },
     )
 
+    setup_logging()
+
     app_logger = logging.getLogger(__name__)
-    # TODO(pankaj): change this back to info once things are stable
-    app_logger.setLevel(logging.DEBUG)
 
     app.state.logger = app_logger
 
     for k, v in base_config.items():
         setattr(app.state, k, v)
-    app.state.retry_attempt_max_timeout = base_config.get(
-        "retry_attempt_max_timeout", INFERENCE_SERVER_START_WAIT_SECS
-    )
+
     app.state.inference_server_process_controller = InferenceServerProcessController(
         app.state.inference_server_home,
         app.state.inference_server_process_args,
         app.state.inference_server_port,
         app_logger=app_logger,
     )
-    pip_path = None
-    try:
-        pip_path = app.state.pip_path
-    except AttributeError:
-        pass
+
+    pip_path = getattr(app.state, "pip_path", None)
 
     patch_applier = PatchApplier(
         Path(app.state.inference_server_home),
         app_logger,
         pip_path,
     )
-    oversee_inference_server = True
-    try:
-        oversee_inference_server = app.state.oversee_inference_server
-    except AttributeError:
-        pass
+
+    oversee_inference_server = getattr(app.state, "oversee_inference_server", True)
 
     app.state.inference_server_controller = InferenceServerController(
         app.state.inference_server_process_controller,

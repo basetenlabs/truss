@@ -8,6 +8,8 @@ from requests.exceptions import ConnectionError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 from truss.templates.server.common.serialization import truss_msgpack_deserialize
 
+INFERENCE_SERVER_START_WAIT_SECS = 60
+
 control_app = APIRouter()
 
 
@@ -23,7 +25,12 @@ async def proxy(full_path: str, request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
-    retry_attempt_max_timeout = request.app.state.retry_attempt_max_timeout
+
+    retry_attempt_max_timeout = getattr(
+        request.app.state,
+        "retry_attempt_max_timeout",
+        INFERENCE_SERVER_START_WAIT_SECS,
+    )
 
     # Wait a bit for inference server to start
     for attempt in Retrying(
