@@ -1,8 +1,10 @@
+import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 from helpers.errors import UnsupportedPatch
+from helpers.truss_patch.model_code_patch_applier import apply_model_code_patch
 from helpers.types import (
     Action,
     ModelCodePatch,
@@ -13,11 +15,15 @@ from helpers.types import (
 from truss.truss_config import TrussConfig
 
 
-class PatchApplier:
+class ModelContainerPatchApplier:
+    """Applies patches to container running a truss.
+    This should be compatible with TrussDirPatchApplier.
+    """
+
     def __init__(
         self,
         inference_server_home: Path,
-        app_logger,
+        app_logger: logging.Logger,
         pip_path: Optional[str] = None,  # Only meant for testing
     ) -> None:
         self._inference_server_home = inference_server_home
@@ -29,11 +35,14 @@ class PatchApplier:
         if pip_path is not None:
             self._pip_path_cached = "pip"
 
-    def apply_patch(self, patch: Patch):
+    def __call__(self, patch: Patch):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
             self._apply_model_code_patch(model_code_patch)
+            apply_model_code_patch(
+                self._model_module_dir, model_code_patch, self._app_logger
+            )
         elif isinstance(patch.body, PythonRequirementPatch):
             py_req_patch: PythonRequirementPatch = patch.body
             self._apply_python_requirement_patch(py_req_patch)

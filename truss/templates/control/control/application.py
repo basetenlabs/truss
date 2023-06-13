@@ -8,7 +8,7 @@ from flask import Flask
 from helpers.errors import PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
-from helpers.patch_applier import PatchApplier
+from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
 from werkzeug.exceptions import HTTPException
 
 
@@ -25,7 +25,7 @@ def create_app(base_config: Dict):
         app.config["inference_server_port"],
         app_logger=app.logger,
     )
-    patch_applier = PatchApplier(
+    patch_applier = ModelContainerPatchApplier(
         Path(app.config["inference_server_home"]),
         app.logger,
         app.config.get("pip_path"),
