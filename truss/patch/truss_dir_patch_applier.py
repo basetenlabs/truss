@@ -25,7 +25,7 @@ from truss.truss_config import TrussConfig
 
 
 class TrussDirPatchApplier:
-    """Applies patches to a truss director.
+    """Applies patches to a truss directory.
     This should be compatible with ModelContainerPatchApplier.
     """
 

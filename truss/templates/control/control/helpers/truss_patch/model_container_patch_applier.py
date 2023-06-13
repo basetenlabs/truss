@@ -39,7 +39,6 @@ class ModelContainerPatchApplier:
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
-            self._apply_model_code_patch(model_code_patch)
             apply_model_code_patch(
                 self._model_module_dir, model_code_patch, self._app_logger
             )
@@ -61,34 +60,6 @@ class ModelContainerPatchApplier:
         if self._pip_path_cached is None:
             self._pip_path_cached = _identify_pip_path()
         return self._pip_path_cached
-
-    def _apply_model_code_patch(self, model_code_patch: ModelCodePatch):
-        self._app_logger.debug(
-            f"Applying model code patch {model_code_patch.to_dict()}"
-        )
-        action = model_code_patch.action
-        filepath: Path = self._model_module_dir / model_code_patch.path
-        if action in [Action.ADD, Action.UPDATE]:
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            self._app_logger.info(f"Updating file {filepath}")
-            with filepath.open("w") as file:
-                content = model_code_patch.content
-                if content is None:
-                    raise ValueError(
-                        "Invalid patch: content of a model code update patch should not be None."
-                    )
-                file.write(content)
-
-        elif action == Action.REMOVE:
-            if not filepath.exists():
-                self._app_logger.warning(
-                    f"Could not delete file {filepath}: not found."
-                )
-            else:
-                self._app_logger.info(f"Deleting file {filepath}")
-                filepath.unlink()
-        else:
-            raise ValueError(f"Unknown model code patch action {action}")
 
     def _apply_python_requirement_patch(
         self, python_requirement_patch: PythonRequirementPatch
