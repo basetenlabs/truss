@@ -100,7 +100,8 @@ class Model:
     assert new_model_file_content == mock_model_file_content
 
 
-def test_patch_model_code_update_predict_on_long_load_time(app, client):
+@pytest.mark.parametrize("use_binary", [True, False])
+def test_patch_model_code_update_predict_on_long_load_time(use_binary, client):
     mock_model_file_content = """
 class Model:
     def load(self):
@@ -119,9 +120,21 @@ class Model:
         ),
     )
     _verify_apply_patch_success(client, patch)
-    resp = client.post("/v1/models/model:predict", json={})
+    if use_binary:
+        resp = client.post(
+            "/v1/models/model:predict_binary",
+            data=truss_msgpack_serialize({}),
+            headers={"Content-type": "application/octet-stream"},
+        )
+    else:
+        resp = client.post("/v1/models/model:predict", json={})
     resp.status_code == 200
-    assert resp.json() == {"prediction": [1]}
+    if use_binary:
+        resp_body = truss_msgpack_deserialize(resp.content)
+    else:
+        resp_body = resp.json()
+
+    assert resp_body == {"prediction": [1]}
 
 
 def test_patch_model_code_create_new(app, client):
