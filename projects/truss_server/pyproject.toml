@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "truss-server"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+
+packages = [{include = "truss_server"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+fastapi = "^0.97.0"
+pyyaml = "^6.0"
+requests = "^2.31.0"
+tenacity = "^8.2.2"
+truss-common = {path = "../truss_common", develop=true}
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.3.2"
+httpx = {extras = ["cli"], version = "^0.24.1"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
