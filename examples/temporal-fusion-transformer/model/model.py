@@ -14,8 +14,8 @@ class Model:
 
     def load(self):
         # Load model here and assign to self._model.
-        best_model_path = str(self._data_dir / "checkpoint.ckpt")
-        self._model = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
+        checkpoint_path = str(self._data_dir / "checkpoint.ckpt")
+        self._model = TemporalFusionTransformer.load_from_checkpoint(checkpoint_path)
 
     def predict(self, model_input: Any) -> Any:
         # Invoke model on model_input and calculate predictions here.
