@@ -5,7 +5,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-OCTET_STREAN_CONTENT_TYPE = "application/octet-stream"
+OCTET_STREAM_CONTENT_TYPE = "application/octet-stream"
 MSGPACK_CONTENT_TYPE = b"application/x-msgpack"
 
 
