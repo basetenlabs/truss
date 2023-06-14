@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.4.10dev1"
+version = "0.4.9rc2"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -77,8 +77,6 @@ xgboost = "^1.6.1"
 lightgbm = "^3.3.2"
 transformers = "^4.20.1"
 black = "^22.6.0"
-Flask = "^2.2.2"
-waitress = "^2.1.2"
 nbconvert = "^7.2.1"
 ipykernel = "^6.16.0"
 
@@ -89,6 +87,7 @@ truss = 'truss.cli:cli_group'
 mlflow = "^1.29.0"
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
+httpx = {extras = ["cli"], version = "^0.24.1"}
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]
