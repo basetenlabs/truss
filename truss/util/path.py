@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from distutils.file_util import copy_file
 from pathlib import Path
 from shutil import copytree
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 from truss.patch.hash import str_hash_str
 
@@ -30,7 +30,7 @@ def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest), verbose=False)
 
 
-def copy_tree_or_file(src: Path, dest: Path) -> Union[None, Tuple[str, str]]:
+def copy_tree_or_file(src: Path, dest: Path) -> Optional[Tuple[str, str]]:
     if src.is_file():
         return copy_file_path(src, dest)
 
