@@ -685,6 +685,7 @@ def custom_model_truss_dir_with_hidden_files(tmp_path):
     (truss_dir_path / "__pycache__" / "test.cpython-38.pyc").touch()
     (truss_dir_path / ".DS_Store").touch()
     (truss_dir_path / ".git" / ".test_file").touch()
+    (truss_dir_path / "data" / "test_file").write_text("123456789")
     yield truss_dir_path
 
 

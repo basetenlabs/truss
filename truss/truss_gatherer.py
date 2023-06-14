@@ -4,6 +4,7 @@ import yaml
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_handle import TrussHandle
 from truss.util.path import (
+    are_dirs_equal,
     calc_shadow_truss_dirname,
     copy_file_path,
     copy_tree_path,
@@ -22,6 +23,8 @@ def gather(truss_path: Path) -> Path:
     shadow_truss_path = (
         LocalConfigHandler.shadow_trusses_dir_path() / shadow_truss_dir_name
     )
+
+    skip_directories = []
     if shadow_truss_metdata_file_path.exists():
         with shadow_truss_metdata_file_path.open() as fp:
             metadata = yaml.safe_load(fp)
@@ -29,11 +32,24 @@ def gather(truss_path: Path) -> Path:
         if max_mod_time == handle.max_modified_time:
             return shadow_truss_path
 
-        # Shadow truss is out of sync, clear it
-        shadow_truss_metdata_file_path.unlink()
-        remove_tree_path(shadow_truss_path)
+        # Shadow truss is out of sync, clear it out and copy over the new
+        # truss.
+        #
+        # However, we don't want to remove the data directory if it hasn't
+        # changed because files in the data directory can be large and costly
+        # to copy over.
+        shadow_truss_data_directory = shadow_truss_path / handle.spec.config.data_dir
+        original_truss_data_directory = truss_path / handle.spec.config.data_dir
+        is_data_dirs_equal = are_dirs_equal(
+            shadow_truss_data_directory, original_truss_data_directory
+        )
+        if is_data_dirs_equal:
+            skip_directories = [handle.spec.config.data_dir]
 
-    copy_tree_path(truss_path, shadow_truss_path)
+        shadow_truss_metdata_file_path.unlink()
+        remove_tree_path(shadow_truss_path, skip_directories=skip_directories)
+
+    copy_tree_path(truss_path, shadow_truss_path, skip_directories=skip_directories)
     packages_dir_path_in_shadow = (
         shadow_truss_path / handle.spec.config.bundled_packages_dir
     )

@@ -4,9 +4,9 @@ import random
 import string
 import tempfile
 from contextlib import contextmanager
-from distutils.dir_util import copy_tree, remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
+from shutil import copytree
 from typing import List, Optional, Tuple, Union
 
 from truss.patch.hash import str_hash_str
@@ -14,23 +14,44 @@ from truss.patch.hash import str_hash_str
 TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 
-def copy_tree_path(src: Path, dest: Path) -> List[str]:
-    return copy_tree(str(src), str(dest), verbose=0)
+def copy_tree_path(
+    src: Path, dest: Path, skip_directories: Optional[List[str]] = None
+) -> None:
+    """Copy a directory tree, skipping certain top-level directories."""
+    skip_directories = skip_directories or []
+
+    def _ignore(src, names):
+        return set(name for name in names if name in skip_directories)
+
+    copytree(src, dest, ignore=_ignore, dirs_exist_ok=True)
 
 
 def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest), verbose=False)
 
 
-def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
+def copy_tree_or_file(src: Path, dest: Path) -> Union[None, Tuple[str, str]]:
     if src.is_file():
         return copy_file_path(src, dest)
 
-    return copy_tree_path(src, dest)
+    return copy_tree_path(src, dest)  # type: ignore
 
 
-def remove_tree_path(target: Path) -> None:
-    return remove_tree(str(target), verbose=0)
+def remove_tree_path(
+    target: Path, skip_directories: Optional[List[str]] = None
+) -> None:
+    """Remove a directory tree, skipping certain top-level directories."""
+    skip_directories = skip_directories or []
+
+    for item in target.iterdir():
+        if item.is_dir():
+            if item.name not in skip_directories:
+                remove_tree_path(item, skip_directories)
+        else:
+            item.unlink()
+
+    if not any(target.iterdir()):
+        target.rmdir()
 
 
 def get_max_modified_time_of_dir(path: Path) -> float:
@@ -119,3 +140,24 @@ def remove_ignored_files(
             dir_path = Path(root) / name
             if is_ignored(dir_path, patterns):
                 remove_tree_path(dir_path)
+
+
+def are_dirs_equal(dir1: Path, dir2: Path) -> bool:
+    """Checks if the contents of two directories are equal."""
+    if dir1.exists() != dir2.exists():
+        return False
+
+    files_in_first_directory = [
+        file.relative_to(dir1) for file in dir1.glob("**/*") if file.is_file()
+    ]
+    files_in_second_directory = [
+        file.relative_to(dir2) for file in dir2.glob("**/*") if file.is_file()
+    ]
+    if set(files_in_first_directory) == set(files_in_second_directory):
+        for file in files_in_first_directory:
+            len_f1 = os.stat(dir1 / file).st_size
+            len_f2 = os.stat(dir2 / file).st_size
+            if len_f1 != len_f2:
+                return False
+        return True
+    return False

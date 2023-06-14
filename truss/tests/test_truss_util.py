@@ -27,6 +27,51 @@ def test_load_trussignore_patterns():
     assert ".git/" in patterns
 
 
+def test_are_dirs_equal(custom_model_truss_dir):
+    assert path.are_dirs_equal(custom_model_truss_dir, custom_model_truss_dir)
+    assert not path.are_dirs_equal(
+        custom_model_truss_dir, custom_model_truss_dir / "model"
+    )
+
+    with path.given_or_temporary_dir() as dir:
+        path.copy_tree_path(custom_model_truss_dir, dir)
+        assert path.are_dirs_equal(custom_model_truss_dir, dir)
+        (custom_model_truss_dir / "model" / "model.py").write_text("print('hello')")
+        assert not path.are_dirs_equal(custom_model_truss_dir, dir)
+
+
+def test_copy_tree_path_with_no_skipping(custom_model_truss_dir):
+    with path.given_or_temporary_dir() as dir:
+        path.copy_tree_path(custom_model_truss_dir, dir)
+
+        for file in custom_model_truss_dir.rglob("*"):
+            assert (dir / file.relative_to(custom_model_truss_dir)).exists()
+
+
+def test_copy_tree_path_with_skipping(custom_model_truss_dir):
+    with path.given_or_temporary_dir() as dir:
+        path.copy_tree_path(custom_model_truss_dir, dir, skip_directories=["model"])
+
+        for file in custom_model_truss_dir.rglob("*"):
+            relative_file_path = file.relative_to(custom_model_truss_dir)
+            if relative_file_path.parts[0] == "model":
+                assert not (dir / relative_file_path).exists()
+            else:
+                assert (dir / relative_file_path).exists()
+
+
+def test_remove_tree_path_with_no_skipping(custom_model_truss_dir):
+    path.remove_tree_path(custom_model_truss_dir)
+    assert not custom_model_truss_dir.exists()
+
+
+def test_remove_tree_path_with_skipping(custom_model_truss_dir):
+    path.remove_tree_path(custom_model_truss_dir, skip_directories=["model"])
+    assert custom_model_truss_dir.exists()
+    assert (custom_model_truss_dir / "model").exists()
+    assert (custom_model_truss_dir / "model" / "model.py").exists()
+
+
 def test_is_ignored(custom_model_truss_dir_with_hidden_files):
     patterns = path.load_trussignore_patterns(path.TRUSS_IGNORE_PATH)
 
@@ -92,6 +137,77 @@ def test_removing_from_gathered_truss_not_original_truss(
     assert (custom_model_truss_dir_with_hidden_files / ".DS_Store").exists()
     assert (custom_model_truss_dir_with_hidden_files / ".git").exists()
     assert (custom_model_truss_dir_with_hidden_files / "model").exists()
+
+
+def test_skipping_data_directory_when_files_are_equal(
+    custom_model_truss_dir_with_hidden_files,
+):
+    """
+    This test tests the case where the data directory is skipped because the
+    data directory in the original truss is the same as the data directory in
+    the shadow truss.
+
+    We then test that the data directory is not skipped when the data directory
+    in the original truss is different from the data directory in the shadow
+    truss.
+    """
+    tr = load(custom_model_truss_dir_with_hidden_files)
+
+    # Call a function that is wrapped in a proxy_to_shadow decorator
+    # so that we mimic the behavior of a gathered truss
+    _ = tr.kill_container()
+
+    shadow_truss_dir_name = path.calc_shadow_truss_dirname(
+        custom_model_truss_dir_with_hidden_files
+    )
+    shadow_truss_path = (
+        LocalConfigHandler.shadow_trusses_dir_path() / shadow_truss_dir_name
+    )
+
+    shadow_data_file = shadow_truss_path / "data" / "test_file"
+    original_data_file = custom_model_truss_dir_with_hidden_files / "data" / "test_file"
+    shadow_data_file_modified_time = shadow_data_file.stat().st_mtime
+
+    assert (shadow_truss_path / "data").exists()
+    assert (shadow_truss_path / "data" / "test_file").exists()
+
+    # Create a random file to
+    # 1. Update the max modified time so that the gather process actually gathers the data directory
+    # 2. Test that the copy operation did occur on the second gather
+    (custom_model_truss_dir_with_hidden_files / "model" / "sample_file.py").touch()
+
+    _ = tr.kill_container()
+
+    shadow_data_file_modified_time_after_second_gather = (
+        shadow_data_file.stat().st_mtime
+    )
+
+    # During the second gather op, the data directory should not have been copied because the data directory
+    # in the original truss never changed from the first gather op
+    assert (
+        shadow_data_file_modified_time_after_second_gather
+        == shadow_data_file_modified_time
+    )
+    assert (shadow_truss_path / "model" / "sample_file.py").exists()
+
+    # Update the original data file
+    original_data_file.write_text("test")
+
+    _ = tr.kill_container()
+
+    shadow_data_file_modified_time_after_third_gather = shadow_data_file.stat().st_mtime
+
+    assert (
+        shadow_data_file_modified_time_after_third_gather
+        != shadow_data_file_modified_time
+    )
+
+    assert (
+        shadow_data_file_modified_time_after_third_gather
+        != shadow_data_file_modified_time_after_second_gather
+    )
+
+    assert shadow_data_file.read_text() == "test"
 
 
 test_max_modified()
