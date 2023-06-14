@@ -1,6 +1,6 @@
 import os
 
-from truss.templates.control.control.helpers.context_managers import current_directory
+from truss_server.control.helpers.context_managers import current_directory
 
 
 def test_current_directory(tmp_path):

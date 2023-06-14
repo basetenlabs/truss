@@ -1,8 +1,0 @@
-dataclasses-json==0.5.7
-truss==0.4.8
-fastapi==0.95.0
-uvicorn==0.21.1
-uvloop==0.17.0
-tenacity==8.1.0
-python-json-logger==2.0.2
-msgpack-asgi==1.1.0

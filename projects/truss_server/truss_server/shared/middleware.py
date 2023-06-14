@@ -1,9 +1,12 @@
 from msgpack_asgi import MessagePackMiddleware
-from shared.serialization import truss_msgpack_deserialize, truss_msgpack_serialize
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
+from truss_server.shared.serialization import (
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 
 OCTET_STREAN_CONTENT_TYPE = "application/octet-stream"
 MSGPACK_CONTENT_TYPE = b"application/x-msgpack"

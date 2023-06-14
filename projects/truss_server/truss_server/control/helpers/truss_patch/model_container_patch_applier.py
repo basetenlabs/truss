@@ -4,16 +4,16 @@ from pathlib import Path
 from typing import Optional
 
 from truss_common.patch.errors import UnsupportedPatch
-from truss_common.truss_config import TrussConfig
-from truss_server.control.helpers.truss_patch.model_code_patch_applier import (
-    apply_model_code_patch,
-)
-from truss_server.control.helpers.types import (
+from truss_common.patch.types import (
     Action,
     ModelCodePatch,
     Patch,
     PythonRequirementPatch,
     SystemPackagePatch,
+)
+from truss_common.truss_config import TrussConfig
+from truss_server.control.helpers.truss_patch.model_code_patch_applier import (
+    apply_model_code_patch,
 )
 
 

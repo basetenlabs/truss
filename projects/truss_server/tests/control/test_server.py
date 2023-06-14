@@ -6,32 +6,15 @@ from typing import Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
-
-# Needed to simulate the set up on the model docker container
-sys.path.append(
-    str(
-        Path(__file__).parent.parent.parent.parent.parent
-        / "templates"
-        / "control"
-        / "control"
-    )
-)
-# Needed to simulate the set up on the model docker container
-sys.path.append(
-    str(
-        Path(__file__).parent.parent.parent.parent.parent / "templates",
-    )
-)
-
-from truss.templates.control.control.application import create_app  # noqa
-from truss.templates.control.control.helpers.types import (  # noqa
+from truss_common.patch.types import (  # noqa
     Action,
     ModelCodePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
 )
-from truss.templates.shared.serialization import (  # noqa
+from truss_server.control.application import create_app  # noqa
+from truss_server.shared.serialization import (  # noqa
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )

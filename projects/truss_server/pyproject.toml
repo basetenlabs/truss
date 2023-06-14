@@ -13,6 +13,14 @@ pyyaml = "^6.0"
 requests = "^2.31.0"
 tenacity = "^8.2.2"
 truss-common = {path = "../truss_common", develop=true}
+python-json-logger = "^2.0.7"
+uvicorn = "^0.22.0"
+uvloop = "^0.17.0"
+psutil = "^5.9.5"
+joblib = "^1.2.0"
+msgpack-asgi = "^1.1.0"
+msgpack = "^1.0.5"
+msgpack-numpy = "^0.4.8"
 
 
 [tool.poetry.group.dev.dependencies]

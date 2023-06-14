@@ -6,12 +6,9 @@ from typing import Dict
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.middleware import Middleware
+from truss_common.patch.errors import PatchApplicatonError
 from truss_server.control.endpoints import control_app
-from truss_server.control.helpers.errors import (
-    ModelLoadFailed,
-    ModelNotReady,
-    PatchApplicatonError,
-)
+from truss_server.control.helpers.errors import ModelLoadFailed, ModelNotReady
 from truss_server.control.helpers.inference_server_controller import (
     InferenceServerController,
 )
