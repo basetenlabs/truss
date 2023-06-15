@@ -24,7 +24,7 @@ def gather(truss_path: Path) -> Path:
         LocalConfigHandler.shadow_trusses_dir_path() / shadow_truss_dir_name
     )
 
-    skip_directories = []
+    directories_to_skip = []
     if shadow_truss_metdata_file_path.exists():
         with shadow_truss_metdata_file_path.open() as fp:
             metadata = yaml.safe_load(fp)
@@ -44,12 +44,14 @@ def gather(truss_path: Path) -> Path:
             shadow_truss_data_directory, original_truss_data_directory
         )
         if is_data_dirs_equal:
-            skip_directories = [handle.spec.config.data_dir]
+            directories_to_skip = [handle.spec.config.data_dir]
 
         shadow_truss_metdata_file_path.unlink()
-        remove_tree_path(shadow_truss_path, skip_directories=skip_directories)
+        remove_tree_path(shadow_truss_path, directories_to_skip=directories_to_skip)
 
-    copy_tree_path(truss_path, shadow_truss_path, skip_directories=skip_directories)
+    copy_tree_path(
+        truss_path, shadow_truss_path, directories_to_skip=directories_to_skip
+    )
     packages_dir_path_in_shadow = (
         shadow_truss_path / handle.spec.config.bundled_packages_dir
     )
