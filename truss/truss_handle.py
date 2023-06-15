@@ -451,6 +451,10 @@ class TrussHandle:
             )
         )
 
+    def clear_environment_variables(self):
+        """Remove environment variables from truss model's config."""
+        self._update_config(lambda conf: replace(conf, environment_variables={}))
+
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
         validate_secret_name(secret_name)
         self._update_config(
@@ -662,7 +666,7 @@ class TrussHandle:
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
-    def _get_running_serving_container_ignore_hash(self):
+    def get_running_serving_container_ignore_hash(self):
         containers = self.get_serving_docker_containers_from_labels(
             labels={TRUSS_DIR: str(self._truss_dir)}
         )
@@ -736,7 +740,7 @@ class TrussHandle:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
         # Note that we match on only the truss directory, not hash.
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         if not container:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
@@ -759,7 +763,7 @@ class TrussHandle:
                 "Not a control truss fetching truss hash is not supported."
             )
 
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         model_base_url = _get_url_from_container(container)
         resp = requests.get(f"{model_base_url}/control/truss_hash")
         resp.raise_for_status()
@@ -788,7 +792,7 @@ class TrussHandle:
         if not self.spec.live_reload:
             raise ValueError("Not a control truss, operation not supported.")
 
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         model_base_url = _get_url_from_container(container)
         resp = requests.get(f"{model_base_url}/control/has_partially_applied_patch")
         resp.raise_for_status()
@@ -979,7 +983,7 @@ class TrussHandle:
         if not self.is_control_truss:
             return None
 
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         if container is None:
             return None
 
