@@ -4,9 +4,11 @@ import yaml
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.truss_handle import TrussHandle
 from truss.util.path import (
+    are_dirs_equal,
     calc_shadow_truss_dirname,
     copy_file_path,
     copy_tree_path,
+    remove_ignored_files,
     remove_tree_path,
 )
 
@@ -21,6 +23,8 @@ def gather(truss_path: Path) -> Path:
     shadow_truss_path = (
         LocalConfigHandler.shadow_trusses_dir_path() / shadow_truss_dir_name
     )
+
+    directories_to_skip = []
     if shadow_truss_metdata_file_path.exists():
         with shadow_truss_metdata_file_path.open() as fp:
             metadata = yaml.safe_load(fp)
@@ -28,11 +32,26 @@ def gather(truss_path: Path) -> Path:
         if max_mod_time == handle.max_modified_time:
             return shadow_truss_path
 
-        # Shadow truss is out of sync, clear it
-        shadow_truss_metdata_file_path.unlink()
-        remove_tree_path(shadow_truss_path)
+        # Shadow truss is out of sync, clear it out and copy over the new
+        # truss.
+        #
+        # However, we don't want to remove the data directory if it hasn't
+        # changed because files in the data directory can be large and costly
+        # to copy over.
+        shadow_truss_data_directory = shadow_truss_path / handle.spec.config.data_dir
+        original_truss_data_directory = truss_path / handle.spec.config.data_dir
+        is_data_dirs_equal = are_dirs_equal(
+            shadow_truss_data_directory, original_truss_data_directory
+        )
+        if is_data_dirs_equal:
+            directories_to_skip = [handle.spec.config.data_dir]
 
-    copy_tree_path(truss_path, shadow_truss_path)
+        shadow_truss_metdata_file_path.unlink()
+        remove_tree_path(shadow_truss_path, directories_to_skip=directories_to_skip)
+
+    copy_tree_path(
+        truss_path, shadow_truss_path, directories_to_skip=directories_to_skip
+    )
     packages_dir_path_in_shadow = (
         shadow_truss_path / handle.spec.config.bundled_packages_dir
     )
@@ -55,6 +74,9 @@ def gather(truss_path: Path) -> Path:
                 copy_tree_path(sub_path, packages_dir_path_in_shadow / sub_path.name)
             if sub_path.is_file():
                 copy_file_path(sub_path, packages_dir_path_in_shadow / sub_path.name)
+
+    # Once all files are copied over, remove unnecessary files
+    remove_ignored_files(shadow_truss_path)
 
     # Don't run validation because they will fail until we clear external
     # packages. We do it after.
