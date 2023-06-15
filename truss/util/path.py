@@ -117,7 +117,30 @@ def load_trussignore_patterns(truss_ignore_file: Path):
 def is_ignored(
     path: Path, patterns: List[str], base_dir: Optional[Path] = None
 ) -> bool:
-    """Check if a given path or any of its parts matches any pattern in .truss_ignore."""
+    """
+    Determines if a specified path (or any of its parent directories) should be ignored
+    based on a list of ignore patterns, analogous to how .gitignore works in Git. The
+    function evaluates not only the path itself but all its parent directories up to
+    the base directory. Hence, if a file resides within a directory to be ignored, it
+    will be ignored as well. We provide the 'base_dir' argument to allow the caller to
+    specify the base directory against which the relative 'path' is resolved. This
+    prevents false positives where the absolute path before the base directory matches
+    one of the ignore patterns.
+
+    Args:
+        path (Path): The path to the file or directory being checked. This can be absolute
+            or relative. If 'base_dir' is provided, 'path' is considered relative to 'base_dir'.
+        patterns (List[str]): A list of ignore patterns. Each pattern is a string that can contain
+            wildcard characters. For instance, '*.py' would match all Python files, while 'test/'
+            would match a directory named 'test'. A pattern ending with a slash (/) will only match directories.
+        base_dir (Optional[Path]): If specified, it's used as the base directory against which
+            the relative 'path' is resolved. If None, the 'path' is treated as either an absolute path
+            or relative to the current working directory.
+
+    Returns:
+        bool: True if the path matches any of the ignore patterns (i.e., should be ignored),
+            and False otherwise.
+    """
     if base_dir:
         path = path.relative_to(base_dir)
 
@@ -157,7 +180,24 @@ def files_in_dir_recursive(directory: Path) -> List[Path]:
 
 
 def are_dirs_equal(dir1: Path, dir2: Path) -> bool:
-    """Checks if the contents of two directories are equal."""
+    """
+    Checks if the contents of two directories are identical. This comparison includes the filenames,
+    their sizes, and their modification times. This function doesn't check the actual content of the files.
+
+    Args:
+        dir1 (Path): The first directory to be compared.
+        dir2 (Path): The second directory to be compared.
+
+    Returns:
+        bool: True if both directories contain the same set of files (names and sizes), and all corresponding
+        files in both directories have the same modification time or the file in 'dir1' is older. If there are any
+        discrepancies between the two directories (existence, file presence, file size, modification time),
+        the function will return False.
+
+    Note:
+        This function does not check the content of the files. Two files are considered the same if they
+        have the same name, size, and modification time, even if their contents are different.
+    """
 
     if dir1.exists() != dir2.exists():
         return False
