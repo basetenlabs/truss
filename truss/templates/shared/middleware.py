@@ -36,7 +36,7 @@ class BinaryHeaderMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        is_binary = OCTET_STREAN_CONTENT_TYPE in (
+        is_binary = OCTET_STREAM_CONTENT_TYPE in (
             request.headers.get("content-type") or []
         )
 
@@ -53,7 +53,7 @@ class BinaryHeaderMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         if is_binary:
-            response.headers.append("content-type", OCTET_STREAN_CONTENT_TYPE)
+            response.headers.append("content-type", OCTET_STREAM_CONTENT_TYPE)
         return response
 
 
