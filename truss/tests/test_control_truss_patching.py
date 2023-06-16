@@ -22,7 +22,7 @@ def current_num_docker_images(th: TrussHandle) -> int:
 @pytest.fixture
 def control_model_handle_tag_tuple(
     custom_model_control,
-) -> tuple(Path, TrussHandle, str):
+) -> tuple[Path, TrussHandle, str]:
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     return (custom_model_control, th, tag)
@@ -37,7 +37,7 @@ def control_model_handle_tag_tuple(
         for python_version in SUPPORTED_PYTHON_VERSIONS
     ],
 )
-def test_control_truss_local_update_flow(
+def test_control_truss_model_code_patch(
     binary, python_version, control_model_handle_tag_tuple
 ):
     custom_model_control, th, tag = control_model_handle_tag_tuple
@@ -54,16 +54,88 @@ class Model:
             model_code_file.write(new_model_code)
         return th.docker_predict([1], tag=tag, binary=binary)
 
+    with ensure_kill_all():
+        result = th.docker_predict([1], tag=tag, binary=binary)
+        assert result[0] == 1
+        orig_num_truss_images = len(th.get_all_docker_images())
+
+        result = predict_with_updated_model_code()
+        assert result[0] == 2
+        assert orig_num_truss_images == current_num_docker_images(th)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "binary, python_version",
+    [
+        (binary, python_version)
+        for binary in [True, False]
+        for python_version in SUPPORTED_PYTHON_VERSIONS
+    ],
+)
+def test_control_truss_empty_dir_patch(
+    binary, python_version, control_model_handle_tag_tuple
+):
+    custom_model_control, th, tag = control_model_handle_tag_tuple
+    th.update_python_version(python_version)
+
     def predict_with_added_empty_directory():
         # Adding empty directory should work
         (custom_model_control / "model" / "dir").mkdir()
         return th.docker_predict([1], tag=tag, binary=binary)
+
+    with ensure_kill_all():
+        th.docker_predict([1], tag=tag, binary=binary)
+        orig_num_truss_images = len(th.get_all_docker_images())
+
+        predict_with_added_empty_directory()
+        assert orig_num_truss_images == current_num_docker_images(th)
+
+
+# todo(justin): remove once this patch is supported
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "binary, python_version",
+    [
+        (binary, python_version)
+        for binary in [True, False]
+        for python_version in SUPPORTED_PYTHON_VERSIONS
+    ],
+)
+def test_control_truss_unpatchable(
+    binary, python_version, control_model_handle_tag_tuple
+):
+    custom_model_control, th, tag = control_model_handle_tag_tuple
+    th.update_python_version(python_version)
 
     def predict_with_unpatchable_change():
         # Changes that are not expressible with patch should also work
         # Changes to data dir are not currently patch expressible
         (custom_model_control / "data" / "dummy").touch()
         return th.docker_predict([1], tag=tag, binary=binary)
+
+    with ensure_kill_all():
+        th.docker_predict([1], tag=tag, binary=binary)
+        orig_num_truss_images = len(th.get_all_docker_images())
+
+        predict_with_unpatchable_change()
+        assert current_num_docker_images(th) == orig_num_truss_images + 1
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "binary, python_version",
+    [
+        (binary, python_version)
+        for binary in [True, False]
+        for python_version in SUPPORTED_PYTHON_VERSIONS
+    ],
+)
+def test_control_truss_python_sys_req_patch(
+    binary, python_version, control_model_handle_tag_tuple
+):
+    _, th, tag = control_model_handle_tag_tuple
+    th.update_python_version(python_version)
 
     def predict_with_python_requirement_added(req: str):
         th.add_python_requirement(req)
@@ -81,6 +153,47 @@ class Model:
         th.remove_system_package(pkg)
         return th.docker_predict([1], tag=tag, binary=binary)
 
+    with ensure_kill_all():
+        th.docker_predict([1], tag=tag, binary=binary)
+        orig_num_truss_images = len(th.get_all_docker_images())
+
+        container = th.get_running_serving_container_ignore_hash()
+
+        python_req = "pydot"
+        predict_with_python_requirement_added(python_req)
+        assert current_num_docker_images(th) == orig_num_truss_images
+        verify_python_requirement_installed_on_container(container, python_req)
+
+        predict_with_python_requirement_removed(python_req)
+        assert current_num_docker_images(th) == orig_num_truss_images
+        verify_python_requirement_not_installed_on_container(container, python_req)
+
+        system_pkg = "jq"
+        predict_with_system_requirement_added(system_pkg)
+        assert current_num_docker_images(th) == orig_num_truss_images
+        verify_system_package_installed_on_container(container, system_pkg)
+
+        predict_with_system_requirement_removed(system_pkg)
+        assert current_num_docker_images(th) == orig_num_truss_images
+        verify_system_requirement_not_installed_on_container(container, system_pkg)
+
+
+# todo(abu/justin) remove once ignored
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "binary, python_version",
+    [
+        (binary, python_version)
+        for binary in [True, False]
+        for python_version in SUPPORTED_PYTHON_VERSIONS
+    ],
+)
+def test_control_truss_patch_ignored_changes(
+    binary, python_version, control_model_handle_tag_tuple
+):
+    custom_model_control, th, tag = control_model_handle_tag_tuple
+    th.update_python_version(python_version)
+
     def predict_with_ignored_changes():
         top_pycache_path = custom_model_control / "__pycache__"
         top_pycache_path.mkdir()
@@ -91,49 +204,11 @@ class Model:
         return th.docker_predict([1], tag=tag, binary=binary)
 
     with ensure_kill_all():
-        result = th.docker_predict([1], tag=tag, binary=binary)
-        assert result[0] == 1
-        orig_num_truss_images = len(th.get_all_docker_images())
+        th.docker_predict([1], tag=tag, binary=binary)
+        orig_num_truss_images = current_num_docker_images(th)
 
-        result = predict_with_updated_model_code()
-        assert result[0] == 2
-        assert orig_num_truss_images == current_num_docker_images(th)
-
-        result = predict_with_added_empty_directory()
-        assert result[0] == 2
-        assert orig_num_truss_images == current_num_docker_images(th)
-
-        container = th.get_running_serving_container_ignore_hash()
-
-        python_req = "pydot"
-        result = predict_with_python_requirement_added(python_req)
-        assert result[0] == 2
+        predict_with_ignored_changes()
         assert current_num_docker_images(th) == orig_num_truss_images
-        verify_python_requirement_installed_on_container(container, python_req)
-
-        result = predict_with_python_requirement_removed(python_req)
-        assert result[0] == 2
-        assert current_num_docker_images(th) == orig_num_truss_images
-        verify_python_requirement_not_installed_on_container(container, python_req)
-
-        system_pkg = "jq"
-        result = predict_with_system_requirement_added(system_pkg)
-        assert result[0] == 2
-        assert current_num_docker_images(th) == orig_num_truss_images
-        verify_system_package_installed_on_container(container, system_pkg)
-
-        result = predict_with_system_requirement_removed(system_pkg)
-        assert result[0] == 2
-        assert current_num_docker_images(th) == orig_num_truss_images
-        verify_system_requirement_not_installed_on_container(container, system_pkg)
-
-        result = predict_with_unpatchable_change()
-        assert result[0] == 2
-        assert current_num_docker_images(th) == orig_num_truss_images + 1
-
-        result = predict_with_ignored_changes()
-        assert result[0] == 2
-        assert current_num_docker_images(th) == orig_num_truss_images + 1
 
 
 @pytest.mark.skip(reason="Unsupported patch")
