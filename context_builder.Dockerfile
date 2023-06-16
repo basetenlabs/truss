@@ -13,7 +13,10 @@ RUN apt-get update \
 RUN curl -sSL https://install.python-poetry.org | python -
 
 ENV PATH="/root/.local/bin:${PATH}"
-COPY . .
+COPY ./truss ./truss
+COPY ./pyproject.toml ./pyproject.toml
+COPY ./poetry.lock ./poetry.lock
+COPY ./README.md ./README.md
 
 # https://python-poetry.org/docs/configuration/#virtualenvsin-project
 # to write to project root .venv file to be used for context builder test
