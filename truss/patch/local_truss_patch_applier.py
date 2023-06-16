@@ -1,6 +1,7 @@
 import logging
 import subprocess
 from pathlib import Path
+from typing import List
 
 from truss.templates.control.control.helpers.errors import UnsupportedPatch
 from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
@@ -26,21 +27,22 @@ class LocalTrussPatchApplier:
         self._env_exe = env_exe
         self._logger = logger
 
-    def __call__(self, patch: Patch):
-        self._logger.debug(f"Applying patch {patch.to_dict()}")
-        if isinstance(patch.body, ModelCodePatch):
-            model_code_patch: ModelCodePatch = patch.body
-            model_module_dir = self._truss_dir / self._truss_config.model_module_dir
-            apply_model_code_patch(model_module_dir, model_code_patch, self._logger)
-        elif isinstance(patch.body, PythonRequirementPatch):
-            py_req_patch: PythonRequirementPatch = patch.body
-            self._apply_python_requirement_patch(py_req_patch)
-        elif isinstance(patch.body, SystemPackagePatch):
-            self._logger.info(
-                "System package patches are not supported for local server"
-            )
-        else:
-            raise UnsupportedPatch(f"Unknown patch type {patch.type}")
+    def __call__(self, patches: List[Patch]):
+        for patch in patches:
+            self._logger.debug(f"Applying patch {patch.to_dict()}")
+            if isinstance(patch.body, ModelCodePatch):
+                model_code_patch: ModelCodePatch = patch.body
+                model_module_dir = self._truss_dir / self._truss_config.model_module_dir
+                apply_model_code_patch(model_module_dir, model_code_patch, self._logger)
+            elif isinstance(patch.body, PythonRequirementPatch):
+                py_req_patch: PythonRequirementPatch = patch.body
+                self._apply_python_requirement_patch(py_req_patch)
+            elif isinstance(patch.body, SystemPackagePatch):
+                self._logger.info(
+                    "System package patches are not supported for local server"
+                )
+            else:
+                raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
     @property
     def _truss_config(self) -> TrussConfig:

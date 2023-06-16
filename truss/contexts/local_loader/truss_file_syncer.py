@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from threading import Thread
-from typing import Optional
+from typing import List, Optional
 
 from truss.constants import CONFIG_FILE
 from truss.patch.calc_patch import calc_config_patches
@@ -34,26 +34,28 @@ class TrussPatchEmitter:
         self._config = TrussConfig.from_yaml(self._truss_dir / CONFIG_FILE)
         self._logger = logger
 
-    def __call__(self, op, path: Path) -> Optional[Patch]:
+    def __call__(self, op, path: Path) -> Optional[List[Patch]]:
         truss_spec = TrussSpec(self._truss_dir)
         model_module_path = str(
             truss_spec.model_module_dir.relative_to(self._truss_dir)
         )
         if str(path).startswith(model_module_path):
             rel_path = str(path.relative_to(model_module_path))
-            return Patch(
-                type=PatchType.MODEL_CODE,
-                body=ModelCodePatch(
-                    OP_2_ACTION[op],
-                    rel_path,
-                    file_content(self._truss_dir / path),
-                ),
-            )
+            return [
+                Patch(
+                    type=PatchType.MODEL_CODE,
+                    body=ModelCodePatch(
+                        OP_2_ACTION[op],
+                        rel_path,
+                        file_content(self._truss_dir / path),
+                    ),
+                )
+            ]
         if str(path) == CONFIG_FILE:
             new_config = TrussConfig.from_yaml(self._truss_dir / CONFIG_FILE)
             config_patches = calc_config_patches(self._config, new_config)
             self._config = new_config
-            return config_patches[0] if config_patches else None
+            return config_patches or None
         return None
 
 
@@ -77,6 +79,6 @@ class TrussFilesSyncer(Thread):
             for change in changes:
                 op, path = change
                 rel_path = Path(path).relative_to(self.watch_path.resolve())
-                patch = self.patch_emitter(op, rel_path)
-                if patch:
-                    self.patch_applier(patch)
+                patches = self.patch_emitter(op, rel_path)
+                if patches:
+                    self.patch_applier(patches)
