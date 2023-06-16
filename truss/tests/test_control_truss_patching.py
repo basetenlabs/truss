@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 from truss.constants import SUPPORTED_PYTHON_VERSIONS
@@ -18,6 +19,15 @@ def current_num_docker_images(th: TrussHandle) -> int:
     return len(th.get_all_docker_images())
 
 
+@pytest.fixture
+def control_model_handle_tag_tuple(
+    custom_model_control,
+) -> tuple(Path, TrussHandle, str):
+    th = TrussHandle(custom_model_control)
+    tag = "test-docker-custom-model-control-tag:0.0.1"
+    return (custom_model_control, th, tag)
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "binary, python_version",
@@ -27,10 +37,11 @@ def current_num_docker_images(th: TrussHandle) -> int:
         for python_version in SUPPORTED_PYTHON_VERSIONS
     ],
 )
-def test_control_truss_local_update_flow(binary, python_version, custom_model_control):
-    th = TrussHandle(custom_model_control)
+def test_control_truss_local_update_flow(
+    binary, python_version, control_model_handle_tag_tuple
+):
+    custom_model_control, th, tag = control_model_handle_tag_tuple
     th.update_python_version(python_version)
-    tag = "test-docker-custom-model-control-tag:0.0.1"
 
     def predict_with_updated_model_code():
         new_model_code = """
@@ -127,9 +138,10 @@ class Model:
 
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
-def test_patch_added_model_dir(custom_model_control, tmp_path):
-    th = TrussHandle(custom_model_control)
-    tag = "test-docker-custom-model-control-tag:0.0.1"
+def test_patch_added_model_dir(
+    custom_model_control, tmp_path, control_model_handle_tag_tuple
+):
+    custom_model_control, th, tag = control_model_handle_tag_tuple
 
     def predict_with_added_model_dir_file():
         code_file_dir = custom_model_control / "model" / "dir"
@@ -149,9 +161,8 @@ def test_patch_added_model_dir(custom_model_control, tmp_path):
 
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
-def test_patch_data_dir(custom_model_control):
-    th = TrussHandle(custom_model_control)
-    tag = "test-docker-custom-model-control-tag:0.0.1"
+def test_patch_data_dir(control_model_handle_tag_tuple):
+    custom_model_control, th, tag = control_model_handle_tag_tuple
 
     def predict_with_data_dir_change():
         path = custom_model_control / "data" / "dummy"
@@ -173,9 +184,8 @@ def test_patch_data_dir(custom_model_control):
 
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
-def test_patch_env_var(custom_model_control):
-    th = TrussHandle(custom_model_control)
-    tag = "test-docker-custom-model-control-tag:0.0.1"
+def test_patch_env_var(control_model_handle_tag_tuple):
+    _, th, tag = control_model_handle_tag_tuple
 
     def predict_with_environment_variables_change():
         th.add_environment_variable("foo", "bar")
@@ -237,9 +247,8 @@ class Model:
 
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
-def test_patch_secrets(custom_model_control):
-    th = TrussHandle(custom_model_control)
-    tag = "test-docker-custom-model-control-tag:0.0.1"
+def test_patch_secrets(control_model_handle_tag_tuple):
+    _, th, tag = control_model_handle_tag_tuple
 
     def predict_with_secrets():
         th.add_secret("foo", "bar")
