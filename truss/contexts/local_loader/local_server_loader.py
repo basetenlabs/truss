@@ -105,7 +105,7 @@ class LocalServerLoader:
             return location
 
         build_dir = _prep_or_create_dir(build_dir, "build")
-        venv_dir = _prep_or_create_dir(build_dir, "server_venv")
+        venv_dir = _prep_or_create_dir(venv_dir, "server_venv")
 
         with yaspin(text="Preparing truss context") as spinner:
             self.context_builder.prepare_image_build_dir(build_dir)
