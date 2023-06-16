@@ -16,15 +16,6 @@ from truss.constants import (
 )
 from truss.errors import FrameworkNotSupportedError
 
-# lists of versions supported by the truss+base_images
-PYTHON_VERSIONS = {
-    "py37",
-    "py38",
-    "py39",
-    "py310",
-    "py311",
-}
-
 logger: logging.Logger = logging.getLogger(__name__)
 
 
