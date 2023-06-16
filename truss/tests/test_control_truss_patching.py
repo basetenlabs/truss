@@ -1,6 +1,7 @@
 import subprocess
 
 import pytest
+from truss.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.tests.conftest import CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
@@ -23,7 +24,7 @@ def current_num_docker_images(th: TrussHandle) -> int:
     [
         (binary, python_version)
         for binary in [True, False]
-        for python_version in ["3.8", "3.9"]
+        for python_version in SUPPORTED_PYTHON_VERSIONS
     ],
 )
 def test_control_truss_local_update_flow(binary, python_version, custom_model_control):
