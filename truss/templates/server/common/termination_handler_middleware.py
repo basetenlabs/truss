@@ -1,7 +1,6 @@
-import asyncio
-import os
 import signal
-from typing import Optional
+import time
+from typing import Callable
 
 from fastapi import Request
 
@@ -9,15 +8,13 @@ SELF_KILL_DELAY_SECS = 5
 
 
 class TerminationHandlerMiddleware:
-    def __init__(self, server):
+    def __init__(self, on_stop: Callable[[], None], on_term: Callable[[], None]):
         self._outstanding_request_count = 0
-        self._server = server
+        self._on_stop = on_stop
+        self._on_term = on_term
         self._stopeed = False
-        loop = asyncio.get_event_loop()
         for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-            loop.add_signal_handler(
-                sig, lambda s=sig: asyncio.create_task(self._stop(sig=s))
-            )
+            signal.signal(sig, self._stop)
 
     async def __call__(self, request: Request, call_next):
         self._outstanding_request_count += 1
@@ -26,14 +23,16 @@ class TerminationHandlerMiddleware:
         finally:
             self._outstanding_request_count -= 1
             if self._outstanding_request_count == 0 and self._stopeed:
-                self._kill_self()
+                await self._term()
         return response
 
-    def _stop(self, sig: Optional[int] = None):
-        self._server.stop()
+    def _stop(self, sig, frame):
+        self._on_stop()
         self._stopeed = True
+        if self._outstanding_request_count == 0:
+            self._term()
 
-    async def _kill_self(self):
-        # Give few seconds for the response to exit.
-        await asyncio.sleep(SELF_KILL_DELAY_SECS)
-        os.kill(os.getpid(), signal.SIGKILL)
+    def _term(self):
+        # Give few seconds for the response flow to finish.
+        time.sleep(SELF_KILL_DELAY_SECS)
+        self._on_term()
