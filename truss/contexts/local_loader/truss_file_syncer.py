@@ -14,7 +14,7 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.util.path import file_content
+from truss.util.path import file_content, is_ignored, load_trussignore_patterns
 from watchfiles import Change, watch
 
 OP_2_ACTION = {
@@ -66,16 +66,17 @@ class TrussFilesSyncer(Thread):
         self.watch_path = watch_path
         self.patch_emitter = TrussPatchEmitter(self.watch_path, self._logger)
         self.patch_applier = patch_applier
+        self.watch_filter = lambda _, path: not is_ignored(
+            Path(path),
+            load_trussignore_patterns(),
+        )
 
     def run(self) -> None:
         """Watch for files in background and apply appropriate patches."""
-        for changes in watch(str(self.watch_path)):
+        for changes in watch(self.watch_path, watch_filter=self.watch_filter):
             for change in changes:
                 op, path = change
-                # vscode seems to add these .tmp files intermittently upon save
-                if not str(path).endswith(".tmp"):
-                    rel_path = Path(path).relative_to(self.watch_path.resolve())
-                    patch = self.patch_emitter(op, rel_path)
-                    if patch:
-                        logging.Logger(__name__).info(patch)
-                        self.patch_applier(patch)
+                rel_path = Path(path).relative_to(self.watch_path.resolve())
+                patch = self.patch_emitter(op, rel_path)
+                if patch:
+                    self.patch_applier(patch)

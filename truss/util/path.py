@@ -108,7 +108,7 @@ def file_content(path: Path) -> str:
         return file.read()
 
 
-def load_trussignore_patterns(truss_ignore_file: Path):
+def load_trussignore_patterns(truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH):
     """Load patterns from a .truss_ignore file"""
     patterns = []
     with truss_ignore_file.open() as f:
