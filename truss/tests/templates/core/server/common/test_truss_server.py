@@ -31,10 +31,14 @@ def test_truss_server_termination(truss_container_fs):
     subproc.start()
     proc_id = subproc.pid
     time.sleep(2.0)
+    # Port should have been taken up by truss server
+    assert not _is_port_available(port)
     os.kill(proc_id, signal.SIGTERM)
     time.sleep(2.0)
+    # Print on purpose for help with debugging, otherwise hard to know what's going on
     print(Path(stdout_capture_file.name).read_text())
     assert not subproc.is_alive()
+    # Port should be free now
     assert _is_port_available(port)
 
 
