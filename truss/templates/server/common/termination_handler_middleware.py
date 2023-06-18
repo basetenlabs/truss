@@ -1,18 +1,24 @@
+import asyncio
 import signal
-import time
 from typing import Callable
 
 from fastapi import Request
 
-SELF_KILL_DELAY_SECS = 5
+DEFAULT_TERM_DELAY_SECS = 5.0
 
 
 class TerminationHandlerMiddleware:
-    def __init__(self, on_stop: Callable[[], None], on_term: Callable[[], None]):
+    def __init__(
+        self,
+        on_stop: Callable[[], None],
+        on_term: Callable[[], None],
+        termination_delay_secs: float = DEFAULT_TERM_DELAY_SECS,
+    ):
         self._outstanding_request_count = 0
         self._on_stop = on_stop
         self._on_term = on_term
-        self._stopeed = False
+        self._termination_delay_secs = termination_delay_secs
+        self._stopped = False
         for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
             signal.signal(sig, self._stop)
 
@@ -22,17 +28,18 @@ class TerminationHandlerMiddleware:
             response = await call_next(request)
         finally:
             self._outstanding_request_count -= 1
-            if self._outstanding_request_count == 0 and self._stopeed:
-                await self._term()
+            if self._outstanding_request_count == 0 and self._stopped:
+                # There's a delay in term to allow some time for current
+                # response flow to finish.
+                asyncio.create_task(self._term())
         return response
 
     def _stop(self, sig, frame):
         self._on_stop()
-        self._stopeed = True
+        self._stopped = True
         if self._outstanding_request_count == 0:
-            self._term()
+            self._on_term()
 
-    def _term(self):
-        # Give few seconds for the response flow to finish.
-        time.sleep(SELF_KILL_DELAY_SECS)
+    async def _term(self):
+        await asyncio.sleep(self._termination_delay_secs)
         self._on_term()
