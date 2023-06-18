@@ -7,9 +7,11 @@ import time
 from multiprocessing import Process
 from pathlib import Path
 
+import pytest
 import yaml
 
 
+@pytest.mark.integration
 def test_truss_server_termination(truss_container_fs):
     port = 10123
 
