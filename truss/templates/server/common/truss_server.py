@@ -18,11 +18,19 @@ from common.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
+from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+# [IMPORTANT] A lot of things depend on this currently.
+# Please consider the following when increasing this:
+# 1. Self-termination on model load fail.
+# 2. Graceful termination.
+NUM_WORKERS = 1
 
 
 async def parse_body(request: Request) -> bytes:
@@ -171,7 +179,7 @@ class TrussServer:
         self._model.start_load()
 
     def create_application(self):
-        return FastAPI(
+        app = FastAPI(
             title="Baseten Inference Server",
             docs_url=None,
             redoc_url=None,
@@ -213,12 +221,24 @@ class TrussServer:
             },
         )
 
+        def kill_self():
+            # Note that this kills the current process, which will be the
+            # worker process, not the main truss_server process.
+            os.kill(os.getpid(), signal.SIGKILL)
+
+        termination_handler_middleware = TerminationHandlerMiddleware(
+            on_stop=lambda: None,
+            on_term=kill_self,
+        )
+        app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
+        return app
+
     def start(self):
         cfg = uvicorn.Config(
             self.create_application(),
             host="0.0.0.0",
             port=self.http_port,
-            workers=1,
+            workers=NUM_WORKERS,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -275,9 +295,30 @@ class TrussServer:
             serversocket.listen(5)
 
             logging.info(f"starting uvicorn with {cfg.workers} workers")
+            servers: List[UvicornCustomServer] = []
             for _ in range(cfg.workers):
                 server = UvicornCustomServer(config=cfg, sockets=[serversocket])
                 server.start()
+                servers.append(server)
+
+            async def stop_servers():
+                # Send stop signal, then wait for all to exit
+                for server in servers:
+                    # Sends term signal to the process, which should be handled
+                    # by the termination handler.
+                    server.stop()
+                for _ in range(300):
+                    await asyncio.sleep(0.5)
+                    if utils.all_processes_dead(servers):
+                        # Kill main process
+                        os.kill(os.getpid(), signal.SIGKILL)
+
+            loop = asyncio.get_running_loop()
+            for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
+                loop.add_signal_handler(
+                    sig, lambda _: asyncio.create_task(stop_servers)
+                )
+                signal.signal(sig, lambda sig, frame: stop_servers())
 
         async def servers_task():
             servers = [serve()]
