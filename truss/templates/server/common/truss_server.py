@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import signal
 import socket
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -301,23 +302,19 @@ class TrussServer:
                 server.start()
                 servers.append(server)
 
-            async def stop_servers():
+            def stop_servers():
                 # Send stop signal, then wait for all to exit
                 for server in servers:
                     # Sends term signal to the process, which should be handled
                     # by the termination handler.
                     server.stop()
                 for _ in range(300):
-                    await asyncio.sleep(0.5)
+                    time.sleep(0.5)
                     if utils.all_processes_dead(servers):
                         # Kill main process
                         os.kill(os.getpid(), signal.SIGKILL)
 
-            loop = asyncio.get_running_loop()
             for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-                loop.add_signal_handler(
-                    sig, lambda _: asyncio.create_task(stop_servers)
-                )
                 signal.signal(sig, lambda sig, frame: stop_servers())
 
         async def servers_task():
