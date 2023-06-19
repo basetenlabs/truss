@@ -81,10 +81,13 @@ if is_notebook_or_ipython():
 
 
 class TrussHandle:
-    def __init__(self, truss_dir: Path, validate: bool = True) -> None:
+    def __init__(
+        self, truss_dir: Path, validate: bool = True, is_shadow: bool = False
+    ) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
+        self.is_shadow = is_shadow
         if validate:
             self.validate()
 
