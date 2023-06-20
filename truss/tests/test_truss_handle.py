@@ -22,7 +22,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     kill_all_with_retries,
 )
 from truss.truss_handle import TrussHandle, wait_for_truss
-from truss.types import Example
+from truss.types import Example, PatchRequest
 
 
 def test_spec(custom_model_truss_dir_with_pre_and_post):
@@ -611,10 +611,10 @@ class Model:
     def predict(self, model_input):
         return [2 for i in model_input]
 """
-        patch_request = {
-            "hash": "dummy",
-            "prev_hash": running_hash,
-            "patches": [
+        patch_request = PatchRequest(
+            hash="dummy",
+            prev_hash=running_hash,
+            patches=[
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
@@ -622,9 +622,9 @@ class Model:
                         path="model.py",
                         content=new_model_code,
                     ),
-                ).to_dict(),
+                ),
             ],
-        }
+        )
 
         th.patch_container(patch_request)
         result = th.docker_predict([1], tag=tag)

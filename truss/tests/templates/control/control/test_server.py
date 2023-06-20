@@ -6,6 +6,7 @@ from typing import Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
+from truss.types import PatchRequest
 
 # Needed to simulate the set up on the model docker container
 sys.path.append(
@@ -22,6 +23,7 @@ from truss.templates.control.control.helpers.types import (  # noqa
     Action,
     ModelCodePatch,
     Patch,
+    PatchBody,
     PatchType,
     PythonRequirementPatch,
 )
@@ -153,27 +155,12 @@ def test_404(client):
 
 
 def test_invalid_patch(client):
-    patch_request = {
-        "hash": "dummy",
-        "prev_hash": "invalid",
-        "patches": [],
-    }
-    resp = client.post("/control/patch", json=patch_request)
+    patch_request = PatchRequest(hash="dummy", prev_hash="invalid", patches=[])
+    resp = client.post("/control/patch", json=patch_request.to_dict())
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "inadmissible_patch"
     assert "msg" not in resp.json()
-
-
-def test_unsupported_patch(client):
-    unsupported_patch = {
-        "type": "unsupported",
-        "body": {},
-    }
-    resp = _apply_patches(client, [unsupported_patch])
-    assert resp.status_code == 200
-    assert "error" in resp.json()
-    assert resp.json()["error"]["type"] == "unsupported_patch"
 
 
 def test_patch_failed_recoverable(client):
@@ -183,7 +170,7 @@ def test_patch_failed_recoverable(client):
             action=Action.ADD, requirement="not_a_valid_python_requirement"
         ),
     )
-    resp = _apply_patches(client, [will_fail_patch.to_dict()])
+    resp = _apply_patches(client, [will_fail_patch])
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "patch_failed_recoverable"
@@ -200,9 +187,7 @@ def test_patch_failed_unrecoverable(client):
             action=Action.ADD, requirement="not_a_valid_python_requirement"
         ),
     )
-    resp = _apply_patches(
-        client, [will_pass_patch.to_dict(), will_fail_patch.to_dict()]
-    )
+    resp = _apply_patches(client, [will_pass_patch, will_fail_patch])
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "patch_failed_unrecoverable"
@@ -210,26 +195,18 @@ def test_patch_failed_unrecoverable(client):
 
 def _verify_apply_patch_success(client, patch: Patch):
     original_hash = client.get("/control/truss_hash").json()["result"]
-    patch_request = {
-        "hash": "dummy",
-        "prev_hash": original_hash,
-        "patches": [patch.to_dict()],
-    }
-    resp = client.post("/control/patch", json=patch_request)
-    resp = _apply_patches(client, [patch.to_dict()])
+    patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=[patch])
+    resp = client.post("/control/patch", json=patch_request.to_dict())
+    resp = _apply_patches(client, [patch])
     assert resp.status_code == 200
     assert "error" not in resp.json()
     assert "msg" in resp.json()
 
 
-def _apply_patches(client, patches: List[dict]):
+def _apply_patches(client, patches: List[Patch]):
     original_hash = client.get("/control/truss_hash").json()["result"]
-    patch_request = {
-        "hash": "dummy",
-        "prev_hash": original_hash,
-        "patches": patches,
-    }
-    return client.post("/control/patch", json=patch_request)
+    patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=patches)
+    return client.post("/control/patch", json=patch_request.to_dict())
 
 
 @contextmanager
