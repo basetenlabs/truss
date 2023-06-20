@@ -14,10 +14,10 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.util.path import file_content, is_ignored, load_trussignore_patterns
+from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import Change, watch
 
-OP_2_ACTION = {
+OP_TO_ACTION = {
     Change.added: Action.ADD,
     Change.deleted: Action.REMOVE,
     Change.modified: Action.UPDATE,
@@ -25,6 +25,8 @@ OP_2_ACTION = {
 
 
 class TrussPatchEmitter:
+    """Callable that emits an optional list of patches to apply to the running local given a file change"""
+
     def __init__(
         self,
         truss_dir: Path,
@@ -34,7 +36,7 @@ class TrussPatchEmitter:
         self._config = TrussConfig.from_yaml(self._truss_dir / CONFIG_FILE)
         self._logger = logger
 
-    def __call__(self, op, path: Path) -> Optional[List[Patch]]:
+    def __call__(self, op: Change, path: Path) -> Optional[List[Patch]]:
         truss_spec = TrussSpec(self._truss_dir)
         model_module_path = str(
             truss_spec.model_module_dir.relative_to(self._truss_dir)
@@ -45,9 +47,9 @@ class TrussPatchEmitter:
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
-                        OP_2_ACTION[op],
+                        OP_TO_ACTION[op],
                         rel_path,
-                        file_content(self._truss_dir / path),
+                        (self._truss_dir / path).read_text(),
                     ),
                 )
             ]
@@ -66,7 +68,7 @@ class TrussFilesSyncer(Thread):
         super().__init__(daemon=True)
         self._logger = logging.Logger(__name__)
         self.watch_path = watch_path
-        self.patch_emitter = TrussPatchEmitter(self.watch_path, self._logger)
+        self.emit_patches = TrussPatchEmitter(self.watch_path, self._logger)
         self.patch_applier = patch_applier
         self.watch_filter = lambda _, path: not is_ignored(
             Path(path),
@@ -79,6 +81,6 @@ class TrussFilesSyncer(Thread):
             for change in changes:
                 op, path = change
                 rel_path = Path(path).relative_to(self.watch_path.resolve())
-                patches = self.patch_emitter(op, rel_path)
+                patches = self.emit_patches(op, rel_path)
                 if patches:
                     self.patch_applier(patches)

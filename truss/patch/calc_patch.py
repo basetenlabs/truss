@@ -22,7 +22,6 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.util.path import file_content
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
@@ -112,7 +111,7 @@ def calc_truss_patch(
                     body=ModelCodePatch(
                         action=action,
                         path=_relative_to(path, model_module_path),
-                        content=file_content(full_path),
+                        content=full_path.read_text(),
                     ),
                 )
             )
