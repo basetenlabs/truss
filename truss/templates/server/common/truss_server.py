@@ -6,16 +6,16 @@ from pathlib import Path
 from typing import Dict, Union
 
 import common.errors as errors
-from common.logging import setup_logging
-from common.serialization import (
-    DeepNumpyEncoder,
-    truss_msgpack_deserialize,
-    truss_msgpack_serialize,
-)
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from shared.logging import setup_logging
+from shared.serialization import (
+    DeepNumpyEncoder,
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 from shared.uvicorn_config import start_uvicorn_server
 from starlette.responses import Response
 
