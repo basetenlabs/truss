@@ -82,12 +82,15 @@ if is_notebook_or_ipython():
 
 class TrussHandle:
     def __init__(
-        self, truss_dir: Path, validate: bool = True, is_shadow: bool = False
+        self,
+        truss_dir: Path,
+        validate: bool = True,
+        original_truss_dir: Optional[Path] = None,
     ) -> None:
         self._truss_dir = truss_dir
         self._spec = TrussSpec(truss_dir)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
-        self.is_shadow = is_shadow
+        self._original_truss_dir = original_truss_dir
         if validate:
             self.validate()
 
@@ -97,6 +100,10 @@ class TrussHandle:
     @property
     def spec(self) -> TrussSpec:
         return self._spec
+
+    @property
+    def is_shadow(self) -> bool:
+        return self._original_truss_dir is not None
 
     @staticmethod
     @retry(
@@ -634,7 +641,11 @@ class TrussHandle:
 
         Includes images created for previous state of the truss.
         """
-        return get_images({TRUSS_DIR: str(self._truss_dir)})
+        images = []
+        images += get_images({TRUSS_DIR: str(self._truss_dir)})
+        if self.is_shadow:
+            images += get_images({TRUSS_DIR: str(self._original_truss_dir)})
+        return images
 
     @proxy_to_shadow
     def get_docker_containers_from_labels(self, *args, **kwargs):
@@ -665,12 +676,20 @@ class TrussHandle:
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
+    @proxy_to_shadow
     def _get_running_serving_container_ignore_hash(self):
         containers = self.get_serving_docker_containers_from_labels(
-            labels={TRUSS_DIR: str(self._truss_dir)}
+            labels={TRUSS_DIR: self._truss_dir}
         )
         if containers is not None and len(containers) > 0:
             return containers[0]
+
+        if self.is_shadow:
+            shadow_containers = self.get_serving_docker_containers_from_labels(
+                labels={TRUSS_DIR: self._original_truss_dir}
+            )
+            if shadow_containers is not None and len(shadow_containers) > 0:
+                return shadow_containers[0]
 
     @proxy_to_shadow
     def kill_container(self):
@@ -679,6 +698,9 @@ class TrussHandle:
         Killing is done based on directory of the truss.
         """
         kill_containers({TRUSS_DIR: self._truss_dir})
+
+        if self.is_shadow:
+            kill_containers({TRUSS_DIR: self._original_truss_dir})
 
     @proxy_to_shadow
     def container_logs(self, *args, **kwargs):

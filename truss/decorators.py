@@ -7,7 +7,10 @@ def proxy_to_shadow(func):
         if truss_handle.is_shadow:
             return func(*args, **kwargs)
 
-        gathered_truss_handle = TrussHandle(truss_handle.gather(), is_shadow=True)
+        gathered_truss_handle = TrussHandle(
+            truss_handle.gather(),
+            original_truss_dir=truss_handle._truss_dir,
+        )
 
         return func(gathered_truss_handle, *args[1:], **kwargs)
 
