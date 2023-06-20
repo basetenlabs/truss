@@ -60,7 +60,7 @@ async def proxy(request: Request):
                     inference_server_process_controller.is_inference_server_intentionally_stopped()
                 ):
                     raise ModelLoadFailed("Model load failed")
-                resp = await client.send(rp_req, stream=True)
+                resp = await client.send(rp_req)
 
                 if _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
