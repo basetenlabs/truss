@@ -24,7 +24,8 @@ def _identify_python_executable_path() -> str:
 
 
 if __name__ == "__main__":
-    import uvicorn
+
+    from shared.uvicorn_config import start_uvicorn_server
 
     inf_serv_home: str = os.environ["APP_HOME"]
     python_executable_path: str = _identify_python_executable_path()
@@ -47,14 +48,9 @@ if __name__ == "__main__":
     application.state.logger.info(
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
     )
-    uvicorn.run(
+
+    start_uvicorn_server(
         application,
         host=application.state.control_server_host,
         port=application.state.control_server_port,
-        loop="uvloop",
-        reload=False,
-        # TODO(pankaj): change this back to info once things are stable
-        log_level="debug",
-        workers=1,
-        limit_concurrency=32,
     )

@@ -1,17 +1,11 @@
 import asyncio
-import concurrent.futures
 import json
-import logging
-import multiprocessing
 import os
 import signal
-import socket
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Union
 
 import common.errors as errors
-import common.util as utils
-import uvicorn
 from common.logging import setup_logging
 from common.serialization import (
     DeepNumpyEncoder,
@@ -22,6 +16,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from shared.uvicorn_config import start_uvicorn_server
 from starlette.responses import Response
 
 
@@ -32,26 +27,7 @@ async def parse_body(request: Request) -> bytes:
     return await request.body()
 
 
-FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
-logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
-
-
-class UvicornCustomServer(multiprocessing.Process):
-    def __init__(
-        self, config: uvicorn.Config, sockets: Optional[List[socket.socket]] = None
-    ):
-        super().__init__()
-        self.sockets = sockets
-        self.config = config
-
-    def stop(self):
-        self.terminate()
-
-    def run(self):
-        server = uvicorn.Server(config=self.config)
-        asyncio.run(server.serve(sockets=self.sockets))
 
 
 class BasetenEndpoints:
@@ -214,73 +190,6 @@ class TrussServer:
         )
 
     def start(self):
-        cfg = uvicorn.Config(
-            self.create_application(),
-            host="0.0.0.0",
-            port=self.http_port,
-            workers=1,
-            log_config={
-                "version": 1,
-                "formatters": {
-                    "default": {
-                        "()": "uvicorn.logging.DefaultFormatter",
-                        "datefmt": DATE_FORMAT,
-                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(message)s",
-                        "use_colors": None,
-                    },
-                    "access": {
-                        "()": "uvicorn.logging.AccessFormatter",
-                        "datefmt": DATE_FORMAT,
-                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(client_addr)s %(process)s - "
-                        '"%(request_line)s" %(status_code)s',
-                        # noqa: E501
-                    },
-                },
-                "handlers": {
-                    "default": {
-                        "formatter": "default",
-                        "class": "logging.StreamHandler",
-                        "stream": "ext://sys.stderr",
-                    },
-                    "access": {
-                        "formatter": "access",
-                        "class": "logging.StreamHandler",
-                        "stream": "ext://sys.stdout",
-                    },
-                },
-                "loggers": {
-                    "uvicorn": {"handlers": ["default"], "level": "INFO"},
-                    "uvicorn.error": {"level": "INFO"},
-                    "uvicorn.access": {
-                        "handlers": ["access"],
-                        "level": "INFO",
-                        "propagate": False,
-                    },
-                },
-            },
+        start_uvicorn_server(
+            self.create_application(), host="0.0.0.0", port=self.http_port
         )
-
-        max_asyncio_workers = min(32, utils.cpu_count() + 4)
-        logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
-        # Call this so uvloop gets used
-        cfg.setup_event_loop()
-        asyncio.get_event_loop().set_default_executor(
-            concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
-        )
-
-        async def serve():
-            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            serversocket.bind((cfg.host, cfg.port))
-            serversocket.listen(5)
-
-            logging.info(f"starting uvicorn with {cfg.workers} workers")
-            for _ in range(cfg.workers):
-                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
-                server.start()
-
-        async def servers_task():
-            servers = [serve()]
-            await asyncio.gather(*servers)
-
-        asyncio.run(servers_task())
