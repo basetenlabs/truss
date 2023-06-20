@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - bola/fix-fastapi-control-server
 
 concurrency:
   group: main-${{ github.head_ref || github.run_id }}
@@ -84,7 +85,7 @@ jobs:
 
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    if: true
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
