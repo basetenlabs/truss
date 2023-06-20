@@ -38,27 +38,41 @@ def start_uvicorn_server(application: FastAPI, host: str = "*", port: int = 8080
         workers=1,
     )
 
-    max_asyncio_workers = min(32, utils.cpu_count() + 4)
-    logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
-    # Call this so uvloop gets used
+    max_asyncio_workers = min(32, multiprocessing.cpu_count() + 4)
     cfg.setup_event_loop()
     asyncio.get_event_loop().set_default_executor(
         concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
     )
+    uvicorn.run(cfg)
 
-    async def serve():
-        serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        serversocket.bind((cfg.host, cfg.port))
-        serversocket.listen(5)
+    # cfg = uvicorn.Config(
+    #     application,
+    #     host=host,
+    #     port=port,
+    #     workers=1,
+    # )
 
-        logging.info(f"starting uvicorn with {cfg.workers} workers")
-        for _ in range(cfg.workers):
-            server = UvicornCustomServer(config=cfg, sockets=[serversocket])
-            server.start()
+    # max_asyncio_workers = min(32, utils.cpu_count() + 4)
+    # logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
+    # # Call this so uvloop gets used
+    # cfg.setup_event_loop()
+    # asyncio.get_event_loop().set_default_executor(
+    #     concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
+    # )
 
-    async def servers_task():
-        servers = [serve()]
-        await asyncio.gather(*servers)
+    # async def serve():
+    #     serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #     serversocket.bind((cfg.host, cfg.port))
+    #     serversocket.listen(5)
 
-    asyncio.run(servers_task())
+    #     logging.info(f"starting uvicorn with {cfg.workers} workers")
+    #     for _ in range(cfg.workers):
+    #         server = UvicornCustomServer(config=cfg, sockets=[serversocket])
+    #         server.start()
+
+    # async def servers_task():
+    #     servers = [serve()]
+    #     await asyncio.gather(*servers)
+
+    # asyncio.run(servers_task())
