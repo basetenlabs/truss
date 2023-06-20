@@ -22,73 +22,67 @@ def index():
     return {}
 
 
-async def _reverse_proxy(request: Request):
+# async def _reverse_proxy(request: Request):
+#     return StreamingResponse(
+#         rp_resp.aiter_raw(),
+#         status_code=rp_resp.status_code,
+#         headers=rp_resp.headers,
+#         background=BackgroundTask(rp_resp.aclose),
+#     )
+
+
+# @control_app.get("/v1/{full_path:path}")
+# @control_app.post("/v1/{full_path:path}")
+async def proxy(request: Request):
+    inference_server_port = request.app.state.inference_server_port
+    inference_server_process_controller = (
+        request.app.state.inference_server_process_controller
+    )
     inference_server_port = request.app.state.inference_server_port
     client = httpx.AsyncClient(base_url=f"http://localhost:{inference_server_port}")
     url = httpx.URL(path=request.url.path, query=request.url.query.encode("utf-8"))
     rp_req = client.build_request(
         request.method, url, headers=request.headers.raw, content=await request.body()
     )
-    rp_resp = await client.send(rp_req, stream=True)
-    return StreamingResponse(
-        rp_resp.aiter_raw(),
-        status_code=rp_resp.status_code,
-        headers=rp_resp.headers,
-        background=BackgroundTask(rp_resp.aclose),
-    )
+
+    # Wait a bit for inference server to start
+    for attempt in Retrying(
+        retry=(
+            retry_if_exception_type(ConnectionError)
+            | retry_if_exception_type(ModelNotReady)
+        ),
+        stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
+        wait=wait_fixed(1),
+    ):
+        with attempt:
+            try:
+                if (
+                    inference_server_process_controller.is_inference_server_intentionally_stopped()
+                ):
+                    raise ModelLoadFailed("Model load failed")
+                resp = await client.send(rp_req, stream=True)
+
+                if _is_model_not_ready(resp):
+                    raise ModelNotReady("Model has started running, but not ready yet.")
+            except ConnectionError as exp:
+                # This check is a bit expensive so we don't do it before every request, we
+                # do it only if request fails with connection error. If the inference server
+                # process is running then we continue waiting for it to start (by retrying),
+                # otherwise we bail.
+                if (
+                    inference_server_process_controller.inference_server_ever_started()
+                    and not inference_server_process_controller.is_inference_server_running()
+                ):
+                    error_msg = "It appears your model has stopped running. This often means' \
+                        ' it crashed and may need a fix to get it running again."
+                    return JSONResponse(error_msg, 503)
+                raise exp
+
+    response = Response(resp.content, resp.status_code, resp.headers)
+    return response
 
 
-control_app.add_route("/v1/{path:path}", _reverse_proxy, ["GET", "POST"])
-
-# @control_app.get("/v1/{full_path:path}")
-# @control_app.post("/v1/{full_path:path}")
-# async def proxy(full_path: str, request: Request):
-#     inference_server_port = request.app.state.inference_server_port
-#     inference_server_process_controller = (
-#         request.app.state.inference_server_process_controller
-#     )
-
-#     # Wait a bit for inference server to start
-#     for attempt in Retrying(
-#         retry=(
-#             retry_if_exception_type(ConnectionError)
-#             | retry_if_exception_type(ModelNotReady)
-#         ),
-#         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
-#         wait=wait_fixed(1),
-#     ):
-#         with attempt:
-#             try:
-#                 if (
-#                     inference_server_process_controller.is_inference_server_intentionally_stopped()
-#                 ):
-#                     raise ModelLoadFailed("Model load failed")
-
-#                 resp = requests.request(
-#                     method=request.method,
-#                     url=f"http://localhost:{inference_server_port}/v1/{full_path}",
-#                     data=await request.body(),
-#                     cookies=request.cookies,
-#                     headers=request.headers,
-#                 )
-#                 if _is_model_not_ready(resp):
-#                     raise ModelNotReady("Model has started running, but not ready yet.")
-#             except ConnectionError as exp:
-#                 # This check is a bit expensive so we don't do it before every request, we
-#                 # do it only if request fails with connection error. If the inference server
-#                 # process is running then we continue waiting for it to start (by retrying),
-#                 # otherwise we bail.
-#                 if (
-#                     inference_server_process_controller.inference_server_ever_started()
-#                     and not inference_server_process_controller.is_inference_server_running()
-#                 ):
-#                     error_msg = "It appears your model has stopped running. This often means' \
-#                         ' it crashed and may need a fix to get it running again."
-#                     return JSONResponse(error_msg, 503)
-#                 raise exp
-
-#     response = Response(resp.content, resp.status_code, resp.headers)
-#     return response
+control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
 
 
 @control_app.post("/control/patch")
