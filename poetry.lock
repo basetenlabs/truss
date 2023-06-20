@@ -635,7 +635,7 @@ files = [
 name = "distlib"
 version = "0.3.6"
 description = "Distribution utilities"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 files = [
@@ -669,7 +669,7 @@ ssh = ["paramiko (>=2.4.3)"]
 name = "dockerfile"
 version = "3.2.0"
 description = "Parse a dockerfile into a high-level representation using the official go parser."
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.6.1"
 files = [
@@ -747,7 +747,7 @@ devel = ["colorama", "json-spec", "jsonschema", "pylint", "pytest", "pytest-benc
 name = "filelock"
 version = "3.12.2"
 description = "A platform independent file lock."
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -1161,7 +1161,7 @@ numpy = ">=1.14.5"
 name = "httpcore"
 version = "0.17.2"
 description = "A minimal low-level HTTP client."
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -1183,7 +1183,7 @@ socks = ["socksio (>=1.0.0,<2.0.0)"]
 name = "httpx"
 version = "0.24.1"
 description = "The next generation HTTP client."
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -2447,7 +2447,7 @@ files = [
 name = "platformdirs"
 version = "3.5.3"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -3843,7 +3843,7 @@ wrapt = ">=1.11.0,<1.15"
 name = "termcolor"
 version = "2.3.0"
 description = "ANSI color formatting for output in terminal"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -4196,7 +4196,7 @@ standard = ["colorama (>=0.4)", "httptools (>=0.5.0)", "python-dotenv (>=0.13)",
 name = "virtualenv"
 version = "20.23.0"
 description = "Virtual Python Environment builder"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -4233,7 +4233,7 @@ testing = ["coverage (>=5.0)", "pytest", "pytest-cover"]
 name = "watchfiles"
 version = "0.19.0"
 description = "Simple, modern and high performance file watching and code reload in python."
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -4444,7 +4444,7 @@ scikit-learn = ["scikit-learn"]
 name = "yaspin"
 version = "2.3.0"
 description = "Yet Another Terminal Spinner"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.7.2,<4.0.0"
 files = [
@@ -4475,7 +4475,11 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
 <<<<<<< HEAD
+<<<<<<< HEAD
 content-hash = "e843d7f16273ec506f48694b942126c3ec5d1d3990601eb7e21d417d48339a28"
 =======
 content-hash = "cf7e4b3433a8b0a1371cc16c6fdfc97b72d7c7c4f1a9595c4f57b6fe11b5aecf"
 >>>>>>> 793f339 (try Gunicorn instead)
+=======
+content-hash = "d1529f27e047695d66fa7ced39536751e161c338aa599bd135e4d0c2d9a5ae80"
+>>>>>>> 5097f7e (Use Async client)

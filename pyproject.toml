@@ -35,6 +35,7 @@ gunicorn = "^20.1.0"
 psutil = "^5.9.4"
 joblib = "^1.2.0"
 pydantic = "^1.10.9"
+httpx = "^0.24.1"
 
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"
