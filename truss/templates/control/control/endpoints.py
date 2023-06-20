@@ -1,14 +1,11 @@
 from typing import Any, Dict
 
-import httpx
-import requests
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
-from requests.exceptions import ConnectionError
-from starlette.background import BackgroundTask
+from httpx import URL, ConnectError
 from starlette.requests import Request
-from starlette.responses import StreamingResponse
+from starlette.responses import Response
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
@@ -23,13 +20,11 @@ def index():
 
 
 async def proxy(request: Request):
-    inference_server_port = request.app.state.inference_server_port
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
-    inference_server_port = request.app.state.inference_server_port
-    client = httpx.AsyncClient(base_url=f"http://localhost:{inference_server_port}")
-    url = httpx.URL(path=request.url.path, query=request.url.query.encode("utf-8"))
+    client = request.app.state.proxy_client
+    url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
     rp_req = client.build_request(
         request.method, url, headers=request.headers.raw, content=await request.body()
     )
@@ -37,7 +32,7 @@ async def proxy(request: Request):
     # Wait a bit for inference server to start
     for attempt in Retrying(
         retry=(
-            retry_if_exception_type(ConnectionError)
+            retry_if_exception_type(ConnectError)
             | retry_if_exception_type(ModelNotReady)
         ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
