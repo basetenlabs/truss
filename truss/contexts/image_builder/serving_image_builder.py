@@ -95,7 +95,7 @@ class ServingImageBuilder(ImageBuilder):
             copy_into_build_dir(
                 SHARED_SERVING_AND_TRAINING_CODE_DIR,
                 BUILD_CONTROL_SERVER_DIR_NAME
-                + "/"
+                + "/control/"
                 + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
             )
 
