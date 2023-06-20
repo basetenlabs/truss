@@ -22,17 +22,6 @@ def index():
     return {}
 
 
-# async def _reverse_proxy(request: Request):
-#     return StreamingResponse(
-#         rp_resp.aiter_raw(),
-#         status_code=rp_resp.status_code,
-#         headers=rp_resp.headers,
-#         background=BackgroundTask(rp_resp.aclose),
-#     )
-
-
-# @control_app.get("/v1/{full_path:path}")
-# @control_app.post("/v1/{full_path:path}")
 async def proxy(request: Request):
     inference_server_port = request.app.state.inference_server_port
     inference_server_process_controller = (

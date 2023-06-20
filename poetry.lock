@@ -1087,10 +1087,14 @@ name = "gunicorn"
 version = "20.1.0"
 description = "WSGI HTTP Server for UNIX"
 <<<<<<< HEAD
+<<<<<<< HEAD
 category = "dev"
 =======
 category = "main"
 >>>>>>> 793f339 (try Gunicorn instead)
+=======
+category = "dev"
+>>>>>>> 1b88f0d (Remove unneeded changes)
 optional = false
 python-versions = ">=3.5"
 files = [
@@ -3431,10 +3435,14 @@ name = "setuptools"
 version = "67.8.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
 <<<<<<< HEAD
+<<<<<<< HEAD
 category = "dev"
 =======
 category = "main"
 >>>>>>> 793f339 (try Gunicorn instead)
+=======
+category = "dev"
+>>>>>>> 1b88f0d (Remove unneeded changes)
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -4476,6 +4484,7 @@ lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 content-hash = "e843d7f16273ec506f48694b942126c3ec5d1d3990601eb7e21d417d48339a28"
 =======
 content-hash = "cf7e4b3433a8b0a1371cc16c6fdfc97b72d7c7c4f1a9595c4f57b6fe11b5aecf"
@@ -4483,3 +4492,6 @@ content-hash = "cf7e4b3433a8b0a1371cc16c6fdfc97b72d7c7c4f1a9595c4f57b6fe11b5aecf
 =======
 content-hash = "d1529f27e047695d66fa7ced39536751e161c338aa599bd135e4d0c2d9a5ae80"
 >>>>>>> 5097f7e (Use Async client)
+=======
+content-hash = "9343a248b78920cb8e3ffdd34432f0926b29e25935324645942424b312e35ae4"
+>>>>>>> 1b88f0d (Remove unneeded changes)
