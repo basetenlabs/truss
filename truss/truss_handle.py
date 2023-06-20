@@ -381,6 +381,13 @@ class TrussHandle:
         if self._spec.data_dir.exists():
             rmtree(str(self._spec.data_dir))
         copy_tree_path(output_dir, self._spec.data_dir)
+
+        # If we're operating on a shadow truss, we need to copy the data
+        # to the real truss as well.
+        if self.is_shadow:
+            original_truss_spec = TrussSpec(self._original_truss_dir)  # type: ignore
+            copy_tree_path(output_dir, original_truss_spec.data_dir)
+
         rmtree(str(output_dir))
         rmtree(str(variables_dir))
 
