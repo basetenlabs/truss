@@ -11,8 +11,6 @@ from starlette.requests import Request
 from starlette.responses import StreamingResponse
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
-client = httpx.AsyncClient(base_url="http://containername:7800/")
-
 INFERENCE_SERVER_START_WAIT_SECS = 60
 
 
@@ -25,6 +23,8 @@ def index():
 
 
 async def _reverse_proxy(request: Request):
+    inference_server_port = request.app.state.inference_server_port
+    client = httpx.AsyncClient(base_url=f"http://localhost:{inference_server_port}")
     url = httpx.URL(path=request.url.path, query=request.url.query.encode("utf-8"))
     rp_req = client.build_request(
         request.method, url, headers=request.headers.raw, content=await request.body()
