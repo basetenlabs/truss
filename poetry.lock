@@ -1086,7 +1086,11 @@ protobuf = ["grpcio-tools (>=1.54.2)"]
 name = "gunicorn"
 version = "20.1.0"
 description = "WSGI HTTP Server for UNIX"
+<<<<<<< HEAD
 category = "dev"
+=======
+category = "main"
+>>>>>>> 793f339 (try Gunicorn instead)
 optional = false
 python-versions = ">=3.5"
 files = [
@@ -3426,7 +3430,11 @@ test = ["asv", "gmpy2", "mpmath", "pooch", "pytest", "pytest-cov", "pytest-timeo
 name = "setuptools"
 version = "67.8.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
+<<<<<<< HEAD
 category = "dev"
+=======
+category = "main"
+>>>>>>> 793f339 (try Gunicorn instead)
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -4466,4 +4474,8 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
+<<<<<<< HEAD
 content-hash = "e843d7f16273ec506f48694b942126c3ec5d1d3990601eb7e21d417d48339a28"
+=======
+content-hash = "cf7e4b3433a8b0a1371cc16c6fdfc97b72d7c7c4f1a9595c4f57b6fe11b5aecf"
+>>>>>>> 793f339 (try Gunicorn instead)
