@@ -60,7 +60,7 @@ def start_uvicorn_server(application: FastAPI, host: str = "*", port: int = 8080
         application,
         {
             "bind": "%s:%s" % (host, port),
-            "workers": number_of_workers(),
+            "workers": 1,
             "worker_class": "uvicorn.workers.UvicornWorker",
         },
     ).run()
