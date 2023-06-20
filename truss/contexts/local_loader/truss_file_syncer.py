@@ -14,7 +14,8 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.util.path import is_ignored, load_trussignore_patterns
+
+# from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import Change, watch
 
 OP_TO_ACTION = {
@@ -70,14 +71,14 @@ class TrussFilesSyncer(Thread):
         self.watch_path = watch_path
         self.emit_patches = TrussPatchEmitter(self.watch_path, self._logger)
         self.patch_applier = patch_applier
-        self.watch_filter = lambda _, path: not is_ignored(
-            Path(path),
-            load_trussignore_patterns(),
-        )
+        # self.watch_filter = lambda _, path: not is_ignored(
+        #     Path(path),
+        #     load_trussignore_patterns(),
+        # )
 
     def run(self) -> None:
         """Watch for files in background and apply appropriate patches."""
-        for changes in watch(self.watch_path, watch_filter=self.watch_filter):
+        for changes in watch(self.watch_path):  # watch_filter=self.watch_filter):
             for change in changes:
                 op, path = change
                 rel_path = Path(path).relative_to(self.watch_path.resolve())
