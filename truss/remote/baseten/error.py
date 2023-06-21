@@ -1,7 +1,4 @@
-import functools
 import json
-
-from requests.exceptions import RequestException
 
 
 class Error(Exception):
@@ -36,16 +33,3 @@ class AuthorizationError(Error):
     """Raised in places where the user needs to be logged in and is not."""
 
     pass
-
-
-def raises_api_error(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except RequestException as err:
-            raise ApiError(
-                f"Error calling {func.__name__}.", response=err.response
-            ) from err
-
-    return wrapper

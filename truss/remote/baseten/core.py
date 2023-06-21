@@ -1,15 +1,15 @@
 import logging
 from typing import IO, Optional, Tuple
 
-from truss.remote.baseten import api
-from truss.remote.baseten.tar import create_tar_with_progress_bar
-from truss.remote.baseten.utils import multipart_upload_boto3
+from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
+from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
 
 logger = logging.getLogger(__name__)
 
 
-def exists_model(model_name: str) -> bool:
+def exists_model(api: BasetenApi, model_name: str) -> bool:
     models = api.models()
     model_id_by_name = {model["name"]: model["id"] for model in models["models"]}
     return model_name in model_id_by_name
@@ -26,7 +26,7 @@ def archive_truss(b10_truss: TrussHandle) -> IO:
     return temp_file
 
 
-def upload_model(serialize_file: IO) -> str:
+def upload_model(api: BasetenApi, serialize_file: IO) -> str:
     temp_credentials_s3_upload = api.model_s3_upload_credentials()
     s3_key = temp_credentials_s3_upload.pop("s3_key")
     s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
@@ -38,6 +38,7 @@ def upload_model(serialize_file: IO) -> str:
 
 
 def create_model(
+    api: BasetenApi,
     model_name: str,
     s3_key: str,
     config: str,

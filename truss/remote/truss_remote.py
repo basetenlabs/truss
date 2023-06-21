@@ -1,26 +1,25 @@
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Dict, Optional
 
 import requests
 from truss.truss_handle import TrussHandle
 
 
 class TrussService(ABC):
-    """
-    TODO:
-    - Implement patch method
-    """
-
     def __init__(self, service_url: str, is_draft: bool, **kwargs):
         self._service_url = service_url
         self._is_draft = is_draft
 
-    def _send_request(self, url: str, method: str, data: Dict, headers: Dict = {}):
+    def _send_request(
+        self, url: str, method: str, headers: Dict = {}, data: Optional[Dict] = None
+    ):
         auth_header = self.authenticate()
         headers = {**headers, **auth_header}
         if method == "GET":
             return requests.request(method, url, headers=headers)
         elif method == "POST":
+            if not data:
+                raise ValueError("POST request must have data")
             return requests.request(method, url, json=data, headers=headers)
         else:
             raise ValueError(f"Unsupported method: {method}")
@@ -46,9 +45,12 @@ class TrussService(ABC):
         response = self._send_request(invocation_url, "POST", model_request_body)
         return response
 
+    def patch(self):
+        raise NotImplementedError
+
     @abstractmethod
     def authenticate(self) -> dict:
-        pass
+        return {}
 
 
 class TrussRemote(ABC):
