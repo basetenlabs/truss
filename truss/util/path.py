@@ -101,11 +101,15 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
 def load_trussignore_patterns(truss_ignore_file: Path):
     """Load patterns from a .truss_ignore file"""
     patterns = []
+
     with truss_ignore_file.open() as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                patterns.append(line)
+        lines = f.readlines()
+
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(line)
+
     return patterns
 
 
@@ -147,11 +151,9 @@ def is_ignored(
             if original_path.is_dir() and pattern.endswith("/"):
                 pattern = pattern.rstrip("/")
                 if fnmatch.fnmatch(path.name, pattern):
-                    print("Matched dir: ", path)
                     return True
             else:
                 if fnmatch.fnmatch(path.name, pattern):
-                    print("Matched file: ", path)
                     return True
 
         path = path.parent if path.parent != path else None  # type: ignore
