@@ -89,12 +89,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        split_group: ["1", "2", "3", "4", "5"]
+        split_group: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
     steps:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+      - run: poetry run pytest truss/tests  -m 'integration' --splits 10 --group ${{ matrix.split_group }}
 
 
   git-tag-if-version-changed:
