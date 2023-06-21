@@ -6,18 +6,15 @@ from typing import Dict
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from truss.server.control.control.endpoints import control_app
-from truss.server.control.control.helpers.errors import (
-    ModelLoadFailed,
-    PatchApplicatonError,
-)
-from truss.server.control.control.helpers.inference_server_controller import (
+from truss.server.control.endpoints import control_app
+from truss.server.control.helpers.errors import ModelLoadFailed, PatchApplicatonError
+from truss.server.control.helpers.inference_server_controller import (
     InferenceServerController,
 )
-from truss.server.control.control.helpers.inference_server_process_controller import (
+from truss.server.control.helpers.inference_server_process_controller import (
     InferenceServerProcessController,
 )
-from truss.server.control.control.helpers.truss_patch.model_container_patch_applier import (
+from truss.server.control.patch_appliers.model_container_patch_applier import (
     ModelContainerPatchApplier,
 )
 from truss.server.shared.logging import setup_logging

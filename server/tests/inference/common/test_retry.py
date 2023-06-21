@@ -2,7 +2,7 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from truss.server.server.common.retry import retry
+from truss.server.inference.common.retry import retry
 
 
 class FailForCallCount:

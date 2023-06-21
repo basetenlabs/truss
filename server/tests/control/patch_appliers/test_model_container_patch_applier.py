@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 from truss.core.patch.types import Action, ModelCodePatch, Patch, PatchType  # noqa
-from truss.server.control.control.helpers.truss_patch.model_container_patch_applier import (  # noqa
+from truss.server.control.patch_appliers.model_container_patch_applier import (  # noqa
     ModelContainerPatchApplier,
 )
 

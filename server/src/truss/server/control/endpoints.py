@@ -6,7 +6,7 @@ from httpx import URL, ConnectError
 from starlette.requests import Request
 from starlette.responses import Response
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
-from truss.server.control.control.helpers.errors import ModelLoadFailed, ModelNotReady
+from truss.server.control.helpers.errors import ModelLoadFailed, ModelNotReady
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 

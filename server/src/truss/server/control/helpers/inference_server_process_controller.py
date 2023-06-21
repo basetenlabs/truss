@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-from truss.server.control.control.helpers.context_managers import current_directory
+from truss.server.control.helpers.context_managers import current_directory
 
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 

@@ -5,16 +5,16 @@ import time
 from typing import Optional
 
 from truss.core.patch.types import Patch, PatchType
-from truss.server.control.control.helpers.errors import (
+from truss.server.control.helpers.errors import (
     InadmissiblePatch,
     PatchFailedRecoverable,
     PatchFailedUnrecoverable,
     UnsupportedPatch,
 )
-from truss.server.control.control.helpers.inference_server_process_controller import (
+from truss.server.control.helpers.inference_server_process_controller import (
     InferenceServerProcessController,
 )
-from truss.server.control.control.helpers.truss_patch.model_container_patch_applier import (
+from truss.server.control.patch_appliers.model_container_patch_applier import (
     ModelContainerPatchApplier,
 )
 

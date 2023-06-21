@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 import yaml
-from truss.server.server.model_wrapper import ModelWrapper
+from truss.server.inference.model_wrapper import ModelWrapper
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@ from pathlib import Path
 from threading import Thread
 
 from application import create_app
-from truss.server.control.control.helpers.inference_server_starter import (
+from truss.server.control.helpers.inference_server_starter import (
     inference_server_startup_flow,
 )
 

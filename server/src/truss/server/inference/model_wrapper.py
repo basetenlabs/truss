@@ -10,8 +10,8 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Dict, Optional
 
-from truss.server.server.common.patches import apply_patches
-from truss.server.server.common.retry import retry
+from truss.server.inference.common.patches import apply_patches
+from truss.server.inference.common.retry import retry
 from truss.server.shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"

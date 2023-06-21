@@ -13,7 +13,7 @@ from truss.core.patch.types import (  # noqa
     PythonRequirementPatch,
 )
 from truss.core.types import PatchRequest
-from truss.server.control.control.application import create_app  # noqa
+from truss.server.control.application import create_app  # noqa
 
 
 @pytest.fixture

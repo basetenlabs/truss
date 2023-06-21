@@ -1,5 +1,5 @@
 import pytest
-from truss.server.control.control.helpers.truss_patch.requirement_name_identifier import (
+from truss.server.control.patch_appliers.requirement_name_identifier import (
     identify_requirement_name,
     reqs_by_name,
 )

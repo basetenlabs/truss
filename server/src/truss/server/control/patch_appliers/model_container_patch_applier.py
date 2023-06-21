@@ -11,8 +11,8 @@ from truss.core.patch.types import (
     SystemPackagePatch,
 )
 from truss.core.truss_config import TrussConfig
-from truss.server.control.control.helpers.errors import UnsupportedPatch
-from truss.server.control.control.helpers.truss_patch.model_code_patch_applier import (
+from truss.server.control.helpers.errors import UnsupportedPatch
+from truss.server.control.patch_appliers.model_code_patch_applier import (
     apply_model_code_patch,
 )
 
