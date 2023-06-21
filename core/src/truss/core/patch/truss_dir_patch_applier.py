@@ -3,25 +3,25 @@ from dataclasses import replace
 from pathlib import Path
 from typing import List
 
-from truss.core.patch.types import (
+from truss.templates.control.control.helpers.errors import UnsupportedPatch
+from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
+    apply_model_code_patch,
+)
+from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
+    identify_requirement_name,
+    reqs_by_name,
+)
+from truss.templates.control.control.helpers.truss_patch.system_packages import (
+    system_packages_set,
+)
+from truss.templates.control.control.helpers.types import (
     Action,
     ModelCodePatch,
     Patch,
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.core.templates.control.control.helpers.errors import UnsupportedPatch
-from truss.core.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
-    apply_model_code_patch,
-)
-from truss.core.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
-    identify_requirement_name,
-    reqs_by_name,
-)
-from truss.core.templates.control.control.helpers.truss_patch.system_packages import (
-    system_packages_set,
-)
-from truss.core.truss_config import TrussConfig
+from truss.truss_config import TrussConfig
 
 
 class TrussDirPatchApplier:

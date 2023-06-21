@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from truss.core.patch.dir_signature import directory_content_signature
-from truss.core.patch.types import TrussSignature
+from truss.patch.dir_signature import directory_content_signature
+from truss.patch.types import TrussSignature
 
 
 def calc_truss_signature(truss_dir: Path) -> TrussSignature:

@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List
 
-from truss.core.patch.types import Patch, TrussSignature
+from pydantic import BaseModel
+from truss.core.patch.types import TrussSignature, Patch
 
 
 class ModelFrameworkType(Enum):
@@ -70,3 +71,25 @@ class PatchDetails:
                 Patch.from_dict(patch_op) for patch_op in patch_details["patch_ops"]
             ],
         )
+
+
+class PatchRequest(BaseModel):
+    """Request to patch running container"""
+
+    hash: str
+    prev_hash: str
+    patches: List[Patch]
+
+    def to_dict(self):
+        return {
+            "hash": self.hash,
+            "prev_hash": self.prev_hash,
+            "patches": [patch.to_dict() for patch in self.patches],
+        }
+
+    @staticmethod
+    def from_dict(patch_request_dict: Dict):
+        current_hash = patch_request_dict["hash"]
+        prev_hash = patch_request_dict["prev_hash"]
+        patches = patch_request_dict["patches"]
+        return PatchRequest(hash=current_hash, prev_hash=prev_hash, patches=patches)
