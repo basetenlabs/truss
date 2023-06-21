@@ -35,7 +35,7 @@ class AuthService:
         self.validate()
         return ApiKey(os.environ["BASETEN_API_KEY"])
 
-    def set_auth(self, api_key: str):
+    def set_key(self, api_key: str) -> AuthToken:
         os.environ["BASETEN_API_KEY"] = api_key
         return self.authenticate()
 
