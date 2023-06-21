@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from truss.types import PatchRequest
 
 # Needed to simulate the set up on the model docker container
@@ -61,25 +61,33 @@ def app(truss_container_fs, truss_original_hash):
             inference_server_controller.stop()
 
 
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
 @pytest.fixture()
-def client(app):
-    return TestClient(app)
+async def client(app):
+    async with AsyncClient(app=app, base_url="http://localhost:8080") as client:
+        yield client
 
 
-def test_restart_server(client):
-    resp = client.post("/control/stop_inference_server")
+@pytest.mark.anyio
+async def test_restart_server(client):
+    resp = await client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json()
     assert "msg" in resp.json()
 
     # Try second restart
-    resp = client.post("/control/stop_inference_server")
+    resp = await client.post("/control/stop_inference_server")
     assert resp.status_code == 200
     assert "error" not in resp.json()
     assert "msg" in resp.json()
 
 
-def test_patch_model_code_update_existing(app, client):
+@pytest.mark.anyio
+async def test_patch_model_code_update_existing(app, client):
     mock_model_file_content = """
 class Model:
     def predict(self, request):
@@ -99,7 +107,8 @@ class Model:
     assert new_model_file_content == mock_model_file_content
 
 
-def test_patch_model_code_update_predict_on_long_load_time(app, client):
+@pytest.mark.anyio
+async def test_patch_model_code_update_predict_on_long_load_time(app, client):
     mock_model_file_content = """
 class Model:
     def load(self):
@@ -118,12 +127,13 @@ class Model:
         ),
     )
     _verify_apply_patch_success(client, patch)
-    resp = client.post("/v1/models/model:predict", json={})
+    resp = await client.post("/v1/models/model:predict", json={})
     resp.status_code == 200
     assert resp.json() == {"prediction": [1]}
 
 
-def test_patch_model_code_create_new(app, client):
+@pytest.mark.anyio
+async def test_patch_model_code_create_new(app, client):
     empty_content = ""
     patch = Patch(
         type=PatchType.MODEL_CODE,
@@ -133,11 +143,12 @@ def test_patch_model_code_create_new(app, client):
             content=empty_content,
         ),
     )
-    _verify_apply_patch_success(client, patch)
+    await _verify_apply_patch_success(client, patch)
     assert (app.state.inference_server_home / "model" / "touched").exists()
 
 
-def test_patch_model_code_create_in_new_dir(app, client):
+@pytest.mark.anyio
+async def test_patch_model_code_create_in_new_dir(app, client):
     empty_content = ""
     patch = Patch(
         type=PatchType.MODEL_CODE,
@@ -147,40 +158,44 @@ def test_patch_model_code_create_in_new_dir(app, client):
             content=empty_content,
         ),
     )
-    _verify_apply_patch_success(client, patch)
+    await _verify_apply_patch_success(client, patch)
     assert (
         app.state.inference_server_home / "model" / "new_directory" / "touched"
     ).exists()
 
 
-def test_404(client):
-    resp = client.post("/control/nonexitant")
+@pytest.mark.anyio
+async def test_404(client):
+    resp = await client.post("/control/nonexitant")
     assert resp.status_code == 404
 
 
-def test_invalid_patch(client):
+@pytest.mark.anyio
+async def test_invalid_patch(client):
     patch_request = PatchRequest(hash="dummy", prev_hash="invalid", patches=[])
-    resp = client.post("/control/patch", json=patch_request.to_dict())
+    resp = await client.post("/control/patch", json=patch_request.to_dict())
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "inadmissible_patch"
     assert "msg" not in resp.json()
 
 
-def test_patch_failed_recoverable(client):
+@pytest.mark.anyio
+async def test_patch_failed_recoverable(client):
     will_fail_patch = Patch(
         type=PatchType.PYTHON_REQUIREMENT,
         body=PythonRequirementPatch(
             action=Action.ADD, requirement="not_a_valid_python_requirement"
         ),
     )
-    resp = _apply_patches(client, [will_fail_patch])
+    resp = await _apply_patches(client, [will_fail_patch])
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "patch_failed_recoverable"
 
 
-def test_patch_failed_unrecoverable(client):
+@pytest.mark.anyio
+async def test_patch_failed_unrecoverable(client):
     will_pass_patch = Patch(
         type=PatchType.PYTHON_REQUIREMENT,
         body=PythonRequirementPatch(action=Action.ADD, requirement="requests"),
@@ -191,26 +206,28 @@ def test_patch_failed_unrecoverable(client):
             action=Action.ADD, requirement="not_a_valid_python_requirement"
         ),
     )
-    resp = _apply_patches(client, [will_pass_patch, will_fail_patch])
+    resp = await _apply_patches(client, [will_pass_patch, will_fail_patch])
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "patch_failed_unrecoverable"
 
 
-def _verify_apply_patch_success(client, patch: Patch):
-    original_hash = client.get("/control/truss_hash").json()["result"]
+async def _verify_apply_patch_success(client, patch: Patch):
+    resp = await client.get("/control/truss_hash")
+    original_hash = resp.json()["result"]
     patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=[patch])
-    resp = client.post("/control/patch", json=patch_request.to_dict())
-    resp = _apply_patches(client, [patch])
+    resp = await client.post("/control/patch", json=patch_request.to_dict())
+    resp = await _apply_patches(client, [patch])
     assert resp.status_code == 200
     assert "error" not in resp.json()
     assert "msg" in resp.json()
 
 
-def _apply_patches(client, patches: List[Patch]):
-    original_hash = client.get("/control/truss_hash").json()["result"]
+async def _apply_patches(client, patches: List[Patch]):
+    resp = await client.get("/control/truss_hash")
+    original_hash = resp.json()["result"]
     patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=patches)
-    return client.post("/control/patch", json=patch_request.to_dict())
+    return await client.post("/control/patch", json=patch_request.to_dict())
 
 
 @contextmanager
