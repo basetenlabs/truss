@@ -132,18 +132,7 @@ def test_build_training_docker_image_from_user_base_image(custom_model_truss_dir
 @pytest.mark.integration
 def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.set_base_image("pytorch/pytorch", "/opt/conda/bin/python")
-    with ensure_kill_all():
-        result = th.docker_predict([1, 2])
-        assert result == {"predictions": [4, 5]}
-
-
-@pytest.mark.integration
-def test_docker_predict_custom_base_image_with_python_executable_path(
-    custom_model_truss_dir_with_pre_and_post,
-):
-    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    th.set_base_image("pytorch/pytorch", "/opt/conda/bin/python")
+    th.set_base_image("python:3.9.17-slim-bullseye", "/usr/local/bin/python3")
     with ensure_kill_all():
         result = th.docker_predict([1, 2])
         assert result == {"predictions": [4, 5]}

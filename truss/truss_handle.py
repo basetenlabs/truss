@@ -710,7 +710,7 @@ class TrussHandle:
 
         self._update_config(enable_gpu_fn)
 
-    def set_base_image(self, image: str, python_executable_path: str):
+    def set_base_image(self, image: str, python_executable_path: str = ""):
         """Set the base image for a given truss"""
 
         def define_base_image_fn(conf: TrussConfig):
