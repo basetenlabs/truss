@@ -1,6 +1,7 @@
 import logging
 from typing import IO, Optional, Tuple
 
+import truss
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
@@ -51,7 +52,7 @@ def create_model(
         s3_key,
         config,
         semver_bump,
-        "0.6.4",  # TODO(Abu): Make this pinned to Truss version, might need Baseten changes
+        f"truss=={truss.version()}",
         is_trusted,
         external_model_version_id,
     )
