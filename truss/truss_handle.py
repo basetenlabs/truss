@@ -451,10 +451,6 @@ class TrussHandle:
             )
         )
 
-    def clear_environment_variables(self):
-        """Remove environment variables from truss model's config."""
-        self._update_config(lambda conf: replace(conf, environment_variables={}))
-
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
         validate_secret_name(secret_name)
         self._update_config(
