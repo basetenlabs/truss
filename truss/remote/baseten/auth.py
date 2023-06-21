@@ -1,8 +1,11 @@
 import functools
+import logging
 import os
 from typing import Optional
 
 from truss.remote.baseten.error import AuthorizationError
+
+logger = logging.getLogger(__name__)
 
 
 class ApiKey:
@@ -31,6 +34,9 @@ class AuthService:
         return ApiKey(os.environ["BASETEN_API_KEY"])
 
     def set_key(self, api_key: str) -> ApiKey:
+        logger.warning(
+            "Setting BASETEN_API_KEY in environment variables. This may not persist."
+        )
         os.environ["BASETEN_API_KEY"] = api_key
         return self.authenticate()
 
