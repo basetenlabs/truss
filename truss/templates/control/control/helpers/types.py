@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Type, Union
+from typing import Dict, List, Optional, Type, Union
 
 
 class PatchType(Enum):
@@ -10,6 +10,11 @@ class PatchType(Enum):
     MODEL_CODE = "model_code"
     PYTHON_REQUIREMENT = "python_requirement"
     SYSTEM_PACKAGE = "system_package"
+    CONFIG = "config"
+    PACKAGE = "package"
+    DATA = "data"
+    ENVIRONMENT_VARIABLE = "environment_variable"
+    EXTERNAL_DATA = "external_data"
 
 
 class Action(Enum):
@@ -95,13 +100,85 @@ class SystemPackagePatch(PatchBody):
         )
 
 
+@dataclass
+class ConfigPatch(PatchBody):
+    item: dict
+
+    def to_dict(self):
+        pass
+
+    @staticmethod
+    def from_dict(patch_dict: Dict):
+        pass
+
+
+@dataclass
+class DataPatch(PatchBody):
+    def to_dict(self):
+        pass
+
+    @staticmethod
+    def from_dict(patch_dict: Dict):
+        pass
+
+
+@dataclass
+class PackagePatch(PatchBody):
+    def to_dict(self):
+        pass
+
+    @staticmethod
+    def from_dict(patch_dict: Dict):
+        pass
+
+
+@dataclass
+class EnvVarPatch(PatchBody):
+    item: dict
+
+    def to_dict(self):
+        pass
+
+    @staticmethod
+    def from_dict(patch_dict: Dict):
+        pass
+
+
+@dataclass
+class ExternalDataPatch(PatchBody):
+    item: List[Dict[str, str]]
+
+    def to_dict(self):
+        pass
+
+    @staticmethod
+    def from_dict(patch_dict: Dict):
+        pass
+
+
 PATCH_BODY_BY_TYPE: Dict[
     PatchType,
-    Type[Union[ModelCodePatch, PythonRequirementPatch, SystemPackagePatch]],
+    Type[
+        Union[
+            ModelCodePatch,
+            PythonRequirementPatch,
+            SystemPackagePatch,
+            ConfigPatch,
+            DataPatch,
+            PackagePatch,
+            EnvVarPatch,
+            ExternalDataPatch,
+        ]
+    ],
 ] = {
     PatchType.MODEL_CODE: ModelCodePatch,
     PatchType.PYTHON_REQUIREMENT: PythonRequirementPatch,
     PatchType.SYSTEM_PACKAGE: SystemPackagePatch,
+    PatchType.CONFIG: ConfigPatch,
+    PatchType.DATA: DataPatch,
+    PatchType.PACKAGE: PackagePatch,
+    PatchType.ENVIRONMENT_VARIABLE: EnvVarPatch,
+    PatchType.EXTERNAL_DATA: ExternalDataPatch,
 }
 
 

@@ -5,6 +5,8 @@ from truss.patch.calc_patch import calc_truss_patch
 from truss.patch.signature import calc_truss_signature
 from truss.templates.control.control.helpers.types import (
     Action,
+    ConfigPatch,
+    EnvVarPatch,
     ModelCodePatch,
     Patch,
     PatchType,
@@ -263,14 +265,43 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
     ]
 
 
-def test_calc_config_patches_non_python_or_system_requirement_change(
+def test_calc_config_patches_add_env_var(
     custom_model_truss_dir: Path,
 ):
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         config_op=lambda config: config.environment_variables.update({"foo": "bar"}),
     )
-    assert patches is None
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.ENVIRONMENT_VARIABLE,
+        body=EnvVarPatch(
+            action=Action.ADD,
+            item={"foo": "bar"},
+        ),
+    )
+
+
+def test_calc_config_patches_add_remove_env_var(
+    custom_model_truss_dir: Path,
+):
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_pre_op=lambda config: config.environment_variables.update(
+            {"foo": "bar"}
+        ),
+        config_op=lambda config: config.environment_variables.clear(),
+    )
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.ENVIRONMENT_VARIABLE,
+        body=EnvVarPatch(
+            action=Action.REMOVE,
+            item={"foo": "bar"},
+        ),
+    )
 
 
 def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
@@ -343,6 +374,46 @@ def test_calc_config_patches_add_and_remove_system_package(
             ),
         ),
     ]
+
+
+def test_calc_config_patches_toggle_apply_library_patches(custom_model_truss_dir: Path):
+    def config_op(config: TrussConfig):
+        config.apply_library_patches = False
+
+    patches = _apply_config_change_and_calc_patches(custom_model_truss_dir, config_op)
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            item={"apply_library_patches": False},
+        ),
+    )
+
+
+def test_calc_config_patches_add_model_name(custom_model_truss_dir: Path):
+    def config_op(config: TrussConfig):
+        config.model_name = "foobar"
+
+    patches = _apply_config_change_and_calc_patches(custom_model_truss_dir, config_op)
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            item={"model_name": "foobar"},
+        ),
+    )
+
+
+def test_calc_config_patches_unsupported_config_patch(custom_model_truss_dir: Path):
+    def config_op(config: TrussConfig):
+        config.live_reload = True
+
+    patches = _apply_config_change_and_calc_patches(custom_model_truss_dir, config_op)
+    assert len(patches) == 0
 
 
 def _apply_config_change_and_calc_patches(

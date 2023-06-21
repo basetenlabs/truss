@@ -1,6 +1,7 @@
 import logging
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union
 
 import yaml
 from truss.constants import CONFIG_FILE
@@ -14,19 +15,29 @@ from truss.templates.control.control.helpers.truss_patch.system_packages import 
 )
 from truss.templates.control.control.helpers.types import (
     Action,
+    ConfigPatch,
+    DataPatch,
+    EnvVarPatch,
+    ExternalDataPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.truss_config import ExternalData, TrussConfig
 from truss.truss_spec import TrussSpec
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
     "**/__pycache__/**/*",
     "**/__pycache__/**",
+]
+UNPATCHABLE_CONFIG_KEYS = [
+    "live_reload",
+    "python_version",
+    "resources",
 ]
 
 
@@ -196,14 +207,100 @@ def calc_config_patches(
     """
     # Currently only calculate patches for python requirements and system
     # packages, bail out if anything else has changed.
-    if not _only_expected_config_differences(prev_config, new_config):
-        return None
+    # if not _only_expected_config_differences(prev_config, new_config):
+    #     return None
 
+    config_patches = _calc_general_config_patches(prev_config, new_config)
     python_requirement_patches = _calc_python_requirements_patches(
         prev_config, new_config
     )
     system_package_patches = _calc_system_packages_patches(prev_config, new_config)
-    return [*python_requirement_patches, *system_package_patches]
+    return [*config_patches, *python_requirement_patches, *system_package_patches]
+
+
+def _calc_general_config_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> List[Patch]:
+    """Calculate patch based on changes to dictionary config pairs
+    namely, environment variables, external package dirs, model metadata, and secrets.
+
+    Empty list means no relevant differences found.
+    """
+    patch_generator_defaults = {
+        "environment_variables": _mk_env_var_patch,
+        "external_package_dirs": _mk_package_patch,
+        "external_data": _mk_external_data_patch,
+    }
+
+    patch_generator = defaultdict(lambda: _mk_config_patch, **patch_generator_defaults)
+
+    def generate_config_patch(
+        key: str,
+        patch_generator,
+    ) -> List[Patch]:
+        patches: List[Patch] = []
+        prev_items = getattr(prev_config, key)
+        new_items = getattr(new_config, key)
+        if key in UNPATCHABLE_CONFIG_KEYS and new_items != prev_items:
+            logger.info(f"Patching is not supported for: {key}")
+            return patches
+        if isinstance(new_items, Dict):
+            prev_item_names = set(prev_items.keys())
+            new_item_names = set(new_items.keys())
+        elif isinstance(new_items, List):
+            prev_item_names = set(prev_items)
+            new_item_names = set(new_items)
+        elif isinstance(new_items, ExternalData):
+            if new_items != prev_items:
+                patches.append(patch_generator(Action.UPDATE, new_items.to_list))
+        elif isinstance(new_items, str):
+            if new_items != prev_items:
+                patches.append(patch_generator(Action.UPDATE, {key: new_items}))
+            return patches
+        elif isinstance(new_items, bool):
+            if new_items != prev_items:
+                patches.append(patch_generator(Action.UPDATE, {key: new_items}))
+            return patches
+        else:
+            if prev_items and new_items != prev_items:
+                logger.info(f"Patching is not supported for: {key}")
+            return patches
+
+        def _get_item_value(struct: Union[dict, list], key: str):
+            if isinstance(struct, dict):
+                return struct[key]
+            return key
+
+        removed_items = prev_item_names.difference(new_item_names)
+        for removed_item in removed_items:
+            patches.append(
+                patch_generator(
+                    Action.REMOVE,
+                    {removed_item: _get_item_value(prev_items, removed_item)},
+                )
+            )
+
+        added_items = new_item_names.difference(prev_item_names)
+        for added_item in added_items:
+            patches.append(
+                patch_generator(
+                    Action.ADD, {added_item: _get_item_value(new_items, added_item)}
+                )
+            )
+
+        for item in new_item_names.intersection(prev_item_names):
+            if _get_item_value(new_items, item) != _get_item_value(prev_items, item):
+                patches.append(
+                    patch_generator(Action.UPDATE, _get_item_value(new_items, item))
+                )
+        return patches
+
+    patches = []
+    for key in set(new_config.to_dict().keys()).difference(
+        set(["requirements", "system_packages"])
+    ):
+        patches.extend(generate_config_patch(key, patch_generator[key]))
+    return patches
 
 
 def _calc_python_requirements_patches(
@@ -211,8 +308,7 @@ def _calc_python_requirements_patches(
 ) -> List[Patch]:
     """Calculate patch based on changes to python requirements.
 
-    Returns None if patch cannot be calculated. Empty list means no relevant
-    differences found.
+    Empty list means no relevant differences found.
     """
     patches = []
     prev_reqs = reqs_by_name(prev_config.requirements)
@@ -239,8 +335,7 @@ def _calc_system_packages_patches(
 ) -> List[Patch]:
     """Calculate patch based on changes to system packates.
 
-    Returns None if patch cannot be calculated. Empty list means no relevant
-    differences found.
+    Empty list means no relevant differences found.
     """
     patches = []
     prev_pkgs = system_packages_set(prev_config.system_packages)
@@ -268,6 +363,54 @@ def _only_expected_config_differences(
     new_config_dict["system_packages"] = []
 
     return prev_config_dict == new_config_dict
+
+
+def _mk_config_patch(action: Action, item: dict) -> Patch:
+    return Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=action,
+            item=item,
+        ),
+    )
+
+
+def _mk_data_patch(action: Action) -> Patch:
+    return Patch(
+        type=PatchType.DATA,
+        body=DataPatch(
+            action=action,
+        ),
+    )
+
+
+def _mk_package_patch(action: Action) -> Patch:
+    return Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=action,
+        ),
+    )
+
+
+def _mk_env_var_patch(action: Action, item: dict) -> Patch:
+    return Patch(
+        type=PatchType.ENVIRONMENT_VARIABLE,
+        body=EnvVarPatch(
+            action=action,
+            item=item,
+        ),
+    )
+
+
+def _mk_external_data_patch(action: Action, item: List[Dict[str, str]]) -> Patch:
+    return Patch(
+        type=PatchType.EXTERNAL_DATA,
+        body=ExternalDataPatch(
+            action=action,
+            item=item,
+        ),
+    )
 
 
 def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
