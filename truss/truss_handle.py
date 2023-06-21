@@ -69,7 +69,7 @@ from truss.templates.shared.serialization import (
 )
 from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.types import Example, PatchDetails
+from truss.types import Example, PatchDetails, PatchRequest
 from truss.util.path import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
 from truss.validation import validate_secret_name
 
@@ -451,6 +451,10 @@ class TrussHandle:
             )
         )
 
+    def clear_environment_variables(self):
+        """Remove environment variables from truss model's config."""
+        self._update_config(lambda conf: replace(conf, environment_variables={}))
+
     def add_secret(self, secret_name: str, default_secret_value: str = ""):
         validate_secret_name(secret_name)
         self._update_config(
@@ -662,7 +666,7 @@ class TrussHandle:
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
-    def _get_running_serving_container_ignore_hash(self):
+    def get_running_serving_container_ignore_hash(self):
         containers = self.get_serving_docker_containers_from_labels(
             labels={TRUSS_DIR: str(self._truss_dir)}
         )
@@ -726,24 +730,25 @@ class TrussHandle:
         self._update_config(define_base_image_fn)
 
     @proxy_to_shadow_if_scattered
-    def patch_container(self, patch_request: Dict):
+    def patch_container(self, patch_request: PatchRequest):
         """Patch changes onto the container running this Truss.
 
         Useful for local incremental development.
-        TODO(pankaj): Turn patch_request into a dataclass
         """
         if not self.spec.live_reload:
             raise ValueError("Not a control truss: applying patch is not supported.")
 
         # Note that we match on only the truss directory, not hash.
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         if not container:
             raise ValueError(
                 "Only running trusses can be patched: no running containers found for this truss."
             )
 
         model_base_url = _get_url_from_container(container)
-        resp = requests.post(f"{model_base_url}/control/patch", json=patch_request)
+        resp = requests.post(
+            f"{model_base_url}/control/patch", json=patch_request.to_dict()
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -759,7 +764,7 @@ class TrussHandle:
                 "Not a control truss fetching truss hash is not supported."
             )
 
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         model_base_url = _get_url_from_container(container)
         resp = requests.get(f"{model_base_url}/control/truss_hash")
         resp.raise_for_status()
@@ -788,7 +793,7 @@ class TrussHandle:
         if not self.spec.live_reload:
             raise ValueError("Not a control truss, operation not supported.")
 
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         model_base_url = _get_url_from_container(container)
         resp = requests.get(f"{model_base_url}/control/has_partially_applied_patch")
         resp.raise_for_status()
@@ -979,7 +984,7 @@ class TrussHandle:
         if not self.is_control_truss:
             return None
 
-        container = self._get_running_serving_container_ignore_hash()
+        container = self.get_running_serving_container_ignore_hash()
         if container is None:
             return None
 
@@ -1013,11 +1018,11 @@ class TrussHandle:
             )
             return container
 
-        patch_request = {
-            "hash": current_hash,
-            "prev_hash": running_truss_hash,
-            "patches": [patch.to_dict() for patch in patch_details.patch_ops],
-        }
+        patch_request = PatchRequest(
+            hash=current_hash,
+            prev_hash=running_truss_hash,
+            patches=patch_details.patch_ops,
+        )
         resp = self.patch_container(patch_request)
         if "error" in resp:
             raise RuntimeError(f'Failed to patch control truss {resp["error"]}')
