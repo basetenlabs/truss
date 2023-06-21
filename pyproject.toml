@@ -35,6 +35,7 @@ httpx = "^0.24.1"
 psutil = "^5.9.4"
 joblib = "^1.2.0"
 pydantic = "^1.10.9"
+boto3 = "^1.26.157"
 
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"
