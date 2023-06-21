@@ -27,7 +27,6 @@ from truss.templates.control.control.helpers.types import (  # noqa
     Action,
     ModelCodePatch,
     Patch,
-    PatchBody,
     PatchType,
     PythonRequirementPatch,
 )
@@ -68,8 +67,8 @@ def anyio_backend():
 
 @pytest.fixture()
 async def client(app):
-    async with AsyncClient(app=app, base_url="http://localhost:8080") as client:
-        yield client
+    async with AsyncClient(app=app, base_url="http://localhost:8080") as async_client:
+        yield async_client
 
 
 @pytest.mark.anyio
@@ -101,7 +100,7 @@ class Model:
             content=mock_model_file_content,
         ),
     )
-    _verify_apply_patch_success(client, patch)
+    await _verify_apply_patch_success(client, patch)
     with (app.state.inference_server_home / "model" / "model.py").open() as model_file:
         new_model_file_content = model_file.read()
     assert new_model_file_content == mock_model_file_content
@@ -126,7 +125,7 @@ class Model:
             content=mock_model_file_content,
         ),
     )
-    _verify_apply_patch_success(client, patch)
+    await _verify_apply_patch_success(client, patch)
     resp = await client.post("/v1/models/model:predict", json={})
     resp.status_code == 200
     assert resp.json() == {"prediction": [1]}
@@ -215,6 +214,7 @@ async def test_patch_failed_unrecoverable(client):
 async def _verify_apply_patch_success(client, patch: Patch):
     resp = await client.get("/control/truss_hash")
     original_hash = resp.json()["result"]
+    print(f"ORIGINAL HASH: {original_hash}")
     patch_request = PatchRequest(hash="dummy", prev_hash=original_hash, patches=[patch])
     resp = await client.post("/control/patch", json=patch_request.to_dict())
     resp = await _apply_patches(client, [patch])
