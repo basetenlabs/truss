@@ -12,7 +12,7 @@ fastapi = "^0.97.0"
 pyyaml = "^6.0"
 requests = "^2.31.0"
 tenacity = "^8.2.2"
-truss-common = {path = "../truss_common", develop=true}
+truss-common = {path = "../truss.core", develop=true}
 python-json-logger = "^2.0.7"
 uvicorn = "^0.22.0"
 uvloop = "^0.17.0"

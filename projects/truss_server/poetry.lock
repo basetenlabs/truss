@@ -816,7 +816,7 @@ pyyaml = "^6.0"
 
 [package.source]
 type = "directory"
-url = "../truss_common"
+url = "../truss.core"
 
 [[package]]
 name = "typing-extensions"
