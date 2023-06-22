@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   integration_tests:
-    runs-on: ubuntu-20.04
+    runs-on: runner-16core-64gb
     strategy:
       fail-fast: false
       matrix:
