@@ -11,8 +11,15 @@ class TrussService(ABC):
         self._is_draft = is_draft
 
     def _send_request(
-        self, url: str, method: str, headers: Dict = {}, data: Optional[Dict] = None
+        self,
+        url: str,
+        method: str,
+        headers: Optional[Dict] = None,
+        data: Optional[Dict] = None,
     ):
+        if not headers:
+            headers = {}
+
         auth_header = self.authenticate()
         headers = {**headers, **auth_header}
         if method == "GET":
