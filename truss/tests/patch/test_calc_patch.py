@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
+import yaml
 from truss.patch.calc_patch import calc_truss_patch
 from truss.patch.signature import calc_truss_signature
 from truss.templates.control.control.helpers.types import (
@@ -170,15 +171,23 @@ def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path
         custom_model_truss_dir,
         lambda config: config.requirements.append("requests==1.0.0"),
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.PYTHON_REQUIREMENT,
-        body=PythonRequirementPatch(
-            action=Action.ADD,
-            requirement="requests==1.0.0",
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.ADD,
+                requirement="requests==1.0.0",
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: Path):
@@ -187,15 +196,23 @@ def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: P
         config_pre_op=lambda config: config.requirements.append("requests==1.0.0"),
         config_op=lambda config: config.requirements.clear(),
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.PYTHON_REQUIREMENT,
-        body=PythonRequirementPatch(
-            action=Action.REMOVE,
-            requirement="requests",
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.REMOVE,
+                requirement="requests",
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: Path):
@@ -207,15 +224,23 @@ def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: P
         config_pre_op=lambda config: config.requirements.append("requests==1.0.0"),
         config_op=update_requests_version,
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.PYTHON_REQUIREMENT,
-        body=PythonRequirementPatch(
-            action=Action.UPDATE,
-            requirement="requests==2.0.0",
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE,
+                requirement="requests==2.0.0",
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_add_remove_and_update_python_requirement(
@@ -238,7 +263,15 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
         config_pre_op=config_pre_op,
         config_op=config_op,
     )
-    assert len(patches) == 3
+    assert len(patches) == 4
+    assert patches[0] == Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+        ),
+    )
+    patches = patches[1:]
     patches.sort(key=lambda patch: patch.body.requirement)
     assert patches == [
         Patch(
@@ -272,15 +305,23 @@ def test_calc_config_patches_add_env_var(
         custom_model_truss_dir,
         config_op=lambda config: config.environment_variables.update({"foo": "bar"}),
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.ENVIRONMENT_VARIABLE,
-        body=EnvVarPatch(
-            action=Action.ADD,
-            item={"foo": "bar"},
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.ENVIRONMENT_VARIABLE,
+            body=EnvVarPatch(
+                action=Action.ADD,
+                item={"foo": "bar"},
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_add_remove_env_var(
@@ -293,15 +334,23 @@ def test_calc_config_patches_add_remove_env_var(
         ),
         config_op=lambda config: config.environment_variables.clear(),
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.ENVIRONMENT_VARIABLE,
-        body=EnvVarPatch(
-            action=Action.REMOVE,
-            item={"foo": "bar"},
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.ENVIRONMENT_VARIABLE,
+            body=EnvVarPatch(
+                action=Action.REMOVE,
+                item={"foo": "bar"},
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
@@ -309,15 +358,23 @@ def test_calc_config_patches_add_system_package(custom_model_truss_dir: Path):
         custom_model_truss_dir,
         lambda config: config.system_packages.append("curl"),
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.SYSTEM_PACKAGE,
-        body=SystemPackagePatch(
-            action=Action.ADD,
-            package="curl",
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.SYSTEM_PACKAGE,
+            body=SystemPackagePatch(
+                action=Action.ADD,
+                package="curl",
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path):
@@ -326,15 +383,23 @@ def test_calc_config_patches_remove_system_package(custom_model_truss_dir: Path)
         config_pre_op=lambda config: config.system_packages.append("curl"),
         config_op=lambda config: config.system_packages.clear(),
     )
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.SYSTEM_PACKAGE,
-        body=SystemPackagePatch(
-            action=Action.REMOVE,
-            package="curl",
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
         ),
-    )
+        Patch(
+            type=PatchType.SYSTEM_PACKAGE,
+            body=SystemPackagePatch(
+                action=Action.REMOVE,
+                package="curl",
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_add_and_remove_system_package(
@@ -357,6 +422,15 @@ def test_calc_config_patches_add_and_remove_system_package(
         config_pre_op=config_pre_op,
         config_op=config_op,
     )
+    assert len(patches) == 3
+    assert patches[0] == Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+        ),
+    )
+    patches = patches[1:]
     patches.sort(key=lambda patch: patch.body.package)
     assert patches == [
         Patch(
@@ -387,23 +461,7 @@ def test_calc_config_patches_toggle_apply_library_patches(custom_model_truss_dir
         type=PatchType.CONFIG,
         body=ConfigPatch(
             action=Action.UPDATE,
-            item={"apply_library_patches": False},
-        ),
-    )
-
-
-def test_calc_config_patches_add_model_name(custom_model_truss_dir: Path):
-    def config_op(config: TrussConfig):
-        config.model_name = "foobar"
-
-    patches = _apply_config_change_and_calc_patches(custom_model_truss_dir, config_op)
-    assert len(patches) == 1
-    patch = patches[0]
-    assert patch == Patch(
-        type=PatchType.CONFIG,
-        body=ConfigPatch(
-            action=Action.UPDATE,
-            item={"model_name": "foobar"},
+            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
         ),
     )
 

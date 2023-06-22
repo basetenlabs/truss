@@ -102,6 +102,25 @@ class SystemPackagePatch(PatchBody):
 
 @dataclass
 class ConfigPatch(PatchBody):
+    config: dict
+
+    def to_dict(self):
+        return {
+            "action": self.action.value,
+            "config": self.config,
+        }
+
+    @staticmethod
+    def from_dict(patch_dict: Dict):
+        action_str = patch_dict["action"]
+        return ConfigPatch(
+            action=Action[action_str],
+            config=patch_dict["config"],
+        )
+
+
+@dataclass
+class DataPatch(PatchBody):
     item: dict
 
     def to_dict(self):
@@ -113,17 +132,9 @@ class ConfigPatch(PatchBody):
 
 
 @dataclass
-class DataPatch(PatchBody):
-    def to_dict(self):
-        pass
-
-    @staticmethod
-    def from_dict(patch_dict: Dict):
-        pass
-
-
-@dataclass
 class PackagePatch(PatchBody):
+    item: dict
+
     def to_dict(self):
         pass
 

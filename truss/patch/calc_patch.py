@@ -1,7 +1,6 @@
 import logging
-from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import yaml
 from truss.constants import CONFIG_FILE
@@ -205,10 +204,6 @@ def calc_config_patches(
     Returns None if patch cannot be calculated. Empty list means no relevant
     differences found.
     """
-    # Currently only calculate patches for python requirements and system
-    # packages, bail out if anything else has changed.
-    # if not _only_expected_config_differences(prev_config, new_config):
-    #     return None
 
     config_patches = _calc_general_config_patches(prev_config, new_config)
     python_requirement_patches = _calc_python_requirements_patches(
@@ -221,29 +216,30 @@ def calc_config_patches(
 def _calc_general_config_patches(
     prev_config: TrussConfig, new_config: TrussConfig
 ) -> List[Patch]:
-    """Calculate patch based on changes to dictionary config pairs
-    namely, environment variables, external package dirs, model metadata, and secrets.
+    """Calculate patch based on changes to config.yaml
 
     Empty list means no relevant differences found.
     """
-    patch_generator_defaults = {
+    special_patch_generator_map: Dict[str, Callable[[Action, Any], Patch]] = {
         "environment_variables": _mk_env_var_patch,
         "external_package_dirs": _mk_package_patch,
         "external_data": _mk_external_data_patch,
     }
 
-    patch_generator = defaultdict(lambda: _mk_config_patch, **patch_generator_defaults)
-
-    def generate_config_patch(
-        key: str,
-        patch_generator,
-    ) -> List[Patch]:
-        patches: List[Patch] = []
+    patches: List[Patch] = []
+    for key in UNPATCHABLE_CONFIG_KEYS:
         prev_items = getattr(prev_config, key)
         new_items = getattr(new_config, key)
-        if key in UNPATCHABLE_CONFIG_KEYS and new_items != prev_items:
-            logger.info(f"Patching is not supported for: {key}")
-            return patches
+        if new_items != prev_items:
+            logger.info(f"Patching is not supported for: {key}, bailing")
+            return []
+
+    if prev_config.to_dict() != new_config.to_dict():
+        patches.append(_mk_config_patch(Action.UPDATE, new_config.to_dict()))
+
+    for key, patch_generator in special_patch_generator_map.items():
+        prev_items = getattr(prev_config, key)
+        new_items = getattr(new_config, key)
         if isinstance(new_items, Dict):
             prev_item_names = set(prev_items.keys())
             new_item_names = set(new_items.keys())
@@ -251,25 +247,10 @@ def _calc_general_config_patches(
             prev_item_names = set(prev_items)
             new_item_names = set(new_items)
         elif isinstance(new_items, ExternalData):
-            if new_items != prev_items:
-                patches.append(patch_generator(Action.UPDATE, new_items.to_list))
-        elif isinstance(new_items, str):
-            if new_items != prev_items:
-                patches.append(patch_generator(Action.UPDATE, {key: new_items}))
-            return patches
-        elif isinstance(new_items, bool):
-            if new_items != prev_items:
-                patches.append(patch_generator(Action.UPDATE, {key: new_items}))
-            return patches
-        else:
-            if prev_items and new_items != prev_items:
-                logger.info(f"Patching is not supported for: {key}")
-            return patches
-
-        def _get_item_value(struct: Union[dict, list], key: str):
-            if isinstance(struct, dict):
-                return struct[key]
-            return key
+            prev_items = prev_items.to_list()
+            new_items = new_items.to_list()
+            prev_item_names = set(prev_items)
+            new_item_names = set(new_items)
 
         removed_items = prev_item_names.difference(new_item_names)
         for removed_item in removed_items:
@@ -279,7 +260,6 @@ def _calc_general_config_patches(
                     {removed_item: _get_item_value(prev_items, removed_item)},
                 )
             )
-
         added_items = new_item_names.difference(prev_item_names)
         for added_item in added_items:
             patches.append(
@@ -287,19 +267,11 @@ def _calc_general_config_patches(
                     Action.ADD, {added_item: _get_item_value(new_items, added_item)}
                 )
             )
-
         for item in new_item_names.intersection(prev_item_names):
             if _get_item_value(new_items, item) != _get_item_value(prev_items, item):
                 patches.append(
                     patch_generator(Action.UPDATE, _get_item_value(new_items, item))
                 )
-        return patches
-
-    patches = []
-    for key in set(new_config.to_dict().keys()).difference(
-        set(["requirements", "system_packages"])
-    ):
-        patches.extend(generate_config_patch(key, patch_generator[key]))
     return patches
 
 
@@ -351,44 +323,32 @@ def _calc_system_packages_patches(
     return patches
 
 
-def _only_expected_config_differences(
-    prev_config: TrussConfig, new_config: TrussConfig
-) -> bool:
-    prev_config_dict = prev_config.to_dict()
-    prev_config_dict["requirements"] = []
-    prev_config_dict["system_packages"] = []
-
-    new_config_dict = new_config.to_dict()
-    new_config_dict["requirements"] = []
-    new_config_dict["system_packages"] = []
-
-    return prev_config_dict == new_config_dict
-
-
-def _mk_config_patch(action: Action, item: dict) -> Patch:
+def _mk_config_patch(action: Action, config: dict) -> Patch:
     return Patch(
         type=PatchType.CONFIG,
         body=ConfigPatch(
+            action=action,
+            config=config,
+        ),
+    )
+
+
+def _mk_data_patch(action: Action, item: dict) -> Patch:
+    return Patch(
+        type=PatchType.DATA,
+        body=DataPatch(
             action=action,
             item=item,
         ),
     )
 
 
-def _mk_data_patch(action: Action) -> Patch:
-    return Patch(
-        type=PatchType.DATA,
-        body=DataPatch(
-            action=action,
-        ),
-    )
-
-
-def _mk_package_patch(action: Action) -> Patch:
+def _mk_package_patch(action: Action, item: dict) -> Patch:
     return Patch(
         type=PatchType.PACKAGE,
         body=PackagePatch(
             action=action,
+            item=item,
         ),
     )
 
@@ -446,3 +406,9 @@ def _strictly_under(path: str, parent_paths: List[str]) -> bool:
         if path.startswith(dir_path) and not path == dir_path:
             return True
     return False
+
+
+def _get_item_value(struct: Union[dict, list], key: str):
+    if isinstance(struct, dict):
+        return struct[key]
+    return key
