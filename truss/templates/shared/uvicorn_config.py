@@ -30,7 +30,12 @@ class UvicornCustomServer(multiprocessing.Process):
         asyncio.run(server.serve(sockets=self.sockets))
 
 
-def start_uvicorn_server(application: FastAPI, host: str = "*", port: int = 8080):
+def start_uvicorn_server(
+    application: FastAPI,
+    host: str = "*",
+    port: int = 8080,
+    worker_count_factor: int = 1,
+):
     cfg = uvicorn.Config(
         application,
         host=host,
@@ -38,7 +43,7 @@ def start_uvicorn_server(application: FastAPI, host: str = "*", port: int = 8080
         workers=1,
     )
 
-    max_asyncio_workers = min(32, utils.cpu_count() + 4)
+    max_asyncio_workers = min(32, (utils.cpu_count() + 4) / worker_count_factor)
     logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
     # Call this so uvloop gets used
     cfg.setup_event_loop()
