@@ -47,5 +47,4 @@ if __name__ == "__main__":
         application,
         host=application.state.control_server_host,
         port=application.state.control_server_port,
-        worker_count_factor=2,
     )
