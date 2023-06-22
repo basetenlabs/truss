@@ -7,7 +7,8 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 
 def inference_server_startup_flow(
-    inference_server_controller: InferenceServerController, logger: Logger
+    inference_server_controller: InferenceServerController,
+    logger: Logger,
 ) -> None:
     """
     Perform the inference server startup flow

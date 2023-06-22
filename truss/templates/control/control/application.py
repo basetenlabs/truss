@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -86,12 +87,17 @@ def create_app(base_config: Dict):
         oversee_inference_server,
     )
 
-    def startup_routine():
-        inference_server_startup_flow(app_state.inference_server_controller, app_logger)
+    async def start_background_inference_startup():
+        asyncio.create_task(
+            inference_server_startup_flow(
+                app_state.inference_server_controller,
+                app_logger,
+            )
+        )
 
     app = FastAPI(
         title="Truss Live Reload Server",
-        on_startup=[startup_routine],
+        on_startup=[start_background_inference_startup],
         exception_handlers={
             PatchApplicatonError: handle_patch_error,
             ModelLoadFailed: handle_model_load_failed,
