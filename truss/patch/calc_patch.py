@@ -428,17 +428,3 @@ def _strictly_under(path: str, parent_paths: List[str]) -> bool:
         if path.startswith(dir_path) and not path == dir_path:
             return True
     return False
-
-
-def _safe_diff(struct1, struct2):
-    if isinstance(struct1, set):
-        return struct1.difference(struct2)
-    elif isinstance(struct1, list):
-        return
-
-
-def _safe_intersection(struct1, struct2):
-    if isinstance(struct1, set):
-        return struct1.intersection(struct2)
-    elif isinstance(struct1, list):
-        return [x for x in struct1 if x in struct2]
