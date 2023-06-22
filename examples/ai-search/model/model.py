@@ -26,7 +26,7 @@ class Model:
         sentences = [
             "This framework generates embeddings for each input sentence",
             "Sentences are passed as a list of string.",
-            "The quick brown fox jumps over the lazy dog3.",
+            "The quick brown fox jumps over the lazy dog.",
         ]
         embeddings = self._engine.encode(sentences)
         self._db.upsert(
