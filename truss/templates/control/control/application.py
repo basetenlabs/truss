@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
-from helpers.inference_server_starter import inference_server_startup_flow
+from helpers.inference_server_starter import async_inference_server_startup_flow
 from helpers.logging import setup_logging
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
 from starlette.datastructures import State
@@ -89,7 +89,7 @@ def create_app(base_config: Dict):
 
     async def start_background_inference_startup():
         asyncio.create_task(
-            inference_server_startup_flow(
+            async_inference_server_startup_flow(
                 app_state.inference_server_controller,
                 app_logger,
             )

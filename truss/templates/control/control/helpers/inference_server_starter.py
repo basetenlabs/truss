@@ -1,3 +1,4 @@
+import asyncio
 import os
 from logging import Logger
 
@@ -58,3 +59,13 @@ def inference_server_startup_flow(
             except Exception as exc:  # noqa
                 logger.warning(f"Patch ping attempt failed with error {exc}")
                 raise exc
+
+
+async def async_inference_server_startup_flow(
+    inference_server_controller: InferenceServerController,
+    logger: Logger,
+) -> None:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, lambda: inference_server_startup_flow(inference_server_controller, logger)
+    )
