@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -10,8 +11,10 @@ from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
+from helpers.inference_server_starter import async_inference_server_startup_flow
 from helpers.logging import setup_logging
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
+from starlette.datastructures import State
 
 
 async def handle_patch_error(_, exc):
@@ -43,53 +46,66 @@ async def handle_model_load_failed(_, error):
 
 
 def create_app(base_config: Dict):
+    app_state = State()
+
+    setup_logging()
+
+    app_logger = logging.getLogger(__name__)
+
+    app_state.logger = app_logger
+
+    for k, v in base_config.items():
+        setattr(app_state, k, v)
+
+    app_state.inference_server_process_controller = InferenceServerProcessController(
+        app_state.inference_server_home,
+        app_state.inference_server_process_args,
+        app_state.inference_server_port,
+        app_logger=app_logger,
+    )
+
+    limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
+
+    app_state.proxy_client = httpx.AsyncClient(
+        base_url=f"http://localhost:{app_state.inference_server_port}", limits=limits
+    )
+
+    pip_path = getattr(app_state, "pip_path", None)
+
+    patch_applier = ModelContainerPatchApplier(
+        Path(app_state.inference_server_home),
+        app_logger,
+        pip_path,
+    )
+
+    oversee_inference_server = getattr(app_state, "oversee_inference_server", True)
+
+    app_state.inference_server_controller = InferenceServerController(
+        app_state.inference_server_process_controller,
+        patch_applier,
+        app_logger,
+        oversee_inference_server,
+    )
+
+    async def start_background_inference_startup():
+        asyncio.create_task(
+            async_inference_server_startup_flow(
+                app_state.inference_server_controller,
+                app_logger,
+            )
+        )
+
     app = FastAPI(
         title="Truss Live Reload Server",
+        on_startup=[start_background_inference_startup],
         exception_handlers={
             PatchApplicatonError: handle_patch_error,
             ModelLoadFailed: handle_model_load_failed,
             Exception: generic_error_handler,
         },
     )
+    app.state = app_state
 
-    setup_logging()
-
-    app_logger = logging.getLogger(__name__)
-
-    app.state.logger = app_logger
-
-    for k, v in base_config.items():
-        setattr(app.state, k, v)
-
-    app.state.inference_server_process_controller = InferenceServerProcessController(
-        app.state.inference_server_home,
-        app.state.inference_server_process_args,
-        app.state.inference_server_port,
-        app_logger=app_logger,
-    )
-
-    limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
-
-    app.state.proxy_client = httpx.AsyncClient(
-        base_url=f"http://localhost:{app.state.inference_server_port}", limits=limits
-    )
-
-    pip_path = getattr(app.state, "pip_path", None)
-
-    patch_applier = ModelContainerPatchApplier(
-        Path(app.state.inference_server_home),
-        app_logger,
-        pip_path,
-    )
-
-    oversee_inference_server = getattr(app.state, "oversee_inference_server", True)
-
-    app.state.inference_server_controller = InferenceServerController(
-        app.state.inference_server_process_controller,
-        patch_applier,
-        app_logger,
-        oversee_inference_server,
-    )
     app.include_router(control_app)
     return app
 
