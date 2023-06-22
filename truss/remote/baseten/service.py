@@ -32,7 +32,7 @@ class BasetenService(TrussService):
 
     def predict(self, model_request_body: Dict):
         invocation_url = f"{self._service_url}/predict"
-        response = self._send_request(invocation_url, "POST", model_request_body)
+        response = self._send_request(invocation_url, "POST", data=model_request_body)
         # TODO(Abu): Do we want to strip response to just be model output? Or keep metadata?
         return response
 
