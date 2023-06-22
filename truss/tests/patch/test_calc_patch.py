@@ -8,6 +8,7 @@ from truss.templates.control.control.helpers.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,
+    ExternalDataPatch,
     ModelCodePatch,
     Patch,
     PatchType,
@@ -15,6 +16,7 @@ from truss.templates.control.control.helpers.types import (
     SystemPackagePatch,
 )
 from truss.truss_config import TrussConfig
+from truss.truss_handle import TrussHandle
 
 
 def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):
@@ -464,6 +466,40 @@ def test_calc_config_patches_toggle_apply_library_patches(custom_model_truss_dir
             config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
         ),
     )
+
+
+def test_calc_config_patches_add_external_data(
+    custom_model_external_data_access_tuple_fixture: Path,
+):
+    path, _ = custom_model_external_data_access_tuple_fixture
+    th = TrussHandle(path)
+    external_data = th.spec.config.external_data
+
+    def config_op(config: TrussConfig):
+        config.external_data = external_data
+
+    def config_pre_op(config: TrussConfig):
+        config.external_data = None
+
+    patches = _apply_config_change_and_calc_patches(
+        path,
+        config_pre_op=config_pre_op,
+        config_op=config_op,
+    )
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((path / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.EXTERNAL_DATA,
+            body=ExternalDataPatch(action=Action.ADD, item=external_data.to_list()[0]),
+        ),
+    ]
 
 
 def test_calc_config_patches_unsupported_config_patch(custom_model_truss_dir: Path):

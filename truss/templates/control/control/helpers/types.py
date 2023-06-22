@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, Optional, Type, Union
 
 
 class PatchType(Enum):
@@ -157,7 +157,7 @@ class EnvVarPatch(PatchBody):
 
 @dataclass
 class ExternalDataPatch(PatchBody):
-    item: List[Dict[str, str]]
+    item: Dict[str, str]
 
     def to_dict(self):
         pass
