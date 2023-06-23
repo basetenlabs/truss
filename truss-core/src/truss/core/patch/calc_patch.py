@@ -5,13 +5,6 @@ from typing import Dict, List, Optional, Set
 import yaml
 from truss.core.constants import CONFIG_FILE
 from truss.core.patch.hash import file_content_hash_str
-from truss.core.patch.types import TrussSignature
-from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
-    reqs_by_name,
-)
-from truss.templates.control.control.helpers.truss_patch.system_packages import (
-    system_packages_set,
-)
 from truss.core.patch.types import (
     Action,
     ModelCodePatch,
@@ -19,9 +12,12 @@ from truss.core.patch.types import (
     PatchType,
     PythonRequirementPatch,
     SystemPackagePatch,
+    TrussSignature,
 )
 from truss.core.truss_config import TrussConfig
 from truss.core.truss_spec import TrussSpec
+from truss.server.control.patch_appliers.requirement_name_identifier import reqs_by_name
+from truss.server.control.patch_appliers.system_packages import system_packages_set
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [

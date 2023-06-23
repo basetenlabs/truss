@@ -12,8 +12,8 @@ python = ">=3.8,<3.12"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.2"
-"truss-core" = { path = "../core", develop = true }
-"truss-server" = { path = "../server", develop = true }
+"truss-core" = { path = "../truss-core", develop = true }
+"truss-server" = { path = "../truss-server", develop = true }
 
 
 

@@ -12,7 +12,7 @@ HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
 LIGHTGBM = "lightgbm"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CODE_DIR = pathlib.Path(BASE_DIR, "truss")
+CODE_DIR = pathlib.Path(BASE_DIR, "truss", "src", "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"

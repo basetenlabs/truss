@@ -3676,7 +3676,7 @@ pyyaml = "^6.0"
 
 [package.source]
 type = "directory"
-url = "../core"
+url = "../truss-core"
 
 [[package]]
 name = "truss-server"
@@ -3700,7 +3700,7 @@ truss-core = "*"
 
 [package.source]
 type = "directory"
-url = "../server"
+url = "../truss-server"
 
 [[package]]
 name = "typer"
