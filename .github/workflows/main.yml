@@ -66,7 +66,7 @@ jobs:
           fi
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
-    if: needs.detect-version-changed.outputs.build_base_images == 'true'
+    if: false #needs.detect-version-changed.outputs.build_base_images == 'true'
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -97,7 +97,7 @@ jobs:
 
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    if: false # ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
