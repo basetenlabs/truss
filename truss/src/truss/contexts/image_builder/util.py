@@ -1,8 +1,8 @@
+import importlib.metadata
 from pathlib import Path
 from typing import Optional
 
-from truss import __version__
-
+__version__ = importlib.metadata.version("truss")
 # This needs to be updated whenever new truss base images are published. This
 # manual nature is by design; at this point we want any new base image releases
 # to be reviewed via code change before landing. This value should be typically

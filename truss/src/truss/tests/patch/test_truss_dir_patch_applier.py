@@ -1,8 +1,9 @@
 import logging
 from pathlib import Path
 
-from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
-from truss.templates.control.control.helpers.types import (
+from truss.core.patch.truss_dir_patch_applier import TrussDirPatchApplier
+from truss.core.truss_config import TrussConfig
+from truss.server.control.helpers.types import (
     Action,
     ModelCodePatch,
     Patch,
@@ -10,7 +11,6 @@ from truss.templates.control.control.helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.core.truss_config import TrussConfig
 
 TEST_LOGGER = logging.getLogger("test_logger")
 

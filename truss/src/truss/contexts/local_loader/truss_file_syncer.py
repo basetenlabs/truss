@@ -4,16 +4,11 @@ from threading import Thread
 from typing import List, Optional
 
 from truss.core.constants import CONFIG_FILE
-from truss.patch.calc_patch import calc_config_patches
-from truss.patch.local_truss_patch_applier import LocalTrussPatchApplier
-from truss.templates.control.control.helpers.types import (
-    Action,
-    ModelCodePatch,
-    Patch,
-    PatchType,
-)
+from truss.core.patch.calc_patch import calc_config_patches
+from truss.core.patch.local_truss_patch_applier import LocalTrussPatchApplier
+from truss.core.patch.types import Action, ModelCodePatch, Patch, PatchType
 from truss.core.truss_config import TrussConfig
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
 
 # from truss.core.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import Change, watch

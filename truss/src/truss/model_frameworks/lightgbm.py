@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Any, Dict, Set
 
 from truss.core.constants import LIGHTGBM_REQ_MODULE_NAMES
-from truss.model_framework import ModelFramework
-from truss.templates.shared.util import model_supports_predict_proba
 from truss.core.types import ModelFrameworkType
+from truss.model_framework import ModelFramework
+from truss.server.shared.util import model_supports_predict_proba
 
 MODEL_FILENAME = "model.joblib"
 

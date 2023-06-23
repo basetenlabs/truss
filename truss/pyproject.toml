@@ -19,7 +19,8 @@ pytest = "^7.3.2"
 
 
 [tool.poetry.group.tests.dependencies]
-tensorflow = "^2.12.0"
+tensorflow = { version = "^2.12.0", markers = "sys_platform == 'linux'" }
+tensorflow-macos = { version = "^2.12.0", markers = "sys_platform == 'darwin'" }
 httpx = "^0.24.1"
 mlflow = "^2.4.1"
 yaspin = "^2.3.0"
@@ -31,6 +32,17 @@ lightgbm = "^3.3.5"
 xgboost = "^1.7.6"
 scikit-learn = "^1.2.2"
 pandas = "^2.0.2"
+
+
+[tool.poetry.group.recur.dependencies]
+psutil = "^5.9.5"
+
+
+[tool.poetry.group.test.dependencies]
+python-on-whales = "^0.62.0"
+torch = "^2.0.1"
+nbformat = "^5.9.0"
+nbconvert = "^7.6.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]

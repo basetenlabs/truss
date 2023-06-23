@@ -1,9 +1,10 @@
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
-from truss.patch.calc_patch import calc_truss_patch
-from truss.patch.signature import calc_truss_signature
-from truss.templates.control.control.helpers.types import (
+from truss.core.patch.calc_patch import calc_truss_patch
+from truss.core.patch.signature import calc_truss_signature
+from truss.core.truss_config import TrussConfig
+from truss.server.control.helpers.types import (
     Action,
     ModelCodePatch,
     Patch,
@@ -11,7 +12,6 @@ from truss.templates.control.control.helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.core.truss_config import TrussConfig
 
 
 def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):

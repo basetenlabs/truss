@@ -25,6 +25,15 @@ from tenacity import (
     stop_after_delay,
     wait_fixed,
 )
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
+from truss.contexts.image_builder.training_image_builder import (
+    TrainingImageBuilderContext,
+)
+from truss.contexts.local_loader.load_model_local import LoadModelLocal
+from truss.contexts.local_loader.local_server_loader import LocalServerLoader
+from truss.contexts.local_loader.train_local import LocalTrainer
 from truss.core.constants import (
     INFERENCE_SERVER_PORT,
     TRAINING_LABEL,
@@ -35,15 +44,25 @@ from truss.core.constants import (
     TRUSS_HASH,
     TRUSS_MODIFIED_TIME,
 )
-from truss.contexts.image_builder.serving_image_builder import (
-    ServingImageBuilderContext,
+from truss.core.errors import ContainerIsDownError, ContainerNotFoundError
+from truss.core.patch.calc_patch import calc_truss_patch
+from truss.core.patch.hash import directory_content_hash
+from truss.core.patch.signature import calc_truss_signature
+from truss.core.patch.types import TrussSignature
+from truss.core.truss_config import (
+    BaseImage,
+    ExternalData,
+    ExternalDataItem,
+    TrussConfig,
 )
-from truss.contexts.image_builder.training_image_builder import (
-    TrainingImageBuilderContext,
+from truss.core.truss_spec import TrussSpec
+from truss.core.types import Example, PatchDetails, PatchRequest
+from truss.core.util.path import (
+    copy_file_path,
+    copy_tree_path,
+    get_max_modified_time_of_dir,
 )
-from truss.contexts.local_loader.load_model_local import LoadModelLocal
-from truss.contexts.local_loader.local_server_loader import LocalServerLoader
-from truss.contexts.local_loader.train_local import LocalTrainer
+from truss.core.validation import validate_secret_name
 from truss.decorators import proxy_to_shadow_if_scattered
 from truss.docker import (
     Docker,
@@ -55,32 +74,13 @@ from truss.docker import (
     get_urls_from_container,
     kill_containers,
 )
-from truss.core.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
-from truss.patch.calc_patch import calc_truss_patch
-from truss.patch.hash import directory_content_hash
-from truss.patch.signature import calc_truss_signature
-from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
-from truss.templates.shared.serialization import (
+from truss.server.shared.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from truss.core.truss_config import (
-    BaseImage,
-    ExternalData,
-    ExternalDataItem,
-    TrussConfig,
-)
-from truss.truss_spec import TrussSpec
-from truss.core.types import Example, PatchDetails, PatchRequest
-from truss.core.util.path import (
-    copy_file_path,
-    copy_tree_path,
-    get_max_modified_time_of_dir,
-)
-from truss.core.validation import validate_secret_name
 
 logger: logging.Logger = logging.getLogger(__name__)
 

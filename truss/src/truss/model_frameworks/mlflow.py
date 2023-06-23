@@ -2,10 +2,10 @@ from pathlib import Path
 from typing import Any, Dict, Set
 
 from truss.core.constants import MLFLOW_REQ_MODULE_NAMES
-from truss.model_framework import ModelFramework
-from truss.templates.shared.util import model_supports_predict_proba
-from truss.truss_handle import TrussHandle
 from truss.core.types import ModelFrameworkType
+from truss.model_framework import ModelFramework
+from truss.server.shared.util import model_supports_predict_proba
+from truss.truss_handle import TrussHandle
 
 MODEL_FILENAME = "model.joblib"
 

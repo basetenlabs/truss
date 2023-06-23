@@ -1,6 +1,6 @@
 from jinja2 import Template
 from truss.core.constants import README_TEMPLATE_NAME, TEMPLATES_DIR
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
 
 
 def generate_readme(_spec: TrussSpec) -> str:

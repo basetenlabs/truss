@@ -5,6 +5,15 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from truss.contexts.image_builder.image_builder import ImageBuilder
+from truss.contexts.image_builder.util import (
+    TRUSS_BASE_IMAGE_VERSION_TAG,
+    file_is_not_empty,
+    to_dotted_python_version,
+    truss_base_image_name,
+    truss_base_image_tag,
+)
+from truss.contexts.truss_context import TrussContext
 from truss.core.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -18,18 +27,9 @@ from truss.core.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
 )
-from truss.contexts.image_builder.image_builder import ImageBuilder
-from truss.contexts.image_builder.util import (
-    TRUSS_BASE_IMAGE_VERSION_TAG,
-    file_is_not_empty,
-    to_dotted_python_version,
-    truss_base_image_name,
-    truss_base_image_tag,
-)
-from truss.contexts.truss_context import TrussContext
-from truss.patch.hash import directory_content_hash
+from truss.core.patch.hash import directory_content_hash
 from truss.core.truss_config import ExternalData
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
 from truss.core.util.jinja import read_template_from_fs
 from truss.core.util.path import (
     build_truss_target_directory,

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List
 
-from truss.patch.dir_signature import directory_content_signature
+from truss.core.patch.dir_signature import directory_content_signature
 from truss.truss_gatherer import gather
 
 

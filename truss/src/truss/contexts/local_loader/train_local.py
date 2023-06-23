@@ -8,7 +8,7 @@ from truss.contexts.local_loader.utils import (
     signature_accepts_keyword_arg,
 )
 from truss.contexts.truss_context import TrussContext
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
 
 
 class LocalTrainer(TrussContext):

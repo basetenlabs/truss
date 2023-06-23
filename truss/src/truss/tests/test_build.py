@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from truss.build import cleanup, create, init
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
 
 
 def test_truss_init(tmp_path):

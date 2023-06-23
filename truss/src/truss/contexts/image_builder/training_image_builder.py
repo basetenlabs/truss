@@ -2,6 +2,15 @@ from pathlib import Path
 from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
+from truss.contexts.image_builder.image_builder import ImageBuilder
+from truss.contexts.image_builder.util import (
+    TRUSS_BASE_IMAGE_VERSION_TAG,
+    file_is_not_empty,
+    to_dotted_python_version,
+    truss_base_image_name,
+    truss_base_image_tag,
+)
+from truss.contexts.truss_context import TrussContext
 from truss.core.constants import (
     REQUIREMENTS_TXT_FILENAME,
     SHARED_SERVING_AND_TRAINING_CODE_DIR,
@@ -14,16 +23,7 @@ from truss.core.constants import (
     TRAINING_JOB_WRAPPER_CODE_DIR_NAME,
     TRAINING_REQUIREMENTS_TXT_FILENAME,
 )
-from truss.contexts.image_builder.image_builder import ImageBuilder
-from truss.contexts.image_builder.util import (
-    TRUSS_BASE_IMAGE_VERSION_TAG,
-    file_is_not_empty,
-    to_dotted_python_version,
-    truss_base_image_name,
-    truss_base_image_tag,
-)
-from truss.contexts.truss_context import TrussContext
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
 from truss.core.util.path import (
     build_truss_target_directory,
     copy_file_path,

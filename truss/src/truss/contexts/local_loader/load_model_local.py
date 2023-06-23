@@ -7,8 +7,8 @@ from truss.contexts.local_loader.utils import (
     signature_accepts_keyword_arg,
 )
 from truss.contexts.truss_context import TrussContext
-from truss.templates.server.common.patches import apply_patches
-from truss.truss_spec import TrussSpec
+from truss.core.truss_spec import TrussSpec
+from truss.server.inference.common.patches import apply_patches
 
 
 class LoadModelLocal(TrussContext):

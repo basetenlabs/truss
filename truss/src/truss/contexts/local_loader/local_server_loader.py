@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
-from truss.patch.local_truss_patch_applier import LocalTrussPatchApplier
+from truss.core.patch.local_truss_patch_applier import LocalTrussPatchApplier
 from truss.core.util.path import build_truss_shadow_target_directory
 from yaspin import yaspin
 
