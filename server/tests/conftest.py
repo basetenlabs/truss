@@ -10,7 +10,7 @@ from truss.core.util.path import copy_tree_path
 @pytest.fixture
 def truss_context_dir(tmp_path):
     ROOT = Path(__file__).parent.parent.parent.resolve()
-    truss_dir = ROOT / "truss" / "test_data" / "test_truss"
+    truss_dir = ROOT / "truss" / "tests" / "test_data" / "test_truss"
     tmp_truss_dir = tmp_path / "tmp_truss"
     tmp_truss_dir.mkdir()
     copy_tree_path(truss_dir, tmp_truss_dir)
