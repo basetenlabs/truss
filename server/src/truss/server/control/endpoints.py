@@ -79,20 +79,20 @@ async def patch(request: Request) -> Dict[str, str]:
 
 
 @control_app.get("/control/truss_hash")
-def truss_hash(request: Request) -> Dict[str, Any]:
+async def truss_hash(request: Request) -> Dict[str, Any]:
     t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
 @control_app.post("/control/restart_inference_server")
-def restart_inference_server(request: Request) -> Dict[str, str]:
+async def restart_inference_server(request: Request) -> Dict[str, str]:
     request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.get("/control/has_partially_applied_patch")
-def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
+async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
     app_has_partially_applied_patch = (
         request.app.state.inference_server_controller.has_partially_applied_patch()
     )
@@ -100,7 +100,7 @@ def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
 
 
 @control_app.post("/control/stop_inference_server")
-def stop_inference_server(request: Request) -> Dict[str, str]:
+async def stop_inference_server(request: Request) -> Dict[str, str]:
     request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}
 

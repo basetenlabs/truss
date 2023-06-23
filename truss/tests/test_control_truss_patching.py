@@ -92,7 +92,6 @@ def test_control_truss_empty_dir_patch(
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-# todo(justin): remove once this patch is supported
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "binary, python_version",
@@ -178,7 +177,6 @@ def test_control_truss_python_sys_req_patch(
         verify_system_requirement_not_installed_on_container(container, system_pkg)
 
 
-# todo(abu/justin) remove once ignored
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "binary, python_version",
@@ -211,6 +209,7 @@ def test_control_truss_patch_ignored_changes(
         assert current_num_docker_images(th) == orig_num_truss_images
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_added_model_dir(
@@ -234,6 +233,7 @@ def test_patch_added_model_dir(
         assert (tmp_path / "model" / "dir" / "foo.bar").exists()
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_data_dir(control_model_handle_tag_tuple):
@@ -257,6 +257,7 @@ def test_patch_data_dir(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_env_var(control_model_handle_tag_tuple):
@@ -290,6 +291,7 @@ def test_patch_env_var(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_external_package_dirs(custom_model_with_external_package):
@@ -320,6 +322,7 @@ class Model:
         ).exists()
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_secrets(control_model_handle_tag_tuple):
@@ -337,6 +340,7 @@ def test_patch_secrets(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_predict_with_external_data_change(
