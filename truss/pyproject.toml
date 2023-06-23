@@ -2,7 +2,8 @@
 authors = ["Bola Malek <bola@baseten.co>"]
 description = "another package"
 name = "truss"
-packages = [{ include = "truss", from = "./src" }]
+# TODO(bola): Add exclude for testing utils
+packages = [{ include = "truss", from = "./src"}]
 version = "0.0.1"
 
 [tool.poetry.dependencies]
@@ -14,8 +15,6 @@ python = ">=3.8,<3.12"
 pytest = "^7.3.2"
 "truss-core" = { path = "../truss-core", develop = true }
 "truss-server" = { path = "../truss-server", develop = true }
-
-
 
 
 [tool.poetry.group.tests.dependencies]
