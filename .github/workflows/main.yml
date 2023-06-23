@@ -134,7 +134,7 @@ jobs:
           script: |
             try {
               const response = await github.rest.repos.createRelease({
-                draft: ${{ needs.detect-version-changed.outputs.is_prerelease_version }},
+                draft: false,
                 generate_release_notes: true,
                 name: "v${{ needs.detect-version-changed.outputs.new_version }}",
                 owner: context.repo.owner,
