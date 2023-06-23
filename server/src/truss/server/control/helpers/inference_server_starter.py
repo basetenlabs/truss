@@ -2,9 +2,11 @@ import asyncio
 import os
 from logging import Logger
 
-import requests
-from helpers.inference_server_controller import InferenceServerController
+import httpx
 from tenacity import Retrying, stop_after_attempt, wait_exponential
+from truss.server.control.helpers.inference_server_controller import (
+    InferenceServerController,
+)
 
 
 def inference_server_startup_flow(
@@ -47,7 +49,7 @@ def inference_server_startup_flow(
                 logger.info(
                     f"Pinging {patch_ping_url} for patch with hash {truss_hash}"
                 )
-                resp = requests.post(patch_ping_url, json=payload)
+                resp = httpx.post(patch_ping_url, json=payload)
                 resp.raise_for_status()
                 resp_body = resp.json()
 

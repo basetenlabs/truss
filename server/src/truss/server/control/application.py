@@ -19,9 +19,6 @@ from truss.server.control.helpers.inference_server_process_controller import (
 from truss.server.control.helpers.inference_server_starter import (
     async_inference_server_startup_flow,
 )
-from truss.server.control.helpers.truss_patch.model_container_patch_applier import (
-    ModelContainerPatchApplier,
-)
 from truss.server.control.patch_appliers.model_container_patch_applier import (
     ModelContainerPatchApplier,
 )
