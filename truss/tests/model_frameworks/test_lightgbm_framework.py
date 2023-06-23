@@ -3,13 +3,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from truss.constants import CONFIG_FILE
+from truss.core.constants import CONFIG_FILE
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
 from truss.model_frameworks.lightgbm import LightGBM
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_config import TrussConfig
+from truss.core.truss_config import TrussConfig
 from truss.truss_handle import TrussHandle
-from truss.types import ModelFrameworkType
+from truss.core.types import ModelFrameworkType
 
 
 def test_to_truss(lgb_pima_model):

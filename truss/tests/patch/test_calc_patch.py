@@ -11,7 +11,7 @@ from truss.templates.control.control.helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.core.truss_config import TrussConfig
 
 
 def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):

@@ -1,7 +1,7 @@
 [tool.poetry]
 authors = ["Bola Malek <bola@baseten.co>"]
 description = "truss"
-name = "truss.core"
+name = "truss-core"
 packages = [{ include = "truss", from = "./src" }]
 version = "0.0.1"
 
@@ -15,5 +15,5 @@ pydantic = "^1.10.9"
 pytest = "^7.3.2"
 
 [build-system]
+requires = ["poetry-core>=1.2.1"]
 build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core>=1.0.0"]

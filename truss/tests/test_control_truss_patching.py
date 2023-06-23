@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from truss.constants import SUPPORTED_PYTHON_VERSIONS
+from truss.core.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.tests.conftest import CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (

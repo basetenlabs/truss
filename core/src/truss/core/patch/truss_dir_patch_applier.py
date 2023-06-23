@@ -21,7 +21,7 @@ from truss.templates.control.control.helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.core.truss_config import TrussConfig
 
 
 class TrussDirPatchApplier:

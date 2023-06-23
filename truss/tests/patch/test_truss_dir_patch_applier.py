@@ -10,7 +10,7 @@ from truss.templates.control.control.helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.core.truss_config import TrussConfig
 
 TEST_LOGGER = logging.getLogger("test_logger")
 

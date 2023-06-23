@@ -22,8 +22,8 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
-from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
-from truss.types import Example
+from truss.core.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
+from truss.core.types import Example
 from xgboost import XGBClassifier
 
 PYTORCH_MODEL_FILE_CONTENTS = """

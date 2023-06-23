@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import requests
 from requests.exceptions import RequestException
-from truss.constants import PYTORCH
+from truss.core.constants import PYTORCH
 from truss.model_frameworks import SKLearn
 from truss.model_inference import (
     infer_model_information,

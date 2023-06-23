@@ -25,7 +25,7 @@ from tensorflow.keras.layers.experimental import preprocessing
 # Create a fake dataset to include with the deployment
 from test_folder.utils.embedding_util import create_reference_embeddings
 from truss.build import create, scaffold, scaffold_custom
-from truss.constants import HUGGINGFACE_TRANSFORMER
+from truss.core.constants import HUGGINGFACE_TRANSFORMER
 from truss.definitions.base import build_scaffold_directory
 from truss.definitions.huggingface_transformer import (
     HuggingFaceTransformerPipelineScaffold,
