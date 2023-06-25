@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+from threading import Thread
 
 from application import create_app
+from helpers.inference_server_starter import inference_server_startup_flow
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -22,6 +24,7 @@ def _identify_python_executable_path() -> str:
 
 
 if __name__ == "__main__":
+
     from shared.uvicorn_config import start_uvicorn_server
 
     inf_serv_home: str = os.environ["APP_HOME"]
@@ -38,6 +41,9 @@ if __name__ == "__main__":
             "inference_server_port": INFERENCE_SERVER_PORT,
         }
     )
+
+    # Perform inference server startup flow in background
+    Thread(target=inference_server_startup_flow, args=(application,)).start()
 
     application.state.logger.info(
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
