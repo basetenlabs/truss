@@ -156,25 +156,17 @@ def test_patch_applier_env_var_patch_remove(
 
 def test_patch_applier_external_data_patch_add(
     patch_applier: ModelContainerPatchApplier,
+    truss_container_fs,
 ):
     patch = Patch(
         type=PatchType.EXTERNAL_DATA,
         body=ExternalDataPatch(
             action=Action.ADD,
-            item={"BAR": "FOO"},
+            item={
+                "url": "https://raw.githubusercontent.com/basetenlabs/truss/main/docs/assets/truss_logo_horizontal.png",
+                "local_data_path": "truss_icon",
+            },
         ),
     )
     patch_applier(patch)
-
-
-def test_patch_applier_external_data_patch_remove(
-    patch_applier: ModelContainerPatchApplier,
-):
-    patch = Patch(
-        type=PatchType.EXTERNAL_DATA,
-        body=ExternalDataPatch(
-            action=Action.REMOVE,
-            item={"FOO": "BAR"},
-        ),
-    )
-    patch_applier(patch)
+    assert (truss_container_fs / "app" / "data" / "truss_icon").exists()
