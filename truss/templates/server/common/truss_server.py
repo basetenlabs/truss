@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import signal
 import socket
+from collections.abc import Generator
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -19,7 +20,7 @@ from common.serialization import (
     truss_msgpack_serialize,
 )
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from starlette.responses import Response
@@ -119,7 +120,14 @@ class BasetenEndpoints:
             body = json.loads(body_raw)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Dict = asyncio.run(model(body, headers=dict(request.headers.items())))
+        response: Union[Dict, Generator] = asyncio.run(
+            model(body, headers=dict(request.headers.items()))
+        )
+
+        # In the case that the model returns a Generator object, return a
+        # StreamingResponse instead.
+        if isinstance(response, Generator):
+            return StreamingResponse(response)
 
         response_headers = {}
         if self.is_binary(request):
