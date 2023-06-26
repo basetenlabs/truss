@@ -36,11 +36,6 @@ def patch_applier(truss_container_fs):
     return ModelContainerPatchApplier(truss_container_fs / "app", mock.Mock())
 
 
-@pytest.fixture
-def fixt(truss_container_fs):
-    pass
-
-
 def test_patch_applier_model_code_patch_add(
     patch_applier: ModelContainerPatchApplier, truss_container_fs
 ):
