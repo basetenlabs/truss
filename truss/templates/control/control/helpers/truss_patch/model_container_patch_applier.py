@@ -1,4 +1,5 @@
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -7,12 +8,16 @@ from helpers.errors import UnsupportedPatch
 from helpers.truss_patch.model_code_patch_applier import apply_model_code_patch
 from helpers.types import (
     Action,
+    ConfigPatch,
+    EnvVarPatch,
+    ExternalDataPatch,
     ModelCodePatch,
     Patch,
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.truss_config import ExternalData, ExternalDataItem, TrussConfig
+from truss.util.download import download_external_data
 
 
 class ModelContainerPatchApplier:
@@ -30,6 +35,7 @@ class ModelContainerPatchApplier:
         self._model_module_dir = (
             self._inference_server_home / self._truss_config.model_module_dir
         )
+        self._data_dir = self._inference_server_home / self._truss_config.data_dir
         self._app_logger = app_logger
         self._pip_path_cached = None
         if pip_path is not None:
@@ -48,6 +54,15 @@ class ModelContainerPatchApplier:
         elif isinstance(patch.body, SystemPackagePatch):
             sys_pkg_patch: SystemPackagePatch = patch.body
             self._apply_system_package_patch(sys_pkg_patch)
+        elif isinstance(patch.body, ConfigPatch):
+            config_patch: ConfigPatch = patch.body
+            self._apply_config_patch(config_patch)
+        elif isinstance(patch.body, EnvVarPatch):
+            env_var_patch: EnvVarPatch = patch.body
+            self._apply_env_var_patch(env_var_patch)
+        elif isinstance(patch.body, ExternalDataPatch):
+            external_data_patch: ExternalDataPatch = patch.body
+            self._apply_external_data_patch(external_data_patch)
         else:
             raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
@@ -126,6 +141,48 @@ class ModelContainerPatchApplier:
             )
         else:
             raise ValueError(f"Unknown python requirement patch action {action}")
+
+    def _apply_config_patch(self, config_patch: ConfigPatch):
+        self._app_logger.debug(f"Applying config patch {config_patch.to_dict()}")
+        TrussConfig.from_dict(config_patch.config).write_to_yaml_file(
+            Path(self._inference_server_home / config_patch.path)
+        )
+
+    def _apply_env_var_patch(self, env_var_patch: EnvVarPatch):
+        self._app_logger.debug(
+            f"Applying environment variable patch {env_var_patch.to_dict()}"
+        )
+        action = env_var_patch.action
+        ((env_var_name, env_var_value),) = env_var_patch.item.items()
+
+        if action == Action.REMOVE:
+            os.environ.pop(env_var_name, None)
+        elif action in [Action.ADD, Action.UPDATE]:
+            os.environ.update({env_var_name: env_var_value})
+        else:
+            raise ValueError(f"Unknown patch action {action}")
+
+    def _apply_external_data_patch(self, external_data_patch: ExternalDataPatch):
+        self._app_logger.debug(
+            f"Applying external data patch {external_data_patch.to_dict()}"
+        )
+        action = external_data_patch.action
+        if action == Action.REMOVE:
+            item = ExternalDataItem.from_dict(external_data_patch.item)
+            filepath = self._data_dir / item.local_data_path
+            if not filepath.exists():
+                self._app_logger.warning(
+                    f"Could not delete file {filepath}: not found."
+                )
+            else:
+                self._app_logger.debug(f"Deleting file {filepath}")
+                filepath.unlink()
+        elif action == Action.ADD:
+            download_external_data(
+                ExternalData.from_list([external_data_patch.item]), self._data_dir
+            )
+        else:
+            raise ValueError(f"Unknown patch action {action}")
 
 
 def _identify_pip_path() -> str:

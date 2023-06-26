@@ -502,6 +502,38 @@ def test_calc_config_patches_add_external_data(
     ]
 
 
+def test_calc_config_patches_remove_external_data(
+    custom_model_external_data_access_tuple_fixture: Path,
+):
+    path, _ = custom_model_external_data_access_tuple_fixture
+    th = TrussHandle(path)
+    external_data = th.spec.config.external_data
+
+    def config_op(config: TrussConfig):
+        config.external_data = None
+
+    patches = _apply_config_change_and_calc_patches(
+        path,
+        config_op=config_op,
+    )
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((path / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.EXTERNAL_DATA,
+            body=ExternalDataPatch(
+                action=Action.REMOVE, item=external_data.to_list()[0]
+            ),
+        ),
+    ]
+
+
 def test_calc_config_patches_unsupported_config_patch(custom_model_truss_dir: Path):
     def config_op(config: TrussConfig):
         config.live_reload = True

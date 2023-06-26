@@ -292,7 +292,6 @@ def _calc_external_data_patches(
         )
     added_items = [x for x in new_items if x not in prev_items]
     for added_item in added_items:
-        print(added_item)
         patches.append(_mk_external_data_patch(Action.ADD, added_item))
     return patches
 
@@ -355,23 +354,17 @@ def _mk_config_patch(action: Action, config: dict) -> Patch:
     )
 
 
-def _mk_data_patch(action: Action, item: dict) -> Patch:
+def _mk_data_patch(action: Action, item: dict, path: str) -> Patch:
     return Patch(
         type=PatchType.DATA,
-        body=DataPatch(
-            action=action,
-            item=item,
-        ),
+        body=DataPatch(action=action, content=item, path=path),
     )
 
 
-def _mk_package_patch(action: Action, item: dict) -> Patch:
+def _mk_package_patch(action: Action, item: dict, path: str) -> Patch:
     return Patch(
         type=PatchType.PACKAGE,
-        body=PackagePatch(
-            action=action,
-            item=item,
-        ),
+        body=PackagePatch(action=action, content=item, path=path),
     )
 
 

@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Type, Union
 
+from truss.constants import CONFIG_FILE
+
 
 class PatchType(Enum):
     """Types of console requests sent to Django and passed along to pynode."""
@@ -103,11 +105,13 @@ class SystemPackagePatch(PatchBody):
 @dataclass
 class ConfigPatch(PatchBody):
     config: dict
+    path: str = CONFIG_FILE
 
     def to_dict(self):
         return {
             "action": self.action.value,
             "config": self.config,
+            "path": self.path,
         }
 
     @staticmethod
@@ -116,31 +120,52 @@ class ConfigPatch(PatchBody):
         return ConfigPatch(
             action=Action[action_str],
             config=patch_dict["config"],
+            path=patch_dict["path"],
         )
 
 
 @dataclass
 class DataPatch(PatchBody):
-    item: dict
+    content: dict
+    path: str
 
     def to_dict(self):
-        pass
+        return {
+            "action": self.action.value,
+            "content": self.content,
+            "path": self.path,
+        }
 
     @staticmethod
     def from_dict(patch_dict: Dict):
-        pass
+        action_str = patch_dict["action"]
+        return DataPatch(
+            action=Action[action_str],
+            content=patch_dict["content"],
+            path=patch_dict["path"],
+        )
 
 
 @dataclass
 class PackagePatch(PatchBody):
-    item: dict
+    content: dict
+    path: str
 
     def to_dict(self):
-        pass
+        return {
+            "action": self.action.value,
+            "content": self.content,
+            "path": self.path,
+        }
 
     @staticmethod
     def from_dict(patch_dict: Dict):
-        pass
+        action_str = patch_dict["action"]
+        return PackagePatch(
+            action=Action[action_str],
+            content=patch_dict["content"],
+            path=patch_dict["path"],
+        )
 
 
 @dataclass
@@ -148,11 +173,18 @@ class EnvVarPatch(PatchBody):
     item: dict
 
     def to_dict(self):
-        pass
+        return {
+            "action": self.action.value,
+            "item": self.item,
+        }
 
     @staticmethod
     def from_dict(patch_dict: Dict):
-        pass
+        action_str = patch_dict["action"]
+        return EnvVarPatch(
+            action=Action[action_str],
+            item=patch_dict["item"],
+        )
 
 
 @dataclass
@@ -160,11 +192,18 @@ class ExternalDataPatch(PatchBody):
     item: Dict[str, str]
 
     def to_dict(self):
-        pass
+        return {
+            "action": self.action.value,
+            "item": self.item,
+        }
 
     @staticmethod
     def from_dict(patch_dict: Dict):
-        pass
+        action_str = patch_dict["action"]
+        return ExternalDataPatch(
+            action=Action[action_str],
+            item=patch_dict["item"],
+        )
 
 
 PATCH_BODY_BY_TYPE: Dict[
