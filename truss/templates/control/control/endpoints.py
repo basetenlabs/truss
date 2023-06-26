@@ -1,10 +1,11 @@
 from typing import Any, Dict
 
-import requests
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
-from requests.exceptions import ConnectionError
+from httpx import URL, ConnectError
+from starlette.requests import Request
+from starlette.responses import Response
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
@@ -18,18 +19,20 @@ def index():
     return {}
 
 
-@control_app.get("/v1/{full_path:path}")
-@control_app.post("/v1/{full_path:path}")
-async def proxy(full_path: str, request: Request):
-    inference_server_port = request.app.state.inference_server_port
+async def proxy(request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
+    )
+    client = request.app.state.proxy_client
+    url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
+    rp_req = client.build_request(
+        request.method, url, headers=request.headers.raw, content=await request.body()
     )
 
     # Wait a bit for inference server to start
     for attempt in Retrying(
         retry=(
-            retry_if_exception_type(ConnectionError)
+            retry_if_exception_type(ConnectError)
             | retry_if_exception_type(ModelNotReady)
         ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
@@ -41,14 +44,8 @@ async def proxy(full_path: str, request: Request):
                     inference_server_process_controller.is_inference_server_intentionally_stopped()
                 ):
                     raise ModelLoadFailed("Model load failed")
+                resp = await client.send(rp_req)
 
-                resp = requests.request(
-                    method=request.method,
-                    url=f"http://localhost:{inference_server_port}/v1/{full_path}",
-                    data=await request.body(),
-                    cookies=request.cookies,
-                    headers=request.headers,
-                )
                 if _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
             except ConnectionError as exp:
@@ -69,6 +66,9 @@ async def proxy(full_path: str, request: Request):
     return response
 
 
+control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
+
+
 @control_app.post("/control/patch")
 async def patch(request: Request) -> Dict[str, str]:
     request.app.state.logger.info("Patch request received.")
@@ -79,20 +79,20 @@ async def patch(request: Request) -> Dict[str, str]:
 
 
 @control_app.get("/control/truss_hash")
-def truss_hash(request: Request) -> Dict[str, Any]:
+async def truss_hash(request: Request) -> Dict[str, Any]:
     t_hash = request.app.state.inference_server_controller.truss_hash()
     return {"result": t_hash}
 
 
 @control_app.post("/control/restart_inference_server")
-def restart_inference_server(request: Request) -> Dict[str, str]:
+async def restart_inference_server(request: Request) -> Dict[str, str]:
     request.app.state.inference_server_controller.restart()
 
     return {"msg": "Inference server started successfully"}
 
 
 @control_app.get("/control/has_partially_applied_patch")
-def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
+async def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
     app_has_partially_applied_patch = (
         request.app.state.inference_server_controller.has_partially_applied_patch()
     )
@@ -100,7 +100,7 @@ def has_partially_applied_patch(request: Request) -> Dict[str, Any]:
 
 
 @control_app.post("/control/stop_inference_server")
-def stop_inference_server(request: Request) -> Dict[str, str]:
+async def stop_inference_server(request: Request) -> Dict[str, str]:
     request.app.state.inference_server_controller.stop()
     return {"msg": "Inference server stopped successfully"}
 
