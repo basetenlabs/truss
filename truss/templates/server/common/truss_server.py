@@ -225,14 +225,14 @@ class TrussServer:
             },
         )
 
-        def kill_self():
-            # Note that this kills the current process, which will be the
-            # worker process, not the main truss_server process.
-            os.kill(os.getpid(), signal.SIGKILL)
+        def exit_self():
+            # Note that this kills the current process, the worker process, not
+            # the main truss_server process.
+            sys.exit()
 
         termination_handler_middleware = TerminationHandlerMiddleware(
             on_stop=lambda: None,
-            on_term=kill_self,
+            on_term=exit_self,
         )
         app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app
