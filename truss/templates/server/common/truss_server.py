@@ -103,7 +103,10 @@ class BasetenEndpoints:
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.
         if isinstance(response, Generator):
-            return StreamingResponse(response)
+            print("Returning a streaming response")
+            return StreamingResponse(response, media_type="text/event-stream")
+        else:
+            print("Not returning a streaming response")
 
         response_headers = {}
         if self.is_binary(request):
