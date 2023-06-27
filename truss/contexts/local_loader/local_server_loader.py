@@ -1,77 +1,84 @@
 #!/usr/bin/env python3
+import logging
 import subprocess
 import sys
-import venv
 from pathlib import Path
 from typing import Any, List, Optional
 
 from truss.contexts.image_builder.serving_image_builder import ServingImageBuilder
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
+from truss.patch.local_truss_patch_applier import LocalTrussPatchApplier
 from truss.util.path import build_truss_shadow_target_directory
-from yaspin import yaspin
 
 
-class VenvBuilder(venv.EnvBuilder):
-    """Virtual Environment Builder
+def create_venv_builder():
+    import venv
 
-    This class handles setting up a virtual environment in `venv_dir`.
-    """
+    class VenvBuilder(venv.EnvBuilder):
+        """Virtual Environment Builder
 
-    def __init__(self, venv_dir: Path, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.context: Any = None
-        self.venv_dir = venv_dir
-
-    def post_setup(self, context):
-        """Implement base class `post_setup` hook to store venv context."""
-        self.context = context
-
-    def create_with_requirements(self, req_files: List[str]) -> None:
-        """Create virtualenv with the requirements specified in the files provided.
-
-        Args:
-            `req_file` (List[str]): List of requirement files as subpaths to `self.venv_dir`.
+        This class handles setting up a virtual environment in `venv_dir`.
         """
-        with yaspin(text="Creating virtual environment") as spinner:
-            env_dir = str(self.venv_dir / ".env")
-            super().create(env_dir)
-            spinner.ok("✅")
-        with yaspin(text="Installing depedencies") as spinner:
-            self._upgrade_pip()
-            for req_file in req_files:
-                self._install_pip_requirements(self.venv_dir / req_file)
-            spinner.ok("✅")
 
-    def _upgrade_pip(self):
-        """Helper function to upgrade pip."""
-        subprocess.check_call(
-            [
-                self.context.env_exe,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "pip",
-            ],
-            stdout=subprocess.PIPE,
-        )
+        def __init__(self, venv_dir: Path, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.context: Any = None
+            self.venv_dir = venv_dir
 
-    def _install_pip_requirements(self, req_file: Path):
-        """Helper function to install requirements from file."""
-        if req_file.exists():
-            pip_install_command = [
-                self.context.env_exe,
-                "-m",
-                "pip",
-                "install",
-                "-r",
-                str(req_file.absolute()),
-            ]
+        def post_setup(self, context):
+            """Implement base class `post_setup` hook to store venv context."""
+            self.context = context
+
+        def create_with_requirements(self, req_files: List[str]) -> None:
+            """Create virtualenv with the requirements specified in the files provided.
+
+            Args:
+                `req_file` (List[str]): List of requirement files as subpaths to `self.venv_dir`.
+            """
+            from yaspin import yaspin
+
+            with yaspin(text="Creating virtual environment") as spinner:
+                env_dir = str(self.venv_dir / ".env")
+                super().create(env_dir)
+                spinner.ok("✅")
+            with yaspin(text="Installing depedencies") as spinner:
+                self._upgrade_pip()
+                for req_file in req_files:
+                    self._install_pip_requirements(self.venv_dir / req_file)
+                spinner.ok("✅")
+
+        def _upgrade_pip(self):
+            """Helper function to upgrade pip."""
             subprocess.check_call(
-                pip_install_command,
+                [
+                    self.context.env_exe,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "pip",
+                ],
                 stdout=subprocess.PIPE,
             )
+
+        def _install_pip_requirements(self, req_file: Path):
+            """Helper function to install requirements from file."""
+            if req_file.exists():
+                pip_install_command = [
+                    self.context.env_exe,
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    str(req_file.absolute()),
+                ]
+                subprocess.check_call(
+                    pip_install_command,
+                    stdout=subprocess.PIPE,
+                )
+
+    return VenvBuilder
 
 
 class LocalServerLoader:
@@ -93,6 +100,7 @@ class LocalServerLoader:
         venv_dir: Optional[Path] = None,
     ):
         """Run the server and watch for changes"""
+        from yaspin import yaspin
 
         def _prep_or_create_dir(location: Optional[Path], stub: str) -> Path:
             if location is None:
@@ -103,7 +111,7 @@ class LocalServerLoader:
             return location
 
         build_dir = _prep_or_create_dir(build_dir, "build")
-        venv_dir = _prep_or_create_dir(build_dir, "server_venv")
+        venv_dir = _prep_or_create_dir(venv_dir, "server_venv")
 
         with yaspin(text="Preparing truss context") as spinner:
             self.context_builder.prepare_image_build_dir(build_dir)
@@ -112,6 +120,7 @@ class LocalServerLoader:
             build_result = docker_build_emulator.run(venv_dir)
             spinner.ok("✅")
 
+        VenvBuilder = create_venv_builder()
         venv_builder = VenvBuilder(venv_dir, with_pip=True)
         requirements_files = [
             "app/requirements.txt",
@@ -119,7 +128,14 @@ class LocalServerLoader:
         ]
         venv_builder.create_with_requirements(requirements_files)
 
-        TrussFilesSyncer(self.truss_path, venv_dir / "app/").start()
+        TrussFilesSyncer(
+            self.truss_path,
+            LocalTrussPatchApplier(
+                venv_dir / "app/",
+                venv_builder.context.env_exe,
+                logging.Logger(__name__),
+            ),
+        ).start()
 
         subprocess.check_call(
             [

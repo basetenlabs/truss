@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from jinja2 import Environment, FileSystemLoader
+from truss.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.contexts.image_builder.util import (
     truss_base_image_name,
     truss_base_image_tag,
@@ -17,9 +18,6 @@ from truss.contexts.image_builder.util import (
 base_path = Path(__file__).parent.parent
 templates_path = base_path / "truss" / "templates"
 sys.path.append(str(base_path))
-
-
-PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
 
 
 def _bool_arg_str_to_values(bool_arg_str: str) -> List[bool]:
@@ -128,7 +126,7 @@ def _build_all(
         job_types = ["server", "training"]
 
     if python_versions is None:
-        python_versions = PYTHON_VERSIONS
+        python_versions = SUPPORTED_PYTHON_VERSIONS
 
     if use_gpu_values is None:
         use_gpu_values = [True, False]
@@ -184,7 +182,7 @@ if __name__ == "__main__":
         "--python-version",
         nargs="?",
         default="all",
-        choices=[*PYTHON_VERSIONS, "all"],
+        choices=[*SUPPORTED_PYTHON_VERSIONS, "all"],
         help="Build images for specific python version or all",
     )
     parser.add_argument(
@@ -196,7 +194,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.python_version == "all":
-        python_versions = PYTHON_VERSIONS
+        python_versions = SUPPORTED_PYTHON_VERSIONS
     else:
         python_versions = {args.python_version}
 
