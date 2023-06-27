@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
-import dockerfile
 from truss.util.path import copy_tree_or_file
 
 
@@ -28,6 +27,8 @@ class DockerBuildEmulator:
         dockerfile_path: Path,
         context_dir: Path,
     ) -> None:
+        import dockerfile
+
         self._commands = dockerfile.parse_file(str(dockerfile_path))
         self._context_dir = context_dir
 
