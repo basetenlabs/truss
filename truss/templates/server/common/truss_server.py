@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import signal
 import socket
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -32,6 +33,8 @@ from starlette.responses import Response
 # 1. Self-termination on model load fail.
 # 2. Graceful termination.
 NUM_WORKERS = 1
+WORKER_TERMINATION_TIMEOUT_SECS = 120.0
+WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
 
 async def parse_body(request: Request) -> bytes:
@@ -308,11 +311,16 @@ class TrussServer:
                     # Sends term signal to the process, which should be handled
                     # by the termination handler.
                     server.stop()
-                for _ in range(300):
-                    time.sleep(0.5)
+
+                termination_check_attempts = int(
+                    WORKER_TERMINATION_TIMEOUT_SECS
+                    / WORKER_TERMINATION_CHECK_INTERVAL_SECS
+                )
+                for _ in range(termination_check_attempts):
+                    time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
                     if utils.all_processes_dead(servers):
-                        # Kill main process
-                        os.kill(os.getpid(), signal.SIGKILL)
+                        # Exit main process
+                        sys.exit()
 
             for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
                 signal.signal(sig, lambda sig, frame: stop_servers())
