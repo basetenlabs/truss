@@ -53,10 +53,11 @@ class Model:
         self._model_config = AutoConfig.from_pretrained(
             str(self._data_dir / "configs"), context_length=2048
         )
+
+        # IMPORTANT: in order to load the LM's weights, create a `models` directory in the data folder
+        # and move `replit-v2-codeinstruct-3b.q4_1.bin` into it.
         self._llm = AutoModelForCausalLM.from_pretrained(
-            str(self._data_dir / "models"),
-            model_type="replit"
-            # config=self._model_config,
+            str(self._data_dir / "models"), model_type="replit"
         )
 
     def predict(self, model_input: Dict) -> Any:
