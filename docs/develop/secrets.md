@@ -44,20 +44,15 @@ class Model:
     def __init__(self, **kwargs) -> None:
         self._config = kwargs.get("config")
         secrets = kwargs.get("secrets")
-```
-
-From there, you can use the secrets as a dictionary within the model file in any function.
-
-```python
-    # Still in __init__
-    self.s3_config = (
-        {
-            "aws_access_key_id": secrets["gfpgan_aws_access_key_id"],
-            "aws_secret_access_key": secrets["gfpgan_aws_secret_access_key"],
-            "aws_region": secrets["gfpgan_aws_region"],
-        }
-    )
-    self.s3_bucket = (secrets["gfpgan_aws_bucket"])
+        # Use secrets via dictionary in any function within the Model class
+        self.s3_config = (
+            {
+                "aws_access_key_id": secrets["gfpgan_aws_access_key_id"],
+                "aws_secret_access_key": secrets["gfpgan_aws_secret_access_key"],
+                "aws_region": secrets["gfpgan_aws_region"],
+            }
+        )
+        self.s3_bucket = (secrets["gfpgan_aws_bucket"])
 ```
 
 ## Setting secrets locally
