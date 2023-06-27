@@ -1,7 +1,9 @@
-from typing import Any, Dict
 import os
-from dataclasses import dataclass, asdict
-from ctransformers import AutoModelForCausalLM, AutoConfig
+from dataclasses import asdict, dataclass
+from typing import Any, Dict
+
+from ctransformers import AutoConfig, AutoModelForCausalLM
+
 
 @dataclass
 class GenerationConfig:
@@ -38,8 +40,6 @@ def generate(
         **asdict(generation_config),
     )
 
-from pathlib import Path
-
 
 class Model:
     def __init__(self, **kwargs) -> None:
@@ -51,11 +51,12 @@ class Model:
 
     def load(self):
         self._model_config = AutoConfig.from_pretrained(
-            "teknium/Replit-v2-CodeInstruct-3B", context_length=2048
+            str(self._data_dir / "configs"), context_length=2048
         )
         self._llm = AutoModelForCausalLM.from_pretrained(
             str(self._data_dir / "models"),
-            config=self._model_config,
+            model_type="replit"
+            # config=self._model_config,
         )
 
     def predict(self, model_input: Dict) -> Any:
@@ -73,8 +74,7 @@ class Model:
         )
         user_prompt = model_input.pop("prompt")
         generator = generate(self._llm, generation_config, user_prompt.strip())
-        result = f"[assistant]: "
+        result = ""
         for word in generator:
             result += word
         return result
-        

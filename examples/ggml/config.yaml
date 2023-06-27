@@ -2,7 +2,7 @@ environment_variables: {}
 external_package_dirs: []
 python_version: py39
 requirements:
-- git+https://github.com/abacaj/ctransformers.git
+- git+https://github.com/abacaj/ctransformers.git@replit-code#egg=ctransformers
 resources:
   cpu: 3500m
   memory: 3500Mi
