@@ -20,26 +20,28 @@ There is a GPU lock during `predict()` but not `preprocess()` and `postprocess()
 When you create a Truss, pre- and post-processing functions are added to your `my-truss/model/model.py` file as pass-through identity functions.
 
 ```python
-def preprocess(self, model_input: Any) -> Any:
-        """
-        Incorporate pre-processing required by the model if desired here.
+class Model:
 
-        These might be feature transformations that are tightly coupled to the model.
-        """
-        return model_input
+    def preprocess(self, model_input: Any) -> Any:
+            """
+            Incorporate pre-processing required by the model if desired here.
 
-    def postprocess(self, model_output: Any) -> Any:
-        """
-        Incorporate post-processing required by the model if desired here.
-        """
-        return model_output
+            These might be feature transformations that are tightly coupled to the model.
+            """
+            return model_input
 
-    def predict(self, model_input: Any) -> Any:
-        model_output = {}
-        inputs = np.array(model_input)
-        result = self._model.predict(inputs).tolist()
-        model_output["predictions"] = result
-        return model_output
+        def postprocess(self, model_output: Any) -> Any:
+            """
+            Incorporate post-processing required by the model if desired here.
+            """
+            return model_output
+
+        def predict(self, model_input: Any) -> Any:
+            model_output = {}
+            inputs = np.array(model_input)
+            result = self._model.predict(inputs).tolist()
+            model_output["predictions"] = result
+            return model_output
 ```
 
 Open `my-truss/model/model.py` to modify the functions.
@@ -59,16 +61,18 @@ import requests
 import tempfile
 import numpy as np
 
-def preprocess(self, model_input: Any) -> Any:
-    request = requests.get(model_input)
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(request.content)
-        f.seek(0)
-        input_image = tf.image.decode_png(tf.io.read_file(f.name))
-    preprocessed_image = tf.keras.applications.resnet_v2.preprocess_input(
-        tf.image.resize([input_image], (224, 224))
-    )
-    return np.array(preprocessed_image)
+class Model:
+
+    def preprocess(self, model_input: Any) -> Any:
+        request = requests.get(model_input)
+        with tempfile.NamedTemporaryFile() as f:
+            f.write(request.content)
+            f.seek(0)
+            input_image = tf.image.decode_png(tf.io.read_file(f.name))
+        preprocessed_image = tf.keras.applications.resnet_v2.preprocess_input(
+            tf.image.resize([input_image], (224, 224))
+        )
+        return np.array(preprocessed_image)
 ```
 
 ### Post-processing
@@ -82,17 +86,19 @@ Here is a post-processing function from the same [TensorFlow example](../create/
 ```python
 from scipy.special import softmax
 
-def postprocess(self, model_output: Any) -> Any:
-    class_predictions = model_output["predictions"][0]
-    LABELS = requests.get(
-        "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
-    ).text.split("\n")
-    class_probabilities = softmax(class_predictions)
-    top_probability_indices = class_probabilities.argsort()[::-1][:5].tolist()
-    return {
-        LABELS[index]: 100 * class_probabilities[index].round(3)
-        for index in top_probability_indices
-    }
+class Model:
+
+    def postprocess(self, model_output: Any) -> Any:
+        class_predictions = model_output["predictions"][0]
+        LABELS = requests.get(
+            "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"
+        ).text.split("\n")
+        class_probabilities = softmax(class_predictions)
+        top_probability_indices = class_probabilities.argsort()[::-1][:5].tolist()
+        return {
+            LABELS[index]: 100 * class_probabilities[index].round(3)
+            for index in top_probability_indices
+        }
 ```
 
 ## Using processing functions
