@@ -23,25 +23,25 @@ When you create a Truss, pre- and post-processing functions are added to your `m
 class Model:
 
     def preprocess(self, model_input: Any) -> Any:
-            """
-            Incorporate pre-processing required by the model if desired here.
+        """
+        Incorporate pre-processing required by the model if desired here.
 
-            These might be feature transformations that are tightly coupled to the model.
-            """
-            return model_input
+        These might be feature transformations that are tightly coupled to the model.
+        """
+        return model_input
 
-        def postprocess(self, model_output: Any) -> Any:
-            """
-            Incorporate post-processing required by the model if desired here.
-            """
-            return model_output
+    def postprocess(self, model_output: Any) -> Any:
+        """
+        Incorporate post-processing required by the model if desired here.
+        """
+        return model_output
 
-        def predict(self, model_input: Any) -> Any:
-            model_output = {}
-            inputs = np.array(model_input)
-            result = self._model.predict(inputs).tolist()
-            model_output["predictions"] = result
-            return model_output
+    def predict(self, model_input: Any) -> Any:
+        model_output = {}
+        inputs = np.array(model_input)
+        result = self._model.predict(inputs).tolist()
+        model_output["predictions"] = result
+        return model_output
 ```
 
 Open `my-truss/model/model.py` to modify the functions.
