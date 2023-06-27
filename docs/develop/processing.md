@@ -2,7 +2,7 @@
 
 An efficiently serialized model is just the model and its direct dependencies. No custom logic or extra frameworks. This makes deserialization fast, but may make invoking the model inconvenient.
 
-Truss bundles your serialized model with pre- and post-processing functions. Use them to:
+Write pre- and post-processing functions to:
 
 * Format model inputs and outputs, especially when the model needs something like an `xgboost.DMatrix` that isn't JSON-serializable
 * Add custom logic like saving model outputs to a data store
@@ -14,37 +14,6 @@ There is a GPU lock during `predict()` but not `preprocess()` and `postprocess()
 * If you're interacting with the GPU, do it during `predict()` to avoid putting the GPU in a bad state.
 * If you're doing any long-running calculation not on a GPU (e.g. making a HTTP request), do it in a processing function so the GPU can be freed up for the next request.
 {% endhint %}
-
-## `model/model.py` starting state
-
-When you create a Truss, pre- and post-processing functions are added to your `my-truss/model/model.py` file as pass-through identity functions.
-
-```python
-class Model:
-
-    def preprocess(self, model_input: Any) -> Any:
-        """
-        Incorporate pre-processing required by the model if desired here.
-
-        These might be feature transformations that are tightly coupled to the model.
-        """
-        return model_input
-
-    def postprocess(self, model_output: Any) -> Any:
-        """
-        Incorporate post-processing required by the model if desired here.
-        """
-        return model_output
-
-    def predict(self, model_input: Any) -> Any:
-        model_output = {}
-        inputs = np.array(model_input)
-        result = self._model.predict(inputs).tolist()
-        model_output["predictions"] = result
-        return model_output
-```
-
-Open `my-truss/model/model.py` to modify the functions.
 
 ### Pre-processing
 
@@ -63,7 +32,16 @@ import numpy as np
 
 class Model:
 
-    def preprocess(self, model_input: Any) -> Any:
+    def __init__(self, **kwargs):
+        ...
+    
+    def load(self):
+        ...
+
+    def predict(self, model_input):
+        ...
+
+    def preprocess(self, model_input):
         request = requests.get(model_input)
         with tempfile.NamedTemporaryFile() as f:
             f.write(request.content)
@@ -88,7 +66,16 @@ from scipy.special import softmax
 
 class Model:
 
-    def postprocess(self, model_output: Any) -> Any:
+    def __init__(self, **kwargs):
+        ...
+    
+    def load(self):
+        ...
+
+    def predict(self, model_input):
+        ...
+
+    def postprocess(self, model_output):
         class_predictions = model_output["predictions"][0]
         LABELS = requests.get(
             "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt"

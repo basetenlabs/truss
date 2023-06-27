@@ -41,7 +41,7 @@ Then, you can access the secrets in the `model/model.py` file by referencing the
 ```python
 class Model:
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs):
         self._config = kwargs.get("config")
         secrets = kwargs.get("secrets")
         # Use secrets via dictionary in any function within the Model class
@@ -53,6 +53,12 @@ class Model:
             }
         )
         self.s3_bucket = (secrets["gfpgan_aws_bucket"])
+    
+    def load(self):
+        ...
+
+    def predict(self, model_input):
+        ...
 ```
 
 ## Setting secrets locally
