@@ -151,4 +151,13 @@ def _patch_sort_key_fn(patch: Patch) -> int:
     if patch.type == PatchType.MODEL_CODE:
         return 2
 
+    if patch.type == PatchType.CONFIG:
+        return 3
+
+    if patch.type == PatchType.ENVIRONMENT_VARIABLE:
+        return 4
+
+    if patch.type == PatchType.EXTERNAL_DATA:
+        return 5
+
     raise ValueError(f"Unexpected patch type {patch.type}")

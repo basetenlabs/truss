@@ -58,7 +58,6 @@ class Model:
         result = th.docker_predict([1], tag=tag, binary=binary)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
-
         result = predict_with_updated_model_code()
         assert result[0] == 2
         assert orig_num_truss_images == current_num_docker_images(th)
@@ -211,6 +210,7 @@ def test_control_truss_patch_ignored_changes(
         assert current_num_docker_images(th) == orig_num_truss_images
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_added_model_dir(

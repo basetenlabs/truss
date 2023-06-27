@@ -3,8 +3,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Type, Union
 
-from truss.constants import CONFIG_FILE
-
 
 class PatchType(Enum):
     """Types of console requests sent to Django and passed along to pynode."""
@@ -105,7 +103,7 @@ class SystemPackagePatch(PatchBody):
 @dataclass
 class ConfigPatch(PatchBody):
     config: dict
-    path: str = CONFIG_FILE
+    path: str = "config.yaml"
 
     def to_dict(self):
         return {
