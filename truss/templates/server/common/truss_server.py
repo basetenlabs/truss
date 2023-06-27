@@ -104,7 +104,7 @@ class BasetenEndpoints:
         # StreamingResponse instead.
         if isinstance(response, Generator):
             print("Returning a streaming response")
-            return StreamingResponse(response, media_type="text/event-stream")
+            return StreamingResponse(response, media_type="application/octet-stream")
         else:
             print("Not returning a streaming response")
 
