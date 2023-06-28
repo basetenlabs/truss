@@ -154,7 +154,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-        run: |
+      - run: |
           NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
           git config --global user.name "Github action"
           git config --global user.email "github.action@baseten.co"
