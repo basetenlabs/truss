@@ -53,7 +53,7 @@ class Model:
             }
         )
         self.s3_bucket = (secrets["gfpgan_aws_bucket"])
-    
+
     def load(self):
         ...
 

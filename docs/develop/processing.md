@@ -34,7 +34,7 @@ class Model:
 
     def __init__(self, **kwargs):
         ...
-    
+
     def load(self):
         ...
 
@@ -68,7 +68,7 @@ class Model:
 
     def __init__(self, **kwargs):
         ...
-    
+
     def load(self):
         ...
 
