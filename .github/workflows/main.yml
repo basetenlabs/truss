@@ -109,24 +109,6 @@ jobs:
       - run: poetry install
       - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
 
-  git-tag-and-release-if-version-changed:
-    needs: [integration-tests, detect-version-changed]
-    if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    steps:
-      - name: "Git tag release"
-        uses: actions/checkout@v3
-        with:
-          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-      - run: |
-          NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
-          git config --global user.name "Github action"
-          git config --global user.email "github.action@baseten.co"
-
-          git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
-          git push origin $NEW_VERSION
-
-
   build-n-push-context-builder-image:
     needs: [integration-tests, detect-version-changed]
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
@@ -168,6 +150,19 @@ jobs:
 
       - uses: ./.github/actions/setup-python/
 
+      - name: "Git tag release"
+        uses: actions/checkout@v3
+        with:
+          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+        run: |
+          NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
+          git config --global user.name "Github action"
+          git config --global user.email "github.action@baseten.co"
+
+          git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
+          git push origin $NEW_VERSION
+
+
       - name: Install poetry packages
         run: poetry install --no-dev
 
@@ -181,7 +176,7 @@ jobs:
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
           draft: false
           prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
-          owner: context.repo.owner
+          owner: ${{ context.repo.owner }}
           generateReleaseNotes: true
           makeLatest: true
           skipIfReleaseExists: true
