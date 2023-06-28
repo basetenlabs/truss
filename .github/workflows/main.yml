@@ -176,7 +176,7 @@ jobs:
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
           draft: false
           prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
-          owner: ${{ context.repo.owner }}
+          # owner: ${{ context.repo.owner }}
           generateReleaseNotes: true
           makeLatest: true
           skipIfReleaseExists: true
