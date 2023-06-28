@@ -160,7 +160,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   publish-to-pypi:
-    needs: [integration-tests, detect-version-changed]
+    needs: [integration-tests, detect-version-changed, git-tag-and-release-if-version-changed]
     if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
     runs-on: ubuntu-20.04
     steps:
@@ -174,8 +174,8 @@ jobs:
       - name: Build
         run: poetry build
 
-      - name: Create Github Release
-        uses: ncipollo/release-action@v1
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: "dist/*"
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
@@ -186,8 +186,6 @@ jobs:
           makeLatest: true
           skipIfReleaseExists: true
           tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
-
-
 
       - name: Publish to PyPI
         if: ${{ github.event_name != 'pull_request' }}
