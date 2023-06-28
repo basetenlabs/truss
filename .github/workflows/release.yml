@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - bola/make-releases-visiable
 
 concurrency:
   group: main-${{ github.head_ref || github.run_id }}
@@ -65,7 +66,7 @@ jobs:
           fi
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
-    if: needs.detect-version-changed.outputs.build_base_images == 'true'
+    if: false #needs.detect-version-changed.outputs.build_base_images == 'true'
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -96,7 +97,7 @@ jobs:
 
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    if: false # ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -126,27 +127,6 @@ jobs:
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
           git push origin $NEW_VERSION
 
-      - name: "Create a Github release"
-        uses: "actions/github-script@v6"
-        with:
-          github-token: "${{ secrets.BASETENBOT_GITHUB_TOKEN }}"
-          script: |
-            try {
-              const response = await github.rest.repos.createRelease({
-                draft: false,
-                generate_release_notes: true,
-                name: "v${{ needs.detect-version-changed.outputs.new_version }}",
-                owner: context.repo.owner,
-                prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }},
-                repo: context.repo.repo,
-                tag_name: "v${{ needs.detect-version-changed.outputs.new_version }}",
-              });
-
-              core.exportVariable('RELEASE_ID', response.data.id);
-              core.exportVariable('RELEASE_UPLOAD_URL', response.data.upload_url);
-            } catch (error) {
-              core.setFailed(error.message);
-            }
 
   build-n-push-context-builder-image:
     needs: [integration-tests, detect-version-changed]
@@ -194,6 +174,21 @@ jobs:
 
       - name: Build
         run: poetry build
+
+      - name: Create Github Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/*"
+          token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+          draft: false
+          prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
+          owner: context.repo.owner
+          generateReleaseNotes: true
+          makeLatest: true
+          skipIfReleaseExists: true
+          tag_name: "v${{ needs.detect-version-changed.outputs.new_version }}"
+
+
 
       - name: Publish to PyPI
         if: ${{ github.event_name != 'pull_request' }}
