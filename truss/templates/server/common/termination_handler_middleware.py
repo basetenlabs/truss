@@ -4,10 +4,29 @@ from typing import Callable
 
 from fastapi import Request
 
+# This is to allow the last request's response to finish handling. There may be more
+# middlewares that the response goes through, and then there's the time for the bytes
+# to be pushed to the caller.
 DEFAULT_TERM_DELAY_SECS = 5.0
 
 
 class TerminationHandlerMiddleware:
+    """
+    This middleware allows for swiftly and safely terminating the server. It
+    listens to a set of termination signals. On receiving such a signal, it
+    first informs on the on_stop callback, then waits for currently executing
+    requests to finish, before informing on the on_term callback.
+
+    Stop means that the process to stop the server has started. As soon as
+    outstading requests go to zero after this, on_term will be called.
+
+    Term means that this is the right time to terminate the server process, no
+    outstanding requests at this point.
+
+    The caller would typically handle on_stop by stop sending more requests to
+    the FastApi server. And on_term by exiting the server process.
+    """
+
     def __init__(
         self,
         on_stop: Callable[[], None],
