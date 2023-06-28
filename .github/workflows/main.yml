@@ -142,7 +142,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   publish-to-pypi:
-    needs: [integration-tests, detect-version-change]
+    needs: [integration-tests, detect-version-changed]
     if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
     runs-on: ubuntu-20.04
     steps:
