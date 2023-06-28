@@ -267,6 +267,7 @@ class TrussConfig:
     apply_library_patches: bool = True
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
+    trainable: bool = False
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
@@ -354,8 +355,11 @@ class TrussConfig:
             "live_reload": self.live_reload,
             "spec_version": self.spec_version,
             "apply_library_patches": self.apply_library_patches,
-            "train": self.train.to_dict(),
         }
+
+        if self.trainable:
+            d["train"] = self.train.to_dict()
+
         if self.external_data is not None:
             d["external_data"] = transform_optional(
                 self.external_data, lambda data: data.to_list()
