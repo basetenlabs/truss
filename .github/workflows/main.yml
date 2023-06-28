@@ -166,17 +166,39 @@ jobs:
       - name: Build
         run: poetry build
 
-      - name: Create Release
-        uses: ncipollo/release-action@v1.12.0
+      - name: "Create a Github release"
+        uses: "actions/github-script@v6"
         with:
-          artifacts: "dist/*"
-          token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
-          draft: false
-          prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
-          generateReleaseNotes: true
-          makeLatest: true
-          skipIfReleaseExists: true
-          tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
+          github-token: "${{ secrets.BASETENBOT_GITHUB_TOKEN }}"
+          script: |
+            try {
+              const response = await github.rest.repos.createRelease({
+                draft: false,
+                generate_release_notes: true,
+                name: "v${{ needs.detect-version-changed.outputs.new_version }}",
+                owner: context.repo.owner,
+                prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }},
+                repo: context.repo.repo,
+                tag_name: "v${{ needs.detect-version-changed.outputs.new_version }}",
+                artifacts: "dist/*"
+              });
+              core.exportVariable('RELEASE_ID', response.data.id);
+              core.exportVariable('RELEASE_UPLOAD_URL', response.data.upload_url);
+            } catch (error) {
+              core.setFailed(error.message);
+            }
+
+      # - name: Create Release
+      #   uses: ncipollo/release-action@v1.12.0
+      #   with:
+      #     artifacts: "dist/*"
+      #     token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+      #     draft: false
+      #     prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
+      #     generateReleaseNotes: true
+      #     makeLatest: true
+      #     skipIfReleaseExists: true
+      #     tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
 
       - name: Publish to PyPI
         if: ${{ github.event_name != 'pull_request' }}
