@@ -1,6 +1,8 @@
+import asyncio
 import os
 from pathlib import Path
 
+import uvicorn
 from application import create_app
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
@@ -22,8 +24,6 @@ def _identify_python_executable_path() -> str:
 
 
 if __name__ == "__main__":
-    from shared.uvicorn_config import start_uvicorn_server
-
     inf_serv_home: str = os.environ["APP_HOME"]
     python_executable_path: str = _identify_python_executable_path()
     application = create_app(
@@ -43,8 +43,13 @@ if __name__ == "__main__":
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
     )
 
-    start_uvicorn_server(
+    cfg = uvicorn.Config(
         application,
         host=application.state.control_server_host,
         port=application.state.control_server_port,
+        workers=1,
     )
+
+    server = uvicorn.Server(cfg)
+
+    asyncio.run(server.serve())
