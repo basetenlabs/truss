@@ -117,7 +117,6 @@ jobs:
       - name: "Git tag release"
         uses: actions/checkout@v3
         with:
-          # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
       - run: |
           NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
@@ -186,7 +185,7 @@ jobs:
           generateReleaseNotes: true
           makeLatest: true
           skipIfReleaseExists: true
-          tag_name: "v${{ needs.detect-version-changed.outputs.new_version }}"
+          tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
 
 
 
