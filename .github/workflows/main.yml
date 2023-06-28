@@ -17,6 +17,8 @@ jobs:
       new_version: ${{ steps.versions.outputs.new_version }}
       new_base_image_version: ${{ steps.versions.outputs.new_base_image_version }}
       build_base_images: ${{ steps.versions.outputs.build_base_images }}
+      release_version: ${{ steps.versions.outputs.release_version }}
+      is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -42,6 +44,16 @@ jobs:
 
           if [[ "$NEW_VERSION" != "$OLD_VERSION" ]]; then
             echo "version_changed=true" >> $GITHUB_OUTPUT
+            if [[ "$NEW_VERSION" == *"dev"* ]]; then
+              echo "release_version=false" >> $GITHUB_OUTPUT
+            else
+              echo "release_version=true" >> $GITHUB_OUTPUT
+              if [[ "$NEW_VERSION" == *"rc"* ]]; then
+                echo "is_prerelease_version=true" >> $GITHUB_OUTPUT
+              else
+                echo "is_prerelease_version=false" >> $GITHUB_OUTPUT
+              fi
+            fi
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
           fi
@@ -58,8 +70,8 @@ jobs:
     strategy:
       matrix:
         python_version: ["3.8", "3.9", "3.10", "3.11"]
-        use_gpu: ['y', 'n']
-        job_type: ['server', 'training']
+        use_gpu: ["y", "n"]
+        job_type: ["server", "training"]
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -89,22 +101,53 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        split_group: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+        split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests  -m 'integration' --splits 10 --group ${{ matrix.split_group }}
+      - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
 
-
-  git-tag-if-version-changed:
+  build-n-push-context-builder-image:
     needs: [integration-tests, detect-version-changed]
-    if:  ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.version_changed == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
+    if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
         with:
-          # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: baseten/truss-context-builder
+
+      - name: Docker Build
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          context: ./
+          file: ./context_builder.Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  publish-to-pypi:
+    needs: [integration-tests, detect-version-changed]
+    if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
+    runs-on: ubuntu-20.04
+    steps:
+      - name: "Git tag release"
+        uses: actions/checkout@v3
+        with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
       - run: |
           NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
@@ -114,54 +157,26 @@ jobs:
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
           git push origin $NEW_VERSION
 
-  build-n-push-context-builder-image:
-    needs: [integration-tests, detect-version-changed]
-    if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.version_changed == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup-python/
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      - name: Install poetry packages
+        run: poetry install --no-dev
 
+      - name: Build
+        run: poetry build
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v1
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: "dist/*"
+          token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+          draft: false
+          prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
+          generateReleaseNotes: true
+          makeLatest: true
+          skipIfReleaseExists: true
+          tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
 
-    - name: Docker meta
-      id: meta
-      uses: docker/metadata-action@v3
-      with:
-        images: baseten/truss-context-builder
-
-    - name: Docker Build
-      id: docker_build
-      uses: docker/build-push-action@v2
-      with:
-        context: ./
-        file: ./context_builder.Dockerfile
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
-        labels: ${{ steps.meta.outputs.labels }}
-
-  publish-to-pypi:
-    needs: [integration-tests, detect-version-changed]
-    if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.version_changed == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v3
-
-    - uses: ./.github/actions/setup-python/
-
-    - name: Install poetry packages
-      run: poetry install --no-dev
-
-    - name: Build
-      run: poetry build
-
-    - name: Publish to PyPI
-      if: ${{ github.event_name != 'pull_request' }}
-      run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
+      - name: Publish to PyPI
+        if: ${{ github.event_name != 'pull_request' }}
+        run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
