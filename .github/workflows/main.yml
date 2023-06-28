@@ -146,10 +146,6 @@ jobs:
     if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
-
-      - uses: ./.github/actions/setup-python/
-
       - name: "Git tag release"
         uses: actions/checkout@v3
         with:
@@ -161,6 +157,8 @@ jobs:
 
           git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
           git push origin $NEW_VERSION
+
+      - uses: ./.github/actions/setup-python/
 
       - name: Install poetry packages
         run: poetry install --no-dev
@@ -175,7 +173,6 @@ jobs:
           token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
           draft: false
           prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
-          # owner: ${{ context.repo.owner }}
           generateReleaseNotes: true
           makeLatest: true
           skipIfReleaseExists: true
