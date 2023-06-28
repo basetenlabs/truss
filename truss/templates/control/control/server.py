@@ -1,7 +1,9 @@
 import asyncio
+import concurrent.futures
 import os
 from pathlib import Path
 
+import shared.util as utils
 import uvicorn
 from application import create_app
 
@@ -48,6 +50,12 @@ if __name__ == "__main__":
         host=application.state.control_server_host,
         port=application.state.control_server_port,
         workers=1,
+    )
+    cfg.setup_event_loop()
+
+    max_asyncio_workers = min(32, utils.cpu_count() + 4)
+    asyncio.get_event_loop().set_default_executor(
+        concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
     )
 
     server = uvicorn.Server(cfg)

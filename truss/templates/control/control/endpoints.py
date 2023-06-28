@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict
 
 from fastapi import APIRouter
@@ -73,7 +74,13 @@ control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
 async def patch(request: Request) -> Dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
-    request.app.state.inference_server_controller.apply_patch(patch_request)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: request.app.state.inference_server_controller.apply_patch(
+            patch_request
+        ),
+    )
     request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
