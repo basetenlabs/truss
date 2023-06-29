@@ -235,7 +235,6 @@ def init(
         model_type="custom",
         model_framework=ModelFrameworkType.CUSTOM,
         python_version=map_to_supported_python_version(infer_python_version()),
-        trainable=trainable,
     )
 
     target_directory_path = populate_target_directory(

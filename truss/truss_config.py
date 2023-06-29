@@ -1,4 +1,5 @@
-from dataclasses import dataclass, field
+import copy
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -102,6 +103,11 @@ class Resources:
         )
 
     def to_dict(self):
+        resource_copy = copy.deepcopy(self)
+        resource_copy.accelerator = self.accelerator.to_str()
+
+        # return asdict(resource_copy, dict_factory=asdict_factory(resource_copy))
+
         return {
             "cpu": self.cpu,
             "memory": self.memory,
@@ -135,6 +141,7 @@ class Train:
         )
 
     def to_dict(self):
+        # return asdict(self, dict_factory=asdict_factory(self))
         return {
             "training_class_filename": self.training_class_filename,
             "training_class_name": self.training_class_name,
@@ -237,6 +244,37 @@ class BaseImage:
         }
 
 
+def asdict_factory(cls):
+    def factory(obj: list[tuple]) -> dict:
+        print(obj)
+        d = {}
+        required = [
+            "environment_variables",
+            "external_package_dirs",
+            "model_metadata",
+            "model_name",
+            "python_version",
+            "requirements",
+            "resources",
+            "secrets",
+            "system_packages",
+        ]
+        skip = ["external_data", "base_image"]
+        for k, v in obj:
+            if k in skip or k not in cls.__dataclass_fields__:
+                continue
+
+            if type(v) is dict and len(v.items()) == 0 and k not in required:
+                continue
+
+            field_value = cls.__dataclass_fields__[k].default
+            if field_value != v or k in required:
+                d[k] = v
+        return d
+
+    return factory
+
+
 @dataclass
 class TrussConfig:
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
@@ -267,7 +305,6 @@ class TrussConfig:
     apply_library_patches: bool = True
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
-    trainable: bool = False
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
@@ -332,33 +369,42 @@ class TrussConfig:
             yaml.dump(self.to_dict(), config_file)
 
     def to_dict(self):
-        d = {
-            "model_type": self.model_type,
-            "model_framework": self.model_framework.value,
-            "model_module_dir": self.model_module_dir,
-            "model_class_filename": self.model_class_filename,
-            "model_class_name": self.model_class_name,
-            "data_dir": self.data_dir,
-            "input_type": self.input_type,
-            "model_metadata": self.model_metadata,
-            "requirements": self.requirements,
-            "system_packages": self.system_packages,
-            "environment_variables": self.environment_variables,
-            "resources": self.resources.to_dict(),
-            "python_version": self.python_version,
-            "model_name": self.model_name,
-            "examples_filename": self.examples_filename,
-            "secrets": self.secrets,
-            "description": self.description,
-            "bundled_packages_dir": self.bundled_packages_dir,
-            "external_package_dirs": self.external_package_dirs,
-            "live_reload": self.live_reload,
-            "spec_version": self.spec_version,
-            "apply_library_patches": self.apply_library_patches,
-        }
+        # iterate over all data
 
-        if self.trainable:
-            d["train"] = self.train.to_dict()
+        # if the data is a class, iterate over all of its types
+
+        # else skip if is default
+
+        # add to dict otherwise
+
+        # d = {
+        #     "model_type": self.model_type,
+        #     "model_framework": self.model_framework.value,
+        #     "model_module_dir": self.model_module_dir,
+        #     "model_class_filename": self.model_class_filename,
+        #     "model_class_name": self.model_class_name,
+        #     "data_dir": self.data_dir,
+        #     "input_type": self.input_type,
+        #     "model_metadata": self.model_metadata,
+        #     "requirements": self.requirements,
+        #     "system_packages": self.system_packages,
+        #     "environment_variables": self.environment_variables,
+        #     "resources": self.resources.to_dict(),
+        #     "python_version": self.python_version,
+        #     "model_name": self.model_name,
+        #     "examples_filename": self.examples_filename,
+        #     "secrets": self.secrets,
+        #     "description": self.description,
+        #     "bundled_packages_dir": self.bundled_packages_dir,
+        #     "external_package_dirs": self.external_package_dirs,
+        #     "live_reload": self.live_reload,
+        #     "spec_version": self.spec_version,
+        #     "apply_library_patches": self.apply_library_patches,
+        #     "train": self.train.to_dict(),
+        # }
+
+        # self.train = asdict(self.train, dict_factory=asdict_factory(self.train))
+        d = asdict(self, dict_factory=asdict_factory(self))
 
         if self.external_data is not None:
             d["external_data"] = transform_optional(

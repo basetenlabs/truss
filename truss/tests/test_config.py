@@ -1,4 +1,5 @@
 import pytest
+import yaml
 from truss.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
@@ -7,7 +8,9 @@ from truss.truss_config import (
     AcceleratorSpec,
     BaseImage,
     Resources,
+    TrussConfig,
 )
+from truss.types import ModelFrameworkType
 
 
 @pytest.mark.parametrize(
@@ -109,3 +112,28 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
     parsed_result = BaseImage.from_dict(input_dict)
     assert parsed_result == expect_base_image
     assert parsed_result.to_dict() == output_dict
+
+
+def test_default_config_not_crowded():
+    config = TrussConfig(
+        model_type="custom",
+        model_framework=ModelFrameworkType.CUSTOM,
+        python_version="py39",
+        requirements=[],
+    )
+
+    config_yaml = """environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: null
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
+secrets: {}
+system_packages: []"""
+
+    assert config_yaml == yaml.dump(config.to_dict())
