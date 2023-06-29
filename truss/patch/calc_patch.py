@@ -250,10 +250,6 @@ def _calc_env_var_patches(
     new_items = new_config.environment_variables
     prev_item_names = set(prev_items.keys())
     new_item_names = set(new_items.keys())
-    print("calcing")
-    print(f"prev: {prev_item_names}")
-    print(f"new: {new_item_names}")
-
     removed_items = prev_item_names.difference(new_item_names)
     for removed_item in removed_items:
         patches.append(

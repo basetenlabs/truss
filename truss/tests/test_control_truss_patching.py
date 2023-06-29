@@ -256,7 +256,6 @@ def test_patch_data_dir(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-# @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_env_var(control_model_handle_tag_tuple):
     truss_dir, th, tag = control_model_handle_tag_tuple
@@ -268,8 +267,11 @@ def test_patch_env_var(control_model_handle_tag_tuple):
         th.add_environment_variable("foo", "bar2")
         result = th.docker_predict([1], tag=tag)
         assert result == "bar2"
-        th.clear_environment_variables()  # not emitting patch
-        print(th.spec.config.environment_variables)
+        config_path = truss_dir / "config.yaml"
+        with config_path.open("w") as file:
+            file.write("{}")
+
+        assert th._serving_hash() != th.truss_hash_on_serving_container()
         result = th.docker_predict([1], tag=tag)
         assert result == "No foo :("
 
