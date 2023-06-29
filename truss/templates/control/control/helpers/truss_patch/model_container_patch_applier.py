@@ -42,7 +42,6 @@ class ModelContainerPatchApplier:
 
     def __call__(self, patch: Patch, inf_env: dict):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
-        print(f"patch: {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
             apply_model_code_patch(

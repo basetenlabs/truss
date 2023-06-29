@@ -1,4 +1,4 @@
-import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -11,6 +11,7 @@ from truss.tests.test_truss_handle import (
     verify_system_package_installed_on_container,
     verify_system_requirement_not_installed_on_container,
 )
+from truss.truss_config import ExternalDataItem
 from truss.truss_handle import TrussHandle
 
 
@@ -346,11 +347,13 @@ def test_predict_with_external_data_change(
 ):
     truss_dir, _ = custom_model_external_data_access_tuple_fixture
     th = TrussHandle(truss_dir)
+    th.live_reload()
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
         th.docker_predict([], tag=tag)
         orig_num_truss_images = len(th.get_all_docker_images())
         th.remove_all_external_data()
+        assert th._serving_hash() != th.truss_hash_on_serving_container()
         new_model_code = """
 class Model:
     def __init__(self, data_dir):
@@ -365,11 +368,6 @@ class Model:
         content = "foobar"
         filename = "foobar.txt"
         (tmp_path / filename).write_text(content)
-        port = 9090
-        proc = subprocess.Popen(
-            ["python", "-m", "http.server", str(port), "--bind", "*"],
-            cwd=tmp_path,
-        )
         new_model_code = """
 class Model:
     def __init__(self, data_dir):
@@ -377,17 +375,36 @@ class Model:
         pass
 
     def predict(self, model_input):
-        with (self._data_dir / 'foobar.txt').open() as file:
-            return file.read()
+        return (self._data_dir / 'foobar.txt').read_text()
 """
         update_model_code(truss_dir, new_model_code)
-        try:
-            url = f"http://localhost:{port}/{filename}"
-            th.add_external_data_item(url, filename)
-            result = th.docker_predict([], tag=tag)
-        finally:
-            assert (
-                result == content
-                and orig_num_truss_images == current_num_docker_images(th)
+        url = f"http://host.docker.internal:9089/{filename}"
+        th.add_external_data_item(url, filename)
+        result = th.docker_predict([], tag=tag)
+        assert result == content
+
+        # test patching of external data
+
+        content = "patched content"
+        new_filename = "foobar-patched.txt"
+        (tmp_path / new_filename).write_text(content)
+        current_external_data = th._spec.config.external_data
+        new_external_data = replace(
+            current_external_data,
+            items=[
+                ExternalDataItem(
+                    url=f"http://host.docker.internal:9089/{new_filename}",
+                    local_data_path=filename,
+                )
+            ],
+        )
+        th._update_config(
+            lambda conf: replace(
+                conf,
+                external_data=new_external_data,
             )
-            proc.kill()
+        )
+        result = th.docker_predict([], tag=tag)
+        assert result == content and orig_num_truss_images == current_num_docker_images(
+            th
+        )
