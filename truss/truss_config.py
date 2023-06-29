@@ -1,4 +1,3 @@
-import copy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -41,7 +40,6 @@ DEFAULT_TRAINING_MODULE_DIR = "train"
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
 
-
 class Accelerator(Enum):
     T4 = "T4"
     A10G = "A10G"
@@ -49,11 +47,13 @@ class Accelerator(Enum):
     A100 = "A100"
 
 
-def asdict_factory(cls, required_keys: Set[str]):
+def asdict_factory(cls, required_keys: Set[str], dicts_to_drop: Set[str]):
     def factory(obj: List[Tuple]) -> Dict:
         d = {}
         for k, v in obj:
             if k not in cls.__dataclass_fields__:
+                continue
+            if k in dicts_to_drop and len(v) == 0:
                 continue
 
             field_default_value = cls.__dataclass_fields__[k].default
@@ -119,11 +119,6 @@ class Resources:
         )
 
     def to_dict(self):
-        resource_copy = copy.deepcopy(self)
-        resource_copy.accelerator = self.accelerator.to_str()
-
-        # return asdict(resource_copy, dict_factory=asdict_factory(resource_copy))
-
         return {
             "cpu": self.cpu,
             "memory": self.memory,
@@ -157,11 +152,12 @@ class Train:
         )
 
     def to_dict(self):
-        required_keys = {
+        dicts_to_drop = {
             "variables",
             "resources",
         }
-        d = asdict(self, dict_factory=asdict_factory(self, required_keys))
+        d = asdict(self, dict_factory=asdict_factory(self, {}, dicts_to_drop))
+        return d
         return {
             "training_class_filename": self.training_class_filename,
             "training_class_name": self.training_class_name,
@@ -361,6 +357,8 @@ class TrussConfig:
         self.train = self.train.to_dict()
         self.resources = self.resources.to_dict()
 
+        d = {}
+
         if self.external_data is not None:
             d["external_data"] = transform_optional(
                 self.external_data, lambda data: data.to_list()
@@ -368,7 +366,7 @@ class TrussConfig:
         if self.base_image is not None:
             d["base_image"] = transform_optional(
                 self.base_image, lambda data: data.to_dict()
-            )        
+            )
 
         required_keys = {
             "environment_variables",
@@ -381,8 +379,8 @@ class TrussConfig:
             "secrets",
             "system_packages",
         }
-        d = asdict(self, dict_factory=asdict_factory(self, required_keys))
-        
+        d = asdict(self, dict_factory=asdict_factory(self, required_keys, {"train"}))
+
         return d
 
     def clone(self):
