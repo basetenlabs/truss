@@ -1,5 +1,4 @@
 import logging
-import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -41,8 +40,9 @@ class ModelContainerPatchApplier:
         if pip_path is not None:
             self._pip_path_cached = "pip"
 
-    def __call__(self, patch: Patch):
+    def __call__(self, patch: Patch, inf_env: dict):
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
+        print(f"patch: {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
             apply_model_code_patch(
@@ -59,7 +59,7 @@ class ModelContainerPatchApplier:
             self._apply_config_patch(config_patch)
         elif isinstance(patch.body, EnvVarPatch):
             env_var_patch: EnvVarPatch = patch.body
-            self._apply_env_var_patch(env_var_patch)
+            self._apply_env_var_patch(env_var_patch, inf_env)
         elif isinstance(patch.body, ExternalDataPatch):
             external_data_patch: ExternalDataPatch = patch.body
             self._apply_external_data_patch(external_data_patch)
@@ -148,7 +148,7 @@ class ModelContainerPatchApplier:
             Path(self._inference_server_home / config_patch.path)
         )
 
-    def _apply_env_var_patch(self, env_var_patch: EnvVarPatch):
+    def _apply_env_var_patch(self, env_var_patch: EnvVarPatch, inf_env: dict):
         self._app_logger.debug(
             f"Applying environment variable patch {env_var_patch.to_dict()}"
         )
@@ -156,9 +156,9 @@ class ModelContainerPatchApplier:
         ((env_var_name, env_var_value),) = env_var_patch.item.items()
 
         if action == Action.REMOVE:
-            os.environ.pop(env_var_name, None)
+            inf_env.pop(env_var_name, None)
         elif action in [Action.ADD, Action.UPDATE]:
-            os.environ.update({env_var_name: env_var_value})
+            inf_env.update({env_var_name: env_var_value})
         else:
             raise ValueError(f"Unknown patch action {action}")
 

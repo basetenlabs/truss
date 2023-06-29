@@ -227,8 +227,7 @@ def _calc_general_config_patches(
         prev_items = getattr(prev_config, key)
         new_items = getattr(new_config, key)
         if new_items != prev_items:
-            logger.info(f"Patching is not supported for: {key}, bailing")
-            return []
+            logger.warning(f"Patching is not supported for: {key}")
 
     if prev_config.to_dict() != new_config.to_dict():
         patches.append(_mk_config_patch(Action.UPDATE, new_config.to_dict()))
@@ -251,6 +250,9 @@ def _calc_env_var_patches(
     new_items = new_config.environment_variables
     prev_item_names = set(prev_items.keys())
     new_item_names = set(new_items.keys())
+    print("calcing")
+    print(f"prev: {prev_item_names}")
+    print(f"new: {new_item_names}")
 
     removed_items = prev_item_names.difference(new_item_names)
     for removed_item in removed_items:

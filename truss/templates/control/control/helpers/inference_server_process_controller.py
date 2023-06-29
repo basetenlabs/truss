@@ -31,9 +31,8 @@ class InferenceServerProcessController:
         self._inference_server_ever_started = False
         self._app_logger = app_logger
 
-    def start(self):
+    def start(self, inf_env: dict):
         with current_directory(self._inference_server_home):
-            inf_env = os.environ.copy()
             inf_env["INFERENCE_SERVER_PORT"] = str(self._inference_server_port)
             self._inference_server_process = subprocess.Popen(
                 self._inference_server_process_args,
@@ -72,12 +71,12 @@ class InferenceServerProcessController:
     def is_inference_server_intentionally_stopped(self) -> bool:
         return INFERENCE_SERVER_FAILED_FILE.exists()
 
-    def check_and_recover_inference_server(self):
+    def check_and_recover_inference_server(self, inf_env: dict):
         if self.inference_server_started() and not self.is_inference_server_running():
             if not self.is_inference_server_intentionally_stopped():
                 self._app_logger.warning(
                     "Inference server seems to have crashed, restarting"
                 )
-                self.start()
+                self.start(inf_env)
             else:
                 self._app_logger.warning("Inference server unrecoverable. Try patching")

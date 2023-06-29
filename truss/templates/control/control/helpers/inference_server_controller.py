@@ -28,6 +28,7 @@ class InferenceServerController:
     _patch_applier: ModelContainerPatchApplier
     _app_logger: logging.Logger
     _oversee_inference_server: bool
+    _inf_env: dict
 
     def __init__(
         self,
@@ -47,6 +48,7 @@ class InferenceServerController:
                 target=self._check_and_recover_inference_server
             )
             self._inference_server_overseer_thread.start()
+        self._inf_env = os.environ.copy()
 
     def apply_patch(self, patch_request):
         with self._lock:
@@ -63,7 +65,7 @@ class InferenceServerController:
                 # We are in sync, ok to start running inference server now, if
                 # it's not running.
                 if not self._process_controller.inference_server_started():
-                    self._process_controller.start()
+                    self._process_controller.start(self._inf_env)
                 self._app_logger.info("Request hash same as current hash, skipping.")
                 return
 
@@ -86,7 +88,7 @@ class InferenceServerController:
             try:
                 patches_executed = 0
                 for patch in patches:
-                    self._patch_applier(patch)
+                    self._patch_applier(patch, self._inf_env)
                     patches_executed += 1
             except Exception as exc:
                 if patches_executed > 0:
@@ -100,10 +102,10 @@ class InferenceServerController:
                 # Theoretically, a single patch application may leave
                 # side-effects, but that's not the case with currently
                 # supported patches.
-                self._process_controller.start()
+                self._process_controller.start(self._inf_env)
                 raise PatchFailedRecoverable(str(exc)) from exc
 
-            self._process_controller.start()
+            self._process_controller.start(self._inf_env)
             self._current_running_hash = req_hash
 
     def truss_hash(self) -> Optional[str]:
@@ -112,7 +114,7 @@ class InferenceServerController:
     def restart(self):
         with self._lock:
             self._process_controller.stop()
-            self._process_controller.start()
+            self._process_controller.start(self._inf_env)
 
     def start(self):
         # For now, start just does restart, this alias allows for better
@@ -131,7 +133,9 @@ class InferenceServerController:
         self._app_logger.info("Inference server overseer thread started")
         while True:
             with self._lock:
-                self._process_controller.check_and_recover_inference_server()
+                self._process_controller.check_and_recover_inference_server(
+                    self._inf_env
+                )
             time.sleep(INFERENCE_SERVER_CHECK_INTERVAL_SECS)
 
 
