@@ -116,8 +116,6 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
 
 def test_default_config_not_crowded():
     config = TrussConfig(
-        model_type="custom",
-        model_framework=ModelFrameworkType.CUSTOM,
         python_version="py39",
         requirements=[],
     )
