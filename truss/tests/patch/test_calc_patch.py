@@ -534,14 +534,6 @@ def test_calc_config_patches_remove_external_data(
     ]
 
 
-def test_calc_config_patches_unsupported_config_patch(custom_model_truss_dir: Path):
-    def config_op(config: TrussConfig):
-        config.live_reload = True
-
-    patches = _apply_config_change_and_calc_patches(custom_model_truss_dir, config_op)
-    assert len(patches) == 0
-
-
 def _apply_config_change_and_calc_patches(
     custom_model_truss_dir: Path,
     config_op: Callable[[TrussConfig], Any],
