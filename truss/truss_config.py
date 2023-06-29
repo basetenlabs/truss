@@ -1,7 +1,7 @@
-from dataclasses import asdict, dataclass, field, fields, _MISSING_TYPE
+from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import yaml
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
@@ -139,16 +139,7 @@ class Train:
         )
 
     def to_dict(self):
-        # d = asdict(self, dict_factory=asdict_factory(Train))
-        # return d
         return obj_to_dict(self)
-        return {
-            "training_class_filename": self.training_class_filename,
-            "training_class_name": self.training_class_name,
-            "training_module_dir": self.training_module_dir,
-            "variables": self.variables,
-            "resources": self.resources.to_dict(),
-        }
 
 
 @dataclass
@@ -349,7 +340,6 @@ class TrussConfig:
                 self.base_image, lambda data: data.to_dict()
             )
 
-        # d = asdict(self, dict_factory=asdict_factory(TrussConfig))
         d = obj_to_dict(self)
         return d
 
@@ -377,14 +367,11 @@ dataclass_to_req_keys_map = {
     },
 }
 
-
 types_to_serialize = (Resources, Train)
 
 
 def obj_to_dict(obj):
     required_keys = dataclass_to_req_keys_map[type(obj)]
-    # print("\n")
-    # print(required_keys)
     d = {}
     for f in fields(obj):
         field_name = f.name
@@ -392,10 +379,6 @@ def obj_to_dict(obj):
         field_default_factory = f.default_factory
 
         field_curr_value = getattr(obj, f.name)
-        if field_name == "train":
-            print(
-                field_name, field_curr_value, field_default_value, field_default_factory
-            )
 
         expected_default_value = None
         if not isinstance(field_default_value, _MISSING_TYPE):
@@ -411,29 +394,4 @@ def obj_to_dict(obj):
             else:
                 d[field_name] = field_curr_value
 
-    # print(d)
     return d
-
-
-# def asdict_factory(cls):
-#     def factory(obj: List[Tuple]) -> Dict:
-#         required_keys = dataclass_to_req_keys_map[cls]
-#         print(required_keys)
-#         d = {}
-#         for k, v in obj:
-#             if k not in cls.__dataclass_fields__:
-#                 continue
-
-#             print(cls, k, v, cls.__dataclass_fields__[k].default)
-
-#             if isinstance(k, dict) and len(k) == 0 and k not in required_keys:
-#                 continue
-
-#             ## NEED TO CHECK WHICH CLASS
-
-#             field_default_value = cls.__dataclass_fields__[k].default
-#             if field_default_value != v or k in required_keys:
-#                 d[k] = v
-#         return d
-
-#     return factory
