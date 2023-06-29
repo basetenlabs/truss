@@ -1,7 +1,7 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
@@ -45,27 +45,6 @@ class Accelerator(Enum):
     A10G = "A10G"
     V100 = "V100"
     A100 = "A100"
-
-dataclass_to_req_keys_map = {
-    Train: {"variables"},
-}
-
-def asdict_factory(cls, required_keys: Set[str]):
-    def factory(obj: List[Tuple]) -> Dict:
-        d = {}
-        for k, v in obj:
-            if k not in cls.__dataclass_fields__:
-                continue
-
-            field_default_value = cls.__dataclass_fields__[k].default
-            if type(field_default_value) in dataclass_to_req_keys_map.keys():
-                required_keys = dataclass_to_req_keys_map[type(field_default_value)]
-                v = asdict(self, dict_factory=asdict_factory(self, required_keys))
-            if k in required_keys or (len(v) == 0 and field_default_value != v ):
-                d[k] = v
-        return d
-
-    return factory
 
 
 @dataclass
@@ -156,12 +135,9 @@ class Train:
         )
 
     def to_dict(self):
-        dicts_to_drop = {
-            "variables",
-            "resources",
-        }
-        d = asdict(self, dict_factory=asdict_factory(self, {}, dicts_to_drop))
+        d = asdict(self, dict_factory=asdict_factory(Train))
         return d
+        # return obj_to_dict(self)
         return {
             "training_class_filename": self.training_class_filename,
             "training_class_name": self.training_class_name,
@@ -369,19 +345,8 @@ class TrussConfig:
                 self.base_image, lambda data: data.to_dict()
             )
 
-        required_keys = {
-            "environment_variables",
-            "external_package_dirs",
-            "model_metadata",
-            "model_name",
-            "python_version",
-            "requirements",
-            "resources",
-            "secrets",
-            "system_packages",
-        }
-        d = asdict(self, dict_factory=asdict_factory(self, required_keys))
-
+        d = asdict(self, dict_factory=asdict_factory(TrussConfig))
+        # d = obj_to_dict(self)
         return d
 
     def clone(self):
@@ -390,3 +355,67 @@ class TrussConfig:
     def validate(self):
         for secret_name in self.secrets:
             validate_secret_name(secret_name)
+
+
+dataclass_to_req_keys_map = {
+    Train: {"variables"},
+    Resources: {"accelerator", "cpu", "memory", "use_gpu"},
+    TrussConfig: {
+        "environment_variables",
+        "external_package_dirs",
+        "model_metadata",
+        "model_name",
+        "python_version",
+        "requirements",
+        "resources",
+        "secrets",
+        "system_packages",
+    },
+}
+
+
+def obj_to_dict(cls):
+    required_keys = dataclass_to_req_keys_map[type(cls)]
+    print("\n")
+    print(required_keys)
+    d = {}
+    for f in fields(cls):
+        field_name = f.name
+        field_default_value = f.default
+        field_curr_value = getattr(cls, f.name)
+        print(field_name, field_curr_value, field_default_value)
+
+        if field_default_value != field_curr_value or field_name in required_keys:
+            if isinstance(field_curr_value, Resources):
+                d[field_name] = field_curr_value.to_dict()
+            elif isinstance(field_curr_value, Train):
+                d[field_name] = obj_to_dict(field_curr_value)
+            else:
+                d[field_name] = field_curr_value
+
+    print(d)
+    return d
+
+
+def asdict_factory(cls):
+    def factory(obj: List[Tuple]) -> Dict:
+        required_keys = dataclass_to_req_keys_map[cls]
+        print(required_keys)
+        d = {}
+        for k, v in obj:
+            if k not in cls.__dataclass_fields__:
+                continue
+
+            print(cls, k, v, cls.__dataclass_fields__[k].default)
+
+            if isinstance(k, dict) and len(k) == 0 and k not in required_keys:
+                continue
+
+            ## NEED TO CHECK WHICH CLASS
+
+            field_default_value = cls.__dataclass_fields__[k].default
+            if field_default_value != v or k in required_keys:
+                d[k] = v
+        return d
+
+    return factory
