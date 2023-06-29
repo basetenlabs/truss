@@ -233,9 +233,11 @@ def init(
     """
     config = TrussConfig(
         model_type="custom",
-        model_framework=ModelFrameworkType.CUSTOM,
         python_version=map_to_supported_python_version(infer_python_version()),
     )
+
+    if trainable:
+        config.train.resources.use_gpu = True
 
     target_directory_path = populate_target_directory(
         config=config, target_directory_path=target_directory
@@ -343,6 +345,8 @@ def _populate_default_training_code(
     # now we don't support this.
     truss_template = "custom"
     template_path = TEMPLATES_DIR / truss_template
+
+    # check if train is valid
     truss_training_module_dir = target_directory_path / config.train.training_module_dir
     copy_tree_path(template_path / "train", truss_training_module_dir)
 

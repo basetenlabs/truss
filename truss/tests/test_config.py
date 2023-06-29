@@ -8,6 +8,7 @@ from truss.truss_config import (
     AcceleratorSpec,
     BaseImage,
     Resources,
+    Train,
     TrussConfig,
 )
 
@@ -131,6 +132,39 @@ resources:
   memory: 512Mi
   use_gpu: false
 secrets: {}
-system_packages: []"""
+system_packages: []
+"""
+
+    assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
+
+
+def test_non_default_train():
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        train=Train(resources=Resources(use_gpu=True, accelerator="A10G")),
+    )
+
+    config_yaml = """environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: null
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
+secrets: {}
+system_packages: []
+train:
+  resources:
+    accelerator: A10G
+    cpu: 500m
+    memory: 512Mi
+    use_gpu: true
+  variables: {}
+"""
 
     assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
