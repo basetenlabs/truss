@@ -339,8 +339,6 @@ def test_patch_secrets(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-# @pytest.mark.skip(reason="Unsupported patch")
-# patch not getting generated
 @pytest.mark.integration
 def test_predict_with_external_data_change(
     custom_model_external_data_access_tuple_fixture, tmp_path
@@ -382,8 +380,6 @@ class Model:
         th.add_external_data_item(url, filename)
         result = th.docker_predict([], tag=tag)
         assert result == content
-
-        # test patching of external data
 
         content = "patched content"
         new_filename = "foobar-patched.txt"
