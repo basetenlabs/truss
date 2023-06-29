@@ -46,18 +46,22 @@ class Accelerator(Enum):
     V100 = "V100"
     A100 = "A100"
 
+dataclass_to_req_keys_map = {
+    Train: {"variables"},
+}
 
-def asdict_factory(cls, required_keys: Set[str], dicts_to_drop: Set[str]):
+def asdict_factory(cls, required_keys: Set[str]):
     def factory(obj: List[Tuple]) -> Dict:
         d = {}
         for k, v in obj:
             if k not in cls.__dataclass_fields__:
                 continue
-            if k in dicts_to_drop and len(v) == 0:
-                continue
 
             field_default_value = cls.__dataclass_fields__[k].default
-            if field_default_value != v or k in required_keys:
+            if type(field_default_value) in dataclass_to_req_keys_map.keys():
+                required_keys = dataclass_to_req_keys_map[type(field_default_value)]
+                v = asdict(self, dict_factory=asdict_factory(self, required_keys))
+            if k in required_keys or (len(v) == 0 and field_default_value != v ):
                 d[k] = v
         return d
 
@@ -354,9 +358,6 @@ class TrussConfig:
             yaml.dump(self.to_dict(), config_file)
 
     def to_dict(self):
-        self.train = self.train.to_dict()
-        self.resources = self.resources.to_dict()
-
         d = {}
 
         if self.external_data is not None:
@@ -379,7 +380,7 @@ class TrussConfig:
             "secrets",
             "system_packages",
         }
-        d = asdict(self, dict_factory=asdict_factory(self, required_keys, {"train"}))
+        d = asdict(self, dict_factory=asdict_factory(self, required_keys))
 
         return d
 
