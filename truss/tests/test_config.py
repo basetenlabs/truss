@@ -10,7 +10,6 @@ from truss.truss_config import (
     Resources,
     TrussConfig,
 )
-from truss.types import ModelFrameworkType
 
 
 @pytest.mark.parametrize(
@@ -132,6 +131,7 @@ resources:
   memory: 512Mi
   use_gpu: false
 secrets: {}
-system_packages: []"""
+system_packages: []
+"""
 
-    assert config_yaml == yaml.dump(config.to_dict())
+    assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
