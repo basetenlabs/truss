@@ -47,7 +47,7 @@ def test_patch_applier_model_code_patch_add(
             content="",
         ),
     )
-    patch_applier(patch)
+    patch_applier(patch, os.environ.copy())
     assert (truss_container_fs / "app" / "model" / "dummy").exists()
 
 
@@ -62,7 +62,7 @@ def test_patch_applier_model_code_patch_remove(
         ),
     )
     assert (truss_container_fs / "app" / "model" / "model.py").exists()
-    patch_applier(patch)
+    patch_applier(patch, os.environ.copy())
     assert not (truss_container_fs / "app" / "model" / "model.py").exists()
 
 
@@ -81,7 +81,7 @@ def test_patch_applier_model_code_patch_update(
             content=new_model_file_content,
         ),
     )
-    patch_applier(patch)
+    patch_applier(patch, os.environ.copy())
     with (truss_container_fs / "app" / "model" / "model.py").open() as model_file:
         assert model_file.read() == new_model_file_content
 
@@ -97,15 +97,15 @@ def test_patch_applier_config_patch_update(
             config=new_config_dict,
         ),
     )
-    patch_applier(patch)
+    patch_applier(patch, os.environ.copy())
     new_config = TrussConfig.from_yaml(truss_container_fs / "app" / "config.yaml")
     assert new_config.model_name == "foobar"
 
 
-@mock.patch.dict(os.environ, {"FOO": "BAR"})
 def test_patch_applier_env_var_patch_update(
     patch_applier: ModelContainerPatchApplier,
 ):
+    env_var_dict = {"FOO": "BAR"}
     patch = Patch(
         type=PatchType.ENVIRONMENT_VARIABLE,
         body=EnvVarPatch(
@@ -113,14 +113,14 @@ def test_patch_applier_env_var_patch_update(
             item={"FOO": "BAR-PATCHED"},
         ),
     )
-    patch_applier(patch)
-    assert os.environ["FOO"] == "BAR-PATCHED"
+    patch_applier(patch, env_var_dict)
+    assert env_var_dict["FOO"] == "BAR-PATCHED"
 
 
-@mock.patch.dict(os.environ, {"FOO": "BAR"})
 def test_patch_applier_env_var_patch_add(
     patch_applier: ModelContainerPatchApplier,
 ):
+    env_var_dict = {"FOO": "BAR"}
     patch = Patch(
         type=PatchType.ENVIRONMENT_VARIABLE,
         body=EnvVarPatch(
@@ -128,15 +128,15 @@ def test_patch_applier_env_var_patch_add(
             item={"BAR": "FOO"},
         ),
     )
-    patch_applier(patch)
-    assert os.environ["FOO"] == "BAR"
-    assert os.environ["BAR"] == "FOO"
+    patch_applier(patch, env_var_dict)
+    assert env_var_dict["FOO"] == "BAR"
+    assert env_var_dict["BAR"] == "FOO"
 
 
-@mock.patch.dict(os.environ, {"FOO": "BAR"})
 def test_patch_applier_env_var_patch_remove(
     patch_applier: ModelContainerPatchApplier,
 ):
+    env_var_dict = {"FOO": "BAR"}
     patch = Patch(
         type=PatchType.ENVIRONMENT_VARIABLE,
         body=EnvVarPatch(
@@ -144,9 +144,9 @@ def test_patch_applier_env_var_patch_remove(
             item={"FOO": "BAR"},
         ),
     )
-    patch_applier(patch)
+    patch_applier(patch, env_var_dict)
     with pytest.raises(KeyError):
-        _ = os.environ["FOO"]
+        _ = env_var_dict["FOO"]
 
 
 def test_patch_applier_external_data_patch_add(
@@ -163,5 +163,5 @@ def test_patch_applier_external_data_patch_add(
             },
         ),
     )
-    patch_applier(patch)
+    patch_applier(patch, os.environ.copy())
     assert (truss_container_fs / "app" / "data" / "truss_icon").exists()
