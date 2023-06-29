@@ -146,22 +146,15 @@ def _patch_sort_key_fn(patch: Patch) -> int:
     # model code patches, so it's better to apply model code patches last to
     # avoid ending up with partially applied patches which currently triggers
     # full deploy.
-    if patch.type == PatchType.SYSTEM_PACKAGE:
-        return 0
 
-    if patch.type == PatchType.PYTHON_REQUIREMENT:
-        return 1
-
-    if patch.type == PatchType.MODEL_CODE:
-        return 2
-
-    if patch.type == PatchType.CONFIG:
-        return 3
-
-    if patch.type == PatchType.ENVIRONMENT_VARIABLE:
-        return 4
-
-    if patch.type == PatchType.EXTERNAL_DATA:
-        return 5
-
-    raise ValueError(f"Unexpected patch type {patch.type}")
+    PATCH_ORDER = [
+        PatchType.SYSTEM_PACKAGE,
+        PatchType.PYTHON_REQUIREMENT,
+        PatchType.ENVIRONMENT_VARIABLE,
+        PatchType.EXTERNAL_DATA,
+        PatchType.CONFIG,
+        PatchType.MODEL_CODE,
+    ]
+    if patch.type not in PATCH_ORDER:
+        raise ValueError(f"Unexpected patch type {patch.type}")
+    return PATCH_ORDER.index(patch.type)
