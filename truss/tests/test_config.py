@@ -131,7 +131,6 @@ resources:
   memory: 512Mi
   use_gpu: false
 secrets: {}
-system_packages: []
-"""
+system_packages: []"""
 
     assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
