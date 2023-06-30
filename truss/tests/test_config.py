@@ -138,8 +138,6 @@ system_packages: []
 
     assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
 
-
-def test_model_config_with_framework():
     config = TrussConfig(
         python_version="py39",
         requirements=[],

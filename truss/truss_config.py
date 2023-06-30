@@ -365,9 +365,10 @@ dataclass_to_req_keys_map = {
         "secrets",
         "system_packages",
     },
+    BaseImage: {"image", "python_executable_path"},
 }
 
-types_to_serialize = (Resources, Train)
+types_to_serialize = (Resources, Train, BaseImage)
 
 
 def obj_to_dict(obj):
