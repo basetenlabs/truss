@@ -59,8 +59,6 @@ class AcceleratorSpec:
             return f"{self.accelerator.value}:{self.count}"
         return self.accelerator.value
 
-    to_dict = to_str
-
     @staticmethod
     def from_str(acc_spec: Optional[str]):
         if acc_spec is None:
@@ -351,7 +349,7 @@ class TrussConfig:
             validate_secret_name(secret_name)
 
 
-dataclass_to_req_keys_map = {
+DATACLASS_TO_REQ_KEYS_MAP = {
     Train: {"variables"},
     Resources: {"accelerator", "cpu", "memory", "use_gpu"},
     TrussConfig: {
@@ -368,11 +366,9 @@ dataclass_to_req_keys_map = {
     BaseImage: {"image", "python_executable_path"},
 }
 
-types_to_serialize = (Resources, Train, BaseImage)
-
 
 def obj_to_dict(obj):
-    required_keys = dataclass_to_req_keys_map[type(obj)]
+    required_keys = DATACLASS_TO_REQ_KEYS_MAP[type(obj)]
     d = {}
     for f in fields(obj):
         field_name = f.name
@@ -388,7 +384,7 @@ def obj_to_dict(obj):
             expected_default_value = field_default_factory()
 
         if expected_default_value != field_curr_value or field_name in required_keys:
-            if isinstance(field_curr_value, types_to_serialize):
+            if isinstance(field_curr_value, tuple(DATACLASS_TO_REQ_KEYS_MAP.keys())):
                 d[field_name] = obj_to_dict(field_curr_value)
             elif isinstance(field_curr_value, AcceleratorSpec):
                 d[field_name] = field_curr_value.to_str()
