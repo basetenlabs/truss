@@ -26,6 +26,7 @@ from helpers.types import (  # noqa
     EnvVarPatch,
     ExternalDataPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
 )
@@ -82,8 +83,61 @@ def test_patch_applier_model_code_patch_update(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    with (truss_container_fs / "app" / "model" / "model.py").open() as model_file:
-        assert model_file.read() == new_model_file_content
+    assert (
+        truss_container_fs / "app" / "model" / "model.py"
+    ).read_text() == new_model_file_content
+
+
+def test_patch_applier_package_patch_add(
+    patch_applier: ModelContainerPatchApplier, truss_container_fs
+):
+    patch = Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.ADD,
+            path="test_package/test.py",
+            content="foobar",
+        ),
+    )
+    patch_applier(patch, os.environ.copy())
+    assert (
+        truss_container_fs / "app" / "packages" / "test_package" / "test.py"
+    ).exists()
+
+
+def test_patch_applier_package_patch_remove(
+    patch_applier: ModelContainerPatchApplier,
+    truss_container_fs,
+):
+    patch = Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.REMOVE,
+            path="test_package/test.py",
+        ),
+    )
+    assert (truss_container_fs / "packages" / "test_package" / "test.py").exists()
+    patch_applier(patch, os.environ.copy())
+    assert not (truss_container_fs / "packages" / "test_package" / "test.py").exists()
+
+
+def test_patch_applier_package_patch_update(
+    patch_applier: ModelContainerPatchApplier,
+    truss_container_fs,
+):
+    new_package_content = """X = 2"""
+    patch = Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.UPDATE,
+            path="test_package/test.py",
+            content=new_package_content,
+        ),
+    )
+    patch_applier(patch, os.environ.copy())
+    assert (
+        truss_container_fs / "app" / "packages" / "test_package" / "test.py"
+    ).read_text() == new_package_content
 
 
 def test_patch_applier_config_patch_update(

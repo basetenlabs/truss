@@ -1,3 +1,4 @@
+import glob
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -82,7 +83,7 @@ def calc_truss_patch(
         ok, because those empty directories can be ignored from patching point
         of view.
         """
-        return _strictly_under(path, [data_dir_path, bundled_packages_path])
+        return _strictly_under(path, [data_dir_path])
 
     patches = []
     for path in changed_paths["removed"]:
@@ -100,11 +101,22 @@ def calc_truss_patch(
             # Don't support removal of config file
             logger.info(f"Patching not supported for removing {path}")
             return None
+        elif path.startswith(bundled_packages_path):
+            patches.append(
+                Patch(
+                    type=PatchType.PACKAGE,
+                    body=PackagePatch(
+                        action=Action.REMOVE,
+                        path=_relative_to(path, bundled_packages_path),
+                    ),
+                )
+            )
         elif _under_unsupported_patch_dir(path):
             logger.info(f"Patching not supported for removing {path}")
             return None
 
     for path in changed_paths["added"] + changed_paths["updated"]:
+        print(path)
         if path.startswith(model_module_path):
             full_path = truss_dir / path
 
@@ -129,10 +141,23 @@ def calc_truss_patch(
                 yaml.safe_load(previous_truss_signature.config)
             )
             config_patches = calc_config_patches(prev_config, new_config)
-            if config_patches is None:
-                logger.info(f"Unable to patch update to {path}")
-                return None
             patches.extend(config_patches)
+        elif path.startswith(bundled_packages_path):
+            full_path = truss_dir / path
+            if not full_path.is_file():
+                continue
+
+            action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
+            patches.append(
+                Patch(
+                    type=PatchType.PACKAGE,
+                    body=PackagePatch(
+                        action=action,
+                        path=_relative_to(path, bundled_packages_path),
+                        content=full_path.read_text(),
+                    ),
+                )
+            )
         elif _under_unsupported_patch_dir(path):
             logger.info(f"Patching not supported for updating {path}")
             return None
@@ -148,7 +173,10 @@ def _calc_changed_paths(
     TODO(pankaj) add support for directory creation in patch
     """
     root_relative_new_paths = set(
-        (str(path.relative_to(root)) for path in root.glob("**/*"))
+        (
+            str(Path(path).relative_to(root))
+            for path in glob.glob(f"{root}/**/*", recursive=True)
+        )
     )
     unignored_new_paths = _calc_unignored_paths(
         root, root_relative_new_paths, ignore_patterns
@@ -196,7 +224,7 @@ def _calc_unignored_paths(
 
 def calc_config_patches(
     prev_config: TrussConfig, new_config: TrussConfig
-) -> Optional[List[Patch]]:
+) -> List[Patch]:
     """Calculate patch based on changes to config.
 
     Returns None if patch cannot be calculated. Empty list means no relevant
@@ -352,17 +380,10 @@ def _mk_config_patch(action: Action, config: dict) -> Patch:
     )
 
 
-def _mk_data_patch(action: Action, item: dict, path: str) -> Patch:
+def _mk_data_patch(action: Action, item: str, path: str) -> Patch:
     return Patch(
         type=PatchType.DATA,
         body=DataPatch(action=action, content=item, path=path),
-    )
-
-
-def _mk_package_patch(action: Action, item: dict, path: str) -> Patch:
-    return Patch(
-        type=PatchType.PACKAGE,
-        body=PackagePatch(action=action, content=item, path=path),
     )
 
 

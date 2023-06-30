@@ -4,13 +4,14 @@ from pathlib import Path
 from typing import Optional
 
 from helpers.errors import UnsupportedPatch
-from helpers.truss_patch.model_code_patch_applier import apply_model_code_patch
+from helpers.truss_patch.model_code_patch_applier import apply_code_patch
 from helpers.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,
     ExternalDataPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PythonRequirementPatch,
     SystemPackagePatch,
@@ -34,6 +35,9 @@ class ModelContainerPatchApplier:
         self._model_module_dir = (
             self._inference_server_home / self._truss_config.model_module_dir
         )
+        self._bundled_packages_dir = (
+            self._inference_server_home / ".." / self._truss_config.bundled_packages_dir
+        ).resolve()
         self._data_dir = self._inference_server_home / self._truss_config.data_dir
         self._app_logger = app_logger
         self._pip_path_cached = None
@@ -44,9 +48,7 @@ class ModelContainerPatchApplier:
         self._app_logger.debug(f"Applying patch {patch.to_dict()}")
         if isinstance(patch.body, ModelCodePatch):
             model_code_patch: ModelCodePatch = patch.body
-            apply_model_code_patch(
-                self._model_module_dir, model_code_patch, self._app_logger
-            )
+            apply_code_patch(self._model_module_dir, model_code_patch, self._app_logger)
         elif isinstance(patch.body, PythonRequirementPatch):
             py_req_patch: PythonRequirementPatch = patch.body
             self._apply_python_requirement_patch(py_req_patch)
@@ -62,6 +64,11 @@ class ModelContainerPatchApplier:
         elif isinstance(patch.body, ExternalDataPatch):
             external_data_patch: ExternalDataPatch = patch.body
             self._apply_external_data_patch(external_data_patch)
+        elif isinstance(patch.body, PackagePatch):
+            package_patch: PackagePatch = patch.body
+            apply_code_patch(
+                self._bundled_packages_dir, package_patch, self._app_logger
+            )
         else:
             raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 

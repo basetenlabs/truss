@@ -124,8 +124,8 @@ class ConfigPatch(PatchBody):
 
 @dataclass
 class DataPatch(PatchBody):
-    content: dict
     path: str
+    content: Optional[str] = None
 
     def to_dict(self):
         return {
@@ -146,8 +146,8 @@ class DataPatch(PatchBody):
 
 @dataclass
 class PackagePatch(PatchBody):
-    content: dict
     path: str
+    content: Optional[str] = None
 
     def to_dict(self):
         return {

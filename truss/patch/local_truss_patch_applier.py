@@ -26,7 +26,7 @@ class LocalTrussPatchApplier:
 
     def __call__(self, patches: List[Patch]):
         from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
-            apply_model_code_patch,
+            apply_code_patch,
         )
 
         for patch in patches:
@@ -34,7 +34,7 @@ class LocalTrussPatchApplier:
             if isinstance(patch.body, ModelCodePatch):
                 model_code_patch: ModelCodePatch = patch.body
                 model_module_dir = self._truss_dir / self._truss_config.model_module_dir
-                apply_model_code_patch(model_module_dir, model_code_patch, self._logger)
+                apply_code_patch(model_module_dir, model_code_patch, self._logger)
             elif isinstance(patch.body, PythonRequirementPatch):
                 py_req_patch: PythonRequirementPatch = patch.body
                 self._apply_python_requirement_patch(py_req_patch)
