@@ -115,7 +115,27 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
     assert parsed_result.to_dict() == output_dict
 
 
-def test_default_config_not_crowded():
+def generate_default_config():
+    config = {
+        "environment_variables": {},
+        "external_package_dirs": [],
+        "model_metadata": {},
+        "model_name": None,
+        "python_version": "py39",
+        "requirements": [],
+        "resources": {
+            "accelerator": None,
+            "cpu": "500m",
+            "memory": "512Mi",
+            "use_gpu": False,
+        },
+        "secrets": {},
+        "system_packages": [],
+    }
+    return config
+
+
+def test_default_config_not_crowded_end_to_end():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
@@ -138,29 +158,24 @@ system_packages: []
 
     assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
 
+
+@pytest.mark.parametrize(
+    "model_framework",
+    [ModelFrameworkType.CUSTOM, ModelFrameworkType.SKLEARN, ModelFrameworkType.PYTORCH],
+)
+def test_model_framework(model_framework):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_framework=ModelFrameworkType.SKLEARN,
+        model_framework=model_framework,
     )
 
-    config_yaml = """environment_variables: {}
-external_package_dirs: []
-model_framework: sklearn
-model_metadata: {}
-model_name: null
-python_version: py39
-requirements: []
-resources:
-  accelerator: null
-  cpu: 500m
-  memory: 512Mi
-  use_gpu: false
-secrets: {}
-system_packages: []
-"""
-
-    assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
+    new_config = generate_default_config()
+    if model_framework == ModelFrameworkType.CUSTOM:
+        assert new_config == config.to_dict()
+    else:
+        new_config["model_framework"] = model_framework.value
+        assert new_config == config.to_dict()
 
 
 def test_non_default_train():
@@ -170,26 +185,17 @@ def test_non_default_train():
         train=Train(resources=Resources(use_gpu=True, accelerator="A10G")),
     )
 
-    config_yaml = """environment_variables: {}
-external_package_dirs: []
-model_metadata: {}
-model_name: null
-python_version: py39
-requirements: []
-resources:
-  accelerator: null
-  cpu: 500m
-  memory: 512Mi
-  use_gpu: false
-secrets: {}
-system_packages: []
-train:
-  resources:
-    accelerator: A10G
-    cpu: 500m
-    memory: 512Mi
-    use_gpu: true
-  variables: {}
-"""
+    updated_train = {
+        "resources": {
+            "accelerator": "A10G",
+            "cpu": "500m",
+            "memory": "512Mi",
+            "use_gpu": True,
+        },
+        "variables": {},
+    }
 
-    assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
+    new_config = generate_default_config()
+    new_config["train"] = updated_train
+
+    assert new_config == config.to_dict()
