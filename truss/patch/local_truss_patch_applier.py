@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import List
 
 from truss.templates.control.control.helpers.errors import UnsupportedPatch
+from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
+    apply_model_code_patch,
+)
 from truss.templates.control.control.helpers.types import (
     Action,
     ModelCodePatch,
@@ -25,10 +28,6 @@ class LocalTrussPatchApplier:
         self._logger = logger
 
     def __call__(self, patches: List[Patch]):
-        from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
-            apply_model_code_patch,
-        )
-
         for patch in patches:
             self._logger.debug(f"Applying patch {patch.to_dict()}")
             if isinstance(patch.body, ModelCodePatch):
