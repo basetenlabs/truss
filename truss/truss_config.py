@@ -368,6 +368,10 @@ DATACLASS_TO_REQ_KEYS_MAP = {
 
 
 def obj_to_dict(obj):
+    """
+    This function serializes a given object (usually starting with a TrussConfig) and
+    only keeps required keys or ones changed by the user manually. This simplifies the config.yml.
+    """
     required_keys = DATACLASS_TO_REQ_KEYS_MAP[type(obj)]
     d = {}
     for f in fields(obj):
