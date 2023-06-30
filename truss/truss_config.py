@@ -391,6 +391,8 @@ def obj_to_dict(obj):
                 d[field_name] = obj_to_dict(field_curr_value)
             elif isinstance(field_curr_value, AcceleratorSpec):
                 d[field_name] = field_curr_value.to_str()
+            elif isinstance(field_curr_value, Enum):
+                d[field_name] = field_curr_value.value
             else:
                 d[field_name] = field_curr_value
 

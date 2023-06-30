@@ -11,6 +11,7 @@ from truss.truss_config import (
     Train,
     TrussConfig,
 )
+from truss.types import ModelFrameworkType
 
 
 @pytest.mark.parametrize(
@@ -122,6 +123,32 @@ def test_default_config_not_crowded():
 
     config_yaml = """environment_variables: {}
 external_package_dirs: []
+model_metadata: {}
+model_name: null
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
+secrets: {}
+system_packages: []
+"""
+
+    assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
+
+
+def test_model_config_with_framework():
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        model_framework=ModelFrameworkType.SKLEARN,
+    )
+
+    config_yaml = """environment_variables: {}
+external_package_dirs: []
+model_framework: sklearn
 model_metadata: {}
 model_name: null
 python_version: py39
