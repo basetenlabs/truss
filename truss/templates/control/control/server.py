@@ -1,6 +1,10 @@
+import asyncio
+import concurrent.futures
 import os
 from pathlib import Path
 
+import shared.util as utils
+import uvicorn
 from application import create_app
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
@@ -22,8 +26,6 @@ def _identify_python_executable_path() -> str:
 
 
 if __name__ == "__main__":
-    from shared.uvicorn_config import start_uvicorn_server
-
     inf_serv_home: str = os.environ["APP_HOME"]
     python_executable_path: str = _identify_python_executable_path()
     application = create_app(
@@ -42,9 +44,22 @@ if __name__ == "__main__":
     application.state.logger.info(
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
     )
-
-    start_uvicorn_server(
+    cfg = uvicorn.Config(
         application,
+        host=application.config["control_server_host"],
+        port=application.config["control_server_port"],
         host=application.state.control_server_host,
         port=application.state.control_server_port,
+        workers=1,
     )
+    cfg.setup_event_loop()
+
+    max_asyncio_workers = min(32, utils.cpu_count() + 4)
+
+    asyncio.get_event_loop().set_default_executor(
+        concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
+    )
+
+    server = uvicorn.Server(cfg)
+
+    asyncio.run(server.serve())
