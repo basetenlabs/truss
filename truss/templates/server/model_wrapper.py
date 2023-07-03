@@ -182,10 +182,24 @@ class ModelWrapper:
         response = self.postprocess(response, headers)
 
         if isinstance(response, Generator):
-            # In the case of streaming responses, the predict lock does not fully wrap
-            # the predict call. To achieve that, we construct a new generator that does fully
-            # wrap the entire streaming response.
-            response = _locked_response_generator(response, self._predict_lock)
+            # In the case of streaming responses, we need to:
+            #   1. Check the 'Accept' header. If the accept type is
+            #      "application/json" , consume the whole stream and return it,
+            #      Else, return the stream.
+            #   2. For streaming responses, the predict lock needs to properly
+            #      wrap the whole generated response. To achieve that, we construct
+            #      a new generator that does fully
+            #      wrap the entire streaming response.
+            locked_response_generator = _locked_response_generator(
+                response, self._predict_lock
+            )
+
+            if headers and headers.get("Accept") == "application/json":
+                response = _convert_streamed_response_to_string(
+                    locked_response_generator
+                )
+            else:
+                response = locked_response_generator
 
         return response
 
@@ -194,6 +208,10 @@ def _locked_response_generator(response: Any, lock: Lock):
     with lock:
         for chunk in response:
             yield chunk
+
+
+def _convert_streamed_response_to_string(response: Any):
+    return "".join([str(chunk) for chunk in list(response)])
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:
