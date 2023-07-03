@@ -100,9 +100,7 @@ def test_patch_applier_package_patch_add(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    assert (
-        truss_container_fs / "app" / "packages" / "test_package" / "test.py"
-    ).exists()
+    assert (truss_container_fs / "packages" / "test_package" / "test.py").exists()
 
 
 def test_patch_applier_package_patch_remove(
@@ -136,7 +134,7 @@ def test_patch_applier_package_patch_update(
     )
     patch_applier(patch, os.environ.copy())
     assert (
-        truss_container_fs / "app" / "packages" / "test_package" / "test.py"
+        truss_container_fs / "packages" / "test_package" / "test.py"
     ).read_text() == new_package_content
 
 
