@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from typing import IO, Any, Callable
 
-from tqdm import tqdm
+from rich.progress import Progress
 
 
 class ReadProgressIndicatorFileHandle:
@@ -29,12 +29,18 @@ def create_tar_with_progress_bar(source_dir: Path, delete=True):
     # this tar is uncompressed for upload
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)
     with tarfile.open(temp_file.name, "w:") as tar:
-        with tqdm(
-            total=total_size, unit="B", unit_scale=True, unit_divisor=1024
-        ) as pbar:
+
+        # Create a new progress bar
+        progress = Progress()
+
+        # Add a new task to the progress bar
+        task_id = progress.add_task("[cyan]Compressing...", total=total_size)
+
+        with progress:
 
             def file_read_progress_callback(bytes_read: int):
-                pbar.update(bytes_read)
+                # Update the progress bar
+                progress.update(task_id, advance=bytes_read)
 
             for file_path in source_dir.glob("**/*"):
                 if file_path.is_file():

@@ -1,4 +1,3 @@
-import functools
 import logging
 import os
 from typing import Optional
@@ -14,7 +13,7 @@ class ApiKey:
     def __init__(self, value: str):
         self.value = value
 
-    def headers(self):
+    def header(self):
         return {"Authorization": f"Api-Key {self.value}"}
 
 
@@ -39,16 +38,3 @@ class AuthService:
         )
         os.environ["BASETEN_API_KEY"] = api_key
         return self.authenticate()
-
-
-def with_api_key(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-
-        baseten_api_key = AuthService().authenticate()
-
-        result = func(baseten_api_key, *args, **kwargs)
-
-        return result
-
-    return wrapper

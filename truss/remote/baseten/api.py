@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import requests
 from truss.remote.baseten.auth import AuthService
@@ -9,22 +8,32 @@ logger = logging.getLogger(__name__)
 
 
 class BasetenApi:
-    def __init__(self, api_url: str, auth_service: Optional[AuthService] = None):
+    """
+    A client for the Baseten API.
+
+    Args:
+        api_url: The URL of the Baseten API.
+        auth_service: An AuthService instance.
+    """
+
+    def __init__(self, api_url: str, auth_service: AuthService):
         self._api_url = api_url
-        self._auth_service = auth_service or AuthService()
+        self._auth_service = auth_service
         self._auth_token = self._auth_service.authenticate()
 
     def _post_graphql_query(self, query_string: str) -> dict:
-        headers = self._auth_token.headers()
+        headers = self._auth_token.header()
         resp = requests.post(
             self._api_url,
             data={"query": query_string},
             headers=headers,
+            timeout=120,
         )
 
         if not resp.ok:
             logger.error(f"GraphQL endpoint failed with error: {resp.content}")  # type: ignore
             resp.raise_for_status()
+
         resp_dict = resp.json()
         errors = resp_dict.get("errors")
         if errors:
@@ -54,7 +63,6 @@ class BasetenApi:
         semver_bump,
         client_version,
         is_trusted=False,
-        external_model_version_id=None,
     ):
         query_string = f"""
         mutation {{
@@ -64,7 +72,6 @@ class BasetenApi:
                     semver_bump: "{semver_bump}",
                     client_version: "{client_version}",
                     is_trusted: {'true' if is_trusted else 'false'}
-                    external_model_version_id: "{external_model_version_id if external_model_version_id else ''}"
     ) {{
             id,
             name,

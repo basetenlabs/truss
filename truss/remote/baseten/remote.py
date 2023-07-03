@@ -53,8 +53,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             model_version_id=model_version_id,
             is_draft=False,
-            # TODO(Abu): Should this be the gathered truss? Implications for patching?
-            truss_handle=truss_handle,
-            auth_service=self._auth_service,
+            api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
+            truss_handle=truss_handle,
         )
