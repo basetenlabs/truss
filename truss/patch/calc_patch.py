@@ -1,4 +1,3 @@
-import glob
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -170,7 +169,7 @@ def _calc_changed_paths(
     TODO(pankaj) add support for directory creation in patch
     """
     root_relative_new_paths = set(
-        (str(Path(path).relative_to(root)) for path in glob.glob(f"{root}/**/*"))
+        (str(path.relative_to(root)) for path in root.glob("**/*"))
     )
     unignored_new_paths = _calc_unignored_paths(
         root, root_relative_new_paths, ignore_patterns
