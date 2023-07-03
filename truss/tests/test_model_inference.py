@@ -138,6 +138,58 @@ def test_model_load_failure_truss():
 
 
 @pytest.mark.integration
+def test_streaming_truss():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "test_streaming_truss"
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+
+        SERVER_WARMUP_TIME = 3
+
+        truss_server_addr = "http://localhost:8090"
+
+        time.sleep(SERVER_WARMUP_TIME)
+
+        def _test_liveness_probe(expected_code):
+            live = requests.get(f"{truss_server_addr}/")
+            assert live.status_code == expected_code
+
+        def _test_readiness_probe(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == expected_code
+
+        def _test_ping(expected_code):
+            ping = requests.get(f"{truss_server_addr}/ping")
+            assert ping.status_code == expected_code
+
+        _test_liveness_probe(200)
+        _test_readiness_probe(200)
+        _test_ping(200)
+
+        invocations_response = requests.post(
+            f"{truss_server_addr}/invocations", json={}, stream=True
+        )
+
+        assert invocations_response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode()
+            for byte_string in list(invocations_response.iter_content())
+        ] == ["0", "1", "2", "3", "4"]
+
+        # When accept is set to application/json, the response is not streamed.
+        invocations_non_stream_response = requests.post(
+            f"{truss_server_addr}/invocations",
+            json={},
+            stream=True,
+            headers={"accept": "application/json"},
+        )
+        assert "transfer-encoding" not in invocations_non_stream_response.headers
+        assert invocations_non_stream_response.content == b"01234"
+
+
+@pytest.mark.integration
 def test_slow_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
