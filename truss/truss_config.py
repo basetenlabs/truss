@@ -326,7 +326,7 @@ class TrussConfig:
         with path.open("w") as config_file:
             yaml.dump(self.to_dict(), config_file)
 
-    def to_dict(self):
+    def to_dict(self, verbose: bool = False):
         d = {}
 
         if self.external_data is not None:
@@ -338,7 +338,7 @@ class TrussConfig:
                 self.base_image, lambda data: data.to_dict()
             )
 
-        d = obj_to_dict(self)
+        d = obj_to_dict(self, verbose=verbose)
         return d
 
     def clone(self):
@@ -367,7 +367,7 @@ DATACLASS_TO_REQ_KEYS_MAP = {
 }
 
 
-def obj_to_dict(obj):
+def obj_to_dict(obj, verbose: bool = False):
     """
     This function serializes a given object (usually starting with a TrussConfig) and
     only keeps required keys or ones changed by the user manually. This simplifies the config.yml.
@@ -387,9 +387,13 @@ def obj_to_dict(obj):
         else:
             expected_default_value = field_default_factory()
 
-        if expected_default_value != field_curr_value or field_name in required_keys:
+        should_add_to_dict = (
+            expected_default_value != field_curr_value or field_name in required_keys
+        )
+
+        if verbose or should_add_to_dict:
             if isinstance(field_curr_value, tuple(DATACLASS_TO_REQ_KEYS_MAP.keys())):
-                d[field_name] = obj_to_dict(field_curr_value)
+                d[field_name] = obj_to_dict(field_curr_value, verbose=verbose)
             elif isinstance(field_curr_value, AcceleratorSpec):
                 d[field_name] = field_curr_value.to_str()
             elif isinstance(field_curr_value, Enum):

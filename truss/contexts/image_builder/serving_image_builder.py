@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -36,6 +37,8 @@ from truss.util.path import (
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
+CONFIG_FILE = "config.yaml"
+
 
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
@@ -70,7 +73,14 @@ class ServingImageBuilder(ImageBuilder):
             copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
         # Copy over truss
+        # TODO: run config to dict, verbose = true overriding the simple config file
+        # TODO: write a test that "model_class_filename" is in the dict
+        # TODO: repeat for training image builder
         copy_tree_path(truss_dir, build_dir)
+
+        # Override config.yml here
+        with (build_dir / CONFIG_FILE).open("w") as config_file:
+            yaml.dump(config.to_dict(verbose=True), config_file)
 
         # Download external data
         download_external_data(self._spec.external_data, data_dir)
