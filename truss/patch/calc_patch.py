@@ -116,15 +116,13 @@ def calc_truss_patch(
             return None
 
     for path in changed_paths["added"] + changed_paths["updated"]:
-        print(path)
+        action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
         if path.startswith(model_module_path):
             full_path = truss_dir / path
 
             # TODO(pankaj) Add support for empty directories, skip them for now.
             if not full_path.is_file():
                 continue
-
-            action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
@@ -147,7 +145,6 @@ def calc_truss_patch(
             if not full_path.is_file():
                 continue
 
-            action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,

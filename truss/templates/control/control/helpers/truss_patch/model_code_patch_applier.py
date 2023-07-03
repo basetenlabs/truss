@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 
 # TODO(pankaj) In desparate need of refactoring into separate library
@@ -20,7 +21,8 @@ def apply_code_patch(
 
     if action in [Action.ADD, Action.UPDATE]:
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Updating file {filepath}")
+        action_log = "Adding" if action == Action.ADD else "Updating"
+        logger.info(f"{action_log} file {filepath}")
         with filepath.open("w") as file:
             content = patch.content
             if content is None:
@@ -30,10 +32,18 @@ def apply_code_patch(
             file.write(content)
 
     elif action == Action.REMOVE:
+        print(filepath)
         if not filepath.exists():
             logger.warning(f"Could not delete file {filepath}: not found.")
-        else:
+        elif filepath.is_file():
             logger.info(f"Deleting file {filepath}")
             filepath.unlink()
+            try:
+                os.removedirs(filepath.parent)
+            except OSError as e:
+                if e.errno == 39:  # Directory not empty
+                    pass
+                else:
+                    raise
     else:
         raise ValueError(f"Unknown patch action {action}")
