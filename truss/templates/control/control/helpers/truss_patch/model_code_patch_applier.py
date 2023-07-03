@@ -32,7 +32,6 @@ def apply_code_patch(
             file.write(content)
 
     elif action == Action.REMOVE:
-        print(filepath)
         if not filepath.exists():
             logger.warning(f"Could not delete file {filepath}: not found.")
         elif filepath.is_file():
