@@ -320,11 +320,12 @@ class TrussConfig:
     @staticmethod
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
-            return TrussConfig.from_dict(yaml.safe_load(yaml_file))
+            test = yaml.safe_load(yaml_file)
+            return TrussConfig.from_dict(test)
 
     def write_to_yaml_file(self, path: Path):
         with path.open("w") as config_file:
-            yaml.dump(self.to_dict(), config_file)
+            yaml.dump(self.to_dict(verbose=True), config_file)
 
     def to_dict(self, verbose: bool = False):
         d = {}
@@ -367,7 +368,7 @@ DATACLASS_TO_REQ_KEYS_MAP = {
 }
 
 
-def obj_to_dict(obj, verbose: bool = False):
+def obj_to_dict(obj, verbose: bool = True):
     """
     This function serializes a given object (usually starting with a TrussConfig) and
     only keeps required keys or ones changed by the user manually. This simplifies the config.yml.

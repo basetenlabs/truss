@@ -58,7 +58,7 @@ def populate_target_directory(
 
     # Write config
     with (target_directory_path_typed / CONFIG_FILE).open("w") as config_file:
-        yaml.dump(config.to_dict(), config_file)
+        yaml.dump(config.to_dict(verbose=False), config_file)
 
     return target_directory_path_typed
 
