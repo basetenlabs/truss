@@ -194,7 +194,7 @@ class ModelWrapper:
                 response, self._predict_lock
             )
 
-            if headers and headers.get("Accept") == "application/json":
+            if headers and headers.get("accept") == "application/json":
                 response = _convert_streamed_response_to_string(
                     locked_response_generator
                 )

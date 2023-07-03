@@ -133,16 +133,16 @@ class BasetenEndpoints:
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         response: Union[Dict, Generator] = asyncio.run(
-            model(body, headers=dict(request.headers.items()))
+            model(
+                body,
+                headers={key.lower(): value for key, value in request.headers.items()},
+            )
         )
 
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.
         if isinstance(response, Generator):
-            print("Returning a streaming response")
             return StreamingResponse(response, media_type="application/octet-stream")
-        else:
-            print("Not returning a streaming response")
 
         response_headers = {}
         if self.is_binary(request):

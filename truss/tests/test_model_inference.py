@@ -186,7 +186,7 @@ def test_streaming_truss():
             headers={"accept": "application/json"},
         )
         assert "transfer-encoding" not in invocations_non_stream_response.headers
-        assert invocations_non_stream_response.content == b"01234"
+        assert invocations_non_stream_response.json() == "01234"
 
 
 @pytest.mark.integration
