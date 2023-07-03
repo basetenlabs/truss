@@ -1,0 +1,14 @@
+environment_variables: {}
+external_package_dirs: []
+model_name: null
+python_version: py39
+requirements:
+- vllm
+resources:
+  accelerator: A10G
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: true
+secrets: {}
+spec_version: '2.0'
+system_packages: []
