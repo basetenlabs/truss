@@ -1,5 +1,7 @@
+import multiprocessing
 import os
 import sys
+from typing import List
 
 import psutil
 
@@ -49,3 +51,10 @@ def cpu_count():
             pass
 
     return count
+
+
+def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
+    for proc in procs:
+        if proc.is_alive():
+            return False
+    return True

@@ -14,19 +14,29 @@ from truss.templates.control.control.helpers.truss_patch.system_packages import 
 )
 from truss.templates.control.control.helpers.types import (
     Action,
+    ConfigPatch,
+    DataPatch,
+    EnvVarPatch,
+    ExternalDataPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.truss_config import ExternalData, TrussConfig
 from truss.truss_spec import TrussSpec
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
     "**/__pycache__/**/*",
     "**/__pycache__/**",
+]
+UNPATCHABLE_CONFIG_KEYS = [
+    "live_reload",
+    "python_version",
+    "resources",
 ]
 
 
@@ -59,8 +69,6 @@ def calc_truss_patch(
         previous_truss_signature.content_hashes_by_path,
         ignore_patterns,
     )
-    # TODO(pankaj) Calculate model code patches only for now, add config changes
-    # later.
 
     truss_spec = TrussSpec(truss_dir)
     model_module_path = _relative_to_root(truss_spec.model_module_dir)
@@ -194,16 +202,96 @@ def calc_config_patches(
     Returns None if patch cannot be calculated. Empty list means no relevant
     differences found.
     """
-    # Currently only calculate patches for python requirements and system
-    # packages, bail out if anything else has changed.
-    if not _only_expected_config_differences(prev_config, new_config):
-        return None
 
+    config_patches = _calc_general_config_patches(prev_config, new_config)
     python_requirement_patches = _calc_python_requirements_patches(
         prev_config, new_config
     )
     system_package_patches = _calc_system_packages_patches(prev_config, new_config)
-    return [*python_requirement_patches, *system_package_patches]
+    return [*config_patches, *python_requirement_patches, *system_package_patches]
+
+
+def _calc_general_config_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> List[Patch]:
+    """Calculate patch based on changes to config.yaml
+    If a change has been made to the config, at least one ConfigPatch is created
+    Additional patches are created for each of the patches that need specific application,
+    namely patches to the env variables, external package dirs, and/or external data.
+
+    Empty list means no relevant differences found.
+    """
+
+    patches: List[Patch] = []
+    for key in UNPATCHABLE_CONFIG_KEYS:
+        prev_items = getattr(prev_config, key)
+        new_items = getattr(new_config, key)
+        if new_items != prev_items:
+            logger.warning(f"Patching is not supported for: {key}")
+
+    if prev_config.to_dict() != new_config.to_dict():
+        patches.append(_mk_config_patch(Action.UPDATE, new_config.to_dict()))
+
+    env_var_patches = _calc_env_var_patches(prev_config, new_config)
+    external_data_patches = _calc_external_data_patches(prev_config, new_config)
+
+    return [*patches, *env_var_patches, *external_data_patches]
+
+
+def _calc_env_var_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> List[Patch]:
+    """Calculate patch based on changes to environment variables.
+
+    Empty list means no relevant differences found.
+    """
+    patches = []
+    prev_items = prev_config.environment_variables
+    new_items = new_config.environment_variables
+    prev_item_names = set(prev_items.keys())
+    new_item_names = set(new_items.keys())
+    removed_items = prev_item_names.difference(new_item_names)
+    for removed_item in removed_items:
+        patches.append(
+            _mk_env_var_patch(
+                Action.REMOVE,
+                {removed_item: prev_items[removed_item]},
+            )
+        )
+    added_items = new_item_names.difference(prev_item_names)
+    for added_item in added_items:
+        patches.append(
+            _mk_env_var_patch(Action.ADD, {added_item: new_items[added_item]})
+        )
+    for item in new_item_names.intersection(prev_item_names):
+        if new_items[item] != prev_items[item]:
+            patches.append(_mk_env_var_patch(Action.UPDATE, {item: new_items[item]}))
+    return patches
+
+
+def _calc_external_data_patches(
+    prev_config: TrussConfig, new_config: TrussConfig
+) -> List[Patch]:
+    """Calculate patch based on changes to external data.
+
+    Empty list means no relevant differences found.
+    """
+    patches = []
+    prev_items = (prev_config.external_data or ExternalData([])).to_list()
+    new_items = (new_config.external_data or ExternalData([])).to_list()
+
+    removed_items = [x for x in prev_items if x not in new_items]
+    for removed_item in removed_items:
+        patches.append(
+            _mk_external_data_patch(
+                Action.REMOVE,
+                removed_item,
+            )
+        )
+    added_items = [x for x in new_items if x not in prev_items]
+    for added_item in added_items:
+        patches.append(_mk_external_data_patch(Action.ADD, added_item))
+    return patches
 
 
 def _calc_python_requirements_patches(
@@ -211,8 +299,7 @@ def _calc_python_requirements_patches(
 ) -> List[Patch]:
     """Calculate patch based on changes to python requirements.
 
-    Returns None if patch cannot be calculated. Empty list means no relevant
-    differences found.
+    Empty list means no relevant differences found.
     """
     patches = []
     prev_reqs = reqs_by_name(prev_config.requirements)
@@ -239,8 +326,7 @@ def _calc_system_packages_patches(
 ) -> List[Patch]:
     """Calculate patch based on changes to system packates.
 
-    Returns None if patch cannot be calculated. Empty list means no relevant
-    differences found.
+    Empty list means no relevant differences found.
     """
     patches = []
     prev_pkgs = system_packages_set(prev_config.system_packages)
@@ -256,18 +342,48 @@ def _calc_system_packages_patches(
     return patches
 
 
-def _only_expected_config_differences(
-    prev_config: TrussConfig, new_config: TrussConfig
-) -> bool:
-    prev_config_dict = prev_config.to_dict()
-    prev_config_dict["requirements"] = []
-    prev_config_dict["system_packages"] = []
+def _mk_config_patch(action: Action, config: dict) -> Patch:
+    return Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=action,
+            config=config,
+        ),
+    )
 
-    new_config_dict = new_config.to_dict()
-    new_config_dict["requirements"] = []
-    new_config_dict["system_packages"] = []
 
-    return prev_config_dict == new_config_dict
+def _mk_data_patch(action: Action, item: dict, path: str) -> Patch:
+    return Patch(
+        type=PatchType.DATA,
+        body=DataPatch(action=action, content=item, path=path),
+    )
+
+
+def _mk_package_patch(action: Action, item: dict, path: str) -> Patch:
+    return Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(action=action, content=item, path=path),
+    )
+
+
+def _mk_env_var_patch(action: Action, item: dict) -> Patch:
+    return Patch(
+        type=PatchType.ENVIRONMENT_VARIABLE,
+        body=EnvVarPatch(
+            action=action,
+            item=item,
+        ),
+    )
+
+
+def _mk_external_data_patch(action: Action, item: Dict[str, str]) -> Patch:
+    return Patch(
+        type=PatchType.EXTERNAL_DATA,
+        body=ExternalDataPatch(
+            action=action,
+            item=item,
+        ),
+    )
 
 
 def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
