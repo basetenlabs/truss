@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx import URL, ConnectError
 from starlette.requests import Request
@@ -25,7 +25,7 @@ async def proxy(request: Request):
     )
     client = request.app.state.proxy_client
     url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
-    rp_req = client.build_request(
+    inf_serv_req = client.build_request(
         request.method, url, headers=request.headers.raw, content=await request.body()
     )
 
@@ -44,7 +44,7 @@ async def proxy(request: Request):
                     inference_server_process_controller.is_inference_server_intentionally_stopped()
                 ):
                     raise ModelLoadFailed("Model load failed")
-                resp = await client.send(rp_req)
+                resp = await client.send(inf_serv_req)
 
                 if _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
@@ -61,6 +61,11 @@ async def proxy(request: Request):
                         ' it crashed and may need a fix to get it running again."
                     return JSONResponse(error_msg, 503)
                 raise exp
+
+    if _is_streaming_response(resp):
+        return StreamingResponse(
+            resp.aiter_bytes(), media_type="application/octet-stream"
+        )
 
     response = Response(resp.content, resp.status_code, resp.headers)
     return response
@@ -112,3 +117,10 @@ def _is_model_not_ready(resp) -> bool:
         and resp.content is not None
         and "model is not ready" in resp.content.decode("utf-8")
     )
+
+
+def _is_streaming_response(resp) -> bool:
+    for header_name, value in resp.headers.items():
+        if header_name.lower() == "transfer-encoding" and value.lower() == "chunked":
+            return True
+    return False
