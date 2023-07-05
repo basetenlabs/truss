@@ -12,19 +12,19 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import common.errors as errors
-import common.util as utils
+import shared.util as utils
 import uvicorn
-from common.logging import setup_logging
-from common.serialization import (
-    DeepNumpyEncoder,
-    truss_msgpack_deserialize,
-    truss_msgpack_serialize,
-)
 from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from shared.logging import setup_logging
+from shared.serialization import (
+    DeepNumpyEncoder,
+    truss_msgpack_deserialize,
+    truss_msgpack_serialize,
+)
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
