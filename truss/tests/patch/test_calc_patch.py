@@ -487,12 +487,13 @@ def test_calc_config_patches_add_external_data(
         config_op=config_op,
     )
     assert len(patches) == 2
+
     assert patches == [
         Patch(
             type=PatchType.CONFIG,
             body=ConfigPatch(
                 action=Action.UPDATE,
-                config=yaml.safe_load((path / "config.yaml").open()),
+                config=TrussConfig.from_yaml(path / "config.yaml").to_dict(),
             ),
         ),
         Patch(
@@ -522,7 +523,7 @@ def test_calc_config_patches_remove_external_data(
             type=PatchType.CONFIG,
             body=ConfigPatch(
                 action=Action.UPDATE,
-                config=yaml.safe_load((path / "config.yaml").open()),
+                config=TrussConfig.from_yaml(path / "config.yaml").to_dict(),
             ),
         ),
         Patch(

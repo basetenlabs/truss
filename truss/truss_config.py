@@ -208,6 +208,7 @@ class ExternalData:
         return ExternalData([ExternalDataItem.from_dict(item) for item in items])
 
     def to_list(self) -> List[Dict[str, str]]:
+        # return []
         return [item.to_dict() for item in self.items]
 
 
@@ -328,19 +329,7 @@ class TrussConfig:
             yaml.dump(self.to_dict(verbose=True), config_file)
 
     def to_dict(self, verbose: bool = False):
-        d = {}
-
-        if self.external_data is not None:
-            d["external_data"] = transform_optional(
-                self.external_data, lambda data: data.to_list()
-            )
-        if self.base_image is not None:
-            d["base_image"] = transform_optional(
-                self.base_image, lambda data: data.to_dict()
-            )
-
-        d = obj_to_dict(self, verbose=verbose)
-        return d
+        return obj_to_dict(self, verbose=verbose)
 
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())
@@ -368,7 +357,7 @@ DATACLASS_TO_REQ_KEYS_MAP = {
 }
 
 
-def obj_to_dict(obj, verbose: bool = True):
+def obj_to_dict(obj, verbose: bool = False):
     """
     This function serializes a given object (usually starting with a TrussConfig) and
     only keeps required keys or ones changed by the user manually. This simplifies the config.yml.
@@ -386,7 +375,7 @@ def obj_to_dict(obj, verbose: bool = True):
         if not isinstance(field_default_value, _MISSING_TYPE):
             expected_default_value = field_default_value
         else:
-            expected_default_value = field_default_factory()
+            expected_default_value = field_default_factory()  # type: ignore
 
         should_add_to_dict = (
             expected_default_value != field_curr_value or field_name in required_keys
@@ -399,6 +388,10 @@ def obj_to_dict(obj, verbose: bool = True):
                 d[field_name] = field_curr_value.to_str()
             elif isinstance(field_curr_value, Enum):
                 d[field_name] = field_curr_value.value
+            elif isinstance(field_curr_value, ExternalData):
+                d["external_data"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list()
+                )
             else:
                 d[field_name] = field_curr_value
 
