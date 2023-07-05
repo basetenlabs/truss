@@ -33,7 +33,7 @@ def copy_tree_path(src: Path, dest: Path) -> None:
             dest_fp.mkdir(exist_ok=True)
         else:
             dest_fp.parent.mkdir(exist_ok=True, parents=True)
-            copy_file(str(sub_path), str(dest_fp))
+            copy_file(str(sub_path), str(dest_fp), verbose=False)
 
 
 def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
