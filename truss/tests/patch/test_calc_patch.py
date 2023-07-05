@@ -493,7 +493,7 @@ def test_calc_config_patches_add_external_data(
             type=PatchType.CONFIG,
             body=ConfigPatch(
                 action=Action.UPDATE,
-                config=TrussConfig.from_yaml(path / "config.yaml").to_dict(),
+                config=yaml.safe_load((path / "config.yaml").open()),
             ),
         ),
         Patch(
@@ -523,7 +523,7 @@ def test_calc_config_patches_remove_external_data(
             type=PatchType.CONFIG,
             body=ConfigPatch(
                 action=Action.UPDATE,
-                config=TrussConfig.from_yaml(path / "config.yaml").to_dict(),
+                config=yaml.safe_load((path / "config.yaml").open()),
             ),
         ),
         Patch(

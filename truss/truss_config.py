@@ -328,7 +328,7 @@ class TrussConfig:
         with path.open("w") as config_file:
             yaml.dump(self.to_dict(verbose=True), config_file)
 
-    def to_dict(self, verbose: bool = False):
+    def to_dict(self, verbose: bool = True):
         return obj_to_dict(self, verbose=verbose)
 
     def clone(self):
