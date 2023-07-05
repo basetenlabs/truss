@@ -2,12 +2,15 @@ import logging
 import os
 import signal
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Optional
 
 from helpers.context_managers import current_directory
 
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
+TERMINATION_TIMEOUT_SECS = 120.0
+TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
 
 class InferenceServerProcessController:
@@ -51,6 +54,16 @@ class InferenceServerProcessController:
                 os.kill(int(pid), signal.SIGKILL)
 
         self._inference_server_started = False
+
+    def terminate_with_wait(self):
+        self._inference_server_process.terminate()
+        termination_check_attempts = int(
+            TERMINATION_TIMEOUT_SECS / TERMINATION_CHECK_INTERVAL_SECS
+        )
+        for _ in range(termination_check_attempts):
+            time.sleep(TERMINATION_CHECK_INTERVAL_SECS)
+            if self._inference_server_process.poll() is not None:
+                return
 
     def inference_server_started(self) -> bool:
         return self._inference_server_started
