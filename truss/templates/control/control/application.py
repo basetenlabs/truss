@@ -101,8 +101,13 @@ def create_app(base_config: Dict):
         },
     )
     app.state = app_state
-
     app.include_router(control_app)
+
+    @app.on_event("shutdown")
+    def on_shutdown():
+        app.state.logger.info("Term signal received, shutting down.")
+        app.state.inference_server_process_controller.terminate_with_wait()
+
     return app
 
 

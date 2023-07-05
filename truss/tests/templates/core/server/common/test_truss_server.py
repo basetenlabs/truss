@@ -49,7 +49,7 @@ def test_truss_control_server_termination(truss_control_container_fs):
     inf_port = 10124
 
     def start_truss_server(stdout_capture_file_path):
-        # sys.stdout = open(stdout_capture_file_path, "w")
+        sys.stdout = open(stdout_capture_file_path, "w")
         app_path = truss_control_container_fs / "app"
         sys.path.append(str(app_path))
         control_path = truss_control_container_fs / "control" / "control"
@@ -74,7 +74,7 @@ def test_truss_control_server_termination(truss_control_container_fs):
         # Port should have been taken up by truss server
         assert not _is_port_available(ctrl_port)
         os.kill(proc_id, signal.SIGTERM)
-        time.sleep(2.0)
+        subproc.join(timeout=10)
         # Print on purpose for help with debugging, otherwise hard to know what's going on
         print(Path(stdout_capture_file.name).read_text())
         assert not subproc.is_alive()

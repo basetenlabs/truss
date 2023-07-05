@@ -1,7 +1,5 @@
 import asyncio
 import os
-import signal
-import sys
 from pathlib import Path
 
 import uvicorn
@@ -64,15 +62,6 @@ class ControlServer:
         )
         cfg.setup_event_loop()
 
-        def stop_server(sig, frame):
-            # Send term signal to inference server and wait for it to stop, then exit
-            print("Term signal received, shutting down.")
-            application.state.inference_server_process_controller.terminate_with_wait()
-            sys.exit()
-
-        print(f"Current process id {os.getpid()}")
-        for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-            signal.signal(sig, stop_server)
         server = uvicorn.Server(cfg)
         asyncio.run(server.serve())
 

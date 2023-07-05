@@ -32,6 +32,7 @@ class InferenceServerProcessController:
         self._inference_server_port = inference_server_port
         self._inference_server_started = False
         self._inference_server_ever_started = False
+        self._inference_server_terminated = False
         self._app_logger = app_logger
 
     def start(self, inf_env: dict):
@@ -58,6 +59,7 @@ class InferenceServerProcessController:
     def terminate_with_wait(self):
         print("Terminating inference server from control")
         self._inference_server_process.terminate()
+        self._inference_server_terminated = True
         termination_check_attempts = int(
             TERMINATION_TIMEOUT_SECS / TERMINATION_CHECK_INTERVAL_SECS
         )
@@ -87,8 +89,15 @@ class InferenceServerProcessController:
     def is_inference_server_intentionally_stopped(self) -> bool:
         return INFERENCE_SERVER_FAILED_FILE.exists()
 
+    def is_inference_server_terminated(self) -> bool:
+        return self._inference_server_terminated
+
     def check_and_recover_inference_server(self, inf_env: dict):
-        if self.inference_server_started() and not self.is_inference_server_running():
+        if (
+            self.inference_server_started()
+            and not self.is_inference_server_running()
+            and not self.is_inference_server_terminated()
+        ):
             if not self.is_inference_server_intentionally_stopped():
                 self._app_logger.warning(
                     "Inference server seems to have crashed, restarting"
