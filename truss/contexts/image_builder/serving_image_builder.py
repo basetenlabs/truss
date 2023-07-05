@@ -73,12 +73,9 @@ class ServingImageBuilder(ImageBuilder):
             copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
         # Copy over truss
-        # TODO: run config to dict, verbose = true overriding the simple config file
-        # TODO: write a test that "model_class_filename" is in the dict
-        # TODO: repeat for training image builder
         copy_tree_path(truss_dir, build_dir)
 
-        # Override config.yml here
+        # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
 

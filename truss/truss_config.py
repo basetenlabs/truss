@@ -75,8 +75,6 @@ class AcceleratorSpec:
             raise ValidationError(f"Accelerator {acc_spec} not supported") from exc
         return AcceleratorSpec(accelerator=acc, count=count)
 
-    from_dict = from_str
-
 
 @dataclass
 class Resources:
@@ -208,7 +206,6 @@ class ExternalData:
         return ExternalData([ExternalDataItem.from_dict(item) for item in items])
 
     def to_list(self) -> List[Dict[str, str]]:
-        # return []
         return [item.to_dict() for item in self.items]
 
 
@@ -321,8 +318,7 @@ class TrussConfig:
     @staticmethod
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
-            test = yaml.safe_load(yaml_file)
-            return TrussConfig.from_dict(test)
+            return TrussConfig.from_dict(yaml.safe_load(yaml_file))
 
     def write_to_yaml_file(self, path: Path):
         with path.open("w") as config_file:
