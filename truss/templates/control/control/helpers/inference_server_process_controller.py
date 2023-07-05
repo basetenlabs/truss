@@ -56,13 +56,16 @@ class InferenceServerProcessController:
         self._inference_server_started = False
 
     def terminate_with_wait(self):
+        print("Terminating inference server from control")
         self._inference_server_process.terminate()
         termination_check_attempts = int(
             TERMINATION_TIMEOUT_SECS / TERMINATION_CHECK_INTERVAL_SECS
         )
         for _ in range(termination_check_attempts):
             time.sleep(TERMINATION_CHECK_INTERVAL_SECS)
+            print("Checking if inf serv is dead")
             if self._inference_server_process.poll() is not None:
+                print("inf serv is now dead, stopping")
                 return
 
     def inference_server_started(self) -> bool:
