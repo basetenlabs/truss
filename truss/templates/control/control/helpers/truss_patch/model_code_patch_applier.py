@@ -37,6 +37,8 @@ def apply_code_patch(
         elif filepath.is_file():
             logger.info(f"Deleting file {filepath}")
             filepath.unlink()
+            # attempt to recursively remove potentially empty directories, if applicable
+            # os.removedirs raises OSError with errno 39 when this process encounters a non-empty dir
             try:
                 os.removedirs(filepath.parent)
             except OSError as e:

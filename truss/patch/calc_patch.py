@@ -86,7 +86,7 @@ def calc_truss_patch(
 
     patches = []
     for path in changed_paths["removed"]:
-        if path.startswith(model_module_path):
+        if _strictly_under(path, [model_module_path]):
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
@@ -100,7 +100,7 @@ def calc_truss_patch(
             # Don't support removal of config file
             logger.info(f"Patching not supported for removing {path}")
             return None
-        elif path.startswith(bundled_packages_path):
+        elif _strictly_under(path, [bundled_packages_path]):
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,
@@ -111,12 +111,12 @@ def calc_truss_patch(
                 )
             )
         elif _under_unsupported_patch_dir(path):
-            logger.info(f"Patching not supported for removing {path}")
+            logger.warn(f"Patching not supported for removing {path}")
             return None
 
     for path in changed_paths["added"] + changed_paths["updated"]:
         action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
-        if path.startswith(model_module_path):
+        if _strictly_under(path, [model_module_path]):
             full_path = truss_dir / path
 
             # TODO(pankaj) Add support for empty directories, skip them for now.
@@ -139,7 +139,7 @@ def calc_truss_patch(
             )
             config_patches = calc_config_patches(prev_config, new_config)
             patches.extend(config_patches)
-        elif path.startswith(bundled_packages_path):
+        elif _strictly_under(path, [bundled_packages_path]):
             full_path = truss_dir / path
             if not full_path.is_file():
                 continue
@@ -373,6 +373,7 @@ def _mk_config_patch(action: Action, config: dict) -> Patch:
     )
 
 
+# Support for patching data changes yet to be implemented
 def _mk_data_patch(action: Action, item: str, path: str) -> Patch:
     return Patch(
         type=PatchType.DATA,
