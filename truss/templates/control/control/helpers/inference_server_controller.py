@@ -150,10 +150,11 @@ def _patch_sort_key_fn(patch: Patch) -> int:
     PATCH_ORDER = [
         PatchType.SYSTEM_PACKAGE,
         PatchType.PYTHON_REQUIREMENT,
-        PatchType.EXTERNAL_DATA,
-        PatchType.MODEL_CODE,
-        PatchType.CONFIG,
+        PatchType.PACKAGE,
         PatchType.ENVIRONMENT_VARIABLE,
+        PatchType.EXTERNAL_DATA,
+        PatchType.CONFIG,
+        PatchType.MODEL_CODE,
     ]
     if patch.type not in PATCH_ORDER:
         raise ValueError(f"Unexpected patch type {patch.type}")
