@@ -156,7 +156,7 @@ secrets: {}
 system_packages: []
 """
 
-    assert config_yaml.strip() == yaml.dump(config.to_dict()).strip()
+    assert config_yaml.strip() == yaml.dump(config.to_dict(verbose=False)).strip()
 
 
 @pytest.mark.parametrize(
@@ -172,10 +172,10 @@ def test_model_framework(model_framework):
 
     new_config = generate_default_config()
     if model_framework == ModelFrameworkType.CUSTOM:
-        assert new_config == config.to_dict()
+        assert new_config == config.to_dict(verbose=False)
     else:
         new_config["model_framework"] = model_framework.value
-        assert new_config == config.to_dict()
+        assert new_config == config.to_dict(verbose=False)
 
 
 def test_non_default_train():
@@ -198,4 +198,4 @@ def test_non_default_train():
     new_config = generate_default_config()
     new_config["train"] = updated_train
 
-    assert new_config == config.to_dict()
+    assert new_config == config.to_dict(verbose=False)
