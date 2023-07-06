@@ -27,7 +27,6 @@ DEFAULT_PYTHON_VERSION = "py39"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
-DEFAULT_SPEC_VERSION_ON_LOAD = "1.0"
 
 DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
@@ -278,7 +277,7 @@ class TrussConfig:
             # Users that are calling `load` on an existing Truss
             # should default to 1.0 whereas users creating a new Truss
             # should default to 2.0.
-            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION_ON_LOAD),
+            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION),
             model_type=d.get("model_type", DEFAULT_MODEL_TYPE),
             model_framework=ModelFrameworkType(
                 d.get("model_framework", DEFAULT_MODEL_FRAMEWORK_TYPE.value)

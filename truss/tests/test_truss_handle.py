@@ -21,7 +21,6 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
-from truss.truss_config import TrussConfig
 from truss.truss_handle import TrussHandle, wait_for_truss
 from truss.types import Example, PatchRequest
 
@@ -862,9 +861,6 @@ def generate_default_config():
         },
         "secrets": {},
         "system_packages": [],
-
-        # TODO: why is the below needed
-        "spec_version": "1.0",
     }
     return config
 
