@@ -86,9 +86,6 @@ class ServingImageBuilder(ImageBuilder):
         # Download from HuggingFace
         if config.cache_hf_weights:
             cache_dir = build_dir / config.cache_dir
-
-            # add huggingface cache
-            print(str(cache_dir))
             snapshot_download(config.cache_hf_weights, cache_dir=str(cache_dir))
 
         # Copy inference server code

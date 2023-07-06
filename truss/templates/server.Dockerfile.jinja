@@ -61,6 +61,11 @@ RUN python3 -m venv /control/.env \
     {%- endif %}
 {% endblock %}
 
+{% block cache_weights %}
+    {%- if config.cache_hf_weights %}
+ENV HUGGINGFACE_HUB_CACHE = {{ config.cache_dir }}
+    {%- endif %}
+{% endblock %}
 
 {% block run %}
     {%- if config.live_reload %}
