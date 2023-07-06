@@ -6,7 +6,7 @@ We use GitHub features for project management on Truss:
 
 * For bugs and feature requests, file an issue.
 * For changes and updates, create a pull request.
-* To view and comment on the roadmap, check the projects tab.
+* To view and comment on the roadmap, [check the projects tab](https://github.com/basetenlabs/truss/projects?query=is%3Aopen).
 
 ## Local development
 
@@ -59,16 +59,3 @@ To release a new version of the library.
 To learn about Truss see the [official documentation](https://truss.baseten.co).
 
 Contributions to documentation are very welcome! Simply edit the appropriate markdown files in the `docs/` folder and make a pull request. For larger changes, tutorials, or any questions please contact [philip.kiely@baseten.co](mailto:philip.kiely@baseten.co)
-
-## Contributors
-
-Truss was made possible by:
-
-[Baseten Labs, Inc](http://baseten.co)
-* Phil Howes
-* Alex Gillmor
-* Pankaj Gupta
-* Philip Kiely
-* Nish Singaraju
-* Abu Qadar
-* and users like you!
