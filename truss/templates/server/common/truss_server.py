@@ -1,23 +1,40 @@
 import asyncio
+import concurrent.futures
 import json
+import logging
+import multiprocessing
 import os
 import signal
+import socket
+import sys
+import time
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, List, Optional, Union
 
 import common.errors as errors
-from fastapi import Depends, FastAPI, Request
-from fastapi.responses import ORJSONResponse
-from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import ModelWrapper
-from shared.logging import setup_logging
-from shared.serialization import (
+import common.util as utils
+import uvicorn
+from common.logging import setup_logging
+from common.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from shared.uvicorn_config import start_uvicorn_server
+from common.termination_handler_middleware import TerminationHandlerMiddleware
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import ORJSONResponse
+from fastapi.routing import APIRoute as FastAPIRoute
+from model_wrapper import ModelWrapper
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+# [IMPORTANT] A lot of things depend on this currently.
+# Please consider the following when increasing this:
+# 1. Self-termination on model load fail.
+# 2. Graceful termination.
+NUM_WORKERS = 1
+WORKER_TERMINATION_TIMEOUT_SECS = 120.0
+WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
 
 async def parse_body(request: Request) -> bytes:
@@ -27,7 +44,26 @@ async def parse_body(request: Request) -> bytes:
     return await request.body()
 
 
+FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
+logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
+
+
+class UvicornCustomServer(multiprocessing.Process):
+    def __init__(
+        self, config: uvicorn.Config, sockets: Optional[List[socket.socket]] = None
+    ):
+        super().__init__()
+        self.sockets = sockets
+        self.config = config
+
+    def stop(self):
+        self.terminate()
+
+    def run(self):
+        server = uvicorn.Server(config=self.config)
+        asyncio.run(server.serve(sockets=self.sockets))
 
 
 class BasetenEndpoints:
@@ -147,7 +183,7 @@ class TrussServer:
         self._model.start_load()
 
     def create_application(self):
-        return FastAPI(
+        app = FastAPI(
             title="Baseten Inference Server",
             docs_url=None,
             redoc_url=None,
@@ -189,7 +225,108 @@ class TrussServer:
             },
         )
 
-    def start(self):
-        start_uvicorn_server(
-            self.create_application(), host="0.0.0.0", port=self.http_port
+        def exit_self():
+            # Note that this kills the current process, the worker process, not
+            # the main truss_server process.
+            sys.exit()
+
+        termination_handler_middleware = TerminationHandlerMiddleware(
+            on_stop=lambda: None,
+            on_term=exit_self,
         )
+        app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
+        return app
+
+    def start(self):
+        cfg = uvicorn.Config(
+            self.create_application(),
+            host="0.0.0.0",
+            port=self.http_port,
+            workers=NUM_WORKERS,
+            log_config={
+                "version": 1,
+                "formatters": {
+                    "default": {
+                        "()": "uvicorn.logging.DefaultFormatter",
+                        "datefmt": DATE_FORMAT,
+                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(message)s",
+                        "use_colors": None,
+                    },
+                    "access": {
+                        "()": "uvicorn.logging.AccessFormatter",
+                        "datefmt": DATE_FORMAT,
+                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(client_addr)s %(process)s - "
+                        '"%(request_line)s" %(status_code)s',
+                        # noqa: E501
+                    },
+                },
+                "handlers": {
+                    "default": {
+                        "formatter": "default",
+                        "class": "logging.StreamHandler",
+                        "stream": "ext://sys.stderr",
+                    },
+                    "access": {
+                        "formatter": "access",
+                        "class": "logging.StreamHandler",
+                        "stream": "ext://sys.stdout",
+                    },
+                },
+                "loggers": {
+                    "uvicorn": {"handlers": ["default"], "level": "INFO"},
+                    "uvicorn.error": {"level": "INFO"},
+                    "uvicorn.access": {
+                        "handlers": ["access"],
+                        "level": "INFO",
+                        "propagate": False,
+                    },
+                },
+            },
+        )
+
+        max_asyncio_workers = min(32, utils.cpu_count() + 4)
+        logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
+        # Call this so uvloop gets used
+        cfg.setup_event_loop()
+        asyncio.get_event_loop().set_default_executor(
+            concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
+        )
+
+        async def serve():
+            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            serversocket.bind((cfg.host, cfg.port))
+            serversocket.listen(5)
+
+            logging.info(f"starting uvicorn with {cfg.workers} workers")
+            servers: List[UvicornCustomServer] = []
+            for _ in range(cfg.workers):
+                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
+                server.start()
+                servers.append(server)
+
+            def stop_servers():
+                # Send stop signal, then wait for all to exit
+                for server in servers:
+                    # Sends term signal to the process, which should be handled
+                    # by the termination handler.
+                    server.stop()
+
+                termination_check_attempts = int(
+                    WORKER_TERMINATION_TIMEOUT_SECS
+                    / WORKER_TERMINATION_CHECK_INTERVAL_SECS
+                )
+                for _ in range(termination_check_attempts):
+                    time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
+                    if utils.all_processes_dead(servers):
+                        # Exit main process
+                        sys.exit()
+
+            for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
+                signal.signal(sig, lambda sig, frame: stop_servers())
+
+        async def servers_task():
+            servers = [serve()]
+            await asyncio.gather(*servers)
+
+        asyncio.run(servers_task())

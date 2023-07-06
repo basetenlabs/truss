@@ -1,18 +1,19 @@
-import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from truss.constants import SUPPORTED_PYTHON_VERSIONS
-from truss.tests.conftest import CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE
+from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
-    verify_environment_variable_on_container,
     verify_python_requirement_installed_on_container,
     verify_python_requirement_not_installed_on_container,
     verify_system_package_installed_on_container,
     verify_system_requirement_not_installed_on_container,
 )
+from truss.truss_config import ExternalDataItem
 from truss.truss_handle import TrussHandle
+from truss.util.path import calc_shadow_truss_dirname
 
 
 def current_num_docker_images(th: TrussHandle) -> int:
@@ -26,6 +27,12 @@ def control_model_handle_tag_tuple(
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     return (custom_model_control, th, tag)
+
+
+def update_model_code(path, new_model_code):
+    model_code_file_path = path / "model" / "model.py"
+    with model_code_file_path.open("w") as model_code_file:
+        model_code_file.write(new_model_code)
 
 
 @pytest.mark.integration
@@ -43,23 +50,18 @@ def test_control_truss_model_code_patch(
     custom_model_control, th, tag = control_model_handle_tag_tuple
     th.update_python_version(python_version)
 
-    def predict_with_updated_model_code():
-        new_model_code = """
+    new_model_code = """
 class Model:
     def predict(self, model_input):
         return [2 for i in model_input]
 """
-        model_code_file_path = custom_model_control / "model" / "model.py"
-        with model_code_file_path.open("w") as model_code_file:
-            model_code_file.write(new_model_code)
-        return th.docker_predict([1], tag=tag, binary=binary)
 
     with ensure_kill_all():
         result = th.docker_predict([1], tag=tag, binary=binary)
         assert result[0] == 1
         orig_num_truss_images = len(th.get_all_docker_images())
-
-        result = predict_with_updated_model_code()
+        update_model_code(custom_model_control, new_model_code)
+        result = th.docker_predict([1], tag=tag, binary=binary)
         assert result[0] == 2
         assert orig_num_truss_images == current_num_docker_images(th)
 
@@ -211,7 +213,6 @@ def test_control_truss_patch_ignored_changes(
         assert current_num_docker_images(th) == orig_num_truss_images
 
 
-@pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_added_model_dir(
     custom_model_control, tmp_path, control_model_handle_tag_tuple
@@ -231,7 +232,7 @@ def test_patch_added_model_dir(
 
         predict_with_added_model_dir_file()
         assert orig_num_truss_images == current_num_docker_images(th)
-        assert (tmp_path / "model" / "dir" / "foo.bar").exists()
+        assert (custom_model_control / "model" / "dir" / "foo.bar").exists()
 
 
 @pytest.mark.skip(reason="Unsupported patch")
@@ -257,66 +258,81 @@ def test_patch_data_dir(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-@pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_env_var(control_model_handle_tag_tuple):
-    _, th, tag = control_model_handle_tag_tuple
+    truss_dir, th, tag = control_model_handle_tag_tuple
 
     def predict_with_environment_variables_change():
         th.add_environment_variable("foo", "bar")
-        th.docker_predict([1], tag=tag)
-        verify_environment_variable_on_container(
-            th.get_running_serving_container_ignore_hash(), "foo", "bar"
-        )
+        result = th.docker_predict([1], tag=tag)
+        assert result == "bar"
         th.add_environment_variable("foo", "bar2")
-        th.kill_container()
-        th.docker_predict([1], tag=tag)
-        verify_environment_variable_on_container(
-            th.get_running_serving_container_ignore_hash(), "foo", "bar2"
-        )
-        th.clear_environment_variables()
-        th.kill_container()
-        th.docker_predict([1], tag=tag)
-        with pytest.raises(AssertionError):
-            verify_environment_variable_on_container(
-                th.get_running_serving_container_ignore_hash(), "foo", "bar2"
-            )
+        result = th.docker_predict([1], tag=tag)
+        assert result == "bar2"
+        config_path = truss_dir / "config.yaml"
+        with config_path.open("w") as file:
+            file.write("{}")
+
+        assert th._serving_hash() != th.truss_hash_on_serving_container()
+        result = th.docker_predict([1], tag=tag)
+        assert result == "No foo :("
 
     with ensure_kill_all():
-        th.docker_predict([1], tag=tag)
+        new_model_code = """
+import os
+class Model:
+    def predict(self, model_input):
+        print(os.environ.copy())
+        return os.environ.get("foo", "No foo :(")
+"""
+        update_model_code(truss_dir, new_model_code)
+        result = th.docker_predict([1], tag=tag)
+        assert result == "No foo :("
         orig_num_truss_images = len(th.get_all_docker_images())
 
         predict_with_environment_variables_change()
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-@pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_external_package_dirs(custom_model_with_external_package):
     th = TrussHandle(custom_model_with_external_package)
     tag = "test-docker-custom-model-control-external-package-tag:0.0.1"
-
+    th.live_reload()
     with ensure_kill_all():
+        th.docker_predict([1], tag=tag)
+        orig_num_truss_images = len(th.get_all_docker_images())
         th.clear_external_packages()
+        th.add_external_package("../ext_pkg_patched")
+        th.add_external_package("../ext_pkg2_patched")
+        ext_pkg_path = custom_model_with_external_package / ".." / "ext_pkg_patched"
+        ext_pkg_path.mkdir()
+        (ext_pkg_path / "subdir_patched").mkdir()
+        (ext_pkg_path / "subdir_patched" / "sub_module.py").touch()
+        (ext_pkg_path / "top_module.py").touch()
+        ext_pkg_path2 = custom_model_with_external_package / ".." / "ext_pkg2_patched"
+        ext_pkg_path2.mkdir()
+        (ext_pkg_path2 / "top_module_patched.py").touch()
         new_model_code = """
+import top_module
+import subdir_patched.sub_module
+import top_module_patched
 class Model:
     def predict(self, model_input):
-        return [2 for i in model_input]
-        """
-        model_code_file_path = custom_model_with_external_package / "model" / "model.py"
-        with model_code_file_path.open("w") as model_code_file:
-            model_code_file.write(new_model_code)
-        th.docker_predict([1], tag=tag)
-        th.kill_container()
-        orig_num_truss_images = len(th.get_all_docker_images())
-        th.add_external_package("../ext_pkg")
-        th.add_external_package("../ext_pkg2")
-        with model_code_file_path.open("w") as model_code_file:
-            model_code_file.write(CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE)
+        return [1 for i in model_input]
+"""
+        update_model_code(custom_model_with_external_package, new_model_code)
         th.docker_predict([1], tag=tag)
         assert orig_num_truss_images == current_num_docker_images(th)
-        assert (custom_model_with_external_package / "ext_pkg").exists() and (
-            custom_model_with_external_package / "ext_pkg2"
+        shadow_truss_path = (
+            LocalConfigHandler.shadow_trusses_dir_path()
+            / calc_shadow_truss_dirname(custom_model_with_external_package)
+        )
+        packages_dir_path_in_shadow = (
+            shadow_truss_path / th.spec.config.bundled_packages_dir
+        )
+        assert (packages_dir_path_in_shadow / "subdir_patched").exists() and (
+            packages_dir_path_in_shadow / "top_module_patched.py"
         ).exists()
 
 
@@ -337,18 +353,19 @@ def test_patch_secrets(control_model_handle_tag_tuple):
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-@pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_predict_with_external_data_change(
     custom_model_external_data_access_tuple_fixture, tmp_path
 ):
     truss_dir, _ = custom_model_external_data_access_tuple_fixture
     th = TrussHandle(truss_dir)
+    th.live_reload()
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
         th.docker_predict([], tag=tag)
         orig_num_truss_images = len(th.get_all_docker_images())
         th.remove_all_external_data()
+        assert th._serving_hash() != th.truss_hash_on_serving_container()
         new_model_code = """
 class Model:
     def __init__(self, data_dir):
@@ -358,18 +375,11 @@ class Model:
     def predict(self, model_input):
         return None
 """
-        model_code_file_path = truss_dir / "model" / "model.py"
-        with model_code_file_path.open("w") as model_code_file:
-            model_code_file.write(new_model_code)
+        update_model_code(truss_dir, new_model_code)
         th.docker_predict([], tag=tag)
         content = "foobar"
         filename = "foobar.txt"
         (tmp_path / filename).write_text(content)
-        port = 9090
-        proc = subprocess.Popen(
-            ["python", "-m", "http.server", str(port), "--bind", "*"],
-            cwd=tmp_path,
-        )
         new_model_code = """
 class Model:
     def __init__(self, data_dir):
@@ -377,19 +387,34 @@ class Model:
         pass
 
     def predict(self, model_input):
-        with (self._data_dir / 'foobar.txt').open() as file:
-            return file.read()
+        return (self._data_dir / 'foobar.txt').read_text()
 """
-        model_code_file_path = truss_dir / "model" / "model.py"
-        with model_code_file_path.open("w") as model_code_file:
-            model_code_file.write(new_model_code)
-        try:
-            url = f"http://localhost:{port}/{filename}"
-            th.add_external_data_item(url, filename)
-            result = th.docker_predict([], tag=tag)
-            assert (
-                result == content
-                and orig_num_truss_images == current_num_docker_images(th)
+        update_model_code(truss_dir, new_model_code)
+        url = f"http://host.docker.internal:9089/{filename}"
+        th.add_external_data_item(url, filename)
+        result = th.docker_predict([], tag=tag)
+        assert result == content
+
+        content = "patched content"
+        new_filename = "foobar-patched.txt"
+        (tmp_path / new_filename).write_text(content)
+        current_external_data = th._spec.config.external_data
+        new_external_data = replace(
+            current_external_data,
+            items=[
+                ExternalDataItem(
+                    url=f"http://host.docker.internal:9089/{new_filename}",
+                    local_data_path=filename,
+                )
+            ],
+        )
+        th._update_config(
+            lambda conf: replace(
+                conf,
+                external_data=new_external_data,
             )
-        finally:
-            proc.kill()
+        )
+        result = th.docker_predict([], tag=tag)
+        assert result == content and orig_num_truss_images == current_num_docker_images(
+            th
+        )

@@ -1,11 +1,10 @@
 import os
 
 import requests
-from fastapi import FastAPI
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 
-def inference_server_startup_flow(application: FastAPI) -> None:
+def inference_server_startup_flow(application) -> None:
     """
     Perform the inference server startup flow
 
@@ -25,7 +24,7 @@ def inference_server_startup_flow(application: FastAPI) -> None:
     {"is_current": true}
     {"accepted": true}
     """
-    inference_server_controller = application.state.inference_server_controller
+    inference_server_controller = application.config["inference_server_controller"]
     patch_ping_url = os.environ.get("PATCH_PING_URL_TRUSS")
     if patch_ping_url is None:
         inference_server_controller.start()
@@ -40,7 +39,7 @@ def inference_server_startup_flow(application: FastAPI) -> None:
     ):
         with attempt:
             try:
-                application.state.logger.info(
+                application.logger.info(
                     f"Pinging {patch_ping_url} for patch with hash {truss_hash}"
                 )
                 resp = requests.post(patch_ping_url, json=payload)
@@ -50,12 +49,12 @@ def inference_server_startup_flow(application: FastAPI) -> None:
                 # If hash is current start inference server, otherwise delay that
                 # for when patch is applied.
                 if "is_current" in resp_body and resp_body["is_current"] is True:
-                    application.state.logger.info(
+                    application.logger.info(
                         "Hash is current, starting inference server"
                     )
                     inference_server_controller.start()
             except Exception as exc:  # noqa
-                application.state.logger.warning(
+                application.logger.warning(
                     f"Patch ping attempt failed with error {exc}"
                 )
                 raise exc

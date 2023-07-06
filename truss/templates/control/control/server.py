@@ -1,9 +1,11 @@
 import os
 from pathlib import Path
 from threading import Thread
+from typing import Union
 
 from application import create_app
 from helpers.inference_server_starter import inference_server_startup_flow
+from waitress.server import BaseWSGIServer, MultiSocketServer
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -24,8 +26,7 @@ def _identify_python_executable_path() -> str:
 
 
 if __name__ == "__main__":
-
-    from shared.uvicorn_config import start_uvicorn_server
+    from waitress import create_server
 
     inf_serv_home: str = os.environ["APP_HOME"]
     python_executable_path: str = _identify_python_executable_path()
@@ -36,7 +37,7 @@ if __name__ == "__main__":
                 python_executable_path,
                 f"{inf_serv_home}/inference_server.py",
             ],
-            "control_server_host": "0.0.0.0",
+            "control_server_host": "*",
             "control_server_port": CONTROL_SERVER_PORT,
             "inference_server_port": INFERENCE_SERVER_PORT,
         }
@@ -45,12 +46,12 @@ if __name__ == "__main__":
     # Perform inference server startup flow in background
     Thread(target=inference_server_startup_flow, args=(application,)).start()
 
-    application.state.logger.info(
+    application.logger.info(
         f"Starting live reload server on port {CONTROL_SERVER_PORT}"
     )
-
-    start_uvicorn_server(
+    server: Union[BaseWSGIServer, MultiSocketServer] = create_server(
         application,
-        host=application.state.control_server_host,
-        port=application.state.control_server_port,
+        host=application.config["control_server_host"],
+        port=application.config["control_server_port"],
     )
+    server.run()
