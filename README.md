@@ -74,7 +74,6 @@ The pipeline model relies on Transformers and PyTorch. These dependencies must b
 In `./text-classification/config.yaml`, find the line `requirements`. Replace the empty list with:
 
 ```yaml
-requirements: []
 requirements:
   - torch==2.0.1
   - transformers==4.30.0
