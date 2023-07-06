@@ -62,6 +62,8 @@ COPY ./{{config.bundled_packages_dir}} /packages
 ENV {{ env_var_name }} {{ env_var_value }}
 {% endfor %}
 
+{% block cache_weights %}
+{% endblock %}
 
 {% block run %}
 {% endblock %}

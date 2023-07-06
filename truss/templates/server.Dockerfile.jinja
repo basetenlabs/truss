@@ -62,8 +62,9 @@ RUN python3 -m venv /control/.env \
 {% endblock %}
 
 {% block cache_weights %}
-    {%- if config.cache_hf_weights %}
-ENV HUGGINGFACE_HUB_CACHE = {{ config.cache_dir }}
+    {%- if config.cache_hf_weights != None %}
+COPY ./{{config.cache_dir}} /app/cache
+ENV HUGGINGFACE_HUB_CACHE = /app/cache
     {%- endif %}
 {% endblock %}
 

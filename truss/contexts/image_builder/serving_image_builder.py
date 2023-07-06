@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -86,7 +87,15 @@ class ServingImageBuilder(ImageBuilder):
         # Download from HuggingFace
         if config.cache_hf_weights:
             cache_dir = build_dir / config.cache_dir
-            snapshot_download(config.cache_hf_weights, cache_dir=str(cache_dir))
+            cache_dir.mkdir()
+            # (cache_dir / "read.txt").write_text("hello")
+
+            snapshot_download(
+                config.cache_hf_weights,
+                local_dir=str(cache_dir),
+                local_dir_use_symlinks=False,
+            )
+            print(os.listdir(cache_dir))
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
