@@ -8,6 +8,7 @@ from typing import Callable, List, Optional, Union
 import click
 import truss
 import yaml
+from truss.remote.baseten import BasetenRemote
 
 logging.basicConfig(level=logging.INFO)
 
@@ -290,6 +291,62 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
         return tr.local_train(variables=variables)
 
     return tr.docker_train(build_dir=build_dir, tag=tag, variables=variables)
+
+
+@cli_group.command()
+@click.argument("target_directory", required=False, default=os.getcwd())
+@click.option("--api-key", type=str, required=False, help="Your API key")
+@click.option("--model-name", type=str, required=True, help="Name of the model")
+@click.option(
+    "--remote-name",
+    type=str,
+    required=False,
+    help="Name of the remote",
+    default="baseten",
+)
+@click.option("--remote-url", type=str, required=False, help="URL of the remote")
+@error_handling
+def push(
+    target_directory: str,
+    api_key: str,
+    model_name: str,
+    remote_name: str,
+    remote_url: str,
+) -> None:
+    """
+    Pushes a truss to a TrussRemote.
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+
+    """
+    registry = {"baseten": (BasetenRemote, "https://app.baseten.co")}
+
+    if remote_name not in registry:
+        raise ValueError(
+            f"Remote {remote_name} not found. Available remotes: {list(registry.keys())}"
+        )
+
+    if not api_key:
+        api_key = os.environ.get(f"{remote_name.upper()}_API_KEY", None)  # type: ignore
+        if not api_key:
+            raise ValueError(
+                f"API key must be provided either as a flag "
+                f"or an environment variable"
+                f"({remote_name.upper()}_API_KEY)"
+            )
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+
+    # Instantiate remote
+    remote_cls = registry[remote_name][0]
+    remote_url = remote_url or registry[remote_name][1]
+    remote = remote_cls(remote_url, api_key)
+
+    # Push
+    service = remote.push(tr, model_name)
+
+    click.echo(f"Model {model_name} was successfully pushed.")
+    click.echo(f"Service URL: {service._service_url}")
 
 
 @cli_group.command()
