@@ -237,49 +237,6 @@ def _response_generator(queue: Queue):
             yield chunk.value
 
 
-class DeferLockToGenerator:
-    """
-    Context manager that accepts a lock, and wraps a block of code with that lock.
-    It provides the ability to defer the lock to the end of a generator,
-    if the code chooses.
-
-    If you defer the lock release, the generator MUST be read, otherwise there is
-    a risk of the lock never being released.
-    """
-
-    def __init__(self, lock: Lock):
-        self.lock = lock
-        self.deferred_to_generator = False
-
-    def __enter__(self):
-        self.lock.acquire()
-        return self
-
-    def __call__(self, generator: Generator):
-        if self.deferred_to_generator:
-            raise RuntimeError("Cannot defer to multiple generators in single block.")
-
-        def inner():
-            try:
-                for chunk in generator:
-                    yield chunk
-            finally:
-                self.lock.release()
-
-        self.deferred_to_generator = True
-        return inner()
-
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        if not self.deferred_to_generator:
-            self.lock.release()
-
-
-def _locked_response_generator(response: Any, lock: Lock):
-    with lock:
-        for chunk in response:
-            yield chunk
-
-
 def _convert_streamed_response_to_string(response: Any):
     return "".join([str(chunk) for chunk in list(response)])
 
