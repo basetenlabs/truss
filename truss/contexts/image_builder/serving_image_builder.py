@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+from huggingface_hub import snapshot_download
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -81,6 +82,14 @@ class ServingImageBuilder(ImageBuilder):
 
         # Download external data
         download_external_data(self._spec.external_data, data_dir)
+
+        # Download from HuggingFace
+        if config.cache_hf_weights:
+            cache_dir = build_dir / config.cache_dir
+
+            # add huggingface cache
+            print(str(cache_dir))
+            snapshot_download(config.cache_hf_weights, cache_dir=str(cache_dir))
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)

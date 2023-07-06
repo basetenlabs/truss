@@ -38,6 +38,8 @@ DEFAULT_TRAINING_MODULE_DIR = "train"
 
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
+DEFAULT_CACHE_DIR = "cache"
+
 
 class Accelerator(Enum):
     T4 = "T4"
@@ -263,6 +265,9 @@ class TrussConfig:
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
+    cache_hf_weights: Optional[str] = None
+    cache_dir: str = DEFAULT_CACHE_DIR
+
     @property
     def canonical_python_version(self) -> str:
         return {
@@ -310,6 +315,8 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
+            cache_hf_weights=d.get("cache_hf_weights", None),
+            cache_dir=d.get("cache_dir", DEFAULT_CACHE_DIR),
         )
         config.validate()
         return config
