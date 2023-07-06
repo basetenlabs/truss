@@ -557,6 +557,7 @@ def test_calc_config_patches_add_external_data(
         config_op=config_op,
     )
     assert len(patches) == 2
+
     assert patches == [
         Patch(
             type=PatchType.CONFIG,
