@@ -7,11 +7,18 @@
 
 ## Why Truss?
 
-* **Write once, deploy anywhere:** A model packaged with Truss can be deployed on supported providers without changing the underlying server implementation.
+* **Write, deploy, invoke:** Package and test model code, weights, and dependencies with a model server that behaves the same in development and production.
 * **Fast developer loop:** Implement your model with fast feedback from a live reload server, and skip Docker and Kubernetes configuration with Truss' done-for-you model serving environment.
 * **Support for all Python frameworks**: From `transformers` and `diffusors` to `PyTorch` and `Tensorflow` to `XGBoost` and `sklearn`, Truss supports models created with any framework, even entirely custom models.
 
-See Trusses for popular models including [Falcon 40B](https://github.com/basetenlabs/falcon-40b-truss), [WizardLM](https://github.com/basetenlabs/wizardlm-truss), [Stable Diffusion](https://github.com/basetenlabs/stable-diffusion-truss), [Whisper](https://github.com/basetenlabs/whisper-truss), and [dozens more examples](examples/).
+See Trusses for popular models including:
+
+* 🦅 [Falcon 40B](https://github.com/basetenlabs/falcon-40b-truss)
+* 🧙 [WizardLM](https://github.com/basetenlabs/wizardlm-truss)
+* 🎨 [Stable Diffusion](https://github.com/basetenlabs/stable-diffusion-truss)
+* 🗣 [Whisper](https://github.com/basetenlabs/whisper-truss)
+
+and [dozens more examples](examples/).
 
 ## Installation
 
@@ -57,7 +64,7 @@ class Model:
 
 There are two functions to implement:
 
-* `load()` runs once when the model is spun up and is responsible for setting `self._model`
+* `load()` runs once when the model is spun up and is responsible for initializing `self._model`
 * `predict()` runs each time the model is invoked and handles the inference. It can use any JSON-serializable type as input and output.
 
 ### Add model dependencies
@@ -67,9 +74,10 @@ The pipeline model relies on Transformers and PyTorch. These dependencies must b
 In `./text-classification/config.yaml`, find the line `requirements`. Replace the empty list with:
 
 ```yaml
-requirements:
-  - torch==2.0.1
-  - transformers==4.30.0
+- requirements: []
++ requirements:
++   - torch==2.0.1
++   - transformers==4.30.0
 ```
 
 No other configuration needs to be changed.
