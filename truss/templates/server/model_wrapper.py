@@ -8,6 +8,7 @@ import traceback
 from collections.abc import Generator
 from enum import Enum
 from pathlib import Path
+from queue import Queue
 from threading import Lock, Thread
 from typing import Any, Dict, Optional, Union
 
@@ -170,72 +171,70 @@ class ModelWrapper:
             else self.preprocess(body, headers)
         )
 
-        with DeferLockToGenerator(self._predict_lock) as defer_lock:
-            response = (
-                (await self.predict(payload, headers))
-                if inspect.iscoroutinefunction(self.predict)
-                else self.predict(payload, headers)
-            )
+        response = (
+            (await self.predict(payload, headers))
+            if inspect.iscoroutinefunction(self.predict)
+            else self.predict(payload, headers)
+        )
 
-            response = self.postprocess(response, headers)
+        response = self.postprocess(response, headers)
 
-            if isinstance(response, Generator):
-                # In the case of streaming responses, we need to:
-                #   1. Check the 'Accept' header. If the accept type is
-                #      "application/json" , consume the whole stream and return it,
-                #      Else, return the stream.
-                #   2. For streaming responses, the predict lock needs to properly
-                #      wrap the whole generated response. To achieve that, we defer
-                #      release of the lock until the entire stream is read.
-                if headers and headers.get("accept") == "application/json":
-                    response = _convert_streamed_response_to_string(response)
-                else:
-                    response = defer_lock(response)
+        if isinstance(response, Generator):
+            # In the case of a streaming response:
+            #    1. If the user passes an accept header of "application/json",
+            #       simply consume the full response and return it as a string.
+            #    2. If the user does not, take the response generator, and in a separate
+            #       thread, write the response chunks to a queue. In the main thread, read
+            #       data from the queue until a "None" is written. This allows to us to use the
+            #       predict lock only around the actually predict, and does not create a dependency
+            #       on the client reading the entire response before releasing the lock.
+            if headers and headers.get("accept") == "application/json":
+                response = _convert_streamed_response_to_string(response)
+            else:
+                response_queue: Queue = Queue()
 
-            return response
+                response_generate_thread = Thread(
+                    target=_queue_response,
+                    args=(response, response_queue, self._predict_lock),
+                )
+                response_generate_thread.start()
+
+                return _response_generator(response_queue)
+
+        return response
 
 
-class DeferLockToGenerator:
+class ResponseChunk:
+    def __init__(self, value):
+        self.value = value
+
+
+def _queue_response(response_generator: Generator, queue: Queue, lock: Lock):
     """
-    Context manager that accepts a lock, and wraps a block of code with that lock.
-    It provides the ability to defer the lock to the end of a generator,
-    if the code chooses.
+    When the predict function returns a Generator (in the case of streaming), simply
+    write all of the contents in a queue. When we return the result, it will read from
+    this queue.
 
-    If you defer the lock release, the generator MUST be read, otherwise there is
-    a risk of the lock never being released.
+    We write the data using the ResponseChunk class so that we can communicate more easily
+    when the response is complete.
     """
-
-    def __init__(self, lock: Lock):
-        self.lock = lock
-        self.deferred_to_generator = False
-
-    def __enter__(self):
-        self.lock.acquire()
-        return self
-
-    def __call__(self, generator: Generator):
-        if self.deferred_to_generator:
-            raise RuntimeError("Cannot defer to multiple generators in single block.")
-
-        def inner():
-            try:
-                for chunk in generator:
-                    yield chunk
-            finally:
-                self.lock.release()
-
-        self.deferred_to_generator = True
-        return inner()
-
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        if not self.deferred_to_generator:
-            self.lock.release()
-
-
-def _locked_response_generator(response: Any, lock: Lock):
     with lock:
-        for chunk in response:
-            yield chunk
+        for chunk in response_generator:
+            queue.put(ResponseChunk(chunk))
+        queue.put(None)
+
+
+def _response_generator(queue: Queue):
+    """
+    When returning the stream result, simply read from the response queue until a `None`
+    is reached.
+    """
+    while True:
+        chunk = queue.get()
+        if chunk is None:
+            return
+        else:
+            yield chunk.value
 
 
 def _convert_streamed_response_to_string(response: Any):
