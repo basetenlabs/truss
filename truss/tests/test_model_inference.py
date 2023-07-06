@@ -168,6 +168,13 @@ def test_streaming_truss():
         _test_readiness_probe(200)
         _test_ping(200)
 
+        # A request for which response is not completely read
+        invocations_response = requests.post(
+            f"{truss_server_addr}/invocations", json={}, stream=True
+        )
+        # We just read the first part and leave it hanging here
+        next(invocations_response.iter_content())
+
         invocations_response = requests.post(
             f"{truss_server_addr}/invocations", json={}, stream=True
         )
