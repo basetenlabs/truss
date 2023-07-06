@@ -22,9 +22,9 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
 
         status_codes = {
             "200": "OK",
-            "404": "NOT FOUND",
-            "500": "INTERNAL ERROR",
-            "503": "SERVICE UNAVAILABLE"
+            "404": "NOT_FOUND",
+            "500": "INTERNAL_ERROR",
+            "503": "SERVICE_UNAVAILABLE"
             # Add more status codes and their corresponding descriptions if needed
         }
 
