@@ -7,7 +7,7 @@
 
 ## Why Truss?
 
-* **Write, deploy, invoke:** Package and test model code, weights, and dependencies with a model server that behaves the same in development and production.
+* **Write once, deploy anywhere:** Package and test model code, weights, and dependencies with a model server that behaves the same in development and production.
 * **Fast developer loop:** Implement your model with fast feedback from a live reload server, and skip Docker and Kubernetes configuration with Truss' done-for-you model serving environment.
 * **Support for all Python frameworks**: From `transformers` and `diffusors` to `PyTorch` and `Tensorflow` to `XGBoost` and `sklearn`, Truss supports models created with any framework, even entirely custom models.
 
