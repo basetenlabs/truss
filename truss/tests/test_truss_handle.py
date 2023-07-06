@@ -21,6 +21,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
+from truss.truss_config import TrussConfig
 from truss.truss_handle import TrussHandle, wait_for_truss
 from truss.types import Example, PatchRequest
 
@@ -843,3 +844,37 @@ def _read_readme(filename: str) -> str:
     readme_correct_path = Path(__file__).parent.parent / "test_data" / filename
     readme_contents = readme_correct_path.open().read().replace("\n", "")
     return readme_contents
+
+
+def generate_default_config():
+    config = {
+        "environment_variables": {},
+        "external_package_dirs": [],
+        "model_metadata": {},
+        "model_name": None,
+        "python_version": "py39",
+        "requirements": [],
+        "resources": {
+            "accelerator": None,
+            "cpu": "500m",
+            "memory": "512Mi",
+            "use_gpu": False,
+        },
+        "secrets": {},
+        "system_packages": [],
+
+        # TODO: why is the below needed
+        "spec_version": "1.0",
+    }
+    return config
+
+
+def test_config_verbose(custom_model_truss_dir_with_pre_and_post):
+    th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+    new_config = generate_default_config()
+    assert new_config == th.spec.config.to_dict(verbose=False)
+
+    th.live_reload()
+    new_config["live_reload"] = True
+    assert new_config == th.spec.config.to_dict(verbose=False)
