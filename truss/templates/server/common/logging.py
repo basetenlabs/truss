@@ -6,7 +6,7 @@ from pythonjsonlogger import jsonlogger
 LEVEL: int = logging.INFO
 
 
-class CustomJsonFormatter(jsonlogger.JsonFormatter):
+class APIJsonFormatter(jsonlogger.JsonFormatter):
     """
     A custom JsonFormatter to reformat the web server log entries.
     """
@@ -14,23 +14,24 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
     def process_log_record(self, log_record):
         message = log_record.get("message", "")
 
-        # Parse the necessary information from the message
-        parts = message.split(" ")
-        request_type = parts[2][1:]
-        endpoint = parts[3].split("%3A")[1]
-        status_code = parts[5]
+        try:
+            # Parse the necessary information from the message
+            parts = message.split(" ")
+            request_type = parts[2][1:]
+            endpoint = parts[3].split("%3A")[1]
+            status_code = parts[5]
 
-        status_codes = {
-            "200": "OK",
-            "404": "NOT_FOUND",
-            "500": "INTERNAL_ERROR",
-            "503": "SERVICE_UNAVAILABLE"
-            # Add more status codes and their corresponding descriptions if needed
-        }
+            status_codes = {
+                "200": "OK",
+                "404": "NOT_FOUND",
+                "500": "INTERNAL_ERROR",
+                "503": "SERVICE_UNAVAILABLE"
+                # Add more status codes and their corresponding descriptions if needed
+            }
 
-        new_message = (
-            f"{request_type} /{endpoint} {status_code} {status_codes.get(status_code)}"
-        )
+            new_message = f"{request_type} /{endpoint} {status_code} {status_codes.get(status_code)}"
+        except IndexError:
+            new_message = message
 
         # Replace 'message' field in the log record
         log_record["message"] = new_message
@@ -41,9 +42,7 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
 JSON_LOG_HANDLER.setLevel(LEVEL)
-JSON_LOG_HANDLER.setFormatter(
-    CustomJsonFormatter("%(asctime)s %(levelname)s %(message)s")
-)
+JSON_LOG_HANDLER.setFormatter(APIJsonFormatter("%(asctime)s %(levelname)s %(message)s"))
 
 
 class HealthCheckFilter(logging.Filter):
