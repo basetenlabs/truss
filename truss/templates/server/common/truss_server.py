@@ -28,7 +28,6 @@ from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from util.data_structures import transform_keys
 
 # [IMPORTANT] A lot of things depend on this currently.
 # Please consider the following when increasing this:
@@ -136,7 +135,7 @@ class BasetenEndpoints:
         response: Union[Dict, Generator] = asyncio.run(
             model(
                 body,
-                headers=transform_keys(request.headers, lambda key: key.lower()),
+                headers=utils.transform_keys(request.headers, lambda key: key.lower()),
             )
         )
 
