@@ -65,6 +65,5 @@ Y = TypeVar("Y")
 Z = TypeVar("Z")
 
 
-# TODO: Add this to truss.utils.data_structures
 def transform_keys(d: Dict[X, Z], fn: Callable[[X], Y]) -> Dict[Y, Z]:
     return {fn(key): value for key, value in d.items()}
