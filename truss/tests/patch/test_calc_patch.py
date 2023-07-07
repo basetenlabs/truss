@@ -10,6 +10,7 @@ from truss.templates.control.control.helpers.types import (
     EnvVarPatch,
     ExternalDataPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
@@ -190,6 +191,75 @@ def test_calc_config_patches_add_python_requirement(custom_model_truss_dir: Path
             ),
         ),
     ]
+
+
+def test_calc_truss_patch_add_package(custom_model_truss_dir: Path):
+    prev_sign = calc_truss_signature(custom_model_truss_dir)
+    new_dir = custom_model_truss_dir / "packages" / "dir"
+    new_dir.mkdir()
+    (new_dir / "dummy").touch()
+    patches = calc_truss_patch(custom_model_truss_dir, prev_sign)
+
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.ADD,
+            path="dir/dummy",
+            content="",
+        ),
+    )
+
+
+def test_calc_truss_patch_remove_package(
+    custom_model_truss_dir_with_bundled_packages: Path,
+):
+    prev_sign = calc_truss_signature(custom_model_truss_dir_with_bundled_packages)
+    (
+        custom_model_truss_dir_with_bundled_packages
+        / "packages"
+        / "test_package"
+        / "test.py"
+    ).unlink()
+    patches = calc_truss_patch(custom_model_truss_dir_with_bundled_packages, prev_sign)
+
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.REMOVE,
+            path="test_package/test.py",
+        ),
+    )
+
+
+def test_calc_truss_patch_update_package(
+    custom_model_truss_dir_with_bundled_packages: Path,
+):
+    prev_sign = calc_truss_signature(custom_model_truss_dir_with_bundled_packages)
+    new_package_file_content = """X = 2"""
+    with (
+        custom_model_truss_dir_with_bundled_packages
+        / "packages"
+        / "test_package"
+        / "test.py"
+    ).open("w") as package_file:
+        package_file.write(new_package_file_content)
+
+    patches = calc_truss_patch(custom_model_truss_dir_with_bundled_packages, prev_sign)
+
+    assert len(patches) == 1
+    patch = patches[0]
+    assert patch == Patch(
+        type=PatchType.PACKAGE,
+        body=PackagePatch(
+            action=Action.UPDATE,
+            path="test_package/test.py",
+            content=new_package_file_content,
+        ),
+    )
 
 
 def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: Path):
@@ -487,6 +557,7 @@ def test_calc_config_patches_add_external_data(
         config_op=config_op,
     )
     assert len(patches) == 2
+
     assert patches == [
         Patch(
             type=PatchType.CONFIG,

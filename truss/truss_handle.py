@@ -273,6 +273,7 @@ class TrussHandle:
         detach: bool = True,
         patch_ping_url: Optional[str] = None,
         binary: bool = False,
+        stream: bool = False,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -307,6 +308,11 @@ class TrussHandle:
 
         if resp.status_code == 500:
             raise requests.exceptions.HTTPError("500 error", response=resp)
+
+        if resp.headers.get("transfer-encoding") == "chunked":
+            # Streaming responses come back just as bytes, so we don't make assumptions
+            # about the format being JSON or msgpack.
+            return resp.content
 
         if binary:
             return truss_msgpack_deserialize(resp.content)

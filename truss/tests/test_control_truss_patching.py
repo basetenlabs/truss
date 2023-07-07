@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 from truss.constants import SUPPORTED_PYTHON_VERSIONS
-from truss.tests.conftest import CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE
+from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
     verify_python_requirement_installed_on_container,
@@ -13,6 +13,7 @@ from truss.tests.test_truss_handle import (
 )
 from truss.truss_config import ExternalDataItem
 from truss.truss_handle import TrussHandle
+from truss.util.path import calc_shadow_truss_dirname
 
 
 def current_num_docker_images(th: TrussHandle) -> int:
@@ -293,33 +294,45 @@ class Model:
         assert orig_num_truss_images == current_num_docker_images(th)
 
 
-# todo(abu/justin) remove once ignored
-@pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_external_package_dirs(custom_model_with_external_package):
     th = TrussHandle(custom_model_with_external_package)
     tag = "test-docker-custom-model-control-external-package-tag:0.0.1"
-
+    th.live_reload()
     with ensure_kill_all():
+        th.docker_predict([1], tag=tag)
+        orig_num_truss_images = len(th.get_all_docker_images())
         th.clear_external_packages()
+        th.add_external_package("../ext_pkg_patched")
+        th.add_external_package("../ext_pkg2_patched")
+        ext_pkg_path = custom_model_with_external_package / ".." / "ext_pkg_patched"
+        ext_pkg_path.mkdir()
+        (ext_pkg_path / "subdir_patched").mkdir()
+        (ext_pkg_path / "subdir_patched" / "sub_module.py").touch()
+        (ext_pkg_path / "top_module.py").touch()
+        ext_pkg_path2 = custom_model_with_external_package / ".." / "ext_pkg2_patched"
+        ext_pkg_path2.mkdir()
+        (ext_pkg_path2 / "top_module_patched.py").touch()
         new_model_code = """
+import top_module
+import subdir_patched.sub_module
+import top_module_patched
 class Model:
     def predict(self, model_input):
-        return [2 for i in model_input]
-        """
+        return [1 for i in model_input]
+"""
         update_model_code(custom_model_with_external_package, new_model_code)
         th.docker_predict([1], tag=tag)
-        th.kill_container()
-        orig_num_truss_images = len(th.get_all_docker_images())
-        th.add_external_package("../ext_pkg")
-        th.add_external_package("../ext_pkg2")
-        update_model_code(
-            custom_model_with_external_package, CUSTOM_MODEL_USING_EXTERNAL_PACKAGE_CODE
-        )
-        th.docker_predict([1], tag=tag)
         assert orig_num_truss_images == current_num_docker_images(th)
-        assert (custom_model_with_external_package / "ext_pkg").exists() and (
-            custom_model_with_external_package / "ext_pkg2"
+        shadow_truss_path = (
+            LocalConfigHandler.shadow_trusses_dir_path()
+            / calc_shadow_truss_dirname(custom_model_with_external_package)
+        )
+        packages_dir_path_in_shadow = (
+            shadow_truss_path / th.spec.config.bundled_packages_dir
+        )
+        assert (packages_dir_path_in_shadow / "subdir_patched").exists() and (
+            packages_dir_path_in_shadow / "top_module_patched.py"
         ).exists()
 
 

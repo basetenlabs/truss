@@ -1,145 +1,99 @@
 # Truss
 
-**Serve any model without boilerplate code**
-
-![Truss logo](https://raw.githubusercontent.com/basetenlabs/truss/main/docs/assets/truss_logo_horizontal.png)
+**The simplest way to serve AI/ML models in production**
 
 [![PyPI version](https://badge.fury.io/py/truss.svg)](https://badge.fury.io/py/truss)
 [![ci_status](https://github.com/basetenlabs/truss/actions/workflows/main.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/main.yml)
 
-Meet Truss, a seamless bridge from model development to model delivery. Truss presents an open-source standard for packaging models built in any framework for sharing and deployment in any environment, local or production.
+## Why Truss?
 
-Get started with the [end-to-end tutorial](https://truss.baseten.co/e2e).
+* **Write once, run anywhere:** Package and test model code, weights, and dependencies with a model server that behaves the same in development and production.
+* **Fast developer loop:** Implement your model with fast feedback from a live reload server, and skip Docker and Kubernetes configuration with Truss' done-for-you model serving environment.
+* **Support for all Python frameworks**: From `transformers` and `diffusors` to `PyTorch` and `Tensorflow` to `XGBoost` and `sklearn`, Truss supports models created with any framework, even entirely custom models.
 
-## What can I do with Truss?
+See Trusses for popular models including:
 
-If you've ever tried to get a model out of a Jupyter notebook, Truss is for you.
+* 🦅 [Falcon 40B](https://github.com/basetenlabs/falcon-40b-truss)
+* 🧙 [WizardLM](https://github.com/basetenlabs/wizardlm-truss)
+* 🎨 [Stable Diffusion](https://github.com/basetenlabs/stable-diffusion-truss)
+* 🗣 [Whisper](https://github.com/basetenlabs/whisper-truss)
 
-Truss exposes just the right amount of complexity around things like Docker and APIs without you really having to think about them. Here are some of the things Truss does:
-
-* 🏎 Turns your Python model into a microservice with a production-ready API endpoint, no need for Flask or Django.
-* 🎚 For most popular frameworks, includes automatic model serialization and deserialization.
-* 🛍 Freezes dependencies via Docker to make your training environment portable.
-* 🕰 Enables rapid iteration with local development that matches your production environment.
-* 🗃 Encourages shipping parsing and even business logic alongside your model with integrated pre- and post-processing functions.
-* 🤖 Supports running predictions on GPUs. (Currently limited to certain hardware, more coming soon)
-* 🙉 Bundles secret management to securely give your model access to API keys.
+and [dozens more examples](examples/).
 
 ## Installation
 
-Truss requires Python >=3.7, <3.11
-
-To install from [PyPi](https://pypi.org/project/truss/), run:
-
-```
-pip install truss
-```
-
-To download the source code directly (for development), clone this repository and follow the setup commands in our [contributors' guide](CONTRIBUTING.md).
-
-Truss is actively developed, and we recommend using the latest version. To update your Truss installation, run:
+Install Truss with:
 
 ```
 pip install --upgrade truss
 ```
 
-Though Truss is in beta, we do care about backward compatibility. Review the [release notes](docs/CHANGELOG.md) before upgrading, and note that we follow semantic versioning, so any breaking changes require the release of a new major version.
+## Quickstart
 
-## How to use Truss
+As a quick example, we'll package a [text classification pipeline](https://huggingface.co/docs/transformers/main_classes/pipelines) from the open-source [`transformers` package](https://github.com/huggingface/transformers).
 
-Generate and serve predictions from a Truss with [this Jupyter notebook](docs/notebooks/sklearn_example.ipynb).
+### Create a Truss
 
-### Quickstart: making a Truss
+To get started, create a Truss with the following terminal command:
+
+```
+truss init text-classification
+```
+
+This will create an empty Truss at `./text-classification`.
+
+### Implement the model
+
+The model serving code goes in `./text-classification/model/model.py` in your newly created Truss.
 
 ```python
-!pip install --upgrade scikit-learn truss
+from typing import List
+from transformers import pipeline
 
-import truss
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.datasets import load_iris
 
-# Load the iris data set
-iris = load_iris()
-data_x = iris['data']
-data_y = iris['target']
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._model = None
 
-# Train the model
-rfc = RandomForestClassifier()
-rfc.fit(data_x, data_y)
+    def load(self):
+        self._model = pipeline("text-classification")
 
-# Create the Truss (serializing & packaging model)
-tr = truss.create(rfc, target_directory="iris_rfc_truss")
-
-# Serve a prediction from the model
-tr.predict([[0, 0, 0, 0]])
+    def predict(self, model_input: str) -> List:
+        return self._model(model_input)
 ```
 
-### Package your model
+There are two functions to implement:
 
-The `truss.create()` command can be used with any supported framework:
+* `load()` runs once when the model is spun up and is responsible for initializing `self._model`
+* `predict()` runs each time the model is invoked and handles the inference. It can use any JSON-serializable type as input and output.
 
-* [Hugging Face](https://truss.baseten.co/create/huggingface)
-* [LightGBM](https://truss.baseten.co/create/lightgbm)
-* [MLflow](https://truss.baseten.co/create/mlflow)
-* [PyTorch](https://truss.baseten.co/create/pytorch)
-* [scikit-learn](https://truss.baseten.co/create/sklearn)
-* [Tensorflow](https://truss.baseten.co/create/tensorflow)
-* [XGBoost](https://truss.baseten.co/create/xgboost)
+### Add model dependencies
 
-But in more complex cases, you can build a Truss manually for any model. Start with `truss init my_truss` and follow [this guide](https://truss.baseten.co/create/manual).
+The pipeline model relies on Transformers and PyTorch. These dependencies must be specified in the Truss config.
 
-### Serve your model locally
-
-Serving your model with Truss, on Docker, lets you interface with your model via HTTP requests. Start your model server with:
-
-```
-truss run-image iris_rfc_truss
-```
-
-Then, as long as the container is running, you can invoke the model as an API as follows:
-
-```
-curl -X POST http://127.0.0.1:8080/v1/models/model:predict -d '[[0, 0, 0, 0]]'
-```
-
-### Configure your model for deployment
-
-Truss is configurable to its core. Every Truss must include a file `config.yaml` in its root directory, which is automatically generated when the Truss is created. However, configuration is optional. Every configurable value has a sensible default, and a completely empty config file is valid.
-
-The Truss we generated above in the quickstart sample has a good example of a typical Truss config:
+In `./text-classification/config.yaml`, find the line `requirements`. Replace the empty list with:
 
 ```yaml
-model_framework: sklearn
-model_metadata:
-  model_binary_dir: model
-  supports_predict_proba: true
-python_version: py39
 requirements:
-- scikit-learn==1.0.2
-- threadpoolctl==3.0.0
-- joblib==1.1.0
-- numpy==1.20.3
-- scipy==1.7.3
+  - torch==2.0.1
+  - transformers==4.30.0
 ```
 
-Follow the [configuration guide](https://truss.baseten.co/develop/configuration) and use the complete reference of configurable properties to make your Truss perform exactly as you wish.
+No other configuration needs to be changed.
 
-### Deploy your model
+## Deployment
 
-You can deploy a Truss anywhere that can run a Docker image, as well as purpose-built platforms like [Baseten](https://baseten.co).
+You can deploy a Truss to your [Baseten](https://baseten.co) account with:
 
-Follow step-by-step deployment guides for the following platforms:
+```
+cd ./text-classification
+truss push --api-key="your-baseten-api-key" --model-name="my-model" --remote-name="baseten"
+```
 
-* [AWS ECS](https://truss.baseten.co/deploy/aws)
-* [Baseten](https://truss.baseten.co/deploy/baseten)
-* [GCP Cloud Run](https://truss.baseten.co/deploy/gcp)
+Truss will support other remotes soon, starting with AWS SageMaker.
 
-## Contributing
+## Truss contributors
 
-We hope this vision excites you, and we gratefully welcome contributions in accordance with our [contributors' guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
+Truss is backed by Baseten and built in collaboration with ML engineers worldwide. Special thanks to [Stephan Auerhahn](https://github.com/palp) @ [stability.ai](https://stability.ai/) and [Daniel Sarfati](https://github.com/dsarfati) @ [Salad Technologies](https://salad.com/) for their contributions.
 
-Truss was first developed at [Baseten](https://baseten.co) by maintainers Phil Howes, Pankaj Gupta, and Alex Gillmor.
-
-## GitHub Codespace
-
-If your organization allows to access to GitHub Codespaces, you can launch a Codespace for truss development. If you are a GPU Codespace, make sure to use the `.devcontainer/gpu/devcontainer.json` configuration to have access to a GPU and be able to use it in Docker with truss.
+We enthusiastically welcome contributions in accordance with our [contributors' guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
