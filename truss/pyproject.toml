@@ -2,46 +2,28 @@
 authors = ["Bola Malek <bola@baseten.co>"]
 description = "another package"
 name = "truss"
-# TODO(bola): Add exclude for testing utils
 packages = [{ include = "truss", from = "./src"}]
-version = "0.0.1"
+version = "0.0.0"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-"truss-core" = "*"
-"truss-server" = "*"
+truss-core = {version = "^0.0.1a0", source = "test-pypi"}
+truss-server = {version = "^0.0.1a0", source = "test-pypi"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.2"
 "truss-core" = { path = "../truss-core", develop = true }
 "truss-server" = { path = "../truss-server", develop = true }
 
-
-[tool.poetry.group.tests.dependencies]
-tensorflow = { version = "^2.12.0", markers = "sys_platform == 'linux'" }
-tensorflow-macos = { version = "^2.12.0", markers = "sys_platform == 'darwin'" }
-httpx = "^0.24.1"
-mlflow = "^2.4.1"
-yaspin = "^2.3.0"
-watchfiles = "^0.19.0"
-virtualenv = "^20.23.1"
-dockerfile = "^3.2.0"
-transformers = "^4.30.2"
-lightgbm = "^3.3.5"
-xgboost = "^1.7.6"
-scikit-learn = "^1.2.2"
-pandas = "^2.0.2"
-
-
-[tool.poetry.group.recur.dependencies]
-psutil = "^5.9.5"
-
-
 [tool.poetry.group.test.dependencies]
 python-on-whales = "^0.62.0"
-torch = "^2.0.1"
 nbformat = "^5.9.0"
 nbconvert = "^7.6.0"
+
+[[tool.poetry.source]]
+name = "test-pypi"
+url = "https://test.pypi.org/simple/"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]

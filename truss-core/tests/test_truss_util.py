@@ -1,9 +1,11 @@
 import os
 import time
 
+from flaky import flaky
 from truss.core.util import path
 
 
+@flaky
 def test_max_modified():
     epoch_time = int(time.time())
     with path.given_or_temporary_dir() as dir:

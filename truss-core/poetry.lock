@@ -60,6 +60,17 @@ files = [
 test = ["pytest (>=6)"]
 
 [[package]]
+name = "flaky"
+version = "3.7.0"
+description = "Plugin for nose or pytest that automatically reruns flaky tests."
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+files = [
+    {file = "flaky-3.7.0-py2.py3-none-any.whl", hash = "sha256:d6eda73cab5ae7364504b7c44670f70abed9e75f77dd116352f662817592ec9c"},
+    {file = "flaky-3.7.0.tar.gz", hash = "sha256:3ad100780721a1911f57a165809b7ea265a7863305acb66708220820caf8aa0d"},
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.0.0"
 description = "brain-dead simple config-ini parsing"
@@ -244,4 +255,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "45dc9b9fa50845f613e005fc65f3935d2b358381d7bacf181ad96daa6e8042a1"
+content-hash = "8a9fddfb5e6693b3432befd2fb95433f3bc60796daca0bc24c28334f987245e9"

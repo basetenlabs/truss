@@ -45,11 +45,11 @@ __diff_output__
 *.map
 
 # General
-/venv/
-/env/
-/output/
-/cache/
-/dist/
+**/venv/
+**/env/
+**/output/
+**/cache/
+**/dist/
 
 # Spritesmith
 spritesmith-generated/

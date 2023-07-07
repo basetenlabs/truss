@@ -3,22 +3,25 @@ authors = ["Bola Malek <bola@baseten.co>"]
 description = "another package"
 name = "truss-server"
 packages = [{ include = "truss", from = "./src" }]
-version = "0.0.1"
+version = "0.0.1a0"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-"truss-core" = "*"
-pyyaml = "^6.0"
-pydantic = "^1.10.9"
 fastapi = "^0.95.0"
 httpx = "^0.24.1"
 tenacity = "^8.2.2"
 python-json-logger = "^2.0.7"
-blake3 = "^0.3.3"
+truss-core = {version = "^0.0.1a0", source = "test-pypi"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3.2"
 "truss-core" = { path = "../truss-core", develop = true }
+
+
+[[tool.poetry.source]]
+name = "test-pypi"
+url = "https://test.pypi.org/simple/"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]

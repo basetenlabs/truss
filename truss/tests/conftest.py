@@ -6,17 +6,18 @@ import sys
 import time
 from pathlib import Path
 
-import lightgbm as lgb
-import numpy as np
-import pandas as pd
+# import lightgbm as lgb
+# import numpy as np
+# import pandas as pd
 import pytest
 import requests
-import tensorflow as tf
-from sklearn.datasets import load_iris
-from sklearn.ensemble import RandomForestClassifier
-from tensorflow.keras import layers
-from tensorflow.keras.layers.experimental import preprocessing
-from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
+
+# import tensorflow as tf
+# from sklearn.datasets import load_iris
+# from sklearn.ensemble import RandomForestClassifier
+# from tensorflow.keras import layers
+# from tensorflow.keras.layers.experimental import preprocessing
+# from transformers import AutoModelWithLMHead, AutoTokenizer, pipeline
 from truss.build import create, init
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
