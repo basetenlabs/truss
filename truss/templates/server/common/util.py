@@ -1,7 +1,7 @@
 import multiprocessing
 import os
 import sys
-from typing import List
+from typing import Callable, Dict, List, TypeVar
 
 import psutil
 
@@ -58,3 +58,12 @@ def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
         if proc.is_alive():
             return False
     return True
+
+
+X = TypeVar("X")
+Y = TypeVar("Y")
+Z = TypeVar("Z")
+
+
+def transform_keys(d: Dict[X, Z], fn: Callable[[X], Y]) -> Dict[Y, Z]:
+    return {fn(key): value for key, value in d.items()}
