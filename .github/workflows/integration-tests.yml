@@ -19,8 +19,6 @@ jobs:
         split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
         with:
