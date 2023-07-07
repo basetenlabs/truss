@@ -138,6 +138,45 @@ def test_model_load_failure_truss():
 
 
 @pytest.mark.integration
+def test_streaming_truss():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "test_streaming_truss"
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        truss_server_addr = "http://localhost:8090"
+
+        # A request for which response is not completely read
+        predict_response = requests.post(
+            f"{truss_server_addr}/v1/models/model:predict", json={}, stream=True
+        )
+        # We just read the first part and leave it hanging here
+        next(predict_response.iter_content())
+
+        predict_response = requests.post(
+            f"{truss_server_addr}/v1/models/model:predict", json={}, stream=True
+        )
+
+        assert predict_response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode()
+            for byte_string in list(predict_response.iter_content())
+        ] == ["0", "1", "2", "3", "4"]
+
+        # When accept is set to application/json, the response is not streamed.
+        predict_non_stream_response = requests.post(
+            f"{truss_server_addr}/v1/models/model:predict",
+            json={},
+            stream=True,
+            headers={"accept": "application/json"},
+        )
+        assert "transfer-encoding" not in predict_non_stream_response.headers
+        assert predict_non_stream_response.json() == "01234"
+
+
+@pytest.mark.integration
 def test_slow_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
