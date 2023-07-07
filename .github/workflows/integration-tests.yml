@@ -2,6 +2,9 @@ name: integration-tests
 
 on:
   workflow_dispatch: # Allows running from actions tab
+  push:
+    branches:
+      - pg/sh2
 
 concurrency:
   group: main-${{ github.ref_name }}
@@ -9,7 +12,7 @@ concurrency:
 
 jobs:
   integration_tests:
-    runs-on: ubuntu-20.04
+    runs-on: truss-runner
     strategy:
       fail-fast: false
       matrix:
