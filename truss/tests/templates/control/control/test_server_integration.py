@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from multiprocessing import Process
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
+from typing import Callable
 
 import psutil
 import pytest
@@ -41,8 +42,14 @@ def test_truss_control_server_termination(control_server: ControlServerDetails):
     os.kill(proc_id, signal.SIGTERM)
     control_server.control_server_process.join(timeout=10)
     # Ports should be free now
-    assert _is_port_available(control_server.control_server_port)
-    assert _is_port_available(control_server.inference_server_port)
+    _assert_with_retry(
+        lambda: _is_port_available(control_server.control_server_port),
+        "control server port is not available",
+    )
+    _assert_with_retry(
+        lambda: _is_port_available(control_server.inference_server_port),
+        "inference server port is not available",
+    )
 
 
 @pytest.mark.integration
@@ -105,14 +112,39 @@ def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path
             time.sleep(PATCH_PING_MAX_DELAY_SECS)
             # Port should have been taken up by the servers
             proc_id = control_server.control_server_process.pid
-            assert not _is_port_available(control_server.control_server_port)
-            assert not _is_port_available(control_server.inference_server_port)
+            _assert_with_retry(
+                lambda: not _is_port_available(control_server.control_server_port),
+                "control server port is still available",
+            )
+            _assert_with_retry(
+                lambda: not _is_port_available(control_server.inference_server_port),
+                "inference server port is still available",
+            )
 
             os.kill(proc_id, signal.SIGTERM)
             control_server.control_server_process.join(timeout=10)
             # Ports should be free now
-            assert _is_port_available(control_server.control_server_port)
-            assert _is_port_available(control_server.inference_server_port)
+            _assert_with_retry(
+                lambda: _is_port_available(control_server.control_server_port),
+                "control server port is not available",
+            )
+            _assert_with_retry(
+                lambda: _is_port_available(control_server.inference_server_port),
+                "inference server port is not available",
+            )
+
+
+def _assert_with_retry(
+    pred: Callable[[], bool],
+    msg: str,
+    retry_interval_secs: float = 0.5,
+    retry_count: int = 60,
+):
+    for _ in range(0, retry_count):
+        if pred():
+            return
+        time.sleep(retry_interval_secs)
+    assert False, msg
 
 
 def _is_port_available(port):

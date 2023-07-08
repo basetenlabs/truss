@@ -14,7 +14,7 @@ from helpers.inference_server_process_controller import InferenceServerProcessCo
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
 from helpers.types import Patch, PatchType
 
-INFERENCE_SERVER_CHECK_INTERVAL_SECS = 5
+INFERENCE_SERVER_CHECK_INTERVAL_SECS = 10
 
 
 class InferenceServerController:

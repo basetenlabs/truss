@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any, Dict
 
+import httpx
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
@@ -24,10 +25,19 @@ async def proxy(request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
-    client = request.app.state.proxy_client
+    client: httpx.AsyncClient = request.app.state.proxy_client
     url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
+
+    # 5 mins request and 2 min connect timeouts
+    # Large values; we don't want requests to fail due to timeout on the proxy
+    timeout = httpx.Timeout(5 * 60.0, connect=2 * 60.0)
+
     inf_serv_req = client.build_request(
-        request.method, url, headers=request.headers.raw, content=await request.body()
+        request.method,
+        url,
+        headers=request.headers.raw,
+        content=await request.body(),
+        timeout=timeout,
     )
 
     # Wait a bit for inference server to start

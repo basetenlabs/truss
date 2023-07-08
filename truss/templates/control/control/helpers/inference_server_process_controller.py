@@ -64,6 +64,8 @@ class InferenceServerProcessController:
         )
         for _ in range(termination_check_attempts):
             time.sleep(TERMINATION_CHECK_INTERVAL_SECS)
+            # None returncode means alive
+            # https://docs.python.org/3.9/library/subprocess.html#subprocess.Popen.returncode
             if self._inference_server_process.poll() is not None:
                 return
 

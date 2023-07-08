@@ -1,8 +1,8 @@
-import asyncio
 import os
 from logging import Logger
 
 import requests
+from anyio import to_thread
 from helpers.inference_server_controller import InferenceServerController
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
@@ -65,7 +65,6 @@ async def async_inference_server_startup_flow(
     inference_server_controller: InferenceServerController,
     logger: Logger,
 ) -> None:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, lambda: inference_server_startup_flow(inference_server_controller, logger)
+    return await to_thread.run_sync(
+        inference_server_startup_flow, inference_server_controller, logger
     )
