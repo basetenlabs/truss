@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import yaml
 from truss.constants import (
@@ -35,10 +35,17 @@ from truss.util.path import (
     copy_tree_path,
 )
 
+from huggingface_hub import list_repo_files
+
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
+# from huggingface_hub import snapshot_download
+
+# import huggingface_hub
+
+# huggingface_hub.list_repo_files("psmathur/orca_mini_3b")
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -83,15 +90,20 @@ class ServingImageBuilder(ImageBuilder):
         # Download external data
         download_external_data(self._spec.external_data, data_dir)
 
-        # # Download from HuggingFace
+        # Download from HuggingFace
+        model_files = []
         if config.cache_hf_weights:
-            (build_dir / "cache_warmer.py").write_text(f"""
-from huggingface_hub import snapshot_download
-
-snapshot_download(
-    "{config.cache_hf_weights}",
-)
-""")
+            (build_dir / "cache_warmer.py").write_text(
+                f"""
+if __name__ == "__main__":
+    from huggingface_hub import hf_hub_download
+    import sys
+    file_name = sys.argv[1]
+    repo_name = "{config.cache_hf_weights}"
+    hf_hub_download(repo_name, file_name)
+"""
+            )
+            model_files = list_repo_files(config.cache_hf_weights)
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
@@ -124,12 +136,15 @@ snapshot_download(
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
-        self._render_dockerfile(build_dir, should_install_server_requirements)
+        self._render_dockerfile(
+            build_dir, should_install_server_requirements, model_files
+        )
 
     def _render_dockerfile(
         self,
         build_dir: Path,
         should_install_server_requirements: bool,
+        model_files: List[str],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -165,6 +180,7 @@ snapshot_download(
             data_dir_exists=data_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(self._truss_dir),
+            model_files=model_files,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
