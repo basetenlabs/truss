@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -84,14 +83,17 @@ class ServingImageBuilder(ImageBuilder):
         download_external_data(self._spec.external_data, data_dir)
 
         # # Download from HuggingFace
-        if config.cache_hf_weights:
-            (build_dir / "cache_warmer.py").write_text(f"""
+        if config.hf_cache:
+            # TODO: pull every single cached element
+            (build_dir / "cache_warmer.py").write_text(
+                f"""
 from huggingface_hub import snapshot_download
 
 snapshot_download(
-    "{config.cache_hf_weights}",
+    "{config.hf_cache.models[0].repo_id}",
 )
-""")
+"""
+            )
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)

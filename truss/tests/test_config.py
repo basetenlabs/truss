@@ -7,6 +7,8 @@ from truss.truss_config import (
     Accelerator,
     AcceleratorSpec,
     BaseImage,
+    HuggingFaceCache,
+    HuggingFaceModel,
     Resources,
     Train,
     TrussConfig,
@@ -197,5 +199,22 @@ def test_non_default_train():
 
     new_config = generate_default_config()
     new_config["train"] = updated_train
+
+    assert new_config == config.to_dict(verbose=False)
+
+
+def test_huggingface_cache():
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model")]),
+    )
+
+    new_config = generate_default_config()
+    new_config["hf_cache"] = [
+        {
+            "repo_id": "test/model",
+        }
+    ]
 
     assert new_config == config.to_dict(verbose=False)
