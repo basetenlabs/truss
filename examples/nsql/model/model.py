@@ -28,6 +28,15 @@ class Model:
 
 
 def generate_prompt(schema: str, query: str):
+    # Example schema:
+    #
+    # CREATE TABLE stadium (
+    #     stadium_id number,
+    #     location text,
+    #     name text,
+    #     capacity number,
+    # )
+
     text = f"""{schema}
 
 -- Using valid SQLite, answer the following questions for the tables provided above.
