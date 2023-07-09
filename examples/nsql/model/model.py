@@ -5,15 +5,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 class Model:
     def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
-        self._model = None
+        self.tokenizer = None
+        self.model = None
 
     def load(self):
         # Load model here and assign to self._model.
-        self.tokenizer = AutoTokenizer.from_pretrained("NumbersStation/nsql-6B")
-        self.model = AutoModelForCausalLM.from_pretrained("NumbersStation/nsql-6B")
+        self.tokenizer = AutoTokenizer.from_pretrained("NumbersStation/nsql-2B")
+        self.model = AutoModelForCausalLM.from_pretrained("NumbersStation/nsql-2B")
 
     def predict(self, model_input: Any) -> Any:
         schema = model_input["schema"]
@@ -30,7 +28,7 @@ class Model:
 
 
 def generate_prompt(schema: str, query: str):
-    text = """{schema}
+    text = f"""{schema}
 
 -- Using valid SQLite, answer the following questions for the tables provided above.
 
