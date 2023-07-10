@@ -41,15 +41,8 @@ def test_truss_control_server_termination(control_server: ControlServerDetails):
 
     os.kill(proc_id, signal.SIGTERM)
     control_server.control_server_process.join(timeout=30)
-    # Ports should be free now
-    _assert_with_retry(
-        lambda: _is_port_available(control_server.control_server_port),
-        "control server port is not available",
-    )
-    _assert_with_retry(
-        lambda: _is_port_available(control_server.inference_server_port),
-        "inference server port is not available",
-    )
+    assert not control_server.control_server_process.is_alive()
+    assert _process_tree_is_dead(proc_id)
 
 
 @pytest.mark.integration
@@ -123,15 +116,9 @@ def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path
 
             os.kill(proc_id, signal.SIGTERM)
             control_server.control_server_process.join(timeout=30)
-            # Ports should be free now
-            _assert_with_retry(
-                lambda: _is_port_available(control_server.control_server_port),
-                "control server port is not available",
-            )
-            _assert_with_retry(
-                lambda: _is_port_available(control_server.inference_server_port),
-                "inference server port is not available",
-            )
+            # Control server process tree should be dead
+            assert not control_server.control_server_process.is_alive()
+            assert _process_tree_is_dead(proc_id)
 
 
 def _assert_with_retry(
@@ -168,14 +155,30 @@ def _kill_process_tree(pid: int):
         pass
 
 
+def _process_tree_is_dead(pid: int):
+    try:
+        proc = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return True
+
+    if proc.is_running():
+        return False
+    for child_proc in proc.children(recursive=True):
+        if child_proc.is_running():
+            return False
+    return True
+
+
 @contextmanager
 def _configured_control_server(
     truss_control_container_fs: Path,
     with_patch_ping_flow: bool = False,
 ):
-    ctrl_port = 10123
-    inf_port = 10124
-    patch_ping_server_port = 10125
+    # Pick random ports to reduce reuse, port release may take time
+    # which can interfere with tests
+    ctrl_port = random.randint(10000, 11000)
+    inf_port = ctrl_port + 1
+    patch_ping_server_port = ctrl_port + 2
 
     def start_truss_server(stdout_capture_file_path):
         if with_patch_ping_flow:
