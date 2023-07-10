@@ -2,16 +2,7 @@ import logging
 import os
 from pathlib import Path
 
-<<<<<<< HEAD:truss-server/src/truss/server/control/patch_appliers/model_code_patch_applier.py
-from truss.core.patch.types import Action, ModelCodePatch
-=======
-# TODO(pankaj) In desparate need of refactoring into separate library
-try:
-    from helpers.types import Action, Patch
-except ModuleNotFoundError as exc:
-    logging.debug(f"Importing helpers from truss core, caused by: {exc}")
-    from truss.templates.control.control.helpers.types import Action, Patch
->>>>>>> origin:truss/templates/control/control/helpers/truss_patch/model_code_patch_applier.py
+from truss.core.patch.types import Action, Patch
 
 
 def apply_code_patch(

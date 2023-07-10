@@ -3,12 +3,7 @@ from typing import Any, Dict
 
 import httpx
 from fastapi import APIRouter
-<<<<<<< HEAD:truss-server/src/truss/server/control/endpoints.py
-from fastapi.responses import JSONResponse
-=======
 from fastapi.responses import JSONResponse, StreamingResponse
-from helpers.errors import ModelLoadFailed, ModelNotReady
->>>>>>> origin:truss/templates/control/control/endpoints.py
 from httpx import URL, ConnectError
 from starlette.requests import Request
 from starlette.responses import Response

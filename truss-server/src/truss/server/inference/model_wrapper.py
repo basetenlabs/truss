@@ -12,16 +12,10 @@ from queue import Queue
 from threading import Lock, Thread
 from typing import Any, Dict, Optional, Union
 
-<<<<<<< HEAD:truss-server/src/truss/server/inference/model_wrapper.py
+from anyio import to_thread
 from truss.server.inference.common.patches import apply_patches
 from truss.server.inference.common.retry import retry
 from truss.server.shared.secrets_resolver import SecretsResolver
-=======
-from anyio import to_thread
-from common.patches import apply_patches
-from common.retry import retry
-from shared.secrets_resolver import SecretsResolver
->>>>>>> origin:truss/templates/server/model_wrapper.py
 
 MODEL_BASENAME = "model"
 

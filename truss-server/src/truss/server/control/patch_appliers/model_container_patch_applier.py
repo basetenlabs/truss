@@ -3,13 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-<<<<<<< HEAD:truss-server/src/truss/server/control/patch_appliers/model_container_patch_applier.py
 from truss.core.patch.types import (
-=======
-from helpers.errors import UnsupportedPatch
-from helpers.truss_patch.model_code_patch_applier import apply_code_patch
-from helpers.types import (
->>>>>>> origin:truss/templates/control/control/helpers/truss_patch/model_container_patch_applier.py
     Action,
     ConfigPatch,
     EnvVarPatch,
@@ -20,16 +14,12 @@ from helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-<<<<<<< HEAD:truss-server/src/truss/server/control/patch_appliers/model_container_patch_applier.py
 from truss.core.truss_config import TrussConfig
+from truss.core.util.download import download_external_data
 from truss.server.control.helpers.errors import UnsupportedPatch
 from truss.server.control.patch_appliers.model_code_patch_applier import (
-    apply_model_code_patch,
+    apply_code_patch,
 )
-=======
-from truss.truss_config import ExternalData, ExternalDataItem, TrussConfig
-from truss.util.download import download_external_data
->>>>>>> origin:truss/templates/control/control/helpers/truss_patch/model_container_patch_applier.py
 
 
 class ModelContainerPatchApplier:

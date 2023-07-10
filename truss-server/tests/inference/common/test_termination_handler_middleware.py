@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, List
 
 import pytest
-from truss.templates.server.common.termination_handler_middleware import (
+from truss.server.inference.common.termination_handler_middleware import (
     TerminationHandlerMiddleware,
 )
 

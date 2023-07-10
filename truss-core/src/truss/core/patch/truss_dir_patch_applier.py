@@ -13,7 +13,7 @@ from truss.core.patch.types import (
 from truss.core.truss_config import TrussConfig
 from truss.server.control.helpers.errors import UnsupportedPatch
 from truss.server.control.patch_appliers.model_code_patch_applier import (
-    apply_model_code_patch,
+    apply_code_patch,
 )
 from truss.server.control.patch_appliers.requirement_name_identifier import (
     identify_requirement_name,

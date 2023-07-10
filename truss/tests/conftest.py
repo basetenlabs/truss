@@ -787,8 +787,6 @@ def _custom_model_from_code(
         handle_ops(handle)
     handle.spec.model_class_filepath.write_text(model_code)
     return dir_path
-<<<<<<< HEAD
-=======
 
 
 class Helpers:
@@ -849,4 +847,3 @@ def _modify_yaml(yaml_path: Path):
     yield content
     with yaml_path.open("w") as yaml_file:
         yaml.dump(content, yaml_file)
->>>>>>> origin

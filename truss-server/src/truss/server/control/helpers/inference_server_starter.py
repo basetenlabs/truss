@@ -1,13 +1,8 @@
 import os
 from logging import Logger
 
-<<<<<<< HEAD:truss-server/src/truss/server/control/helpers/inference_server_starter.py
 import httpx
-=======
-import requests
 from anyio import to_thread
-from helpers.inference_server_controller import InferenceServerController
->>>>>>> origin:truss/templates/control/control/helpers/inference_server_starter.py
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 from truss.server.control.helpers.inference_server_controller import (
     InferenceServerController,
