@@ -85,15 +85,28 @@ class ServingImageBuilder(ImageBuilder):
         # # Download from HuggingFace
         if config.hf_cache:
             # TODO: pull every single cached element
-            (build_dir / "cache_warmer.py").write_text(
-                f"""
-from huggingface_hub import snapshot_download
+            for model_spec in config.hf_cache.models:
+                if model_spec.revision != "main":
+                    (build_dir / "cache_warmer.py").write_text(
+                        f"""
+    from huggingface_hub import snapshot_download
 
-snapshot_download(
-    "{config.hf_cache.models[0].repo_id}",
-)
-"""
-            )
+    snapshot_download(
+        "{model_spec.repo_id}",
+        revision="{model_spec.revision}"
+    )
+    """
+                    )
+                else:
+                    (build_dir / "cache_warmer.py").write_text(
+                        f"""
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(
+        "{model_spec.repo_id}",
+    )
+    """
+                    )
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)

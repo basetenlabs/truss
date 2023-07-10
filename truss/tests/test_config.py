@@ -218,3 +218,19 @@ def test_huggingface_cache():
     ]
 
     assert new_config == config.to_dict(verbose=False)
+    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
+
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model", "main")]),
+    )
+    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
+
+    # test non-default revision
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model", "not-main")]),
+    )
+    assert config.to_dict(verbose=False)["hf_cache"][0].get("revision") == "not-main"
