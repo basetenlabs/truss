@@ -10,8 +10,8 @@ class Model:
 
     def load(self):
         # Load model here and assign to self._model.
-        self.tokenizer = AutoTokenizer.from_pretrained("NumbersStation/nsql-6B")
-        self.model = AutoModelForCausalLM.from_pretrained("NumbersStation/nsql-6B")
+        self.tokenizer = AutoTokenizer.from_pretrained("NumbersStation/nsql-350M")
+        self.model = AutoModelForCausalLM.from_pretrained("NumbersStation/nsql-350M")
 
     def predict(self, model_input: Any) -> Any:
         schema = model_input["schema"]
