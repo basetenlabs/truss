@@ -8,7 +8,7 @@ from truss.core.util.path import copy_tree_path
 
 
 @pytest.fixture
-def truss_context_dir(tmp_path):
+def truss_container_fs(tmp_path):
     ROOT = Path(__file__).parent.parent.parent.resolve()
     truss_dir = ROOT / "truss" / "tests" / "test_data" / "test_truss"
     tmp_truss_dir = tmp_path / "tmp_truss"

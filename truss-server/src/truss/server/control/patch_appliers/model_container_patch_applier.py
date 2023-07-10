@@ -14,7 +14,7 @@ from truss.core.patch.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.core.truss_config import TrussConfig
+from truss.core.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.core.util.download import download_external_data
 from truss.server.control.helpers.errors import UnsupportedPatch
 from truss.server.control.patch_appliers.model_code_patch_applier import (
