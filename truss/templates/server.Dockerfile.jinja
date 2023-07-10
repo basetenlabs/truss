@@ -50,7 +50,7 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 COPY ./cache_warmer.py /cache_warmer.py
 {% for model in models %}
 {% for file in model.files %}
-RUN python /cache_warmer.py {{file}} {{model.revision}}
+RUN python /cache_warmer.py {{file}} {{model.repo}} {{model.revision}}
 {% endfor %}
 {% endfor %}
     {%- endif %}
