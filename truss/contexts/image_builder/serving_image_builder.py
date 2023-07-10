@@ -120,6 +120,12 @@ if __name__ == "__main__":
         # Copy control server code
         if config.live_reload:
             copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
+            copy_into_build_dir(
+                SHARED_SERVING_AND_TRAINING_CODE_DIR,
+                BUILD_CONTROL_SERVER_DIR_NAME
+                + "/control/"
+                + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+            )
 
         # Copy base TrussServer requirements if supplied custom base image
         if config.base_image:

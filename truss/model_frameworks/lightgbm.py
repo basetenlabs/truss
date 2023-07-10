@@ -3,7 +3,7 @@ from typing import Any, Dict, Set
 
 from truss.constants import LIGHTGBM_REQ_MODULE_NAMES
 from truss.model_framework import ModelFramework
-from truss.templates.server.common.util import model_supports_predict_proba
+from truss.templates.shared.util import model_supports_predict_proba
 from truss.types import ModelFrameworkType
 
 MODEL_FILENAME = "model.joblib"

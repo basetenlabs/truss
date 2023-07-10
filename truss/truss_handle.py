@@ -63,7 +63,7 @@ from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
 from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
-from truss.templates.server.common.serialization import (
+from truss.templates.shared.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
@@ -273,6 +273,7 @@ class TrussHandle:
         detach: bool = True,
         patch_ping_url: Optional[str] = None,
         binary: bool = False,
+        stream: bool = False,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -307,6 +308,11 @@ class TrussHandle:
 
         if resp.status_code == 500:
             raise requests.exceptions.HTTPError("500 error", response=resp)
+
+        if resp.headers.get("transfer-encoding") == "chunked":
+            # Streaming responses come back just as bytes, so we don't make assumptions
+            # about the format being JSON or msgpack.
+            return resp.content
 
         if binary:
             return truss_msgpack_deserialize(resp.content)
