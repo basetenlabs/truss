@@ -1,11 +1,16 @@
+import logging
+from pathlib import Path
 from typing import Optional
 
+from truss.local.local_config_handler import LocalConfigHandler
+from truss.patch.constants import PATCHABLE_STATUSES
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
     archive_truss,
     create_model,
     exists_model,
+    get_dev_version_info,
     upload_model,
 )
 from truss.remote.baseten.service import BasetenService
@@ -21,18 +26,17 @@ class BasetenRemote(TrussRemote):
             self._auth_service = AuthService(api_key=api_key)
         else:
             self._auth_service = AuthService()
+        self.authenticate()
+        self.api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
 
     def authenticate(self):
         return self._auth_service.validate()
 
     def push(self, truss_handle: TrussHandle, model_name: str):  # type: ignore
-        self.authenticate()
-        api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
-
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        if exists_model(api, model_name):
+        if exists_model(self.api, model_name):
             raise ValueError(f"Model with name {model_name} already exists")
 
         gathered_truss = TrussHandle(truss_handle.gather())
@@ -41,9 +45,9 @@ class BasetenRemote(TrussRemote):
         )
 
         temp_file = archive_truss(gathered_truss)
-        s3_key = upload_model(api, temp_file)
+        s3_key = upload_model(self.api, temp_file)
         model_id, model_version_id = create_model(
-            api=api,
+            api=self.api,
             model_name=model_name,
             s3_key=s3_key,
             config=encoded_config_str,
@@ -57,3 +61,44 @@ class BasetenRemote(TrussRemote):
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
         )
+
+    def watch(self, watch_path: Path, logger: logging.Logger):
+        truss_handle = TrussHandle(watch_path)
+        model_name = truss_handle.spec.config.model_name
+        dev_version = get_dev_version_info(self.api, model_name)
+        # print(dev_version)
+        truss_hash = dev_version.get("truss_hash", None)
+        truss_signature = dev_version.get("truss_signature", None)
+        LocalConfigHandler.add_signature(truss_hash, truss_signature)
+
+        patch_request = truss_handle.calc_patch(truss_hash)
+        if patch_request:
+            if (
+                patch_request.prev_hash == patch_request.next_hash
+                or len(patch_request.patch_ops) == 0
+            ):
+                logger.info("No changes observed, skipping deployment")
+            model_deployment_status = dev_version.get(
+                "current_model_deployment_status", None
+            ).get("status", None)
+            if model_deployment_status not in PATCHABLE_STATUSES:
+                logger.info(f"Model {model_name} is not ready for patching")
+            resp = self.api.patch_draft_truss(model_name, patch_request)
+            # print(resp)
+            if not resp["succeeded"]:
+                needs_full_deploy = resp.get("needs_full_deploy", None)
+                if needs_full_deploy:
+                    logger.info(
+                        f"Model {model_name} is not able to be patched, use `truss push` to deploy"
+                    )
+                else:
+                    logger.error(
+                        f"Failed to patch: `{resp['error']}`. Model left in original state"
+                    )
+            else:
+                logger.info(
+                    resp.get(
+                        "success_message",
+                        f"Model {model_name} patched successfully.",
+                    )
+                )

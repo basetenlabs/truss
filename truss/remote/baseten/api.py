@@ -3,6 +3,7 @@ import logging
 import requests
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.error import ApiError
+from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
 
@@ -100,3 +101,46 @@ class BasetenApi:
 
         resp = self._post_graphql_query(query_string)
         return resp["data"]
+
+    def get_model(self, model_name):
+        query_string = f"""
+        {{
+        model_version(name: "{model_name}") {{
+            oracle{{
+                name
+                versions{{
+                    id
+                    semver
+                    truss_hash
+                    truss_signature
+                    is_draft
+                    current_model_deployment_status {{
+                        status
+                    }}
+                }}
+            }}
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def patch_draft_truss(self, model_name, patch_request):
+        patch = base64_encoded_json_str(patch_request.to_dict())
+        query_string = f"""
+        mutation {{
+        patch_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+                    patch: "{patch}",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["patch_draft_truss"]

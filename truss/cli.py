@@ -8,7 +8,13 @@ from typing import Callable, List, Optional, Union
 import click
 import truss
 import yaml
+from truss.contexts.image_builder.serving_image_builder import (
+    ServingImageBuilderContext,
+)
+from truss.contexts.local_loader.local_server_loader import LocalServerLoader
+from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.remote.baseten import BasetenRemote
+from truss.remote.baseten.core import get_dev_version_info
 
 logging.basicConfig(level=logging.INFO)
 
@@ -157,7 +163,7 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 @click.option("--venv-dir", type=Path, required=False)
 @click.option("--port", type=int, default=8080, help="Local port used to run server")
 @error_handling
-def watch(
+def watch_local(
     target_directory: str,
     build_dir: Optional[Path],
     venv_dir: Optional[Path],
@@ -175,8 +181,50 @@ def watch(
 
     if venv_dir:
         venv_dir = Path(venv_dir)
+    image_builder = ServingImageBuilderContext.run(Path(target_directory))
+    server_loader = LocalServerLoader(Path(target_directory), image_builder, port=port)
+    server_loader.watch(build_dir, venv_dir)
+
+
+@cli_group.command()
+@click.argument("target_directory", required=False)
+@click.option("--api-key", type=str, required=False, help="Your API key")
+@error_handling
+def watch(
+    target_directory: str,
+    api_key: str,
+) -> None:
+    """
+    Watches local truss directory for changes and sends patch requests to remote development truss
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+    """
     tr = _get_truss_from_directory(target_directory=target_directory)
-    tr.run_local_server_with_reload(build_dir=build_dir, work_dir=venv_dir, port=port)
+    model_name = tr.spec.config.model_name
+    if not model_name:
+        raise ValueError("'NoneType' model_name value provided in config.yaml")
+    # verify that development deployment exists for given model name
+
+    # todo(@abu): refactor to BasetenRemote.AuthService
+    if not api_key:
+        api_key = os.environ.get("BASETEN_API_KEY", None)  # type: ignore
+        if not api_key:
+            raise ValueError(
+                "API key must be provided either as a flag or an environment variable BASETEN_API_KEY"
+            )
+    remote = BasetenRemote("https://app.baseten.co", api_key)
+    dev_version = get_dev_version_info(remote.api, model_name)
+    if not dev_version:
+        raise ValueError(
+            f"No development version found with model name: {model_name} "
+            f"To use this feature, first use `truss push` to create a development deployment"
+        )
+    TrussFilesSyncer(
+        Path(target_directory),
+        remote,
+    ).start()
+    while True:
+        pass
 
 
 @cli_group.command()
