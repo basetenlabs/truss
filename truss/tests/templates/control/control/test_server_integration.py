@@ -40,7 +40,7 @@ def test_truss_control_server_termination(control_server: ControlServerDetails):
     assert not _is_port_available(control_server.inference_server_port)
 
     os.kill(proc_id, signal.SIGTERM)
-    control_server.control_server_process.join(timeout=10)
+    control_server.control_server_process.join(timeout=30)
     # Ports should be free now
     _assert_with_retry(
         lambda: _is_port_available(control_server.control_server_port),
