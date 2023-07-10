@@ -1,6 +1,7 @@
 import contextlib
 import importlib
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -12,6 +13,7 @@ import pandas as pd
 import pytest
 import requests
 import tensorflow as tf
+import yaml
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import layers
@@ -710,19 +712,18 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 @pytest.fixture
 def truss_container_fs(tmp_path):
     ROOT = Path(__file__).parent.parent.parent.resolve()
-    truss_fs = tmp_path / "truss_fs"
-    truss_fs.mkdir()
-    truss_build_dir = tmp_path / "truss_fs_build"
-    truss_build_dir.mkdir()
-    image_builder = ServingImageBuilderContext.run(
-        ROOT / "truss" / "test_data" / "test_truss",
-    )
-    image_builder.prepare_image_build_dir(truss_build_dir)
-    dockerfile_path = truss_build_dir / "Dockerfile"
+    return _build_truss_fs(ROOT / "truss" / "test_data" / "test_truss", tmp_path)
 
-    docker_build_emulator = DockerBuildEmulator(dockerfile_path, truss_build_dir)
-    docker_build_emulator.run(truss_fs)
-    return truss_fs
+
+@pytest.fixture
+def truss_control_container_fs(tmp_path):
+    ROOT = Path(__file__).parent.parent.parent.resolve()
+    test_truss_dir = ROOT / "truss" / "test_data" / "test_truss"
+    control_truss_dir = tmp_path / "control_truss"
+    shutil.copytree(str(test_truss_dir), str(control_truss_dir))
+    with _modify_yaml(control_truss_dir / "config.yaml") as content:
+        content["live_reload"] = True
+    return _build_truss_fs(control_truss_dir, tmp_path)
 
 
 @pytest.fixture
@@ -823,3 +824,26 @@ class Helpers:
 @pytest.fixture
 def helpers():
     return Helpers()
+
+
+def _build_truss_fs(truss_dir: Path, tmp_path: Path) -> Path:
+    truss_fs = tmp_path / "truss_fs"
+    truss_fs.mkdir()
+    truss_build_dir = tmp_path / "truss_fs_build"
+    truss_build_dir.mkdir()
+    image_builder = ServingImageBuilderContext.run(truss_dir)
+    image_builder.prepare_image_build_dir(truss_build_dir)
+    dockerfile_path = truss_build_dir / "Dockerfile"
+
+    docker_build_emulator = DockerBuildEmulator(dockerfile_path, truss_build_dir)
+    docker_build_emulator.run(truss_fs)
+    return truss_fs
+
+
+@contextlib.contextmanager
+def _modify_yaml(yaml_path: Path):
+    with yaml_path.open() as yaml_file:
+        content = yaml.safe_load(yaml_file)
+    yield content
+    with yaml_path.open("w") as yaml_file:
+        yaml.dump(content, yaml_file)
