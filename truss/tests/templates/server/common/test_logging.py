@@ -1,4 +1,4 @@
-from truss.templates.server.common.logging import APIJsonFormatter
+from truss.templates.shared.logging import APIJsonFormatter
 
 
 def test_log_parsing():
