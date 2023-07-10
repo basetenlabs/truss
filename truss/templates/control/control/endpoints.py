@@ -57,7 +57,7 @@ async def proxy(request: Request):
                     raise ModelLoadFailed("Model load failed")
                 resp = await client.send(inf_serv_req, stream=True)
 
-                if _is_model_not_ready(resp):
+                if await _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
             except ConnectionError as exp:
                 # This check is a bit expensive so we don't do it before every request, we
@@ -128,12 +128,13 @@ async def stop_inference_server(request: Request) -> Dict[str, str]:
     return {"msg": "Inference server stopped successfully"}
 
 
-def _is_model_not_ready(resp) -> bool:
-    return (
-        resp.status_code == 503
-        and resp.content is not None
-        and "model is not ready" in resp.content.decode("utf-8")
-    )
+async def _is_model_not_ready(resp) -> bool:
+    if resp.status_code == 503:
+        await resp.aread()
+        return resp.content is not None and "model is not ready" in resp.content.decode(
+            "utf-8"
+        )
+    return False
 
 
 def _is_streaming_response(resp) -> bool:
