@@ -405,7 +405,7 @@ files = [
 
 [[package]]
 name = "truss-core"
-version = "0.0.1a0"
+version = "0.0.2a0"
 description = "truss"
 optional = false
 python-versions = ">=3.8,<3.12"
@@ -435,4 +435,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "1f8b0d41afffc24553c5a3170aea4611b31c4c7797078f20ef6f8f489b7a4b67"
+content-hash = "1863edd5c71f101dfbba98defb7ae924c47c898a1ca4e465d9f675e748f02bf3"

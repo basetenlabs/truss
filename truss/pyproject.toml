@@ -1,5 +1,5 @@
 [tool.poetry]
-authors = ["Bola Malek <bola@baseten.co>"]
+authors = ["Truss Maintainers <team@trussml.com>"]
 description = "another package"
 name = "truss"
 packages = [{ include = "truss", from = "./src"}]
