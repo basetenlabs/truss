@@ -55,11 +55,8 @@ async def handle_model_load_failed(_, error):
 
 def create_app(base_config: Dict):
     app_state = State()
-
     setup_logging()
-
     app_logger = logging.getLogger(__name__)
-
     app_state.logger = app_logger
 
     for k, v in base_config.items():
@@ -73,7 +70,6 @@ def create_app(base_config: Dict):
     )
 
     limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
-
     app_state.proxy_client = httpx.AsyncClient(
         base_url=f"http://localhost:{app_state.inference_server_port}", limits=limits
     )
@@ -113,8 +109,18 @@ def create_app(base_config: Dict):
         },
     )
     app.state = app_state
-
     app.include_router(control_app)
+
+    @app.on_event("shutdown")
+    def on_shutdown():
+        # FastApi handles the term signal to start the shutdown flow. Here we
+        # make sure that the inference server is stopeed when control server
+        # shuts down. Inference server has logic to wait until all requests are
+        # finished before exiting. By waiting on that, we inherit the same
+        # behavior for control server.
+        app.state.logger.info("Term signal received, shutting down.")
+        app.state.inference_server_process_controller.terminate_with_wait()
+
     return app
 
 

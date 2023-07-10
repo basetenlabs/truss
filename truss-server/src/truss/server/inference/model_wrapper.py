@@ -5,18 +5,28 @@ import os
 import sys
 import time
 import traceback
+from collections.abc import Generator
 from enum import Enum
 from pathlib import Path
+from queue import Queue
 from threading import Lock, Thread
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
+<<<<<<< HEAD:truss-server/src/truss/server/inference/model_wrapper.py
 from truss.server.inference.common.patches import apply_patches
 from truss.server.inference.common.retry import retry
 from truss.server.shared.secrets_resolver import SecretsResolver
+=======
+from anyio import to_thread
+from common.patches import apply_patches
+from common.retry import retry
+from shared.secrets_resolver import SecretsResolver
+>>>>>>> origin:truss/templates/server/model_wrapper.py
 
 MODEL_BASENAME = "model"
 
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
+STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
 
 
 class ModelWrapper:
@@ -143,19 +153,14 @@ class ModelWrapper:
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         try:
-            self._predict_lock.acquire()
             return self._model.predict(payload)  # type: ignore
         except Exception:
-            response = {}
             logging.exception("Exception while running predict")
-            response["error"] = {"traceback": traceback.format_exc()}
-            return response
-        finally:
-            self._predict_lock.release()
+            return {"error": {"traceback": traceback.format_exc()}}
 
     async def __call__(
         self, body: Any, headers: Optional[Dict[str, str]] = None
-    ) -> Dict:
+    ) -> Union[Dict, Generator]:
         """Method to call predictor or explainer with the given input.
 
         Args:
@@ -164,6 +169,7 @@ class ModelWrapper:
 
         Returns:
             Dict: Response output from preprocess -> predictor -> postprocess
+            Generator: In case of streaming response
         """
 
         payload = (
@@ -172,15 +178,73 @@ class ModelWrapper:
             else self.preprocess(body, headers)
         )
 
-        response = (
-            (await self.predict(payload, headers))
-            if inspect.iscoroutinefunction(self.predict)
-            else self.predict(payload, headers)
-        )
+        return await to_thread.run_sync(self._predict_and_post, payload, headers)
 
-        response = self.postprocess(response, headers)
+    def _predict_and_post(
+        self,
+        payload: Any,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        self._predict_lock.acquire()
+        defer_lock_release = False
+        try:
+            response = self.predict(payload, headers)
+            response = self.postprocess(response, headers)
+            if not isinstance(response, Generator):
+                return response
 
-        return response
+            # Generator response
+            if headers and headers.get("accept") == "application/json":
+                return _convert_streamed_response_to_string(response)
+
+            # Reaching here means streaming response, and need to defer releasing lock
+            defer_lock_release = True
+        finally:
+            if not defer_lock_release:
+                self._predict_lock.release()
+
+        # Streaming response
+        response_queue: Queue = Queue()
+
+        def queue_response_chunks():
+            # In a background thread, write the response chunks to a queue.
+            # In the main thread, read data from the queue until a "None"
+            # is written. This allows to us to use the predict lock only
+            # around the actual predict, and does not create a dependency
+            # on the client reading the entire response before releasing
+            # the lock.
+            try:
+                for chunk in response:
+                    response_queue.put(ResponseChunk(chunk))
+                response_queue.put(None)
+            finally:
+                self._predict_lock.release()
+
+        response_generate_thread = Thread(target=queue_response_chunks)
+        response_generate_thread.start()
+        return _response_generator(response_queue)
+
+
+class ResponseChunk:
+    def __init__(self, value):
+        self.value = value
+
+
+def _response_generator(queue: Queue):
+    """
+    When returning the stream result, simply read from the response queue until a `None`
+    is reached.
+    """
+    while True:
+        chunk = queue.get(timeout=STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS)
+        if chunk is None:
+            return
+        else:
+            yield chunk.value
+
+
+def _convert_streamed_response_to_string(response: Any):
+    return "".join([str(chunk) for chunk in list(response)])
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:

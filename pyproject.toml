@@ -1,0 +1,103 @@
+[tool.poetry]
+name = "truss"
+version = "0.4.10rc6"
+description = "A seamless bridge from model development to model delivery"
+license = "MIT"
+readme = "README.md"
+authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
+include = ["*.txt", "*.Dockerfile", "*.md"]
+repository = "https://github.com/basetenlabs/truss"
+keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learning"]
+
+[tool.poetry.urls]
+"Homepage" = "https://truss.baseten.co"
+"Bug Reports" = "https://github.com/basetenlabs/truss/issues"
+"Documentation" = "https://truss.baseten.co"
+"Baseten" = "https://baseten.co"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+numpy = "1.23.5"
+msgpack = ">=1.0.2"
+msgpack-numpy = ">=0.4.7.1"
+packaging = "^20.9"
+python-json-logger = ">=2.0.2"
+PyYAML = "^6.0"
+Jinja2 = "^3.1.2"
+python-on-whales = "^0.46.0"
+tenacity = "^8.0.1"
+single-source = "^0.3.0"
+cloudpickle = "^2.2.0"
+blake3 = "^0.3.3"
+fastapi = "^0.95.0"
+uvicorn = "^0.21.1"
+httpx = "^0.24.1"
+psutil = "^5.9.4"
+joblib = "^1.2.0"
+pydantic = "^1.10.9"
+boto3 = "^1.26.157"
+rich = "^13.4.2"
+
+[tool.poetry.group.builder.dependencies]
+python = ">=3.8,<3.12"
+packaging = "^20.9"
+python-json-logger = ">=2.0.2"
+PyYAML = "^6.0"
+Jinja2 = "^3.1.2"
+tenacity = "^8.0.1"
+cloudpickle = "^2.2.0"
+single-source = "^0.3.0"
+click = "^8.0.3"
+requests = "^2.28.1"
+blake3 = "^0.3.3"
+fastapi = "^0.95.0"
+uvicorn = "^0.21.1"
+httpx = "^0.24.1"
+psutil = "^5.9.4"
+
+[tool.poetry.dev-dependencies]
+torch = "^1.9.0"
+ipython = "^7.16"
+pytest = "7.2.0"
+tensorflow = { version = "^2.4.4", markers = "sys_platform == 'linux'" }
+tensorflow-macos = { version = "^2.4.4", markers = "sys_platform == 'darwin'" }
+pre-commit = "^2.18.1"
+scikit-learn = "1.0.2"
+pandas = "1.5.2"
+tensorflow-hub = "^0.12.0"
+isort = "^5.10.1"
+flake8 = "^4.0.1"
+ipdb = "^0.13.9"
+coverage = "^6.4.1"
+pytest-cov = "^3.0.0"
+xgboost = "^1.6.1"
+lightgbm = "^3.3.2"
+transformers = "^4.20.1"
+black = "^22.6.0"
+nbconvert = "^7.2.1"
+ipykernel = "^6.16.0"
+dockerfile = "^3.2.0"
+virtualenv = "^20.23.0"
+watchfiles = "^0.19.0"
+yaspin = "^2.3.0"
+
+[tool.poetry.scripts]
+truss = 'truss.cli:cli_group'
+
+[tool.poetry.group.dev.dependencies]
+mlflow = "^1.29.0"
+mypy = "^1.0.0"
+pytest-split = "^0.8.1"
+httpx = {extras = ["cli"], version = "^0.24.1"}
+
+[build-system]
+requires = ["poetry-core>=1.2.1"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+profile = "black"
+src_paths = ["isort", "test"]
+
+[tool.mypy]
+python_version = 3.8
+ignore_missing_imports = true

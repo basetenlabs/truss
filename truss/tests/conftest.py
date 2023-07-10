@@ -1,6 +1,7 @@
 import contextlib
 import importlib
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -612,6 +613,19 @@ def huggingface_truss_handle_small_model(
 
 
 @pytest.fixture
+def custom_model_truss_dir_with_hidden_files(tmp_path):
+    truss_dir_path: Path = tmp_path / "custom_model_truss_dir_with_hidden_files"
+    _ = init(str(truss_dir_path))
+    (truss_dir_path / "__pycache__").mkdir(parents=True, exist_ok=True)
+    (truss_dir_path / ".git").mkdir(parents=True, exist_ok=True)
+    (truss_dir_path / "__pycache__" / "test.cpython-38.pyc").touch()
+    (truss_dir_path / ".DS_Store").touch()
+    (truss_dir_path / ".git" / ".test_file").touch()
+    (truss_dir_path / "data" / "test_file").write_text("123456789")
+    yield truss_dir_path
+
+
+@pytest.fixture
 def custom_model_truss_dir_with_pre_and_post(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post"
     handle = init(str(dir_path))
@@ -698,19 +712,18 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 @pytest.fixture
 def truss_container_fs(tmp_path):
     ROOT = Path(__file__).parent.parent.parent.resolve()
-    truss_fs = tmp_path / "truss_fs"
-    truss_fs.mkdir()
-    truss_build_dir = tmp_path / "truss_fs_build"
-    truss_build_dir.mkdir()
-    image_builder = ServingImageBuilderContext.run(
-        ROOT / "truss" / "test_data" / "test_truss",
-    )
-    image_builder.prepare_image_build_dir(truss_build_dir)
-    dockerfile_path = truss_build_dir / "Dockerfile"
+    return _build_truss_fs(ROOT / "truss" / "test_data" / "test_truss", tmp_path)
 
-    docker_build_emulator = DockerBuildEmulator(dockerfile_path, truss_build_dir)
-    docker_build_emulator.run(truss_fs)
-    return truss_fs
+
+@pytest.fixture
+def truss_control_container_fs(tmp_path):
+    ROOT = Path(__file__).parent.parent.parent.resolve()
+    test_truss_dir = ROOT / "truss" / "test_data" / "test_truss"
+    control_truss_dir = tmp_path / "control_truss"
+    shutil.copytree(str(test_truss_dir), str(control_truss_dir))
+    with _modify_yaml(control_truss_dir / "config.yaml") as content:
+        content["live_reload"] = True
+    return _build_truss_fs(control_truss_dir, tmp_path)
 
 
 @pytest.fixture
@@ -774,3 +787,66 @@ def _custom_model_from_code(
         handle_ops(handle)
     handle.spec.model_class_filepath.write_text(model_code)
     return dir_path
+<<<<<<< HEAD
+=======
+
+
+class Helpers:
+    @staticmethod
+    @contextlib.contextmanager
+    def file_content(file_path: Path, content: str):
+        orig_content = file_path.read_text()
+        try:
+            file_path.write_text(content)
+            yield
+        finally:
+            file_path.write_text(orig_content)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def sys_path(path: Path):
+        try:
+            sys.path.append(str(path))
+            yield
+        finally:
+            sys.path.pop()
+
+    @staticmethod
+    @contextlib.contextmanager
+    def env_var(var: str, value: str):
+        orig_environ = os.environ.copy()
+        try:
+            os.environ[var] = value
+            yield
+        finally:
+            os.environ.clear()
+            os.environ.update(orig_environ)
+
+
+@pytest.fixture
+def helpers():
+    return Helpers()
+
+
+def _build_truss_fs(truss_dir: Path, tmp_path: Path) -> Path:
+    truss_fs = tmp_path / "truss_fs"
+    truss_fs.mkdir()
+    truss_build_dir = tmp_path / "truss_fs_build"
+    truss_build_dir.mkdir()
+    image_builder = ServingImageBuilderContext.run(truss_dir)
+    image_builder.prepare_image_build_dir(truss_build_dir)
+    dockerfile_path = truss_build_dir / "Dockerfile"
+
+    docker_build_emulator = DockerBuildEmulator(dockerfile_path, truss_build_dir)
+    docker_build_emulator.run(truss_fs)
+    return truss_fs
+
+
+@contextlib.contextmanager
+def _modify_yaml(yaml_path: Path):
+    with yaml_path.open() as yaml_file:
+        content = yaml.safe_load(yaml_file)
+    yield content
+    with yaml_path.open("w") as yaml_file:
+        yaml.dump(content, yaml_file)
+>>>>>>> origin

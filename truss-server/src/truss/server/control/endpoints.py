@@ -1,7 +1,14 @@
+import asyncio
 from typing import Any, Dict
 
+import httpx
 from fastapi import APIRouter
+<<<<<<< HEAD:truss-server/src/truss/server/control/endpoints.py
 from fastapi.responses import JSONResponse
+=======
+from fastapi.responses import JSONResponse, StreamingResponse
+from helpers.errors import ModelLoadFailed, ModelNotReady
+>>>>>>> origin:truss/templates/control/control/endpoints.py
 from httpx import URL, ConnectError
 from starlette.requests import Request
 from starlette.responses import Response
@@ -23,10 +30,19 @@ async def proxy(request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
-    client = request.app.state.proxy_client
+    client: httpx.AsyncClient = request.app.state.proxy_client
     url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
-    rp_req = client.build_request(
-        request.method, url, headers=request.headers.raw, content=await request.body()
+
+    # 5 mins request and 2 min connect timeouts
+    # Large values; we don't want requests to fail due to timeout on the proxy
+    timeout = httpx.Timeout(5 * 60.0, connect=2 * 60.0)
+
+    inf_serv_req = client.build_request(
+        request.method,
+        url,
+        headers=request.headers.raw,
+        content=await request.body(),
+        timeout=timeout,
     )
 
     # Wait a bit for inference server to start
@@ -44,9 +60,9 @@ async def proxy(request: Request):
                     inference_server_process_controller.is_inference_server_intentionally_stopped()
                 ):
                     raise ModelLoadFailed("Model load failed")
-                resp = await client.send(rp_req)
+                resp = await client.send(inf_serv_req, stream=True)
 
-                if _is_model_not_ready(resp):
+                if await _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
             except ConnectionError as exp:
                 # This check is a bit expensive so we don't do it before every request, we
@@ -62,6 +78,12 @@ async def proxy(request: Request):
                     return JSONResponse(error_msg, 503)
                 raise exp
 
+    if _is_streaming_response(resp):
+        return StreamingResponse(
+            resp.aiter_bytes(), media_type="application/octet-stream"
+        )
+
+    await resp.aread()
     response = Response(resp.content, resp.status_code, resp.headers)
     return response
 
@@ -73,7 +95,13 @@ control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
 async def patch(request: Request) -> Dict[str, str]:
     request.app.state.logger.info("Patch request received.")
     patch_request = await request.json()
-    request.app.state.inference_server_controller.apply_patch(patch_request)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: request.app.state.inference_server_controller.apply_patch(
+            patch_request
+        ),
+    )
     request.app.state.logger.info("Patch applied successfully")
     return {"msg": "Patch applied successfully"}
 
@@ -105,9 +133,17 @@ async def stop_inference_server(request: Request) -> Dict[str, str]:
     return {"msg": "Inference server stopped successfully"}
 
 
-def _is_model_not_ready(resp) -> bool:
-    return (
-        resp.status_code == 503
-        and resp.content is not None
-        and "model is not ready" in resp.content.decode("utf-8")
-    )
+async def _is_model_not_ready(resp) -> bool:
+    if resp.status_code == 503:
+        await resp.aread()
+        return resp.content is not None and "model is not ready" in resp.content.decode(
+            "utf-8"
+        )
+    return False
+
+
+def _is_streaming_response(resp) -> bool:
+    for header_name, value in resp.headers.items():
+        if header_name.lower() == "transfer-encoding" and value.lower() == "chunked":
+            return True
+    return False

@@ -44,7 +44,7 @@ class TrussDirPatchApplier:
             if isinstance(patch.body, ModelCodePatch):
                 model_code_patch: ModelCodePatch = patch.body
                 model_module_dir = self._truss_dir / self._truss_config.model_module_dir
-                apply_model_code_patch(model_module_dir, model_code_patch, self._logger)
+                apply_code_patch(model_module_dir, model_code_patch, self._logger)
                 continue
             if isinstance(patch.body, PythonRequirementPatch):
                 py_req_patch: PythonRequirementPatch = patch.body

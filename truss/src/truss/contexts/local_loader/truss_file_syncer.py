@@ -10,15 +10,6 @@ from truss.core.patch.types import Action, ModelCodePatch, Patch, PatchType
 from truss.core.truss_config import TrussConfig
 from truss.core.truss_spec import TrussSpec
 
-# from truss.core.util.path import is_ignored, load_trussignore_patterns
-from watchfiles import Change, watch
-
-OP_TO_ACTION = {
-    Change.added: Action.ADD,
-    Change.deleted: Action.REMOVE,
-    Change.modified: Action.UPDATE,
-}
-
 
 class TrussPatchEmitter:
     """Callable that emits an optional list of patches to apply to the running local given a file change"""
@@ -32,7 +23,15 @@ class TrussPatchEmitter:
         self._config = TrussConfig.from_yaml(self._truss_dir / CONFIG_FILE)
         self._logger = logger
 
-    def __call__(self, op: Change, path: Path) -> Optional[List[Patch]]:
+    def __call__(self, op, path: Path) -> Optional[List[Patch]]:
+        from watchfiles import Change
+
+        OP_TO_ACTION = {
+            Change.added: Action.ADD,
+            Change.deleted: Action.REMOVE,
+            Change.modified: Action.UPDATE,
+        }
+
         truss_spec = TrussSpec(self._truss_dir)
         model_module_path = str(
             truss_spec.model_module_dir.relative_to(self._truss_dir)
@@ -73,6 +72,9 @@ class TrussFilesSyncer(Thread):
 
     def run(self) -> None:
         """Watch for files in background and apply appropriate patches."""
+        # from truss.util.path import is_ignored, load_trussignore_patterns
+        from watchfiles import watch
+
         for changes in watch(self.watch_path):  # watch_filter=self.watch_filter):
             for change in changes:
                 op, path = change

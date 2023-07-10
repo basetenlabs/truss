@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -27,7 +27,6 @@ DEFAULT_PYTHON_VERSION = "py39"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
-DEFAULT_SPEC_VERSION_ON_LOAD = "1.0"
 
 DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
@@ -135,13 +134,7 @@ class Train:
         )
 
     def to_dict(self):
-        return {
-            "training_class_filename": self.training_class_filename,
-            "training_class_name": self.training_class_name,
-            "training_module_dir": self.training_module_dir,
-            "variables": self.variables,
-            "resources": self.resources.to_dict(),
-        }
+        return obj_to_dict(self)
 
 
 @dataclass
@@ -284,7 +277,7 @@ class TrussConfig:
             # Users that are calling `load` on an existing Truss
             # should default to 1.0 whereas users creating a new Truss
             # should default to 2.0.
-            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION_ON_LOAD),
+            spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION),
             model_type=d.get("model_type", DEFAULT_MODEL_TYPE),
             model_framework=ModelFrameworkType(
                 d.get("model_framework", DEFAULT_MODEL_FRAMEWORK_TYPE.value)
@@ -328,43 +321,10 @@ class TrussConfig:
 
     def write_to_yaml_file(self, path: Path):
         with path.open("w") as config_file:
-            yaml.dump(self.to_dict(), config_file)
+            yaml.dump(self.to_dict(verbose=True), config_file)
 
-    def to_dict(self):
-        d = {
-            "model_type": self.model_type,
-            "model_framework": self.model_framework.value,
-            "model_module_dir": self.model_module_dir,
-            "model_class_filename": self.model_class_filename,
-            "model_class_name": self.model_class_name,
-            "data_dir": self.data_dir,
-            "input_type": self.input_type,
-            "model_metadata": self.model_metadata,
-            "requirements": self.requirements,
-            "system_packages": self.system_packages,
-            "environment_variables": self.environment_variables,
-            "resources": self.resources.to_dict(),
-            "python_version": self.python_version,
-            "model_name": self.model_name,
-            "examples_filename": self.examples_filename,
-            "secrets": self.secrets,
-            "description": self.description,
-            "bundled_packages_dir": self.bundled_packages_dir,
-            "external_package_dirs": self.external_package_dirs,
-            "live_reload": self.live_reload,
-            "spec_version": self.spec_version,
-            "apply_library_patches": self.apply_library_patches,
-            "train": self.train.to_dict(),
-        }
-        if self.external_data is not None:
-            d["external_data"] = transform_optional(
-                self.external_data, lambda data: data.to_list()
-            )
-        if self.base_image is not None:
-            d["base_image"] = transform_optional(
-                self.base_image, lambda data: data.to_dict()
-            )
-        return d
+    def to_dict(self, verbose: bool = True):
+        return obj_to_dict(self, verbose=verbose)
 
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())
@@ -372,3 +332,62 @@ class TrussConfig:
     def validate(self):
         for secret_name in self.secrets:
             validate_secret_name(secret_name)
+
+
+DATACLASS_TO_REQ_KEYS_MAP = {
+    Train: {"variables"},
+    Resources: {"accelerator", "cpu", "memory", "use_gpu"},
+    TrussConfig: {
+        "environment_variables",
+        "external_package_dirs",
+        "model_metadata",
+        "model_name",
+        "python_version",
+        "requirements",
+        "resources",
+        "secrets",
+        "system_packages",
+    },
+    BaseImage: {"image", "python_executable_path"},
+}
+
+
+def obj_to_dict(obj, verbose: bool = False):
+    """
+    This function serializes a given object (usually starting with a TrussConfig) and
+    only keeps required keys or ones changed by the user manually. This simplifies the config.yml.
+    """
+    required_keys = DATACLASS_TO_REQ_KEYS_MAP[type(obj)]
+    d = {}
+    for f in fields(obj):
+        field_name = f.name
+        field_default_value = f.default
+        field_default_factory = f.default_factory
+
+        field_curr_value = getattr(obj, f.name)
+
+        expected_default_value = None
+        if not isinstance(field_default_value, _MISSING_TYPE):
+            expected_default_value = field_default_value
+        else:
+            expected_default_value = field_default_factory()  # type: ignore
+
+        should_add_to_dict = (
+            expected_default_value != field_curr_value or field_name in required_keys
+        )
+
+        if verbose or should_add_to_dict:
+            if isinstance(field_curr_value, tuple(DATACLASS_TO_REQ_KEYS_MAP.keys())):
+                d[field_name] = obj_to_dict(field_curr_value, verbose=verbose)
+            elif isinstance(field_curr_value, AcceleratorSpec):
+                d[field_name] = field_curr_value.to_str()
+            elif isinstance(field_curr_value, Enum):
+                d[field_name] = field_curr_value.value
+            elif isinstance(field_curr_value, ExternalData):
+                d["external_data"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list()
+                )
+            else:
+                d[field_name] = field_curr_value
+
+    return d

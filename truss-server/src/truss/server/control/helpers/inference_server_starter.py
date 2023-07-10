@@ -1,8 +1,13 @@
-import asyncio
 import os
 from logging import Logger
 
+<<<<<<< HEAD:truss-server/src/truss/server/control/helpers/inference_server_starter.py
 import httpx
+=======
+import requests
+from anyio import to_thread
+from helpers.inference_server_controller import InferenceServerController
+>>>>>>> origin:truss/templates/control/control/helpers/inference_server_starter.py
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 from truss.server.control.helpers.inference_server_controller import (
     InferenceServerController,
@@ -67,7 +72,6 @@ async def async_inference_server_startup_flow(
     inference_server_controller: InferenceServerController,
     logger: Logger,
 ) -> None:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, lambda: inference_server_startup_flow(inference_server_controller, logger)
+    return await to_thread.run_sync(
+        inference_server_startup_flow, inference_server_controller, logger
     )
