@@ -1,4 +1,5 @@
 import pytest
+import yaml
 from truss.core.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
@@ -10,7 +11,7 @@ from truss.core.truss_config import (
     Train,
     TrussConfig,
 )
-from truss.types import ModelFrameworkType
+from truss.core.types import ModelFrameworkType
 
 
 @pytest.mark.parametrize(
