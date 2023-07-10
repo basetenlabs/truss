@@ -83,14 +83,7 @@ No other configuration needs to be changed.
 
 ## Deployment
 
-You can deploy a Truss to your [Baseten](https://baseten.co) account with:
-
-```
-cd ./text-classification
-truss push --api-key="your-baseten-api-key" --model-name="my-model" --remote-name="baseten"
-```
-
-Truss will support other remotes soon, starting with AWS SageMaker.
+You can deploy a Truss to your [Baseten](https://baseten.co) account by following this [quickstart guide](https://docs.baseten.co/quickstart).
 
 ## Truss contributors
 
