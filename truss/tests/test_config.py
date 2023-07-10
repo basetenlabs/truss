@@ -203,7 +203,7 @@ def test_non_default_train():
     assert new_config == config.to_dict(verbose=False)
 
 
-def test_huggingface_cache():
+def test_huggingface_cache_single_model_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
@@ -220,17 +220,61 @@ def test_huggingface_cache():
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
 
-    config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model", "main")]),
-    )
-    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
 
-    # test non-default revision
+def test_huggingface_cache_single_model_non_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
         hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model", "not-main")]),
     )
+
     assert config.to_dict(verbose=False)["hf_cache"][0].get("revision") == "not-main"
+
+
+def test_huggingface_cache_multiple_models_default_revision():
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        hf_cache=HuggingFaceCache(
+            models=[HuggingFaceModel("test/model1"), HuggingFaceModel("test/model2")]
+        ),
+    )
+
+    new_config = generate_default_config()
+    new_config["hf_cache"] = [
+        {
+            "repo_id": "test/model1",
+        },
+        {
+            "repo_id": "test/model2",
+        },
+    ]
+
+    assert new_config == config.to_dict(verbose=False)
+    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
+    assert config.to_dict(verbose=True)["hf_cache"][1].get("revision") == "main"
+
+
+def test_huggingface_cache_multiple_models_mixed_revision():
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        hf_cache=HuggingFaceCache(
+            models=[
+                HuggingFaceModel("test/model1"),
+                HuggingFaceModel("test/model2", "not-main2"),
+            ]
+        ),
+    )
+
+    new_config = generate_default_config()
+    new_config["hf_cache"] = [
+        {
+            "repo_id": "test/model1",
+        },
+        {"repo_id": "test/model2", "revision": "not-main2"},
+    ]
+
+    assert new_config == config.to_dict(verbose=False)
+    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
+    assert config.to_dict(verbose=True)["hf_cache"][1].get("revision") == "not-main2"

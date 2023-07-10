@@ -48,11 +48,11 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {% block cache_weights %}
     {%- if config.hf_cache != None %}
 COPY ./cache_warmer.py /cache_warmer.py
-{% for repo, data in models.items() %}
-{% for file in data.files %}
+        {% for repo, data in models.items() %}
+            {% for file in data.files %}
 RUN python /cache_warmer.py {{file}} {{repo}} {{data.revision}}
-{% endfor %}
-{% endfor %}
+            {% endfor %}
+        {% endfor %}
     {%- endif %}
 {% endblock %}
 

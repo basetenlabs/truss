@@ -86,17 +86,8 @@ class ServingImageBuilder(ImageBuilder):
         # Download from HuggingFace
         model_files = {}
         if config.hf_cache:
-            (build_dir / "cache_warmer.py").write_text(
-                """
-if __name__ == "__main__":
-    from huggingface_hub import hf_hub_download
-    import sys
-    file_name = sys.argv[1]
-    repo_name = sys.argv[2]
-    revision_name = sys.argv[3]
-    hf_hub_download(repo_name, file_name)
-"""
-            )
+            curr_dir = Path(__file__).parent.resolve()
+            copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
             for model in config.hf_cache.models:
                 repo_id = model.repo_id
                 revision = model.revision
