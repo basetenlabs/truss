@@ -39,11 +39,6 @@ BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
-# from huggingface_hub import snapshot_download
-
-# import huggingface_hub
-
-# huggingface_hub.list_repo_files("psmathur/orca_mini_3b")
 
 
 class ServingImageBuilderContext(TrussContext):
