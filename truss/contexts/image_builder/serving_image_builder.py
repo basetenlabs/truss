@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, Optional
 
 import yaml
+from huggingface_hub import list_repo_files
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -33,8 +34,6 @@ from truss.util.path import (
     copy_tree_or_file,
     copy_tree_path,
 )
-
-from huggingface_hub import list_repo_files
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
@@ -91,19 +90,25 @@ class ServingImageBuilder(ImageBuilder):
 
         # Download from HuggingFace
         model_files = []
-        if config.cache_hf_weights:
-            for model_spec in config.hf_cache.models:
-              (build_dir / "cache_warmer.py").write_text(
-                  f"""
-  if __name__ == "__main__":
-      from huggingface_hub import hf_hub_download
-      import sys
-      file_name = sys.argv[1]
-      repo_name = "{config.cache_hf_weights}"
-      hf_hub_download(repo_name, file_name)
-  """
-              )
-              model_files = list_repo_files(config.cache_hf_weights)
+        if config.hf_cache:
+            (build_dir / "cache_warmer.py").write_text(
+                """
+if __name__ == "__main__":
+    from huggingface_hub import hf_hub_download
+    import sys
+    file_name = sys.argv[1]
+    repo_name = sys.argv[2]
+    revision_name = sys.argv[3]
+    hf_hub_download(repo_name, file_name)
+"""
+            )
+            model_files = {}
+            for model in config.hf_cache.models:
+                repo_id = model.repo_id
+                revision = model.revision
+                model_files[repo_id] = {"files" : list_repo_files(repo_id, revision=revision), "revision": revision}
+
+
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
@@ -144,7 +149,7 @@ class ServingImageBuilder(ImageBuilder):
         self,
         build_dir: Path,
         should_install_server_requirements: bool,
-        model_files: List[str],
+        model_files: Dict[str, Any],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -180,7 +185,7 @@ class ServingImageBuilder(ImageBuilder):
             data_dir_exists=data_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(self._truss_dir),
-            model_files=model_files,
+            models=model_files,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
