@@ -48,34 +48,14 @@ def test_truss_control_server_termination(control_server: ControlServerDetails):
 @pytest.mark.integration
 def test_truss_control_server_predict_delays(control_server: ControlServerDetails):
     # Patch to identity code
-    ctrl_url = f"http://localhost:{control_server.control_server_port}"
-    resp = requests.get(f"{ctrl_url}/control/truss_hash")
-    truss_hash = resp.json()["result"]
-
     identity_model_code = """
 class Model:
     def predict(self, model_input):
         return model_input
 """
 
-    resp = requests.post(
-        f"{ctrl_url}/control/patch",
-        json={
-            "hash": "dummy",
-            "prev_hash": truss_hash,
-            "patches": [
-                {
-                    "type": "model_code",
-                    "body": {
-                        "action": "UPDATE",
-                        "path": "model.py",
-                        "content": identity_model_code,
-                    },
-                }
-            ],
-        },
-    )
-    resp.raise_for_status()
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    _patch(identity_model_code, control_server)
 
     # run predictions and verify
     num_requests = 100
@@ -92,6 +72,26 @@ class Model:
         inputs = list(range(0, num_requests))
         predictions = p.map(predict, inputs)
         assert predictions == inputs
+
+
+@pytest.mark.integration
+def test_truss_control_server_stream(control_server: ControlServerDetails):
+    # Patch to identity code
+    stream_model_code = """
+class Model:
+    def predict(self, model_input):
+        def inner():
+            for i in range(5):
+                yield str(i)
+        return inner()
+"""
+
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    _patch(stream_model_code, control_server)
+
+    resp = requests.post(f"{ctrl_url}/v1/models/model:predict", json={}, stream=True)
+    assert resp.headers.get("transfer-encoding") == "chunked"
+    assert resp.content == "01234".encode("utf-8")
 
 
 @pytest.mark.integration
@@ -240,3 +240,28 @@ def _configured_control_server(
         # Print on purpose for help with debugging, otherwise hard to know what's going on
         print(Path(stdout_capture_file.name).read_text())
         _kill_process_tree(proc_id)
+
+
+def _patch(model_code: str, control_server: ControlServerDetails):
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    resp = requests.get(f"{ctrl_url}/control/truss_hash")
+    truss_hash = resp.json()["result"]
+
+    resp = requests.post(
+        f"{ctrl_url}/control/patch",
+        json={
+            "hash": "dummy",
+            "prev_hash": truss_hash,
+            "patches": [
+                {
+                    "type": "model_code",
+                    "body": {
+                        "action": "UPDATE",
+                        "path": "model.py",
+                        "content": model_code,
+                    },
+                }
+            ],
+        },
+    )
+    resp.raise_for_status()

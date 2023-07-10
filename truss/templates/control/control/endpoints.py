@@ -55,7 +55,7 @@ async def proxy(request: Request):
                     inference_server_process_controller.is_inference_server_intentionally_stopped()
                 ):
                     raise ModelLoadFailed("Model load failed")
-                resp = await client.send(inf_serv_req)
+                resp = await client.send(inf_serv_req, stream=True)
 
                 if _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
@@ -78,6 +78,7 @@ async def proxy(request: Request):
             resp.aiter_bytes(), media_type="application/octet-stream"
         )
 
+    await resp.aread()
     response = Response(resp.content, resp.status_code, resp.headers)
     return response
 
