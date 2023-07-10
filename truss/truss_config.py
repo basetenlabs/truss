@@ -90,7 +90,7 @@ class HuggingFaceModel:
         return HuggingFaceModel(repo_id=repo_id, revision=revision)
 
     def to_dict(self, verbose=False):
-        if verbose and self.revision != "main":
+        if verbose or self.revision != "main":
             return {"repo_id": self.repo_id, "revision": self.revision}
         return {"repo_id": self.repo_id}
 

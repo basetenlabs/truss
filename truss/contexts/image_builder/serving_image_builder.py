@@ -92,17 +92,18 @@ class ServingImageBuilder(ImageBuilder):
         # Download from HuggingFace
         model_files = []
         if config.cache_hf_weights:
-            (build_dir / "cache_warmer.py").write_text(
-                f"""
-if __name__ == "__main__":
-    from huggingface_hub import hf_hub_download
-    import sys
-    file_name = sys.argv[1]
-    repo_name = "{config.cache_hf_weights}"
-    hf_hub_download(repo_name, file_name)
-"""
-            )
-            model_files = list_repo_files(config.cache_hf_weights)
+            for model_spec in config.hf_cache.models:
+              (build_dir / "cache_warmer.py").write_text(
+                  f"""
+  if __name__ == "__main__":
+      from huggingface_hub import hf_hub_download
+      import sys
+      file_name = sys.argv[1]
+      repo_name = "{config.cache_hf_weights}"
+      hf_hub_download(repo_name, file_name)
+  """
+              )
+              model_files = list_repo_files(config.cache_hf_weights)
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
