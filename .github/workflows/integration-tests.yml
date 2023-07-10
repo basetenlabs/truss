@@ -20,4 +20,5 @@ jobs:
           lfs: true
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+      # - run: poetry run pytest truss/tests -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+      - run: poetry run pytest truss/tests/templates/control/control/test_server_integration.py

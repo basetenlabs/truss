@@ -103,11 +103,12 @@ class Model:
 
 @pytest.mark.integration
 def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path):
-    for _ in range(10):
+    for i in range(10):
         with _configured_control_server(
             truss_control_container_fs,
             with_patch_ping_flow=True,
         ) as control_server:
+            print(f"{i}th iteration")
             # Account for patch ping delays
             time.sleep(PATCH_PING_MAX_DELAY_SECS)
             # Port should have been taken up by the servers
