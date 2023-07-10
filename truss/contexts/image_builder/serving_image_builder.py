@@ -89,7 +89,7 @@ class ServingImageBuilder(ImageBuilder):
         download_external_data(self._spec.external_data, data_dir)
 
         # Download from HuggingFace
-        model_files = []
+        model_files = {}
         if config.hf_cache:
             (build_dir / "cache_warmer.py").write_text(
                 """
@@ -102,13 +102,13 @@ if __name__ == "__main__":
     hf_hub_download(repo_name, file_name)
 """
             )
-            model_files = {}
             for model in config.hf_cache.models:
                 repo_id = model.repo_id
                 revision = model.revision
-                model_files[repo_id] = {"files" : list_repo_files(repo_id, revision=revision), "revision": revision}
-
-
+                model_files[repo_id] = {
+                    "files": list_repo_files(repo_id, revision=revision),
+                    "revision": revision,
+                }
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
