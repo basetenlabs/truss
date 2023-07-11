@@ -81,6 +81,7 @@ class TrussService(ABC):
         return self._is_draft
 
     @property
+    @abstractmethod
     def is_live(self) -> bool:
         """
         Check if the service is live.
@@ -95,6 +96,7 @@ class TrussService(ABC):
         return response.status_code == 200
 
     @property
+    @abstractmethod
     def is_ready(self) -> bool:
         """
         Check if the service is ready.
