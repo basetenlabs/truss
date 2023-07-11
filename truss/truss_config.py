@@ -78,19 +78,19 @@ class AcceleratorSpec:
 @dataclass
 class HuggingFaceModel:
     repo_id: str = ""
-    revision: str = "main"
+    revision: Optional[str] = None
 
     @staticmethod
     def from_dict(d):
         repo_id = d.get("repo_id")
         if repo_id is None or repo_id == "":
             raise ValueError("Repo ID for Hugging Face model cannot be empty.")
-        revision = d.get("revision", "main")
+        revision = d.get("revision", None)
 
         return HuggingFaceModel(repo_id=repo_id, revision=revision)
 
     def to_dict(self, verbose=False):
-        if verbose or self.revision != "main":
+        if verbose or self.revision is not None:
             return {"repo_id": self.repo_id, "revision": self.revision}
         return {"repo_id": self.repo_id}
 

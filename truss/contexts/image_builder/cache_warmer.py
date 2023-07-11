@@ -5,5 +5,9 @@ if __name__ == "__main__":
 
     file_name = sys.argv[1]
     repo_name = sys.argv[2]
-    revision_name = sys.argv[3]
-    hf_hub_download(repo_name, file_name, revision=revision_name)
+
+    if len(sys.argv) >= 4:
+        revision_name = sys.argv[3]
+        hf_hub_download(repo_name, file_name, revision=revision_name)
+    else:
+        hf_hub_download(repo_name, file_name)
