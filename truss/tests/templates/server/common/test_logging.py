@@ -22,6 +22,10 @@ def test_log_parsing():
     formatter.process_log_record(log_record)
     assert log_record["message"] == "POST /predict 503 SERVICE_UNAVAILABLE"
 
+
+def test_ignore_parsing_other_logs():
+    formatter = APIJsonFormatter()
+
     # test below guarantees any other logs are untouched
     log_record = {
         "message": "2023/07/05 14:19:12 POST http://localhost:8090/v1/models/model:predict"
@@ -31,3 +35,7 @@ def test_log_parsing():
         log_record["message"]
         == "2023/07/05 14:19:12 POST http://localhost:8090/v1/models/model:predict"
     )
+
+    log_record = {"message": "Completed model.load() execution in 4 ms"}
+    formatter.process_log_record(log_record)
+    assert log_record["message"] == "Completed model.load() execution in 4 ms"
