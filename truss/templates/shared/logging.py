@@ -6,6 +6,9 @@ from pythonjsonlogger import jsonlogger
 LEVEL: int = logging.INFO
 
 
+LOGS_TO_HIDE = ["Term signal received, starting shutdown"]
+
+
 class APIJsonFormatter(jsonlogger.JsonFormatter):
     """
     A custom JsonFormatter to reformat the web server log entries.
@@ -17,19 +20,26 @@ class APIJsonFormatter(jsonlogger.JsonFormatter):
         try:
             # Parse the necessary information from the message
             parts = message.split(" ")
-            request_type = parts[2][1:]
-            endpoint = parts[3].split("%3A")[1]
-            status_code = parts[5]
 
-            status_codes = {
-                "200": "OK",
-                "404": "NOT_FOUND",
-                "500": "INTERNAL_ERROR",
-                "503": "SERVICE_UNAVAILABLE"
-                # Add more status codes and their corresponding descriptions if needed
-            }
+            if "http" in parts[3]:
+                request_type = parts[2]
+                endpoint = parts[3].split(":")[-1]
+                new_message = f"{request_type} /{endpoint} calling model..."
+            else:
+                request_type = parts[2][1:]
+                endpoint = parts[3].split("%3A")[1]
+                status_code = parts[5]
 
-            new_message = f"{request_type} /{endpoint} {status_code} {status_codes.get(status_code)}"
+                status_codes = {
+                    "200": "OK",
+                    "404": "NOT_FOUND",
+                    "500": "INTERNAL_ERROR",
+                    "503": "SERVICE_UNAVAILABLE"
+                    # Add more status codes and their corresponding descriptions if needed
+                }
+
+                new_message = f"{request_type} /{endpoint} {status_code} {status_codes.get(status_code, '')}"
+
         except IndexError:
             new_message = message
 
@@ -52,6 +62,13 @@ class HealthCheckFilter(logging.Filter):
             record.getMessage().find("GET / ") == -1
             and record.getMessage().find("GET /v1/models/model ") == -1
         )
+
+
+class UserLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        found_log_to_hide = any(log in message for log in LOGS_TO_HIDE)
+        return not found_log_to_hide
 
 
 def setup_logging() -> None:
@@ -77,3 +94,4 @@ def setup_logging() -> None:
         # some special handling for request logging
         if logger.name == "uvicorn.access":
             logger.addFilter(HealthCheckFilter())
+            logger.addFilter(UserLogFilter())
