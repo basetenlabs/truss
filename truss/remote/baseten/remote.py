@@ -4,9 +4,9 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
     archive_truss,
-    create_model,
+    create_truss_service,
     exists_model,
-    upload_model,
+    upload_truss,
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -41,8 +41,8 @@ class BasetenRemote(TrussRemote):
         )
 
         temp_file = archive_truss(gathered_truss)
-        s3_key = upload_model(api, temp_file)
-        model_id, model_version_id = create_model(
+        s3_key = upload_truss(api, temp_file)
+        model_id, model_version_id = create_truss_service(
             api=api,
             model_name=model_name,
             s3_key=s3_key,

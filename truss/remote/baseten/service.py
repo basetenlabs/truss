@@ -24,11 +24,11 @@ class BasetenService(TrussService):
 
     @property
     def is_live(self) -> bool:
-        return False
+        raise NotImplementedError
 
     @property
     def is_ready(self) -> bool:
-        return False
+        raise NotImplementedError
 
     def predict(self, model_request_body: Dict):
         invocation_url = f"{self._service_url}/predict"
