@@ -180,7 +180,6 @@ def test_control_truss_python_sys_req_patch(
         verify_system_requirement_not_installed_on_container(container, system_pkg)
 
 
-# todo(abu/justin) remove once ignored
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "binary, python_version",
@@ -235,6 +234,7 @@ def test_patch_added_model_dir(
         assert (custom_model_control / "model" / "dir" / "foo.bar").exists()
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_data_dir(control_model_handle_tag_tuple):
@@ -336,6 +336,7 @@ class Model:
         ).exists()
 
 
+# todo(abu/justin) remove once ignored
 @pytest.mark.skip(reason="Unsupported patch")
 @pytest.mark.integration
 def test_patch_secrets(control_model_handle_tag_tuple):

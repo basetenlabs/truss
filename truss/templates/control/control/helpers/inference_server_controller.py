@@ -131,7 +131,7 @@ class InferenceServerController:
 
     def _check_and_recover_inference_server(self):
         self._app_logger.info("Inference server overseer thread started")
-        while True:
+        while not self._process_controller.is_inference_server_terminated():
             with self._lock:
                 self._process_controller.check_and_recover_inference_server(
                     self._inf_env

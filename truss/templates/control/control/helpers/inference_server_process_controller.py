@@ -2,12 +2,15 @@ import logging
 import os
 import signal
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Optional
 
 from helpers.context_managers import current_directory
 
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
+TERMINATION_TIMEOUT_SECS = 120.0
+TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
 
 class InferenceServerProcessController:
@@ -29,6 +32,7 @@ class InferenceServerProcessController:
         self._inference_server_port = inference_server_port
         self._inference_server_started = False
         self._inference_server_ever_started = False
+        self._inference_server_terminated = False
         self._app_logger = app_logger
 
     def start(self, inf_env: dict):
@@ -52,6 +56,19 @@ class InferenceServerProcessController:
 
         self._inference_server_started = False
 
+    def terminate_with_wait(self):
+        self._inference_server_process.terminate()
+        self._inference_server_terminated = True
+        termination_check_attempts = int(
+            TERMINATION_TIMEOUT_SECS / TERMINATION_CHECK_INTERVAL_SECS
+        )
+        for _ in range(termination_check_attempts):
+            time.sleep(TERMINATION_CHECK_INTERVAL_SECS)
+            # None returncode means alive
+            # https://docs.python.org/3.9/library/subprocess.html#subprocess.Popen.returncode
+            if self._inference_server_process.poll() is not None:
+                return
+
     def inference_server_started(self) -> bool:
         return self._inference_server_started
 
@@ -71,8 +88,15 @@ class InferenceServerProcessController:
     def is_inference_server_intentionally_stopped(self) -> bool:
         return INFERENCE_SERVER_FAILED_FILE.exists()
 
+    def is_inference_server_terminated(self) -> bool:
+        return self._inference_server_terminated
+
     def check_and_recover_inference_server(self, inf_env: dict):
-        if self.inference_server_started() and not self.is_inference_server_running():
+        if (
+            self.inference_server_started()
+            and not self.is_inference_server_running()
+            and not self.is_inference_server_terminated()
+        ):
             if not self.is_inference_server_intentionally_stopped():
                 self._app_logger.warning(
                     "Inference server seems to have crashed, restarting"

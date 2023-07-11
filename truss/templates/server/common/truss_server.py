@@ -8,23 +8,24 @@ import signal
 import socket
 import sys
 import time
+from collections.abc import Generator
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import common.errors as errors
-import common.util as utils
+import shared.util as utils
 import uvicorn
-from common.logging import setup_logging
-from common.serialization import (
+from common.termination_handler_middleware import TerminationHandlerMiddleware
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import ORJSONResponse, StreamingResponse
+from fastapi.routing import APIRoute as FastAPIRoute
+from model_wrapper import ModelWrapper
+from shared.logging import setup_logging
+from shared.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from common.termination_handler_middleware import TerminationHandlerMiddleware
-from fastapi import Depends, FastAPI, Request
-from fastapi.responses import ORJSONResponse
-from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import ModelWrapper
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -131,7 +132,18 @@ class BasetenEndpoints:
             body = json.loads(body_raw)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Dict = asyncio.run(model(body, headers=dict(request.headers.items())))
+        response: Union[Dict, Generator] = asyncio.run(
+            model(
+                body,
+                headers=utils.transform_keys(request.headers, lambda key: key.lower()),
+            )
+        )
+
+        # In the case that the model returns a Generator object, return a
+        # StreamingResponse instead.
+        if isinstance(response, Generator):
+            # media_type in StreamingResponse sets the Content-Type header
+            return StreamingResponse(response, media_type="application/octet-stream")
 
         response_headers = {}
         if self.is_binary(request):

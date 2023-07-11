@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import yaml
+from huggingface_hub import list_repo_files
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -82,6 +83,19 @@ class ServingImageBuilder(ImageBuilder):
         # Download external data
         download_external_data(self._spec.external_data, data_dir)
 
+        # Download from HuggingFace
+        model_files = {}
+        if config.hf_cache:
+            curr_dir = Path(__file__).parent.resolve()
+            copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+            for model in config.hf_cache.models:
+                repo_id = model.repo_id
+                revision = model.revision
+                model_files[repo_id] = {
+                    "files": list_repo_files(repo_id, revision=revision),
+                    "revision": revision,
+                }
+
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
         copy_into_build_dir(
@@ -92,6 +106,12 @@ class ServingImageBuilder(ImageBuilder):
         # Copy control server code
         if config.live_reload:
             copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
+            copy_into_build_dir(
+                SHARED_SERVING_AND_TRAINING_CODE_DIR,
+                BUILD_CONTROL_SERVER_DIR_NAME
+                + "/control/"
+                + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+            )
 
         # Copy base TrussServer requirements if supplied custom base image
         if config.base_image:
@@ -113,12 +133,15 @@ class ServingImageBuilder(ImageBuilder):
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
-        self._render_dockerfile(build_dir, should_install_server_requirements)
+        self._render_dockerfile(
+            build_dir, should_install_server_requirements, model_files
+        )
 
     def _render_dockerfile(
         self,
         build_dir: Path,
         should_install_server_requirements: bool,
+        model_files: Dict[str, Any],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -154,6 +177,7 @@ class ServingImageBuilder(ImageBuilder):
             data_dir_exists=data_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(self._truss_dir),
+            models=model_files,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
