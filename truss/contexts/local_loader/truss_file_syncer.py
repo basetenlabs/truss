@@ -31,9 +31,7 @@ class TrussFilesSyncer(Thread):
 
         if not self.remote:
             return
-
-        for changes in watch(
+        for _ in watch(
             self.watch_path, watch_filter=self.watch_filter, raise_interrupt=False
         ):
-            # print(changes)
             self.remote.watch(self.watch_path, self._logger)

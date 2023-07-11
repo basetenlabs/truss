@@ -34,7 +34,7 @@ def get_dev_version_info(api: BasetenApi, model_name) -> dict:
     for version in versions:
         if version["is_draft"] is True:
             return version
-    return {}
+    raise ValueError(f"No development version found with model name: {model_name} ")
 
 
 def archive_truss(b10_truss: TrussHandle) -> IO:

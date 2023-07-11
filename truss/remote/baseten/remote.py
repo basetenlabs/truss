@@ -66,7 +66,6 @@ class BasetenRemote(TrussRemote):
         truss_handle = TrussHandle(watch_path)
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version_info(self.api, model_name)
-        # print(dev_version)
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         LocalConfigHandler.add_signature(truss_hash, truss_signature)

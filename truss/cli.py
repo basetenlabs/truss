@@ -203,7 +203,6 @@ def watch(
     model_name = tr.spec.config.model_name
     if not model_name:
         raise ValueError("'NoneType' model_name value provided in config.yaml")
-    # verify that development deployment exists for given model name
 
     # todo(@abu): refactor to BasetenRemote.AuthService
     if not api_key:
@@ -213,12 +212,9 @@ def watch(
                 "API key must be provided either as a flag or an environment variable BASETEN_API_KEY"
             )
     remote = BasetenRemote("https://app.baseten.co", api_key)
-    dev_version = get_dev_version_info(remote.api, model_name)
-    if not dev_version:
-        raise ValueError(
-            f"No development version found with model name: {model_name} "
-            f"To use this feature, first use `truss push` to create a development deployment"
-        )
+    # verify that development deployment exists for given model name
+    _ = get_dev_version_info(remote.api, model_name)
+    click.echo(f"Watching for changes to truss at: {target_directory} ...")
     TrussFilesSyncer(
         Path(target_directory),
         remote,
