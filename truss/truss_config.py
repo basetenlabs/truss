@@ -76,6 +76,38 @@ class AcceleratorSpec:
 
 
 @dataclass
+class HuggingFaceModel:
+    repo_id: str = ""
+    revision: Optional[str] = None
+
+    @staticmethod
+    def from_dict(d):
+        repo_id = d.get("repo_id")
+        if repo_id is None or repo_id == "":
+            raise ValueError("Repo ID for Hugging Face model cannot be empty.")
+        revision = d.get("revision", None)
+
+        return HuggingFaceModel(repo_id=repo_id, revision=revision)
+
+    def to_dict(self, verbose=False):
+        if verbose or self.revision is not None:
+            return {"repo_id": self.repo_id, "revision": self.revision}
+        return {"repo_id": self.repo_id}
+
+
+@dataclass
+class HuggingFaceCache:
+    models: List[HuggingFaceModel]
+
+    @staticmethod
+    def from_list(items: List[Dict[str, str]]) -> "HuggingFaceCache":
+        return HuggingFaceCache([HuggingFaceModel.from_dict(item) for item in items])
+
+    def to_list(self, verbose=False) -> List[Dict[str, str]]:
+        return [model.to_dict(verbose=verbose) for model in self.models]
+
+
+@dataclass
 class Resources:
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
@@ -263,6 +295,8 @@ class TrussConfig:
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
+    hf_cache: Optional[HuggingFaceCache] = None
+
     @property
     def canonical_python_version(self) -> str:
         return {
@@ -310,6 +344,7 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
+            hf_cache=transform_optional(d.get("hf_cache"), HuggingFaceCache.from_list),
         )
         config.validate()
         return config
@@ -386,6 +421,10 @@ def obj_to_dict(obj, verbose: bool = False):
             elif isinstance(field_curr_value, ExternalData):
                 d["external_data"] = transform_optional(
                     field_curr_value, lambda data: data.to_list()
+                )
+            elif isinstance(field_curr_value, HuggingFaceCache):
+                d["hf_cache"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
             else:
                 d[field_name] = field_curr_value
