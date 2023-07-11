@@ -236,7 +236,10 @@ def test_huggingface_cache_multiple_models_default_revision():
         python_version="py39",
         requirements=[],
         hf_cache=HuggingFaceCache(
-            models=[HuggingFaceModel("test/model1"), HuggingFaceModel("test/model2")]
+            models=[
+                HuggingFaceModel("test/model1", "main"),
+                HuggingFaceModel("test/model2"),
+            ]
         ),
     )
 

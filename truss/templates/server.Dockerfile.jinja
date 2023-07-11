@@ -54,6 +54,7 @@ COPY ./cache_warmer.py /cache_warmer.py
 RUN python /cache_warmer.py {{file}} {{repo}} {{data.revision}}
                 {%- else %}
 RUN python /cache_warmer.py {{file}} {{repo}}
+                {%- endif %}
             {% endfor %}
         {% endfor %}
     {%- endif %}
