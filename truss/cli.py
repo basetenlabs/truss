@@ -8,10 +8,6 @@ from typing import Callable, List, Optional, Union
 import click
 import truss
 import yaml
-from truss.contexts.image_builder.serving_image_builder import (
-    ServingImageBuilderContext,
-)
-from truss.contexts.local_loader.local_server_loader import LocalServerLoader
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.remote.baseten import BasetenRemote
 from truss.remote.baseten.core import get_dev_version_info
@@ -155,35 +151,6 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
             f"Container already exists at {urls}. Are you sure you want to continue?"
         )
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
-
-
-@cli_group.command()
-@click.argument("target_directory", required=False)
-@click.option("--build-dir", type=Path, required=False)
-@click.option("--venv-dir", type=Path, required=False)
-@click.option("--port", type=int, default=8080, help="Local port used to run server")
-@error_handling
-def watch_local(
-    target_directory: str,
-    build_dir: Optional[Path],
-    venv_dir: Optional[Path],
-    port: int,
-) -> None:
-    """
-    Runs the model server for a Truss.
-
-    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-    BUILD_DIR: Image context. If none, a temp directory is created.
-    """
-    if build_dir:
-        build_dir = Path(build_dir)
-
-    if venv_dir:
-        venv_dir = Path(venv_dir)
-    image_builder = ServingImageBuilderContext.run(Path(target_directory))
-    server_loader = LocalServerLoader(Path(target_directory), image_builder, port=port)
-    server_loader.watch(build_dir, venv_dir)
 
 
 @cli_group.command()

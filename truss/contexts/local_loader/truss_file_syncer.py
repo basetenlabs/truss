@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 from threading import Thread
-from typing import Optional
 
 from truss.remote.baseten import BasetenRemote
 
@@ -12,7 +11,7 @@ class TrussFilesSyncer(Thread):
     def __init__(
         self,
         watch_path: Path,
-        remote: Optional[BasetenRemote],
+        remote: BasetenRemote,
     ) -> None:
         from truss.util.path import is_ignored, load_trussignore_patterns
 
