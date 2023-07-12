@@ -43,12 +43,12 @@ class InferenceServerController:
         self._current_running_hash = os.environ.get("HASH_TRUSS", None)
         self._app_logger = app_logger
         self._has_partially_applied_patch = False
+        self._inf_env = os.environ.copy()
         if oversee_inference_server:
             self._inference_server_overseer_thread = threading.Thread(
                 target=self._check_and_recover_inference_server
             )
             self._inference_server_overseer_thread.start()
-        self._inf_env = os.environ.copy()
 
     def apply_patch(self, patch_request):
         with self._lock:
