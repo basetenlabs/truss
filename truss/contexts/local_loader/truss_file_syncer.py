@@ -34,4 +34,4 @@ class TrussFilesSyncer(Thread):
         for _ in watch(
             self.watch_path, watch_filter=self.watch_filter, raise_interrupt=False
         ):
-            self.remote.watch(self.watch_path, self._logger)
+            self.remote.patch(self.watch_path, self._logger)

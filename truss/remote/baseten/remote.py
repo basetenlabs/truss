@@ -62,7 +62,7 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
-    def watch(self, watch_path: Path, logger: logging.Logger):
+    def patch(self, watch_path: Path, logger: logging.Logger):
         truss_handle = TrussHandle(watch_path)
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version_info(self.api, model_name)
@@ -83,7 +83,6 @@ class BasetenRemote(TrussRemote):
             if model_deployment_status not in PATCHABLE_STATUSES:
                 logger.info(f"Model {model_name} is not ready for patching")
             resp = self.api.patch_draft_truss(model_name, patch_request)
-            # print(resp)
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
