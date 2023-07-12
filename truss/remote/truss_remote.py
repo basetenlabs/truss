@@ -80,7 +80,6 @@ class TrussService(ABC):
         """
         return self._is_draft
 
-    @property
     @abstractmethod
     def is_live(self) -> bool:
         """
@@ -95,7 +94,6 @@ class TrussService(ABC):
         response = self._send_request(liveness_url, "GET", {})
         return response.status_code == 200
 
-    @property
     @abstractmethod
     def is_ready(self) -> bool:
         """
