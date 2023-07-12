@@ -2,6 +2,9 @@ name: integration-tests
 
 on:
   workflow_dispatch: # Allows running from actions tab
+  push:
+    branches:
+      - main
 
 concurrency:
   group: main-${{ github.ref_name }}
