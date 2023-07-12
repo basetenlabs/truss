@@ -1,5 +1,3 @@
-from typing import Optional
-
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
@@ -15,24 +13,19 @@ from truss.truss_handle import TrussHandle
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: Optional[str] = None, **kwargs):
+    def __init__(self, remote_url: str, api_key: str, **kwargs):
         super().__init__(remote_url, **kwargs)
-        if api_key:
-            self._auth_service = AuthService(api_key=api_key)
-        else:
-            self._auth_service = AuthService()
+        self._auth_service = AuthService(api_key=api_key)
+        self._api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
 
     def authenticate(self):
         return self._auth_service.validate()
 
     def push(self, truss_handle: TrussHandle, model_name: str):  # type: ignore
-        self.authenticate()
-        api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
-
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        if exists_model(api, model_name):
+        if exists_model(self._api, model_name):
             raise ValueError(f"Model with name {model_name} already exists")
 
         gathered_truss = TrussHandle(truss_handle.gather())
@@ -41,9 +34,9 @@ class BasetenRemote(TrussRemote):
         )
 
         temp_file = archive_truss(gathered_truss)
-        s3_key = upload_truss(api, temp_file)
+        s3_key = upload_truss(self._api, temp_file)
         model_id, model_version_id = create_truss_service(
-            api=api,
+            api=self._api,
             model_name=model_name,
             s3_key=s3_key,
             config=encoded_config_str,
