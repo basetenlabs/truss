@@ -43,7 +43,9 @@ class InferenceServerController:
         self._current_running_hash = os.environ.get("HASH_TRUSS", None)
         self._app_logger = app_logger
         self._has_partially_applied_patch = False
-        self._inf_env = os.environ.copy()
+        self._inf_env = (
+            os.environ.copy()
+        )  # this must be initialized before overseer is started
         if oversee_inference_server:
             self._inference_server_overseer_thread = threading.Thread(
                 target=self._check_and_recover_inference_server
