@@ -3,10 +3,10 @@ name: Release CI
 on:
   push:
     branches:
-      - main
+      - release
 
 concurrency:
-  group: main-${{ github.head_ref || github.run_id }}
+  group: release-${{ github.head_ref || github.run_id }}
   cancel-in-progress: false
 
 jobs:
