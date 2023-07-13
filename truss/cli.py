@@ -12,6 +12,8 @@ from truss.remote.baseten import BasetenRemote
 
 logging.basicConfig(level=logging.INFO)
 
+REGISTRY = {"baseten": (BasetenRemote, "https://app.baseten.co")}
+
 
 def echo_output(f: Callable[..., object]):
     @wraps(f)
@@ -296,7 +298,7 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 @cli_group.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option("--api-key", type=str, required=False, help="Your API key")
-@click.option("--model-name", type=str, required=True, help="Name of the model")
+@click.option("--model-name", type=str, required=False, help="Name of the model")
 @click.option(
     "--remote-name",
     type=str,
@@ -319,30 +321,31 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    registry = {"baseten": (BasetenRemote, "https://app.baseten.co")}
-
-    if remote_name not in registry:
+    if remote_name not in REGISTRY:
         raise ValueError(
-            f"Remote {remote_name} not found. Available remotes: {list(registry.keys())}"
+            f"Remote {remote_name} not found. Available remotes: {list(REGISTRY.keys())}"
         )
-
-    if not api_key:
-        api_key = os.environ.get(f"{remote_name.upper()}_API_KEY", None)  # type: ignore
-        if not api_key:
-            raise ValueError(
-                f"API key must be provided either as a flag "
-                f"or an environment variable"
-                f"({remote_name.upper()}_API_KEY)"
-            )
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     # Instantiate remote
-    remote_cls = registry[remote_name][0]
-    remote_url = remote_url or registry[remote_name][1]
+    # NOTE: This is specific to Baseten, but TODO: generalize
+    remote_cls = REGISTRY[remote_name][0]
+    remote_url = remote_url or REGISTRY[remote_name][1]
     remote = remote_cls(remote_url, api_key)
 
     # Push
+    model_name = model_name or tr.spec.config.model_name
+    if model_name is None:
+        raise ValueError(
+            "Model name must be provided either as a flag or in the Truss config"
+        )
+
+    # Write model name to config if it's not already there
+    if model_name != tr.spec.config.model_name:
+        tr.spec.config.model_name = model_name
+        tr.spec.config.write_to_yaml_file(tr.spec.config_path)
+
     service = remote.push(tr, model_name)
 
     click.echo(f"Model {model_name} was successfully pushed.")
