@@ -18,6 +18,7 @@ sys.path.append(
     )
 )
 
+sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
 sys.path.append(
     str(Path(__file__).parent.parent.parent.parent.parent / "templates" / "shared")
 )

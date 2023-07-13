@@ -28,7 +28,7 @@ def exists_model(api: BasetenApi, model_name: str) -> bool:
     return False
 
 
-def archive_truss(b10_truss: TrussHandle) -> IO:
+def archive_truss(truss_handle: TrussHandle) -> IO:
     """
     Archive a TrussHandle into a tar file.
 
@@ -39,7 +39,7 @@ def archive_truss(b10_truss: TrussHandle) -> IO:
         A file-like object containing the tar file
     """
     try:
-        truss_dir = b10_truss._spec.truss_dir
+        truss_dir = truss_handle._spec.truss_dir
         temp_file = create_tar_with_progress_bar(truss_dir)
     except PermissionError:
         # Windows bug with Tempfile causes PermissionErrors
@@ -48,7 +48,7 @@ def archive_truss(b10_truss: TrussHandle) -> IO:
     return temp_file
 
 
-def upload_model(api: BasetenApi, serialize_file: IO) -> str:
+def upload_truss(api: BasetenApi, serialize_file: IO) -> str:
     """
     Upload a TrussHandle to the Baseten remote.
 
@@ -68,7 +68,7 @@ def upload_model(api: BasetenApi, serialize_file: IO) -> str:
     return s3_key
 
 
-def create_model(
+def create_truss_service(
     api: BasetenApi,
     model_name: str,
     s3_key: str,

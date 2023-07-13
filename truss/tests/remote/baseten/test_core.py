@@ -18,7 +18,7 @@ def test_exists_model():
     assert not core.exists_model(api, "third model")
 
 
-def test_upload_model():
+def test_upload_truss():
     api = MagicMock()
     api.model_s3_upload_credentials.return_value = {
         "s3_key": "key",
@@ -27,4 +27,4 @@ def test_upload_model():
     core.multipart_upload_boto3 = MagicMock()
     core.multipart_upload_boto3.return_value = None
     test_file = NamedTemporaryFile()
-    assert core.upload_model(api, test_file) == "key"
+    assert core.upload_truss(api, test_file) == "key"

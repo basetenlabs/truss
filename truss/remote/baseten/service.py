@@ -22,13 +22,11 @@ class BasetenService(TrussService):
         self._auth_service = AuthService(api_key=api_key)
         self._truss_handle = truss_handle
 
-    @property
     def is_live(self) -> bool:
-        return False
+        raise NotImplementedError
 
-    @property
     def is_ready(self) -> bool:
-        return False
+        raise NotImplementedError
 
     def predict(self, model_request_body: Dict):
         invocation_url = f"{self._service_url}/predict"
