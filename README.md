@@ -3,7 +3,7 @@
 **The simplest way to serve AI/ML models in production**
 
 [![PyPI version](https://badge.fury.io/py/truss.svg)](https://badge.fury.io/py/truss)
-[![ci_status](https://github.com/basetenlabs/truss/actions/workflows/main.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/main.yml)
+[![ci_status](https://github.com/basetenlabs/truss/actions/workflows/release.yml/badge.svg)](https://github.com/basetenlabs/truss/actions/workflows/release.yml)
 
 ## Why Truss?
 
