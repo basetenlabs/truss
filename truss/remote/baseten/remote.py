@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import yaml
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch.constants import PATCHABLE_STATUSES
 from truss.remote.baseten.api import BasetenApi
@@ -58,13 +59,16 @@ class BasetenRemote(TrussRemote):
         )
 
     def patch(self, watch_path: Path, logger: logging.Logger):
-        truss_handle = TrussHandle(watch_path)
+        try:
+            truss_handle = TrussHandle(watch_path)
+        except yaml.parser.ParserError:
+            logger.error("Unable to parse config file.")
+            return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version_info(self._api, model_name)
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
-
         patch_request = truss_handle.calc_patch(truss_hash)
         if patch_request:
             if (
