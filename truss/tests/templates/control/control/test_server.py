@@ -20,8 +20,8 @@ sys.path.append(
 
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
 
-from truss.templates.control.control.application import create_app  # noqa
-from truss.templates.control.control.helpers.types import (  # noqa
+from application import create_app  # noqa
+from helpers.types import (  # noqa
     Action,
     ModelCodePatch,
     Patch,
