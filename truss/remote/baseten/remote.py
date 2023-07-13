@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import yaml
+from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch.constants import PATCHABLE_STATUSES
 from truss.remote.baseten.api import BasetenApi
@@ -57,6 +58,18 @@ class BasetenRemote(TrussRemote):
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
         )
+
+    def sync_truss_to_dev_version_by_name(self, model_name: str, target_directory: str):
+        # verify that development deployment exists for given model name
+        _ = get_dev_version_info(
+            self._api, model_name  # pylint: disable=protected-access
+        )
+        TrussFilesSyncer(
+            Path(target_directory),
+            self,
+        ).start()
+        while True:
+            pass
 
     def patch(self, watch_path: Path, logger: logging.Logger):
         try:

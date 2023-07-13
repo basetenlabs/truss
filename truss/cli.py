@@ -8,9 +8,7 @@ from typing import Callable, List, Optional, Union
 import click
 import truss
 import yaml
-from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
-from truss.remote.baseten import BasetenRemote
-from truss.remote.baseten.core import get_dev_version_info
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 
 logging.basicConfig(level=logging.INFO)
@@ -155,12 +153,17 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 
 
 @cli_group.command()
-@click.argument("target_directory", required=False)
-@click.option("--api-key", type=str, required=False, help="Your API key")
+@click.argument("target_directory", required=False, default=os.getcwd())
+@click.option(
+    "--remote",
+    type=str,
+    required=True,
+    help="Name of the remote in .trussrc to patch changes to",
+)
 @error_handling
 def watch(
     target_directory: str,
-    api_key: str,
+    remote: str,
 ) -> None:
     """
     Watches local truss directory for changes and sends patch requests to remote development truss
@@ -172,23 +175,10 @@ def watch(
     if not model_name:
         raise ValueError("'NoneType' model_name value provided in config.yaml")
 
-    # todo(@abu): refactor to BasetenRemote.AuthService
-    if not api_key:
-        api_key = os.environ.get("BASETEN_API_KEY", None)  # type: ignore
-        if not api_key:
-            raise ValueError(
-                "API key must be provided either as a flag or an environment variable BASETEN_API_KEY"
-            )
-    remote = BasetenRemote("https://app.baseten.co", api_key)
-    # verify that development deployment exists for given model name
-    _ = get_dev_version_info(remote._api, model_name)
+    remote_provider = RemoteFactory.create(remote)
+    remote_provider.__class__ = BasetenRemote
     click.echo(f"Watching for changes to truss at: {target_directory} ...")
-    TrussFilesSyncer(
-        Path(target_directory),
-        remote,
-    ).start()
-    while True:
-        pass
+    remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
 
 
 @cli_group.command()
