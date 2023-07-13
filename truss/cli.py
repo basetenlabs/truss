@@ -11,10 +11,9 @@ import yaml
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.remote.baseten import BasetenRemote
 from truss.remote.baseten.core import get_dev_version_info
+from truss.remote.remote_factory import RemoteFactory
 
 logging.basicConfig(level=logging.INFO)
-
-REGISTRY = {"baseten": (BasetenRemote, "https://app.baseten.co")}
 
 
 def echo_output(f: Callable[..., object]):
@@ -308,23 +307,18 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 
 @cli_group.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
-@click.option("--api-key", type=str, required=False, help="Your API key")
-@click.option("--model-name", type=str, required=False, help="Name of the model")
 @click.option(
-    "--remote-name",
+    "--remote",
     type=str,
-    required=False,
-    help="Name of the remote",
-    default="baseten",
+    required=True,
+    help="Name of the remote in .trussrc to push to",
 )
-@click.option("--remote-url", type=str, required=False, help="URL of the remote")
+@click.option("--model-name", type=str, required=False, help="Name of the model")
 @error_handling
 def push(
     target_directory: str,
-    api_key: str,
-    model_name: str,
     remote_name: str,
-    remote_url: str,
+    model_name: str,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -332,18 +326,9 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    if remote_name not in REGISTRY:
-        raise ValueError(
-            f"Remote {remote_name} not found. Available remotes: {list(REGISTRY.keys())}"
-        )
+    remote = RemoteFactory.create(remote=remote_name)
 
     tr = _get_truss_from_directory(target_directory=target_directory)
-
-    # Instantiate remote
-    # NOTE: This is specific to Baseten, but TODO: generalize
-    remote_cls = REGISTRY[remote_name][0]
-    remote_url = remote_url or REGISTRY[remote_name][1]
-    remote = remote_cls(remote_url, api_key)
 
     # Push
     model_name = model_name or tr.spec.config.model_name
@@ -357,7 +342,8 @@ def push(
         tr.spec.config.model_name = model_name
         tr.spec.config.write_to_yaml_file(tr.spec.config_path)
 
-    service = remote.push(tr, model_name)
+    # TODO(Abu): This needs to be refactored to be more generic
+    service = remote.push(tr, model_name)  # type: ignore
 
     click.echo(f"Model {model_name} was successfully pushed.")
     click.echo(f"Service URL: {service._service_url}")
