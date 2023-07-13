@@ -295,12 +295,17 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 
 @cli_group.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
-@click.option("--service-name", type=str, required=True, help="Name of the service")
+@click.option(
+    "--remote",
+    type=str,
+    required=True,
+    help="Name of the remote in .trussrc to push to",
+)
 @click.option("--model-name", type=str, required=False, help="Name of the model")
 @error_handling
 def push(
     target_directory: str,
-    service_name: str,
+    remote_name: str,
     model_name: str,
 ) -> None:
     """
@@ -309,7 +314,7 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    remote = RemoteFactory.create(service_name=service_name)
+    remote = RemoteFactory.create(remote=remote_name)
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
