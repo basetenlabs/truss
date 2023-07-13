@@ -96,8 +96,13 @@ class ServingImageBuilder(ImageBuilder):
                     "revision": revision,
                 }
 
+        data_files = []
         if data_dir.exists():
             data_files = [file.name for file in data_dir.iterdir()]
+
+        # create dir for large files
+
+        # iterate over data_files and move large_files into that dir
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
