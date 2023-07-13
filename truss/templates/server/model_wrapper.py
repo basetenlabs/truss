@@ -12,7 +12,6 @@ from queue import Queue
 from threading import Lock, Thread
 from typing import Any, Dict, Optional, Union
 
-from anyio import to_thread
 from common.patches import apply_patches
 from common.retry import retry
 from shared.secrets_resolver import SecretsResolver
@@ -152,7 +151,7 @@ class ModelWrapper:
             logging.exception("Exception while running predict")
             return {"error": {"traceback": traceback.format_exc()}}
 
-    async def __call__(
+    def __call__(
         self, body: Any, headers: Optional[Dict[str, str]] = None
     ) -> Union[Dict, Generator]:
         """Method to call predictor or explainer with the given input.
@@ -166,19 +165,8 @@ class ModelWrapper:
             Generator: In case of streaming response
         """
 
-        payload = (
-            await self.preprocess(body, headers)
-            if inspect.iscoroutinefunction(self.preprocess)
-            else self.preprocess(body, headers)
-        )
+        payload = self.preprocess(body, headers)
 
-        return await to_thread.run_sync(self._predict_and_post, payload, headers)
-
-    def _predict_and_post(
-        self,
-        payload: Any,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Any:
         self._predict_lock.acquire()
         defer_lock_release = False
         try:

@@ -132,11 +132,9 @@ class BasetenEndpoints:
             body = json.loads(body_raw)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Union[Dict, Generator] = asyncio.run(
-            model(
-                body,
-                headers=utils.transform_keys(request.headers, lambda key: key.lower()),
-            )
+        response: Union[Dict, Generator] = model(
+            body,
+            headers=utils.transform_keys(request.headers, lambda key: key.lower()),
         )
 
         # In the case that the model returns a Generator object, return a
