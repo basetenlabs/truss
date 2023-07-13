@@ -8,8 +8,24 @@ TEST_SERVICE_URL = "http://test.com"
 
 
 class TestTrussService(TrussService):
+    def __init__(self, remote_url: str, is_draft: bool, **kwargs):
+        super().__init__(remote_url, is_draft, **kwargs)
+        self._remote_url = remote_url
+
     def authenticate(self):
         return {"Authorization": "Test"}
+
+    def is_live(self):
+        response = self._send_request(self._remote_url, "GET")
+        if response.status_code == 200:
+            return True
+        return False
+
+    def is_ready(self):
+        response = self._send_request(self._remote_url, "GET")
+        if response.status_code == 200:
+            return True
+        return False
 
 
 def mock_successful_response():
@@ -28,25 +44,25 @@ def mock_unsuccessful_response():
 @mock.patch("requests.request", return_value=mock_successful_response())
 def test_is_live(mock_request):
     service = TestTrussService(TEST_SERVICE_URL, True)
-    assert service.is_live
+    assert service.is_live()
 
 
 @mock.patch("requests.request", return_value=mock_unsuccessful_response())
 def test_is_not_live(mock_request):
     service = TestTrussService(TEST_SERVICE_URL, True)
-    assert service.is_live is False
+    assert service.is_live() is False
 
 
 @mock.patch("requests.request", return_value=mock_successful_response())
 def test_is_ready(mock_request):
     service = TestTrussService(TEST_SERVICE_URL, True)
-    assert service.is_ready
+    assert service.is_ready()
 
 
 @mock.patch("requests.request", return_value=mock_unsuccessful_response())
 def test_is_not_ready(mock_request):
     service = TestTrussService(TEST_SERVICE_URL, True)
-    assert service.is_ready is False
+    assert service.is_ready() is False
 
 
 @mock.patch("requests.request", return_value=mock_successful_response())
