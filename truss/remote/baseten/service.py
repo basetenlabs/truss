@@ -22,11 +22,9 @@ class BasetenService(TrussService):
         self._auth_service = AuthService(api_key=api_key)
         self._truss_handle = truss_handle
 
-    @property
     def is_live(self) -> bool:
         raise NotImplementedError
 
-    @property
     def is_ready(self) -> bool:
         raise NotImplementedError
 
