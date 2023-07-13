@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Optional
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch.constants import PATCHABLE_STATUSES
@@ -8,10 +7,10 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
     archive_truss,
-    create_model,
+    create_truss_service,
     exists_model,
     get_dev_version_info,
-    upload_model,
+    upload_truss,
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -20,14 +19,10 @@ from truss.truss_handle import TrussHandle
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: Optional[str] = None, **kwargs):
+    def __init__(self, remote_url: str, api_key: str, **kwargs):
         super().__init__(remote_url, **kwargs)
-        if api_key:
-            self._auth_service = AuthService(api_key=api_key)
-        else:
-            self._auth_service = AuthService()
-        self.authenticate()
-        self.api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
+        self._auth_service = AuthService(api_key=api_key)
+        self._api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
 
     def authenticate(self):
         return self._auth_service.validate()
@@ -36,7 +31,7 @@ class BasetenRemote(TrussRemote):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        if exists_model(self.api, model_name):
+        if exists_model(self._api, model_name):
             raise ValueError(f"Model with name {model_name} already exists")
 
         gathered_truss = TrussHandle(truss_handle.gather())
@@ -45,9 +40,9 @@ class BasetenRemote(TrussRemote):
         )
 
         temp_file = archive_truss(gathered_truss)
-        s3_key = upload_model(self.api, temp_file)
-        model_id, model_version_id = create_model(
-            api=self.api,
+        s3_key = upload_truss(self._api, temp_file)
+        model_id, model_version_id = create_truss_service(
+            api=self._api,
             model_name=model_name,
             s3_key=s3_key,
             config=encoded_config_str,
@@ -65,7 +60,7 @@ class BasetenRemote(TrussRemote):
     def patch(self, watch_path: Path, logger: logging.Logger):
         truss_handle = TrussHandle(watch_path)
         model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version_info(self.api, model_name)
+        dev_version = get_dev_version_info(self._api, model_name)
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
@@ -82,7 +77,7 @@ class BasetenRemote(TrussRemote):
             ).get("status", None)
             if model_deployment_status not in PATCHABLE_STATUSES:
                 logger.info(f"Model {model_name} is not ready for patching")
-            resp = self.api.patch_draft_truss(model_name, patch_request)
+            resp = self._api.patch_draft_truss(model_name, patch_request)
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
