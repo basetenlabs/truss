@@ -8,7 +8,6 @@ from typing import Callable, List, Optional, Union
 import click
 import truss
 import yaml
-from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.remote_factory import RemoteFactory
 
 logging.basicConfig(level=logging.INFO)
@@ -176,7 +175,6 @@ def watch(
         raise ValueError("'NoneType' model_name value provided in config.yaml")
 
     remote_provider = RemoteFactory.create(remote)
-    remote_provider.__class__ = BasetenRemote
     click.echo(f"Watching for changes to truss at: {target_directory} ...")
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
 
