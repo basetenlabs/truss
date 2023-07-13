@@ -18,9 +18,7 @@ sys.path.append(
     )
 )
 
-sys.path.append(
-    str(Path(__file__).parent.parent.parent.parent.parent / "templates" / "shared")
-)
+sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
 
 from truss.templates.control.control.application import create_app  # noqa
 from truss.templates.control.control.helpers.types import (  # noqa
