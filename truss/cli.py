@@ -40,7 +40,7 @@ def print_help() -> None:
     click.echo(ctx.get_help())
 
 
-@click.group(name="truss", invoke_without_command=True)
+@click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
 @click.option(
     "-v",
@@ -104,7 +104,7 @@ def build_context(build_dir, target_directory: str) -> None:
     tr.docker_build_setup(build_dir=Path(build_dir))
 
 
-@cli_group.command()
+@cli_group.command()  # type: ignore
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
 @error_handling
@@ -378,7 +378,7 @@ def get_container_logs(target_directory) -> None:
         click.echo(log)
 
 
-@cli_group.command()
+@cli_group.command()  # type: ignore
 @click.argument("target_directory", required=False)
 def kill(target_directory: str) -> None:
     """

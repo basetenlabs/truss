@@ -45,6 +45,22 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {{ super() }}
 {% endblock %}
 
+{% block cache_weights %}
+    {%- if config.hf_cache != None %}
+COPY ./cache_warmer.py /cache_warmer.py
+        {% for repo, data in models.items() %}
+            {% for file in data.files %}
+                {%- if data.revision != None %}
+RUN python /cache_warmer.py {{file}} {{repo}} {{data.revision}}
+                {%- else %}
+RUN python /cache_warmer.py {{file}} {{repo}}
+                {%- endif %}
+            {% endfor %}
+        {% endfor %}
+    {%- endif %}
+{% endblock %}
+
+
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
@@ -60,7 +76,6 @@ RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
 {% endblock %}
-
 
 {% block run %}
     {%- if config.live_reload %}
