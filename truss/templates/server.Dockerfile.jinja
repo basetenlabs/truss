@@ -65,7 +65,7 @@ RUN python /cache_warmer.py {{file}} {{repo}}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
     {%- for file in data_files%}
-COPY ./{{file}} /app/data/{{file}}
+COPY ./{{config.data_dir}}/{{file}} /app/data/{{file}}
     {% endfor %}
 {%- endif %}
 
