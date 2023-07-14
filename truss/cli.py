@@ -296,7 +296,7 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 @cli_group.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
-    "--remote",
+    "--remote_name",
     type=str,
     required=True,
     help="Name of the remote in .trussrc to push to",

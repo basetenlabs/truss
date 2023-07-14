@@ -47,22 +47,22 @@ def mock_incorrect_service_config():
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
 @mock.patch(
-    "truss.remote.remote_factory.RemoteFactory.load_service",
+    "truss.remote.remote_factory.RemoteFactory.load_remote_config",
     return_value=mock_service_config(),
 )
-def test_create(mock_load_service):
+def test_create(mock_load_remote_config):
     service_name = "test_service"
     remote = RemoteFactory.create(service_name)
-    mock_load_service.assert_called_once_with(service_name)
+    mock_load_remote_config.assert_called_once_with(service_name)
     assert isinstance(remote, TestRemote)
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
 @mock.patch(
-    "truss.remote.remote_factory.RemoteFactory.load_service",
+    "truss.remote.remote_factory.RemoteFactory.load_remote_config",
     return_value=mock_incorrect_service_config(),
 )
-def test_create_no_service(mock_load_service):
+def test_create_no_service(mock_load_remote_config):
     service_name = "nonexistent_service"
     with pytest.raises(ValueError):
         RemoteFactory.create(service_name)
@@ -71,25 +71,25 @@ def test_create_no_service(mock_load_service):
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
 @mock.patch("builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC)
 @mock.patch("pathlib.Path.exists", return_value=True)
-def test_load_service(mock_exists, mock_open):
-    service = RemoteFactory.load_service("test")
+def test_load_remote_config(mock_exists, mock_open):
+    service = RemoteFactory.load_remote_config("test")
     assert service == {"remote_provider": "test_remote", **SAMPLE_CONFIG}
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
 @mock.patch("builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC)
 @mock.patch("pathlib.Path.exists", return_value=False)
-def test_load_service_no_file(mock_exists, mock_open):
+def test_load_remote_config_no_file(mock_exists, mock_open):
     with pytest.raises(FileNotFoundError):
-        RemoteFactory.load_service("test")
+        RemoteFactory.load_remote_config("test")
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
 @mock.patch("builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC)
 @mock.patch("pathlib.Path.exists", return_value=True)
-def test_load_service_no_service(mock_exists, mock_open):
+def test_load_remote_config_no_service(mock_exists, mock_open):
     with pytest.raises(ValueError):
-        RemoteFactory.load_service("nonexistent_service")
+        RemoteFactory.load_remote_config("nonexistent_service")
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
@@ -103,10 +103,10 @@ def test_required_params():
     "builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC_NO_REMOTE
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
-def test_validate_service_no_remote(mock_exists, mock_open):
+def test_validate_remote_config_no_remote(mock_exists, mock_open):
     with pytest.raises(ValueError):
-        service = RemoteFactory.load_service("test")
-        RemoteFactory.validate_service(service, "test")
+        service = RemoteFactory.load_remote_config("test")
+        RemoteFactory.validate_remote_config(service, "test")
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
@@ -114,7 +114,7 @@ def test_validate_service_no_remote(mock_exists, mock_open):
     "builtins.open", new_callable=mock.mock_open, read_data=SAMPLE_TRUSSRC_NO_PARAMS
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
-def test_load_service_no_params(mock_exists, mock_open):
+def test_load_remote_config_no_params(mock_exists, mock_open):
     with pytest.raises(ValueError):
-        service = RemoteFactory.load_service("test")
-        RemoteFactory.validate_service(service, "test")
+        service = RemoteFactory.load_remote_config("test")
+        RemoteFactory.validate_remote_config(service, "test")
