@@ -83,6 +83,31 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["create_model_from_truss"]
 
+    def create_development_model_from_truss(
+        self,
+        model_name,
+        s3_key,
+        config,
+        client_version,
+        is_trusted=False,
+    ):
+        query_string = f"""
+        mutation {{
+        deploy_draft_truss(name: "{model_name}",
+                    s3_key: "{s3_key}",
+                    config: "{config}",
+                    client_version: "{client_version}",
+                    is_trusted: {'true' if is_trusted else 'false'}
+    ) {{
+            id,
+            name,
+            version_id
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["deploy_draft_truss"]
+
     def models(self):
         query_string = """
         {

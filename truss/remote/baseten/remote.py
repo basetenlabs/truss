@@ -48,6 +48,7 @@ class BasetenRemote(TrussRemote):
             model_name=model_name,
             s3_key=s3_key,
             config=encoded_config_str,
+            is_draft=not publish,
         )
 
         return BasetenService(

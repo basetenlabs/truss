@@ -12,7 +12,7 @@ model_class_name: Model
 model_framework: custom
 model_metadata: {}
 model_module_dir: model
-model_name: AI Search
+model_name: null
 model_type: custom
 python_version: py39
 requirements:
