@@ -4408,20 +4408,6 @@ pyspark = ["cloudpickle", "pyspark", "scikit-learn"]
 scikit-learn = ["scikit-learn"]
 
 [[package]]
-name = "yaspin"
-version = "2.3.0"
-description = "Yet Another Terminal Spinner"
-optional = false
-python-versions = ">=3.7.2,<4.0.0"
-files = [
-    {file = "yaspin-2.3.0-py3-none-any.whl", hash = "sha256:17b5548479b3d5b30adec7a87ffcdcddb403d14a2bb86fbcee97f37951e13427"},
-    {file = "yaspin-2.3.0.tar.gz", hash = "sha256:547afd1a9700ac3a29a9f5591c70343bef186ed5dfb5e545a9bb0c77e561a1c9"},
-]
-
-[package.dependencies]
-termcolor = ">=2.2,<3.0"
-
-[[package]]
 name = "zipp"
 version = "3.16.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -4439,4 +4425,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "d65fd864da59f938ca0cf9d98ce113804eb52259287b4ebd99e1d1228dc068b1"
+content-hash = "fe9eae3702687f16a3bd3ede12147aba2b5f3111dd7940ad148c33c090d21c53"

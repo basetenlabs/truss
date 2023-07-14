@@ -79,8 +79,6 @@ black = "^22.6.0"
 nbconvert = "^7.2.1"
 ipykernel = "^6.16.0"
 dockerfile = "^3.2.0"
-virtualenv = "^20.23.0"
-yaspin = "^2.3.0"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:cli_group'
