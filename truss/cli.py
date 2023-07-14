@@ -305,11 +305,13 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
     help="Name of the remote in .trussrc to push to",
 )
 @click.option("--model-name", type=str, required=False, help="Name of the model")
+@click.option("--publish", type=bool, required=False, default=True, help="Publish truss as production deployment.")
 @error_handling
 def push(
     target_directory: str,
     remote: str,
     model_name: str,
+    publish: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -334,7 +336,7 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    service = remote_provider.push(tr, model_name)  # type: ignore
+    service = remote_provider.push(tr, model_name, publis)  # type: ignore
 
     click.echo(f"Model {model_name} was successfully pushed.")
     click.echo(f"Service URL: {service._service_url}")
