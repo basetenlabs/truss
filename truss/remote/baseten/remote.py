@@ -69,6 +69,10 @@ class BasetenRemote(TrussRemote):
             Path(target_directory),
             self,
         ).start()
+
+        # Since the `TrussFilesSyncer` runs a daemon thread, we run this infinite loop on the main
+        # thread to keep it alive. When this loop is interrupted by the user, then the whole process
+        # can shutdown gracefully.
         while True:
             pass
 
@@ -79,7 +83,7 @@ class BasetenRemote(TrussRemote):
             logger.error("Unable to parse config file.")
             return
         model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version_info(self._api, model_name)
+        dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         LocalConfigHandler.add_signature(truss_hash, truss_signature)

@@ -28,7 +28,7 @@ def exists_model(api: BasetenApi, model_name: str) -> bool:
     return False
 
 
-def get_dev_version_info(api: BasetenApi, model_name) -> dict:
+def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
     model = api.get_model(model_name)
     versions = model["model_version"]["oracle"]["versions"]
     for version in versions:

@@ -342,7 +342,6 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    print(publish)
     service = remote_provider.push(tr, model_name, publish=publish)  # type: ignore
 
     click.echo(f"Model {model_name} was successfully pushed.")
