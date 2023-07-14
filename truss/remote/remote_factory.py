@@ -9,15 +9,15 @@ from truss.remote.truss_remote import TrussRemote
 
 class RemoteFactory:
     """
-    A factory for instantiating a TrussRemote from a .trussrc file and a user-specified service name
+    A factory for instantiating a TrussRemote from a .trussrc file and a user-specified remote config name
     """
 
     REGISTRY: Dict[str, Type[TrussRemote]] = {"baseten": BasetenRemote}
 
     @staticmethod
-    def load_service(remote_name: str) -> Dict:
+    def load_remote_config(remote_name: str) -> Dict:
         """
-        Load and validate a service from the .trussrc file
+        Load and validate a remote config from the .trussrc file
         """
         config_path = Path("~/.trussrc").expanduser()
 
@@ -33,24 +33,26 @@ class RemoteFactory:
         return dict(config[remote_name])
 
     @staticmethod
-    def validate_service(service: Dict, remote_name: str):
+    def validate_remote_config(remote_config: Dict, remote_name: str):
         """
-        Validates service by checking the 'remote' field and the required parameters
+        Validates remote config by checking
+            1. the 'remote' field exists
+            2. all required parameters for the 'remote' class are provided
         """
-        if "remote_provider" not in service:
+        if "remote_provider" not in remote_config:
             raise ValueError(
                 f"Missing 'remote_provider' field for remote {remote_name} in .trussrc"
             )
 
-        if service["remote_provider"] not in RemoteFactory.REGISTRY:
+        if remote_config["remote_provider"] not in RemoteFactory.REGISTRY:
             raise ValueError(
-                f"Remote provider {service['remote_provider']} not found in registry"
+                f"Remote provider {remote_config['remote_provider']} not found in registry"
             )
 
-        remote = RemoteFactory.REGISTRY.get(service["remote_provider"])
+        remote = RemoteFactory.REGISTRY.get(remote_config["remote_provider"])
         if remote:
             required_params = RemoteFactory.required_params(remote)
-            missing_params = required_params - set(service.keys())
+            missing_params = required_params - set(remote_config.keys())
             if missing_params:
                 raise ValueError(
                     f"Missing required parameter(s) {missing_params} for remote {remote_name} in .trussrc"
@@ -73,17 +75,18 @@ class RemoteFactory:
 
     @classmethod
     def create(cls, remote: str) -> TrussRemote:
-        service = cls.load_service(remote)
-        cls.validate_service(service, remote)
+        remote_config = cls.load_remote_config(remote)
+        cls.validate_remote_config(remote_config, remote)
 
-        remote_class = cls.REGISTRY[service.pop("remote_provider")]
+        remote_class = cls.REGISTRY[remote_config.pop("remote_provider")]
         remote_params = {
-            param: service.get(param) for param in cls.required_params(remote_class)
+            param: remote_config.get(param)
+            for param in cls.required_params(remote_class)
         }
 
         # Add any additional params provided by the user in their .trussrc
-        additional_params = set(service.keys()) - set(remote_params.keys())
+        additional_params = set(remote_config.keys()) - set(remote_params.keys())
         for param in additional_params:
-            remote_params[param] = service.get(param)
+            remote_params[param] = remote_config.get(param)
 
         return remote_class(**remote_params)  # type: ignore
