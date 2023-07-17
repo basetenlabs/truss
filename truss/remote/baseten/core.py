@@ -28,6 +28,15 @@ def exists_model(api: BasetenApi, model_name: str) -> bool:
     return False
 
 
+def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
+    model = api.get_model(model_name)
+    versions = model["model_version"]["oracle"]["versions"]
+    for version in versions:
+        if version["is_draft"] is True:
+            return version
+    raise ValueError(f"No development version found with model name: {model_name}")
+
+
 def archive_truss(truss_handle: TrussHandle) -> IO:
     """
     Archive a TrussHandle into a tar file.
@@ -75,6 +84,7 @@ def create_truss_service(
     config: str,
     semver_bump: Optional[str] = "MINOR",
     is_trusted: Optional[bool] = False,
+    is_draft: Optional[bool] = False,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -90,13 +100,22 @@ def create_truss_service(
     Returns:
         A tuple of the model ID and version ID
     """
-    model_version_json = api.create_model_from_truss(
-        model_name,
-        s3_key,
-        config,
-        semver_bump,
-        f"truss=={truss.version()}",
-        is_trusted,
-    )
+    if is_draft:
+        model_version_json = api.create_development_model_from_truss(
+            model_name,
+            s3_key,
+            config,
+            f"truss=={truss.version()}",
+            is_trusted,
+        )
+    else:
+        model_version_json = api.create_model_from_truss(
+            model_name,
+            s3_key,
+            config,
+            semver_bump,
+            f"truss=={truss.version()}",
+            is_trusted,
+        )
 
     return (model_version_json["id"], model_version_json["version_id"])

@@ -18,7 +18,7 @@ FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 def copy_tree_path(src: Path, dest: Path) -> None:
     """Copy a directory tree, ignoring files specified in .truss_ignore."""
-    patterns = load_trussignore_patterns(FIXED_TRUSS_IGNORE_PATH)
+    patterns = load_trussignore_patterns()
 
     if not dest.exists():
         dest.mkdir(parents=True)
@@ -98,7 +98,7 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
     return target_directory_path
 
 
-def load_trussignore_patterns(truss_ignore_file: Path):
+def load_trussignore_patterns(truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH):
     """Load patterns from a .truss_ignore file"""
     patterns = []
 

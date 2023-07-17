@@ -152,31 +152,34 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 
 
 @cli_group.command()
-@click.argument("target_directory", required=False)
-@click.option("--build-dir", type=Path, required=False)
-@click.option("--venv-dir", type=Path, required=False)
-@click.option("--port", type=int, default=8080, help="Local port used to run server")
+@click.argument("target_directory", required=False, default=os.getcwd())
+@click.option(
+    "--remote",
+    type=str,
+    required=True,
+    help="Name of the remote in .trussrc to patch changes to",
+)
 @error_handling
 def watch(
     target_directory: str,
-    build_dir: Optional[Path],
-    venv_dir: Optional[Path],
-    port: int,
+    remote: str,
 ) -> None:
     """
-    Runs the model server for a Truss.
+    Watches local truss directory for changes and sends patch requests to remote development truss
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-    BUILD_DIR: Image context. If none, a temp directory is created.
     """
-    if build_dir:
-        build_dir = Path(build_dir)
 
-    if venv_dir:
-        venv_dir = Path(venv_dir)
+    # TODO: ensure that provider support draft
+    remote_provider = RemoteFactory.create(remote=remote)
+
     tr = _get_truss_from_directory(target_directory=target_directory)
-    tr.run_local_server_with_reload(build_dir=build_dir, work_dir=venv_dir, port=port)
+    model_name = tr.spec.config.model_name
+    if not model_name:
+        raise ValueError("'NoneType' model_name value provided in config.yaml")
+
+    click.echo(f"Watching for changes to truss at: {target_directory} ...")
+    remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
 
 
 @cli_group.command()
@@ -296,17 +299,25 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 @cli_group.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
-    "--remote_name",
+    "--remote",
     type=str,
     required=True,
     help="Name of the remote in .trussrc to push to",
 )
 @click.option("--model-name", type=str, required=False, help="Name of the model")
+@click.option(
+    "--publish",
+    type=bool,
+    required=False,
+    default=True,
+    help="Publish truss as production deployment.",
+)
 @error_handling
 def push(
     target_directory: str,
-    remote_name: str,
+    remote: str,
     model_name: str,
+    publish: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -314,7 +325,7 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    remote = RemoteFactory.create(remote=remote_name)
+    remote_provider = RemoteFactory.create(remote=remote)
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
@@ -331,7 +342,7 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    service = remote.push(tr, model_name)  # type: ignore
+    service = remote_provider.push(tr, model_name, publish=publish)  # type: ignore
 
     click.echo(f"Model {model_name} was successfully pushed.")
     click.echo(f"Service URL: {service._service_url}")
