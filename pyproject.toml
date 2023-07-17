@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.5.0a0"
+version = "0.5.0a1"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -38,6 +38,7 @@ pydantic = "^1.10.9"
 boto3 = "^1.26.157"
 rich = "^13.4.2"
 watchfiles = "^0.19.0"
+huggingface_hub = "^0.16.4"
 
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"
