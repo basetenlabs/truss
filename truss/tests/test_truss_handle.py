@@ -69,8 +69,9 @@ def test_readme_generation_no_example(
     custom_model_truss_dir_with_pre_and_post_no_example,
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_no_example)
-    # Remove the examples file
-    os.remove(th._spec.examples_path)
+    if os.path.exists(th._spec.examples_path):
+        # Remove the examples file
+        os.remove(th._spec.examples_path)
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace("\n", "")
     correct_readme_contents = _read_readme("readme_no_example.md")
