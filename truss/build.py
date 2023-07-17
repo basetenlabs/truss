@@ -42,6 +42,10 @@ def populate_target_directory(
     # Create data dir
     (target_directory_path_typed / config.data_dir).mkdir()
 
+    # Create bundled packages dir
+    # TODO: Drop by default
+    (target_directory_path_typed / config.bundled_packages_dir).mkdir()
+
     # Create model module dir
     model_dir = target_directory_path_typed / config.model_module_dir
     template_path = TEMPLATES_DIR / template
