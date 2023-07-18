@@ -279,3 +279,10 @@ def test_huggingface_cache_multiple_models_mixed_revision():
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") is None
     assert config.to_dict(verbose=True)["hf_cache"][1].get("revision") == "not-main2"
+
+
+def test_empty_config():
+    config = TrussConfig()
+    new_config = generate_default_config()
+
+    assert new_config == config.to_dict(verbose=False)
