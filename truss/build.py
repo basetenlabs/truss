@@ -14,11 +14,11 @@ from truss.errors import FrameworkNotSupportedError
 from truss.model_frameworks import MODEL_FRAMEWORKS_BY_TYPE, model_framework_from_model
 from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.notebook import is_notebook_or_ipython
-from truss.truss_config import DEFAULT_EXAMPLES_FILENAME, TrussConfig
+from truss.truss_config import TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 from truss.util.gpu import get_gpu_memory
-from truss.util.path import build_truss_target_directory, copy_file_path, copy_tree_path
+from truss.util.path import build_truss_target_directory, copy_tree_path
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -43,18 +43,13 @@ def populate_target_directory(
     (target_directory_path_typed / config.data_dir).mkdir()
 
     # Create bundled packages dir
+    # TODO: Drop by default
     (target_directory_path_typed / config.bundled_packages_dir).mkdir()
 
     # Create model module dir
     model_dir = target_directory_path_typed / config.model_module_dir
     template_path = TEMPLATES_DIR / template
     copy_tree_path(template_path / "model", model_dir)
-
-    examples_path = template_path / DEFAULT_EXAMPLES_FILENAME
-    if examples_path.exists():
-        copy_file_path(
-            examples_path, target_directory_path_typed / DEFAULT_EXAMPLES_FILENAME
-        )
 
     # Write config
     with (target_directory_path_typed / CONFIG_FILE).open("w") as config_file:

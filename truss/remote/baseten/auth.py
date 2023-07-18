@@ -19,22 +19,14 @@ class ApiKey:
 
 class AuthService:
     def __init__(self, api_key: Optional[str] = None):
-        if api_key is not None:
-            self.set_key(api_key)
+        if not api_key:
+            api_key = os.environ.get("BASETEN_API_KEY", None)
+        self._api_key = api_key
 
     def validate(self):
-        if "BASETEN_API_KEY" not in os.environ:
-            raise AuthorizationError(
-                "Could not find BASETEN_API_KEY in environment variables."
-            )
+        if not self._api_key:
+            raise AuthorizationError("No API key provided.")
 
     def authenticate(self) -> ApiKey:
         self.validate()
-        return ApiKey(os.environ["BASETEN_API_KEY"])
-
-    def set_key(self, api_key: str) -> ApiKey:
-        logger.warning(
-            "Setting BASETEN_API_KEY in environment variables. This may not persist."
-        )
-        os.environ["BASETEN_API_KEY"] = api_key
-        return self.authenticate()
+        return ApiKey(self._api_key)  # type: ignore
