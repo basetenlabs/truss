@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx import URL, ConnectError
+from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import Response
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -75,7 +76,9 @@ async def proxy(request: Request):
 
     if _is_streaming_response(resp):
         return StreamingResponse(
-            resp.aiter_bytes(), media_type="application/octet-stream"
+            resp.aiter_raw(),
+            media_type="application/octet-stream",
+            background=BackgroundTask(resp.aclose),
         )
 
     await resp.aread()
