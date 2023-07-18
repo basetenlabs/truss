@@ -21,11 +21,13 @@ class APIJsonFormatter(jsonlogger.JsonFormatter):
             # Parse the necessary information from the message
             parts = message.split(" ")
 
-            if "http" in parts[3]:
+            if "/v1/models" in message:
+                # control server response
                 request_type = parts[2]
                 endpoint = parts[3].split(":")[-1]
                 new_message = f"{request_type} /{endpoint} calling model..."
             else:
+                # model prediction response
                 request_type = parts[2][1:]
                 endpoint = parts[3].split("%3A")[1]
                 status_code = parts[5]
