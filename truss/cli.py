@@ -28,16 +28,10 @@ def error_handling(f: Callable[..., object]):
             f(*args, **kwargs)
         except ValueError as e:
             click.echo(e)
-            print_help()
         except Exception as e:
             click.echo(e)
 
     return wrapper
-
-
-def print_help() -> None:
-    ctx = click.get_current_context()
-    click.echo(ctx.get_help())
 
 
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
