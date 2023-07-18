@@ -63,7 +63,13 @@ def create_app(base_config: Dict):
 
     limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
     app_state.proxy_client = httpx.AsyncClient(
-        base_url=f"http://localhost:{app_state.inference_server_port}", limits=limits
+        base_url=f"http://localhost:{app_state.inference_server_port}",
+        limits=limits,
+        # We set trust_env to False so that the control server ignores the http_proxy
+        # environment variable set on the model pod. This environment variable causes
+        # requests to be routed through nginx, which is not necessary for calls to the
+        # inference server. Going through the proxy causes some unexpected behavior.
+        trust_env=False,
     )
 
     pip_path = getattr(app_state, "pip_path", None)
