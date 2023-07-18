@@ -98,11 +98,10 @@ class ServingImageBuilder(ImageBuilder):
 
         data_files = []
         if data_dir.exists():
-            data_files = [file.name for file in data_dir.iterdir()]
-
-        # create dir for large files
-
-        # iterate over data_files and move large_files into that dir
+            # Recursively traverse all subdirectories and files within `data_dir`
+            for file in data_dir.rglob("*"):
+                if file.is_file():
+                    data_files.append(str(file.relative_to(data_dir)))
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
