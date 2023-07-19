@@ -352,8 +352,7 @@ class TrussConfig:
     @staticmethod
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
-            raw_data = yaml.safe_load(yaml_file) or {}
-            return TrussConfig.from_dict(raw_data)
+            return TrussConfig.from_dict(yaml.safe_load(yaml_file))
 
     def write_to_yaml_file(self, path: Path):
         with path.open("w") as config_file:
