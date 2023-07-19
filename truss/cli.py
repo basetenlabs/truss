@@ -26,9 +26,6 @@ def error_handling(f: Callable[..., object]):
     def wrapper(*args, **kwargs):
         try:
             f(*args, **kwargs)
-        except ValueError as e:
-            click.echo(e)
-            print_help()
         except Exception as e:
             click.echo(e)
 
