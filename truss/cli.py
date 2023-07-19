@@ -336,7 +336,7 @@ def push(
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
         tr.spec.config.model_name = model_name
-        tr.spec.config.write_to_yaml_file(tr.spec.config_path)
+        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
     _ = remote_provider.push(tr, model_name, publish=publish)  # type: ignore

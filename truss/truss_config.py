@@ -355,9 +355,9 @@ class TrussConfig:
             raw_data = yaml.safe_load(yaml_file) or {}
             return TrussConfig.from_dict(raw_data)
 
-    def write_to_yaml_file(self, path: Path):
+    def write_to_yaml_file(self, path: Path, verbose: bool = True):
         with path.open("w") as config_file:
-            yaml.dump(self.to_dict(verbose=True), config_file)
+            yaml.dump(self.to_dict(verbose=verbose), config_file)
 
     def to_dict(self, verbose: bool = True):
         return obj_to_dict(self, verbose=verbose)
