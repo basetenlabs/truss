@@ -309,7 +309,7 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
     "--publish",
     type=bool,
     required=False,
-    default=True,
+    default=False,
     help="Publish truss as production deployment.",
 )
 @error_handling
@@ -342,10 +342,9 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    service = remote_provider.push(tr, model_name, publish=publish)  # type: ignore
+    _ = remote_provider.push(tr, model_name, publish=publish)  # type: ignore
 
     click.echo(f"Model {model_name} was successfully pushed.")
-    click.echo(f"Service URL: {service._service_url}")
 
 
 @cli_group.command()
