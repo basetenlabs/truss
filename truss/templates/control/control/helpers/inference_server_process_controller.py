@@ -54,7 +54,7 @@ class InferenceServerProcessController:
                 pid = line.split()[0]
                 os.kill(int(pid), signal.SIGKILL)
 
-            # Introduce 5 second delay to avoid failing to grab the port
+            # Introduce delay to avoid failing to grab the port
             time.sleep(3)
 
         self._inference_server_started = False
