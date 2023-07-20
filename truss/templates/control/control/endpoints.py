@@ -48,6 +48,7 @@ async def proxy(request: Request):
         ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
         wait=wait_fixed(1),
+        reraise=True,
     ):
         with attempt:
             try:
@@ -58,6 +59,7 @@ async def proxy(request: Request):
                 resp = await client.send(inf_serv_req, stream=True)
 
                 if await _is_model_not_ready(resp):
+                    print("MODEL AINT READY BROTHER")
                     raise ModelNotReady("Model has started running, but not ready yet.")
             except ConnectionError as exp:
                 # This check is a bit expensive so we don't do it before every request, we

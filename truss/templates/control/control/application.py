@@ -8,7 +8,7 @@ import httpx
 from endpoints import control_app
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from helpers.errors import ModelLoadFailed, PatchApplicatonError
+from helpers.errors import ModelLoadFailed, ModelNotReady, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.inference_server_starter import async_inference_server_startup_flow
@@ -42,6 +42,10 @@ async def generic_error_handler(_, exc):
 
 async def handle_model_load_failed(_, error):
     # Model load failures should result in 503 status
+    return JSONResponse({"error": str(error)}, 503)
+
+
+async def handle_model_not_ready(_, error):
     return JSONResponse({"error": str(error)}, 503)
 
 
@@ -97,6 +101,7 @@ def create_app(base_config: Dict):
         exception_handlers={
             PatchApplicatonError: handle_patch_error,
             ModelLoadFailed: handle_model_load_failed,
+            ModelNotReady: handle_model_not_ready,
             Exception: generic_error_handler,
         },
     )
