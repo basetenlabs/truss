@@ -81,14 +81,16 @@ requirements:
 
 No other configuration needs to be changed.
 
-## Running
+## Deployment
 
-You can run a Truss server locally by:
+You can deploy a Truss to your [Baseten](https://baseten.co) account with:
 
 ```
 cd ./text-classification
-truss run-image
+truss push --api-key="your-baseten-api-key" --model-name="my-model" --remote-name="baseten"
 ```
+
+Truss will support other remotes soon, starting with AWS SageMaker.
 
 ## Truss contributors
 
