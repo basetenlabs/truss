@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -56,6 +57,55 @@ class ServingImageBuilder(ImageBuilder):
     def default_tag(self):
         return f"{self._spec.model_framework_name}-model:latest"
 
+    def bundle_files(self, data_dir, max_bundle_size=5 * 1024 * 1024 * 1024):
+        # Bundle files in `data_dir` into bundles of size <= `max_bundle_size` (default 5GB)
+
+        bundle_list = []
+        current_bundle = []
+        current_bundle_size = 0
+        files = []
+
+        if data_dir.exists():
+            # Recursively traverse all subdirectories and files within `data_dir`
+            for file in data_dir.rglob("*"):
+                if file.is_file():
+                    files.append((file, os.path.getsize(file)))
+
+            # Sort files by size
+            files.sort(key=lambda x: x[1])
+
+            # Bundle files
+            for file, file_size in files:
+                # Check if file size is larger than max_bundle_size
+                if file_size > max_bundle_size:
+                    # Start a new bundle for this file alone if it has size > max_bundle_size
+                    if current_bundle:
+                        # Append the current bundle to the list if it's not empty
+                        bundle_list.append(current_bundle)
+                    current_bundle = [str(file.relative_to(data_dir))]
+                    # Append the large file bundle to the list
+                    bundle_list.append(current_bundle)
+                    current_bundle = []
+                    current_bundle_size = 0
+                else:
+                    # Check if adding this file to current bundle will not exceed max size
+                    if current_bundle_size + file_size <= max_bundle_size:
+                        current_bundle.append(str(file.relative_to(data_dir)))
+                        current_bundle_size += file_size
+                    else:
+                        # Start a new bundle
+                        if current_bundle:
+                            # Append the current bundle to the list if it's not empty
+                            bundle_list.append(current_bundle)
+                        current_bundle = [str(file.relative_to(data_dir))]
+                        current_bundle_size = file_size
+
+            # Add any remaining files in the current bundle to the list
+            if current_bundle:
+                bundle_list.append(current_bundle)
+
+        return bundle_list
+
     def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
         """
         Prepare a directory for building the docker image from.
@@ -95,6 +145,13 @@ class ServingImageBuilder(ImageBuilder):
                     "files": list_repo_files(repo_id, revision=revision),
                     "revision": revision,
                 }
+
+        # Bundle data files
+        data_files = self.bundle_files(data_dir)
+        print(data_files)
+
+        # TODO(varun): test to make sure the current files are being bundled in a reasonable way
+        # TODO(varun): each bundle should be on a separate docker layer
 
         data_files = []
         if data_dir.exists():
