@@ -10,7 +10,7 @@ from truss.truss_handle import TrussHandle
 logger = logging.getLogger(__name__)
 
 
-def exists_model(api: BasetenApi, model_name: str) -> bool:
+def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     """
     Check if a model with the given name exists in the Baseten remote.
 
@@ -19,13 +19,13 @@ def exists_model(api: BasetenApi, model_name: str) -> bool:
         model_name: Name of the model to check for existence
 
     Returns:
-        True if the model exists, False otherwise
+        model_id if present, otherwise None
     """
     models = api.models()
     for model in models["models"]:
         if model["name"] == model_name:
-            return True
-    return False
+            return model["id"]
+    return None
 
 
 def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
@@ -85,7 +85,7 @@ def create_truss_service(
     semver_bump: Optional[str] = "MINOR",
     is_trusted: Optional[bool] = False,
     is_draft: Optional[bool] = False,
-    new_version: Optional[bool] = False,
+    model_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -117,6 +117,7 @@ def create_truss_service(
             semver_bump,
             f"truss=={truss.version()}",
             is_trusted,
+            model_id,
         )
 
     return (model_version_json["id"], model_version_json["version_id"])

@@ -33,9 +33,7 @@ class BasetenRemote(TrussRemote):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        new_version = False
-        if exists_model(self._api, model_name):
-            new_version = True
+        model_id = exists_model(self._api, model_name)
 
         gathered_truss = TrussHandle(truss_handle.gather())
         encoded_config_str = base64_encoded_json_str(
@@ -51,7 +49,7 @@ class BasetenRemote(TrussRemote):
             s3_key=s3_key,
             config=encoded_config_str,
             is_draft=not publish,
-            new_version=new_version,
+            model_id=model_id,
         )
 
         return BasetenService(
