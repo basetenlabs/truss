@@ -33,8 +33,9 @@ class BasetenRemote(TrussRemote):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
+        new_version = False
         if exists_model(self._api, model_name):
-            raise ValueError(f"Model with name {model_name} already exists")
+            new_version = True
 
         gathered_truss = TrussHandle(truss_handle.gather())
         encoded_config_str = base64_encoded_json_str(
@@ -43,12 +44,14 @@ class BasetenRemote(TrussRemote):
 
         temp_file = archive_truss(gathered_truss)
         s3_key = upload_truss(self._api, temp_file)
+
         model_id, model_version_id = create_truss_service(
             api=self._api,
             model_name=model_name,
             s3_key=s3_key,
             config=encoded_config_str,
             is_draft=not publish,
+            new_version=new_version,
         )
 
         return BasetenService(

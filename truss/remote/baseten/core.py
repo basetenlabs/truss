@@ -85,6 +85,7 @@ def create_truss_service(
     semver_bump: Optional[str] = "MINOR",
     is_trusted: Optional[bool] = False,
     is_draft: Optional[bool] = False,
+    new_version: Optional[bool] = False,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
