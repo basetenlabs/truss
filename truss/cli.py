@@ -305,6 +305,7 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 @click.option(
     "--publish",
     type=bool,
+    is_flag=True,
     required=False,
     default=False,
     help="Publish truss as production deployment.",
