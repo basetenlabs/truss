@@ -8,7 +8,6 @@ import traceback
 from collections.abc import Generator
 from enum import Enum
 from pathlib import Path
-from queue import Queue
 from threading import Lock, Thread
 from typing import Any, Dict, Optional, Union
 
@@ -36,7 +35,6 @@ class ModelWrapper:
         self.name = MODEL_BASENAME
         self.ready = False
         self._load_lock = Lock()
-        self._predict_lock = Lock()
         self._status = ModelWrapper.Status.NOT_READY
 
     def load(self) -> bool:
@@ -179,63 +177,19 @@ class ModelWrapper:
         payload: Any,
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
-        # self._predict_lock.acquire()
-        # defer_lock_release = False
-        # try:
         response = self.predict(payload, headers)
         response = self.postprocess(response, headers)
-        if not isinstance(response, Generator):
-            return response
 
-        # Generator response
-        if headers and headers.get("accept") == "application/json":
+        # In the case of a streaming response, consume stream
+        # if the http accept header is set, and json is requested.
+        if (
+            isinstance(response, Generator)
+            and headers
+            and headers.get("accept") == "application/json"
+        ):
             return _convert_streamed_response_to_string(response)
 
-            # Reaching here means streaming response, and need to defer releasing lock
-        #            defer_lock_release = True
-        #        finally:
-        #            if not defer_lock_release:
-        #                self._predict_lock.release()
-
-        # Streaming response
-        response_queue: Queue = Queue()
-
-        def queue_response_chunks():
-            # In a background thread, write the response chunks to a queue.
-            # In the main thread, read data from the queue until a "None"
-            # is written. This allows to us to use the predict lock only
-            # around the actual predict, and does not create a dependency
-            # on the client reading the entire response before releasing
-            # the lock.
-            #            try:
-            for chunk in response:
-                response_queue.put(ResponseChunk(chunk))
-            response_queue.put(None)
-
-        #            finally:
-        #                self._predict_lock.release()
-
-        response_generate_thread = Thread(target=queue_response_chunks)
-        response_generate_thread.start()
-        return _response_generator(response_queue)
-
-
-class ResponseChunk:
-    def __init__(self, value):
-        self.value = value
-
-
-def _response_generator(queue: Queue):
-    """
-    When returning the stream result, simply read from the response queue until a `None`
-    is reached.
-    """
-    while True:
-        chunk = queue.get(timeout=STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS)
-        if chunk is None:
-            return
-        else:
-            yield chunk.value
+        return response
 
 
 def _convert_streamed_response_to_string(response: Any):
