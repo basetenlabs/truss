@@ -179,23 +179,23 @@ class ModelWrapper:
         payload: Any,
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
-        self._predict_lock.acquire()
-        defer_lock_release = False
-        try:
-            response = self.predict(payload, headers)
-            response = self.postprocess(response, headers)
-            if not isinstance(response, Generator):
-                return response
+        # self._predict_lock.acquire()
+        # defer_lock_release = False
+        # try:
+        response = self.predict(payload, headers)
+        response = self.postprocess(response, headers)
+        if not isinstance(response, Generator):
+            return response
 
-            # Generator response
-            if headers and headers.get("accept") == "application/json":
-                return _convert_streamed_response_to_string(response)
+        # Generator response
+        if headers and headers.get("accept") == "application/json":
+            return _convert_streamed_response_to_string(response)
 
             # Reaching here means streaming response, and need to defer releasing lock
-            defer_lock_release = True
-        finally:
-            if not defer_lock_release:
-                self._predict_lock.release()
+        #            defer_lock_release = True
+        #        finally:
+        #            if not defer_lock_release:
+        #                self._predict_lock.release()
 
         # Streaming response
         response_queue: Queue = Queue()
@@ -207,12 +207,13 @@ class ModelWrapper:
             # around the actual predict, and does not create a dependency
             # on the client reading the entire response before releasing
             # the lock.
-            try:
-                for chunk in response:
-                    response_queue.put(ResponseChunk(chunk))
-                response_queue.put(None)
-            finally:
-                self._predict_lock.release()
+            #            try:
+            for chunk in response:
+                response_queue.put(ResponseChunk(chunk))
+            response_queue.put(None)
+
+        #            finally:
+        #                self._predict_lock.release()
 
         response_generate_thread = Thread(target=queue_response_chunks)
         response_generate_thread.start()
