@@ -51,9 +51,9 @@ COPY ./cache_warmer.py /cache_warmer.py
         {% for repo, hf_dir in models.items() %}
             {% for file in hf_dir.files %}
                 {%- if hf_dir.revision != None %}
-RUN python /cache_warmer.py {{file}} {{repo}} {{hf_dir.revision}}
+RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {{hf_dir.revision}}
                 {%- else %}
-RUN python /cache_warmer.py {{file}} {{repo}}
+RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
                 {%- endif %}
             {% endfor %}
         {% endfor %}
@@ -65,7 +65,7 @@ RUN python /cache_warmer.py {{file}} {{repo}}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
     {%- for file_list in data_files%}
-COPY ./{{config.data_dir}}/{{file}} /app/data/{{file}}
+RUN $PYTHON_EXECUTABLE /data_copier.py ./{{config.data_dir}} /app/data {{file_list}}
     {% endfor %}
 {%- endif %}
 

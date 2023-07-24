@@ -103,7 +103,7 @@ class ServingImageBuilder(ImageBuilder):
             # Add any remaining files in the current bundle to the list
             if current_bundle:
                 bundle_list.append(current_bundle)
-
+       
         return bundle_list
 
     def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
@@ -135,8 +135,8 @@ class ServingImageBuilder(ImageBuilder):
 
         # Download from HuggingFace
         model_files = {}
+        curr_dir = Path(__file__).parent.resolve()
         if config.hf_cache:
-            curr_dir = Path(__file__).parent.resolve()
             copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
             for model in config.hf_cache.models:
                 repo_id = model.repo_id
@@ -146,6 +146,8 @@ class ServingImageBuilder(ImageBuilder):
                     "revision": revision,
                 }
 
+        copy_into_build_dir(curr_dir / "data_copier.py", "data_copier.py")
+        
         # Bundle data files
         data_files = self.bundle_files(data_dir)
         print(data_files)
@@ -153,12 +155,12 @@ class ServingImageBuilder(ImageBuilder):
         # TODO(varun): test to make sure the current files are being bundled in a reasonable way
         # TODO(varun): each bundle should be on a separate docker layer
 
-        data_files = []
-        if data_dir.exists():
-            # Recursively traverse all subdirectories and files within `data_dir`
-            for file in data_dir.rglob("*"):
-                if file.is_file():
-                    data_files.append(str(file.relative_to(data_dir)))
+        # data_files = []
+        # if data_dir.exists():
+        #     # Recursively traverse all subdirectories and files within `data_dir`
+        #     for file in data_dir.rglob("*"):
+        #         if file.is_file():
+        #             data_files.append(str(file.relative_to(data_dir)))
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
