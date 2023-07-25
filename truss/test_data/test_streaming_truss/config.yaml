@@ -21,6 +21,8 @@ resources:
   cpu: 500m
   memory: 512Mi
   use_gpu: false
+runtime:
+  predict_concurrency: 1
 secrets: {}
 spec_version: '2.0'
 system_packages: []

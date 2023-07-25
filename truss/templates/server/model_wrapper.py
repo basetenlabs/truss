@@ -21,6 +21,7 @@ MODEL_BASENAME = "model"
 
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
+DEFAULT_PREDICT_CONCURRENCY = 1
 
 
 class ModelWrapper:
@@ -37,7 +38,11 @@ class ModelWrapper:
         self.ready = False
         self._load_lock = Lock()
         self._status = ModelWrapper.Status.NOT_READY
-        self._predict_semaphore = Semaphore(2)
+        self._predict_semaphore = Semaphore(
+            self._config.get("runtime", {}).get(
+                "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
+            )
+        )
 
     def load(self) -> bool:
         if self.ready:
