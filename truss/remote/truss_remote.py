@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 import requests
@@ -186,3 +187,11 @@ class TrussRemote(ABC):
             **kwargs: Additional keyword arguments for the authentication operation.
         """
         pass
+
+
+@dataclass
+class RemoteConfig:
+    """Class to hold configs for various remotes"""
+
+    name: str
+    configs: Dict = field(default_factory=dict)

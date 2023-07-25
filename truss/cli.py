@@ -8,6 +8,7 @@ from typing import Callable, List, Optional, Union
 import click
 import truss
 import yaml
+from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import RemoteFactory
 
 logging.basicConfig(level=logging.INFO)
@@ -298,7 +299,7 @@ def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file,
 @click.option(
     "--remote",
     type=str,
-    required=True,
+    required=False,
     help="Name of the remote in .trussrc to push to",
 )
 @click.option("--model-name", type=str, required=False, help="Name of the model")
@@ -323,16 +324,17 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
     remote_provider = RemoteFactory.create(remote=remote)
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     # Push
     model_name = model_name or tr.spec.config.model_name
-    if model_name is None:
-        raise ValueError(
-            "Model name must be provided either as a flag or in the Truss config"
-        )
+    if not model_name:
+        model_name = inquire_model_name()
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
