@@ -141,6 +141,20 @@ class ModelWrapper:
         else:
             return await to_thread.run_sync(self._model.preprocess, payload)
 
+    def _execute_sync_predict(self, payload):
+        try:
+            return self._model.predict(payload)
+        except Exception:
+            logging.exception("Exception while running predict")
+            return {"error": {"traceback": traceback.format_exc()}}
+
+    async def _execute_async_predict(self, payload):
+        try:
+            await self._model.predict(payload)
+        except Exception:
+            logging.exception("Exception while running predict")
+            return {"error": {"traceback": traceback.format_exc()}}
+
     async def predict(
         self,
         payload: Any,
@@ -154,19 +168,15 @@ class ModelWrapper:
         #   3. Coroutine -- in this case, await the predict function as it is async
         #   4. Normal function -- in this case, offload to a separate thread to prevent
         #      blocking the main event loop
-        try:
-            if inspect.isasyncgenfunction(
-                self._model.predict
-            ) or inspect.isgeneratorfunction(self._model.predict):
-                return self._model.predict(payload)
+        if inspect.isasyncgenfunction(
+            self._model.predict
+        ) or inspect.isgeneratorfunction(self._model.predict):
+            return self._model.predict(payload)
 
-            if inspect.iscoroutinefunction(self._model.predict):
-                return await self._model.predict(payload)
+        if inspect.iscoroutinefunction(self._model.predict):
+            return await self._execute_async_predict(payload)
 
-            return await to_thread.run_sync(self._model.predict, payload)
-        except Exception:
-            logging.exception("Exception while running predict")
-            return {"error": {"traceback": traceback.format_exc()}}
+        return await to_thread.run_sync(self._execute_sync_predict, payload)
 
     async def postprocess(
         self,
