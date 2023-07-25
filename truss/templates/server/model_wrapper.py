@@ -206,7 +206,9 @@ class ModelWrapper:
     async def write_response_to_queue(
         self, queue: asyncio.Queue, generator: AsyncGenerator
     ):
+        print("starting write response to queue task")
         async for chunk in generator:
+            print("writing a chunk")
             await queue.put(ResponseChunk(chunk))
 
         await queue.put(None)
@@ -248,7 +250,7 @@ class ModelWrapper:
                 response_queue: asyncio.Queue = asyncio.Queue()
 
                 task = asyncio.create_task(
-                    self.write_response_to_queue(response_queue, processed_response)
+                    self.write_response_to_queue(response_queue, async_generator)
                 )
                 self._background_tasks.add(task)
 
@@ -256,7 +258,10 @@ class ModelWrapper:
 
                 async def _response_generator():
                     while True:
-                        chunk = await response_queue.get()
+                        chunk = await asyncio.wait_for(
+                            response_queue.get(),
+                            timeout=STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS,
+                        )
                         if chunk is None:
                             return
                         yield chunk.value
