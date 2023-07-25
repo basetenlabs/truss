@@ -150,7 +150,7 @@ class ModelWrapper:
 
     async def _execute_async_predict(self, payload):
         try:
-            await self._model.predict(payload)
+            return await self._model.predict(payload)
         except Exception:
             logging.exception("Exception while running predict")
             return {"error": {"traceback": traceback.format_exc()}}
