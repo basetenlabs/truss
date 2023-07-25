@@ -1,11 +1,13 @@
 import json
 import logging
 import os
+import sys
 from functools import wraps
 from pathlib import Path
 from typing import Callable, List, Optional, Union
 
 import click
+import rich
 import truss
 import yaml
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
@@ -154,7 +156,7 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
 @click.option(
     "--remote",
     type=str,
-    required=True,
+    required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
 @error_handling
@@ -169,14 +171,21 @@ def watch(
     """
 
     # TODO: ensure that provider support draft
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
     remote_provider = RemoteFactory.create(remote=remote)
 
     tr = _get_truss_from_directory(target_directory=target_directory)
     model_name = tr.spec.config.model_name
     if not model_name:
-        raise ValueError("'NoneType' model_name value provided in config.yaml")
+        rich.print(
+            "🧐 NoneType model_name provided in config.yaml. "
+            "Please check that you have the correct model name in your config file."
+        )
+        sys.exit(1)
 
-    click.echo(f"Watching for changes to truss at: {target_directory} ...")
+    rich.print(f"👀 Watching for changes to truss at '{target_directory}' ...")
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
 
 

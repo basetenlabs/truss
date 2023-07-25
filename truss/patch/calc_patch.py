@@ -87,6 +87,7 @@ def calc_truss_patch(
     patches = []
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
+            logger.info(f"Created patch to remove model code file: {path}")
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
@@ -101,6 +102,7 @@ def calc_truss_patch(
             logger.info(f"Patching not supported for removing {path}")
             return None
         elif _strictly_under(path, [bundled_packages_path]):
+            logger.info(f"Created patch to remove package file: {path}")
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,
@@ -122,6 +124,9 @@ def calc_truss_patch(
             # TODO(pankaj) Add support for empty directories, skip them for now.
             if not full_path.is_file():
                 continue
+            logger.info(
+                f"Created patch to {action.value.lower()} model code file: {path}"
+            )
             patches.append(
                 Patch(
                     type=PatchType.MODEL_CODE,
@@ -138,12 +143,14 @@ def calc_truss_patch(
                 yaml.safe_load(previous_truss_signature.config)
             )
             config_patches = calc_config_patches(prev_config, new_config)
+            if config_patches:
+                logger.info(f"Created patch to {action.value.lower()} config")
             patches.extend(config_patches)
         elif _strictly_under(path, [bundled_packages_path]):
             full_path = truss_dir / path
             if not full_path.is_file():
                 continue
-
+            logger.info(f"Created patch to {action.value.lower()} package file: {path}")
             patches.append(
                 Patch(
                     type=PatchType.PACKAGE,
@@ -223,13 +230,16 @@ def calc_config_patches(
     Returns None if patch cannot be calculated. Empty list means no relevant
     differences found.
     """
-
-    config_patches = _calc_general_config_patches(prev_config, new_config)
-    python_requirement_patches = _calc_python_requirements_patches(
-        prev_config, new_config
-    )
-    system_package_patches = _calc_system_packages_patches(prev_config, new_config)
-    return [*config_patches, *python_requirement_patches, *system_package_patches]
+    try:
+        config_patches = _calc_general_config_patches(prev_config, new_config)
+        python_requirement_patches = _calc_python_requirements_patches(
+            prev_config, new_config
+        )
+        system_package_patches = _calc_system_packages_patches(prev_config, new_config)
+        return [*config_patches, *python_requirement_patches, *system_package_patches]
+    except Exception as e:
+        logger.error(f"Failed to calculate config patch with exception: {e}")
+        raise
 
 
 def _calc_general_config_patches(
