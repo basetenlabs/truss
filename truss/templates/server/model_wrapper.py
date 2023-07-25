@@ -247,6 +247,7 @@ class ModelWrapper:
                 # exit the semaphore block.
                 response_queue: asyncio.Queue = asyncio.Queue()
 
+                # This task will be triggered and run in the background.
                 task = asyncio.create_task(
                     self.write_response_to_queue(response_queue, async_generator)
                 )
@@ -292,6 +293,10 @@ def _force_async_generator(gen: Union[Generator, AsyncGenerator]) -> AsyncGenera
         """
         FINAL_GENERATOR_VALUE = object()
         while True:
+            # Note that this is the equivalent of running:
+            # next(gen, FINAL_GENERATOR_VALUE) on a separate thread,
+            # ensuring that if there is anything blocking in the generator,
+            # it does not block the main loop.
             chunk = await to_thread.run_sync(next, gen, FINAL_GENERATOR_VALUE)
             if chunk == FINAL_GENERATOR_VALUE:
                 break
