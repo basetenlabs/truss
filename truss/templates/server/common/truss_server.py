@@ -137,9 +137,6 @@ class BasetenEndpoints:
             headers=utils.transform_keys(request.headers, lambda key: key.lower()),
         )
 
-        print("in the truss server")
-        print(response)
-
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.
         if isinstance(response, Generator) or isinstance(response, AsyncGenerator):
