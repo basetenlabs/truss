@@ -33,7 +33,7 @@ def inquire_remote_name(available_remotes: List[str]) -> str:
         remote = inquirer.select(
             "🎮 Which remote do you want to push to?",
             qmark="",
-            choices=[available_remotes],
+            choices=available_remotes,
         ).execute()
         return remote
     elif len(available_remotes) == 1:
