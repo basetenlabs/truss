@@ -206,9 +206,7 @@ class ModelWrapper:
     async def write_response_to_queue(
         self, queue: asyncio.Queue, generator: AsyncGenerator
     ):
-        print("starting write response to queue task")
         async for chunk in generator:
-            print("writing a chunk")
             await queue.put(ResponseChunk(chunk))
 
         await queue.put(None)
