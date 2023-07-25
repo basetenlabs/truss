@@ -142,14 +142,14 @@ class ModelWrapper:
         else:
             return await to_thread.run_sync(self._model.preprocess, payload)
 
-    def _execute_sync_predict(self, payload):
+    def _predict_sync_with_error_handling(self, payload):
         try:
             return self._model.predict(payload)
         except Exception:
             logging.exception("Exception while running predict")
             return {"error": {"traceback": traceback.format_exc()}}
 
-    async def _execute_async_predict(self, payload):
+    async def _predict_async_with_error_handling(self, payload):
         try:
             return await self._model.predict(payload)
         except Exception:
@@ -175,9 +175,9 @@ class ModelWrapper:
             return self._model.predict(payload)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await self._execute_async_predict(payload)
+            return await self._predict_async_with_error_handling(payload)
 
-        return await to_thread.run_sync(self._execute_sync_predict, payload)
+        return await to_thread.run_sync(self._predict_sync_with_error_handling, payload)
 
     async def postprocess(
         self,
