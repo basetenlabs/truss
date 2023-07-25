@@ -10,7 +10,7 @@ from collections.abc import Generator
 from enum import Enum
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
 from anyio import Semaphore, to_thread
 from common.patches import apply_patches
@@ -43,6 +43,7 @@ class ModelWrapper:
                 "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
             )
         )
+        self._background_tasks: Set[asyncio.Task] = set()
 
     def load(self) -> bool:
         if self.ready:
@@ -195,12 +196,20 @@ class ModelWrapper:
         if inspect.isasyncgenfunction(
             self._model.postprocess
         ) or inspect.isgeneratorfunction(self._model.postprocess):
-            return self._model.predict(response, headers)
+            return self._model.postprocess(response, headers)
 
         if inspect.iscoroutinefunction(self._model.postprocess):
             return await self._model.postprocess(response)
 
         return await to_thread.run_sync(self._model.postprocess, response)
+
+    async def write_response_to_queue(
+        self, queue: asyncio.Queue, generator: AsyncGenerator
+    ):
+        async for chunk in generator:
+            await queue.put(ResponseChunk(chunk))
+
+        await queue.put(None)
 
     async def __call__(
         self, body: Any, headers: Optional[Dict[str, str]] = None
@@ -237,10 +246,11 @@ class ModelWrapper:
                 # queue. We then return a new generator that reads from the queue, and then
                 # exit the semaphore block.
                 response_queue: asyncio.Queue = asyncio.Queue()
-                async for chunk in async_generator:
-                    await response_queue.put(ResponseChunk(chunk))
 
-                await response_queue.put(None)
+                task = asyncio.create_task(
+                    self.write_response_to_queue(response_queue, processed_response)
+                )
+                task.add_done_callback(self._background_tasks.discard)
 
                 async def _response_generator():
                     while True:
