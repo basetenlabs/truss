@@ -250,6 +250,8 @@ class ModelWrapper:
                 task = asyncio.create_task(
                     self.write_response_to_queue(response_queue, processed_response)
                 )
+                self._background_tasks.add(task)
+
                 task.add_done_callback(self._background_tasks.discard)
 
                 async def _response_generator():
