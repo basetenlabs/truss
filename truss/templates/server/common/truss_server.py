@@ -10,7 +10,7 @@ import sys
 import time
 from collections.abc import Generator
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import AsyncGenerator, Dict, List, Optional, Union
 
 import common.errors as errors
 import shared.util as utils
@@ -107,15 +107,15 @@ class BasetenEndpoints:
 
         return {}
 
-    def invocations(
+    async def invocations(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
         """
         This method provides compatibility with Sagemaker hosting for the 'invocations' endpoint.
         """
-        return self.predict(self._model.name, request, body_raw)
+        return await self.predict(self._model.name, request, body_raw)
 
-    def predict(
+    async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
         """
@@ -132,16 +132,17 @@ class BasetenEndpoints:
             body = json.loads(body_raw)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Union[Dict, Generator] = asyncio.run(
-            model(
-                body,
-                headers=utils.transform_keys(request.headers, lambda key: key.lower()),
-            )
+        response: Union[Dict, Generator] = await model(
+            body,
+            headers=utils.transform_keys(request.headers, lambda key: key.lower()),
         )
+
+        print("in the truss server")
+        print(response)
 
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.
-        if isinstance(response, Generator):
+        if isinstance(response, Generator) or isinstance(response, AsyncGenerator):
             # media_type in StreamingResponse sets the Content-Type header
             return StreamingResponse(response, media_type="application/octet-stream")
 
