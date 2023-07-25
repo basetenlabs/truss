@@ -1,4 +1,3 @@
-import time
 from typing import Any, Dict, List
 
 
@@ -11,10 +10,13 @@ class Model:
 
     def load(self):
         # Load model here and assign to self._model.
-        print("hello")
         pass
 
-    def predict(self, model_input: Any) -> Dict[str, List]:
-        # Invoke model on model_input and calculate predictions here.
-        time.sleep(2)
+    async def preprocess(self, model_input: Dict):
+        return {"preprocess_value": "value", **model_input}
+
+    async def postprocess(self, response: Dict):
+        return {"postprocess_value": "value", **response}
+
+    async def predict(self, model_input: Any) -> Dict[str, List]:
         return model_input

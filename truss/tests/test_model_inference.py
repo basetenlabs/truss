@@ -160,7 +160,6 @@ def test_model_load_failure_truss():
 @pytest.mark.integration
 def test_concurrency_truss():
     # Tests that concurrency limits work correctly
-
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
 
@@ -194,6 +193,55 @@ def test_concurrency_truss():
         successful_thread_2.join()
         with pytest.raises(requests.exceptions.ReadTimeout):
             failed_thread.join()
+
+
+@pytest.mark.integration
+def test_async_truss():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_async_truss"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.json() == {
+            "preprocess_value": "value",
+            "postprocess_value": "value",
+        }
+
+
+@pytest.mark.integration
+def test_async_streaming():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_streaming_async_generator_truss"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={}, stream=True)
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["0", "1", "2", "3", "4"]
+
+        predict_non_stream_response = requests.post(
+            full_url,
+            json={},
+            stream=True,
+            headers={"accept": "application/json"},
+        )
+        assert "transfer-encoding" not in predict_non_stream_response.headers
+        assert predict_non_stream_response.json() == "01234"
 
 
 @pytest.mark.integration

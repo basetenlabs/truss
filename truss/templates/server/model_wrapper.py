@@ -158,7 +158,8 @@ class ModelWrapper:
             if inspect.isasyncgenfunction(
                 self._model.predict
             ) or inspect.isgeneratorfunction(self._model.predict):
-                return self._model.predict(payload, headers)
+                print("is generator function")
+                return self._model.predict(payload)
 
             if inspect.iscoroutinefunction(self._model.predict):
                 return await self._model.predict(payload)
@@ -210,11 +211,13 @@ class ModelWrapper:
 
         async with self._predict_semaphore:
             response = await self.predict(payload, headers)
+            print(response)
 
             processed_response = await self.postprocess(response)
 
-            # Generator cases
+            # Streaming cases
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
+                print("in streaming case")
                 async_generator = _force_async_generator(response)
 
                 if headers and headers.get("accept") == "application/json":
