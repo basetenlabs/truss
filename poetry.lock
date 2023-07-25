@@ -2542,6 +2542,17 @@ files = [
 ]
 
 [[package]]
+name = "proxy-py"
+version = "2.4.3"
+description = "⚡ Fast • 🪶 Lightweight • 0️⃣ Dependency • 🔌 Pluggable • 😈 TLS interception • 🔒 DNS-over-HTTPS • 🔥 Poor Mans VPN • ⏪ Reverse & ⏩ Forward • 👮🏿 Proxy Server framework • 🌐 Web Server framework • ➵ ➶ ➷ ➠ PubSub framework • 👷 Work acceptor & executor framework."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "proxy.py-2.4.3-py3-none-any.whl", hash = "sha256:03df22468fd9a9da540a5b736cd24c88dead398d887bb78340c54764146cc651"},
+    {file = "proxy.py-2.4.3.tar.gz", hash = "sha256:6134e8f1282db1fd7fa1a4b7049e49307566851023b2ac312d9dd36e92f0c9b1"},
+]
+
+[[package]]
 name = "psutil"
 version = "5.9.5"
 description = "Cross-platform lib for process and system monitoring in Python."
@@ -4457,4 +4468,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "24e514baf8d8a5647081058390bcd365a7ed7977c691803df95d12068f0eb934"
+content-hash = "96dc585f54866ea31835900d8810de18452d7ea630f7fb49b6244f3be1ed9448"

@@ -13,6 +13,10 @@ TERMINATION_TIMEOUT_SECS = 120.0
 TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
 
+def is_inference_server_intentionally_stopped() -> bool:
+    return INFERENCE_SERVER_FAILED_FILE.exists()
+
+
 class InferenceServerProcessController:
     _inference_server_process: Optional[subprocess.Popen] = None
     _inference_server_port: int
@@ -87,9 +91,6 @@ class InferenceServerProcessController:
             return False
 
         return self._inference_server_process.poll() is None
-
-    def is_inference_server_intentionally_stopped(self) -> bool:
-        return INFERENCE_SERVER_FAILED_FILE.exists()
 
     def is_inference_server_terminated(self) -> bool:
         return self._inference_server_terminated
