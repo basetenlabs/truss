@@ -2,7 +2,7 @@ from unittest import mock
 
 import pytest
 from truss.remote.remote_factory import RemoteFactory
-from truss.remote.truss_remote import TrussRemote
+from truss.remote.truss_remote import RemoteConfig, TrussRemote
 
 SAMPLE_CONFIG = {"api_key": "test_key", "remote_url": "http://test.com"}
 
@@ -38,11 +38,17 @@ class TestRemote(TrussRemote):
 
 
 def mock_service_config():
-    return {"remote_provider": "test_remote", **SAMPLE_CONFIG}
+    return RemoteConfig(
+        name="mock-service",
+        configs={"remote_provider": "test_remote", **SAMPLE_CONFIG},
+    )
 
 
 def mock_incorrect_service_config():
-    return {"remote_provider": "nonexistent_remote", **SAMPLE_CONFIG}
+    return RemoteConfig(
+        name="mock-incorrect-service",
+        configs={"remote_provider": "nonexistent_remote", **SAMPLE_CONFIG},
+    )
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
@@ -73,7 +79,8 @@ def test_create_no_service(mock_load_remote_config):
 @mock.patch("pathlib.Path.exists", return_value=True)
 def test_load_remote_config(mock_exists, mock_open):
     service = RemoteFactory.load_remote_config("test")
-    assert service == {"remote_provider": "test_remote", **SAMPLE_CONFIG}
+    assert service.name == "test"
+    assert service.configs == {"remote_provider": "test_remote", **SAMPLE_CONFIG}
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
@@ -104,9 +111,9 @@ def test_required_params():
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
 def test_validate_remote_config_no_remote(mock_exists, mock_open):
+    service = RemoteFactory.load_remote_config("test")
     with pytest.raises(ValueError):
-        service = RemoteFactory.load_remote_config("test")
-        RemoteFactory.validate_remote_config(service, "test")
+        RemoteFactory.validate_remote_config(service.configs, "test")
 
 
 @mock.patch.dict(RemoteFactory.REGISTRY, {"test_remote": TestRemote}, clear=True)
@@ -115,6 +122,6 @@ def test_validate_remote_config_no_remote(mock_exists, mock_open):
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
 def test_load_remote_config_no_params(mock_exists, mock_open):
+    service = RemoteFactory.load_remote_config("test")
     with pytest.raises(ValueError):
-        service = RemoteFactory.load_remote_config("test")
-        RemoteFactory.validate_remote_config(service, "test")
+        RemoteFactory.validate_remote_config(service.configs, "test")

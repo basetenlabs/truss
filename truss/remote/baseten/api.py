@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import requests
 from truss.remote.baseten.auth import AuthService
@@ -64,10 +65,18 @@ class BasetenApi:
         semver_bump,
         client_version,
         is_trusted=False,
+        model_id: Optional[str] = None,
     ):
+        if model_id:
+            mutation = "create_model_version_from_truss"
+            first_arg = f'model_id: "{model_id}"'
+        else:
+            mutation = "create_model_from_truss"
+            first_arg = f'name: "{model_name}"'
+
         query_string = f"""
         mutation {{
-        create_model_from_truss(name: "{model_name}",
+        {mutation}({first_arg},
                     s3_key: "{s3_key}",
                     config: "{config}",
                     semver_bump: "{semver_bump}",
@@ -81,7 +90,7 @@ class BasetenApi:
         }}
         """
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["create_model_from_truss"]
+        return resp["data"][mutation]
 
     def create_development_model_from_truss(
         self,
