@@ -139,9 +139,12 @@ class BasetenEndpoints:
 
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.
-        if isinstance(response, Generator) or isinstance(response, AsyncGenerator):
+        if isinstance(response, (Generator, AsyncGenerator)):
             # media_type in StreamingResponse sets the Content-Type header
+            print("In truss_server, returning streaming response")
             return StreamingResponse(response, media_type="application/octet-stream")
+
+        print("In truss_server, returning normal response: " + str(type(response)))
 
         response_headers = {}
         if self.is_binary(request):

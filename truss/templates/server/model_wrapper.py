@@ -204,7 +204,7 @@ class ModelWrapper:
 
     async def __call__(
         self, body: Any, headers: Optional[Dict[str, str]] = None
-    ) -> Union[Dict, Generator]:
+    ) -> Union[Dict, Generator, AsyncGenerator]:
         """Method to call predictor or explainer with the given input.
 
         Args:
@@ -224,7 +224,9 @@ class ModelWrapper:
             processed_response = await self.postprocess(response)
 
             # Streaming cases
+            print("response type: " + str(type(processed_response)))
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
+                print("IN Generator case model wrapper")
                 async_generator = _force_async_generator(response)
 
                 if headers and headers.get("accept") == "application/json":
