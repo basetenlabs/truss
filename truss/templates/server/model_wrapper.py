@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import inspect
 import logging
@@ -8,11 +9,10 @@ import traceback
 from collections.abc import Generator
 from enum import Enum
 from pathlib import Path
-from queue import Queue
 from threading import Lock, Thread
-from typing import Any, Dict, Optional, Union
+from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
-from anyio import to_thread
+from anyio import Semaphore, to_thread
 from common.patches import apply_patches
 from common.retry import retry
 from shared.secrets_resolver import SecretsResolver
@@ -21,6 +21,7 @@ MODEL_BASENAME = "model"
 
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
+DEFAULT_PREDICT_CONCURRENCY = 1
 
 
 class ModelWrapper:
@@ -36,8 +37,13 @@ class ModelWrapper:
         self.name = MODEL_BASENAME
         self.ready = False
         self._load_lock = Lock()
-        self._predict_lock = Lock()
         self._status = ModelWrapper.Status.NOT_READY
+        self._predict_semaphore = Semaphore(
+            self._config.get("runtime", {}).get(
+                "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
+            )
+        )
+        self._background_tasks: Set[asyncio.Task] = set()
 
     def load(self) -> bool:
         if self.ready:
@@ -123,34 +129,87 @@ class ModelWrapper:
                 gap_seconds=1.0,
             )
 
-    def preprocess(
+    async def preprocess(
         self,
         payload: Any,
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         if not hasattr(self._model, "preprocess"):
             return payload
-        return self._model.preprocess(payload)  # type: ignore
 
-    def postprocess(
-        self,
-        response: Any,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Any:
-        if not hasattr(self._model, "postprocess"):
-            return response
-        return self._model.postprocess(response)  # type: ignore
+        if inspect.iscoroutinefunction(self._model.preprocess):
+            return await self._model.preprocess(payload)
+        else:
+            return await to_thread.run_sync(self._model.preprocess, payload)
 
-    def predict(
+    def _predict_sync_with_error_handling(self, payload):
+        try:
+            return self._model.predict(payload)
+        except Exception:
+            logging.exception("Exception while running predict")
+            return {"error": {"traceback": traceback.format_exc()}}
+
+    async def _predict_async_with_error_handling(self, payload):
+        try:
+            return await self._model.predict(payload)
+        except Exception:
+            logging.exception("Exception while running predict")
+            return {"error": {"traceback": traceback.format_exc()}}
+
+    async def predict(
         self,
         payload: Any,
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
-        try:
-            return self._model.predict(payload)  # type: ignore
-        except Exception:
-            logging.exception("Exception while running predict")
-            return {"error": {"traceback": traceback.format_exc()}}
+        # It's possible for the user's predict function to be a:
+        #   1. Generator function (function that returns a generator)
+        #   2. Async generator (function that returns async generator)
+        # In these cases, just return the generator or async generator,
+        # as we will be propagating these up. No need for await at this point.
+        #   3. Coroutine -- in this case, await the predict function as it is async
+        #   4. Normal function -- in this case, offload to a separate thread to prevent
+        #      blocking the main event loop
+        if inspect.isasyncgenfunction(
+            self._model.predict
+        ) or inspect.isgeneratorfunction(self._model.predict):
+            return self._model.predict(payload)
+
+        if inspect.iscoroutinefunction(self._model.predict):
+            return await self._predict_async_with_error_handling(payload)
+
+        return await to_thread.run_sync(self._predict_sync_with_error_handling, payload)
+
+    async def postprocess(
+        self,
+        response: Any,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        # Similar to the predict function, it is possible for postprocess
+        # to return either a generator or async generator, in which case
+        # just return the generator.
+        #
+        # It can also return a coroutine or just be a function, in which
+        # case either await, or offload to a thread respectively.
+        if not hasattr(self._model, "postprocess"):
+            return response
+
+        if inspect.isasyncgenfunction(
+            self._model.postprocess
+        ) or inspect.isgeneratorfunction(self._model.postprocess):
+            return self._model.postprocess(response, headers)
+
+        if inspect.iscoroutinefunction(self._model.postprocess):
+            return await self._model.postprocess(response)
+
+        return await to_thread.run_sync(self._model.postprocess, response)
+
+    async def write_response_to_queue(
+        self, queue: asyncio.Queue, generator: AsyncGenerator
+    ):
+        async for chunk in generator:
+            await queue.put(ResponseChunk(chunk))
+
+        await queue.put(None)
 
     async def __call__(
         self, body: Any, headers: Optional[Dict[str, str]] = None
@@ -166,57 +225,49 @@ class ModelWrapper:
             Generator: In case of streaming response
         """
 
-        payload = (
-            await self.preprocess(body, headers)
-            if inspect.iscoroutinefunction(self.preprocess)
-            else self.preprocess(body, headers)
-        )
+        payload = await self.preprocess(body, headers)
 
-        return await to_thread.run_sync(self._predict_and_post, payload, headers)
+        async with self._predict_semaphore:
+            response = await self.predict(payload, headers)
 
-    def _predict_and_post(
-        self,
-        payload: Any,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Any:
-        self._predict_lock.acquire()
-        defer_lock_release = False
-        try:
-            response = self.predict(payload, headers)
-            response = self.postprocess(response, headers)
-            if not isinstance(response, Generator):
-                return response
+            processed_response = await self.postprocess(response)
 
-            # Generator response
-            if headers and headers.get("accept") == "application/json":
-                return _convert_streamed_response_to_string(response)
+            # Streaming cases
+            if inspect.isgenerator(response) or inspect.isasyncgen(response):
+                async_generator = _force_async_generator(response)
 
-            # Reaching here means streaming response, and need to defer releasing lock
-            defer_lock_release = True
-        finally:
-            if not defer_lock_release:
-                self._predict_lock.release()
+                if headers and headers.get("accept") == "application/json":
+                    # In the case of a streaming response, consume stream
+                    # if the http accept header is set, and json is requested.
+                    return await _convert_streamed_response_to_string(async_generator)
 
-        # Streaming response
-        response_queue: Queue = Queue()
+                # To ensure that a partial read from a client does not cause the semaphore
+                # to stay claimed, we immediately write all of the data from the stream to a
+                # queue. We then return a new generator that reads from the queue, and then
+                # exit the semaphore block.
+                response_queue: asyncio.Queue = asyncio.Queue()
 
-        def queue_response_chunks():
-            # In a background thread, write the response chunks to a queue.
-            # In the main thread, read data from the queue until a "None"
-            # is written. This allows to us to use the predict lock only
-            # around the actual predict, and does not create a dependency
-            # on the client reading the entire response before releasing
-            # the lock.
-            try:
-                for chunk in response:
-                    response_queue.put(ResponseChunk(chunk))
-                response_queue.put(None)
-            finally:
-                self._predict_lock.release()
+                # This task will be triggered and run in the background.
+                task = asyncio.create_task(
+                    self.write_response_to_queue(response_queue, async_generator)
+                )
+                self._background_tasks.add(task)
 
-        response_generate_thread = Thread(target=queue_response_chunks)
-        response_generate_thread.start()
-        return _response_generator(response_queue)
+                task.add_done_callback(self._background_tasks.discard)
+
+                async def _response_generator():
+                    while True:
+                        chunk = await asyncio.wait_for(
+                            response_queue.get(),
+                            timeout=STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS,
+                        )
+                        if chunk is None:
+                            return
+                        yield chunk.value
+
+                return _response_generator()
+
+            return processed_response
 
 
 class ResponseChunk:
@@ -224,21 +275,34 @@ class ResponseChunk:
         self.value = value
 
 
-def _response_generator(queue: Queue):
-    """
-    When returning the stream result, simply read from the response queue until a `None`
-    is reached.
-    """
-    while True:
-        chunk = queue.get(timeout=STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS)
-        if chunk is None:
-            return
-        else:
-            yield chunk.value
+async def _convert_streamed_response_to_string(response: AsyncGenerator):
+    return "".join([str(chunk) async for chunk in response])
 
 
-def _convert_streamed_response_to_string(response: Any):
-    return "".join([str(chunk) for chunk in list(response)])
+def _force_async_generator(gen: Union[Generator, AsyncGenerator]) -> AsyncGenerator:
+    """
+    Takes a generator, and converts it into an async generator if it is not already.
+    """
+    if inspect.isasyncgen(gen):
+        return gen
+
+    async def _convert_generator_to_async():
+        """
+        Runs each iteration of the generator in an offloaded thread, to ensure
+        the main loop is not blocked, and yield to create an async generator.
+        """
+        FINAL_GENERATOR_VALUE = object()
+        while True:
+            # Note that this is the equivalent of running:
+            # next(gen, FINAL_GENERATOR_VALUE) on a separate thread,
+            # ensuring that if there is anything blocking in the generator,
+            # it does not block the main loop.
+            chunk = await to_thread.run_sync(next, gen, FINAL_GENERATOR_VALUE)
+            if chunk == FINAL_GENERATOR_VALUE:
+                break
+            yield chunk
+
+    return _convert_generator_to_async()
 
 
 def _signature_accepts_keyword_arg(signature: inspect.Signature, kwarg: str) -> bool:
