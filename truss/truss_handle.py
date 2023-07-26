@@ -207,7 +207,8 @@ class TrussHandle:
 
             container = Docker.client().run(
                 image.id,
-                publish=publish_ports,
+                publish_all=True,
+                # publish=publish_ports,
                 detach=detach,
                 labels=labels,
                 mounts=[

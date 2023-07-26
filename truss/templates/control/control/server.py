@@ -10,7 +10,7 @@ from helpers.inference_server_process_controller import (
 from proxy import Proxy
 from truss_proxy.inference_server_proxy import InferenceServerReverseProxyPlugin
 
-PROXY_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
+PROXY_SERVER_PORT = int(os.environ.get("PROXY_SERVER_PORT", "8080"))
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8091"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
 PYTHON_EXECUTABLE_LOOKUP_PATHS = [
