@@ -1,10 +1,25 @@
-import configparser
 import inspect
+from configparser import DEFAULTSECT, SafeConfigParser
+from functools import partial
+from operator import is_not
 from pathlib import Path
-from typing import Dict, Type
+from typing import Dict, List, Type
 
 from truss.remote.baseten import BasetenRemote
-from truss.remote.truss_remote import TrussRemote
+from truss.remote.truss_remote import RemoteConfig, TrussRemote
+
+USER_TRUSSRC_PATH = Path("~/.trussrc").expanduser()
+
+
+def load_config() -> SafeConfigParser:
+    config = SafeConfigParser()
+    config.read(USER_TRUSSRC_PATH)
+    return config
+
+
+def update_config(config: SafeConfigParser):
+    with open(USER_TRUSSRC_PATH, "w") as configfile:
+        config.write(configfile)
 
 
 class RemoteFactory:
@@ -15,22 +30,36 @@ class RemoteFactory:
     REGISTRY: Dict[str, Type[TrussRemote]] = {"baseten": BasetenRemote}
 
     @staticmethod
-    def load_remote_config(remote_name: str) -> Dict:
+    def get_available_config_names() -> List[str]:
+        if not USER_TRUSSRC_PATH.exists():
+            return []
+
+        config = load_config()
+        return list(filter(partial(is_not, DEFAULTSECT), config.keys()))
+
+    @staticmethod
+    def load_remote_config(remote_name: str) -> RemoteConfig:
         """
         Load and validate a remote config from the .trussrc file
         """
-        config_path = Path("~/.trussrc").expanduser()
+        if not USER_TRUSSRC_PATH.exists():
+            raise FileNotFoundError("No ~/.trussrc file found.")
 
-        if not config_path.exists():
-            raise FileNotFoundError(f"No .trussrc file found at {config_path}")
-
-        config = configparser.ConfigParser()
-        config.read(config_path)
+        config = load_config()
 
         if remote_name not in config:
-            raise ValueError(f"Service provider {remote_name} not found in .trussrc")
+            raise ValueError(f"Service provider {remote_name} not found in ~/.trussrc")
 
-        return dict(config[remote_name])
+        return RemoteConfig(name=remote_name, configs=dict(config[remote_name]))
+
+    @staticmethod
+    def update_remote_config(remote_config: RemoteConfig):
+        """
+        Load and validate a remote config from the .trussrc file
+        """
+        config = load_config()
+        config[remote_config.name] = remote_config.configs
+        update_config(config)
 
     @staticmethod
     def validate_remote_config(remote_config: Dict, remote_name: str):
@@ -76,17 +105,17 @@ class RemoteFactory:
     @classmethod
     def create(cls, remote: str) -> TrussRemote:
         remote_config = cls.load_remote_config(remote)
-        cls.validate_remote_config(remote_config, remote)
+        configs = remote_config.configs
+        cls.validate_remote_config(configs, remote)
 
-        remote_class = cls.REGISTRY[remote_config.pop("remote_provider")]
+        remote_class = cls.REGISTRY[configs.pop("remote_provider")]
         remote_params = {
-            param: remote_config.get(param)
-            for param in cls.required_params(remote_class)
+            param: configs.get(param) for param in cls.required_params(remote_class)
         }
 
         # Add any additional params provided by the user in their .trussrc
-        additional_params = set(remote_config.keys()) - set(remote_params.keys())
+        additional_params = set(configs.keys()) - set(remote_params.keys())
         for param in additional_params:
-            remote_params[param] = remote_config.get(param)
+            remote_params[param] = configs.get(param)
 
         return remote_class(**remote_params)  # type: ignore

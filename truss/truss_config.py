@@ -27,6 +27,7 @@ DEFAULT_PYTHON_VERSION = "py39"
 DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
+DEFAULT_PREDICT_CONCURRENCY = 1
 
 DEFAULT_CPU = "500m"
 DEFAULT_MEMORY = "512Mi"
@@ -105,6 +106,24 @@ class HuggingFaceCache:
 
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
+
+
+@dataclass
+class Runtime:
+    predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
+
+    @staticmethod
+    def from_dict(d):
+        predict_concurrency = d.get("predict_concurrency", DEFAULT_PREDICT_CONCURRENCY)
+
+        return Runtime(
+            predict_concurrency=predict_concurrency,
+        )
+
+    def to_dict(self):
+        return {
+            "predict_concurrency": self.predict_concurrency,
+        }
 
 
 @dataclass
@@ -282,6 +301,7 @@ class TrussConfig:
     system_packages: List[str] = field(default_factory=list)
     environment_variables: Dict[str, str] = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
+    runtime: Runtime = field(default_factory=Runtime)
     python_version: str = DEFAULT_PYTHON_VERSION
     examples_filename: str = DEFAULT_EXAMPLES_FILENAME
     secrets: Dict[str, str] = field(default_factory=dict)
@@ -308,9 +328,6 @@ class TrussConfig:
     @staticmethod
     def from_dict(d):
         config = TrussConfig(
-            # Users that are calling `load` on an existing Truss
-            # should default to 1.0 whereas users creating a new Truss
-            # should default to 2.0.
             spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION),
             model_type=d.get("model_type", DEFAULT_MODEL_TYPE),
             model_framework=ModelFrameworkType(
@@ -328,6 +345,7 @@ class TrussConfig:
             system_packages=d.get("system_packages", []),
             environment_variables=d.get("environment_variables", {}),
             resources=Resources.from_dict(d.get("resources", {})),
+            runtime=Runtime.from_dict(d.get("runtime", {})),
             python_version=d.get("python_version", DEFAULT_PYTHON_VERSION),
             model_name=d.get("model_name", None),
             examples_filename=d.get("examples_filename", DEFAULT_EXAMPLES_FILENAME),
@@ -352,7 +370,8 @@ class TrussConfig:
     @staticmethod
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
-            return TrussConfig.from_dict(yaml.safe_load(yaml_file))
+            raw_data = yaml.safe_load(yaml_file) or {}
+            return TrussConfig.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: Path, verbose: bool = True):
         with path.open("w") as config_file:
@@ -372,6 +391,7 @@ class TrussConfig:
 DATACLASS_TO_REQ_KEYS_MAP = {
     Train: {"variables"},
     Resources: {"accelerator", "cpu", "memory", "use_gpu"},
+    Runtime: {"predict_concurrency"},
     TrussConfig: {
         "environment_variables",
         "external_package_dirs",

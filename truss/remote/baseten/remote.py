@@ -4,7 +4,6 @@ from pathlib import Path
 import yaml
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.patch.constants import PATCHABLE_STATUSES
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
@@ -33,8 +32,7 @@ class BasetenRemote(TrussRemote):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        if exists_model(self._api, model_name):
-            raise ValueError(f"Model with name {model_name} already exists")
+        model_id = exists_model(self._api, model_name)
 
         gathered_truss = TrussHandle(truss_handle.gather())
         encoded_config_str = base64_encoded_json_str(
@@ -43,12 +41,14 @@ class BasetenRemote(TrussRemote):
 
         temp_file = archive_truss(gathered_truss)
         s3_key = upload_truss(self._api, temp_file)
+
         model_id, model_version_id = create_truss_service(
             api=self._api,
             model_name=model_name,
             s3_key=s3_key,
             config=encoded_config_str,
             is_draft=not publish,
+            model_id=model_id,
         )
 
         return BasetenService(
@@ -60,7 +60,11 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
-    def sync_truss_to_dev_version_by_name(self, model_name: str, target_directory: str):
+    def sync_truss_to_dev_version_by_name(
+        self,
+        model_name: str,
+        target_directory: str,
+    ):
         # verify that development deployment exists for given model name
         _ = get_dev_version_info(
             self._api, model_name  # pylint: disable=protected-access
@@ -76,29 +80,32 @@ class BasetenRemote(TrussRemote):
         while True:
             pass
 
-    def patch(self, watch_path: Path, logger: logging.Logger):
+    def patch(
+        self,
+        watch_path: Path,
+        logger: logging.Logger,
+    ):
         try:
             truss_handle = TrussHandle(watch_path)
         except yaml.parser.ParserError:
-            logger.error("Unable to parse config file.")
+            logger.error("Unable to parse config file")
             return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
-        patch_request = truss_handle.calc_patch(truss_hash)
+        try:
+            patch_request = truss_handle.calc_patch(truss_hash)
+        except Exception:
+            logger.error("Failed to calculate patch")
+            return
         if patch_request:
             if (
                 patch_request.prev_hash == patch_request.next_hash
                 or len(patch_request.patch_ops) == 0
             ):
                 logger.info("No changes observed, skipping deployment")
-            model_deployment_status = dev_version.get(
-                "current_model_deployment_status", None
-            ).get("status", None)
-            if model_deployment_status not in PATCHABLE_STATUSES:
-                logger.info(f"Model {model_name} is not ready for patching")
             resp = self._api.patch_draft_truss(model_name, patch_request)
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
