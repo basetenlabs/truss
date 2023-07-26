@@ -308,9 +308,6 @@ class TrussConfig:
     @staticmethod
     def from_dict(d):
         config = TrussConfig(
-            # Users that are calling `load` on an existing Truss
-            # should default to 1.0 whereas users creating a new Truss
-            # should default to 2.0.
             spec_version=d.get("spec_version", DEFAULT_SPEC_VERSION),
             model_type=d.get("model_type", DEFAULT_MODEL_TYPE),
             model_framework=ModelFrameworkType(
@@ -352,7 +349,8 @@ class TrussConfig:
     @staticmethod
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
-            return TrussConfig.from_dict(yaml.safe_load(yaml_file))
+            raw_data = yaml.safe_load(yaml_file) or {}
+            return TrussConfig.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: Path, verbose: bool = True):
         with path.open("w") as config_file:

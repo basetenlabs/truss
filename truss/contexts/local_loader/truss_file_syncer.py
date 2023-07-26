@@ -26,6 +26,9 @@ class TrussFilesSyncer(Thread):
         """Watch for files in background and apply appropriate patches."""
         from watchfiles import watch
 
+        # disable watchfiles logger
+        logging.getLogger("watchfiles.main").disabled = True
+
         for _ in watch(
             self.watch_path, watch_filter=self.watch_filter, raise_interrupt=False
         ):
