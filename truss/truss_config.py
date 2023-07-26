@@ -79,8 +79,8 @@ class AcceleratorSpec:
 class HuggingFaceModel:
     repo_id: str = ""
     revision: Optional[str] = None
-    allow_patterns: Optional[str] = None
-    ignore_patterns: Optional[str] = None
+    allow_patterns: Optional[List[str]] = None
+    ignore_patterns: Optional[List[str]] = None
 
     @staticmethod
     def from_dict(d):
