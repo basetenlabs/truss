@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 from huggingface_hub import list_repo_files
+from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -91,8 +92,19 @@ class ServingImageBuilder(ImageBuilder):
             for model in config.hf_cache.models:
                 repo_id = model.repo_id
                 revision = model.revision
+
+                allow_patterns = model.allow_patterns
+                ignore_patterns = model.ignore_patterns
+
+                filtered_repo_files = list(
+                    filter_repo_objects(
+                        items=list_repo_files(repo_id, revision=revision),
+                        allow_patterns=allow_patterns,
+                        ignore_patterns=ignore_patterns,
+                    )
+                )
                 model_files[repo_id] = {
-                    "files": list_repo_files(repo_id, revision=revision),
+                    "files": filtered_repo_files,
                     "revision": revision,
                 }
 
