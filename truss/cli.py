@@ -100,7 +100,7 @@ def image():
 )
 @error_handling
 def init(target_directory, skip_confirm, trainable) -> None:
-    """Initializes an empty Truss directory.
+    """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
@@ -187,7 +187,7 @@ def watch(
     remote: str,
 ) -> None:
     """
-    Watches local truss directory for changes and sends patch requests to remote development truss
+    Seamless remote development with truss
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
@@ -250,7 +250,7 @@ def predict(
     request_file,
 ):
     """
-    Invokes the packaged model, either locally or in a Docker container.
+    Invokes the packaged model
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
