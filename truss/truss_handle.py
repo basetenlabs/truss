@@ -195,7 +195,7 @@ class TrussHandle:
         else:
             image = self.build_serving_docker_image(build_dir=build_dir, tag=tag)
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
-            publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
+            publish_ports = [[8080, 8080], [8090, 8090]]
 
             # We are going to try running a new container, make sure previous one is gone
             self.kill_container()
