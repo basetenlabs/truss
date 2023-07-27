@@ -4,16 +4,35 @@ import os
 import sys
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
-import click
 import rich
+import rich_click as click
 import truss
-import yaml
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import RemoteFactory
 
 logging.basicConfig(level=logging.INFO)
+
+
+click.rich_click.COMMAND_GROUPS = {
+    "truss": [
+        {
+            "name": "Main usage",
+            "commands": ["init", "push", "watch", "predict"],
+            "table_styles": {  # type: ignore
+                "row_styles": ["green"],
+            },
+        },
+        {
+            "name": "Advanced Usage",
+            "commands": ["image", "container", "cleanup"],
+            "table_styles": {  # type: ignore
+                "row_styles": ["yellow"],
+            },
+        },
+    ]
+}
 
 
 def echo_output(f: Callable[..., object]):
@@ -42,23 +61,26 @@ def print_help() -> None:
 
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
-@click.option(
-    "-v",
-    "--version",
-    is_flag=True,
-    show_default=False,
-    default=False,
-    help="Show Truss package version.",
-)
-def cli_group(ctx, version) -> None:
+@click.version_option(truss.version())
+def truss_cli(ctx) -> None:
+    """truss: The simplest way to serve models in production"""
     if not ctx.invoked_subcommand:
-        if version:
-            click.echo(truss.version())
-        else:
-            click.echo(ctx.get_help())
+        click.echo(ctx.get_help())
 
 
-@cli_group.command()
+@click.group()
+def container():
+    """Subcommands for truss container"""
+    pass
+
+
+@click.group()
+def image():
+    """Subcommands for truss image"""
+    pass
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=True)
 @click.option(
     "-s",
@@ -78,7 +100,7 @@ def cli_group(ctx, version) -> None:
 )
 @error_handling
 def init(target_directory, skip_confirm, trainable) -> None:
-    """Initializes an empty Truss directory.
+    """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
@@ -88,7 +110,7 @@ def init(target_directory, skip_confirm, trainable) -> None:
         click.echo(f"Truss was created in {tr_path}")
 
 
-@cli_group.command()
+@image.command()  # type: ignore
 @click.argument("build_dir")
 @click.argument("target_directory", required=False)
 @error_handling
@@ -104,12 +126,12 @@ def build_context(build_dir, target_directory: str) -> None:
     tr.docker_build_setup(build_dir=Path(build_dir))
 
 
-@cli_group.command()  # type: ignore
+@image.command()  # type: ignore
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
 @error_handling
 @click.option("--tag", help="Docker image tag")
-def build_image(target_directory: str, build_dir: Path, tag) -> None:
+def build(target_directory: str, build_dir: Path, tag) -> None:
     """
     Builds the docker image for a Truss.
 
@@ -123,7 +145,7 @@ def build_image(target_directory: str, build_dir: Path, tag) -> None:
     tr.build_serving_docker_image(build_dir=build_dir, tag=tag)
 
 
-@cli_group.command()
+@image.command()  # type: ignore
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
 @click.option("--tag", help="Docker build image tag")
@@ -132,7 +154,7 @@ def build_image(target_directory: str, build_dir: Path, tag) -> None:
     "--attach", is_flag=True, default=False, help="Flag for attaching the process"
 )
 @error_handling
-def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None:
+def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     """
     Runs the docker image for a Truss.
 
@@ -151,7 +173,7 @@ def run_image(target_directory: str, build_dir: Path, tag, port, attach) -> None
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
 
 
-@cli_group.command()
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
@@ -165,7 +187,7 @@ def watch(
     remote: str,
 ) -> None:
     """
-    Watches local truss directory for changes and sends patch requests to remote development truss
+    Seamless remote development with truss
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
@@ -189,7 +211,7 @@ def watch(
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
 
 
-@cli_group.command()
+@truss_cli.command()
 @click.option("--target_directory", required=False, help="Directory of truss")
 @click.option(
     "--request",
@@ -228,7 +250,7 @@ def predict(
     request_file,
 ):
     """
-    Invokes the packaged model, either locally or in a Docker container.
+    Invokes the packaged model
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
@@ -261,49 +283,7 @@ def predict(
         )
 
 
-@cli_group.command()
-@click.option("--target_directory", required=False, help="Directory of truss")
-@click.option(
-    "--build-dir",
-    type=click.Path(exists=True),
-    required=False,
-    help="Directory where context is built",
-)
-@click.option("--tag", help="Docker build image tag")
-@click.option(
-    "--var",
-    multiple=True,
-    help="""Training variables in key=value form where value is string.
-    For more complex values use vars_yaml_file""",
-)
-@click.option(
-    "--vars_yaml_file",
-    required=False,
-    help="Training variables from a yaml file",
-)
-@click.option(
-    "--local",
-    is_flag=True,
-    default=False,
-    help="Flag to run training locally (not on docker)",
-)
-@error_handling
-@echo_output
-def train(target_directory: str, build_dir, tag, var: List[str], vars_yaml_file, local):
-    """Runs prediction for a Truss in a docker image or locally"""
-    tr = _get_truss_from_directory(target_directory=target_directory)
-    if vars_yaml_file is not None:
-        with Path(vars_yaml_file).open() as vars_file:
-            variables = yaml.safe_load(vars_file)
-    else:
-        variables = _variables_dict_from_option(var)
-    if local:
-        return tr.local_train(variables=variables)
-
-    return tr.docker_train(build_dir=build_dir, tag=tag, variables=variables)
-
-
-@cli_group.command()
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
@@ -356,41 +336,10 @@ def push(
     click.echo(f"Model {model_name} was successfully pushed.")
 
 
-@cli_group.command()
-@click.argument("target_directory", required=False)
-@click.option("--name", type=str, required=False, help="Name of example to run")
-@click.option(
-    "--local", is_flag=True, default=False, help="Flag to run prediction locally"
-)
-@error_handling
-@echo_output
-def run_example(target_directory: str, name, local):
-    """
-    Runs examples specified in the Truss, over docker.
-
-    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-    """
-    tr = _get_truss_from_directory(target_directory=target_directory)
-    predict_fn = tr.docker_predict
-    if local:
-        predict_fn = tr.server_predict
-
-    if name is not None:
-        example = tr.example(name)
-        click.echo(f"Running example: {name}")
-        return predict_fn(example.input)
-    else:
-        example_outputs = []
-        for example in tr.examples():
-            click.echo(f"Running example: {example.name}")
-            example_outputs.append(predict_fn(example.input))
-        return example_outputs
-
-
-@cli_group.command()
+@container.command()  # type: ignore
 @click.argument("target_directory", required=False)
 @error_handling
-def get_container_logs(target_directory) -> None:
+def logs(target_directory) -> None:
     """
     Get logs in a container is running for a truss
 
@@ -402,7 +351,7 @@ def get_container_logs(target_directory) -> None:
         click.echo(log)
 
 
-@cli_group.command()  # type: ignore
+@container.command()  # type: ignore
 @click.argument("target_directory", required=False)
 def kill(target_directory: str) -> None:
     """
@@ -414,13 +363,13 @@ def kill(target_directory: str) -> None:
     tr.kill_container()
 
 
-@cli_group.command()
+@container.command()  # type: ignore
 def kill_all() -> None:
     "Kills all truss containers that are not manually persisted"
     truss.kill_all()
 
 
-@cli_group.command()
+@truss_cli.command()
 @error_handling
 def cleanup() -> None:
     """
@@ -440,19 +389,8 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     return truss.load(target_directory)
 
 
-def _variables_dict_from_option(variables_list: List[str]) -> dict:
-    vars_dict = {}
-    for var in variables_list:
-        first_equals_pos = var.find("=")
-        if first_equals_pos == -1:
-            raise ValueError(
-                f"Training variable expected in `key=value` from but found `{var}`",
-            )
-        var_name = var[:first_equals_pos]
-        var_value = var[first_equals_pos + 1 :]
-        vars_dict[var_name] = var_value
-    return vars_dict
-
+truss_cli.add_command(container)
+truss_cli.add_command(image)
 
 if __name__ == "__main__":
-    cli_group()
+    truss_cli()

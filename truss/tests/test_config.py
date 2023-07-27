@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import yaml
 from truss.truss_config import (
@@ -279,3 +281,39 @@ def test_huggingface_cache_multiple_models_mixed_revision():
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") is None
     assert config.to_dict(verbose=True)["hf_cache"][1].get("revision") == "not-main2"
+
+
+def test_empty_config():
+    config = TrussConfig()
+    new_config = generate_default_config()
+
+    assert new_config == config.to_dict(verbose=False)
+
+
+def test_from_yaml():
+    yaml_path = Path("test.yaml")
+    data = {"description": "this is a test"}
+    with yaml_path.open("w") as yaml_file:
+        yaml.safe_dump(data, yaml_file)
+
+    result = TrussConfig.from_yaml(yaml_path)
+
+    assert result.description == "this is a test"
+
+    yaml_path.unlink()
+
+
+def test_from_yaml_empty():
+    yaml_path = Path("test.yaml")
+    data = {}
+    with yaml_path.open("w") as yaml_file:
+        yaml.safe_dump(data, yaml_file)
+
+    result = TrussConfig.from_yaml(yaml_path)
+
+    # test some attributes (should be default)
+    assert result.description is None
+    assert result.spec_version == "2.0"
+    assert result.bundled_packages_dir == "packages"
+
+    yaml_path.unlink()
