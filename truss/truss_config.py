@@ -110,7 +110,6 @@ class HuggingFaceModel:
         if not verbose:
             # only show changed values
             data = {k: v for k, v in data.items() if v is not None}
-            print(data)
 
         return data
 
