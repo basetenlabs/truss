@@ -300,12 +300,21 @@ def predict(
     default=False,
     help="Publish truss as production deployment.",
 )
+@click.option(
+    "--trusted",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Trust truss with hosted secrets.",
+)
 @error_handling
 def push(
     target_directory: str,
     remote: str,
     model_name: str,
     publish: bool = False,
+    trusted: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -331,7 +340,7 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    _ = remote_provider.push(tr, model_name, publish=publish)  # type: ignore
+    _ = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
 
     click.echo(f"Model {model_name} was successfully pushed.")
 
