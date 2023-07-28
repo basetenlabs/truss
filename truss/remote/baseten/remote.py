@@ -28,7 +28,13 @@ class BasetenRemote(TrussRemote):
     def authenticate(self):
         return self._auth_service.validate()
 
-    def push(self, truss_handle: TrussHandle, model_name: str, publish: bool = True):  # type: ignore
+    def push(  # type: ignore
+        self,
+        truss_handle: TrussHandle,
+        model_name: str,
+        publish: bool = True,
+        trusted: bool = False,
+    ):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
@@ -49,6 +55,7 @@ class BasetenRemote(TrussRemote):
             config=encoded_config_str,
             is_draft=not publish,
             model_id=model_id,
+            is_trusted=trusted,
         )
 
         return BasetenService(
