@@ -9,6 +9,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG HF_SECRET_TOKEN
 ENV HUGGING_FACE_HUB_TOKEN = $HF_SECRET_TOKEN
 
+RUN echo -e "from build:"
+RUN echo -e $HUGGING_FACE_HUB_TOKEN
+
 RUN apt update && \
     apt install -y bash \
                 build-essential \
