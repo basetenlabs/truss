@@ -139,7 +139,7 @@ class Build:
 
     @staticmethod
     def from_dict(d):
-        model_server = d.get("model_server", ModelServer.TrussServer)
+        model_server = ModelServer[d.get("model_server", "TrussServer")]
         arguments = d.get("arguments", {})
 
         return Build(

@@ -26,6 +26,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
+from truss.truss_config import Build, ModelServer
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
@@ -35,12 +36,26 @@ from truss.util.path import (
     copy_tree_path,
 )
 
-from truss.truss_config import ModelServer
-
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
+
+
+def create_tgi_build_dir(build_config: Build, build_dir: Path):
+    copy_tree_or_file(
+        TEMPLATES_DIR / "tgi" / "tgi.Dockerfile", build_dir / "Dockerfile"
+    )
+    copy_tree_or_file(TEMPLATES_DIR / "tgi" / "proxy.conf", build_dir / "proxy.conf")
+    args = " ".join(
+        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
+    )
+    supervisord_template = read_template_from_fs(
+        TEMPLATES_DIR, "tgi/supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(extra_args=args)
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -71,7 +86,7 @@ class ServingImageBuilder(ImageBuilder):
             build_dir = build_truss_target_directory(model_framework_name)
 
         if config.build.model_server is ModelServer.TGI:
-            create_tgi_build_dir(config.build)
+            create_tgi_build_dir(config.build, build_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
