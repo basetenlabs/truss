@@ -32,6 +32,7 @@ from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
+    copy_file_path,
     copy_tree_or_file,
     copy_tree_path,
 )
@@ -43,10 +44,11 @@ CONFIG_FILE = "config.yaml"
 
 
 def create_tgi_build_dir(build_config: Build, build_dir: Path):
-    copy_tree_or_file(
-        TEMPLATES_DIR / "tgi" / "tgi.Dockerfile", build_dir / "Dockerfile"
-    )
-    copy_tree_or_file(TEMPLATES_DIR / "tgi" / "proxy.conf", build_dir / "proxy.conf")
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    copy_file_path(TEMPLATES_DIR / "tgi" / "tgi.Dockerfile", build_dir / "Dockerfile")
+    copy_file_path(TEMPLATES_DIR / "tgi" / "proxy.conf", build_dir / "proxy.conf")
     args = " ".join(
         [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
     )
