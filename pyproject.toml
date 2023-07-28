@@ -87,7 +87,7 @@ dockerfile = "^3.2.0"
 truss = 'truss.cli:truss_cli'
 
 [tool.poetry.group.dev.dependencies]
-mlflow = "^1.29.0"
+mlflow = ">=1.29,<3.0"
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
 httpx = {extras = ["cli"], version = "^0.24.1"}
