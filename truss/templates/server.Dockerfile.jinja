@@ -6,6 +6,9 @@
 ENV PYTHONUNBUFFERED True
 ENV DEBIAN_FRONTEND=noninteractive
 
+ARG HF_SECRET_TOKEN
+ENV HUGGING_FACE_HUB_TOKEN = $HF_SECRET_TOKEN
+
 RUN apt update && \
     apt install -y bash \
                 build-essential \
@@ -48,10 +51,10 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {% block cache_weights %}
     {%- if config.hf_cache != None %}
 COPY ./cache_warmer.py /cache_warmer.py
-        {% for repo, data in models.items() %}
-            {% for file in data.files %}
-                {%- if data.revision != None %}
-RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {{data.revision}}
+        {% for repo, hf_dir in models.items() %}
+            {% for file in hf_dir.files %}
+                {%- if hf_dir.revision != None %}
+RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {{hf_dir.revision}}
                 {%- else %}
 RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
                 {%- endif %}
@@ -64,7 +67,9 @@ RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
+    {%- for file_list in data_files%}
+RUN cp {{file_list}} /app/data
+    {% endfor %}
 {%- endif %}
 
 COPY ./server /app
