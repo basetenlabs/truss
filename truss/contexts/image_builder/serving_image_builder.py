@@ -35,6 +35,8 @@ from truss.util.path import (
     copy_tree_path,
 )
 
+from truss.truss_config import ModelServer
+
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
@@ -67,6 +69,10 @@ class ServingImageBuilder(ImageBuilder):
         if build_dir is None:
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
+
+        if config.build.model_server is ModelServer.TGI:
+            create_tgi_build_dir(config.build)
+            return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
