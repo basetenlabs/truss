@@ -2,7 +2,7 @@
 
 * [Introducing Truss](../README.md)
 * [End-to-end tutorial](e2e.md)
-* [Release notes](CHANGELOG.md)
+* [Release notes](https://github.com/basetenlabs/truss/releases/)
 
 ## Create
 
