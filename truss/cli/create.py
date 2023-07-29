@@ -1,7 +1,5 @@
-import rich
 from InquirerPy import inquirer
-from truss.truss_config import ModelServer, Build
-
+from truss.truss_config import Build, ModelServer
 
 REQUIRED_ARGUMENTS = {
     ModelServer.TGI: {
