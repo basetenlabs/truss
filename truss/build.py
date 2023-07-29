@@ -14,7 +14,7 @@ from truss.errors import FrameworkNotSupportedError
 from truss.model_frameworks import MODEL_FRAMEWORKS_BY_TYPE, model_framework_from_model
 from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.notebook import is_notebook_or_ipython
-from truss.truss_config import TrussConfig, Build, ModelServer
+from truss.truss_config import Build, ModelServer, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 from truss.util.gpu import get_gpu_memory
@@ -44,12 +44,10 @@ def populate_target_directory(
         # Create data dir
         (target_directory_path_typed / config.data_dir).mkdir()
 
-    if populate_dirs:
         # Create bundled packages dir
         # TODO: Drop by default
         (target_directory_path_typed / config.bundled_packages_dir).mkdir()
 
-    if populate_dirs:
         # Create model module dir
         model_dir = target_directory_path_typed / config.model_module_dir
         template_path = TEMPLATES_DIR / template
