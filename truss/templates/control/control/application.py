@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from typing import Dict
 
-import httpx
 from endpoints import control_app
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -59,11 +58,6 @@ def create_app(base_config: Dict):
         app_state.inference_server_process_args,
         app_state.inference_server_port,
         app_logger=app_logger,
-    )
-
-    limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
-    app_state.proxy_client = httpx.AsyncClient(
-        base_url=f"http://localhost:{app_state.inference_server_port}", limits=limits
     )
 
     pip_path = getattr(app_state, "pip_path", None)
