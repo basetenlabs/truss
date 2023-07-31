@@ -11,7 +11,9 @@ RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # TODO: add support for private models
-# ENV HUGGING_FACE_HUB_TOKEN hf_xxxxx
+{% if hf_access_token %}
+ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
+{% endif %}
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 ENTRYPOINT ["/usr/bin/supervisord"]

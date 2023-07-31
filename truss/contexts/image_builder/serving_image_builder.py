@@ -26,7 +26,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import Build, ModelServer
+from truss.truss_config import Build, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
@@ -42,12 +42,22 @@ BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
 
+HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
 
-def create_tgi_build_dir(build_config: Build, build_dir: Path):
+
+def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     if not build_dir.exists():
         build_dir.mkdir(parents=True)
 
-    copy_file_path(TEMPLATES_DIR / "tgi" / "tgi.Dockerfile", build_dir / "Dockerfile")
+    build_config: Build = config.build
+    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+    dockerfile_template = read_template_from_fs(
+        TEMPLATES_DIR, "tgi/tgi.Dockerfile.jinja"
+    )
+    dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
+    dockerfile_filepath = build_dir / "Dockerfile"
+    dockerfile_filepath.write_text(dockerfile_content)
+
     copy_file_path(TEMPLATES_DIR / "tgi" / "proxy.conf", build_dir / "proxy.conf")
     args = " ".join(
         [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
@@ -88,7 +98,7 @@ class ServingImageBuilder(ImageBuilder):
             build_dir = build_truss_target_directory(model_framework_name)
 
         if config.build.model_server is ModelServer.TGI:
-            create_tgi_build_dir(config.build, build_dir)
+            create_tgi_build_dir(config, build_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
