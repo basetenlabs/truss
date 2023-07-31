@@ -74,16 +74,18 @@ tr.docker_predict([[0, 0, 0, 0]])
 
 ### Faster dev loop with live reload
 
-You can turn on live reload by setting the `live_reload` property to `True` in `config.yaml`. This feature makes it faster to run a Truss in Docker in some situations.
+You can turn on live reload by setting the `live_reload` property to `True` in `config.yaml`. This feature makes it faster to iterate upon a Truss in Docker in some situations.
 
-It essentially works by keeping the Docker container running as you work on your Truss. Depending on the nature of the change, it may be able to update the existing container, avoiding building a new Docker image, making for a snappy development loop. This change is called a patch. Examples are changes to:
+ Depending on the nature of the change, it may be able to update and existing running container, avoiding building a new Docker image, making for a snappy development loop. This change is called a patch. Examples of patchable changes are changes to:
 
 1. Model code
 2. Python requirements
 3. System packages
 4. Environment variables
+5. External data
+6. Bundled packages
 
-Currently, only model code changes are supported, but we are working on supporting other types of patches.To understand patch computation it's important to understand a Truss's hash and signature.
+To understand patch computation it's important to understand a Truss's hash and signature.
 
 #### Truss Hash
 
