@@ -126,6 +126,31 @@ class Runtime:
         }
 
 
+class ModelServer(Enum):
+    TrussServer = "TrussServer"
+    TGI = "TGI"
+    VLLM = "VLLM"
+
+
+@dataclass
+class Build:
+    model_server: ModelServer = ModelServer.TrussServer
+    arguments: Dict = field(default_factory=dict)
+
+    @staticmethod
+    def from_dict(d):
+        model_server = ModelServer[d.get("model_server", "TrussServer")]
+        arguments = d.get("arguments", {})
+
+        return Build(
+            model_server=model_server,
+            arguments=arguments,
+        )
+
+    def to_dict(self):
+        return obj_to_dict(self)
+
+
 @dataclass
 class Resources:
     cpu: str = DEFAULT_CPU
@@ -302,6 +327,7 @@ class TrussConfig:
     environment_variables: Dict[str, str] = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
     runtime: Runtime = field(default_factory=Runtime)
+    build: Build = field(default_factory=Build)
     python_version: str = DEFAULT_PYTHON_VERSION
     examples_filename: str = DEFAULT_EXAMPLES_FILENAME
     secrets: Dict[str, str] = field(default_factory=dict)
@@ -346,6 +372,7 @@ class TrussConfig:
             environment_variables=d.get("environment_variables", {}),
             resources=Resources.from_dict(d.get("resources", {})),
             runtime=Runtime.from_dict(d.get("runtime", {})),
+            build=Build.from_dict(d.get("build", {})),
             python_version=d.get("python_version", DEFAULT_PYTHON_VERSION),
             model_name=d.get("model_name", None),
             examples_filename=d.get("examples_filename", DEFAULT_EXAMPLES_FILENAME),
@@ -392,6 +419,7 @@ DATACLASS_TO_REQ_KEYS_MAP = {
     Train: {"variables"},
     Resources: {"accelerator", "cpu", "memory", "use_gpu"},
     Runtime: {"predict_concurrency"},
+    Build: {"model_server"},
     TrussConfig: {
         "environment_variables",
         "external_package_dirs",

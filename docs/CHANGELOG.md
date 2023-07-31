@@ -2,6 +2,8 @@
 
 Release notes for new versions of Truss, in reverse chronological order.
 
+See [https://github.com/basetenlabs/truss/releases/](https://github.com/basetenlabs/truss/releases/)
+
 ### Version 0.4.8
 
 Base image improvements:
