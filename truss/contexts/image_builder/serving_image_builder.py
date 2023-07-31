@@ -96,9 +96,6 @@ class ServingImageBuilder(ImageBuilder):
                     "revision": revision,
                 }
 
-            # add version.txt with "1" into ~/.cache/huggingface/hub/
-            (build_dir / "~/.cache/huggingface/hub/version.txt").write_text("1")
-
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
         copy_into_build_dir(
