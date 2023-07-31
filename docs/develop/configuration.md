@@ -303,4 +303,4 @@ hf_cache:
 In this configuration:
 
 - `stabilityai/stable-diffusion-xl-base-1.0` is the `repo_id`, pointing to the exact model to cache.
-- Some patterns are specified under `ignore_patterns``, ensuring that any files following these patterns won't be included in the cache. Here, we aim to cache only `fp16.safetensors`` in order to run Stable Diffusion XL in half-precision mode, allowing us to disregard many files that would otherwise consume valuable caching time.
+- Some patterns are specified under `ignore_patterns`, ensuring that any files following these patterns won't be included in the cache. Here, we aim to cache only `fp16.safetensors` in order to run Stable Diffusion XL in half-precision mode, allowing us to disregard many files that would otherwise consume valuable caching time.
