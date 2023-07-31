@@ -46,14 +46,12 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {% endblock %}
 
 {% block cache_weights %}
-ARG HF_SECRET_TOKEN
-ENV HUGGING_FACE_HUB_TOKEN=$HF_SECRET_TOKEN
     {%- if config.hf_cache != None %}
 COPY ./cache_warmer.py /cache_warmer.py
-        {% for repo, hf_dir in models.items() %}
-            {% for file in hf_dir.files %}
-                {%- if hf_dir.revision != None %}
-RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {{hf_dir.revision}}
+        {% for repo, data in models.items() %}
+            {% for file in data.files %}
+                {%- if data.revision != None %}
+RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {{data.revision}}
                 {%- else %}
 RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
                 {%- endif %}
@@ -66,9 +64,7 @@ RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
-    {%- for file_list in data_files%}
-RUN cp {{file_list}} /app/data
-    {% endfor %}
+COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
 COPY ./server /app
