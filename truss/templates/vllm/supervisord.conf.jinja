@@ -4,7 +4,7 @@ logfile=/dev/null
 logfile_maxbytes=0
 
 [program:vllm-server]
-command=python -m server --host=0.0.0.0 --port=8081 {{extra_args}}
+command=python -m vllm.entrypoints.api_server --host=0.0.0.0 --port=8081 {{extra_args}}
 startsecs=0
 autostart=true
 autorestart=true
