@@ -293,7 +293,14 @@ class ModelWrapper:
                 task = asyncio.create_task(
                     self.write_response_to_queue(response_queue, async_generator)
                 )
+
+                # We add the task to the ModelWrapper instance to ensure it does
+                # not get garbage collected after the predict method completes,
+                # and continues running.
                 self._background_tasks.add(task)
+
+                # Defer the release of the semaphore until the write_response_to_queue
+                # task.
                 semaphore_release_function = semaphore_manager.defer()
                 task.add_done_callback(lambda _: semaphore_release_function())
                 task.add_done_callback(self._background_tasks.discard)
