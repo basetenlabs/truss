@@ -87,7 +87,7 @@ class Model:
         self.tokenizer = tokenizer
 ```
 
-In this example, our model weights are loaded from HuggingFace. You may need to load model weights or other data from another source. For that, consult our docs on [bundling data with your model](data.md).
+In this example, our model weights are loaded from Hugging Face.
 
 ### Implement model invocation
 
@@ -146,7 +146,7 @@ def generate_prompt(instruction, input=None):
 """
 ```
 
-When the helper code is just a few dozen lines, you may prefer to include it directly in `model/model.py`. If you do, place these functions outside of the `Model` class. However, if you have a large amount of utility code or want to share it between models, you can [bundle external code with your Truss](bundle.md).
+When the helper code is just a few dozen lines, you may prefer to include it directly in `model/model.py`. If you do, place these functions outside of the `Model` class.
 
 ### Set Python and system requirements
 
@@ -160,7 +160,7 @@ import torch
 from transformers import LlamaTokenizer, LlamaForCausalLM, GenerationConfig
 ```
 
-To add Python requirements, turn your attention to `config.yaml`. You can use this file to customize a great deal about your packaged model — [here's a complete reference](config.md) — but right now just set the Python requirements up so the model can run.
+To add Python requirements, turn your attention to `config.yaml`. You can use this file to customize a great deal about your packaged model, but right now just set the Python requirements up so the model can run.
 
 For that, find `requirements:` in the config file. In the WizardLM 1.5 example, set it to:
 
@@ -190,4 +190,4 @@ resources:
   use_gpu: true # If false, set accelerator: null
 ```
 
-You've successfully packaged a model! Next, [deploy it](../README.md).
+You've successfully packaged a model! Next, [deploy it](../deploy/baseten.md).

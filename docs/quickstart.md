@@ -6,7 +6,7 @@ description: Use Truss to package a model.
 
 In this doc, we'll package a text classification model. We're going to use a [text classification pipeline](https://huggingface.co/docs/transformers/main_classes/pipelines) from the open-source [`transformers` package](https://github.com/huggingface/transformers), which includes many pre-trained models.
 
-We'll use [Truss](https://truss.baseten.co), an open-source model packaging library maintained by [Baseten](https://baseten.co), to package the model.
+We'll use [Truss](https://trussml.com), an open-source model packaging library maintained by [Baseten](https://baseten.co), to package the model.
 
 ### Create a Truss
 
@@ -56,3 +56,5 @@ requirements:
 ```
 
 No other configuration needs to be changed.
+
+You've successfully packaged a model! Next, [deploy it](deploy/baseten.md).
