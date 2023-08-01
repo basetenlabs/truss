@@ -1,4 +1,3 @@
-import time
 from typing import Any, Dict, List
 
 
@@ -14,10 +13,11 @@ class Model:
         pass
 
     def predict(self, model_input: Any) -> Dict[str, List]:
-        # Invoke model on model_input and calculate predictions here.
         def inner():
-            time.sleep(2)
             for i in range(5):
+                # Raise error partway through if throw_error is set
+                if i == 3 and model_input.get("throw_error"):
+                    raise Exception("error")
                 yield str(i)
 
         return inner()

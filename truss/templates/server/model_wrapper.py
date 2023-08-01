@@ -7,6 +7,7 @@ import sys
 import time
 import traceback
 from collections.abc import Generator
+from contextlib import asynccontextmanager
 from enum import Enum
 from pathlib import Path
 from threading import Lock, Thread
@@ -22,6 +23,44 @@ MODEL_BASENAME = "model"
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
 DEFAULT_PREDICT_CONCURRENCY = 1
+
+
+class DeferredSemaphoreManager:
+    """
+    Helper class for supported deferred semaphore release.
+    """
+
+    def __init__(self, semaphore: Semaphore):
+        self.semaphore = semaphore
+        self.deferred = False
+
+    def defer(self):
+        """
+        Track that this semaphore is to be deferred, and return
+        a release method that the context block can use to release
+        the semaphore.
+        """
+        self.deferred = True
+
+        return self.semaphore.release
+
+
+@asynccontextmanager
+async def deferred_semaphore(semaphore: Semaphore):
+    """
+    Context manager that allows deferring the release of a semaphore.
+    It yields a DeferredSemaphoreManager -- in your use of this context manager,
+    if you call DeferredSemaphoreManager.defer(), you will get back a function that releases
+    the semaphore that you must call.
+    """
+    semaphore_manager = DeferredSemaphoreManager(semaphore)
+    await semaphore.acquire()
+
+    try:
+        yield semaphore_manager
+    finally:
+        if not semaphore_manager.deferred:
+            semaphore.release()
 
 
 class ModelWrapper:
@@ -206,10 +245,13 @@ class ModelWrapper:
     async def write_response_to_queue(
         self, queue: asyncio.Queue, generator: AsyncGenerator
     ):
-        async for chunk in generator:
-            await queue.put(ResponseChunk(chunk))
-
-        await queue.put(None)
+        try:
+            async for chunk in generator:
+                await queue.put(ResponseChunk(chunk))
+        except Exception as e:
+            self._logger.exception("Exception while reading stream response: " + str(e))
+        finally:
+            await queue.put(None)
 
     async def __call__(
         self, body: Any, headers: Optional[Dict[str, str]] = None
@@ -227,7 +269,7 @@ class ModelWrapper:
 
         payload = await self.preprocess(body, headers)
 
-        async with self._predict_semaphore:
+        async with deferred_semaphore(self._predict_semaphore) as semaphore_manager:
             response = await self.predict(payload, headers)
 
             processed_response = await self.postprocess(response)
@@ -252,7 +294,8 @@ class ModelWrapper:
                     self.write_response_to_queue(response_queue, async_generator)
                 )
                 self._background_tasks.add(task)
-
+                semaphore_release_function = semaphore_manager.defer()
+                task.add_done_callback(lambda _: semaphore_release_function())
                 task.add_done_callback(self._background_tasks.discard)
 
                 async def _response_generator():
