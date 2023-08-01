@@ -85,7 +85,6 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
     dockerfile_filepath.write_text(dockerfile_content)
 
     copy_file_path(TEMPLATES_DIR / "vllm" / "proxy.conf", build_dir / "proxy.conf")
-    copy_file_path(TEMPLATES_DIR / "vllm" / "server.py", build_dir / "server.py")
     args = " ".join(
         [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
     )

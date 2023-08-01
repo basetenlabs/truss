@@ -8,7 +8,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
-COPY ./server.py /app/server.py
 
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -16,8 +15,6 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 {% if hf_access_token %}
 ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
 {% endif %}
-
-ENV PYTHONPATH "${PYTHONPATH}:/app"
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 ENTRYPOINT ["/usr/bin/supervisord"]
