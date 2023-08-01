@@ -76,7 +76,7 @@ tr.docker_predict([[0, 0, 0, 0]])
 
 You can turn on live reload by setting the `live_reload` property to `True` in `config.yaml`. This feature makes it faster to iterate upon a Truss in Docker in some situations.
 
- Depending on the nature of the change, it may be able to update and existing running container, avoiding building a new Docker image, making for a snappy development loop. This change is called a patch. Examples of patchable changes are changes to:
+Depending on the nature of the change, it may be able to update and existing running container, avoiding building a new Docker image, making for a snappy development loop. This change is called a patch. Examples of patchable changes are changes to:
 
 1. Model code
 2. Python requirements
