@@ -1,4 +1,9 @@
-# Deploy a Truss to Baseten
+---
+description: Deploy a Truss to Baseten
+---
+
+# Baseten
+
 
 [Baseten](https://baseten.co), where Truss was originally developed, is a platform for building full-stack applications powered by ML models. You can deploy a model on Baseten with or without a Truss, but creating a Truss allows you to develop and test your model locally first.
 
