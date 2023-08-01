@@ -273,8 +273,7 @@ running on Docker locally, Truss allows specifying secrets in
 
 ### hf_cache
 
-Truss supports the caching of models pulled from Hugging Face. By saving your machine learning model's weights into your image during buildtime instead of runtime, you can considerably improve cold start performance. "Cold start" refers to the period when an application is launched for the first time and has to perform all initial setup operations. In this context, having the weights preloaded means your application can start using the machine learning model faster since it no longer has to wait for the weights to download during the runtime.
-
+Truss supports caching models pulled from Hugging Face. By saving your model's weights into your image during buildtime instead of runtime, you can considerably reduce cold start times (the time between the first call to a model server and it reaching a ready state). In this context, having the weights preloaded means your application can start using the model faster since it doesn't have to wait for the weights to download at runtime.
 
 The `hf_cache` key in the configuration file is used to manage model caching. This section contains several subkeys:
 - `repo_id` (required): The identifier of the Hugging Face repository where the model is located.
