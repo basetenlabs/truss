@@ -16,7 +16,7 @@ REQUIRED_ARGUMENTS = {
         "model_id": {
             "meta-llama/Llama-2-7b-chat-hf",
             "tiiuae/falcon-7b",
-            # TODO(abu): Add more servers
+            # TODO(abu): Add more models
         },
     },
 }
