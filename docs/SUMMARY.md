@@ -1,22 +1,13 @@
 # Table of contents
 
 * [Introducing Truss](../README.md)
-* [End-to-end tutorial](e2e.md)
-* [Release notes](CHANGELOG.md)
-
-## Create
-
-* [Hugging Face](create/huggingface.md)
-* [LightGBM](create/lightgbm.md)
-* [MLflow](create/mlflow.md)
-* [PyTorch](create/pytorch.md)
-* [scikit-learn](create/sklearn.md)
-* [TensorFlow](create/tensorflow.md)
-* [XGBoost](create/xgboost.md)
-* [Manually](create/manual.md)
+* [Quickstart](quickstart.md)
+* [Truss examples](https://github.com/basetenlabs/truss-examples)
+* [Release notes](https://github.com/basetenlabs/truss/releases/)
 
 ## Develop
 
+* [Truss tutorial](develop/README.md)
 * [Local development](develop/localhost.md)
 * [Truss configuration](develop/configuration.md)
 * [Secret management](develop/secrets.md)
@@ -27,9 +18,8 @@
 
 ## Deploy
 
-* [AWS](deploy/aws.md)
 * [Baseten](deploy/baseten.md)
-* [GCP](deploy/gcp.md)
+* [SageMaker](deploy/sagemaker.md)
 
 ## Reference
 
