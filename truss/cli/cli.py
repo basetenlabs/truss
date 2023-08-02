@@ -9,6 +9,7 @@ from typing import Callable, Optional, Union
 import rich
 import rich_click as click
 import truss
+from truss.cli.create import select_server_backend
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import RemoteFactory
 
@@ -105,8 +106,13 @@ def init(target_directory, skip_confirm, trainable) -> None:
     TARGET_DIRECTORY: A Truss is created in this directory
     """
     tr_path = Path(target_directory)
+    build_config = select_server_backend()
     if skip_confirm or click.confirm(f"A Truss will be created at {tr_path}"):
-        truss.init(target_directory=target_directory, trainable=trainable)
+        truss.init(
+            target_directory=target_directory,
+            trainable=trainable,
+            build_config=build_config,
+        )
         click.echo(f"Truss was created in {tr_path}")
 
 

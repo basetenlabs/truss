@@ -70,7 +70,7 @@ With this release, the live reload option supports changes to model code. In the
 
 ### Version 0.1.4
 
-This release adds support for MLflow. Package your MLflow model by following [this documentation](create/mlflow.md).
+This release adds support for MLflow.
 
 ### Version 0.1.3
 
