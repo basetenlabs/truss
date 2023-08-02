@@ -1,6 +1,8 @@
+import concurrent
 import logging
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
 
@@ -245,6 +247,42 @@ def test_async_streaming():
 
 
 @pytest.mark.integration
+def test_streaming_with_error():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_streaming_truss_with_error"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        predict_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        predict_error_response = requests.post(
+            predict_url, json={"throw_error": True}, stream=True, timeout=2
+        )
+
+        # In error cases, the response will return whatever the stream returned,
+        # in this case, the first 3 items. We timeout after 2 seconds to ensure that
+        # stream finishes reading and releases the predict semaphore.
+        assert [
+            byte_string.decode()
+            for byte_string in predict_error_response.iter_content()
+        ] == ["0", "1", "2"]
+
+        # Test that we are able to continue to make requests successfully
+        predict_non_error_response = requests.post(
+            predict_url, json={"throw_error": False}, stream=True, timeout=2
+        )
+
+        assert [
+            byte_string.decode()
+            for byte_string in predict_non_error_response.iter_content()
+        ] == ["0", "1", "2", "3", "4"]
+
+
+@pytest.mark.integration
 def test_streaming_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
@@ -254,17 +292,14 @@ def test_streaming_truss():
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
         truss_server_addr = "http://localhost:8090"
+        predict_url = f"{truss_server_addr}/v1/models/model:predict"
 
         # A request for which response is not completely read
-        predict_response = requests.post(
-            f"{truss_server_addr}/v1/models/model:predict", json={}, stream=True
-        )
+        predict_response = requests.post(predict_url, json={}, stream=True)
         # We just read the first part and leave it hanging here
         next(predict_response.iter_content())
 
-        predict_response = requests.post(
-            f"{truss_server_addr}/v1/models/model:predict", json={}, stream=True
-        )
+        predict_response = requests.post(predict_url, json={}, stream=True)
 
         assert predict_response.headers.get("transfer-encoding") == "chunked"
         assert [
@@ -274,13 +309,37 @@ def test_streaming_truss():
 
         # When accept is set to application/json, the response is not streamed.
         predict_non_stream_response = requests.post(
-            f"{truss_server_addr}/v1/models/model:predict",
+            predict_url,
             json={},
             stream=True,
             headers={"accept": "application/json"},
         )
         assert "transfer-encoding" not in predict_non_stream_response.headers
         assert predict_non_stream_response.json() == "01234"
+
+        # Test that concurrency work correctly. The streaming Truss has a configured
+        # concurrency of 1, so only one request can be in flight at a time. Each request
+        # takes 2 seconds, so with a timeout of 3 seconds, we expect the first request to
+        # succeed and for the second to timeout.
+        #
+        # Note that with streamed requests, requests.post raises a ReadTimeout exception if
+        # `timeout` seconds has passed since receiving any data from the server.
+        def make_request(delay: int):
+            # For streamed responses, requests does not start receiving content from server until
+            # `iter_content` is called, so we must call this in order to get an actual timeout.
+            time.sleep(delay)
+            list(requests.post(predict_url, json={}, stream=True).iter_content())
+
+        with ThreadPoolExecutor() as e:
+            # We use concurrent.futures.wait instead of the timeout property
+            # on requests, since requests timeout property has a complex interaction
+            # with streaming.
+            first_request = e.submit(make_request, 0)
+            second_request = e.submit(make_request, 0.2)
+            futures = [first_request, second_request]
+            done, not_done = concurrent.futures.wait(futures, timeout=3)
+            assert first_request in done
+            assert second_request in not_done
 
 
 @pytest.mark.integration

@@ -270,3 +270,36 @@ How secrets are mounted at runtime depends on the serving environment. For examp
 running on Docker locally, Truss allows specifying secrets in
 `~/.truss/config.yaml`, while on Baseten, secrets can be specified as regular
 [organization secrets](https://docs.baseten.co/settings/secrets).
+
+### hf_cache
+
+Truss supports caching models pulled from Hugging Face. By saving your model's weights into your image during buildtime instead of runtime, you can considerably reduce cold start times (the time between the first call to a model server and it reaching a ready state). In this context, having the weights preloaded means your application can start using the model faster since it doesn't have to wait for the weights to download at runtime.
+
+The `hf_cache` key in the configuration file is used to manage model caching. This section contains several subkeys:
+- `repo_id` (required): The identifier of the Hugging Face repository where the model is located.
+- `revision`(default = 'main'): This key allows you to specify a particular revision of the model to be cached.
+- `allow_patterns` (default = None): This key can be used to specify any file or directory names allowed to be cached.
+- `ignore_patterns` (default = None): On the contrary, this key allows you to exclude specific files or directories from the cache.
+
+Please note that patterns specified under `allow_patterns` or `ignore_patterns` must follow [Unix shell-style wildcards](https://docs.python.org/3/library/fnmatch.html), which differ from regular expressions.
+
+
+By default, all files within a listed Hugging Face repo will be cached. You can list multiple Hugging Face models to be cached in a single Truss.
+
+Below is an example of how you can cache the weights of Stable Diffusion XL.
+
+```yaml
+hf_cache:
+- repo_id: stabilityai/stable-diffusion-xl-base-1.0
+  ignore_patterns:
+  - diffusion_pytorch_model.safetensors
+  - text_encoder/model.safetensors
+  - text_encoder_2/model.safetensors
+  - unet/diffusion_pytorch_model.safetensors
+  - vae/diffusion_pytorch_model.safetensors
+```
+
+In this configuration:
+
+- `stabilityai/stable-diffusion-xl-base-1.0` is the `repo_id`, pointing to the exact model to cache.
+- Some patterns are specified under `ignore_patterns`, ensuring that any files following these patterns won't be included in the cache. Here, we aim to cache only `fp16.safetensors` in order to run Stable Diffusion XL in half-precision mode, allowing us to disregard many files that would otherwise consume valuable caching time.

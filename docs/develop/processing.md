@@ -23,7 +23,7 @@ Truss allows you to instead bundle pre-processing Python code with the model its
 
 **Example: ResNet pre-processing**
 
-Here is a pre-processing function from the [TensorFlow example](../create/tensorflow.md) that downloads an image from a URL and sizes it for the ResNet model.
+Here is a pre-processing function from a TensorFlow example that downloads an image from a URL and sizes it for the ResNet model.
 
 ```python
 import requests
@@ -59,7 +59,7 @@ Similarly, the output of a ML model can be messy or cryptic. Demystify the model
 
 **Example: ResNet post-processing**
 
-Here is a post-processing function from the same [TensorFlow example](../create/tensorflow.md) that returns clean labels.
+Here is a post-processing function from the same TensorFlow example that returns clean labels.
 
 ```python
 from scipy.special import softmax

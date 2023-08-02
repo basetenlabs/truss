@@ -14,7 +14,7 @@ from truss.errors import FrameworkNotSupportedError
 from truss.model_frameworks import MODEL_FRAMEWORKS_BY_TYPE, model_framework_from_model
 from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.notebook import is_notebook_or_ipython
-from truss.truss_config import TrussConfig
+from truss.truss_config import Build, ModelServer, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 from truss.util.gpu import get_gpu_memory
@@ -31,6 +31,7 @@ def populate_target_directory(
     config: TrussConfig,
     target_directory_path: Optional[str] = None,
     template: str = "custom",
+    populate_dirs: bool = True,
 ) -> Path:
     target_directory_path_typed = None
     if target_directory_path is None:
@@ -39,17 +40,18 @@ def populate_target_directory(
         target_directory_path_typed = Path(target_directory_path)
         target_directory_path_typed.mkdir(parents=True, exist_ok=True)
 
-    # Create data dir
-    (target_directory_path_typed / config.data_dir).mkdir()
+    if populate_dirs:
+        # Create data dir
+        (target_directory_path_typed / config.data_dir).mkdir()
 
-    # Create bundled packages dir
-    # TODO: Drop by default
-    (target_directory_path_typed / config.bundled_packages_dir).mkdir()
+        # Create bundled packages dir
+        # TODO: Drop by default
+        (target_directory_path_typed / config.bundled_packages_dir).mkdir()
 
-    # Create model module dir
-    model_dir = target_directory_path_typed / config.model_module_dir
-    template_path = TEMPLATES_DIR / template
-    copy_tree_path(template_path / "model", model_dir)
+        # Create model module dir
+        model_dir = target_directory_path_typed / config.model_module_dir
+        template_path = TEMPLATES_DIR / template
+        copy_tree_path(template_path / "model", model_dir)
 
     # Write config
     with (target_directory_path_typed / CONFIG_FILE).open("w") as config_file:
@@ -215,6 +217,7 @@ def init(
     requirements_file: Optional[str] = None,
     bundled_packages: Optional[List[str]] = None,
     trainable: bool = False,
+    build_config: Optional[Build] = None,
 ) -> TrussHandle:
     """
     Initialize an empty placeholder Truss. A Truss is a build context designed
@@ -230,11 +233,16 @@ def init(
         python_version=map_to_supported_python_version(infer_python_version()),
     )
 
+    if build_config:
+        config.build = build_config
+
     if trainable:
         config.train.resources.use_gpu = True
 
     target_directory_path = populate_target_directory(
-        config=config, target_directory_path=target_directory
+        config=config,
+        target_directory_path=target_directory,
+        populate_dirs=config.build.model_server is ModelServer.TrussServer,
     )
 
     if trainable:
