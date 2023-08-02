@@ -7,8 +7,8 @@ from huggingface_hub import hf_hub_download
 
 def download_file(repo_name, file_name, revision_name=None):
     secret = None
-    if Path("/etc/secrets/hf_secret").exists():
-        with open("/etc/secrets/hf_secret", "r") as secretFile:
+    if Path("/etc/secrets/hf_access_token").exists():
+        with open("/etc/secrets/hf_access_token", "r") as secretFile:
             secret = secretFile.read().strip()
     try:
         hf_hub_download(repo_name, file_name, revision=revision_name, token=secret)
