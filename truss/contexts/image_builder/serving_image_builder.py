@@ -92,7 +92,10 @@ class ServingImageBuilder(ImageBuilder):
                 repo_id = model.repo_id
                 revision = model.revision
                 model_files[repo_id] = {
-                    "files": list_repo_files(repo_id, revision=revision),
+                    "files": list_repo_files(
+                        repo_id,
+                        revision=revision,
+                    ),
                     "revision": revision,
                 }
 
