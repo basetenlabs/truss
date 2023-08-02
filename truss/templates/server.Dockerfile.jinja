@@ -50,11 +50,7 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 COPY ./cache_warmer.py /cache_warmer.py
         {% for repo, hf_dir in models.items() %}
             {% for file in hf_dir.files %}
-                {%- if hf_dir.revision != None %}
-RUN --mount=type=secret,id=hf_secret,dst=/etc/secrets/hf_secret $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {{hf_dir.revision}}
-                {%- else %}
-RUN --mount=type=secret,id=hf_secret,dst=/etc/secrets/hf_secret $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
-                {%- endif %}
+{{ "RUN --mount=type=secret,id=hf_secret,dst=/etc/secrets/hf_secret" if is_trusted else "RUN" }} $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
             {% endfor %}
         {% endfor %}
     {%- endif %}

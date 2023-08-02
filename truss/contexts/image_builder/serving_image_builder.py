@@ -86,7 +86,9 @@ class ServingImageBuilder(ImageBuilder):
     def default_tag(self):
         return f"{self._spec.model_framework_name}-model:latest"
 
-    def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
+    def prepare_image_build_dir(
+        self, build_dir: Optional[Path] = None, is_trusted: bool = False
+    ):
         """
         Prepare a directory for building the docker image from.
         """
@@ -179,7 +181,7 @@ class ServingImageBuilder(ImageBuilder):
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(
-            build_dir, should_install_server_requirements, model_files
+            build_dir, should_install_server_requirements, model_files, is_trusted
         )
 
     def _render_dockerfile(
@@ -187,6 +189,7 @@ class ServingImageBuilder(ImageBuilder):
         build_dir: Path,
         should_install_server_requirements: bool,
         model_files: Dict[str, Any],
+        is_trusted: bool,
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -223,6 +226,7 @@ class ServingImageBuilder(ImageBuilder):
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(self._truss_dir),
             models=model_files,
+            is_trusted=is_trusted,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
