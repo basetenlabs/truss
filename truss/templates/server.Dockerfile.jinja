@@ -64,9 +64,7 @@ RUN --mount=type=secret,id=hf_secret,dst=/etc/secrets/hf_secret $PYTHON_EXECUTAB
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
-    {%- for file_list in data_files%}
-RUN cp {{file_list}} /app/data
-    {% endfor %}
+COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
 COPY ./server /app
