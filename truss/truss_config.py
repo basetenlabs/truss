@@ -80,6 +80,8 @@ class AcceleratorSpec:
 class HuggingFaceModel:
     repo_id: str = ""
     revision: Optional[str] = None
+    allow_patterns: Optional[List[str]] = None
+    ignore_patterns: Optional[List[str]] = None
 
     @staticmethod
     def from_dict(d):
@@ -88,12 +90,29 @@ class HuggingFaceModel:
             raise ValueError("Repo ID for Hugging Face model cannot be empty.")
         revision = d.get("revision", None)
 
-        return HuggingFaceModel(repo_id=repo_id, revision=revision)
+        allow_patterns = d.get("allow_patterns", None)
+        ignore_pattenrs = d.get("ignore_patterns", None)
+
+        return HuggingFaceModel(
+            repo_id=repo_id,
+            revision=revision,
+            allow_patterns=allow_patterns,
+            ignore_patterns=ignore_pattenrs,
+        )
 
     def to_dict(self, verbose=False):
-        if verbose or self.revision is not None:
-            return {"repo_id": self.repo_id, "revision": self.revision}
-        return {"repo_id": self.repo_id}
+        data = {
+            "repo_id": self.repo_id,
+            "revision": self.revision,
+            "allow_patterns": self.allow_patterns,
+            "ignore_patterns": self.ignore_patterns,
+        }
+
+        if not verbose:
+            # only show changed values
+            data = {k: v for k, v in data.items() if v is not None}
+
+        return data
 
 
 @dataclass

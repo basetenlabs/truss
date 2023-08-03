@@ -1,5 +1,4 @@
 import asyncio
-import concurrent.futures
 import json
 import logging
 import multiprocessing
@@ -119,7 +118,7 @@ class BasetenEndpoints:
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
         """
-        This method is called by FastAPI, which introspects that it's not async, and schedules it on a thread
+        This method calls the user-provided predict method
         """
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
@@ -294,13 +293,8 @@ class TrussServer:
             },
         )
 
-        max_asyncio_workers = min(32, utils.cpu_count() + 4)
-        logging.info(f"Setting max asyncio worker threads as {max_asyncio_workers}")
         # Call this so uvloop gets used
         cfg.setup_event_loop()
-        asyncio.get_event_loop().set_default_executor(
-            concurrent.futures.ThreadPoolExecutor(max_workers=max_asyncio_workers)
-        )
 
         async def serve():
             serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

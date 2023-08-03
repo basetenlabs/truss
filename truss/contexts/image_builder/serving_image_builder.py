@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 from huggingface_hub import list_repo_files
+from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
@@ -70,6 +71,41 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
+def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
+    server_endpoint_config = {
+        "Completions": "/v1/completions",
+        "ChatCompletions": "/v1/chat/completions",
+    }
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    build_config: Build = config.build
+    server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
+    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+    dockerfile_template = read_template_from_fs(
+        TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
+    )
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
+
+    dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
+    dockerfile_filepath = build_dir / "Dockerfile"
+    dockerfile_filepath.write_text(dockerfile_content)
+
+    nginx_content = nginx_template.render(server_endpoint=server_endpoint)
+    nginx_filepath = build_dir / "nginx.proxy"
+    nginx_filepath.write_text(nginx_content)
+
+    args = " ".join(
+        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
+    )
+    supervisord_template = read_template_from_fs(
+        TEMPLATES_DIR, "vllm/supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(extra_args=args)
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
+
+
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
@@ -85,7 +121,9 @@ class ServingImageBuilder(ImageBuilder):
     def default_tag(self):
         return f"{self._spec.model_framework_name}-model:latest"
 
-    def prepare_image_build_dir(self, build_dir: Optional[Path] = None):
+    def prepare_image_build_dir(
+        self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
+    ):
         """
         Prepare a directory for building the docker image from.
         """
@@ -99,6 +137,9 @@ class ServingImageBuilder(ImageBuilder):
 
         if config.build.model_server is ModelServer.TGI:
             create_tgi_build_dir(config, build_dir)
+            return
+        elif config.build.model_server is ModelServer.VLLM:
+            create_vllm_build_dir(config, build_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
@@ -124,8 +165,19 @@ class ServingImageBuilder(ImageBuilder):
             for model in config.hf_cache.models:
                 repo_id = model.repo_id
                 revision = model.revision
+
+                allow_patterns = model.allow_patterns
+                ignore_patterns = model.ignore_patterns
+
+                filtered_repo_files = list(
+                    filter_repo_objects(
+                        items=list_repo_files(repo_id, revision=revision),
+                        allow_patterns=allow_patterns,
+                        ignore_patterns=ignore_patterns,
+                    )
+                )
                 model_files[repo_id] = {
-                    "files": list_repo_files(repo_id, revision=revision),
+                    "files": filtered_repo_files,
                     "revision": revision,
                 }
 
@@ -167,7 +219,7 @@ class ServingImageBuilder(ImageBuilder):
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(
-            build_dir, should_install_server_requirements, model_files
+            build_dir, should_install_server_requirements, model_files, use_hf_secret
         )
 
     def _render_dockerfile(
@@ -175,6 +227,7 @@ class ServingImageBuilder(ImageBuilder):
         build_dir: Path,
         should_install_server_requirements: bool,
         model_files: Dict[str, Any],
+        use_hf_secret: bool,
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -211,6 +264,7 @@ class ServingImageBuilder(ImageBuilder):
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(self._truss_dir),
             models=model_files,
+            use_hf_secret=use_hf_secret,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
