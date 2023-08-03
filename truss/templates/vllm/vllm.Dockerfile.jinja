@@ -1,0 +1,20 @@
+FROM baseten/vllm:latest
+
+EXPOSE 8080-9000
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl nginx supervisor && \
+        rm -rf /var/lib/apt/lists/*
+
+
+COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
+
+RUN mkdir -p /var/log/supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+{% if hf_access_token %}
+ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
+{% endif %}
+
+ENV SERVER_START_CMD /usr/bin/supervisord
+ENTRYPOINT ["/usr/bin/supervisord"]

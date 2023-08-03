@@ -71,6 +71,41 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
+def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
+    server_endpoint_config = {
+        "Completions": "/v1/completions",
+        "ChatCompletions": "/v1/chat/completions",
+    }
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    build_config: Build = config.build
+    server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
+    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+    dockerfile_template = read_template_from_fs(
+        TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
+    )
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
+
+    dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
+    dockerfile_filepath = build_dir / "Dockerfile"
+    dockerfile_filepath.write_text(dockerfile_content)
+
+    nginx_content = nginx_template.render(server_endpoint=server_endpoint)
+    nginx_filepath = build_dir / "nginx.proxy"
+    nginx_filepath.write_text(nginx_content)
+
+    args = " ".join(
+        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
+    )
+    supervisord_template = read_template_from_fs(
+        TEMPLATES_DIR, "vllm/supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(extra_args=args)
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
+
+
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
@@ -102,6 +137,9 @@ class ServingImageBuilder(ImageBuilder):
 
         if config.build.model_server is ModelServer.TGI:
             create_tgi_build_dir(config, build_dir)
+            return
+        elif config.build.model_server is ModelServer.VLLM:
+            create_vllm_build_dir(config, build_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]

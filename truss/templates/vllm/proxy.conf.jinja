@@ -1,0 +1,29 @@
+
+server {
+    listen 8080;
+
+    # Liveness
+    location / {
+        add_header Content-Type text/plain;
+        return 200 "";
+    }
+
+    # Readiness
+    location ~ ^/v1/models/model$ {
+        proxy_redirect off;
+
+        rewrite ^/v1/models/model$ /v1/models break;
+
+        proxy_pass http://127.0.0.1:8081;
+    }
+
+    # Predict
+    location ~ ^/v1/models/model:predict$ {
+        proxy_redirect off;
+
+        rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
+
+        proxy_pass http://127.0.0.1:8081;
+    }
+
+}
