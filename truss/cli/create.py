@@ -13,7 +13,7 @@ REQUIRED_ARGUMENTS = {
         # "dtype": {"bfloat16", "float16"},
     },
     ModelServer.VLLM: {
-        "model_id": {
+        "model": {
             "meta-llama/Llama-2-7b-chat-hf",
             "tiiuae/falcon-7b",
             # TODO(abu): Add more models
