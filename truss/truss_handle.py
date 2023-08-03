@@ -384,10 +384,8 @@ class TrussHandle:
 
     @proxy_to_shadow_if_scattered
     def docker_build_setup(
-        self, build_dir: Optional[Path] = None, is_trusted: bool = False
+        self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
     ):
-        # TODO(varun): add is_trusted option here
-
         """
         Set up a directory to build docker image from.
 
@@ -395,7 +393,7 @@ class TrussHandle:
             docker build command.
         """
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
-        image_builder.prepare_image_build_dir(build_dir, is_trusted=is_trusted)
+        image_builder.prepare_image_build_dir(build_dir, use_hf_secret=use_hf_secret)
         return image_builder.docker_build_command(build_dir)
 
     @proxy_to_shadow_if_scattered
