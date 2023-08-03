@@ -18,6 +18,7 @@ REQUIRED_ARGUMENTS = {
             "tiiuae/falcon-7b",
             # TODO(abu): Add more models
         },
+        "endpoint": {"Completions", "ChatCompletions"},
     },
 }
 

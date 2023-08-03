@@ -72,19 +72,29 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
 
 
 def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
+    server_endpoint_config = {
+        "Completions": "/v1/completions",
+        "ChatCompletions": "/v1/chat/completions",
+    }
     if not build_dir.exists():
         build_dir.mkdir(parents=True)
 
     build_config: Build = config.build
+    server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
         TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
     )
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
+
     dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
 
-    copy_file_path(TEMPLATES_DIR / "vllm" / "proxy.conf", build_dir / "proxy.conf")
+    nginx_content = nginx_template.render(server_endpoint=server_endpoint)
+    nginx_filepath = build_dir / "nginx.proxy"
+    nginx_filepath.write_text(nginx_content)
+
     args = " ".join(
         [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
     )
