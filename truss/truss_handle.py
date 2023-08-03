@@ -383,7 +383,9 @@ class TrussHandle:
         LocalTrainer.run(self._truss_dir)(variables)
 
     @proxy_to_shadow_if_scattered
-    def docker_build_setup(self, build_dir: Optional[Path] = None):
+    def docker_build_setup(
+        self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
+    ):
         """
         Set up a directory to build docker image from.
 
@@ -391,7 +393,7 @@ class TrussHandle:
             docker build command.
         """
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
-        image_builder.prepare_image_build_dir(build_dir)
+        image_builder.prepare_image_build_dir(build_dir, use_hf_secret=use_hf_secret)
         return image_builder.docker_build_command(build_dir)
 
     @proxy_to_shadow_if_scattered
