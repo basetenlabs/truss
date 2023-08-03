@@ -384,7 +384,7 @@ class TrussHandle:
 
     @proxy_to_shadow_if_scattered
     def docker_build_setup(
-        self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
+        self, build_dir: Optional[Path] = None, use_hf_secret: bool = True
     ):
         """
         Set up a directory to build docker image from.
