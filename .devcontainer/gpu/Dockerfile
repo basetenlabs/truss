@@ -14,7 +14,7 @@ RUN apt-get update && /bin/bash /tmp/library-scripts/common-debian.sh "${INSTALL
     && /bin/bash /tmp/library-scripts/docker-in-docker-debian.sh "true" "${USERNAME}" "${USE_MOBY}" \
     && /bin/bash /tmp/library-scripts/baseten.sh "true" "${USERNAME}" "${USE_MOBY}" \
     && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get install --yes --no-install-recommends git fzf vim \
+    && apt-get install --yes --no-install-recommends git fzf vim nginx supervisor curl \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* /tmp/library-scripts/
