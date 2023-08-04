@@ -37,6 +37,8 @@ def copy_tree_path(src: Path, dest: Path) -> None:
 
 
 def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
+    if not dest.parent.exists():
+        dest.parent.mkdir(parents=True)
     return copy_file(str(src), str(dest), verbose=False)
 
 

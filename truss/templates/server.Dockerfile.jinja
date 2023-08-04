@@ -66,8 +66,9 @@ RUN $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}}
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
 {%- endif %}
-# Do live reload installs before copys for better caching on publish
 {%- if config.live_reload %}
+# Do live reload installs before copys for better caching on publish
+# TODO(bolasim): move this install to base images
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         nginx supervisor curl && \
         rm -rf /var/lib/apt/lists/*

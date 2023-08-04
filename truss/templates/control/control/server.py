@@ -16,6 +16,10 @@ PYTHON_EXECUTABLE_LOOKUP_PATHS = [
 
 
 def _identify_python_executable_path() -> str:
+    env_set_python_path = os.environ.get("PYTHON_EXECUTABLE_PATH", None)
+    if env_set_python_path is not None:
+        return env_set_python_path
+
     for path in PYTHON_EXECUTABLE_LOOKUP_PATHS:
         if Path(path).exists():
             return path
