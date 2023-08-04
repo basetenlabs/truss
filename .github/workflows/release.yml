@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - release
-      - bola/fix-github-actions
 
 concurrency:
   group: release-${{ github.head_ref || github.run_id }}
