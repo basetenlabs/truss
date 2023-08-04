@@ -112,6 +112,7 @@ class Model:
     assert new_model_file_content == mock_model_file_content
 
 
+@pytest.mark.skip(reason="Need to upgrade test from nginx proxy")
 @pytest.mark.anyio
 async def test_patch_model_code_update_predict_on_long_load_time(app, client):
     mock_model_file_content = """
