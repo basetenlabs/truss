@@ -60,7 +60,7 @@ async def proxy(request: Request):
 
                 if await _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
-            except (ConnectionError) as exp:
+            except (RemoteProtocolError, ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
                 # process is running then we continue waiting for it to start (by retrying),
