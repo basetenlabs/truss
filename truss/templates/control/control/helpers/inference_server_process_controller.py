@@ -19,6 +19,7 @@ class InferenceServerProcessController:
     _inference_server_home: str
     _app_logger: logging.Logger
     _inference_server_process_args: List[str]
+    _logged_unrecoverable_since_last_restart: bool
 
     def __init__(
         self,
@@ -33,6 +34,7 @@ class InferenceServerProcessController:
         self._inference_server_started = False
         self._inference_server_ever_started = False
         self._inference_server_terminated = False
+        self._logged_unrecoverable_since_last_restart = False
         self._app_logger = app_logger
 
     def start(self, inf_env: dict):
@@ -45,6 +47,7 @@ class InferenceServerProcessController:
 
             self._inference_server_started = True
             self._inference_server_ever_started = True
+            self._logged_unrecoverable_since_last_restart = False
 
     def stop(self):
         if self._inference_server_process is not None:
@@ -106,4 +109,8 @@ class InferenceServerProcessController:
                 )
                 self.start(inf_env)
             else:
-                self._app_logger.warning("Inference server unrecoverable. Try patching")
+                if not self._logged_unrecoverable_since_last_restart:
+                    self._app_logger.warning(
+                        "Inference server unrecoverable. Try patching"
+                    )
+                    self._logged_unrecoverable_since_last_restart = True

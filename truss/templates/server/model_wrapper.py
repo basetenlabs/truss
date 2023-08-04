@@ -20,7 +20,7 @@ from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
 
-NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "3"))
+NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
 DEFAULT_PREDICT_CONCURRENCY = 1
 
