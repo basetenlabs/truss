@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - bola/fix-github-actions
 
 concurrency:
   group: main-${{ github.ref_name }}
