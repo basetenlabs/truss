@@ -21,7 +21,7 @@ jobs:
       release_version: ${{ steps.versions.outputs.release_version }}
       is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
-      - uses: ./.github/actions/detect-versions
+      - uses: .github/actions/detect-versions
         id: versions
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
