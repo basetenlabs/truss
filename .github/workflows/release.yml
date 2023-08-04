@@ -21,18 +21,21 @@ jobs:
       release_version: ${{ steps.versions.outputs.release_version }}
       is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
-      - uses: .github/actions/detect-versions
-        id: versions
-  build-and-push-truss-base-images-if-needed:
+    - uses: actions/checkout@v3
+      with:
+        # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
+        token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+        fetch-depth: 2
+    - uses: ./.github/actions/detect-versions/
+      id: versions
+
+  build-n-push-context-builder-image:
     needs: [detect-version-changed]
-    if: needs.detect-version-changed.outputs.build_base_images == 'true'
+    if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' }}
     runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        python_version: ["3.8", "3.9", "3.10", "3.11"]
-        use_gpu: ["y", "n"]
-        job_type: ["server", "training"]
     steps:
+      - uses: actions/checkout@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
@@ -42,101 +45,59 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/checkout@v3
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: baseten/truss-context-builder
+
+      - name: Docker Build
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          context: ./
+          file: ./context_builder.Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  publish-to-pypi:
+    needs: [detect-version-changed]
+    if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' }}
+    runs-on: ubuntu-20.04
+    steps:
+      - name: "Git tag release"
+        uses: actions/checkout@v3
+        with:
+          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+      - run: |
+          NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
+          git config --global user.name "Github action"
+          git config --global user.email "github.action@baseten.co"
+
+          git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
+          git push origin $NEW_VERSION
+
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - shell: bash
-        run: |
-          poetry run bin/generate_base_images.py \
-            --use-gpu ${{ matrix.use_gpu }}  \
-            --python-version ${{ matrix.python_version }} \
-            --job-type ${{ matrix.job_type }} \
-            --version-tag ${{ needs.detect-version-changed.outputs.new_base_image_version }} \
-            --skip-login --push
 
-  # integration-tests:
-  #   needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-  #   if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-  #   runs-on: ubuntu-20.04
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       split_group: ["1", "2", "3", "4", "5"]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: ./.github/actions/setup-python/
-  #     - run: poetry install
-  #     - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+      - name: Install poetry packages
+        run: poetry install --no-dev
 
-  # build-n-push-context-builder-image:
-  #   needs: [integration-tests, detect-version-changed]
-  #   if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v3
+      - name: Build
+        run: poetry build
 
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v1
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: "dist/*"
+          token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+          draft: false
+          prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
+          generateReleaseNotes: true
+          makeLatest: true
+          skipIfReleaseExists: true
+          tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
 
-  #     - name: Login to Docker Hub
-  #       uses: docker/login-action@v1
-  #       with:
-  #         username: ${{ secrets.DOCKERHUB_USERNAME }}
-  #         password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  #     - name: Docker meta
-  #       id: meta
-  #       uses: docker/metadata-action@v3
-  #       with:
-  #         images: baseten/truss-context-builder
-
-  #     - name: Docker Build
-  #       id: docker_build
-  #       uses: docker/build-push-action@v2
-  #       with:
-  #         context: ./
-  #         file: ./context_builder.Dockerfile
-  #         push: ${{ github.event_name != 'pull_request' }}
-  #         tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
-  #         labels: ${{ steps.meta.outputs.labels }}
-
-  # publish-to-pypi:
-  #   needs: [integration-tests, detect-version-changed]
-  #   if: ${{ !failure() && !cancelled() &&  needs.detect-version-changed.outputs.release_version == 'true' && (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped') }}
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - name: "Git tag release"
-  #       uses: actions/checkout@v3
-  #       with:
-  #         token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-  #     - run: |
-  #         NEW_VERSION=v${{ needs.detect-version-changed.outputs.new_version }}
-  #         git config --global user.name "Github action"
-  #         git config --global user.email "github.action@baseten.co"
-
-  #         git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
-  #         git push origin $NEW_VERSION
-
-  #     - uses: ./.github/actions/setup-python/
-
-  #     - name: Install poetry packages
-  #       run: poetry install --no-dev
-
-  #     - name: Build
-  #       run: poetry build
-
-  #     - name: Create Release
-  #       uses: ncipollo/release-action@v1.12.0
-  #       with:
-  #         artifacts: "dist/*"
-  #         token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
-  #         draft: false
-  #         prerelease: ${{ needs.detect-version-changed.outputs.is_prerelease_version }}
-  #         generateReleaseNotes: true
-  #         makeLatest: true
-  #         skipIfReleaseExists: true
-  #         tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
-
-  #     - name: Publish to PyPI
-  #       if: ${{ github.event_name != 'pull_request' }}
-  #       run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
+      - name: Publish to PyPI
+        if: ${{ github.event_name != 'pull_request' }}
+        run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
