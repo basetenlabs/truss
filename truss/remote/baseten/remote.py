@@ -11,6 +11,7 @@ from truss.remote.baseten.core import (
     create_truss_service,
     exists_model,
     get_dev_version_info,
+    get_model_versions_info,
     upload_truss,
 )
 from truss.remote.baseten.service import BasetenService
@@ -65,6 +66,20 @@ class BasetenRemote(TrussRemote):
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
+        )
+
+    def get_baseten_service(
+        self, model_name: str, published: bool = False
+    ) -> BasetenService:
+        model_id, model_versions = get_model_versions_info(self._api, model_name)
+        dev_version = model_versions[0]
+        model_version_id = dev_version["id"]
+        return BasetenService(
+            model_id=model_id,
+            model_version_id=model_version_id,
+            is_draft=not published,
+            api_key=self._auth_service.authenticate().value,
+            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
         )
 
     def sync_truss_to_dev_version_by_name(

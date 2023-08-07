@@ -220,27 +220,21 @@ def watch(
 @truss_cli.command()
 @click.option("--target_directory", required=False, help="Directory of truss")
 @click.option(
-    "--request",
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
+@click.option(
+    "-d",
+    "--data",
     type=str,
     required=False,
     help="String formatted as json that represents request",
 )
 @click.option(
-    "--build-dir",
-    type=click.Path(exists=True),
-    required=False,
-    help="Directory where context is built",
-)
-@click.option("--tag", help="Docker build image tag")
-@click.option("--port", type=int, default=8080, help="Local port used to run image")
-@click.option(
-    "--no-docker",
-    is_flag=True,
-    default=False,
-    help="Flag to run prediction with a docker container",
-)
-@click.option(
-    "--request-file",
+    "-f",
+    "--file",
     type=click.Path(exists=True),
     help="Path to json file containing the request",
 )
@@ -248,12 +242,9 @@ def watch(
 @echo_output
 def predict(
     target_directory: str,
-    request: Union[bytes, str],
-    build_dir,
-    tag,
-    port,
-    no_docker,
-    request_file,
+    remote: str,
+    data: Union[bytes, str],
+    file: Optional[Path],
 ):
     """
     Invokes the packaged model
@@ -262,31 +253,28 @@ def predict(
 
     REQUEST: String formatted as json that represents request
 
-    BUILD_DIR: Directory where context is built. If none, a temp directory is created.
-
-    TAG: Docker build image tag
-
-    PORT: Local port used to run image
-
-    NO_DOCKER: Flag to run prediction without a docker container
-
     REQUEST_FILE: Path to json file containing the request
     """
-    if request is not None:
-        request_data = json.loads(request)
-    elif request_file is not None:
-        with open(request_file) as json_file:
-            request_data = json.load(json_file)
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider = RemoteFactory.create(remote=remote)
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+
+    model_name = tr.spec.config.model_name
+    if not model_name:
+        raise ValueError("Model name not set. Did you `truss push`?")
+
+    if data is not None:
+        request_data = json.loads(data)
+    elif file is not None:
+        request_data = json.loads(Path(file).read_text())
     else:
         raise ValueError("At least one of request or request-file must be supplied.")
 
-    tr = _get_truss_from_directory(target_directory=target_directory)
-    if no_docker:
-        return tr.server_predict(request_data)
-    else:
-        return tr.docker_predict(
-            request_data, build_dir=build_dir, tag=tag, local_port=port, detach=True
-        )
+    service = remote_provider.get_baseten_service(model_name, False)
+    return service.predict(request_data)
 
 
 @truss_cli.command()
