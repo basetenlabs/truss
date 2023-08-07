@@ -92,7 +92,7 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
     dockerfile_filepath.write_text(dockerfile_content)
 
     nginx_content = nginx_template.render(server_endpoint=server_endpoint)
-    nginx_filepath = build_dir / "nginx.proxy"
+    nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
 
     args = " ".join(

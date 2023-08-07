@@ -49,10 +49,12 @@ To release a new version of the library.
 1. Create a PR changing the `pyproject.toml` version
 2. Merge the PR, github actions will auto deploy if it detects the change
 
-#### Manual Release
+Steps to release a new verison of Truss to PyPi:
 
-1. Create a tag on a commit `git tag -a -m "vX.X.X" vX.X.X
-2. Push the tag  `git push -u origin vX.X.X`
+1. Ensure that the version in `pyproject.toml` matches the version number that we want to release
+2. Create a PR from `main` into `release`, https://github.com/basetenlabs/truss/compare/release...main
+3. After getting a review, merge the PR. After this, a new release will be created and automatically pushed to PyPi.
+
 
 ## Documentation
 
