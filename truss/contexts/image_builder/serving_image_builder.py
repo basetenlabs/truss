@@ -29,7 +29,6 @@ from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.truss_config import Build, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -142,8 +141,6 @@ class ServingImageBuilder(ImageBuilder):
             create_vllm_build_dir(config, build_dir)
             return
 
-        data_dir = build_dir / config.data_dir  # type: ignore[operator]
-
         def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
             copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
@@ -154,13 +151,15 @@ class ServingImageBuilder(ImageBuilder):
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
 
-        # Download external data
-        download_external_data(self._spec.external_data, data_dir)
+        # Prepare to download external data
+        curr_dir = Path(__file__).parent.resolve()
+        copy_into_build_dir(
+            curr_dir / "external_data_cache_warmer.py", "external_data_cache_warmer.py"
+        )
 
         # Download from HuggingFace
         model_files = {}
         if config.hf_cache:
-            curr_dir = Path(__file__).parent.resolve()
             copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
             for model in config.hf_cache.models:
                 repo_id = model.repo_id

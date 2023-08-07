@@ -56,11 +56,16 @@ COPY ./cache_warmer.py /cache_warmer.py
     {%- endif %}
 {% endblock %}
 
-
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
+    {%- if config.external_data != None %}
+COPY ./external_data_cache_warmer.py /external_data_cache_warmer.py
+        {% for external_data_item in config.external_data.items %}
+RUN $PYTHON_EXECUTABLE /external_data_cache_warmer.py {{config.data_dir}}/{{external_data_item.local_data_path}} {{external_data_item.url}}
+        {% endfor %}
+    {%- endif%}
 {%- endif %}
 
 COPY ./server /app
