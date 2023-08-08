@@ -210,10 +210,10 @@ def test_patch_applier_external_data_patch_add(
         body=ExternalDataPatch(
             action=Action.ADD,
             item={
-                "url": "https://raw.githubusercontent.com/basetenlabs/truss/main/docs/assets/truss_logo_horizontal.png",
-                "local_data_path": "truss_icon",
+                "url": "https://avatars.githubusercontent.com/u/54861414?s=200&v=4",
+                "local_data_path": "baseten_icon",
             },
         ),
     )
     patch_applier(patch, os.environ.copy())
-    assert (truss_container_fs / "app" / "data" / "truss_icon").exists()
+    assert (truss_container_fs / "app" / "data" / "baseten_icon").exists()

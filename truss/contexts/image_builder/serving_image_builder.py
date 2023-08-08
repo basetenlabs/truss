@@ -160,7 +160,7 @@ class ServingImageBuilder(ImageBuilder):
         # Download from HuggingFace
         model_files = {}
         if config.hf_cache:
-            copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+            copy_into_build_dir(curr_dir / "hf_cache_warmer.py", "hf_cache_warmer.py")
             for model in config.hf_cache.models:
                 repo_id = model.repo_id
                 revision = model.revision
