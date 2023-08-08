@@ -1,0 +1,175 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "anchors": [
+    {
+      "icon": "b",
+      "name": "Baseten",
+      "url": "https://baseten.co"
+    },
+    {
+      "icon": "newspaper",
+      "name": "Releases",
+      "url": "https://github.com/basetenlabs/truss/releases/"
+    },
+    {
+      "icon": "books",
+      "name": "Truss examples",
+      "url": "https://github.com/basetenlabs/truss-examples/"
+    }
+  ],
+  "colors": {
+    "anchors": {
+      "from": "#4CA3FF",
+      "to": "#009959"
+    },
+    "background": {
+      "dark": "#090014"
+    },
+    "dark": "#009959",
+    "light": "#009959",
+    "primary": "#009959"
+  },
+  "favicon": "/favicon.svg",
+  "footerSocials": {
+    "github": "https://github.com/basetenlabs/truss",
+    "twitter": "https://twitter.com/trussml"
+  },
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "name": "Truss",
+  "navigation": [
+    {
+      "group": "Getting started",
+      "pages": [
+        "welcome",
+        "quickstart",
+        "usage"
+      ]
+    },
+    {
+      "group": "Examples",
+      "pages": [
+        "examples/private-model",
+        "examples/system-packages",
+        "examples/streaming",
+        "examples/local-model",
+        "examples/bundled-package",
+        {
+          "group": "Performance optimization",
+          "pages": [
+            "examples/performance/cached-weights",
+            "examples/performance/tgi-server",
+            "examples/performance/vllm-server"
+          ]
+        },
+        {
+          "group": "Foundation models",
+          "pages": [
+            "examples/models/overview",
+            "examples/models/wizardlm",
+            "examples/models/sdxl",
+            "examples/models/whisper"
+          ]
+        },
+        {
+          "group": "Frameworks",
+          "pages": [
+            "examples/frameworks/pytorch",
+            "examples/frameworks/sklearn",
+            "examples/frameworks/tensorflow",
+            "examples/frameworks/xgboost"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "Remotes",
+      "pages": [
+        "remotes/baseten",
+        "remotes/sagemaker"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "reference/config",
+        "reference/model-class",
+        "reference/servers",
+        "reference/cli"
+      ]
+    },
+    {
+      "group": "Learn",
+      "pages": [
+        "learn/intro"
+      ]
+    },
+    {
+      "group": "Truss 101: Model serving",
+      "pages": [
+        "learn/101/init",
+        "learn/101/echo",
+        "learn/101/push",
+        "learn/101/predict",
+        "learn/101/watch",
+        "learn/101/model-load",
+        "learn/101/model-predict",
+        "learn/101/requirements"
+      ]
+    },
+    {
+      "group": "Truss 201: Adding GPUs",
+      "pages": [
+        "learn/201/init",
+        "learn/201/resources",
+        "learn/201/model-load",
+        "learn/201/private",
+        "learn/201/cache",
+        "learn/201/model-predict",
+        "learn/201/streaming"
+      ]
+    },
+    {
+      "group": "Contributor's guide",
+      "pages": [
+        "contribute/contributing",
+        "contribute/setup",
+        "contribute/release"
+      ]
+    },
+    {
+      "group": "Deep dives",
+      "pages": [
+        "contribute/base-images",
+        "contribute/patching",
+        "contribute/remote-spec"
+      ]
+    }
+  ],
+  "tabs": [
+    {
+      "name": "Learn model deployment",
+      "url": "learn"
+    },
+    {
+      "name": "Contributor's guide",
+      "url": "contribute"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/basetenlabs/truss/"
+  },
+  "topbarLinks": [
+    {
+      "name": "Roadmap",
+      "url": "https://github.com/basetenlabs/truss/projects"
+    },
+    {
+      "name": "Issues",
+      "url": "https://github.com/basetenlabs/truss/issues"
+    }
+  ]
+}
