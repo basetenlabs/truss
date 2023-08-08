@@ -334,16 +334,24 @@ class TrussConfig:
             Describe your model for documentation purposes.
         environment_variables (Dict[str, str]):
             <Warning>
-            Do not store secret values directly in environment variables (or anywhere in the config file). See the `secrets` arg for information on properly managing secrets.
+            Do not store secret values directly in environment variables (or anywhere in the
+            config file). See the `secrets` arg for information on properly managing secrets.
             </Warning>
-            Any environment variables can be provided here as key value pairs and are exposed to the environment that the model executes in. Many Python libraries can be customized using environment variables, so this field can be quite handy in those scenarios.
+            Any environment variables can be provided here as key value pairs and are exposed
+            to the environment that the model executes in. Many Python libraries can be
+            customized using environment variables, so this field can be quite handy in those
+            scenarios.
             ```yaml
             environment_variables:
               ENVIRONMENT: Staging
               DB_URL: https://my_database.example.com/
             ```
         model_metadata (Dict[str, str]):
-            Set any additional metadata in this catch-all field. The entire contents of the config file are available to the model at runtime, so this is a good place to store any custom information that model needs. For example, scikit-learn models include a flag here that indicates whether the model supports returning probabilities alongside predictions.
+            Set any additional metadata in this catch-all field. The entire contents of the
+            config file are available to the model at runtime, so this is a good place to
+            store any custom information that model needs. For example, scikit-learn models
+            include a flag here that indicates whether the model supports returning
+            probabilities alongside predictions.
             ```yaml
             model_metadata:
               supports_predict_proba: true
@@ -351,7 +359,10 @@ class TrussConfig:
         model_name (str):
             The model's name, for documentation purposes.
         requirements (List[str]):
-            List the Python dependencies that the model depends on. The requirements should be provided in the [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/), but as a yaml list.
+            List the Python dependencies that the model depends on. The requirements should
+            be provided in the
+            [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/),
+            but as a yaml list.
             We strongly recommend pinning versions in your requirements.
             ```yaml
             requirements:
@@ -395,6 +406,7 @@ class TrussConfig:
     Returns:
         `config.yaml` file which can be updated
     """
+
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
     model_name: Optional[str] = None
