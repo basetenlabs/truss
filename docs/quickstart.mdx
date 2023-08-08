@@ -1,0 +1,80 @@
+---
+title: 'Quickstart'
+description: 'Description'
+---
+
+## Installation
+
+Install Truss with:
+
+```
+pip install --upgrade truss
+```
+
+## Quickstart
+
+As a quick example, we'll package a [text classification pipeline](https://huggingface.co/docs/transformers/main_classes/pipelines) from the open-source [`transformers` package](https://github.com/huggingface/transformers).
+
+### Create a Truss
+
+To get started, create a Truss with the following terminal command:
+
+```
+truss init text-classification
+```
+
+This will create an empty Truss at `./text-classification`.
+
+### Implement the `Model` class
+
+<Frame caption="Placeholder image, will get a better one made">
+  <img src="/images/notebook-to-model.png" />
+</Frame>
+
+The model serving code goes in `./text-classification/model/model.py` in your newly created Truss.
+
+```python
+from typing import List
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input: str) -> List:
+        return self._model(model_input)
+```
+
+There are two functions to implement:
+
+* `load()` runs once when the model is spun up and is responsible for initializing `self._model`
+* `predict()` runs each time the model is invoked and handles the inference. It can use any JSON-serializable type as input and output.
+
+### Add model dependencies
+
+The pipeline model relies on Transformers and PyTorch. These dependencies must be specified in the Truss config.
+
+In `./text-classification/config.yaml`, find the line `requirements`. Replace the empty list with:
+
+```yaml
+requirements:
+  - torch==2.0.1
+  - transformers==4.30.0
+```
+
+No other configuration needs to be changed.
+
+## Deployment
+
+You can deploy a Truss to your [Baseten](https://baseten.co) account with:
+
+```
+cd ./text-classification
+truss push
+```
+
+Truss will support other remotes soon, starting with AWS SageMaker.

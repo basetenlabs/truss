@@ -1,0 +1,55 @@
+---
+title: LLM with streaming output
+description: "Description"
+---
+
+WizardLM streaming
+
+<RequestExample>
+
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._data_dir = kwargs["data_dir"]
+        self._config = kwargs["config"]
+        self._secrets = kwargs["secrets"]
+        self._model = None
+
+    def load(self):
+        self._model = pipeline(
+            "document-question-answering",
+            model="impira/layoutlm-document-qa",
+        )
+
+    def predict(self, model_input):
+        return self._model(
+            model_input["url"],
+            model_input["prompt"]
+        )
+```
+
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: null
+python_version: py39
+requirements:
+- Pillow==10.0.0
+- pytesseract==0.3.10
+- torch==2.0.1
+- transformers==4.30.2
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: false
+  accelerator: null
+secrets: {}
+system_packages:
+- tesseract-ocr
+```
+
+</RequestExample>
