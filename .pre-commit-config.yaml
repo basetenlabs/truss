@@ -44,7 +44,3 @@ repos:
         types: [python]
         exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true
-  - repo: https://github.com/tcort/markdown-link-check
-    rev: "v3.10.3"
-    hooks:
-      - id: markdown-link-check
