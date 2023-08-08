@@ -45,12 +45,12 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {{ super() }}
 {% endblock %}
 
-{% block cache_weights %}
+{% block cache_hf_weights %}
     {%- if config.hf_cache != None %}
-COPY ./cache_warmer.py /cache_warmer.py
+COPY ./hf_cache_warmer.py /hf_cache_warmer.py
         {% for repo, hf_dir in models.items() %}
             {% for file in hf_dir.files %}
-{{ "RUN --mount=type=secret,id=hf_access_token,dst=/etc/secrets/hf_access_token" if use_hf_secret else "RUN" }} $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
+{{ "RUN --mount=type=secret,id=hf_access_token,dst=/etc/secrets/hf_access_token" if use_hf_secret else "RUN" }} $PYTHON_EXECUTABLE /hf_cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
             {% endfor %}
         {% endfor %}
     {%- endif %}
