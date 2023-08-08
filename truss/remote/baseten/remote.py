@@ -16,6 +16,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
+from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
 
 
@@ -41,6 +42,8 @@ class BasetenRemote(TrussRemote):
         model_id = exists_model(self._api, model_name)
 
         gathered_truss = TrussHandle(truss_handle.gather())
+        if gathered_truss.spec.model_server != ModelServer.TrussServer:
+            publish = True
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )

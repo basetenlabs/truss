@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import yaml
 from truss.constants import CONFIG_FILE
 from truss.errors import ValidationError
-from truss.truss_config import ExternalData, TrussConfig
+from truss.truss_config import ExternalData, ModelServer, TrussConfig
 from truss.types import Example, ModelFrameworkType
 
 
@@ -82,6 +82,10 @@ class TrussSpec:
     @property
     def config(self) -> TrussConfig:
         return self._config
+
+    @property
+    def model_server(self) -> ModelServer:
+        return self.config.build.model_server
 
     @property
     def spec_version(self) -> str:
