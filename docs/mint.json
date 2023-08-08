@@ -1,5 +1,9 @@
 {
   "$schema": "https://mintlify.com/schema.json",
+  "modeToggle": {
+    "default": "light",
+    "isHidden": true
+  },
   "anchors": [
     {
       "icon": "b",
