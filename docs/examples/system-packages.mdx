@@ -1,0 +1,173 @@
+---
+title: Model with system packages
+description: "Deploy a model with both Python and system dependencies"
+---
+
+[LayoutLM Document QA](https://huggingface.co/impira/layoutlm-document-qa) is a multimodal model that answers questions about provided invoice documents. The model requires a system package `tesseract-ocr`, which we need to include in the model serving environment.
+
+<Tip>
+You can see the code for the finished LayoutLM Document QA Truss on the right. Keep reading for step-by-step instructions on how to build it.
+</Tip>
+
+This example will cover:
+
+1. Implementing a `transformers.pipeline` model in Truss
+2. Adding Python requirements to the Truss config
+3. **Adding system requirements to the Truss config**
+4. Setting sufficient model resources for inference
+
+### Step 0: Initialize Truss
+
+Get started by creating a new Truss:
+
+```sh
+truss init layoutlm-document-qa
+```
+
+Select the `TrussServer` option then hit `y` to confirm Truss creation. Then navigate to the newly created directory:
+
+```sh
+cd layoutlm-document-qa
+```
+
+### Step 1: Implement the `Model` class
+
+LayoutLM Document QA is [a `transformers.pipeline` model](https://huggingface.co/docs/transformers/main_classes/pipelines) which are straightforward to implement in Truss.
+
+In `model/model.py`, we write the class `Model` with three member functions:
+
+* `__init__`, which creates an instance of the object with a `_model` property
+* `load`, which runs once when the model server is spun up and loads the `pipeline` model
+* `predict`, which runs each time the model is invoked and handles the inference. It can use any JSON-serializable type as input and output.
+
+[Read the quickstart guide](/quickstart) for more details on `Model` class implementation.
+
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._model = None
+
+    def load(self):
+        # Load the model from Hugging Face
+        self._model = pipeline(
+            "document-question-answering",
+            model="impira/layoutlm-document-qa",
+        )
+
+    def predict(self, model_input):
+        # Invoke the model and return the results
+        return self._model(
+            model_input["url"],
+            model_input["prompt"]
+        )
+```
+
+### Step 2: Set Python dependencies
+
+Now, we can turn our attention to configuring the model server in `config.yaml`.
+
+In addition to `transformers`, LayoutLM Document QA has three other dependencies. We list them below as follows:
+
+```yaml config.yaml
+requirements:
+- Pillow==10.0.0
+- pytesseract==0.3.10
+- torch==2.0.1
+- transformers==4.30.2
+```
+
+<Note>
+Always pin exact versions for your Python dependencies. The ML/AI space moves fast, so you want to have an up-to-date version of each package while also being protected from breaking changes.
+</Note>
+
+### Step 3: Install system packages
+
+One of the Python dependencies, `pytesseract`, also requires a system package to operate.
+
+Adding system packages works just like adding Python requirements. You can specify any package that's available via `apt` on Debian.
+
+```yaml config.yaml
+system_packages:
+- tesseract-ocr
+```
+
+### Step 4: Configure model resources
+
+LayoutLM Document QA doesn't require a GPU, but you'll need a midrange CPU instance if you want reasonably fast invocation times. 4 CPU cores and 16 GiB of RAM is sufficient for the model.
+
+Model resources are also set in `config.yaml` and must be specified before you deploy the model.
+
+```yaml config.yaml
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: false
+  accelerator: null
+```
+
+### Step 5: Deploy the model
+
+<Note>
+You'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys) for this step.
+</Note>
+
+We have successfully packaged LayoutLM Document QA as a Truss. Let's deploy!
+
+```sh
+truss push
+```
+
+You can invoke the model with:
+
+```sh
+truss predict
+```
+
+<RequestExample>
+
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: null
+python_version: py39
+requirements:
+- Pillow==10.0.0
+- pytesseract==0.3.10
+- torch==2.0.1
+- transformers==4.30.2
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: false
+  accelerator: null
+secrets: {}
+system_packages:
+- tesseract-ocr
+```
+
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._model = None
+
+    def load(self):
+        self._model = pipeline(
+            "document-question-answering",
+            model="impira/layoutlm-document-qa",
+        )
+
+    def predict(self, model_input):
+        return self._model(
+            model_input["url"],
+            model_input["prompt"]
+        )
+```
+
+</RequestExample>
