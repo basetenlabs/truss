@@ -39,7 +39,8 @@ class Secrets(Mapping):
 
     def __getitem__(self, key: str) -> str:
         if key not in self._base_secrets:
-            # Note this is the case where the secrets are not
+            # Note this is the case where the secrets are not specified in
+            # config.yaml
             raise SecretNotFound(f"Secret '{key}' not specified in the config.")
 
         found_secret = SecretsResolver._resolve_secret(key, self._base_secrets[key])
