@@ -142,6 +142,7 @@ class BasetenApi:
         model_version(name: "{model_name}") {{
             oracle{{
                 name
+                id
                 versions{{
                     id
                     semver

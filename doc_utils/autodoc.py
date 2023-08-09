@@ -1,3 +1,4 @@
+#  type: ignore
 from docstring_parser import parse
 
 path = "../truss/truss_config.py"
