@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import Dict
 
 
+class SecretNotFound(Exception):
+    pass
+
+
 class SecretsResolver:
     SECRETS_MOUNT_DIR = "/secrets"
     SECRET_ENV_VAR_PREFIX = "TRUSS_SECRET_"
@@ -34,7 +38,17 @@ class Secrets(Mapping):
         self._base_secrets = base_secrets
 
     def __getitem__(self, key: str) -> str:
-        return SecretsResolver._resolve_secret(key, self._base_secrets[key])
+        if key not in self._base_secrets:
+            # Note this is the case where the secrets are not
+            raise SecretNotFound(f"Secret '{key}' not specified in the config.")
+
+        found_secret = SecretsResolver._resolve_secret(key, self._base_secrets[key])
+        if not found_secret:
+            raise SecretNotFound(
+                f"Secret '{key} not found. Please check available secrets."
+            )
+
+        return found_secret
 
     def __iter__(self):
         raise NotImplementedError(
