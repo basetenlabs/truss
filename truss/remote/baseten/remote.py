@@ -70,6 +70,18 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
+    def get_remote_logs_url(
+        self,
+        model_name: str,
+    ) -> str:
+        model = BasetenApi.get_model(self._api, model_name)
+        model_id = model["model_version"]["oracle"]["id"]
+        version = get_dev_version_info(
+            self._api, model_name  # pylint: disable=protected-access
+        )
+        version_id = version["id"]
+        return f"{self._remote_url}/models/{model_id}/versions/{version_id}/logs"
+
     def sync_truss_to_dev_version_by_name(
         self,
         model_name: str,
