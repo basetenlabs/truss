@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+import webbrowser
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -208,6 +209,9 @@ def watch(
         )
         sys.exit(1)
 
+    logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
+    rich.print(f"🪵 View logs for your deployment at {logs_url}")
+    webbrowser.open(logs_url)
     rich.print(f"👀 Watching for changes to truss at '{target_directory}' ...")
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
 

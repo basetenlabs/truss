@@ -99,6 +99,14 @@ class BasetenRemote(TrussRemote):
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
         )
 
+    def get_remote_logs_url(
+        self,
+        model_name: str,
+        published: bool = False,
+    ) -> str:
+        service = self.get_baseten_service(model_name, published)
+        return f"{self._remote_url}/models/{service._model_id}/versions/{service._model_version_id}/logs"
+
     def sync_truss_to_dev_version_by_name(
         self,
         model_name: str,
