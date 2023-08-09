@@ -16,6 +16,7 @@ from truss.constants import (
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
+    TRITON_SERVER_CODE_DIR,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
@@ -106,6 +107,47 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
+def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
+    _spec = TrussSpec(truss_dir)
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    # The triton server expects a specific directory structure. We create this directory structure
+    # in the build directory. The structure is:
+    #   build_dir
+    #   ├── model # Name of "model", used during invocation
+    #   │   └── 1 # Version of the model, used during invocation
+    #   │       └── truss # User-defined code
+    #   │           ├── config.yml
+    #   │           ├── model.py
+    #   │           ├── # other truss files
+    #   │       └── model.py # Triton server code
+    #   │       └── # other triton server files
+
+    model_repository_path = build_dir / "model" / "1"
+    user_truss_path = model_repository_path / "truss"  # type: ignore[operator]
+    data_dir = model_repository_path / config.data_dir  # type: ignore[operator]
+
+    copy_tree_path(TRITON_SERVER_CODE_DIR, build_dir)
+    copy_tree_path(truss_dir, user_truss_path)
+    copy_tree_path(
+        SHARED_SERVING_AND_TRAINING_CODE_DIR,
+        model_repository_path / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+    )
+
+    # Override config.yml
+    with (model_repository_path / "truss" / CONFIG_FILE).open("w") as config_file:
+        yaml.dump(config.to_dict(verbose=True), config_file)
+
+    # Download external data
+    download_external_data(_spec.external_data, data_dir)
+
+    (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(_spec.requirements_txt)
+    (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
+
+    return
+
+
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
@@ -140,6 +182,8 @@ class ServingImageBuilder(ImageBuilder):
             return
         elif config.build.model_server is ModelServer.VLLM:
             create_vllm_build_dir(config, build_dir)
+        elif config.build.model_server is ModelServer.TRITON:
+            create_triton_build_dir(config, build_dir, truss_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]

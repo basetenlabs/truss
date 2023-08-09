@@ -1,0 +1,22 @@
+name: "model"
+backend: "python"
+
+input [
+{% for inp in inputs %}
+    {
+        name: "{{ inp.name }}"
+        data_type: {{ inp.type }}
+        dims: [{{ inp.dims|join(', ') }}]
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+]
+
+output [
+{% for out in outputs %}
+    {
+        name: "{{ out.name }}"
+        data_type: {{ out.type }}
+        dims: [{{ out.dims|join(', ') }}]
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+]

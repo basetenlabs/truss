@@ -149,6 +149,7 @@ class ModelServer(Enum):
     TrussServer = "TrussServer"
     TGI = "TGI"
     VLLM = "VLLM"
+    TRITON = "TRITON"
 
 
 @dataclass

@@ -16,6 +16,7 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
+TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
 TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME
@@ -39,6 +40,7 @@ TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
+TRITON_SERVER_DOCKERFILE_TEMPLATE_NAME = "triton_server.Dockerfile.jinja"
 TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
 TRAINING_DOCKERFILE_NAME = "Dockerfile"
