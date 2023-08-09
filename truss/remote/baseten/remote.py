@@ -116,6 +116,7 @@ class BasetenRemote(TrussRemote):
                 or len(patch_request.patch_ops) == 0
             ):
                 logger.info("No changes observed, skipping deployment")
+                return
             resp = self._api.patch_draft_truss(model_name, patch_request)
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
