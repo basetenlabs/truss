@@ -75,9 +75,22 @@ class BasetenRemote(TrussRemote):
         self, model_name: str, published: bool = False
     ) -> BasetenService:
         model_id, model_versions = get_model_versions_info(self._api, model_name)
-
-        dev_version = model_versions[0]
-        model_version_id = dev_version["id"]
+        model_version = None
+        if published:
+            for mv in model_versions:
+                if not mv["is_draft"]:
+                    model_version = mv
+                    break
+        else:
+            for mv in model_versions:
+                if mv["is_draft"]:
+                    model_version = mv
+                    break
+        if model_version is None:
+            raise ValueError(
+                "No appropriate model version found. Run `truss push` then try again."
+            )
+        model_version_id = model_version["id"]
         return BasetenService(
             model_id=model_id,
             model_version_id=model_version_id,
