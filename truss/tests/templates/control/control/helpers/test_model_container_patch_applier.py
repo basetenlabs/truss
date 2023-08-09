@@ -210,8 +210,8 @@ def test_patch_applier_external_data_patch_add(
         body=ExternalDataPatch(
             action=Action.ADD,
             item={
-                "url": "https://avatars.githubusercontent.com/u/54861414?s=200&v=4",
-                "local_data_path": "baseten_icon",
+                "url": "https://raw.githubusercontent.com/basetenlabs/truss/main/docs/favicon.svg",
+                "local_data_path": "truss_icon",
             },
         ),
     )
