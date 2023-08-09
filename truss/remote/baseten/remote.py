@@ -75,6 +75,7 @@ class BasetenRemote(TrussRemote):
         self, model_name: str, published: bool = False
     ) -> BasetenService:
         model_id, model_versions = get_model_versions_info(self._api, model_name)
+
         dev_version = model_versions[0]
         model_version_id = dev_version["id"]
         return BasetenService(

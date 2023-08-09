@@ -238,6 +238,14 @@ def watch(
     type=click.Path(exists=True),
     help="Path to json file containing the request",
 )
+@click.option(
+    "--published",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Invoked the published model version.",
+)
 @error_handling
 @echo_output
 def predict(
@@ -245,6 +253,7 @@ def predict(
     remote: str,
     data: Union[bytes, str],
     file: Optional[Path],
+    published: Optional[bool],
 ):
     """
     Invokes the packaged model
@@ -273,8 +282,9 @@ def predict(
     else:
         raise ValueError("At least one of request or request-file must be supplied.")
 
-    service = remote_provider.get_baseten_service(model_name, False)
-    return service.predict(request_data)
+    service = remote_provider.get_baseten_service(model_name, published)
+    result = service.predict(request_data)
+    rich.print_json(data=result)
 
 
 @truss_cli.command()
