@@ -143,6 +143,7 @@ class BasetenApi:
             oracle{{
                 id
                 name
+                id
                 versions{{
                     id
                     semver

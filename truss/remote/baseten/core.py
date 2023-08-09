@@ -28,6 +28,11 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     return None
 
 
+def get_model_versions_info(api: BasetenApi, model_name) -> Tuple[str, dict]:
+    query_result = api.get_model(model_name)["model_version"]["oracle"]
+    return (query_result["id"], query_result["versions"])
+
+
 def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
     model = api.get_model(model_name)
     versions = model["model_version"]["oracle"]["versions"]

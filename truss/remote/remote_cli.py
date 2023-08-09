@@ -31,7 +31,7 @@ def inquire_remote_config() -> RemoteConfig:
 def inquire_remote_name(available_remotes: List[str]) -> str:
     if len(available_remotes) > 1:
         remote = inquirer.select(
-            "🎮 Which remote do you want to push to?",
+            "🎮 Which remote do you want to connect to?",
             qmark="",
             choices=available_remotes,
         ).execute()
