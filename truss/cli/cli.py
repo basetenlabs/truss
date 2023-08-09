@@ -88,7 +88,7 @@ def image():
     "--skip-confirm",
     is_flag=True,
     show_default=True,
-    default=False,
+    default=True,
     help="Skip confirmation prompt.",
 )
 @click.option(
@@ -105,6 +105,10 @@ def init(target_directory, skip_confirm, trainable) -> None:
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
+    if os.path.isdir(target_directory):
+        raise click.ClickException(
+            f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
+        )
     tr_path = Path(target_directory)
     build_config = select_server_backend()
     if skip_confirm or click.confirm(f"A Truss will be created at {tr_path}"):
