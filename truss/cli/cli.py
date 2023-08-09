@@ -84,14 +84,6 @@ def image():
 @truss_cli.command()
 @click.argument("target_directory", required=True)
 @click.option(
-    "-s",
-    "--skip-confirm",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="Skip confirmation prompt.",
-)
-@click.option(
     "-t",
     "--trainable",
     is_flag=True,
@@ -100,20 +92,23 @@ def image():
     help="Create a trainable truss.",
 )
 @error_handling
-def init(target_directory, skip_confirm, trainable) -> None:
+def init(target_directory, trainable) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
     """
+    if os.path.isdir(target_directory):
+        raise click.ClickException(
+            f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
+        )
     tr_path = Path(target_directory)
     build_config = select_server_backend()
-    if skip_confirm or click.confirm(f"A Truss will be created at {tr_path}"):
-        truss.init(
-            target_directory=target_directory,
-            trainable=trainable,
-            build_config=build_config,
-        )
-        click.echo(f"Truss was created in {tr_path}")
+    truss.init(
+        target_directory=target_directory,
+        trainable=trainable,
+        build_config=build_config,
+    )
+    click.echo(f"Truss was created in {tr_path}")
 
 
 @image.command()  # type: ignore
