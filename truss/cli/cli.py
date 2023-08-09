@@ -282,7 +282,7 @@ def predict(
     else:
         raise ValueError("At least one of request or request-file must be supplied.")
 
-    service = remote_provider.get_baseten_service(model_name, published)
+    service = remote_provider.get_baseten_service(model_name, published)  # type: ignore
     result = service.predict(request_data)
     rich.print_json(data=result)
 
