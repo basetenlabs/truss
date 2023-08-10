@@ -299,12 +299,17 @@ class Model:
                 "streamer": streamer
             }
 
+            # Kick off a new thread to execute the model generation.
+            # As the model generates outputs, they will be readable
+            # from the Streamer object.
             thread = Thread(
                 target=self.model.generate,
                 kwargs=generation_kwargs
             )
             thread.start()
 
+            # We return a generator that iterates over content in the
+            # streamer object.
             def inner():
                 for text in streamer:
                     yield text
