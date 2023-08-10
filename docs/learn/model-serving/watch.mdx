@@ -1,15 +1,23 @@
 ---
-title: "Step 3: Watch for changes"
-description: "Description"
+title: "Step 4: Watch for changes"
+description: "Keep remote model server synced with local dev."
 ---
 
-In this step, we'll stream information from the remote model server to our terminal.
+You don't have to run `truss push` every time you update your Truss during development. Instead, you can have a live reload workflow where local changes automatically are pushed to the production environment to give you a lightning-fast feedback loop.
 
-TODO: This step. Not clear on what's supposed to happen.
+### Set up Truss watch
+
+In a new terminal tab, run:
 
 ```sh
 truss watch
 ```
+
+Now, as you update your Truss, the changes will be patched onto the model server on the remote host.
+
+Leave `truss watch` running in this new terminal tab for the rest of the tutorial. You can use `Control-C` to exit `truss watch` to stop automatically pushing changes.
+
+In the next three steps, we'll upgrade our echo server to instead run an ML model. Check the output of `truss watch` after every step to see your local changes reflected live on the production server!
 
 <RequestExample>
 

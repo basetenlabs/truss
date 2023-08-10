@@ -1,10 +1,13 @@
 ---
-title: "Step 6: Run inference"
-description: "Description"
+title: "Step 7: Implement model inference"
+description: "Implement invocation for our new ML model"
 ---
 
-In this step, we'll implement invocation for our new ML model.
+To finish this tutorial, we'll implement model inference and invoke our finished model.
 
+### Run model inference
+
+In Truss, the `Model.predict()` function runs every time the model server endpoint is called.
 
 We'll call the model in `predict()` and return the results:
 
@@ -23,6 +26,29 @@ def predict(self, model_input: Any) -> Any:
 ```
 </Tab>
 </Tabs>
+
+## Invoke your finished model
+
+After `truss watch` shows that the server is updated, you're ready to go! If you haven't been using `truss watch`, you can update your model manually by running `truss push` again instead.
+
+Once the model server is ready, you can invoke your model the same was as before.
+
+**Invocation**
+
+```sh
+truss predict -d '"I am happy!"'
+```
+
+**Response**
+
+```json
+[
+  {
+    "label": "POSITIVE",
+    "score": 0.999873161315918
+  }
+]
+```
 
 <RequestExample>
 

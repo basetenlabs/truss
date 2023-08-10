@@ -1,25 +1,31 @@
 ---
-title: "Step 4: Invoke the model"
-description: "Description"
+title: "Step 3: Invoke the model"
+description: "Invoke our deployed \"model\" (aka echo server)."
 ---
 
-In this step, we'll invoke our deployed "model" (aka echo server).
+Once your model has finished deploying, you can call it from your terminal.
+
+### Run model invocation
+
+Model input must be JSON-serializable. For our echo server, we'll just send a basic string.
+
+<Note>
+Note the double quotes to make the data parameter a string.
+</Note>
 
 **Invocation**
 
 ```sh
-truss predict --request '{"prompt": "Hello, World"}'
+truss predict -d '"I am happy!"'
 ```
 
 **Response**
 
-```
-{"prompt": "Hello, World"}
+```json
+"I am happy!"
 ```
 
-Our model server is up and running, and we can push to it, watch for changes to go live, and run model inference.
-
-The next three steps will cover implementing a real model in your Truss.
+Our model server is up and running. We can push to it and run model inference. In the next step, we'll set up the last piece of the developer loop on Truss.
 
 <RequestExample>
 

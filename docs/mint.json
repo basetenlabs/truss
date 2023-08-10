@@ -96,15 +96,6 @@
       ]
     },
     {
-      "group": "Reference",
-      "pages": [
-        "reference/config",
-        "reference/model-class",
-        "reference/servers",
-        "reference/cli"
-      ]
-    },
-    {
       "group": "Learn",
       "pages": [
         "learn/intro"
@@ -116,11 +107,11 @@
         "learn/model-serving/init",
         "learn/model-serving/echo",
         "learn/model-serving/push",
-        "learn/model-serving/watch",
         "learn/model-serving/predict",
+        "learn/model-serving/watch",
         "learn/model-serving/model-load",
-        "learn/model-serving/model-predict",
-        "learn/model-serving/requirements"
+        "learn/model-serving/requirements",
+        "learn/model-serving/model-predict"
       ]
     },
     {
@@ -133,6 +124,15 @@
         "learn/llms/cache",
         "learn/llms/model-predict",
         "learn/llms/streaming"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "reference/config",
+        "reference/model-class",
+        "reference/servers",
+        "reference/cli"
       ]
     },
     {
@@ -158,7 +158,11 @@
       "url": "learn"
     },
     {
-      "name": "Contributor's guide",
+      "name": "Reference docs",
+      "url": "reference"
+    },
+    {
+      "name": "Contributor guides",
       "url": "contribute"
     }
   ],

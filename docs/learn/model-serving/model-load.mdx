@@ -1,9 +1,9 @@
 ---
-title: "Step 5: Load a model"
-description: "Description"
+title: "Step 5: Implement model load"
+description: "Load an ML model into your model server"
 ---
 
-In this step, we'll upgrade to an actual ML model: a text classification/sentiment analysis model that will tell us if a snippet of text has a positive or negative tone.
+In this step, we'll upgrade to an actual ML model: a text classification (sentiment analysis) model that will tell us if a snippet of text has a positive or negative tone.
 
 <Tip>
 On the right side, you'll see what your Truss should look like after each step!
@@ -42,7 +42,7 @@ def load(self):
 </Tab>
 </Tabs>
 
-We're not going to deploy the updated model just yet, there are two more changes that need to be made first.
+If you're paying attention to `truss watch`, you'll see that this step actually resulted in an error! That's ok. Errors are part of a developer loop. We'll fix it in the next step.
 
 <RequestExample>
 

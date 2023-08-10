@@ -1,11 +1,19 @@
 ---
 title: "Step 1: Echo server"
-description: "Description"
+description: "Implement a simple echo server."
 ---
 
-In this step, we'll implement a simple echo server.
+You don't need an ML model to learn the core dev loop when working with Truss. Instead, we'll write a quick echo server, which simply echos your input back to you.
 
-A model server's `predict()` function matches up with its `predict` endpoint: the way you actually run model inference. But we can start seeing how that works without bothering with a model yet.
+This step introduces the `my-truss/model/model.py` file. This is one of two essential files in a Truss. In this file, you implement the `Model` class, which the model server runs.
+
+### Implement the echo server
+
+The `Model.predict()` function runs every time the model server endpoint is called.
+
+<Tip>
+Check the "Diff" tab to see exactly which lines of code change in each step.
+</Tip>
 
 Open `model/model.py` and update `predict()` to echo the `model_input`:
 
@@ -27,6 +35,8 @@ def predict(self, model_input: Any) -> Any:
 ```
 </Tab>
 </Tabs>
+
+That's all the code for this step! Next, we'll deploy this echo server.
 
 <RequestExample>
 

@@ -1,6 +1,6 @@
 ---
 title: "Creating base images"
-description: "Description"
+description: "Add a custom base image to Truss"
 ---
 
 Base images are used to create Docker images for containers. Truss uses customized base images to:
@@ -13,7 +13,7 @@ For a general background on base images, [learn more in Docker's official docume
 
 ## Generating base images for Truss
 
-[This script](../../bin/generate_base_images.py) can be used to generate and push
+[This script](https://github.com/basetenlabs/truss/blob/main/bin/generate_base_images.py) can be used to generate and push
 base images to Docker Hub. The script allows a lot of control over which images
 to generate. To learn about all options, run:
 
@@ -57,7 +57,7 @@ To publish a base image:
 1. Increment Truss version in pyproject.toml
 2. Update `/workspaces/truss/truss/contexts/image_builder/util.py::TRUSS_BASE_IMAGE_VERSION_TAG` to match this version
 3. Create a PR and get it reviewed.
-4. Once the PR is ready to land, use the [image generation script](../../bin/generate_base_images.py) to build and publish base images. Make sure to use the value of `TRUSS_BASE_IMAGE_VERSION_TAG` for version tag.
+4. Once the PR is ready to land, use the [image generation script](https://github.com/basetenlabs/truss/blob/main/bin/generate_base_images.py) to build and publish base images. Make sure to use the value of `TRUSS_BASE_IMAGE_VERSION_TAG` for version tag.
 5. Merge the PR.
 6. Make sure integration tests pass.
 

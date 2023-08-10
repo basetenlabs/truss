@@ -1,19 +1,17 @@
 ---
 title: "Step 2: Deploy the model server"
-description: "Description"
+description: "Deploy our simple echo server to production."
 ---
-
-In this step, we'll deploy our simple echo server to production.
 
 Truss is maintained by [Baseten](https://baseten.co), which provides infrastructure for running ML models in production. We'll use Baseten as the remote host for your model.
 
 ### Get an API key
 
-To set up the Baseten remote in the next step, you'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys). If you don't have a Baseten account, no worries, just [sign up for an account](https://app.baseten.co/signup/) and you'll be issued plenty of free credits to get you started.
+To set up the Baseten remote, you'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys). If you don't have a Baseten account, no worries, just [sign up for an account](https://app.baseten.co/signup/) and you'll be issued plenty of free credits to get you started.
 
 ### Deploy your Truss
 
-Deploying model with Truss uses the interactive `truss push` command. The first time you run the command, it will walk you through setting up and a remote host to run your model.
+Deploying a model with Truss uses the interactive `truss push` command. The first time you run the command, it will walk you through setting up and a remote host to run your model.
 
 With your Baseten API key ready to go, you can deploy your model:
 
@@ -27,7 +25,7 @@ You'll be prompted for a few setup values. To complete the deployment:
 2. Paste your API key when prompted
 3. Give the model a name, like `my-first-model`
 
-In the next step, we'll stream logs from the deployment in your terminal. You can also go to [your model dashboard on Baseten](https://app.baseten.co/models/) to see information about the model deployment.
+You can monitor your model deployment on [your model dashboard on Baseten](https://app.baseten.co/models/).
 
 <RequestExample>
 
