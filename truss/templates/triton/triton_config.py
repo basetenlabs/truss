@@ -4,7 +4,7 @@ from typing import List, Type
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, Template
-from pydantic import BaseModel, conlist
+from pydantic import BaseModel
 
 # Define the mapping from pydantic types to Triton types
 TYPE_MAPPING = {
@@ -13,8 +13,6 @@ TYPE_MAPPING = {
     "float": "TYPE_FP32",
     "bool": "TYPE_BOOL",
     "dict": "TYPE_STRING",
-    "conlist": "TYPE_FP32",
-    "list": "TYPE_FP32",
 }
 
 
@@ -29,33 +27,43 @@ def path_to_module(path: Path) -> str:
     return str(path).replace("/", ".")
 
 
-def is_list_type(pydantic_type: Type) -> bool:
-    return pydantic_type == List or (
-        hasattr(pydantic_type, "__origin__") and pydantic_type.__origin__ == list
+def is_list_type(pydantic_field) -> bool:
+    actual_type = getattr(pydantic_field, "outer_type_", pydantic_field)
+    return actual_type == List or (
+        hasattr(actual_type, "__origin__") and actual_type.__origin__ == list
     )
 
 
-def is_conlist_type(pydantic_type: Type) -> bool:
-    return hasattr(pydantic_type, "__origin__") and pydantic_type.__origin__ == conlist
-
-
-def get_triton_type(pydantic_type: Type) -> str:
-    if is_list_type(pydantic_type):
-        return TYPE_MAPPING["list"]
-    elif is_conlist_type(pydantic_type):
-        return TYPE_MAPPING["conlist"]
+def get_triton_type(pydantic_field: Type) -> str:
+    if is_list_type(pydantic_field):
+        # Assuming the first argument of the list type is the base type
+        base_type = pydantic_field.__args__[0]
     else:
-        return TYPE_MAPPING[pydantic_type.__name__]
+        base_type = pydantic_field
+
+    # Determine the name of the base type
+    type_name = (
+        base_type.__name__
+        if hasattr(base_type, "__name__")
+        else base_type.__origin__.__name__
+    )
+
+    if type_name not in TYPE_MAPPING:
+        raise ValueError(f"Unsupported type: {type_name}")
+
+    return TYPE_MAPPING[type_name]
 
 
 def get_dims(pydantic_type: Type) -> List[int]:
-    if is_list_type(pydantic_type):
-        return [-1]
-    elif is_conlist_type(pydantic_type):
-        # Assuming min_items and max_items are the same for fixed-length lists
-        return [pydantic_type.__args__[1].min_items]
-    else:
-        return [1]
+    if is_list_type(pydantic_type.annotation):
+        dims = next(
+            (m for m in pydantic_type.metadata if hasattr(m, "min_length")), None
+        )
+        if dims and dims.min_length == dims.max_length:
+            return [-1, dims.min_length]
+        else:
+            return [-1, -1]
+    return [-1]
 
 
 def generate_config_pbtxt(
@@ -64,26 +72,20 @@ def generate_config_pbtxt(
     template_path: Path,
     template_name: str = "config.pbtxt.jinja",
 ) -> str:
-    inputs = [
-        {
-            "name": name,
-            "type": get_triton_type(input_class.__annotations__[name]),
-            "dims": get_dims(input_class.__annotations__[name]),
-        }
-        for name in input_class.model_fields.keys()  # type: ignore
-    ]
-    outputs = [
-        {
-            "name": name,
-            "type": get_triton_type(output_class.__annotations__[name]),
-            "dims": get_dims(output_class.__annotations__[name]),
-        }
-        for name in output_class.model_fields.keys()  # type: ignore
-    ]
+    def _inspect_pydantic_model(pydantic_cls):
+        return [
+            {
+                "name": field_name,
+                "type": get_triton_type(field_info.annotation),
+                "dims": get_dims(field_info),
+            }
+            for field_name, field_info in pydantic_cls.model_fields.items()
+        ]
 
-    return read_template_from_fs(template_path, template_name).render(
-        inputs=inputs, outputs=outputs
-    )
+    inputs = _inspect_pydantic_model(input_class)
+    outputs = _inspect_pydantic_model(output_class)
+    template = read_template_from_fs(template_path, template_name)
+    return template.render(inputs=inputs, outputs=outputs)
 
 
 if __name__ == "__main__":

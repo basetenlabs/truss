@@ -1,15 +1,25 @@
 import inspect
 import json
+from typing import List
 
 import numpy as np
 import triton_python_backend_utils as pb_utils
 
 TYPE_CONVERSION_LAMBDAS = {
-    dict: lambda x: json.loads(x.as_numpy().item().decode("utf-8")),
-    str: lambda x: x.as_numpy().item().decode("utf-8"),
-    int: lambda x: x.as_numpy().item(),
-    float: lambda x: x.as_numpy().item(),
-    bool: lambda x: x.as_numpy().item(),
+    "dict": lambda x: json.loads(x.as_numpy().item().decode("utf-8")),
+    "str": lambda x: x.as_numpy().item().decode("utf-8"),
+    "int": lambda x: x.as_numpy().item(),
+    "float": lambda x: x.as_numpy().item(),
+    "bool": lambda x: x.as_numpy().item(),
+    "list": lambda x: x,
+}
+
+PYTHON_TO_NP_DTYPES = {
+    int: np.int32,
+    float: np.float32,
+    str: np.dtype(object),
+    bool: np.bool_,
+    dict: np.dtype(object),
 }
 
 
@@ -26,6 +36,29 @@ def _signature_accepts_kwargs(signature: inspect.Signature) -> bool:
     return False
 
 
+def _is_list_type(pydantic_field_annotation) -> bool:
+    """
+    Checks if the provided type is List type.
+    """
+    actual_type = getattr(
+        pydantic_field_annotation, "outer_type_", pydantic_field_annotation
+    )
+    return actual_type == List or (
+        hasattr(actual_type, "__origin__") and actual_type.__origin__ == list
+    )
+
+
+def _get_pydantic_type(pydantic_field):
+    if _is_list_type(pydantic_field):
+        return list
+    else:
+        return (
+            pydantic_field.__name__
+            if hasattr(pydantic_field, "__name__")
+            else pydantic_field.__origin__.__name__
+        )
+
+
 def _inspect_pydantic_model(pydantic_class):
     """
     Inspects a Pydantic model and returns a list of fields and their types.
@@ -34,8 +67,8 @@ def _inspect_pydantic_model(pydantic_class):
         raise ValueError("Model not instantiated or input_type not set")
 
     return [
-        {"param": name, "type": field_type}
-        for name, field_type in pydantic_class.__annotations__.items()
+        {"param": field_name, "type": _get_pydantic_type(field_info.annotation)}
+        for field_name, field_info in pydantic_class.model_fields.items()
     ]
 
 
@@ -64,15 +97,6 @@ def _transform_pydantic_type_to_triton(pydantic_objects):
     """
     triton_objects = []
 
-    # Define a mapping for Python types to numpy dtypes
-    PYTHON_TO_NP_DTYPES = {
-        int: np.int32,
-        float: np.float32,
-        str: np.dtype(object),
-        bool: np.bool_,
-        dict: np.dtype(object),
-    }
-
     for pydantic_object in pydantic_objects:
         triton_object = []
         for field_name, field_value in pydantic_object.dict().items():
@@ -92,7 +116,7 @@ def _transform_pydantic_type_to_triton(pydantic_objects):
                 np_dtype = PYTHON_TO_NP_DTYPES.get(type(field_value))
                 if not np_dtype:
                     raise TypeError(
-                        f"Unsupported Python data type for numpy conversion: {type(field_value)}"
+                        f"Unsupported Python data type for numpy conversion: {field_value}"
                     )
                 field_value = np.array([field_value], dtype=np_dtype)
 
