@@ -1,27 +1,25 @@
 ---
-title: "Step 2: Deploy the model server"
+title: "Step 4: Invoke the model"
 description: "Description"
 ---
 
-In this step, we'll deploy our simple echo server.
+In this step, we'll invoke our deployed "model" (aka echo server).
 
-### Create a Baseten API key
-
-```sh
-export BASETEN_API_KEY=
-```
-
-### Set the remote
+**Invocation**
 
 ```sh
-truss remote
+truss predict --request '{"prompt": "Hello, World"}'
 ```
 
-### Deploy your Truss
+**Response**
 
-```sh
-truss push
 ```
+{"prompt": "Hello, World"}
+```
+
+Our model server is up and running, and we can push to it, watch for changes to go live, and run model inference.
+
+The next three steps will cover implementing a real model in your Truss.
 
 <RequestExample>
 

@@ -1,36 +1,39 @@
 ---
-title: "Step 8: Set environment variables"
+title: "Step 7: Set requirements"
 description: "Description"
 ---
 
-In this step, we'll add an environment variable.
+All configuration for your model happens in `config.yaml`.
 
-This is a bit contrived, the model here doesn't really need one. But it shows off `truss watch`.
+We'll set Python requirements. ML moves fast, always pin your requirements to make sure you're getting the right version.
 
 <Tabs>
 <Tab title="Code">
 ```yaml config.yaml
-environment_variables:
-  bar: bar_bar
+requirements:
+  - torch==2.0.1
+  - transformers==4.30.0
 ```
 </Tab>
 <Tab title="Diff">
 ```diff config.yaml
--environment_variables: {}
-+environment_variables:
-+  bar: bar_bar
+- requirements: []
++ requirements:
++   - torch==2.0.1
++   - transformers==4.30.0
 ```
 </Tab>
 </Tabs>
 
+You can set system requirements the same way with `system_packages`.
+
 <RequestExample>
 
 ```yaml config.yaml  ●
-environment_variables:
-  bar: bar_bar
+environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: null
+model_name: my-first-truss
 python_version: py39
 requirements:
   - torch==2.0.1

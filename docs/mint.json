@@ -113,26 +113,26 @@
     {
       "group": "Truss 101: Model serving",
       "pages": [
-        "learn/101/init",
-        "learn/101/echo",
-        "learn/101/push",
-        "learn/101/predict",
-        "learn/101/watch",
-        "learn/101/model-load",
-        "learn/101/model-predict",
-        "learn/101/requirements"
+        "learn/model-serving/init",
+        "learn/model-serving/echo",
+        "learn/model-serving/push",
+        "learn/model-serving/watch",
+        "learn/model-serving/predict",
+        "learn/model-serving/model-load",
+        "learn/model-serving/model-predict",
+        "learn/model-serving/requirements"
       ]
     },
     {
       "group": "Truss 201: Adding GPUs",
       "pages": [
-        "learn/201/init",
-        "learn/201/resources",
-        "learn/201/model-load",
-        "learn/201/private",
-        "learn/201/cache",
-        "learn/201/model-predict",
-        "learn/201/streaming"
+        "learn/llms/init",
+        "learn/llms/resources",
+        "learn/llms/model-load",
+        "learn/llms/private",
+        "learn/llms/cache",
+        "learn/llms/model-predict",
+        "learn/llms/streaming"
       ]
     },
     {

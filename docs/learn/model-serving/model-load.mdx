@@ -3,19 +3,27 @@ title: "Step 5: Load a model"
 description: "Description"
 ---
 
-In this step, we'll upgrade to an actual ML model.
+In this step, we'll upgrade to an actual ML model: a text classification/sentiment analysis model that will tell us if a snippet of text has a positive or negative tone.
 
-`transformers` is a Python package for working with all kinds of models, including the large language model (LLM) that we're going to work with in the Truss 201 module. It has a `pipeline` function that gives you access to a number of simple models with minimal config.
+<Tip>
+On the right side, you'll see what your Truss should look like after each step!
+</Tip>
 
-Let's import it at the top of `model/model.py`:
+The `transformers` Python package is useful for working with all kinds of models, including the large language model (LLM) that we're going to work with in the Truss 201 module. It has a `pipeline` function that gives you access to a number of simple models with minimal config.
+
+### Import transformers
+
+Let's import `transformers.pipeline` at the top of `model/model.py`:
 
 ```python
 from transformers import pipeline
 ```
 
-The model loading function runs once when the model server is spun up.
+### Load the model
 
-We'll update `load()` to bring in the `text-classification` model.
+In Truss, the `Model.load()` function runs once when the model server is spun up.
+
+We'll update `load()` to use the `text-classification` model from `transformers.pipeline`.
 
 <Tabs>
 <Tab title="Code">
@@ -33,6 +41,8 @@ def load(self):
 ```
 </Tab>
 </Tabs>
+
+We're not going to deploy the updated model just yet, there are two more changes that need to be made first.
 
 <RequestExample>
 

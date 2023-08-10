@@ -1,0 +1,13 @@
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: my-first-model
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
+secrets: {}
+system_packages: []
