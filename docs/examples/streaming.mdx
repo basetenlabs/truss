@@ -26,13 +26,13 @@ You can see the code for the finished Falcon 7B Truss on the right. Keep reading
 Get started by creating a new Truss:
 
 ```sh
-truss init falcon-7b 
+truss init falcon-7b
 ```
 
 Select the default `TrussServer` option. Then, navigate to the newly created directory:
 
 ```sh
-cd falcon-7b 
+cd falcon-7b
 ```
 
 ### Step 1: Set up the `Model` class without streaming
@@ -49,7 +49,7 @@ In `model/model.py`, we write the class `Model` with three member functions:
 
 
 [Read the quickstart guide](/quickstart) for more details on `Model` class implementation.
-    
+
 ```python model/model.py
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig, TextIteratorStreamer
@@ -203,7 +203,7 @@ Once we have the model code written -- the next thing we need to do before we de
 make sure that we have the rest of the Truss configuration in place.
 
 The only things we need to add to the config.yaml are the Python and hardware requirements
-for the model. 
+for the model.
 
 ```yaml config.yaml
 model_name: falcon-streaming
