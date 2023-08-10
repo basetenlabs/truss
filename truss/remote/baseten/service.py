@@ -47,6 +47,14 @@ class BasetenService(TrussService):
 
             return decode_content()
 
+        parsed_response = response.json()
+
+        if "model_output" not in parsed_response:
+            # In the case that the model is in a non-ready state, the response
+            # will not contain a model_output. Instead, return the
+            # error as-is.
+            return parsed_response
+
         return response.json()["model_output"]
 
     def authenticate(self) -> dict:
