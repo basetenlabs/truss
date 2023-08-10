@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -283,6 +284,9 @@ def predict(
 
     service = remote_provider.get_baseten_service(model_name, published)  # type: ignore
     result = service.predict(request_data)
+    if inspect.isgenerator(result):
+        for chunk in result:
+            rich.print(chunk, end="")
     rich.print_json(data=result)
 
 
