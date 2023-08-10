@@ -287,6 +287,7 @@ def predict(
     if inspect.isgenerator(result):
         for chunk in result:
             rich.print(chunk, end="")
+        return
     rich.print_json(data=result)
 
 
