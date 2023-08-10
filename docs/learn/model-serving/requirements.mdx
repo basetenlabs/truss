@@ -1,7 +1,15 @@
 ---
-title: "Step 7: Set requirements"
-description: "Description"
+title: "Step 6: Set requirements"
+description: "Add the model's Python requirements to the model server."
 ---
+
+This step introduces the other essential file in a Truss: `my-truss/config.yaml`, which controls the model server's configuration. For a complete list of the config options, see [the config reference](/reference/config).
+
+<Warning>
+Note that the `model_name` parameter is already set to `my-first-model` or whatever name you picked the first time you ran `truss push`. Don't change this name as it must remain consistant with the remote host.
+</Warning>
+
+### Add Python requirements
 
 All configuration for your model happens in `config.yaml`.
 
@@ -25,7 +33,11 @@ requirements:
 </Tab>
 </Tabs>
 
+<Info>
 You can set system requirements the same way with `system_packages`.
+</Info>
+
+On your `truss watch` tab, you should see that the model server is no longer showing an error.
 
 <RequestExample>
 
@@ -33,7 +45,7 @@ You can set system requirements the same way with `system_packages`.
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: null
+model_name: my-first-truss
 python_version: py39
 requirements:
   - torch==2.0.1

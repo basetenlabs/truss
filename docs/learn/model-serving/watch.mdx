@@ -1,0 +1,45 @@
+---
+title: "Step 4: Watch for changes"
+description: "Keep remote model server synced with local dev."
+---
+
+You don't have to run `truss push` every time you update your Truss during development. Instead, you can have a live reload workflow where local changes automatically are pushed to the production environment to give you a lightning-fast feedback loop.
+
+### Set up Truss watch
+
+In a new terminal tab, run:
+
+```sh
+truss watch
+```
+
+Now, as you update your Truss, the changes will be patched onto the model server on the remote host.
+
+Leave `truss watch` running in this new terminal tab for the rest of the tutorial. You can use `Control-C` to exit `truss watch` to stop automatically pushing changes.
+
+In the next three steps, we'll upgrade our echo server to instead run an ML model. Check the output of `truss watch` after every step to see your local changes reflected live on the production server!
+
+<RequestExample>
+
+```python model/model.py
+from typing import Any
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._data_dir = kwargs["data_dir"]
+        self._config = kwargs["config"]
+        self._secrets = kwargs["secrets"]
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input: Any) -> Any:
+        return self._model(model_input)
+```
+
+<Snippet file="base-config.mdx" />
+
+</RequestExample>

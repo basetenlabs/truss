@@ -1,0 +1,70 @@
+---
+title: "Step 5: Implement model load"
+description: "Load an ML model into your model server"
+---
+
+In this step, we'll upgrade to an actual ML model: a text classification (sentiment analysis) model that will tell us if a snippet of text has a positive or negative tone.
+
+<Tip>
+On the right side, you'll see what your Truss should look like after each step!
+</Tip>
+
+The `transformers` Python package is useful for working with all kinds of models, including the large language model (LLM) that we're going to work with in the Truss 201 module. It has a `pipeline` function that gives you access to a number of simple models with minimal config.
+
+### Import transformers
+
+Let's import `transformers.pipeline` at the top of `model/model.py`:
+
+```python
+from transformers import pipeline
+```
+
+### Load the model
+
+In Truss, the `Model.load()` function runs once when the model server is spun up.
+
+We'll update `load()` to use the `text-classification` model from `transformers.pipeline`.
+
+<Tabs>
+<Tab title="Code">
+```python model/model.py
+def load(self):
+    self._model = pipeline("text-classification")
+```
+</Tab>
+<Tab title="Diff">
+```diff model/model.py
+def load(self):
+-    # Load model here and assign to self._model.
+-    pass
++    self._model = pipeline("text-classification")
+```
+</Tab>
+</Tabs>
+
+If you're paying attention to `truss watch`, you'll see that this step actually resulted in an error! That's ok. Errors are part of a developer loop. We'll fix it in the next step.
+
+<RequestExample>
+
+```python model/model.py  ●
+from typing import Any
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._data_dir = kwargs["data_dir"]
+        self._config = kwargs["config"]
+        self._secrets = kwargs["secrets"]
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input: Any) -> Any:
+        return model_input
+```
+
+<Snippet file="base-config.mdx" />
+
+</RequestExample>
