@@ -208,14 +208,14 @@ for the model.
 ```yaml config.yaml
 model_name: falcon-streaming
 requirements:
-- torch
-- peft
-- scipy
-- sentencepiece
-- accelerate
-- bitsandbytes
-- einops
-- transformers
+- torch==2.0.1
+- peft==0.4.0
+- scipy==1.11.1
+- sentencepiece==0.1.99
+- accelerate==0.21.0
+- bitsandbytes==0.41.1
+- einops==0.6.1
+- transformers==4.31.0
 resources:
   cpu: "3"
   memory: 14Gi
@@ -321,14 +321,14 @@ class Model:
 ```yaml config.yaml
 model_name: falcon-streaming
 requirements:
-- torch
-- peft
-- scipy
-- sentencepiece
-- accelerate
-- bitsandbytes
-- einops
-- transformers
+- torch==2.0.1
+- peft==0.4.0
+- scipy==1.11.1
+- sentencepiece==1.11.1
+- accelerate==0.21.0
+- bitsandbytes==0.41.1
+- einops==0.6.1
+- transformers==4.31.0
 resources:
   cpu: "3"
   memory: 14Gi
