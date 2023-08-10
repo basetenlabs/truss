@@ -71,6 +71,9 @@ def generate_config_pbtxt(
     output_class: BaseModel,
     template_path: Path,
     template_name: str = "config.pbtxt.jinja",
+    max_batch_size: int = 1,
+    num_replicas: int = 1,
+    dynamic_batch_delay_ms: int = 0,
 ) -> str:
     def _inspect_pydantic_model(pydantic_cls):
         return [
@@ -82,10 +85,16 @@ def generate_config_pbtxt(
             for field_name, field_info in pydantic_cls.model_fields.items()
         ]
 
+    config_params = {
+        "max_batch_size": max_batch_size,
+        "num_replicas": num_replicas,
+    }
     inputs = _inspect_pydantic_model(input_class)
     outputs = _inspect_pydantic_model(output_class)
     template = read_template_from_fs(template_path, template_name)
-    return template.render(inputs=inputs, outputs=outputs)
+    if dynamic_batch_delay_ms > 0:
+        config_params["dynamic_batching_delay_microseconds"] = dynamic_batch_delay_ms
+    return template.render(inputs=inputs, outputs=outputs, **config_params)
 
 
 if __name__ == "__main__":
@@ -94,6 +103,10 @@ if __name__ == "__main__":
 
     with open(user_truss_path / "config.yaml", "r") as f:
         config = yaml.safe_load(f)
+
+    build = config.get("build", {})
+    build.pop("model_server")
+    config_arguments = {k: v for d in build["arguments"] for k, v in d.items()}
 
     model_class_filename = config["model_class_filename"]
     input_cls_name = config.get("input_type_name", "Input")
@@ -114,7 +127,9 @@ if __name__ == "__main__":
         )
 
     # Generate config.pbtxt
-    config_pbtxt = generate_config_pbtxt(input_cls, output_cls, Path("/app"))
+    config_pbtxt = generate_config_pbtxt(
+        input_cls, output_cls, Path("/app"), **config_arguments
+    )
 
     # Write config.pbtxt to model directory
     with open(model_repository_path / "config.pbtxt", "w") as f:
