@@ -33,6 +33,7 @@ class TrussService(ABC):
         method: str,
         headers: Optional[Dict] = None,
         data: Optional[Dict] = None,
+        stream: Optional[bool] = False,
     ):
         """
         Send a HTTP request.
@@ -56,11 +57,13 @@ class TrussService(ABC):
         auth_header = self.authenticate()
         headers = {**headers, **auth_header}
         if method == "GET":
-            response = requests.request(method, url, headers=headers)
+            response = requests.request(method, url, headers=headers, stream=stream)
         elif method == "POST":
             if not data:
                 raise ValueError("POST request must have data")
-            response = requests.request(method, url, json=data, headers=headers)
+            response = requests.request(
+                method, url, json=data, headers=headers, stream=stream
+            )
         else:
             raise ValueError(f"Unsupported method: {method}")
 
