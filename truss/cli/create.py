@@ -10,6 +10,7 @@ REQUIRED_ARGUMENTS = {
             "EleutherAI/gpt-neox-20b",
             "tiiuae/falcon-7b",
         },
+        "endpoint": {"generate", "generate_stream"},
         # "dtype": {"bfloat16", "float16"},
     },
     ModelServer.VLLM: {
