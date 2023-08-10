@@ -11,11 +11,13 @@ from truss.remote.baseten.core import (
     create_truss_service,
     exists_model,
     get_dev_version_info,
+    get_model_versions_info,
     upload_truss,
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
+from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
 
 
@@ -41,6 +43,8 @@ class BasetenRemote(TrussRemote):
         model_id = exists_model(self._api, model_name)
 
         gathered_truss = TrussHandle(truss_handle.gather())
+        if gathered_truss.spec.model_server != ModelServer.TrussServer:
+            publish = True
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )
@@ -66,6 +70,42 @@ class BasetenRemote(TrussRemote):
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
         )
+
+    def get_baseten_service(
+        self, model_name: str, published: bool = False
+    ) -> BasetenService:
+        model_id, model_versions = get_model_versions_info(self._api, model_name)
+        model_version = None
+        if published:
+            for mv in model_versions:
+                if not mv["is_draft"]:
+                    model_version = mv
+                    break
+        else:
+            for mv in model_versions:
+                if mv["is_draft"]:
+                    model_version = mv
+                    break
+        if model_version is None:
+            raise ValueError(
+                "No appropriate model version found. Run `truss push` then try again."
+            )
+        model_version_id = model_version["id"]
+        return BasetenService(
+            model_id=model_id,
+            model_version_id=model_version_id,
+            is_draft=not published,
+            api_key=self._auth_service.authenticate().value,
+            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
+        )
+
+    def get_remote_logs_url(
+        self,
+        model_name: str,
+        published: bool = False,
+    ) -> str:
+        service = self.get_baseten_service(model_name, published)
+        return f"{self._remote_url}/models/{service._model_id}/versions/{service._model_version_id}/logs"
 
     def sync_truss_to_dev_version_by_name(
         self,
@@ -113,6 +153,7 @@ class BasetenRemote(TrussRemote):
                 or len(patch_request.patch_ops) == 0
             ):
                 logger.info("No changes observed, skipping deployment")
+                return
             resp = self._api.patch_draft_truss(model_name, patch_request)
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)

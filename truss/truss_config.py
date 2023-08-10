@@ -328,6 +328,86 @@ class BaseImage:
 
 @dataclass
 class TrussConfig:
+    """
+    `config.yaml` controls Truss config
+    Args:
+        description (str):
+            Describe your model for documentation purposes.
+        environment_variables (Dict[str, str]):
+            <Warning>
+            Do not store secret values directly in environment variables (or anywhere in the
+            config file). See the `secrets` arg for information on properly managing secrets.
+            </Warning>
+            Any environment variables can be provided here as key value pairs and are exposed
+            to the environment that the model executes in. Many Python libraries can be
+            customized using environment variables, so this field can be quite handy in those
+            scenarios.
+            ```yaml
+            environment_variables:
+              ENVIRONMENT: Staging
+              DB_URL: https://my_database.example.com/
+            ```
+        model_metadata (Dict[str, str]):
+            Set any additional metadata in this catch-all field. The entire contents of the
+            config file are available to the model at runtime, so this is a good place to
+            store any custom information that model needs. For example, scikit-learn models
+            include a flag here that indicates whether the model supports returning
+            probabilities alongside predictions.
+            ```yaml
+            model_metadata:
+              supports_predict_proba: true
+            ```
+        model_name (str):
+            The model's name, for documentation purposes.
+        requirements (List[str]):
+            List the Python dependencies that the model depends on. The requirements should
+            be provided in the
+            [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/),
+            but as a yaml list.
+            We strongly recommend pinning versions in your requirements.
+            ```yaml
+            requirements:
+            - scikit-learn==1.0.2
+            - threadpoolctl==3.0.0
+            - joblib==1.1.0
+            - numpy==1.20.3
+            - scipy==1.7.3
+            ```
+        resources (Dict[str, str]):
+            Specify model server runtime resources such as CPU, RAM and GPU.
+            ```yaml
+            resources:
+              cpu: "3"
+              memory: 14Gi
+              use_gpu: true
+              accelerator: A10G
+            ```
+        secrets (Dict[str, str]):
+            <Warning>
+            This field can be used to specify the keys for such secrets and dummy default
+            values. ***Never store actual secret values in the config***. Dummy default
+            values are instructive of what the actual values look like and thus act as
+            documentation of the format.
+            </Warning>
+            A model may depend on certain secret values that can't be bundled with the model
+            and need to be bound securely at runtime. For example, a model may need to download
+            information from s3 and may need access to AWS credentials for that.
+            ```yaml
+            secrets:
+              hf_access_token: "ACCESS TOKEN"
+            ```
+        system_packages (List[str]):
+            Specify any system packages that you would typically install using `apt` on a Debian operating system.
+            ```yaml
+            system_packages:
+            - ffmpeg
+            - libsm6
+            - libxext6
+            ```
+    Returns:
+        `config.yaml` file which can be updated
+    """
+
     model_framework: ModelFrameworkType = DEFAULT_MODEL_FRAMEWORK_TYPE
     model_type: str = DEFAULT_MODEL_TYPE
     model_name: Optional[str] = None
