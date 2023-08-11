@@ -16,6 +16,7 @@ from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 from anyio import Semaphore, to_thread
 from common.patches import apply_patches
 from common.retry import retry
+from fastapi import HTTPException
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -177,16 +178,20 @@ class ModelWrapper:
             return payload
 
         if inspect.iscoroutinefunction(self._model.preprocess):
-            return await self._model.preprocess(payload)
+            return await _intercept_exceptions_async(self._model.preprocess)(payload)
         else:
-            return await to_thread.run_sync(self._model.preprocess, payload)
+            return await to_thread.run_sync(
+                _intercept_exceptions_sync(self._model.preprocess), payload
+            )
 
     def _predict_sync_with_error_handling(self, payload):
         try:
             return self._model.predict(payload)
         except Exception:
             logging.exception("Exception while running predict")
-            return {"error": {"traceback": traceback.format_exc()}}
+            raise HTTPException(
+                status_code=500, detail={"traceback": traceback.format_exc()}
+            )
 
     async def _predict_async_with_error_handling(self, payload):
         try:
@@ -214,9 +219,13 @@ class ModelWrapper:
             return self._model.predict(payload)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await self._predict_async_with_error_handling(payload)
+            return await _intercept_exceptions_async(
+                self._predict_async_with_error_handling
+            )(payload)
 
-        return await to_thread.run_sync(self._predict_sync_with_error_handling, payload)
+        return await to_thread.run_sync(
+            _intercept_exceptions_sync(self._model.predict), payload
+        )
 
     async def postprocess(
         self,
@@ -238,9 +247,11 @@ class ModelWrapper:
             return self._model.postprocess(response, headers)
 
         if inspect.iscoroutinefunction(self._model.postprocess):
-            return await self._model.postprocess(response)
+            return await _intercept_exceptions_async(self._model.postprocess)(response)
 
-        return await to_thread.run_sync(self._model.postprocess, response)
+        return await to_thread.run_sync(
+            _intercept_exceptions_sync(self._model.postprocess), response
+        )
 
     async def write_response_to_queue(
         self, queue: asyncio.Queue, generator: AsyncGenerator
@@ -368,3 +379,29 @@ def _signature_accepts_kwargs(signature: inspect.Signature) -> bool:
 
 def _elapsed_ms(since_micro_seconds: float) -> int:
     return int((time.perf_counter() - since_micro_seconds) * 1000)
+
+
+def _intercept_exceptions_sync(func):
+    def inner(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except Exception:
+            logging.exception("Exception while running predict")
+            raise HTTPException(
+                status_code=500, detail={"traceback": traceback.format_exc()}
+            )
+
+    return inner
+
+
+def _intercept_exceptions_async(func):
+    async def inner(*args, **kwargs):
+        try:
+            await func(*args, **kwargs)
+        except Exception:
+            logging.exception("Exception while running predict")
+            raise HTTPException(
+                status_code=500, detail={"traceback": traceback.format_exc()}
+            )
+
+    return inner

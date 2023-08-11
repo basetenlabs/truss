@@ -368,20 +368,11 @@ def test_secrets_truss():
             return self._secrets["secret"]
 
     config = """model_name: secrets-truss
-cpu: "3"
-memory: 14Gi
-use_gpu: true
-accelerator: A10G
 secrets:
     secret: null
     """
 
-    config_with_no_secret = """model_name: secrets-truss
-cpu: "3"
-memory: 14Gi
-use_gpu: true
-accelerator: A10G
-    """
+    config_with_no_secret = "model_name: secrets-truss"
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
@@ -396,8 +387,6 @@ accelerator: A10G
 
         response = requests.post(full_url, json={})
         assert response.json() == "secret_value"
-
-        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         # Case where the secret is not specified in the config
@@ -435,6 +424,80 @@ accelerator: A10G
             "not found. Please check available secrets."
             in response.json()["error"]["traceback"]
         )
+
+
+@pytest.mark.integration
+def test_truss_with_errors():
+    model = """
+    class Model:
+        def predict(self, request):
+            raise ValueError("error")
+    """
+
+    config = "model_name: error-truss"
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 500
+        assert "error" in response.json()
+        assert "ValueError: error" in response.json()["error"]["traceback"]
+
+    model_preprocess_error = """
+    class Model:
+        def preprocess(self, request):
+            raise ValueError("error")
+
+        def predict(self, request):
+            return {"a": "b"}
+    """
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(model_preprocess_error))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 500
+        assert "error" in response.json()
+        assert "ValueError: error" in response.json()["error"]["traceback"]
+
+    model_postprocess_error = """
+    class Model:
+        def predict(self, request):
+            return {"a": "b"}
+
+        def postprocess(self, response):
+            raise ValueError("error")
+    """
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(model_postprocess_error))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 500
+        assert "error" in response.json()
+        assert "ValueError: error" in response.json()["error"]["traceback"]
 
 
 @pytest.mark.integration
