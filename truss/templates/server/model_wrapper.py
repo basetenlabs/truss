@@ -384,7 +384,7 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
 def _intercept_exceptions_sync(func):
     def inner(*args, **kwargs):
         try:
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
         except Exception:
             logging.exception("Exception while running predict")
             raise HTTPException(
@@ -397,7 +397,7 @@ def _intercept_exceptions_sync(func):
 def _intercept_exceptions_async(func):
     async def inner(*args, **kwargs):
         try:
-            await func(*args, **kwargs)
+            return await func(*args, **kwargs)
         except Exception:
             logging.exception("Exception while running predict")
             raise HTTPException(
