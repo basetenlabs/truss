@@ -72,7 +72,7 @@
           "group": "Foundation models",
           "pages": [
             "examples/models/overview",
-            "examples/models/wizardlm",
+            "examples/models/llama-2",
             "examples/models/sdxl",
             "examples/models/whisper"
           ]
@@ -105,13 +105,13 @@
       "group": "Truss 101: Model serving",
       "pages": [
         "learn/model-serving/init",
-        "learn/model-serving/echo",
         "learn/model-serving/push",
         "learn/model-serving/predict",
         "learn/model-serving/watch",
-        "learn/model-serving/model-load",
         "learn/model-serving/requirements",
-        "learn/model-serving/model-predict"
+        "learn/model-serving/model-load",
+        "learn/model-serving/model-predict",
+        "learn/model-serving/publish"
       ]
     },
     {

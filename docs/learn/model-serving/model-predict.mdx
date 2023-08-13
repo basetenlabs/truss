@@ -1,42 +1,40 @@
 ---
-title: "Step 7: Implement model inference"
-description: "Implement invocation for our new ML model"
+title: "Step 6: Implement model inference"
+description: "Add model inference and invoke the model server"
 ---
 
-To finish this tutorial, we'll implement model inference and invoke our finished model.
+To complete `model/model.py`, we'll implement model inference and invoke our finished model.
 
 ### Run model inference
 
-In Truss, the `Model.predict()` function runs every time the model server endpoint is called.
+The `Model.predict()` function runs every time the model server is called.
 
-We'll call the model in `predict()` and return the results:
+We'll use the text classification model in `predict()` and return the results:
 
 <Tabs>
 <Tab title="Code">
 ```python model/model.py
-def predict(self, model_input: Any) -> Any:
+def predict(self, model_input):
     return self._model(model_input)
 ```
 </Tab>
 <Tab title="Diff">
 ```diff model/model.py
-def predict(self, model_input: Any) -> Any:
+def predict(self, model_input):
 -    return model_input
 +    return self._model(model_input)
 ```
 </Tab>
 </Tabs>
 
-## Invoke your finished model
+### Invoke your finished model
 
-After `truss watch` shows that the server is updated, you're ready to go! If you haven't been using `truss watch`, you can update your model manually by running `truss push` again instead.
-
-Once the model server is ready, you can invoke your model the same was as before.
+After `truss watch` shows that the server is updated, it's time to invoke your finished model using `truss predict` in your terminal:
 
 **Invocation**
 
 ```sh
-truss predict -d '"I am happy!"'
+truss predict -d '"Truss is awesome!"'
 ```
 
 **Response**
@@ -53,24 +51,33 @@ truss predict -d '"I am happy!"'
 <RequestExample>
 
 ```python model/model.py  ●
-from typing import Any
 from transformers import pipeline
 
 
 class Model:
-    def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
         self._model = pipeline("text-classification")
 
-    def predict(self, model_input: Any) -> Any:
+    def predict(self, model_input):
         return self._model(model_input)
 ```
 
-<Snippet file="base-config.mdx" />
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements:
+  - torch==2.0.1
+  - transformers==4.30.0
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
 
 </RequestExample>

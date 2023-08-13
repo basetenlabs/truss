@@ -3,7 +3,20 @@ title: Model with system packages
 description: "Deploy a model with both Python and system dependencies"
 ---
 
-[LayoutLM Document QA](https://huggingface.co/impira/layoutlm-document-qa) is a multimodal model that answers questions about provided invoice documents. The model requires a system package `tesseract-ocr`, which we need to include in the model serving environment.
+## Summary
+
+To add system packages to your model serving environment, open `config.yaml` and update the `system_packages` key with a list of apt-installable Debian packages.
+
+```yaml config.yaml
+system_packages:
+- tesseract-ocr
+```
+
+## Step-by-step example
+
+[LayoutLM Document QA](https://huggingface.co/impira/layoutlm-document-qa) is a multimodal model that answers questions about provided invoice documents.
+
+The model requires a system package, `tesseract-ocr`, which we need to include in the model serving environment.
 
 <Tip>
 You can see the code for the finished LayoutLM Document QA Truss on the right. Keep reading for step-by-step instructions on how to build it.
@@ -32,7 +45,7 @@ cd layoutlm-document-qa
 
 ### Step 1: Implement the `Model` class
 
-LayoutLM Document QA is [a `transformers.pipeline` model](https://huggingface.co/docs/transformers/main_classes/pipelines) which are straightforward to implement in Truss.
+LayoutLM Document QA is [a pipeline model](https://huggingface.co/docs/transformers/main_classes/pipelines), so it is straightforward to implement in Truss.
 
 In `model/model.py`, we write the class `Model` with three member functions:
 
