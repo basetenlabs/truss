@@ -127,12 +127,27 @@
       ]
     },
     {
-      "group": "Reference",
+      "group": "Truss reference",
       "pages": [
-        "reference/config",
-        "reference/model-class",
-        "reference/servers",
-        "reference/cli"
+        "reference/config"
+      ]
+    },
+    {
+      "group": "CLI reference",
+      "pages": [
+        "reference/cli",
+        "reference/cli/init",
+        "reference/cli/push",
+        "reference/cli/watch",
+        "reference/cli/predict",
+        {
+          "group": "Advanced usage",
+          "pages": [
+            "reference/cli/image",
+            "reference/cli/container",
+            "reference/cli/cleanup"
+          ]
+        }
       ]
     },
     {

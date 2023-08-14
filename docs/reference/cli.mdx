@@ -1,276 +1,49 @@
 ---
-title: "CLI reference"
-description: "Description"
+title: "truss"
+description: "The simplest way to serve models in production"
 ---
 
-## truss
-
-truss: The simplest way to serve models in production
-
-**Usage:**
-
-```
+``` Usage
 truss [OPTIONS] COMMAND [ARGS]...
 ```
 
-**Options:**
+### Options
 
-```
-  --version  Show the version and exit.
-  --help     Show this message and exit.
-```
+<ParamField body="--version">
+Show the version and exit.
+</ParamField>
 
-## cleanup
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
 
-Clean up truss data.
+### Main usage
 
-Truss creates temporary directories for various operations
-such as for building docker images. This command clears
-that data to free up disk space.
-
-**Usage:**
-
-```
-truss cleanup [OPTIONS]
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-## container
-
-Subcommands for truss container
-
-**Usage:**
-
-```
-truss container [OPTIONS] COMMAND [ARGS]...
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-### kill
-
-Kills containers related to truss.
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-**Usage:**
-
-```
-truss container kill [OPTIONS] [TARGET_DIRECTORY]
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-### kill-all
-
-Kills all truss containers that are not manually persisted
-
-**Usage:**
-
-```
-truss container kill-all [OPTIONS]
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-### logs
-
-Get logs in a container is running for a truss
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-**Usage:**
-
-```
-truss container logs [OPTIONS] [TARGET_DIRECTORY]
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-## image
-
-Subcommands for truss image
-
-**Usage:**
-
-```
-truss image [OPTIONS] COMMAND [ARGS]...
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-### build
-
-Builds the docker image for a Truss.
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-BUILD_DIR: Image context. If none, a temp directory is created.
-
-**Usage:**
-
-```
-truss image build [OPTIONS] [TARGET_DIRECTORY] [BUILD_DIR]
-```
-
-**Options:**
-
-```
-  --tag TEXT  Docker image tag
-  --help      Show this message and exit.
-```
-
-### build-context
-
-Create a docker build context for a Truss.
-
-BUILD_DIR: Folder where image context is built for Truss
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-**Usage:**
-
-```
-truss image build-context [OPTIONS] BUILD_DIR [TARGET_DIRECTORY]
-```
-
-**Options:**
-
-```
-  --help  Show this message and exit.
-```
-
-### run
-
-Runs the docker image for a Truss.
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-BUILD_DIR: Image context. If none, a temp directory is created.
-
-**Usage:**
-
-```
-truss image run [OPTIONS] [TARGET_DIRECTORY] [BUILD_DIR]
-```
-
-**Options:**
-
-```
-  --tag TEXT      Docker build image tag
-  --port INTEGER  Local port used to run image
-  --attach        Flag for attaching the process
-  --help          Show this message and exit.
-```
-
-## init
-
+<CardGroup cols={1}>
+<Card title="truss init" href="/reference/cli/init">
 Create a new truss.
-
-TARGET_DIRECTORY: A Truss is created in this directory
-
-**Usage:**
-
-```
-truss init [OPTIONS] TARGET_DIRECTORY
-```
-
-**Options:**
-
-```
-  -t, --trainable  Create a trainable truss.
-  --help           Show this message and exit.
-```
-
-## predict
-
-Invokes the packaged model
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-REQUEST: String formatted as json that represents request
-
-REQUEST_FILE: Path to json file containing the request
-
-**Usage:**
-
-```
-truss predict [OPTIONS]
-```
-
-**Options:**
-
-```
-  --target_directory TEXT  Directory of truss
-  --remote TEXT            Name of the remote in .trussrc to push to
-  -d, --data TEXT          String formatted as json that represents request
-  -f, --file PATH          Path to json file containing the request
-  --published              Invoked the published model version.
-  --help                   Show this message and exit.
-```
-
-## push
-
+</Card>
+<Card title="truss push" href="/reference/cli/push">
 Pushes a truss to a TrussRemote.
+</Card>
+<Card title="truss watch" href="/reference/cli/watch">
+Seamless remote development with truss.
+</Card>
+<Card title="truss predict" href="/reference/cli/predict">
+Invokes the packaged model.
+</Card>
+</CardGroup>
 
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+### Advanced usage
 
-**Usage:**
-
-```
-truss push [OPTIONS] [TARGET_DIRECTORY]
-```
-
-**Options:**
-
-```
-  --remote TEXT      Name of the remote in .trussrc to push to
-  --model-name TEXT  Name of the model
-  --publish          Publish truss as production deployment.
-  --trusted          Trust truss with hosted secrets.
-  --help             Show this message and exit.
-```
-
-## watch
-
-Seamless remote development with truss
-
-TARGET_DIRECTORY: A Truss directory. If none, use current directory.
-
-**Usage:**
-
-```
-truss watch [OPTIONS] [TARGET_DIRECTORY]
-```
-
-**Options:**
-
-```
-  --remote TEXT  Name of the remote in .trussrc to patch changes to
-  --help         Show this message and exit.
-```
+<CardGroup cols={1}>
+<Card title="truss image" href="/reference/cli/image">
+Subcommands for truss image.
+</Card>
+<Card title="truss container" href="/reference/cli/container">
+Subcommands for truss container.
+</Card>
+<Card title="truss cleanup" href="/reference/cli/cleanup">
+Clean up truss data.
+</Card>
+</CardGroup>
