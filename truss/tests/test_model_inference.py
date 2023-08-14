@@ -400,6 +400,7 @@ secrets:
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         response = requests.post(full_url, json={})
+
         assert response.json() == "secret_value"
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
@@ -411,14 +412,17 @@ secrets:
         )
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.set_secret("secret", "secret_value")
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         response = requests.post(full_url, json={})
 
         assert "error" in response.json()
-        assert "not specified in the config" in response.json()["error"]["traceback"]
+        assert_logs_contain_error(container.logs(), "not specified in the config")
+        assert "Error while running predict" in response.json()["error"]["message"]
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         # Case where the secret is not specified in the config
