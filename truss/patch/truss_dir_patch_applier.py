@@ -1,5 +1,4 @@
 import logging
-from dataclasses import replace
 from pathlib import Path
 from typing import List
 
@@ -81,11 +80,5 @@ class TrussDirPatchApplier:
                 new_config = TrussConfig.from_dict(patch.body.config)
                 continue
             raise UnsupportedPatch(f"Unknown patch type {patch.type}")
-
-        new_config = replace(
-            new_config,
-            requirements=list(reqs.values()),
-            system_packages=list(pkgs),
-        )
 
         new_config.write_to_yaml_file(self._truss_config_path)
