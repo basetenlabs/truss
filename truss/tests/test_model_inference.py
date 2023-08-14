@@ -436,12 +436,8 @@ secrets:
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         response = requests.post(full_url, json={})
-
-        assert "error" in response.json()
-        assert (
-            "not found. Please check available secrets."
-            in response.json()["error"]["traceback"]
-        )
+        assert_logs_contain_error(container.logs(), "not specified in the config")
+        assert "Error while running predict" in response.json()["error"]["message"]
 
 
 @pytest.mark.integration
