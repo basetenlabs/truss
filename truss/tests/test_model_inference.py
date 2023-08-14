@@ -425,7 +425,7 @@ secrets:
         assert "Error while running predict" in response.json()["error"]["message"]
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        # Case where the secret is not specified in the config
+        # Case where the secret is not mounted
         truss_dir = Path(tmp_work_dir, "truss")
 
         _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
@@ -438,7 +438,9 @@ secrets:
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         response = requests.post(full_url, json={})
-        assert_logs_contain_error(container.logs(), "not specified in the config")
+        assert_logs_contain_error(
+            container.logs(), "secret not found. Please check available secrets."
+        )
         assert "Error while running predict" in response.json()["error"]["message"]
 
 
