@@ -43,7 +43,7 @@ class TrussDirPatchApplier:
         # Aggregate config patches and apply at end
         reqs = reqs_by_name(self._truss_config.requirements)
         pkgs = system_packages_set(self._truss_config.system_packages)
-        last_config = self._truss_config
+        new_config = self._truss_config
         for patch in patches:
             self._logger.debug(f"Applying patch {patch.to_dict()}")
             action = patch.body.action
@@ -78,16 +78,14 @@ class TrussDirPatchApplier:
             if isinstance(patch.body, ExternalDataPatch):
                 continue
             if isinstance(patch.body, ConfigPatch):
-                last_config = TrussConfig.from_dict(patch.body.config)
+                new_config = TrussConfig.from_dict(patch.body.config)
                 continue
             raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
-        self._truss_config = replace(
-            self._truss_config,
+        new_config = replace(
+            new_config,
             requirements=list(reqs.values()),
             system_packages=list(pkgs),
         )
-        self._truss_config.write_to_yaml_file(self._truss_config_path)
 
-        if last_config != self._truss_config:
-            self._truss_config.write_to_yaml_file(self._truss_config_path)
+        new_config.write_to_yaml_file(self._truss_config_path)
