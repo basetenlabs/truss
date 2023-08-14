@@ -79,6 +79,7 @@ class TrussDirPatchApplier:
                 continue
             if isinstance(patch.body, ConfigPatch):
                 last_config = TrussConfig.from_dict(patch.body.config)
+                continue
             raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
         self._truss_config = replace(
