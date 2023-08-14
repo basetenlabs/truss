@@ -5,7 +5,6 @@ import logging
 import os
 import sys
 import time
-import traceback
 from collections.abc import Generator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -184,22 +183,6 @@ class ModelWrapper:
                 _intercept_exceptions_sync(self._model.preprocess), payload
             )
 
-    def _predict_sync_with_error_handling(self, payload):
-        try:
-            return self._model.predict(payload)
-        except Exception:
-            logging.exception("Exception while running predict")
-            raise HTTPException(
-                status_code=500, detail={"traceback": traceback.format_exc()}
-            )
-
-    async def _predict_async_with_error_handling(self, payload):
-        try:
-            return await self._model.predict(payload)
-        except Exception:
-            logging.exception("Exception while running predict")
-            return {"error": {"traceback": traceback.format_exc()}}
-
     async def predict(
         self,
         payload: Any,
@@ -219,9 +202,7 @@ class ModelWrapper:
             return self._model.predict(payload)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(
-                self._predict_async_with_error_handling
-            )(payload)
+            return await _intercept_exceptions_async(self._model.predict)(payload)
 
         return await to_thread.run_sync(
             _intercept_exceptions_sync(self._model.predict), payload
@@ -388,7 +369,7 @@ def _intercept_exceptions_sync(func):
         except Exception:
             logging.exception("Exception while running predict")
             raise HTTPException(
-                status_code=500, detail={"traceback": traceback.format_exc()}
+                status_code=500, detail={"message": "Error while running predict"}
             )
 
     return inner
@@ -397,11 +378,13 @@ def _intercept_exceptions_sync(func):
 def _intercept_exceptions_async(func):
     async def inner(*args, **kwargs):
         try:
-            return await func(*args, **kwargs)
+            val = await func(*args, **kwargs)
+            logging.info("Finished running predict: %s", val)
+            return val
         except Exception:
             logging.exception("Exception while running predict")
             raise HTTPException(
-                status_code=500, detail={"traceback": traceback.format_exc()}
+                status_code=500, detail={"message": "Error while running predict"}
             )
 
     return inner

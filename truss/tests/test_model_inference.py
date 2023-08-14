@@ -1,5 +1,6 @@
 import concurrent
 import inspect
+import json
 import logging
 import tempfile
 import textwrap
@@ -37,6 +38,19 @@ def _create_truss(truss_dir: Path, config_contents: str, model_contents: str):
         file.write(config_contents)
     with open(model_file, "w", encoding="utf-8") as file:
         file.write(model_contents)
+
+
+def _log_contains_error(line: dict, error: str):
+    return (
+        line["levelname"] == "ERROR"
+        and line["message"] == "Exception while running predict"
+        and error in line["exc_info"]
+    )
+
+
+def assert_logs_contain_error(logs: str, error: str):
+    loglines = logs.splitlines()
+    assert any(_log_contains_error(json.loads(line), error) for line in loglines)
 
 
 class PropagatingThread(Thread):
@@ -442,14 +456,19 @@ def test_truss_with_errors():
         _create_truss(truss_dir, config, textwrap.dedent(model))
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         response = requests.post(full_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
-        assert "ValueError: error" in response.json()["error"]["traceback"]
+
+        assert_logs_contain_error(container.logs(), "ValueError: error")
+
+        assert "Error while running predict" in response.json()["error"]["message"]
 
     model_preprocess_error = """
     class Model:
@@ -473,7 +492,9 @@ def test_truss_with_errors():
         response = requests.post(full_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
-        assert "ValueError: error" in response.json()["error"]["traceback"]
+
+        assert_logs_contain_error(container.logs(), "ValueError: error")
+        assert "Error while running predict" in response.json()["error"]["message"]
 
     model_postprocess_error = """
     class Model:
@@ -497,7 +518,34 @@ def test_truss_with_errors():
         response = requests.post(full_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
-        assert "ValueError: error" in response.json()["error"]["traceback"]
+        assert_logs_contain_error(container.logs(), "ValueError: error")
+        assert "Error while running predict" in response.json()["error"]["message"]
+
+    model_async = """
+    class Model:
+        async def predict(self, request):
+            raise ValueError("error")
+    """
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(model_async))
+
+        tr = TrussHandle(truss_dir)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 500
+        assert "error" in response.json()
+
+        assert_logs_contain_error(container.logs(), "ValueError: error")
+
+        assert "Error while running predict" in response.json()["error"]["message"]
 
 
 @pytest.mark.integration
