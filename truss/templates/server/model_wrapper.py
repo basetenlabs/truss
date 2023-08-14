@@ -362,15 +362,19 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
     return int((time.perf_counter() - since_micro_seconds) * 1000)
 
 
+def _handle_exception():
+    logging.exception("Exception while running predict")
+    raise HTTPException(
+        status_code=500, detail={"message": "Error while running predict"}
+    )
+
+
 def _intercept_exceptions_sync(func):
     def inner(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception:
-            logging.exception("Exception while running predict")
-            raise HTTPException(
-                status_code=500, detail={"message": "Error while running predict"}
-            )
+            _handle_exception()
 
     return inner
 
@@ -378,13 +382,8 @@ def _intercept_exceptions_sync(func):
 def _intercept_exceptions_async(func):
     async def inner(*args, **kwargs):
         try:
-            val = await func(*args, **kwargs)
-            logging.info("Finished running predict: %s", val)
-            return val
+            return await func(*args, **kwargs)
         except Exception:
-            logging.exception("Exception while running predict")
-            raise HTTPException(
-                status_code=500, detail={"message": "Error while running predict"}
-            )
+            _handle_exception()
 
     return inner

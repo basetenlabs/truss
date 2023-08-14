@@ -431,7 +431,9 @@ secrets:
         _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.remove_secret("secret")
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
@@ -485,7 +487,9 @@ def test_truss_with_errors():
         _create_truss(truss_dir, config, textwrap.dedent(model_preprocess_error))
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
@@ -511,7 +515,9 @@ def test_truss_with_errors():
         _create_truss(truss_dir, config, textwrap.dedent(model_postprocess_error))
 
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
