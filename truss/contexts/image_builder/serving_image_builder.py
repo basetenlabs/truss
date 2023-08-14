@@ -72,7 +72,14 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
-def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
+def create_vllm_build_dir(
+    config: TrussConfig, build_dir: Path, truss_dir: Path, spec: TrussSpec
+):
+    def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
+        copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+
+    copy_tree_path(truss_dir, build_dir)
+
     server_endpoint_config = {
         "Completions": "/v1/completions",
         "ChatCompletions": "/v1/chat/completions",
@@ -88,7 +95,37 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
     )
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
-    dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
+    (build_dir / "cache_requirements.txt").write_text(spec.requirements_txt)
+
+    model_files = {}
+    if config.hf_cache:
+        curr_dir = Path(__file__).parent.resolve()
+        copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+        for model in config.hf_cache.models:
+            repo_id = model.repo_id
+            revision = model.revision
+
+            allow_patterns = model.allow_patterns
+            ignore_patterns = model.ignore_patterns
+
+            # TODO(varun): list_repo_files should extend to gcs and aws
+            filtered_repo_files = list(
+                filter_repo_objects(
+                    items=list_files(repo_id, truss_dir / spec.config.data_dir, revision=revision),
+                    allow_patterns=allow_patterns,
+                    ignore_patterns=ignore_patterns,
+                )
+            )
+            model_files[repo_id] = {
+                "files": filtered_repo_files,
+                "revision": revision,
+            }
+
+    dockerfile_content = dockerfile_template.render(
+        hf_access_token=hf_access_token,
+        models=model_files,
+        should_install_server_requirements=True,
+    )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
 
@@ -109,7 +146,6 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
 
 def list_bucket_files(bucket_name, data_dir):
     # ONLY WORKS FOR GCP
-
     storage_client = storage.Client.from_service_account_json(
         data_dir / "service_account.json"
     )
@@ -162,7 +198,7 @@ class ServingImageBuilder(ImageBuilder):
             create_tgi_build_dir(config, build_dir)
             return
         elif config.build.model_server is ModelServer.VLLM:
-            create_vllm_build_dir(config, build_dir)
+            create_vllm_build_dir(config, build_dir, truss_dir, spec)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]

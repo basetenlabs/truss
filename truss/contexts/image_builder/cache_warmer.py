@@ -1,9 +1,8 @@
 import sys
 from pathlib import Path
 
-from google.cloud import storage
-
 # TODO(varun): remove these packages from config
+from google.cloud import storage
 from huggingface_hub import hf_hub_download
 
 

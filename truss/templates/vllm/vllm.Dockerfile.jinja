@@ -6,7 +6,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         curl nginx supervisor && \
         rm -rf /var/lib/apt/lists/*
 
-
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 
 RUN mkdir -p /var/log/supervisor
@@ -15,6 +14,21 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 {% if hf_access_token %}
 ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
 {% endif %}
+
+COPY ./cache_requirements.txt cache_requirements.txt
+RUN pip install -r cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+
+COPY ./data /app/data
+
+{%- if hf_cache != None %}
+COPY ./cache_warmer.py /cache_warmer.py
+RUN chmod +x /cache_warmer.py
+        {% for repo, hf_dir in models.items() %}
+                {% for file in hf_dir.files %}
+RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
+                {% endfor %}
+        {% endfor %}
+{%- endif %}
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 ENTRYPOINT ["/usr/bin/supervisord"]
