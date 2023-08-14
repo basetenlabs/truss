@@ -13,12 +13,12 @@ def download_file(
     # Check if repo_name starts with "gs://"
     if "gs://" in repo_name:
         # Create directory if not exist
-        cache_dir = Path("/app/hf_cache")
+        repo_name = repo_name.replace("gs://", "")
+        cache_dir = Path(f"/app/hf_cache/{repo_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Connect to GCS storage
         try:
-            repo_name = repo_name.replace("gs://", "")
             storage_client = storage.Client.from_service_account_json(key_file)
             bucket = storage_client.bucket(repo_name)
             blob = bucket.blob(file_name)
