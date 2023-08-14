@@ -16,6 +16,9 @@ from truss.templates.control.control.helpers.truss_patch.system_packages import 
 )
 from truss.templates.control.control.helpers.types import (
     Action,
+    ConfigPatch,
+    EnvVarPatch,
+    ExternalDataPatch,
     ModelCodePatch,
     Patch,
     PythonRequirementPatch,
@@ -40,6 +43,7 @@ class TrussDirPatchApplier:
         # Aggregate config patches and apply at end
         reqs = reqs_by_name(self._truss_config.requirements)
         pkgs = system_packages_set(self._truss_config.system_packages)
+        last_config = self._truss_config
         for patch in patches:
             self._logger.debug(f"Applying patch {patch.to_dict()}")
             action = patch.body.action
@@ -67,6 +71,14 @@ class TrussDirPatchApplier:
                 if action == Action.ADD or Action.UPDATE:
                     pkgs.add(pkg)
                     continue
+            # Each of EnvVarPatch and ExternalDataPatch can be expressed through an overwrite of the config,
+            # handled below
+            if isinstance(patch.body, EnvVarPatch):
+                continue
+            if isinstance(patch.body, ExternalDataPatch):
+                continue
+            if isinstance(patch.body, ConfigPatch):
+                last_config = TrussConfig.from_dict(patch.body.config)
             raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
         self._truss_config = replace(
@@ -75,3 +87,6 @@ class TrussDirPatchApplier:
             system_packages=list(pkgs),
         )
         self._truss_config.write_to_yaml_file(self._truss_config_path)
+
+        if last_config != self._truss_config:
+            self._truss_config.write_to_yaml_file(self._truss_config_path)
