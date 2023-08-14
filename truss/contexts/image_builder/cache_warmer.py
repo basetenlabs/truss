@@ -1,21 +1,40 @@
 import sys
 from pathlib import Path
 
+from google.cloud import storage
+
+# TODO(varun): remove these packages from config
 from huggingface_hub import hf_hub_download
 
 
-def download_file(repo_name, file_name, revision_name=None):
-    secret = None
-    secret_path = Path("/etc/secrets/hf_access_token")
+def download_file(
+    repo_name, file_name, revision_name=None, key_file="/app/data/service_account.json"
+):
+    # Check if repo_name starts with "gs://"
+    if "gs://" in repo_name:
+        # Create directory if not exist
+        cache_dir = Path("/app/hf_cache")
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
-    if secret_path.exists():
-        secret = secret_path.read_text().strip()
-    try:
-        hf_hub_download(repo_name, file_name, revision=revision_name, token=secret)
-    except FileNotFoundError:
-        raise RuntimeError(
-            "Hugging Face repository not found (and no valid secret found for possibly private repository)."
-        )
+        # Connect to GCS storage
+        try:
+            repo_name = repo_name.replace("gs://", "")
+            storage_client = storage.Client.from_service_account_json(key_file)
+            bucket = storage_client.bucket(repo_name)
+            blob = bucket.blob(file_name)
+            # Download the blob to a file
+            blob.download_to_filename(f"{cache_dir}/{file_name}")
+        except Exception as e:
+            raise RuntimeError(f"Failure downloading file from GCS: {e}")
+    else:
+        secret_path = Path("/etc/secrets/hf_access_token")
+        secret = secret_path.read_text().strip() if secret_path.exists() else None
+        try:
+            hf_hub_download(repo_name, file_name, revision=revision_name, token=secret)
+        except FileNotFoundError:
+            raise RuntimeError(
+                "Hugging Face repository not found (and no valid secret found for possibly private repository)."
+            )
 
 
 if __name__ == "__main__":

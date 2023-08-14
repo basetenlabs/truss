@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+from google.cloud import storage
 from huggingface_hub import list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
@@ -106,6 +107,28 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
+def list_bucket_files(bucket_name, data_dir):
+    # ONLY WORKS FOR GCP
+
+    storage_client = storage.Client.from_service_account_json(
+        data_dir / "service_account.json"
+    )
+    blobs = storage_client.list_blobs(bucket_name.replace("gs://", ""))
+
+    all_objects = []
+    for blob in blobs:
+        all_objects.append(blob.name)
+    return all_objects
+
+
+def list_files(repo_id, data_dir, revision=None):
+    if repo_id.startswith(("s3://", "gs://")):
+        return list_bucket_files(repo_id, data_dir)
+    else:
+        # we assume it's a HF bucket
+        list_repo_files(repo_id, revision=revision)
+
+
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
@@ -169,9 +192,10 @@ class ServingImageBuilder(ImageBuilder):
                 allow_patterns = model.allow_patterns
                 ignore_patterns = model.ignore_patterns
 
+                # TODO(varun): list_repo_files should extend to gcs and aws
                 filtered_repo_files = list(
                     filter_repo_objects(
-                        items=list_repo_files(repo_id, revision=revision),
+                        items=list_files(repo_id, data_dir, revision=revision),
                         allow_patterns=allow_patterns,
                         ignore_patterns=ignore_patterns,
                     )
