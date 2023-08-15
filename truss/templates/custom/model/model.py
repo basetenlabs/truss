@@ -1,13 +1,15 @@
 """
-This file is where the key logic for serving your model is defined.
+The `Model` class is an interface between the ML model that you're packaging and the model
+server that you're running it on.
 
 The main methods to implement here are:
-* `load`: In the `load` method, include any logic for initializing your model.
-   This might include downloading model weights and loading the model into memory
-* `predict`: This is where model inference happens
+* `load`: runs exactly once when the model server is spun up or patched and loads the
+   model onto the model server. Include any logic for initializing your model, such
+   as downloading model weights and loading the model into memory.
+* `predict`: runs every time the model server is called. Include any logic for model
+  inference and return the model output.
 
-See https://truss.baseten.co/reference/structure for the full set of methods available
-in this file.
+See https://truss.baseten.co/quickstart for more.
 """
 
 
@@ -22,7 +24,7 @@ class Model:
         self._model = None
 
     def load(self):
-        # Load your model here
+        # Load model here and assign to self._model.
         pass
 
     def predict(self, model_input):
