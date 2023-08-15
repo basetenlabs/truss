@@ -179,5 +179,10 @@
       "name": "Issues",
       "url": "https://github.com/basetenlabs/truss/issues"
     }
-  ]
+  ],
+  "analytics": {
+    "gtm": {
+        "tagId": "GTM-WXD4NQTW"
+    }
+  }
 }
