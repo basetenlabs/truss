@@ -129,8 +129,8 @@ def generate_default_config():
         "requirements": [],
         "resources": {
             "accelerator": None,
-            "cpu": "500m",
-            "memory": "512Mi",
+            "cpu": "1",
+            "memory": "2Gi",
             "use_gpu": False,
         },
         "secrets": {},
@@ -153,8 +153,8 @@ python_version: py39
 requirements: []
 resources:
   accelerator: null
-  cpu: 500m
-  memory: 512Mi
+  cpu: '1'
+  memory: 2Gi
   use_gpu: false
 secrets: {}
 system_packages: []
@@ -192,8 +192,8 @@ def test_non_default_train():
     updated_train = {
         "resources": {
             "accelerator": "A10G",
-            "cpu": "500m",
-            "memory": "512Mi",
+            "cpu": "1",
+            "memory": "2Gi",
             "use_gpu": True,
         },
         "variables": {},
