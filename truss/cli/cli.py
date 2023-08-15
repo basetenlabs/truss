@@ -53,6 +53,8 @@ def error_handling(f: Callable[..., object]):
     def wrapper(*args, **kwargs):
         try:
             f(*args, **kwargs)
+        except click.UsageError as e:
+            raise e  # You can re-raise the exception or handle it different
         except Exception as e:
             click.echo(e)
 
@@ -296,14 +298,18 @@ def predict(
 
     model_name = tr.spec.config.model_name
     if not model_name:
-        raise ValueError("Model name not set. Did you `truss push`?")
+        raise click.UsageError(
+            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+        )
 
     if data is not None:
         request_data = json.loads(data)
     elif file is not None:
         request_data = json.loads(Path(file).read_text())
     else:
-        raise ValueError("At least one of request or request-file must be supplied.")
+        raise click.UsageError(
+            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+        )
 
     service = remote_provider.get_baseten_service(model_name, published)  # type: ignore
     result = service.predict(request_data)
