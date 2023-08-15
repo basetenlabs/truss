@@ -432,7 +432,7 @@ class TrussConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
     description: Optional[str] = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
-    external_package_dirs: Optional[List[str]] = None
+    external_package_dirs: List[str] = field(default_factory=list)
     live_reload: bool = False
     apply_library_patches: bool = True
     # spec_version is a version string
