@@ -11,9 +11,10 @@ from typing import Callable, Optional, Union
 import rich
 import rich_click as click
 import truss
-from truss.cli.create import select_server_backend
+from truss.cli.create import ask_name, select_server_backend
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import RemoteFactory
+from truss.truss_config import ModelServer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -93,8 +94,15 @@ def image():
     default=False,
     help="Create a trainable truss.",
 )
+@click.option(
+    "-b",
+    "--backend",
+    show_default=True,
+    default=ModelServer.TrussServer.value,
+    type=click.Choice([server.value for server in ModelServer]),
+)
 @error_handling
-def init(target_directory, trainable) -> None:
+def init(target_directory, trainable, backend) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -104,13 +112,15 @@ def init(target_directory, trainable) -> None:
             f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
         )
     tr_path = Path(target_directory)
-    build_config = select_server_backend()
+    build_config = select_server_backend(ModelServer[backend])
+    model_name = ask_name()
     truss.init(
         target_directory=target_directory,
         trainable=trainable,
         build_config=build_config,
+        model_name=model_name,
     )
-    click.echo(f"Truss was created in {tr_path}")
+    click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
 
 @image.command()  # type: ignore
