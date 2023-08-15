@@ -99,7 +99,7 @@ def image():
     "--backend",
     show_default=True,
     default=ModelServer.TrussServer.value,
-    type=click.Choice(server.value for server in ModelServer),
+    type=click.Choice([server.value for server in ModelServer]),
 )
 @error_handling
 def init(target_directory, trainable, backend) -> None:
