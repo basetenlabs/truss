@@ -11,6 +11,7 @@ from typing import Callable, Optional, Union
 import rich
 import rich_click as click
 import truss
+from InquirerPy import inquirer
 from truss.cli.create import select_server_backend
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import RemoteFactory
@@ -184,10 +185,18 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--logs",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Automatically open remote logs tab",
+)
 @error_handling
 def watch(
     target_directory: str,
     remote: str,
+    logs: bool,
 ) -> None:
     """
     Seamless remote development with truss
@@ -212,7 +221,12 @@ def watch(
 
     logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
-    webbrowser.open_new_tab(logs_url)
+    if not logs:
+        logs = inquirer.confirm(
+            message="🗂  Open logs in a new tab?", default=True
+        ).execute()
+    if logs:
+        webbrowser.open_new_tab(logs_url)
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
 
 
