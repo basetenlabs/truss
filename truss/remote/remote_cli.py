@@ -13,7 +13,7 @@ def inquire_remote_config() -> RemoteConfig:
     # can do so manually in the .trussrc file.
     remote_url = "https://app.baseten.co"
     api_key = inquirer.secret(
-        message="🤫 Quiety paste your API_KEY:",
+        message="🤫 Quietly paste your API_KEY:",
         qmark="",
     ).execute()
     return RemoteConfig(
