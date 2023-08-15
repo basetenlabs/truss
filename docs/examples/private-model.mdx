@@ -1,31 +1,190 @@
 ---
 title: Private Hugging Face model
-description: "Description"
+description: "Load a model that requires authentication with Hugging Face"
 ---
 
-PrivateLM on Baseten's HF account
+## Summary
+
+To load a gated or private model from Hugging Face:
+
+1. Create an [access token](https://huggingface.co/settings/tokens) on your Hugging Face account.
+2. Add the `hf_access_token` key to your `config.yaml` secrets and value to your [Baseten account](https://app.baseten.co/settings/secrets).
+3. Add `use_auth_token` to the appropriate line in `model.py`.
+
+Example code:
+
+<CodeGroup>
+```yaml config.yaml
+secrets:
+  hf_access_token: null
+```
+
+```python model/model.py
+self._model = pipeline(
+    "fill-mask",
+    model="baseten/docs-example-gated-model",
+    use_auth_token=self._secrets["hf_access_token"]
+)
+```
+</CodeGroup>
+
+## Step-by-step example
+
+[BERT base (uncased)](https://huggingface.co/bert-base-uncased) is a masked language model that can be used to infer missing words in a sentence.
+
+While the model is publicly available on Hugging Face, we copied it into a gated model to use in this tutorial. The process is the same for using a gated model as it is for a private model.
+
+<Tip>
+You can see the code for the finished private model Truss on the right. Keep reading for step-by-step instructions on how to build it.
+</Tip>
+
+This example will cover:
+
+1. Implementing a `transformers.pipeline` model in Truss
+2. **Securely accessing secrets in your model server**
+3. **Using a gated or private model with an access token**
+
+
+### Step 0: Initialize Truss
+
+Get started by creating a new Truss:
+
+```sh
+truss init private-bert
+```
+
+Give your model a name when prompted, like `Private Model Demo`. Then, navigate to the newly created directory:
+
+```sh
+cd private-bert
+```
+
+### Step 1: Implement the `Model` class
+
+BERT base (uncased) is [a pipeline model](https://huggingface.co/docs/transformers/main_classes/pipelines), so it is straightforward to implement in Truss.
+
+In `model/model.py`, we write the class `Model` with three member functions:
+
+* `__init__`, which creates an instance of the object with a `_model` property
+* `load`, which runs once when the model server is spun up and loads the `pipeline` model
+* `predict`, which runs each time the model is invoked and handles the inference. It can use any JSON-serializable type as input and output.
+
+[Read the quickstart guide](/quickstart) for more details on `Model` class implementation.
+
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._secrets = kwargs["secrets"]
+        self._model = None
+
+    def load(self):
+        self._model = pipeline(
+            "fill-mask",
+            model="baseten/docs-example-gated-model"
+        )
+
+    def predict(self, model_input):
+        return self._model(model_input)
+```
+
+### Step 2: Set Python dependencies
+
+Now, we can turn our attention to configuring the model server in `config.yaml`.
+
+BERT base (uncased) has two dependencies:
+
+```yaml config.yaml
+requirements:
+- torch==2.0.1
+- transformers==4.30.2
+```
+
+<Note>
+Always pin exact versions for your Python dependencies. The ML/AI space moves fast, so you want to have an up-to-date version of each package while also being protected from breaking changes.
+</Note>
+
+### Step 3: Set required secret
+
+Now it's time to mix in access to the gated model:
+
+1. Go to the [model page on Hugging Face](https://huggingface.co/baseten/docs-example-gated-model) and accept the terms to access the model.
+2. Create an [access token](https://huggingface.co/settings/tokens) on your Hugging Face account.
+3. Add the `hf_access_token` key and value to your [Baseten workspace secret manager](https://app.baseten.co/settings/secrets).
+4. In your `config.yaml`, add the key `hf_access_token`:
+
+```yaml config.yaml
+secrets:
+  hf_access_token: null
+```
+
+<Warning>
+Never set the actual value of a secret in the `config.yaml` file. Only put secret values in secure places, like the Baseten workspace secret manager.
+</Warning>
+
+### Step 4: Use access token in load
+
+In `model/model.py`, you can give your model access to secrets in the init function:
+
+```python model/model.py
+def __init__(self, **kwargs) -> None:
+        self._secrets = kwargs["secrets"]
+        self._model = None
+```
+
+Then, update the load function with `use_auth_token`:
+
+```python model/model.py
+self._model = pipeline(
+    "fill-mask",
+    model="baseten/docs-example-gated-model",
+    use_auth_token=self._secrets["hf_access_token"]
+)
+```
+
+This will allow the `pipeline` function to load the specified model from Hugging Face.
+
+### Step 5: Deploy the model
+
+<Note>
+You'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys) for this step.
+</Note>
+
+We have successfully packaged a gated model as a Truss. Let's deploy!
+
+Use `--trusted` with `truss push` to give the model server access to secrets stored on the remote host.
+
+```sh
+truss push --trusted
+```
+
+Wait for the model to finish deployment before invoking.
+
+You can invoke the model with:
+
+```sh
+truss predict -d '"It is a [MASK] world"'
+```
 
 <RequestExample>
 
 ```yaml config.yaml
 environment_variables: {}
-external_package_dirs: []
-model_metadata: {}
-model_name: null
+model_name: private-model
 python_version: py39
 requirements:
-- Pillow==10.0.0
-- pytesseract==0.3.10
 - torch==2.0.1
 - transformers==4.30.2
 resources:
-  cpu: "4"
-  memory: 16Gi
+  cpu: "1"
+  memory: 2Gi
   use_gpu: false
   accelerator: null
-secrets: {}
-system_packages:
-- tesseract-ocr
+secrets:
+  hf_access_token: null
+system_packages: []
 ```
 
 ```python model/model.py
@@ -34,22 +193,18 @@ from transformers import pipeline
 
 class Model:
     def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
         self._secrets = kwargs["secrets"]
         self._model = None
 
     def load(self):
         self._model = pipeline(
-            "document-question-answering",
-            model="impira/layoutlm-document-qa",
+            "fill-mask",
+            model="baseten/docs-example-gated-model",
+            use_auth_token=self._secrets["hf_access_token"]
         )
 
     def predict(self, model_input):
-        return self._model(
-            model_input["url"],
-            model_input["prompt"]
-        )
+        return self._model(model_input)
 ```
 
 </RequestExample>
