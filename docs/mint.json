@@ -58,34 +58,7 @@
         "examples/private-model",
         "examples/system-packages",
         "examples/streaming",
-        "examples/local-model",
-        "examples/bundled-package",
-        {
-          "group": "Performance optimization",
-          "pages": [
-            "examples/performance/cached-weights",
-            "examples/performance/tgi-server",
-            "examples/performance/vllm-server"
-          ]
-        },
-        {
-          "group": "Foundation models",
-          "pages": [
-            "examples/models/overview",
-            "examples/models/llama-2",
-            "examples/models/sdxl",
-            "examples/models/whisper"
-          ]
-        },
-        {
-          "group": "Frameworks",
-          "pages": [
-            "examples/frameworks/pytorch",
-            "examples/frameworks/sklearn",
-            "examples/frameworks/tensorflow",
-            "examples/frameworks/xgboost"
-          ]
-        }
+        "examples/performance/cached-weights"
       ]
     },
     {
@@ -112,18 +85,6 @@
         "learn/model-serving/model-load",
         "learn/model-serving/model-predict",
         "learn/model-serving/publish"
-      ]
-    },
-    {
-      "group": "Truss 201: Adding GPUs",
-      "pages": [
-        "learn/llms/init",
-        "learn/llms/resources",
-        "learn/llms/model-load",
-        "learn/llms/private",
-        "learn/llms/cache",
-        "learn/llms/model-predict",
-        "learn/llms/streaming"
       ]
     },
     {
@@ -161,9 +122,7 @@
     {
       "group": "Deep dives",
       "pages": [
-        "contribute/base-images",
-        "contribute/patching",
-        "contribute/remote-spec"
+        "contribute/base-images"
       ]
     }
   ],
