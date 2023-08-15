@@ -59,6 +59,7 @@
         "examples/system-packages",
         "examples/streaming",
         "examples/performance/cached-weights",
+        "examples/performance/tgi-server",
         "examples/performance/vllm-server"
       ]
     },
