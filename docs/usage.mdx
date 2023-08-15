@@ -15,39 +15,45 @@ With Truss, you get the same live reload workflow for serving ML models.
 
 ## Create a Truss
 
-Lorem
-
 ```sh
-truss init
+truss init TARGET_DIRECTORY
 ```
 
-[More information on truss init](/reference/cli/init)
+A Truss is an abstraction for a model server. But more literally, it's a set of files. Running `truss init` creates those files in a target directory.
+
+To package a model with Truss, follow the [quickstart](/quickstart), a [step-by-step example](/examples), or an [example from GitHub](https://github.com/basetenlabs/truss-examples/).
+
+See the CLI reference for more information on [truss init](/reference/cli/init).
 
 ## Spin up model server
-
-Lorem
 
 ```sh
 truss push
 ```
 
-[More information on truss init](/reference/cli/push)
+A model server takes requests, passes them through an ML model, and returns the model's output. When you're ready to start testing your Truss, use `truss push` to spin up a model server with your model and config.
 
-## Work with live reload
+See the CLI reference for more information on [truss init](/reference/cli/push).
 
-Lorem
+## Test the model
 
 ```sh
-truss watch
+truss predict
 ```
+
+Once your model server is live, you can invoke your model with `truss predict`.
+
+See the CLI reference for more information on [truss predict](/reference/cli/predict).
+
+## Watch for changes
 
 <Tip>
 Run the `truss watch` command in a new terminal tab in the same working directory, as you'll need to leave it running while you work.
 </Tip>
 
-[More information on truss watch](/reference/cli/watch)
-
-### Watch for changes
+```sh
+truss watch
+```
 
 When you make a change with `truss watch` running, it will automatically attempt to patch that change onto the model server. Most changes to `model.py` and `config.yaml` can be patched.
 
@@ -58,15 +64,7 @@ The following changes should not be made in a live reload workflow:
 * Changes to the `model_name` in `config.yaml`. Changing the model name requires a new `truss push` to create a new model server.
 </Warning>
 
-### Test the model
-
-Lorem
-
-```sh
-truss predict
-```
-
-[More information on truss predict](/reference/cli/predict)
+See the CLI reference for more information on [truss watch](/reference/cli/watch).
 
 ## Publish your model
 
