@@ -218,6 +218,7 @@ def init(
     bundled_packages: Optional[List[str]] = None,
     trainable: bool = False,
     build_config: Optional[Build] = None,
+    model_name: Optional[str] = None,
 ) -> TrussHandle:
     """
     Initialize an empty placeholder Truss. A Truss is a build context designed
@@ -230,6 +231,7 @@ def init(
                           Truss in. The directory is created if it doesn't exist.
     """
     config = TrussConfig(
+        model_name=model_name,
         python_version=map_to_supported_python_version(infer_python_version()),
     )
 
