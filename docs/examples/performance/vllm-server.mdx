@@ -24,11 +24,15 @@ truss init opt125
 ```
 
 You're going to see a couple of prompts. Follow along with the instructions below:
-1. Select `vLLM` as a `server`
-2. Type `facebook/opt-125M` as a `model`
-3. Press the `tab` key when you get to `endpoint`. We're going to use the `Completions` endpoint (more on this below).
+1. Type `facebook/opt-125M` when prompted for `model`.
+2. Press the `tab` key when prompted for `endpoint`. Select the `Completions` endpoint.
+3. Give your model a name like `OPT-125M`.
 
-The underlying server that we use is OpenAI compatible. If you plan on using the model as a chat model, then select `ChatCompletion`. OPT-125M is not a chat model so we selected `Completion`. Finally, navigate to the directory.
+<Note>
+The underlying server that we use is OpenAI compatible. If you plan on using the model as a chat model, then select `ChatCompletion`. OPT-125M is not a chat model so we selected `Completion`.
+</Note>
+
+Finally, navigate to the directory:
 
 ```sh
 cd opt125
@@ -36,7 +40,7 @@ cd opt125
 
 ### Step 2: Setting resources and other arguments
 
-You'll notice that there's a `config.yaml`. This is where we'll set the resources and other arguments for the model. Open the file in your favorite editor.
+You'll notice that there's a `config.yaml` in the new directory. This is where we'll set the resources and other arguments for the model. Open the file in your favorite editor.
 
 OPT-125M will need a GPU so let's set the correct resources. Update the `resources` key with the following:
 
@@ -79,14 +83,14 @@ build:
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: null
+model_name: OPT-125M
 python_version: py39
 requirements: []
 resources:
-  accelerator: null
-  cpu: 500m
-  memory: 512Mi
-  use_gpu: false
+  accelerator: T4
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
 secrets: {}
 system_packages: []
 ```
