@@ -8,7 +8,7 @@
     {
       "icon": "b",
       "name": "Baseten",
-      "url": "https://baseten.co"
+      "url": "https://www.baseten.co"
     },
     {
       "icon": "newspaper",
@@ -58,7 +58,8 @@
         "examples/private-model",
         "examples/system-packages",
         "examples/streaming",
-        "examples/performance/cached-weights"
+        "examples/performance/cached-weights",
+        "examples/performance/vllm-server"
       ]
     },
     {

@@ -7,6 +7,8 @@ description: "Deploy a model with both Python and system dependencies"
 
 To add system packages to your model serving environment, open `config.yaml` and update the `system_packages` key with a list of apt-installable Debian packages.
 
+Example code:
+
 ```yaml config.yaml
 system_packages:
 - tesseract-ocr
@@ -37,7 +39,7 @@ Get started by creating a new Truss:
 truss init layoutlm-document-qa
 ```
 
-Select the default `TrussServer` option. Then, navigate to the newly created directory:
+Give your model a name when prompted, like `LayoutLM Document QA`. Then, navigate to the newly created directory:
 
 ```sh
 cd layoutlm-document-qa
@@ -136,7 +138,7 @@ truss push
 You can invoke the model with:
 
 ```sh
-truss predict
+truss predict -d '{"url": "https://templates.invoicehome.com/invoice-template-us-neat-750px.png", "prompt": "What is the invoice number?"}'
 ```
 
 <RequestExample>
@@ -145,7 +147,7 @@ truss predict
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: null
+model_name: LayoutLM Document QA
 python_version: py39
 requirements:
 - Pillow==10.0.0
