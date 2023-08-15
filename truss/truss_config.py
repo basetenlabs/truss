@@ -29,8 +29,8 @@ DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 
-DEFAULT_CPU = "500m"
-DEFAULT_MEMORY = "512Mi"
+DEFAULT_CPU = "1"
+DEFAULT_MEMORY = "2GiB"
 DEFAULT_USE_GPU = False
 
 DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
@@ -432,7 +432,7 @@ class TrussConfig:
     secrets: Dict[str, str] = field(default_factory=dict)
     description: Optional[str] = None
     bundled_packages_dir: str = DEFAULT_BUNDLED_PACKAGES_DIR
-    external_package_dirs: List[str] = field(default_factory=list)
+    external_package_dirs: Optional[List[str]] = None
     live_reload: bool = False
     apply_library_patches: bool = True
     # spec_version is a version string

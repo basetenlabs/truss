@@ -572,7 +572,11 @@ class TrussHandle:
         self._update_config(
             lambda conf: replace(
                 conf,
-                external_package_dirs=[*conf.external_package_dirs, external_dir_path],
+                external_package_dirs=[
+                    # Note that external_package_dirs could be None
+                    *(conf.external_package_dirs or []),
+                    external_dir_path,
+                ],
             )
         )
 
@@ -887,7 +891,10 @@ class TrussHandle:
 
     @property
     def no_external_packages(self) -> bool:
-        return len(self.spec.config.external_package_dirs) == 0
+        return (
+            not self.spec.config.external_package_dirs
+            or len(self.spec.config.external_package_dirs) == 0
+        )
 
     def is_scattered(self) -> bool:
         """A scattered truss is one where parts of it are outside the truss directory.
