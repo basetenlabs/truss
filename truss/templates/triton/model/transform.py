@@ -10,7 +10,24 @@ from utils.triton import (
 )
 
 
-def transform_triton_to_pydantic(triton_requests, pydantic_type):
+def transform_triton_to_pydantic(triton_requests, pydantic_type) -> list:
+    """
+    Transforms a list of Triton requests into a list of Pydantic objects.
+
+    This function inspects the fields of the given Pydantic type and extracts
+    the corresponding tensors from the Triton requests. It then converts these
+    tensors into Python types and uses them to instantiate the Pydantic objects.
+
+    Args:
+        triton_requests (list): A list of Triton request objects.
+        pydantic_type (Type[BaseModel]): The Pydantic model type to which the Triton requests should be transformed.
+
+    Returns:
+        list: A list of Pydantic objects instantiated from the Triton requests.
+
+    Raises:
+        ValueError: If a tensor corresponding to a Pydantic field cannot be found in the Triton request.
+    """
     fields = inspect_pydantic_model(pydantic_type)
     results = []
 
@@ -26,6 +43,22 @@ def transform_triton_to_pydantic(triton_requests, pydantic_type):
 
 
 def transform_pydantic_to_triton(pydantic_objects):
+    """
+    Transforms a list of Pydantic objects into a list of Triton inference responses.
+
+    This function iterates over the fields of each Pydantic object, determines the
+    appropriate tensor data type, and creates a tensor for each field. These tensors
+    are then used to create Triton inference responses.
+
+    Args:
+        pydantic_objects (list): A list of Pydantic objects to be transformed.
+
+    Returns:
+        list: A list of Triton inference responses created from the Pydantic objects.
+
+    Raises:
+        ValueError: If a Python type in the Pydantic object does not have a corresponding numpy dtype.
+    """
     results = []
 
     for obj in pydantic_objects:

@@ -2,11 +2,12 @@ import json
 
 
 def get_numpy_item(tensor):
+    """Returns the item of a numpy array as a Python type."""
     item = tensor.as_numpy().item()
     return item.decode("utf-8") if isinstance(item, bytes) else item
 
 
-def convert_tensor_to_python_type(tensor, dtype):
+def convert_tensor_to_python_type(tensor, dtype: str):
     if dtype == "dict":
         item = get_numpy_item(tensor)
         return json.loads(item)
