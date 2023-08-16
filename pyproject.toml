@@ -60,6 +60,7 @@ uvicorn = "^0.21.1"
 httpx = "^0.24.1"
 psutil = "^5.9.4"
 huggingface_hub = "^0.16.4"
+google-cloud-storage = "2.10.0"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"

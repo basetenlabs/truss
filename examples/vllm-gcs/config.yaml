@@ -2,11 +2,14 @@ build:
   arguments:
     endpoint: Completions
     model: /app/hf_cache/llama-2-7b
+    tokenizer: hf-internal-testing/llama-tokenizer
   model_server: VLLM
 environment_variables: {}
 external_package_dirs: []
+hf_cache:
+- repo_id: gs://llama-2-7b
 model_metadata: {}
-model_name: null
+model_name: vllm llama gcs
 python_version: py39
 requirements:
 - huggingface_hub
@@ -15,8 +18,6 @@ resources:
   accelerator: A10G
   cpu: 500m
   memory: 30Gi
-  use_gpu: True
-hf_cache:
-- repo_id: gs://llama-2-7b
+  use_gpu: true
 secrets: {}
 system_packages: []
