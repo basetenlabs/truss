@@ -17,7 +17,6 @@ class BasetenService(TrussService):
         service_url: str,
         truss_handle: Optional[TrussHandle] = None,
     ):
-
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
@@ -43,7 +42,13 @@ class BasetenService(TrussService):
                 for chunk in response.iter_content(
                     chunk_size=8192, decode_unicode=True
                 ):
-                    yield chunk.decode(response.encoding or DEFAULT_STREAM_ENCODING)
+                    # Depending on the content-type of the response,
+                    # iter_content will either emit a byte stream, or a stream
+                    # of strings. Only decode in the bytes case.
+                    if isinstance(chunk, bytes):
+                        yield chunk.decode(response.encoding or DEFAULT_STREAM_ENCODING)
+                    else:
+                        yield chunk
 
             return decode_content()
 
