@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import yaml
-from model_wrapper import ModelWrapper
+from triton_model_wrapper import ModelWrapper
 
 
 class TritonPythonModel:

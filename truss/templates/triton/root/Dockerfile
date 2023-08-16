@@ -32,7 +32,9 @@ RUN pip install pydantic pyyaml jinja2 --no-cache-dir && rm -rf /root/.cache/pip
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 
-COPY ./model /app/model
+# We copy into directory '1' as Triton expects the model code to be nested underneath a version directory
+RUN mkdir -p /app/model/1
+COPY ./model /app/model/1
 
 RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
@@ -42,8 +44,8 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system
     && rm -rf /var/lib/apt/lists/*
 
 # Generate config.pbtxt
-COPY ./triton_config.py /app/triton_config.py
-RUN python3 /app/triton_config.py
+COPY ./generate_config.py /app/generate_config.py
+RUN python3 /app/generate_config.py
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 ENTRYPOINT ["/usr/bin/supervisord"]

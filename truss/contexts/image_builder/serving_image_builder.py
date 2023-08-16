@@ -124,11 +124,12 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
     #   │       └── model.py # Triton server code
     #   │       └── # other triton server files
 
-    model_repository_path = build_dir / "model" / "1"
+    model_repository_path = build_dir / "model"
     user_truss_path = model_repository_path / "truss"  # type: ignore[operator]
     data_dir = model_repository_path / config.data_dir  # type: ignore[operator]
 
-    copy_tree_path(TRITON_SERVER_CODE_DIR, build_dir)
+    copy_tree_path(TRITON_SERVER_CODE_DIR / "model", model_repository_path)
+    copy_tree_path(TRITON_SERVER_CODE_DIR / "root", build_dir)
     copy_tree_path(truss_dir, user_truss_path)
     copy_tree_path(
         SHARED_SERVING_AND_TRAINING_CODE_DIR,
