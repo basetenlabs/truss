@@ -25,7 +25,6 @@ def get_input_tensor_by_name(obj, name):
     x = get_input_tensor_by_name(obj, name)
     if x is None:
         raise ValueError(f"Input tensor {name} not found in request.")
-    print("Input tensor found in request.", x)
     return x
 
 

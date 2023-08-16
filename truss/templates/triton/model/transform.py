@@ -12,7 +12,6 @@ from utils.triton import (
 
 def transform_triton_to_pydantic(triton_requests, pydantic_type):
     fields = inspect_pydantic_model(pydantic_type)
-    print("Fields from the Pydantic model:", fields)
     results = []
 
     for request in triton_requests:
@@ -20,9 +19,7 @@ def transform_triton_to_pydantic(triton_requests, pydantic_type):
         for field in fields:
             field_name, field_type = field.values()
             tensor = get_input_tensor_by_name(request, field_name)
-            print("Pre converted field", tensor)
             data[field_name] = convert_tensor_to_python_type(tensor, field_type)
-            print("Post converted field", data[field_name])
         results.append(pydantic_type(**data))
 
     return results
@@ -34,8 +31,6 @@ def transform_pydantic_to_triton(pydantic_objects):
     for obj in pydantic_objects:
         tensors = []
         for field, value in obj.dict().items():
-            print("Field", field)
-            print("Value", value)
             if isinstance(value, list):
                 dtype = PYTHON_TYPE_TO_NP_DTYPE[type(value[0])]
             elif isinstance(value, dict):
