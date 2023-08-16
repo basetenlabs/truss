@@ -1,53 +1,59 @@
 ---
-title: "Step 2: Deploy the model server"
-description: "Deploy our simple echo server to production."
+title: "Step 1: Spin up a model server"
+description: "Configure a remote host and push the base Truss"
 ---
 
-Truss is maintained by [Baseten](https://baseten.co), which provides infrastructure for running ML models in production. We'll use Baseten as the remote host for your model.
+This is the first of three steps dedicated to learning the developer loop that Truss enables. We hope that once you try it, you'll agree with us that it's the most productive way to deploy ML models.
 
-### Get an API key
+<Accordion title="Configure your remote host" defaultOpen="true">
+If this is your first time running `truss push`, you'll need to configure a remote host for your model server.
 
-To set up the Baseten remote, you'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys). If you don't have a Baseten account, no worries, just [sign up for an account](https://app.baseten.co/signup/) and you'll be issued plenty of free credits to get you started.
+Truss is maintained by [Baseten](https://baseten.co), which provides infrastructure for running ML models in production. We'll use Baseten as the remote host for your model server.
 
-### Deploy your Truss
+To set up the Baseten remote, you'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys).
 
-Deploying a model with Truss uses the interactive `truss push` command. The first time you run the command, it will walk you through setting up and a remote host to run your model.
+If you don't have a Baseten account, no worries, just [sign up for an account](https://app.baseten.co/signup/) and you'll be issued plenty of free credits to get you started.
+</Accordion>
 
-With your Baseten API key ready to go, you can deploy your model:
+### Push your Truss
+
+To spin up a model server from your Truss, run:
 
 ```sh
 truss push
 ```
 
-You'll be prompted for a few setup values. To complete the deployment:
+Paste your Baseten API key if prompted.
 
-1. Accept the default value for remote url (`https://app.baseten.co`)
-2. Paste your API key when prompted
-3. Give the model a name, like `my-first-model`
-
-You can monitor your model deployment on [your model dashboard on Baseten](https://app.baseten.co/models/).
+<Tip>
+Open up [your model dashboard on Baseten](https://app.baseten.co/models/) to monitor your deployment and view model server logs.
+</Tip>
 
 <RequestExample>
 
 ```python model/model.py
-from typing import Any
-
-
 class Model:
-    def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
-        # Load model here and assign to self._model.
         pass
 
-    def predict(self, model_input: Any) -> Any:
+    def predict(self, model_input):
         return model_input
 ```
 
-<Snippet file="base-config.mdx" />
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements: []
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
 
 </RequestExample>

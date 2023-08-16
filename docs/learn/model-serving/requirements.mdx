@@ -1,19 +1,33 @@
 ---
-title: "Step 6: Set requirements"
-description: "Add the model's Python requirements to the model server."
+title: "Step 4: Set Python requirements"
+description: "Add required Python packages to the model server."
 ---
 
-This step introduces the other essential file in a Truss: `my-truss/config.yaml`, which controls the model server's configuration. For a complete list of the config options, see [the config reference](/reference/config).
+For this tutorial, we want to package a [basic text classification model](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.pipeline) with this Truss to deploy it on our model server. The model is from the `transformers` package and thus requires two Python packages to run it: [Transformers](https://huggingface.co/docs/transformers/index) and [PyTorch](https://pytorch.org/).
+
+We'll use `config.yaml` to add the Python packages that the text classification model requires to the model server.
+
+<Tip>
+On the right side, you'll see what your Truss should look like after each step!
+</Tip>
+
+### Open `config.yaml` in a text editor
+
+One of the two essential files in a Truss is `config.yaml`, which configures the model serving environment. For a complete list of the config options, see [the config reference](/reference/config).
 
 <Warning>
-Note that the `model_name` parameter is already set to `my-first-model` or whatever name you picked the first time you ran `truss push`. Don't change this name as it must remain consistant with the remote host.
+Note that the `model_name` parameter is already set to `My First Truss` or whatever name you picked when you ran `truss init`. Don't change this name as it must remain consistant with the remote host.
 </Warning>
 
 ### Add Python requirements
 
-All configuration for your model happens in `config.yaml`.
+Python requirements are listed just like they appear in a `requirements.txt`. ML moves fast; always pin your requirement versions to make sure you're getting compatible packages.
 
-We'll set Python requirements. ML moves fast, always pin your requirements to make sure you're getting the right version.
+Update `config.yaml` with the required packages:
+
+<Tip>
+Check the "Diff" tab to see exactly which lines of code change.
+</Tip>
 
 <Tabs>
 <Tab title="Code">
@@ -33,49 +47,42 @@ requirements:
 </Tab>
 </Tabs>
 
-<Info>
-You can set system requirements the same way with `system_packages`.
-</Info>
+### Check for a patch
 
-On your `truss watch` tab, you should see that the model server is no longer showing an error.
+After you save your changes to `config.yaml`, you should see two things happen:
+
+1. Your `truss watch` tab should show that a patch was applied to your model server.
+2. The model server logs on your [Baseten account](https://app.baseten.co) should show log entries from the packages being installed in your model server.
+
+Now you're ready to add the text classification model.
 
 <RequestExample>
 
 ```yaml config.yaml  ●
 environment_variables: {}
-external_package_dirs: []
-model_metadata: {}
-model_name: my-first-truss
-python_version: py39
+model_name: My First Truss
 requirements:
   - torch==2.0.1
   - transformers==4.30.0
 resources:
   accelerator: null
-  cpu: 500m
-  memory: 512Mi
+  cpu: "1"
+  memory: 2Gi
   use_gpu: false
 secrets: {}
 system_packages: []
 ```
 
 ```python model/model.py
-from typing import Any
-from transformers import pipeline
-
-
 class Model:
-    def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
-        self._model = pipeline("text-classification")
+        pass
 
-    def predict(self, model_input: Any) -> Any:
-        return self._model(model_input)
+    def predict(self, model_input):
+        return model_input
 ```
 
 </RequestExample>
