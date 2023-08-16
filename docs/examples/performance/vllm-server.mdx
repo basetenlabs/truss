@@ -20,7 +20,7 @@ This example will cover:
 Get started by creating a new Truss:
 
 ```sh
-truss init opt125
+truss init --backend VLLM opt125
 ```
 
 You're going to see a couple of prompts. Follow along with the instructions below:
@@ -69,7 +69,7 @@ truss push
 You can invoke the model with:
 
 ```sh
-truss predict -d '{"prompt": "What is a large language model?"}'
+truss predict -d '{"prompt": "What is a large language model?", "model": "facebook/opt-125M"}' --published
 ```
 
 <RequestExample>
