@@ -108,10 +108,11 @@ def create_vllm_build_dir(
             allow_patterns = model.allow_patterns
             ignore_patterns = model.ignore_patterns
 
-            # TODO(varun): list_repo_files should extend to gcs and aws
             filtered_repo_files = list(
                 filter_repo_objects(
-                    items=list_files(repo_id, truss_dir / spec.config.data_dir, revision=revision),
+                    items=list_files(
+                        repo_id, truss_dir / spec.config.data_dir, revision=revision
+                    ),
                     allow_patterns=allow_patterns,
                     ignore_patterns=ignore_patterns,
                 )
@@ -145,7 +146,7 @@ def create_vllm_build_dir(
 
 
 def list_bucket_files(bucket_name, data_dir):
-    # ONLY WORKS FOR GCP
+    # TODO(varun): provide support for aws s3
     storage_client = storage.Client.from_service_account_json(
         data_dir / "service_account.json"
     )
@@ -228,7 +229,6 @@ class ServingImageBuilder(ImageBuilder):
                 allow_patterns = model.allow_patterns
                 ignore_patterns = model.ignore_patterns
 
-                # TODO(varun): list_repo_files should extend to gcs and aws
                 filtered_repo_files = list(
                     filter_repo_objects(
                         items=list_files(repo_id, data_dir, revision=revision),

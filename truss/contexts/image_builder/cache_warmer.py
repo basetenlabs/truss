@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 
-# TODO(varun): remove these packages from config
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
 
@@ -37,7 +36,6 @@ def download_file(
 
 
 if __name__ == "__main__":
-    # TODO(varun): might make sense to move this check + write to a separate `prepare_cache.py` script
     file_path = Path.home() / ".cache/huggingface/hub/version.txt"
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
