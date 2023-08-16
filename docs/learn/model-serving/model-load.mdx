@@ -1,0 +1,84 @@
+---
+title: "Step 5: Implement model load"
+description: "Load an ML model into your Truss"
+---
+
+The other essential file in a Truss is `model/model.py`. In this file, you write a `Model` class: an interface between the ML model that you're packaging and the model server that you're running it on.
+
+Open `model/model.py` in your text editor.
+
+### Import transformers
+
+Import `transformers.pipeline` at the top of `model/model.py`:
+
+<Tabs>
+<Tab title="Code">
+```python model/model.py
+from transformers import pipeline
+```
+</Tab>
+<Tab title="Diff">
+```diff model/model.py
++ from transformers import pipeline
+```
+</Tab>
+</Tabs>
+
+### Load the model
+
+The `Model.load()` function runs exactly once when the model server is spun up or patched and loads the model onto the model server.
+
+Update `load()` to bring in the `text-classification` model from `transformers.pipeline`:
+
+<Tabs>
+<Tab title="Code">
+```python model/model.py
+def load(self):
+    self._model = pipeline("text-classification")
+```
+</Tab>
+<Tab title="Diff">
+```diff model/model.py
+def load(self):
+-    # Load model here and assign to self._model.
+-    pass
++    self._model = pipeline("text-classification")
+```
+</Tab>
+</Tabs>
+
+You should see this change patched onto the model server in your `truss watch` terminal tab.
+
+<RequestExample>
+
+```python model/model.py  ●
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs):
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input):
+        return model_input
+```
+
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements:
+  - torch==2.0.1
+  - transformers==4.30.0
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
+
+</RequestExample>

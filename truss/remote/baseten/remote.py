@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import yaml
+from requests import ReadTimeout
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
@@ -137,6 +138,11 @@ class BasetenRemote(TrussRemote):
         except yaml.parser.ParserError:
             logger.error("Unable to parse config file")
             return
+        except ValueError:
+            logger.error(
+                f"Error when reading truss from directory {watch_path}", exc_info=True
+            )
+            return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
@@ -145,7 +151,7 @@ class BasetenRemote(TrussRemote):
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
         except Exception:
-            logger.error("Failed to calculate patch")
+            logger.error("Failed to calculate patch, bailing on patching")
             return
         if patch_request:
             if (
@@ -154,7 +160,16 @@ class BasetenRemote(TrussRemote):
             ):
                 logger.info("No changes observed, skipping deployment")
                 return
-            resp = self._api.patch_draft_truss(model_name, patch_request)
+            try:
+                resp = self._api.patch_draft_truss(model_name, patch_request)
+            except ReadTimeout:
+                logger.error(
+                    "Read Timeout when attempting to connect to remote. Bailing on patching"
+                )
+                return
+            except Exception:
+                logger.error("Failed to patch draft deployment, bailing on patching")
+                return
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
@@ -169,6 +184,6 @@ class BasetenRemote(TrussRemote):
                 logger.info(
                     resp.get(
                         "success_message",
-                        f"Model {model_name} patched successfully.",
+                        f"Model {model_name} patched successfully",
                     )
                 )

@@ -1,0 +1,40 @@
+---
+title: "truss predict"
+description: "Invokes the packaged model."
+---
+
+```
+truss predict [OPTIONS]
+```
+
+### Options
+
+<ParamField body="--target_directory" type="TEXT">
+A Truss directory. If none, use current directory.
+</ParamField>
+<ParamField body="--remote" type="TEXT">
+Name of the remote in .trussrc to patch changes to.
+</ParamField>
+<ParamField body="-d, --data" type="TEXT">
+String formatted as json that represents request.
+</ParamField>
+<ParamField body="-f, --file" type="PATH">
+Path to json file containing the request.
+</ParamField>
+<ParamField body="--published">
+Invoked the published model version.
+</ParamField>
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+
+### Examples
+
+```
+truss predict -d '{"prompt": "What is the meaning of life?"}'
+```
+
+```
+truss predict --published -f my-prompt.json
+```

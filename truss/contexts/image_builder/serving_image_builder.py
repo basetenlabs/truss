@@ -34,7 +34,6 @@ from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
-    copy_file_path,
     copy_tree_or_file,
     copy_tree_path,
 )
@@ -60,10 +59,15 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
 
-    copy_file_path(TEMPLATES_DIR / "tgi" / "proxy.conf", build_dir / "proxy.conf")
-    args = " ".join(
-        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
-    )
+    build_args = build_config.arguments.copy()
+    endpoint = build_args.pop("endpoint", "generate_stream")
+
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "tgi/proxy.conf.jinja")
+    nginx_content = nginx_template.render(endpoint=endpoint)
+    nginx_filepath = build_dir / "proxy.conf"
+    nginx_filepath.write_text(nginx_content)
+
+    args = " ".join([f"--{k.replace('_', '-')}={v}" for k, v in build_args.items()])
     supervisord_template = read_template_from_fs(
         TEMPLATES_DIR, "tgi/supervisord.conf.jinja"
     )

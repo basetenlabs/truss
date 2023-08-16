@@ -1,4 +1,49 @@
 ---
-title: "CLI reference"
-description: "Description"
+title: "truss"
+description: "The simplest way to serve models in production"
 ---
+
+``` Usage
+truss [OPTIONS] COMMAND [ARGS]...
+```
+
+### Options
+
+<ParamField body="--version">
+Show the version and exit.
+</ParamField>
+
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+### Main usage
+
+<CardGroup cols={1}>
+<Card title="truss init" href="/reference/cli/init">
+Create a new Truss.
+</Card>
+<Card title="truss push" href="/reference/cli/push">
+Pushes a Truss to a TrussRemote.
+</Card>
+<Card title="truss watch" href="/reference/cli/watch">
+Seamless remote development with Truss.
+</Card>
+<Card title="truss predict" href="/reference/cli/predict">
+Invokes the packaged model.
+</Card>
+</CardGroup>
+
+### Advanced usage
+
+<CardGroup cols={1}>
+<Card title="truss image" href="/reference/cli/image">
+Subcommands for `truss image`.
+</Card>
+<Card title="truss container" href="/reference/cli/container">
+Subcommands for `truss container`.
+</Card>
+<Card title="truss cleanup" href="/reference/cli/cleanup">
+Clean up Truss data.
+</Card>
+</CardGroup>
