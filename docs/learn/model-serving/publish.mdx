@@ -1,0 +1,84 @@
+---
+title: "Step 7: Publish your Truss"
+description: "Push your Truss to production-ready infrastructure"
+---
+
+When you're happy with your Truss, it's time to publish it to production. This re-builds the model server on production-ready infrastructure.
+
+Before publishing your Truss, you can turn off `truss watch` as it only patches models under development, not published models.
+
+### Publish your Truss
+
+To publish your Truss, run:
+
+```sh
+truss push --publish
+```
+
+Re-building your model server takes more time than patching it; it'll be a moment until the new server is ready to be called.
+
+### Call the published model
+
+Once the new model server is live, call it with `truss predict`:
+
+**Invocation**
+
+```sh
+truss predict --published -d '"Truss is awesome!"'
+```
+
+**Response**
+
+```json
+[
+  {
+    "label": "POSITIVE",
+    "score": 0.999873161315918
+  }
+]
+```
+
+### Review your learning
+
+In this tutorial, you learned how to:
+
+1. Create a Truss
+2. Connect your local development environment to a model server
+3. Deploy a [basic text classification model](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.pipeline)
+4. Publish your model to production
+
+For more step-by-step instructions, move on to the [Truss 201 tutorial](/learn/llms/init). Or, to find an example that matches your use case, see the [Truss examples docs](/examples).
+
+<RequestExample>
+
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs):
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input):
+        return self._model(model_input)
+```
+
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements:
+  - torch==2.0.1
+  - transformers==4.30.0
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
+
+</RequestExample>

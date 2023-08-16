@@ -5,7 +5,7 @@ This is an example deploying stable diffusion with truss weights preloaded
 ## Prepare
 The weights are ignored in this repository. You need to install them before reunning the model.
 
-To do, the run the following code from this directory
+To do this, the run the following code from this directory
 
 ```
 import torch

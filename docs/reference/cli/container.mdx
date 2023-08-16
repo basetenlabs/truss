@@ -1,0 +1,68 @@
+---
+title: "truss container"
+description: "Subcommands for truss container."
+---
+
+```
+truss container [OPTIONS] COMMAND [ARGS]...
+```
+
+### Options
+
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+## truss container kill
+
+Kills containers related to Truss.
+
+```
+truss container kill [OPTIONS] [TARGET_DIRECTORY]
+```
+
+### Options
+
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+### Arguments
+
+<ParamField body="TARGET_DIRECTORY" type="str">
+A Truss directory. If none, use current directory.
+</ParamField>
+
+## truss container kill-all
+
+Kills all Truss containers that are not manually persisted.
+
+```
+truss container kill-all [OPTIONS]
+```
+
+### Options
+
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+## truss container logs
+
+Get logs in a container is running for a Truss.
+
+```
+truss container logs [OPTIONS] [TARGET_DIRECTORY]
+```
+
+### Options
+
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+### Arguments
+
+<ParamField body="TARGET_DIRECTORY" type="str">
+A Truss directory. If none, use current directory.
+</ParamField>

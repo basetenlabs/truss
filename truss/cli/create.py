@@ -10,6 +10,7 @@ REQUIRED_ARGUMENTS = {
             "EleutherAI/gpt-neox-20b",
             "tiiuae/falcon-7b",
         },
+        "endpoint": {"generate_stream", "generate"},
         # "dtype": {"bfloat16", "float16"},
     },
     ModelServer.VLLM: {
@@ -23,14 +24,7 @@ REQUIRED_ARGUMENTS = {
 }
 
 
-def select_server_backend() -> Build:
-    server_backend = ModelServer[
-        inquirer.select(
-            message="Select a server:",
-            choices=[s.value for s in ModelServer],
-            default=ModelServer.TrussServer.value,
-        ).execute()
-    ]
+def select_server_backend(server_backend: ModelServer) -> Build:
     follow_up_questions = REQUIRED_ARGUMENTS.get(server_backend)
     args = {}
     if follow_up_questions:
@@ -40,3 +34,7 @@ def select_server_backend() -> Build:
             ).execute()
 
     return Build(model_server=server_backend, arguments=args)
+
+
+def ask_name() -> str:
+    return inquirer.text(message="What's the name of your model?").execute()

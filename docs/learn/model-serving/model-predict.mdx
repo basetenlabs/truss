@@ -1,0 +1,83 @@
+---
+title: "Step 6: Implement model inference"
+description: "Add model inference and invoke the model server"
+---
+
+To complete `model/model.py`, we'll implement model inference and invoke our finished model.
+
+### Run model inference
+
+The `Model.predict()` function runs every time the model server is called.
+
+We'll use the text classification model in `predict()` and return the results:
+
+<Tabs>
+<Tab title="Code">
+```python model/model.py
+def predict(self, model_input):
+    return self._model(model_input)
+```
+</Tab>
+<Tab title="Diff">
+```diff model/model.py
+def predict(self, model_input):
+-    return model_input
++    return self._model(model_input)
+```
+</Tab>
+</Tabs>
+
+### Invoke your finished model
+
+After `truss watch` shows that the server is updated, it's time to invoke your finished model using `truss predict` in your terminal:
+
+**Invocation**
+
+```sh
+truss predict -d '"Truss is awesome!"'
+```
+
+**Response**
+
+```json
+[
+  {
+    "label": "POSITIVE",
+    "score": 0.999873161315918
+  }
+]
+```
+
+<RequestExample>
+
+```python model/model.py  ●
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs):
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input):
+        return self._model(model_input)
+```
+
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements:
+  - torch==2.0.1
+  - transformers==4.30.0
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
+
+</RequestExample>
