@@ -12,7 +12,6 @@ model_metadata: {}
 model_name: vllm llama gcs
 python_version: py39
 requirements:
-- huggingface_hub
 - google-cloud-storage
 resources:
   accelerator: A10G
