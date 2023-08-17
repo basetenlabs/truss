@@ -25,6 +25,7 @@ jobs:
       env:
         INPUT_VERSION: ${{ github.event.inputs.version }}
 
+
     - name: Commit changes
       run: |
         git config --local user.email "baseten-bot@baseten.co"
@@ -34,8 +35,16 @@ jobs:
       env:
         INPUT_VERSION: ${{ github.event.inputs.version }}
 
+    # TODO: Also push changes to main
     - name: Push changes to new branch
       run: |
         git push origin HEAD:refs/heads/bump-version-${{ github.event.inputs.version }}
       env:
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+
+    - name: Make PR
+      run: |
+        PR_URL=gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION"
+        gh pr merge $PR_URL --auto --merge
+      env:
+        INPUT_VERSION: ${{ github.event.inputs.version }}
