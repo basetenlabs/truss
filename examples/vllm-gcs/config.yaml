@@ -1,13 +1,11 @@
 build:
   arguments:
     endpoint: Completions
-    model: /app/hf_cache/llama-2-7b
+    model: gs://llama-2-7b
     tokenizer: hf-internal-testing/llama-tokenizer
   model_server: VLLM
 environment_variables: {}
 external_package_dirs: []
-hf_cache:
-- repo_id: gs://llama-2-7b
 model_metadata: {}
 model_name: vllm llama gcs
 python_version: py39

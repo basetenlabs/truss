@@ -28,7 +28,13 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import Build, ModelServer, TrussConfig
+from truss.truss_config import (
+    Build,
+    HuggingFaceCache,
+    HuggingFaceModel,
+    ModelServer,
+    TrussConfig,
+)
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
@@ -93,13 +99,26 @@ def create_vllm_build_dir(
 
     build_config: Build = config.build
     server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
+
+    model_name = build_config.arguments.pop("model")
+    if "gs://" in model_name:
+        model_to_cache = {"repo_id": model_name}
+        if config.hf_cache:
+            config.hf_cache.models.append(HuggingFaceModel.from_dict(model_to_cache))
+        else:
+            config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
+        build_config.arguments[
+            "model"
+        ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
+
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
         TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
     )
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
-
-    (build_dir / "cache_requirements.txt").write_text(spec.requirements_txt)
+    copy_into_build_dir(
+        TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
+    )
 
     model_files = {}
     if config.hf_cache:
