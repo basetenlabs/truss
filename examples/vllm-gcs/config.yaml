@@ -9,8 +9,7 @@ external_package_dirs: []
 model_metadata: {}
 model_name: vllm llama gcs
 python_version: py39
-requirements:
-- google-cloud-storage
+requirements: []
 resources:
   accelerator: A10G
   cpu: 500m

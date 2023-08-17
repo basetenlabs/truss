@@ -102,6 +102,7 @@ def create_vllm_build_dir(
 
     model_name = build_config.arguments.pop("model")
     if "gs://" in model_name:
+        # if we are pulling from a gs bucket, we want to alias it as a part of the cache
         model_to_cache = {"repo_id": model_name}
         if config.hf_cache:
             config.hf_cache.models.append(HuggingFaceModel.from_dict(model_to_cache))
@@ -168,11 +169,16 @@ def create_vllm_build_dir(
     supervisord_filepath.write_text(supervisord_contents)
 
 
-def list_bucket_files(bucket_name, data_dir):
+def list_bucket_files(bucket_name, data_dir, is_trusted=False):
     # TODO(varun): provide support for aws s3
-    storage_client = storage.Client.from_service_account_json(
-        data_dir / "service_account.json"
-    )
+
+    if is_trusted:
+        storage_client = storage.Client.from_service_account_json(
+            data_dir / "service_account.json"
+        )
+    else:
+        storage_client = storage.Client()
+
     blobs = storage_client.list_blobs(bucket_name.replace("gs://", ""))
 
     all_objects = []
@@ -183,7 +189,7 @@ def list_bucket_files(bucket_name, data_dir):
 
 def list_files(repo_id, data_dir, revision=None):
     if repo_id.startswith(("s3://", "gs://")):
-        return list_bucket_files(repo_id, data_dir)
+        return list_bucket_files(repo_id, data_dir, is_trusted=True)
     else:
         # we assume it's a HF bucket
         list_repo_files(repo_id, revision=revision)
