@@ -11,7 +11,7 @@ COPY ./data /app/data
 {%- if hf_cache != None %}
 COPY ./cache_warmer.py /cache_warmer.py
 
-COPY ./cache_requirements.txt /cache_requirements.txt
+COPY ./cache_requirements.txt /
 RUN pip install -r /cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
         {% for repo, hf_dir in models.items() %}
                 {% for file in hf_dir.files %}
