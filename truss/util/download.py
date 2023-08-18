@@ -25,7 +25,7 @@ def download_external_data(external_data: Optional[ExternalData], data_dir: Path
             raise ValueError(
                 "Local data path of external data cannot point to outside data directory"
             )
-        path.parent.mkdir(exist_ok=True)
+        path.parent.mkdir(exist_ok=True, parents=True)
 
     if b10cp_path is not None:
         print("b10cp found, using it to download external data")
