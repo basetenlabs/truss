@@ -1,0 +1,31 @@
+name: Merge release into main
+
+on:
+  push:
+    branches:
+      - release
+
+jobs:
+  merge-to-main:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Configure Git user as baseten-bot
+      run: |
+        git config user.name "baseten-bot"
+        git config user.email "baseten-bot@baseten.co"
+
+    - name: Fetch all branches
+      run: |
+        git fetch --all
+
+    - name: Merge release into main with priority on main changes
+      run: |
+        git checkout main
+        git merge --strategy-option=ours release -m "Merge release into main prioritizing main changes"
+        git push origin main
+      env:
+        GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}

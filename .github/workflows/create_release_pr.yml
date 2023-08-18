@@ -1,0 +1,50 @@
+name: Create Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to bump to'
+        required: true
+
+jobs:
+  bump_version:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+
+    - name: Bump version in pyproject.toml
+      run: |
+        poetry version $INPUT_VERSION
+      env:
+        INPUT_VERSION: ${{ github.event.inputs.version }}
+
+
+    - name: Commit changes
+      run: |
+        git config --local user.email "baseten-bot@baseten.co"
+        git config --local user.name "baseten-bot"
+        git add pyproject.toml
+        git commit -m "Bump version to $INPUT_VERSION"
+      env:
+        INPUT_VERSION: ${{ github.event.inputs.version }}
+
+    # TODO: Also push changes to main
+    - name: Push changes to new branch
+      run: |
+        git push origin HEAD:refs/heads/bump-version-${{ github.event.inputs.version }}
+      env:
+        GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
+
+    - name: Make PR
+      run: |
+        PR_URL=gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION"
+        gh pr merge $PR_URL --auto --merge
+      env:
+        INPUT_VERSION: ${{ github.event.inputs.version }}
