@@ -1,5 +1,6 @@
 import importlib
 from pathlib import Path
+from types import ModuleType
 from typing import Any, List, Type, Union
 
 import yaml
@@ -102,6 +103,26 @@ def get_triton_dims(pydantic_type: Type) -> List[int]:
     return [-1]
 
 
+def validate_user_model_class(module: ModuleType, required_attributes: List[str]):
+    """
+    Validates that a user model class has the required attributes.
+
+    Args:
+        module (ModuleType): The module containing the user model class.
+        required_attributes (list): A list of required attributes.
+
+    Raises:
+        AttributeError: If a required attribute is missing.
+    """
+    for attribute in required_attributes:
+        if not hasattr(module, attribute):
+            raise AttributeError(
+                f"Truss model class is missing {attribute} attribute. For Triton, \
+                we require a Pydantic model class that corresponds to your model \
+                input and model output."
+            )
+
+
 def generate_config_pbtxt(
     input_class: Type[BaseModel],
     output_class: Type[BaseModel],
@@ -142,25 +163,24 @@ def main():
     input_cls_name = config.get("input_type_name", "Input")
     output_cls_name = config.get("output_type_name", "Output")
 
-    # Import model class
-    model_module_name = str(Path(model_class_filename).with_suffix(""))
-    module = importlib.import_module(
-        f"{path_to_module(user_truss_path)}.model.{model_module_name}"
-    )
-
     # Determine if GPU is enabled
     config_arguments["is_gpu"] = False
     if "resources" in config:
         if config["resources"].get("use_gpu", False):
             config_arguments["is_gpu"] = True
 
-    try:
-        input_cls = getattr(module, input_cls_name)
-        output_cls = getattr(module, output_cls_name)
-    except AttributeError:
-        raise AttributeError(
-            f"Model class {model_class_filename} is missing {input_cls_name} or {output_cls_name} class."
-        )
+    # Import model class
+    model_module_name = str(Path(model_class_filename).with_suffix(""))
+    module = importlib.import_module(
+        f"{path_to_module(user_truss_path)}.model.{model_module_name}"
+    )
+
+    # Validate model class
+    validate_user_model_class(module, [input_cls_name, output_cls_name])
+
+    # Get pydantic model classes
+    input_cls = getattr(module, input_cls_name)
+    output_cls = getattr(module, output_cls_name)
 
     # Generate config.pbtxt
     config_pbtxt = generate_config_pbtxt(

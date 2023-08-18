@@ -71,6 +71,19 @@ def transform_pydantic_to_triton(
     """
     results = []
 
+    if not isinstance(pydantic_objects, list):
+        raise ValueError(
+            "Truss did not return a list. Please ensure that your model returns a list \
+            of Pydantic objects even if the batch size is 1."
+        )
+
+    if not all(isinstance(obj, BaseModel) for obj in pydantic_objects):
+        raise ValueError(
+            "Truss returned a list of objects that are not Pydantic models. Please \
+            ensure that your model returns a list of Pydantic objects even if the \
+            batch size is 1."
+        )
+
     for obj in pydantic_objects:
         tensors = []
         for field, value in obj.dict().items():
