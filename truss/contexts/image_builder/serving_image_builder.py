@@ -82,9 +82,7 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
-def create_vllm_build_dir(
-    config: TrussConfig, build_dir: Path, truss_dir: Path, spec: TrussSpec
-):
+def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
@@ -135,7 +133,7 @@ def create_vllm_build_dir(
             filtered_repo_files = list(
                 filter_repo_objects(
                     items=list_files(
-                        repo_id, truss_dir / spec.config.data_dir, revision=revision
+                        repo_id, truss_dir / config.data_dir, revision=revision
                     ),
                     allow_patterns=allow_patterns,
                     ignore_patterns=ignore_patterns,
@@ -243,7 +241,7 @@ class ServingImageBuilder(ImageBuilder):
             create_tgi_build_dir(config, build_dir)
             return
         elif config.build.model_server is ModelServer.VLLM:
-            create_vllm_build_dir(config, build_dir, truss_dir, spec)
+            create_vllm_build_dir(config, build_dir, truss_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
