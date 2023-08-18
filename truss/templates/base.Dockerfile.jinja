@@ -44,8 +44,6 @@ RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 {% endblock %}
 
 
-{% block cache_weights %}
-{% endblock %}
 
 
 ENV APP_HOME /app
@@ -53,6 +51,10 @@ WORKDIR $APP_HOME
 
 
 {% block app_copy %}
+{% endblock %}
+
+
+{% block cache_weights %}
 {% endblock %}
 
 {% block bundled_packages_copy %}
