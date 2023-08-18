@@ -1,3 +1,8 @@
+{#
+A sample config.pbtxt template for a model that uses the Python backend.
+https://github.com/triton-inference-server/backend/blob/504abc9dc74f2f9aa907e561620c411ffbdb3f3c/examples/model_repos/minimal_models/batching/config.pbtxt#L4
+#}
+
 name: "model"
 backend: "python"
 max_batch_size: {{ max_batch_size }}
@@ -10,7 +15,7 @@ input [
 {% for inp in inputs %}
     {
         name: "{{ inp.name }}"
-        data_type: {{ inp.type }}
+        data_type: {{ inp.triton_type }}
         dims: [{{ inp.dims|join(', ') }}]
     }{% if not loop.last %},{% endif %}
 {% endfor %}
@@ -20,7 +25,7 @@ output [
 {% for out in outputs %}
     {
         name: "{{ out.name }}"
-        data_type: {{ out.type }}
+        data_type: {{ out.triton_type }}
         dims: [{{ out.dims|join(', ') }}]
     }{% if not loop.last %},{% endif %}
 {% endfor %}
@@ -28,7 +33,7 @@ output [
 
 instance_group [
   {
-    kind: KIND_GPU
+    kind: {% if is_gpu %}KIND_GPU{% else %}KIND_CPU{% endif %}
     count: {{ num_replicas }}
   }
 ]

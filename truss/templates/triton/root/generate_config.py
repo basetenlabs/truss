@@ -1,10 +1,15 @@
 import importlib
 from pathlib import Path
-from typing import List, Type
+from typing import Any, List, Type, Union
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic import BaseModel
+
+# Copied from truss/templates/triton/model/utils/pydantic.py
+FieldAnnotationType = Union[
+    Type[int], Type[float], Type[str], Type[bool], Type[dict], List[Any]
+]
 
 # Define the mapping from pydantic types to Triton types
 TYPE_MAPPING = {
@@ -16,7 +21,39 @@ TYPE_MAPPING = {
 }
 
 
+class FieldDescriptor:
+    def __init__(self, name: str, triton_type: str, dims: List[int]):
+        self.name = name
+        self.triton_type = triton_type
+        self.dims = dims
+
+    @classmethod
+    def from_pydantic_field(cls, field_name: str, field_info: Any) -> "FieldDescriptor":
+        return cls(
+            name=field_name,
+            triton_type=get_triton_type(field_info.annotation),
+            dims=get_triton_dims(field_info),
+        )
+
+    @classmethod
+    def from_pydantic_class(
+        cls, pydantic_class: Type[BaseModel]
+    ) -> List["FieldDescriptor"]:
+        return [
+            cls.from_pydantic_field(field_name, field_info)
+            for field_name, field_info in pydantic_class.__fields__.items()  # type: ignore
+        ]
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "dims": self.dims,
+            "triton_type": self.triton_type,
+        }
+
+
 def read_template_from_fs(base_dir: Path, template_file_name: str) -> Template:
+    """Reads a Jinja template from the filesystem."""
     template_loader = FileSystemLoader(str(base_dir))
     template_env = Environment(loader=template_loader)
     return template_env.get_template(template_file_name)
@@ -27,35 +64,34 @@ def path_to_module(path: Path) -> str:
     return str(path).replace("/", ".")
 
 
-def is_list_type(pydantic_field) -> bool:
-    actual_type = getattr(pydantic_field, "outer_type_", pydantic_field)
-    return actual_type == List or (
-        hasattr(actual_type, "__origin__") and actual_type.__origin__ == list
-    )
+# Copied from truss/templates/triton/model/utils/pydantic.py
+def is_conlist(pydantic_field_annotation: FieldAnnotationType) -> bool:
+    """Checks if a Pydantic field annotation is a conlist."""
+    # Annotations that are not directly a Python type have an __origin__ attribute
+    if not hasattr(pydantic_field_annotation, "__origin__"):
+        return False
+    return pydantic_field_annotation.__origin__ == list
 
 
-def get_triton_type(pydantic_field: Type) -> str:
-    if is_list_type(pydantic_field):
-        # Assuming the first argument of the list type is the base type
-        base_type = pydantic_field.__args__[0]
-    else:
-        base_type = pydantic_field
+def get_triton_type(pydantic_field: FieldAnnotationType) -> str:
+    if is_conlist(pydantic_field):
+        # If the type is a list, get the type of the list elements
+        pydantic_field = pydantic_field.__args__[0]  # type: ignore
 
-    # Determine the name of the base type
     type_name = (
-        base_type.__name__
-        if hasattr(base_type, "__name__")
-        else base_type.__origin__.__name__
+        pydantic_field.__name__
+        if hasattr(pydantic_field, "__name__")
+        else str(pydantic_field)
     )
 
     if type_name not in TYPE_MAPPING:
-        raise ValueError(f"Unsupported type: {type_name}")
+        raise TypeError(f"Unsupported type: {type_name}")
 
     return TYPE_MAPPING[type_name]
 
 
-def get_dims(pydantic_type: Type) -> List[int]:
-    if is_list_type(pydantic_type.annotation):
+def get_triton_dims(pydantic_type: Type) -> List[int]:
+    if is_conlist(pydantic_type.annotation):
         dims = next(
             (m for m in pydantic_type.metadata if hasattr(m, "min_length")), None
         )
@@ -67,37 +103,31 @@ def get_dims(pydantic_type: Type) -> List[int]:
 
 
 def generate_config_pbtxt(
-    input_class: BaseModel,
-    output_class: BaseModel,
+    input_class: Type[BaseModel],
+    output_class: Type[BaseModel],
     template_path: Path,
     template_name: str = "config.pbtxt.jinja",
     max_batch_size: int = 1,
     num_replicas: int = 1,
     dynamic_batch_delay_ms: int = 0,
+    is_gpu: bool = False,
 ) -> str:
-    def _inspect_pydantic_model(pydantic_cls):
-        return [
-            {
-                "name": field_name,
-                "type": get_triton_type(field_info.annotation),
-                "dims": get_dims(field_info),
-            }
-            for field_name, field_info in pydantic_cls.model_fields.items()
-        ]
-
     config_params = {
         "max_batch_size": max_batch_size,
         "num_replicas": num_replicas,
+        "is_gpu": is_gpu,
     }
-    inputs = _inspect_pydantic_model(input_class)
-    outputs = _inspect_pydantic_model(output_class)
     template = read_template_from_fs(template_path, template_name)
+    input_cls_field_descriptors = FieldDescriptor.from_pydantic_class(input_class)
+    output_cls_field_descriptors = FieldDescriptor.from_pydantic_class(output_class)
+    inputs = [field.to_dict() for field in input_cls_field_descriptors]
+    outputs = [field.to_dict() for field in output_cls_field_descriptors]
     if dynamic_batch_delay_ms > 0:
         config_params["dynamic_batching_delay_microseconds"] = dynamic_batch_delay_ms
     return template.render(inputs=inputs, outputs=outputs, **config_params)
 
 
-if __name__ == "__main__":
+def main():
     model_repository_path = Path("model")
     user_truss_path = model_repository_path / "1" / "truss"
 
@@ -118,6 +148,12 @@ if __name__ == "__main__":
         f"{path_to_module(user_truss_path)}.model.{model_module_name}"
     )
 
+    # Determine if GPU is enabled
+    config_arguments["is_gpu"] = False
+    if "resources" in config:
+        if config["resources"].get("use_gpu", False):
+            config_arguments["is_gpu"] = True
+
     try:
         input_cls = getattr(module, input_cls_name)
         output_cls = getattr(module, output_cls_name)
@@ -134,3 +170,7 @@ if __name__ == "__main__":
     # Write config.pbtxt to model directory
     with open(model_repository_path / "config.pbtxt", "w") as f:
         f.write(config_pbtxt)
+
+
+if __name__ == "__main__":
+    main()

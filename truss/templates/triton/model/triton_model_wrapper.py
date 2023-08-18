@@ -7,20 +7,17 @@ from typing import Dict
 import triton_python_backend_utils as pb_utils
 from shared.secrets_resolver import SecretsResolver
 from transform import transform_pydantic_to_triton, transform_triton_to_pydantic
-from utils.pydantic import inspect_pydantic_model
 from utils.signature import signature_accepts_keyword_arg
 
 
-class ModelWrapper:
+class TritonModelWrapper:
     def __init__(self, config: Dict):
         self._config = config
         self._model = None
         self._input_type = None
         self._output_type = None
-        self._input_type_fields = None
-        self._output_type_fields = None
 
-    def instantiate(self):
+    def instantiate(self) -> None:
         """
         Instantiates the model class defined in the config.
         """
@@ -41,23 +38,26 @@ class ModelWrapper:
 
         input_type_name = self._config.get("input_type_name", "Input")
         output_type_name = self._config.get("output_type_name", "Output")
-        self._input_type = getattr(module, input_type_name)
-        self._input_type_fields = inspect_pydantic_model(self._input_type)
-        self._output_type = getattr(module, output_type_name)
-        self._output_type_fields = inspect_pydantic_model(self._output_type)
+        self._input_type = getattr(module, input_type_name, None)
+        self._output_type = getattr(module, output_type_name, None)
+
+        if not self._input_type:
+            raise ValueError("Input type not defined in user model")
+        if not self._output_type:
+            raise ValueError("Output type not defined in user model")
 
         model_class_signature = inspect.signature(model_class)
         model_init_params = {}
         if signature_accepts_keyword_arg(model_class_signature, "config"):
             model_init_params["config"] = self._config
         if signature_accepts_keyword_arg(model_class_signature, "data_dir"):
-            model_init_params["data_dir"] = data_dir
+            model_init_params["data_dir"] = data_dir  # type: ignore
         if signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
 
         self._model = model_class(**model_init_params)
 
-    def load(self):
+    def load(self) -> None:
         """
         Invokes the underlying model's load method.
         """
@@ -66,7 +66,7 @@ class ModelWrapper:
 
         self._model.load()
 
-    def predict(self, requests: list):
+    def predict(self, requests: list) -> list:
         """
         Converts Triton requests to Pydantic objects, invokes the underlying model's predict method, and converts the
         outputs to Triton objects.

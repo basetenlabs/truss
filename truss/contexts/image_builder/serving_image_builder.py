@@ -146,8 +146,6 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
     (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(_spec.requirements_txt)
     (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
 
-    return
-
 
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
@@ -183,6 +181,7 @@ class ServingImageBuilder(ImageBuilder):
             return
         elif config.build.model_server is ModelServer.VLLM:
             create_vllm_build_dir(config, build_dir)
+            return
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
             return

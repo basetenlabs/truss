@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import yaml
-from triton_model_wrapper import ModelWrapper
+from triton_model_wrapper import TritonModelWrapper
 
 
 class TritonPythonModel:
@@ -9,9 +9,9 @@ class TritonPythonModel:
         self._model_repository_path = None
         self._config_path = None
         self._config = None
-        self._model_wrapper: ModelWrapper = None
+        self._model_wrapper: TritonModelWrapper = None
 
-    def _instantiate_model_wrapper(self, triton_config: dict):
+    def _instantiate_model_wrapper(self, triton_config: dict) -> None:
         """
         Instantiates the model wrapper class as well as the user-defined model class.
 
@@ -28,10 +28,10 @@ class TritonPythonModel:
         self._config_path = self._model_repository_path / "truss" / "config.yaml"
         with open(self._config_path, encoding="utf-8") as config_file:
             self._config = yaml.safe_load(config_file)
-        self._model_wrapper: ModelWrapper = ModelWrapper(self._config)
+        self._model_wrapper: TritonModelWrapper = TritonModelWrapper(self._config)
         self._model_wrapper.instantiate()
 
-    def initialize(self, args: dict):
+    def initialize(self, triton_config: dict) -> None:
         """
         Instantiates the model wrapper class and loads the user's model. This function is called by Triton upon startup.
 
@@ -42,10 +42,10 @@ class TritonPythonModel:
         Returns:
             None
         """
-        self._instantiate_model_wrapper(args)
+        self._instantiate_model_wrapper(triton_config)
         self._model_wrapper.load()
 
-    def execute(self, requests):
+    def execute(self, requests: list) -> list:
         """
         Executes the user's model on Triton InferenceRequest objects. This function is called by Triton upon inference.
 

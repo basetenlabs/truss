@@ -1,6 +1,9 @@
 import json
+from typing import List, Type
 
 import numpy as np
+import triton_python_backend_utils as pb_utils
+from pydantic import BaseModel
 from utils.pydantic import PYTHON_TYPE_TO_NP_DTYPE, inspect_pydantic_model
 from utils.triton import (
     convert_tensor_to_python_type,
@@ -10,7 +13,10 @@ from utils.triton import (
 )
 
 
-def transform_triton_to_pydantic(triton_requests, pydantic_type) -> list:
+def transform_triton_to_pydantic(
+    triton_requests: List["pb_utils.InferenceRequest"],
+    pydantic_type: Type[BaseModel],  # noqa
+) -> List[BaseModel]:
     """
     Transforms a list of Triton requests into a list of Pydantic objects.
 
@@ -27,6 +33,7 @@ def transform_triton_to_pydantic(triton_requests, pydantic_type) -> list:
 
     Raises:
         ValueError: If a tensor corresponding to a Pydantic field cannot be found in the Triton request.
+        TypeError: If a tensor corresponding to a Pydantic field has an unsupported type.
     """
     fields = inspect_pydantic_model(pydantic_type)
     results = []
@@ -42,7 +49,9 @@ def transform_triton_to_pydantic(triton_requests, pydantic_type) -> list:
     return results
 
 
-def transform_pydantic_to_triton(pydantic_objects):
+def transform_pydantic_to_triton(
+    pydantic_objects: List[BaseModel],
+) -> List["pb_utils.InferenceResponse"]:
     """
     Transforms a list of Pydantic objects into a list of Triton inference responses.
 
