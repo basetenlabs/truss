@@ -44,7 +44,9 @@ jobs:
 
     - name: Make PR
       run: |
-        PR_URL=$(gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION" --body "Release $INPUT_VERSION")
+        CURR_VERSION=$(curl https://pypi.org/pypi/truss/json | jq ".info.version")
+        PR_BODY="Updating Truss from [$CURR_VERSION](https://pypi.org/pypi/truss/json) to $INPUT_VERSION."
+        PR_URL=$(gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION" --body "$BODY")
         gh pr merge $PR_URL --auto --merge
       env:
         INPUT_VERSION: ${{ github.event.inputs.version }}
