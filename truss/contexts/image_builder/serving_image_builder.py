@@ -169,6 +169,19 @@ def create_vllm_build_dir(
     supervisord_filepath.write_text(supervisord_contents)
 
 
+def split_gs_path(gs_path):
+    # Remove the 'gs://' prefix
+    path = gs_path.replace("gs://", "")
+
+    # Split on the first slash
+    parts = path.split("/", 1)
+
+    bucket_name = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    return bucket_name, prefix
+
+
 def list_bucket_files(bucket_name, data_dir, is_trusted=False):
     # TODO(varun): provide support for aws s3
 
@@ -178,12 +191,14 @@ def list_bucket_files(bucket_name, data_dir, is_trusted=False):
         )
     else:
         storage_client = storage.Client()
-
-    blobs = storage_client.list_blobs(bucket_name.replace("gs://", ""))
+    print(bucket_name.replace("gs://", ""))
+    bucket_name, prefix = split_gs_path(bucket_name)
+    blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
 
     all_objects = []
     for blob in blobs:
-        all_objects.append(blob.name)
+        all_objects.append(Path(blob.name).name)
+        print(Path(blob.name).name)
     return all_objects
 
 
