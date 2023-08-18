@@ -93,6 +93,7 @@ mlflow = "^1.29.0"
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
 httpx = {extras = ["cli"], version = "^0.24.1"}
+requests-mock = "^1.11.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]
