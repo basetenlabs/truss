@@ -50,3 +50,4 @@ jobs:
         gh pr merge $PR_URL --auto --merge
       env:
         INPUT_VERSION: ${{ github.event.inputs.version }}
+        GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
