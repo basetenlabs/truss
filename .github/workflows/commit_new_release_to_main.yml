@@ -16,7 +16,7 @@ jobs:
     - name: Configure Git user as basetenbot
       run: |
         git config user.name "basetenbot"
-        git config user.email "basetenbot@baseten.co"
+        git config user.email "96544894+basetenbot@users.noreply.github.com"
 
     - name: Fetch all branches
       run: |
