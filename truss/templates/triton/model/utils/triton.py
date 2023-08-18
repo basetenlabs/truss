@@ -1,22 +1,35 @@
 import json
 from typing import Any, List
 
-import triton_python_backend_utils as pb_utils
+import numpy as np
+
+
+class Tensor:
+    def as_numpy(self) -> np.ndarray:
+        return  # type: ignore
+
+
+class InferenceRequest:
+    pass
+
+
+class InferenceResponse:
+    pass
 
 
 def get_numpy_item(
-    tensor: pb_utils.Tensor,
-) -> str:  # noqa # type: ignore
+    tensor: Tensor,
+) -> str:
     """Returns the item of a numpy array as a Python type."""
     item = tensor.as_numpy().item()
     return item.decode("utf-8") if isinstance(item, bytes) else item
 
 
-def convert_tensor_to_python_type(tensor: pb_utils.Tensor, dtype: str) -> Any:
+def convert_tensor_to_python_type(tensor: Tensor, dtype: str) -> Any:
     """Converts a Triton tensor to a Python type."""
 
     def _convert_tensor_to_dict(
-        tensor: pb_utils.Tensor,
+        tensor: Tensor,
     ) -> dict:
         try:
             item = json.loads(get_numpy_item(tensor))
@@ -36,23 +49,27 @@ def convert_tensor_to_python_type(tensor: pb_utils.Tensor, dtype: str) -> Any:
         raise TypeError(f"Unsupported type: {dtype}")
 
 
-def get_input_tensor_by_name(
-    obj: pb_utils.InferenceRequest, name: str  # noqa
-) -> pb_utils.Tensor:  # noqa
+def get_input_tensor_by_name(obj: InferenceRequest, name: str) -> Tensor:
     """Extracts a tensor from a Triton InferenceRequest by name."""
-    x = pb_utils.get_input_tensor_by_name(obj, name)
+    from triton_python_backend_utils import get_input_tensor_by_name
+
+    x = get_input_tensor_by_name(obj, name)
     if x is None:
         raise ValueError(f"Input tensor {name} not found in request.")
     return x
 
 
-def create_tensor(name: str, value: Any) -> pb_utils.Tensor:  # noqa
+def create_tensor(name: str, value: Any) -> Tensor:
     """Creates a Triton tensor."""
-    return pb_utils.Tensor(name, value)
+    from triton_python_backend_utils import Tensor
+
+    return Tensor(name, value)
 
 
 def create_inference_response(
-    objects: List[pb_utils.Tensor],
-) -> pb_utils.InferenceResponse:
+    objects: List[Tensor],
+) -> InferenceResponse:
     """Creates a Triton InferenceResponse from a list of Triton tensors."""
-    return pb_utils.InferenceResponse(objects)
+    from triton_python_backend_utils import InferenceResponse
+
+    return InferenceResponse(objects)
