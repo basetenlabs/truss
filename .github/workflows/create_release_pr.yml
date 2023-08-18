@@ -28,8 +28,8 @@ jobs:
 
     - name: Commit changes
       run: |
-        git config --local user.email "baseten-bot@baseten.co"
-        git config --local user.name "baseten-bot"
+        git config --local user.email "basetenbot@baseten.co"
+        git config --local user.name "basetenbot"
         git add pyproject.toml
         git commit -m "Bump version to $INPUT_VERSION"
       env:
@@ -46,7 +46,7 @@ jobs:
       run: |
         CURR_VERSION=$(curl https://pypi.org/pypi/truss/json | jq ".info.version")
         PR_BODY="Updating Truss from [$CURR_VERSION](https://pypi.org/pypi/truss/json) to $INPUT_VERSION."
-        PR_URL=$(gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION" --body "$BODY")
+        PR_URL=$(gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION" --body "$PR_BODY")
         gh pr merge $PR_URL --auto --merge
       env:
         INPUT_VERSION: ${{ github.event.inputs.version }}

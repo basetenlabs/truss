@@ -13,10 +13,10 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v2
 
-    - name: Configure Git user as baseten-bot
+    - name: Configure Git user as basetenbot
       run: |
-        git config user.name "baseten-bot"
-        git config user.email "baseten-bot@baseten.co"
+        git config user.name "basetenbot"
+        git config user.email "basetenbot@baseten.co"
 
     - name: Fetch all branches
       run: |
