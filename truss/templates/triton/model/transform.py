@@ -14,7 +14,7 @@ from utils.triton import (
 
 
 def transform_triton_to_pydantic(
-    triton_requests: List["pb_utils.InferenceRequest"],
+    triton_requests: List[pb_utils.InferenceRequest],
     pydantic_type: Type[BaseModel],  # noqa
 ) -> List[BaseModel]:
     """
@@ -51,7 +51,7 @@ def transform_triton_to_pydantic(
 
 def transform_pydantic_to_triton(
     pydantic_objects: List[BaseModel],
-) -> List["pb_utils.InferenceResponse"]:
+) -> List[pb_utils.InferenceResponse]:
     """
     Transforms a list of Pydantic objects into a list of Triton inference responses.
 
