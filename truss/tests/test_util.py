@@ -17,7 +17,8 @@ def test_download(tmp_path):
         )
         download_external_data(external_data=external_data, data_dir=tmp_path)
 
-        content = open(tmp_path / "foo", "rb").read()
+        with open(tmp_path / "foo", "rb") as f:
+            content = f.read()
 
         assert content == mocked_download_content
 
@@ -31,6 +32,7 @@ def test_download_into_nested_subdir(tmp_path):
         )
         download_external_data(external_data=external_data, data_dir=tmp_path)
 
-        content = open(tmp_path / "foo" / "bar" / "baz", "rb").read()
+        with open(tmp_path / "foo" / "bar" / "baz", "rb") as f:
+            content = f.read()
 
         assert content == mocked_download_content
