@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+from google.cloud import storage
 from huggingface_hub import list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
@@ -28,13 +29,18 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import Build, ModelServer, TrussConfig
+from truss.truss_config import (
+    Build,
+    HuggingFaceCache,
+    HuggingFaceModel,
+    ModelServer,
+    TrussConfig,
+)
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
-    copy_file_path,
     copy_tree_or_file,
     copy_tree_path,
 )
@@ -60,10 +66,15 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
 
-    copy_file_path(TEMPLATES_DIR / "tgi" / "proxy.conf", build_dir / "proxy.conf")
-    args = " ".join(
-        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
-    )
+    build_args = build_config.arguments.copy()
+    endpoint = build_args.pop("endpoint", "generate_stream")
+
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "tgi/proxy.conf.jinja")
+    nginx_content = nginx_template.render(endpoint=endpoint)
+    nginx_filepath = build_dir / "proxy.conf"
+    nginx_filepath.write_text(nginx_content)
+
+    args = " ".join([f"--{k.replace('_', '-')}={v}" for k, v in build_args.items()])
     supervisord_template = read_template_from_fs(
         TEMPLATES_DIR, "tgi/supervisord.conf.jinja"
     )
@@ -72,7 +83,12 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
-def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
+def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
+    def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
+        copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+
+    copy_tree_path(truss_dir, build_dir)
+
     server_endpoint_config = {
         "Completions": "/v1/completions",
         "ChatCompletions": "/v1/chat/completions",
@@ -82,13 +98,58 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path):
 
     build_config: Build = config.build
     server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
+
+    model_name = build_config.arguments.pop("model")
+    if "gs://" in model_name:
+        # if we are pulling from a gs bucket, we want to alias it as a part of the cache
+        model_to_cache = {"repo_id": model_name}
+        if config.hf_cache:
+            config.hf_cache.models.append(HuggingFaceModel.from_dict(model_to_cache))
+        else:
+            config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
+        build_config.arguments[
+            "model"
+        ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
+
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
         TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
     )
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
+    copy_into_build_dir(
+        TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
+    )
 
-    dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
+    model_files = {}
+    if config.hf_cache:
+        curr_dir = Path(__file__).parent.resolve()
+        copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+        for model in config.hf_cache.models:
+            repo_id = model.repo_id
+            revision = model.revision
+
+            allow_patterns = model.allow_patterns
+            ignore_patterns = model.ignore_patterns
+
+            filtered_repo_files = list(
+                filter_repo_objects(
+                    items=list_files(
+                        repo_id, truss_dir / config.data_dir, revision=revision
+                    ),
+                    allow_patterns=allow_patterns,
+                    ignore_patterns=ignore_patterns,
+                )
+            )
+            model_files[repo_id] = {
+                "files": filtered_repo_files,
+                "revision": revision,
+            }
+
+    dockerfile_content = dockerfile_template.render(
+        hf_access_token=hf_access_token,
+        models=model_files,
+        should_install_server_requirements=True,
+    )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
 
@@ -147,6 +208,47 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
     (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
 
 
+def split_gs_path(gs_path):
+    # Remove the 'gs://' prefix
+    path = gs_path.replace("gs://", "")
+
+    # Split on the first slash
+    parts = path.split("/", 1)
+
+    bucket_name = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    return bucket_name, prefix
+
+
+def list_bucket_files(bucket_name, data_dir, is_trusted=False):
+    # TODO(varun): provide support for aws s3
+
+    if is_trusted:
+        storage_client = storage.Client.from_service_account_json(
+            data_dir / "service_account.json"
+        )
+    else:
+        storage_client = storage.Client()
+    print(bucket_name.replace("gs://", ""))
+    bucket_name, prefix = split_gs_path(bucket_name)
+    blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
+
+    all_objects = []
+    for blob in blobs:
+        all_objects.append(Path(blob.name).name)
+        print(Path(blob.name).name)
+    return all_objects
+
+
+def list_files(repo_id, data_dir, revision=None):
+    if repo_id.startswith(("s3://", "gs://")):
+        return list_bucket_files(repo_id, data_dir, is_trusted=True)
+    else:
+        # we assume it's a HF bucket
+        list_repo_files(repo_id, revision=revision)
+
+
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
@@ -180,7 +282,7 @@ class ServingImageBuilder(ImageBuilder):
             create_tgi_build_dir(config, build_dir)
             return
         elif config.build.model_server is ModelServer.VLLM:
-            create_vllm_build_dir(config, build_dir)
+            create_vllm_build_dir(config, build_dir, truss_dir)
             return
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
@@ -215,7 +317,7 @@ class ServingImageBuilder(ImageBuilder):
 
                 filtered_repo_files = list(
                     filter_repo_objects(
-                        items=list_repo_files(repo_id, revision=revision),
+                        items=list_files(repo_id, data_dir, revision=revision),
                         allow_patterns=allow_patterns,
                         ignore_patterns=ignore_patterns,
                     )

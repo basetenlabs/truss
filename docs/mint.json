@@ -8,7 +8,7 @@
     {
       "icon": "b",
       "name": "Baseten",
-      "url": "https://baseten.co"
+      "url": "https://www.baseten.co"
     },
     {
       "icon": "newspaper",
@@ -58,34 +58,9 @@
         "examples/private-model",
         "examples/system-packages",
         "examples/streaming",
-        "examples/local-model",
-        "examples/bundled-package",
-        {
-          "group": "Performance optimization",
-          "pages": [
-            "examples/performance/cached-weights",
-            "examples/performance/tgi-server",
-            "examples/performance/vllm-server"
-          ]
-        },
-        {
-          "group": "Foundation models",
-          "pages": [
-            "examples/models/overview",
-            "examples/models/wizardlm",
-            "examples/models/sdxl",
-            "examples/models/whisper"
-          ]
-        },
-        {
-          "group": "Frameworks",
-          "pages": [
-            "examples/frameworks/pytorch",
-            "examples/frameworks/sklearn",
-            "examples/frameworks/tensorflow",
-            "examples/frameworks/xgboost"
-          ]
-        }
+        "examples/performance/cached-weights",
+        "examples/performance/tgi-server",
+        "examples/performance/vllm-server"
       ]
     },
     {
@@ -93,15 +68,6 @@
       "pages": [
         "remotes/baseten",
         "remotes/sagemaker"
-      ]
-    },
-    {
-      "group": "Reference",
-      "pages": [
-        "reference/config",
-        "reference/model-class",
-        "reference/servers",
-        "reference/cli"
       ]
     },
     {
@@ -113,26 +79,38 @@
     {
       "group": "Truss 101: Model serving",
       "pages": [
-        "learn/101/init",
-        "learn/101/echo",
-        "learn/101/push",
-        "learn/101/predict",
-        "learn/101/watch",
-        "learn/101/model-load",
-        "learn/101/model-predict",
-        "learn/101/requirements"
+        "learn/model-serving/init",
+        "learn/model-serving/push",
+        "learn/model-serving/predict",
+        "learn/model-serving/watch",
+        "learn/model-serving/requirements",
+        "learn/model-serving/model-load",
+        "learn/model-serving/model-predict",
+        "learn/model-serving/publish"
       ]
     },
     {
-      "group": "Truss 201: Adding GPUs",
+      "group": "Truss reference",
       "pages": [
-        "learn/201/init",
-        "learn/201/resources",
-        "learn/201/model-load",
-        "learn/201/private",
-        "learn/201/cache",
-        "learn/201/model-predict",
-        "learn/201/streaming"
+        "reference/config"
+      ]
+    },
+    {
+      "group": "CLI reference",
+      "pages": [
+        "reference/cli",
+        "reference/cli/init",
+        "reference/cli/push",
+        "reference/cli/watch",
+        "reference/cli/predict",
+        {
+          "group": "Advanced usage",
+          "pages": [
+            "reference/cli/image",
+            "reference/cli/container",
+            "reference/cli/cleanup"
+          ]
+        }
       ]
     },
     {
@@ -146,9 +124,7 @@
     {
       "group": "Deep dives",
       "pages": [
-        "contribute/base-images",
-        "contribute/patching",
-        "contribute/remote-spec"
+        "contribute/base-images"
       ]
     }
   ],
@@ -158,7 +134,11 @@
       "url": "learn"
     },
     {
-      "name": "Contributor's guide",
+      "name": "Reference docs",
+      "url": "reference"
+    },
+    {
+      "name": "Contributor guides",
       "url": "contribute"
     }
   ],
@@ -175,5 +155,10 @@
       "name": "Issues",
       "url": "https://github.com/basetenlabs/truss/issues"
     }
-  ]
+  ],
+  "analytics": {
+    "gtm": {
+        "tagId": "GTM-WXD4NQTW"
+    }
+  }
 }

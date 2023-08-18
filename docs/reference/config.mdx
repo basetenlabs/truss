@@ -6,7 +6,6 @@ description: "Set your model resources, dependencies, and more"
 Truss is configurable to its core. Every Truss must include a file config.yaml in its root directory, which is automatically generated when the Truss is created. However, configuration is optional. Every configurable value has a sensible default, and a completely empty config file is valid.
 
 <Accordion title="YAML syntax help">
-<Tip>
 YAML syntax can be a bit non-obvious when dealing with empty lists and dictionaries. You may notice the following in the default Truss config file:
 
 ```yaml
@@ -24,7 +23,6 @@ secrets:
   key1: default_value1
   key2: default_value2
 ```
-</Tip>
 </Accordion>
 
 ## Config reference
@@ -36,12 +34,6 @@ secrets:
 ```yaml WizardLM config
 description: An instruction-following LLM Using Evol-Instruct.
 environment_variables: {}
-model_metadata:
-  example_model_input: {"prompt": "What is the difference between a wizard and a sorcerer?"}
-  avatar_url: https://cdn.baseten.co/production/static/explore/wizard.png
-  cover_image_url: https://cdn.baseten.co/production/static/explore/wizardlm.png
-  tags:
-  - text-generation
 model_name: WizardLM
 requirements:
 - accelerate==0.20.3
@@ -58,39 +50,6 @@ resources:
   accelerator: A10G
 secrets: {}
 system_packages: []
-```
-
-```yaml SDXL config
-description: Generate original images from text prompts.
-environment_variables: {}
-external_package_dirs: []
-model_metadata:
-  example_model_input: {"prompt": "A tree in a field under the night sky", "use_refiner": True}
-  pretty_name: Stable Diffusion XL
-  avatar_url: https://cdn.baseten.co/production/static/stability.png
-  cover_image_url: https://cdn.baseten.co/production/static/sd.png
-  tags:
-  - image-generation
-model_name: Stable Diffusion XL
-model_framework: custom
-model_type: custom
-python_version: py39
-requirements:
-- transformers
-- accelerate
-- safetensors
-- diffusers
-- invisible-watermark>=0.2.0
-resources:
-  accelerator: A10G
-  cpu: 3500m
-  memory: 20Gi
-  use_gpu: true
-secrets: {}
-system_packages:
-- ffmpeg
-- libsm6
-- libxext6
 ```
 
 </RequestExample>

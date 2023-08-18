@@ -1,0 +1,44 @@
+---
+title: "truss push"
+description: "Pushes a truss to a TrussRemote."
+---
+
+``` Usage
+truss push [OPTIONS] [TARGET_DIRECTORY]
+```
+
+### Options
+
+<ParamField body="--remote" type="TEXT">
+Name of the remote in .trussrc to patch changes to
+</ParamField>
+<ParamField body="--publish">
+Publish truss as production deployment.
+</ParamField>
+<ParamField body="--trusted">
+Give Truss access to secrets on remote host.
+</ParamField>
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+### Arguments
+
+<ParamField body="TARGET_DIRECTORY" type="Optional">
+A Truss directory. If none, use current directory.
+</ParamField>
+
+
+### Examples
+
+```
+truss push
+```
+
+```
+truss push --publish /path/to/my-truss
+```
+
+```
+truss push --remote baseten --publish --trusted
+```

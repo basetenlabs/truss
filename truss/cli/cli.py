@@ -11,9 +11,11 @@ from typing import Callable, Optional, Union
 import rich
 import rich_click as click
 import truss
-from truss.cli.create import select_server_backend
+from InquirerPy import inquirer
+from truss.cli.create import ask_name, select_server_backend
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import RemoteFactory
+from truss.truss_config import ModelServer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,6 +53,8 @@ def error_handling(f: Callable[..., object]):
     def wrapper(*args, **kwargs):
         try:
             f(*args, **kwargs)
+        except click.UsageError as e:
+            raise e  # You can re-raise the exception or handle it different
         except Exception as e:
             click.echo(e)
 
@@ -93,8 +97,15 @@ def image():
     default=False,
     help="Create a trainable truss.",
 )
+@click.option(
+    "-b",
+    "--backend",
+    show_default=True,
+    default=ModelServer.TrussServer.value,
+    type=click.Choice([server.value for server in ModelServer]),
+)
 @error_handling
-def init(target_directory, trainable) -> None:
+def init(target_directory, trainable, backend) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -104,13 +115,15 @@ def init(target_directory, trainable) -> None:
             f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
         )
     tr_path = Path(target_directory)
-    build_config = select_server_backend()
+    build_config = select_server_backend(ModelServer[backend])
+    model_name = ask_name()
     truss.init(
         target_directory=target_directory,
         trainable=trainable,
         build_config=build_config,
+        model_name=model_name,
     )
-    click.echo(f"Truss was created in {tr_path}")
+    click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
 
 @image.command()  # type: ignore
@@ -184,10 +197,18 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--logs",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Automatically open remote logs tab",
+)
 @error_handling
 def watch(
     target_directory: str,
     remote: str,
+    logs: bool,
 ) -> None:
     """
     Seamless remote development with truss
@@ -211,9 +232,13 @@ def watch(
         sys.exit(1)
 
     logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
-    rich.print(f"🪵 View logs for your deployment at {logs_url}")
-    webbrowser.open(logs_url)
-    rich.print(f"👀 Watching for changes to truss at '{target_directory}' ...")
+    rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    if not logs:
+        logs = inquirer.confirm(
+            message="🗂  Open logs in a new tab?", default=True
+        ).execute()
+    if logs:
+        webbrowser.open_new_tab(logs_url)
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
 
 
@@ -273,14 +298,18 @@ def predict(
 
     model_name = tr.spec.config.model_name
     if not model_name:
-        raise ValueError("Model name not set. Did you `truss push`?")
+        raise click.UsageError(
+            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+        )
 
     if data is not None:
         request_data = json.loads(data)
     elif file is not None:
         request_data = json.loads(Path(file).read_text())
     else:
-        raise ValueError("At least one of request or request-file must be supplied.")
+        raise click.UsageError(
+            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+        )
 
     service = remote_provider.get_baseten_service(model_name, published)  # type: ignore
     result = service.predict(request_data)
