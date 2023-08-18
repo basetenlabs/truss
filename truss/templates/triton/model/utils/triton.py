@@ -31,13 +31,14 @@ def convert_tensor_to_python_type(tensor: Tensor, dtype: str) -> Any:
     def _convert_tensor_to_dict(
         tensor: Tensor,
     ) -> dict:
+        item = get_numpy_item(tensor)
         try:
-            item = json.loads(get_numpy_item(tensor))
+            coerced_dict = json.loads(item)
         except json.decoder.JSONDecodeError:
             raise ValueError(
                 f"Could not decode string to dict: {item}. Please ensure that the string is valid JSON."
             )
-        return item
+        return coerced_dict
 
     if dtype == "dict":
         return _convert_tensor_to_dict(tensor)
