@@ -189,14 +189,14 @@ def list_bucket_files(bucket_name, data_dir, is_trusted=False):
         )
     else:
         storage_client = storage.Client()
-    print(bucket_name.replace("gs://", ""))
+
     bucket_name, prefix = split_gs_path(bucket_name)
     blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
 
     all_objects = []
     for blob in blobs:
-        all_objects.append(Path(blob.name).name)
-        print(Path(blob.name).name)
+        all_objects.append(blob.name)
+
     return all_objects
 
 
