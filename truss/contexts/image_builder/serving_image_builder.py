@@ -139,6 +139,10 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
                     ignore_patterns=ignore_patterns,
                 )
             )
+            if "gs://" in repo_id:
+                repo_id, _ = split_gs_path(repo_id)
+                repo_id = f"gs://{repo_id}"
+
             model_files[repo_id] = {
                 "files": filtered_repo_files,
                 "revision": revision,

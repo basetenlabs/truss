@@ -21,7 +21,10 @@ def download_file(
             bucket = storage_client.bucket(repo_name)
             blob = bucket.blob(file_name)
             # Download the blob to a file
-            blob.download_to_filename(f"{cache_dir}/{file_name}")
+            dst_file = Path(f"{cache_dir}/{file_name}")
+            if not dst_file.parent.exists():
+                dst_file.parent.mkdir(parents=True)
+            blob.download_to_filename(dst_file.name)
         except Exception as e:
             raise RuntimeError(f"Failure downloading file from GCS: {e}")
     else:
