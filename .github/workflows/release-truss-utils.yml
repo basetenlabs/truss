@@ -1,16 +1,13 @@
 name: Release CI
 
 on:
-  push:
-    branches:
-      - bola/add-truss-utils-package
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to bump to'
         required: true
 
-    
+
 
 concurrency:
   group: release-utils-${{ github.head_ref || github.run_id }}
@@ -29,8 +26,7 @@ jobs:
 
       - name: Tag release
         env:
-          INPUT_VERSION: 0.1.0
-          # INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           cd truss-utils
           poetry version $INPUT_VERSION
