@@ -22,12 +22,18 @@ jobs:
     steps:
       - name: "Git tag release"
         uses: actions/checkout@v3
+        with:
+          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+
+      - uses: ./.github/actions/setup-python/
+
+      - name: Tag release
         env:
           INPUT_VERSION: 0.1.0
           # INPUT_VERSION: ${{ github.event.inputs.version }}
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
-      - run: |
+        run: |
           cd truss-utils
           poetry version $INPUT_VERSION
           NEW_VERSION=v$INPUT_VERSION
@@ -36,8 +42,6 @@ jobs:
 
           git tag -a truss-utils-$NEW_VERSION -m "Release truss-utils $NEW_VERSION"
           git push origin $NEW_VERSION
-
-      - uses: ./.github/actions/setup-python/
 
       - name: Install poetry packages
         working-directory: truss-utils
