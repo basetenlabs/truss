@@ -31,8 +31,6 @@ jobs:
         env:
           INPUT_VERSION: 0.1.0
           # INPUT_VERSION: ${{ github.event.inputs.version }}
-        with:
-          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
         run: |
           cd truss-utils
           poetry version $INPUT_VERSION
