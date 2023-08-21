@@ -1,11 +1,15 @@
 name: Release CI
 
 on:
+  push:
+    branches:
+      - bola/add-truss-utils-package
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to bump to'
         required: true
+        default: 0.1.0
 
     
 
