@@ -9,7 +9,6 @@ on:
       version:
         description: 'Version to bump to'
         required: true
-        default: 0.1.0
 
     
 
@@ -18,24 +17,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  bump_version:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Install poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-
-    - name: Bump version in pyproject.toml
-      working-directory: truss-utils
-      run: |  
-        poetry version $INPUT_VERSION
-      env:
-        INPUT_VERSION: ${{ github.event.inputs.version }}
-
   publish-to-pypi:
     needs: [bump_version]
     runs-on: ubuntu-20.04
@@ -43,10 +24,13 @@ jobs:
       - name: "Git tag release"
         uses: actions/checkout@v3
         env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: 0.1.0
+          # INPUT_VERSION: ${{ github.event.inputs.version }}
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
       - run: |
+          cd truss-utils
+          poetry version $INPUT_VERSION
           NEW_VERSION=v$INPUT_VERSION
           git config --global user.name "Github action"
           git config --global user.email "github.action@baseten.co"
