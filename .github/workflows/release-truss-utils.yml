@@ -41,7 +41,12 @@ jobs:
           git config --global user.email "github.action@baseten.co"
 
           git tag -a truss-utils-$NEW_VERSION -m "Release truss-utils $NEW_VERSION"
-          git push origin $NEW_VERSION
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          tags: true
+          github_token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
 
       - name: Install poetry packages
         working-directory: truss-utils
