@@ -65,7 +65,7 @@ truss push
 You can invoke the model with:
 
 ```sh
-truss predict -d '{"inputs": "What is a large language model?", "parameters": {"max_new_tokens": 128}}'
+truss predict -d '{"inputs": "What is a large language model?", "parameters": {"max_new_tokens": 128, "sample": true}} --published'
 ```
 
 <RequestExample>
