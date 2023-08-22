@@ -138,6 +138,3 @@ def test_ignored_files_in_docker_context(
         assert (custom_model_truss_dir_with_hidden_files / ".DS_Store").exists()
         assert (custom_model_truss_dir_with_hidden_files / ".git").exists()
         assert (custom_model_truss_dir_with_hidden_files / "model").exists()
-
-
-test_max_modified()
