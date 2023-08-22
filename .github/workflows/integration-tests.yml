@@ -1,4 +1,4 @@
-name: n
+name: integration-tests
 
 on:
   workflow_dispatch: # Allows running from actions tab
