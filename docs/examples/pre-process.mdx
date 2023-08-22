@@ -3,16 +3,16 @@ title: Pre/post-process methods
 description: "Deploy a model that makes use of pre-process"
 ---
 
-Since many ML models have compute requirements that often involves a GPU,
-Truss limits the number of concurrent requests to a model. This ensures that
-the GPU does not get overloaded, and that the model can respond to requests.
+Out of the box, Truss limits the amount of concurrent predicts that happen on
+single container. This ensures that the CPU, and for many models the GPU, do not get
+overloaded, and that the model can continue respond to requests in periods of high load
 
-However, many models, in addition to having a GPU compute component, also have
+However, many models, in addition to having compute components, also have
 IO requirements. For example, a model that classifies images may need to download
 the image from a URL before it can classify it.
 
 Truss provides a way to separate the IO component from the compute component, to
-ensure that any IO does not prevent utilization of the GPU on your pod.
+ensure that any IO does not prevent utilization of the compute on your pod.
 
 To do this, you can use the pre/post process methods on a Truss. These methods
 can be defined like this:
