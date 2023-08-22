@@ -52,121 +52,6 @@ CONFIG_FILE = "config.yaml"
 HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
 
 
-def create_tgi_build_dir(config: TrussConfig, build_dir: Path):
-    if not build_dir.exists():
-        build_dir.mkdir(parents=True)
-
-    build_config: Build = config.build
-    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
-    dockerfile_template = read_template_from_fs(
-        TEMPLATES_DIR, "tgi/tgi.Dockerfile.jinja"
-    )
-    dockerfile_content = dockerfile_template.render(hf_access_token=hf_access_token)
-    dockerfile_filepath = build_dir / "Dockerfile"
-    dockerfile_filepath.write_text(dockerfile_content)
-
-    build_args = build_config.arguments.copy()
-    endpoint = build_args.pop("endpoint", "generate_stream")
-
-    nginx_template = read_template_from_fs(TEMPLATES_DIR, "tgi/proxy.conf.jinja")
-    nginx_content = nginx_template.render(endpoint=endpoint)
-    nginx_filepath = build_dir / "proxy.conf"
-    nginx_filepath.write_text(nginx_content)
-
-    args = " ".join([f"--{k.replace('_', '-')}={v}" for k, v in build_args.items()])
-    supervisord_template = read_template_from_fs(
-        TEMPLATES_DIR, "tgi/supervisord.conf.jinja"
-    )
-    supervisord_contents = supervisord_template.render(extra_args=args)
-    supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
-
-
-def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
-    def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
-        copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
-
-    copy_tree_path(truss_dir, build_dir)
-
-    server_endpoint_config = {
-        "Completions": "/v1/completions",
-        "ChatCompletions": "/v1/chat/completions",
-    }
-    if not build_dir.exists():
-        build_dir.mkdir(parents=True)
-
-    build_config: Build = config.build
-    server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
-
-    model_name = build_config.arguments.pop("model")
-    if "gs://" in model_name:
-        # if we are pulling from a gs bucket, we want to alias it as a part of the cache
-        model_to_cache = {"repo_id": model_name}
-        if config.hf_cache:
-            config.hf_cache.models.append(HuggingFaceModel.from_dict(model_to_cache))
-        else:
-            config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
-        build_config.arguments[
-            "model"
-        ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
-
-    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
-    dockerfile_template = read_template_from_fs(
-        TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
-    )
-    nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
-    copy_into_build_dir(
-        TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
-    )
-
-    model_files = {}
-    if config.hf_cache:
-        curr_dir = Path(__file__).parent.resolve()
-        copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
-        for model in config.hf_cache.models:
-            repo_id = model.repo_id
-            revision = model.revision
-
-            allow_patterns = model.allow_patterns
-            ignore_patterns = model.ignore_patterns
-
-            filtered_repo_files = list(
-                filter_repo_objects(
-                    items=list_files(
-                        repo_id, truss_dir / config.data_dir, revision=revision
-                    ),
-                    allow_patterns=allow_patterns,
-                    ignore_patterns=ignore_patterns,
-                )
-            )
-            model_files[repo_id] = {
-                "files": filtered_repo_files,
-                "revision": revision,
-            }
-
-    dockerfile_content = dockerfile_template.render(
-        hf_access_token=hf_access_token,
-        models=model_files,
-        should_install_server_requirements=True,
-    )
-    dockerfile_filepath = build_dir / "Dockerfile"
-    dockerfile_filepath.write_text(dockerfile_content)
-
-    nginx_content = nginx_template.render(server_endpoint=server_endpoint)
-    nginx_filepath = build_dir / "proxy.conf"
-    nginx_filepath.write_text(nginx_content)
-
-    args = " ".join(
-        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
-    )
-    supervisord_template = read_template_from_fs(
-        TEMPLATES_DIR, "vllm/supervisord.conf.jinja"
-    )
-    supervisord_contents = supervisord_template.render(extra_args=args)
-    supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
-
-
 def split_gs_path(gs_path):
     # Remove the 'gs://' prefix
     path = gs_path.replace("gs://", "")
@@ -189,14 +74,13 @@ def list_bucket_files(bucket_name, data_dir, is_trusted=False):
         )
     else:
         storage_client = storage.Client()
-    print(bucket_name.replace("gs://", ""))
     bucket_name, prefix = split_gs_path(bucket_name)
     blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
 
     all_objects = []
     for blob in blobs:
-        all_objects.append(Path(blob.name).name)
-        print(Path(blob.name).name)
+        all_objects.append(blob.name)
+
     return all_objects
 
 
@@ -206,6 +90,146 @@ def list_files(repo_id, data_dir, revision=None):
     else:
         # we assume it's a HF bucket
         list_repo_files(repo_id, revision=revision)
+
+
+def update_config_and_gather_files(
+    config: TrussConfig, truss_dir: Path, build_dir: Path, server_name: str
+):
+    def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
+        copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+
+    if server_name == "TGI":
+        model_key = "model_id"
+    elif server_name == "vLLM":
+        model_key = "model"
+
+    if server_name != "TrussServer":
+        model_name = config.build.arguments.pop(model_key)
+        if "gs://" in model_name:
+            # if we are pulling from a gs bucket, we want to alias it as a part of the cache
+            model_to_cache = {"repo_id": model_name}
+            if config.hf_cache:
+                config.hf_cache.models.append(
+                    HuggingFaceModel.from_dict(model_to_cache)
+                )
+            else:
+                config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
+            config.build.arguments[
+                model_key
+            ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
+
+    model_files = {}
+    if config.hf_cache:
+        curr_dir = Path(__file__).parent.resolve()
+        copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
+        for model in config.hf_cache.models:
+            repo_id = model.repo_id
+            revision = model.revision
+
+            allow_patterns = model.allow_patterns
+            ignore_patterns = model.ignore_patterns
+
+            filtered_repo_files = list(
+                filter_repo_objects(
+                    items=list_files(
+                        repo_id, truss_dir / config.data_dir, revision=revision
+                    ),
+                    allow_patterns=allow_patterns,
+                    ignore_patterns=ignore_patterns,
+                )
+            )
+
+            if "gs://" in repo_id:
+                repo_id, _ = split_gs_path(repo_id)
+                repo_id = f"gs://{repo_id}"
+
+            model_files[repo_id] = {
+                "files": filtered_repo_files,
+                "revision": revision,
+            }
+    copy_into_build_dir(
+        TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
+    )
+    return model_files
+
+
+def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
+    copy_tree_path(truss_dir, build_dir)
+
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    model_files = update_config_and_gather_files(config, truss_dir, build_dir, "TGI")
+
+    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+    dockerfile_template = read_template_from_fs(
+        TEMPLATES_DIR, "tgi/tgi.Dockerfile.jinja"
+    )
+    dockerfile_content = dockerfile_template.render(
+        hf_access_token=hf_access_token, models=model_files
+    )
+    dockerfile_filepath = build_dir / "Dockerfile"
+    dockerfile_filepath.write_text(dockerfile_content)
+
+    build_args = config.build.arguments.copy()
+    endpoint = build_args.pop("endpoint", "generate_stream")
+
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "tgi/proxy.conf.jinja")
+    nginx_content = nginx_template.render(endpoint=endpoint)
+    nginx_filepath = build_dir / "proxy.conf"
+    nginx_filepath.write_text(nginx_content)
+
+    args = " ".join([f"--{k.replace('_', '-')}={v}" for k, v in build_args.items()])
+    supervisord_template = read_template_from_fs(
+        TEMPLATES_DIR, "tgi/supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(extra_args=args)
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
+
+
+def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
+    copy_tree_path(truss_dir, build_dir)
+
+    server_endpoint_config = {
+        "Completions": "/v1/completions",
+        "ChatCompletions": "/v1/chat/completions",
+    }
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    build_config: Build = config.build
+    server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
+
+    model_files = update_config_and_gather_files(config, truss_dir, build_dir, "vLLM")
+
+    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+    dockerfile_template = read_template_from_fs(
+        TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
+    )
+    nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
+
+    dockerfile_content = dockerfile_template.render(
+        hf_access_token=hf_access_token,
+        models=model_files,
+        should_install_server_requirements=True,
+    )
+    dockerfile_filepath = build_dir / "Dockerfile"
+    dockerfile_filepath.write_text(dockerfile_content)
+
+    nginx_content = nginx_template.render(server_endpoint=server_endpoint)
+    nginx_filepath = build_dir / "proxy.conf"
+    nginx_filepath.write_text(nginx_content)
+
+    args = " ".join(
+        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
+    )
+    supervisord_template = read_template_from_fs(
+        TEMPLATES_DIR, "vllm/supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(extra_args=args)
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -238,7 +262,7 @@ class ServingImageBuilder(ImageBuilder):
             build_dir = build_truss_target_directory(model_framework_name)
 
         if config.build.model_server is ModelServer.TGI:
-            create_tgi_build_dir(config, build_dir)
+            create_tgi_build_dir(config, build_dir, truss_dir)
             return
         elif config.build.model_server is ModelServer.VLLM:
             create_vllm_build_dir(config, build_dir, truss_dir)
@@ -260,28 +284,9 @@ class ServingImageBuilder(ImageBuilder):
         download_external_data(self._spec.external_data, data_dir)
 
         # Download from HuggingFace
-        model_files = {}
-        if config.hf_cache:
-            curr_dir = Path(__file__).parent.resolve()
-            copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
-            for model in config.hf_cache.models:
-                repo_id = model.repo_id
-                revision = model.revision
-
-                allow_patterns = model.allow_patterns
-                ignore_patterns = model.ignore_patterns
-
-                filtered_repo_files = list(
-                    filter_repo_objects(
-                        items=list_files(repo_id, data_dir, revision=revision),
-                        allow_patterns=allow_patterns,
-                        ignore_patterns=ignore_patterns,
-                    )
-                )
-                model_files[repo_id] = {
-                    "files": filtered_repo_files,
-                    "revision": revision,
-                }
+        model_files = update_config_and_gather_files(
+            config, truss_dir, build_dir, server_name="TrussServer"
+        )
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)

@@ -47,6 +47,8 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 
 {% block cache_weights %}
     {%- if config.hf_cache != None %}
+COPY ./cache_requirements.txt /app/cache_requirements.txt
+RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 COPY ./cache_warmer.py /cache_warmer.py
         {% for repo, hf_dir in models.items() %}
             {% for file in hf_dir.files %}
