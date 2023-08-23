@@ -1,8 +1,11 @@
+import os
 import sys
 from pathlib import Path
 
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
+
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
 
 def download_file(
