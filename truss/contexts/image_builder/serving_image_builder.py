@@ -89,7 +89,7 @@ def list_files(repo_id, data_dir, revision=None):
         return list_bucket_files(repo_id, data_dir, is_trusted=True)
     else:
         # we assume it's a HF bucket
-        list_repo_files(repo_id, revision=revision)
+        return list_repo_files(repo_id, revision=revision)
 
 
 def update_config_and_gather_files(
