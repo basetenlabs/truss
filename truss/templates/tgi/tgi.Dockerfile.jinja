@@ -1,4 +1,4 @@
-FROM ghcr.io/huggingface/text-generation-inference:1.0.2
+FROM ghcr.io/huggingface/text-generation-inference:0.9.4
 EXPOSE 8080
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -22,7 +22,6 @@ RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{
                 {% endfor %}
         {% endfor %}
 {%- endif %}
-
 
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 
