@@ -47,7 +47,6 @@ jobs:
         CURR_VERSION=$(curl https://pypi.org/pypi/truss/json | jq ".info.version")
         PR_BODY="Updating Truss from [$CURR_VERSION](https://pypi.org/pypi/truss/json) to $INPUT_VERSION."
         PR_URL=$(gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION" --body "$PR_BODY")
-        gh pr merge $PR_URL --auto --merge
       env:
         INPUT_VERSION: ${{ github.event.inputs.version }}
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
