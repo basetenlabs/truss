@@ -1,0 +1,39 @@
+{#
+A sample config.pbtxt template for a model that uses the Python backend.
+https://github.com/triton-inference-server/backend/blob/504abc9dc74f2f9aa907e561620c411ffbdb3f3c/examples/model_repos/minimal_models/batching/config.pbtxt#L4
+#}
+
+name: "model"
+backend: "python"
+max_batch_size: {{ max_batch_size }}
+
+{% if dynamic_batching_delay_microseconds is defined %}
+dynamic_batching { max_queue_delay_microseconds: {{dynamic_batching_delay_microseconds}} }
+{% endif %}
+
+input [
+{% for inp in inputs %}
+    {
+        name: "{{ inp.name }}"
+        data_type: {{ inp.triton_type }}
+        dims: [{{ inp.dims|join(', ') }}]
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+]
+
+output [
+{% for out in outputs %}
+    {
+        name: "{{ out.name }}"
+        data_type: {{ out.triton_type }}
+        dims: [{{ out.dims|join(', ') }}]
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+]
+
+instance_group [
+  {
+    kind: {% if is_gpu %}KIND_GPU{% else %}KIND_CPU{% endif %}
+    count: {{ num_replicas }}
+  }
+]
