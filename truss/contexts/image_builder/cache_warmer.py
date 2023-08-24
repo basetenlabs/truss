@@ -28,7 +28,7 @@ def download_file(
         except Exception as e:
             raise RuntimeError(f"Failure downloading file from GCS: {e}")
     else:
-        secret_path = Path("/etc/secrets/hf_access_token")
+        secret_path = Path("/etc/secrets/hf-access-token")
         secret = secret_path.read_text().strip() if secret_path.exists() else None
         try:
             hf_hub_download(repo_name, file_name, revision=revision_name, token=secret)
