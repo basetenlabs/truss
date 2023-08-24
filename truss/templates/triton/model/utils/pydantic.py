@@ -2,6 +2,7 @@ from typing import Any, List, Type, Union
 
 import numpy as np
 from pydantic import BaseModel
+from utils.errors import UnsupportedTypeError
 
 # This is a broad type that includes built-in Python types and types that might be
 # returned by Pydantic functions like conlist.
@@ -51,7 +52,7 @@ def get_pydantic_field_type(pydantic_field_annotation: FieldAnnotationType) -> s
     elif is_conlist(pydantic_field_annotation):
         return "list"
     else:
-        raise TypeError(
+        raise UnsupportedTypeError(
             f"Unsupported Pydantic field annotation type: {pydantic_field_annotation}"
         )
 

@@ -2,6 +2,7 @@ import json
 from typing import Any, List
 
 import numpy as np
+from utils.errors import UnsupportedTypeError
 
 
 class Tensor:
@@ -47,7 +48,7 @@ def convert_tensor_to_python_type(tensor: Tensor, dtype: str) -> Any:
     elif dtype in ["str", "int", "float", "bool"]:
         return get_numpy_item(tensor)
     else:
-        raise TypeError(f"Unsupported type: {dtype}")
+        raise UnsupportedTypeError(f"Unsupported dtype: {dtype}")
 
 
 def get_input_tensor_by_name(obj: InferenceRequest, name: str) -> Tensor:

@@ -7,6 +7,7 @@ from typing import Dict
 import triton_python_backend_utils as pb_utils
 from shared.secrets_resolver import SecretsResolver
 from transform import transform_pydantic_to_triton, transform_triton_to_pydantic
+from utils.errors import MissingInputClassError, MissingOutputClassError
 from utils.signature import signature_accepts_keyword_arg
 
 
@@ -42,9 +43,9 @@ class TritonModelWrapper:
         self._output_type = getattr(module, output_type_name, None)
 
         if not self._input_type:
-            raise ValueError("Input type not defined in user model")
+            raise MissingInputClassError("Input type not defined in user model")
         if not self._output_type:
-            raise ValueError("Output type not defined in user model")
+            raise MissingOutputClassError("Output type not defined in user model")
 
         model_class_signature = inspect.signature(model_class)
         model_init_params = {}

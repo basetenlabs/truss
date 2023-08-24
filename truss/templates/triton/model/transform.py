@@ -3,6 +3,7 @@ from typing import List, Type
 
 import numpy as np
 from pydantic import BaseModel
+from utils.errors import InvalidModelResponseError
 from utils.pydantic import PYTHON_TYPE_TO_NP_DTYPE, inspect_pydantic_model
 from utils.triton import (
     InferenceRequest,
@@ -72,13 +73,13 @@ def transform_pydantic_to_triton(
     results = []
 
     if not isinstance(pydantic_objects, list):
-        raise ValueError(
+        raise InvalidModelResponseError(
             "Truss did not return a list. Please ensure that your model returns a list \
             of Pydantic objects even if the batch size is 1."
         )
 
     if not all(isinstance(obj, BaseModel) for obj in pydantic_objects):
-        raise ValueError(
+        raise InvalidModelResponseError(
             "Truss returned a list of objects that are not Pydantic models. Please \
             ensure that your model returns a list of Pydantic objects even if the \
             batch size is 1."
