@@ -17,6 +17,7 @@ ensure that any IO does not prevent utilization of the compute on your pod.
 To do this, you can use the pre/post process methods on a Truss. These methods
 can be defined like this:
 
+
 ```python
 class Model:
     def __init__: ...
@@ -24,7 +25,7 @@ class Model:
     def preprocess(self, request):
         # Include any IO logic that happens _before_ predict here
         ...
-    
+
     def predict(self, request):
         # Include the actual predict here
         ...
@@ -120,4 +121,3 @@ resources:
 ```
 
 </RequestExample>
-
