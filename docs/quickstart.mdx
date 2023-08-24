@@ -37,6 +37,12 @@ cd text-classification
 
 One of the two essential files in a Truss is `model/model.py`. In this file, you write a `Model` class: an interface between the ML model that you're packaging and the model server that you're running it on.
 
+The code to load and invoke a model in a Jupyter notebook or Python script maps directly to the code used in `model/model.py`.
+
+<Frame>
+  <img src="/images/notebook-to-model.png" />
+</Frame>
+
 There are two member functions that you must implement in the `Model` class:
 
 * `load()` loads the model onto the model server. It runs exactly once when the model server is spun up or patched.

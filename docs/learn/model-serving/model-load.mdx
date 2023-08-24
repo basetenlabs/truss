@@ -5,7 +5,13 @@ description: "Load an ML model into your Truss"
 
 The other essential file in a Truss is `model/model.py`. In this file, you write a `Model` class: an interface between the ML model that you're packaging and the model server that you're running it on.
 
-Open `model/model.py` in your text editor.
+The code to load and invoke a model in a Jupyter notebook or Python script maps directly to the code used in `model/model.py`.
+
+<Frame>
+  <img src="/images/notebook-to-model.png" />
+</Frame>
+
+We'll go line-by-line through the code. Open `model/model.py` in your text editor.
 
 ### Import transformers
 
