@@ -392,7 +392,6 @@ def predict(
     default=False,
     help="Trust truss with hosted secrets.",
 )
-@error_handling
 def push(
     target_directory: str,
     remote: str,
@@ -424,9 +423,27 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    _ = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
+    service = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
 
-    click.echo(f"Model {model_name} was successfully pushed.")
+    model_overview_url = service.resource_url
+    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+
+    if not publish:
+        draft_model_text = """
+|---------------------------------------------------------------------------------------|
+| Your model has been deployed as a draft. Draft models allow you to                    |
+| iterate quickly during the deployment process.                                        |
+|                                                                                       |
+| When you are ready to publish your deployed model as a new version,                   |
+| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
+| rapidly iterate, run the `truss watch` command                                        |
+|                                                                                       |
+|---------------------------------------------------------------------------------------|
+"""
+
+        click.echo(draft_model_text)
+
+    click.echo(f"🔎 Visit {model_overview_url} for more information on your live model.")
 
 
 @truss_cli.command()
