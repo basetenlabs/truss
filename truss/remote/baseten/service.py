@@ -14,14 +14,12 @@ class BasetenService(TrussService):
         model_version_id: str,
         is_draft: bool,
         api_key: str,
-        remote_url: str,
         service_url: str,
         truss_handle: Optional[TrussHandle] = None,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
-        self._remote_url = remote_url
         self._auth_service = AuthService(api_key=api_key)
         self._truss_handle = truss_handle
 
