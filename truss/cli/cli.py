@@ -392,6 +392,7 @@ def predict(
     default=False,
     help="Trust truss with hosted secrets.",
 )
+@error_handling
 def push(
     target_directory: str,
     remote: str,
