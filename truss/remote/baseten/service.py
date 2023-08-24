@@ -14,12 +14,14 @@ class BasetenService(TrussService):
         model_version_id: str,
         is_draft: bool,
         api_key: str,
+        remote_url: str,
         service_url: str,
         truss_handle: Optional[TrussHandle] = None,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
+        self._remote_url = remote_url
         self._auth_service = AuthService(api_key=api_key)
         self._truss_handle = truss_handle
 
@@ -39,11 +41,11 @@ class BasetenService(TrussService):
 
     @property
     def invocation_url(self) -> str:
-        return f"{self._service_url}/model_versions/{self._model_version_id}/predict"
+        return f"{self._service_url}/predict"
 
     @property
     def resource_url(self) -> str:
-        return f"{self._service_url}/models/{self._model_id}"
+        return f"{self._remote_url}/models/{self._model_id}"
 
     def predict(
         self,
