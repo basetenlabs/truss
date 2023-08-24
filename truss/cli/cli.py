@@ -436,7 +436,7 @@ def push(
 |                                                                                       |
 | When you are ready to publish your deployed model as a new version,                   |
 | pass `--publish` to the `truss push` command. To monitor changes to your model and    |
-| rapidly iterate, run the `truss watch` command                                        |
+| rapidly iterate, run the `truss watch` command.                                       |
 |                                                                                       |
 |---------------------------------------------------------------------------------------|
 """
