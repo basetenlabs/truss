@@ -424,9 +424,8 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    service = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
+    _ = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
 
-    model_overview_url = service.resource_url
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
     if not publish:
@@ -444,7 +443,13 @@ def push(
 
         click.echo(draft_model_text)
 
-    click.echo(f"🔎 Visit {model_overview_url} for more information on your live model.")
+    logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
+    rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    should_open_logs = inquirer.confirm(
+        message="🗂  Open logs in a new tab?", default=True
+    ).execute()
+    if should_open_logs:
+        webbrowser.open_new_tab(logs_url)
 
 
 @truss_cli.command()

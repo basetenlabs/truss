@@ -43,10 +43,6 @@ class BasetenService(TrussService):
     def invocation_url(self) -> str:
         return f"{self._service_url}/predict"
 
-    @property
-    def resource_url(self) -> str:
-        return f"{self._remote_url}/models/{self._model_id}"
-
     def predict(
         self,
         model_request_body: Dict,
