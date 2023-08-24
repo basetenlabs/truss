@@ -11,7 +11,7 @@ jobs:
 
     steps:
     - name: Check out code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Configure Git user as basetenbot
       run: |
@@ -25,7 +25,7 @@ jobs:
     - name: Merge release into main with priority on main changes
       run: |
         git checkout main
-        git merge --strategy-option=ours release -m "Merge release into main prioritizing main changes"
+        git merge --strategy-option=ours origin/release -m "Merge release into main prioritizing main changes"
         git push origin main
       env:
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}

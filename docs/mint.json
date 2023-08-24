@@ -58,6 +58,7 @@
         "examples/private-model",
         "examples/system-packages",
         "examples/streaming",
+        "examples/pre-process",
         "examples/performance/cached-weights",
         "examples/performance/tgi-server",
         "examples/performance/vllm-server"

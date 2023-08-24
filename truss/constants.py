@@ -16,6 +16,7 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
+TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
 TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME

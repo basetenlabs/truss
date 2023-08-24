@@ -46,7 +46,7 @@ class Secrets(Mapping):
         found_secret = SecretsResolver._resolve_secret(key, self._base_secrets[key])
         if not found_secret:
             raise SecretNotFound(
-                f"Secret '{key} not found. Please check available secrets."
+                f"Secret '{key}' not found. Please check available secrets."
             )
 
         return found_secret

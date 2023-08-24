@@ -244,7 +244,8 @@ def init(
     target_directory_path = populate_target_directory(
         config=config,
         target_directory_path=target_directory,
-        populate_dirs=config.build.model_server is ModelServer.TrussServer,
+        populate_dirs=config.build.model_server
+        in [ModelServer.TrussServer, ModelServer.TRITON],
     )
 
     if trainable:
