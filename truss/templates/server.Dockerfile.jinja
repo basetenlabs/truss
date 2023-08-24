@@ -45,6 +45,10 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {{ super() }}
 {% endblock %}
 
+{%- if data_dir_exists %}
+COPY ./{{config.data_dir}} /app/data
+{%- endif %}
+
 {% block cache_weights %}
     {%- if config.hf_cache != None %}
 COPY ./cache_requirements.txt /app/cache_requirements.txt
@@ -60,11 +64,6 @@ COPY ./cache_warmer.py /cache_warmer.py
 
 
 {% block app_copy %}
-# Copy data before code for better caching
-{%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
-{%- endif %}
-
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml

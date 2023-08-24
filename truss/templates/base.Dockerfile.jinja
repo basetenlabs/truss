@@ -50,12 +50,12 @@ ENV APP_HOME /app
 WORKDIR $APP_HOME
 
 
+{% block cache_weights %}
+{% endblock %}
+
 {% block app_copy %}
 {% endblock %}
 
-
-{% block cache_weights %}
-{% endblock %}
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
