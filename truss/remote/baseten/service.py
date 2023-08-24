@@ -29,7 +29,12 @@ class BasetenService(TrussService):
     def is_ready(self) -> bool:
         raise NotImplementedError
 
-    def predict(self, model_request_body: Dict):
+    def predict(
+        self,
+        model_request_body: Dict,
+        model_id: Optional[str] = None,
+        model_version_id: Optional[str] = None,
+    ):
         invocation_url = f"{self._service_url}/predict"
         response = self._send_request(
             invocation_url, "POST", data=model_request_body, stream=True

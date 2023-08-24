@@ -2,7 +2,7 @@ from typing import List
 
 import rich
 from InquirerPy import inquirer
-from truss.remote.remote_factory import RemoteFactory
+from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
 
@@ -16,6 +16,7 @@ def inquire_remote_config() -> RemoteConfig:
         message="🤫 Quietly paste your API_KEY:",
         qmark="",
     ).execute()
+
     return RemoteConfig(
         name="baseten",
         configs={
@@ -38,6 +39,8 @@ def inquire_remote_name(available_remotes: List[str]) -> str:
         return available_remotes[0]
     remote_config = inquire_remote_config()
     RemoteFactory.update_remote_config(remote_config)
+
+    rich.print(f"💾 Remote config saved to {USER_TRUSSRC_PATH}")
     return remote_config.name
 
 
