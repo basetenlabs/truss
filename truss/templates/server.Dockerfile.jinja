@@ -1,3 +1,10 @@
+{% if config.live_reload %}
+FROM python:3.11-slim AS live_reload_builder
+COPY ./control /control
+RUN python3 -m venv /control/.env \
+    && /control/.env/bin/pip3 install -r /control/requirements.txt
+{% endif %}
+
 {% extends "base.Dockerfile.jinja" %}
 
 {% block base_image_patch %}
@@ -19,20 +26,6 @@ RUN apt update && \
 
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-
-    {%- if config.live_reload %}
-RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
-    || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt update -y && apt install -y --no-install-recommends python$pythonVersion-venv \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*; }
-# Create symlink for control server to start inference server process with correct python executable
-RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
-    && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
-RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
-    {%- endif %}
 {% endif %}
 
 {% endblock %}
@@ -68,15 +61,11 @@ COPY ./{{config.data_dir}} /app/data
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml
-    {%- if config.live_reload %}
-COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-    {%- endif %}
 {% endblock %}
 
 {% block run %}
     {%- if config.live_reload %}
+COPY --from=live_reload_builder /control /control
 ENV HASH_TRUSS {{truss_hash}}
 ENV CONTROL_SERVER_PORT 8080
 ENV INFERENCE_SERVER_PORT 8090
