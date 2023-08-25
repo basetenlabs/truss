@@ -298,9 +298,7 @@ def predict(
 
     model_name = tr.spec.config.model_name
     if not model_name:
-        raise click.UsageError(
-            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
-        )
+        raise click.UsageError("NoneType model_name provided in the config.yaml")
 
     if data is not None:
         request_data = json.loads(data)
