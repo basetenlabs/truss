@@ -21,14 +21,13 @@ jobs:
 
     - name: Fetch all branches
       run: |
-        git fetch --all
+        git fetch --all --unshallow
+        git pull origin release
 
     - name: Merge release into main with priority on main changes
       run: |
-        git remote -v
-        git checkout release
         git checkout main
-
-        git merge --strategy-option=ours origin/release -m "Merge release into main prioritizing main changes"
+        git merge --strategy-option=ours release -m "Merge release into main prioritizing main changes"
+        git push origin main
       env:
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
