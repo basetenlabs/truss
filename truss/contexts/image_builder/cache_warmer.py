@@ -4,6 +4,9 @@ from pathlib import Path
 
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
+from truss.util.download import _download_from_url_using_b10cp, _b10cp_path
+
+import datetime
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
@@ -27,7 +30,18 @@ def download_file(
             if not dst_file.parent.exists():
                 dst_file.parent.mkdir(parents=True)
             # Download the blob to a file
-            blob.download_to_filename(dst_file)
+            url = blob.generate_signed_url(
+                version="v4",
+                # This URL is valid for 15 minutes
+                expiration=datetime.timedelta(minutes=15),
+                # Allow GET requests using this URL.
+                method="GET",
+            )
+            print(url)
+            b10_cp_path = _b10cp_path()
+            print(b10_cp_path)
+            _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
+            # blob.download_to_filename(dst_file)
         except Exception as e:
             raise RuntimeError(f"Failure downloading file from GCS: {e}")
     else:
