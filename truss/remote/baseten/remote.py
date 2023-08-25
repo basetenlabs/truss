@@ -74,7 +74,7 @@ class BasetenRemote(TrussRemote):
             model_version_id=model_version_id,
             is_draft=not publish,
             api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versoins/{model_version_id}",
+            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
         )
 

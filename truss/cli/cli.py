@@ -413,7 +413,6 @@ def push(
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
-    # Push
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = inquire_model_name()
