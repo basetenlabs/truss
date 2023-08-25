@@ -20,10 +20,11 @@ jobs:
 
     - name: Fetch all branches
       run: |
-        git fetch --all
+        git pull origin release-test
 
     - name: Merge release into main with priority on main changes
       run: |
+
         git checkout main
         git merge --strategy-option=ours release-test -m "Merge release into main prioritizing main changes"
       env:
