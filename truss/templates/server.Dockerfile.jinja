@@ -45,24 +45,24 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {{ super() }}
 {% endblock %}
 
-{% block cache_weights %}
-    {%- if config.hf_cache != None %}
-COPY ./cache_requirements.txt /app/cache_requirements.txt
-RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-COPY ./cache_warmer.py /cache_warmer.py
-        {% for repo, hf_dir in models.items() %}
-            {% for file in hf_dir.files %}
-{{ "RUN --mount=type=secret,id=hf_access_token,dst=/etc/secrets/hf_access_token" if use_hf_secret else "RUN" }} $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
-            {% endfor %}
-        {% endfor %}
-    {%- endif %}
-{% endblock %}
-
 
 {% block app_copy %}
 # Copy data before code for better caching
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
+{%- endif %}
+
+{%- if config.hf_cache != None %}
+RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
+ENV B10CP_PATH_TRUSS /app/b10cp
+COPY ./cache_requirements.txt /app/cache_requirements.txt
+RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+COPY ./cache_warmer.py /cache_warmer.py
+    {% for repo, hf_dir in models.items() %}
+        {% for file in hf_dir.files %}
+{{ "RUN --mount=type=secret,id=hf_access_token,dst=/etc/secrets/hf_access_token" if use_hf_secret else "RUN" }} $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
+        {% endfor %}
+    {% endfor %}
 {%- endif %}
 
 COPY ./server /app
