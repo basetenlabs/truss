@@ -26,7 +26,6 @@ jobs:
     - name: Merge release into main with priority on main changes
       run: |
         git remote -v
-        git branch -A
         git checkout release
         git checkout main
 
