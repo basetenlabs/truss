@@ -20,6 +20,7 @@ jobs:
 
     - name: Fetch all branches
       run: |
+        git fetch --all
         git pull origin release-test
 
     - name: Merge release into main with priority on main changes
