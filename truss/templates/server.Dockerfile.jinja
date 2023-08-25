@@ -45,8 +45,17 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {{ super() }}
 {% endblock %}
 
+
+{% block app_copy %}
+# Copy data before code for better caching
+{%- if data_dir_exists %}
+COPY ./{{config.data_dir}} /app/data
+{%- endif %}
+
 {% block cache_weights %}
     {%- if config.hf_cache != None %}
+RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.5.4-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
+ENV B10CP_PATH_TRUSS /app/b10cp
 COPY ./cache_requirements.txt /app/cache_requirements.txt
 RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 COPY ./cache_warmer.py /cache_warmer.py
@@ -57,13 +66,6 @@ COPY ./cache_warmer.py /cache_warmer.py
         {% endfor %}
     {%- endif %}
 {% endblock %}
-
-
-{% block app_copy %}
-# Copy data before code for better caching
-{%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
-{%- endif %}
 
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model

@@ -1,14 +1,36 @@
+import datetime
 import os
+import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
-from truss.util.download import _download_from_url_using_b10cp, _b10cp_path
-
-import datetime
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+B10CP_EXECUTABLE_NAME = "b10cp"
+B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
+
+
+def _b10cp_path() -> Optional[str]:
+    return os.environ.get(B10CP_PATH_TRUSS_ENV_VAR_NAME)
+
+
+def _download_from_url_using_b10cp(
+    b10cp_path: str,
+    url: str,
+    download_to: Path,
+):
+    return subprocess.Popen(
+        [
+            b10cp_path,
+            "-source",
+            url,  # Add quotes to work with any special characters.
+            "-target",
+            str(download_to),
+        ]
+    )
 
 
 def download_file(
@@ -29,19 +51,12 @@ def download_file(
             dst_file = Path(f"{cache_dir}/{file_name}")
             if not dst_file.parent.exists():
                 dst_file.parent.mkdir(parents=True)
-            # Download the blob to a file
             url = blob.generate_signed_url(
                 version="v4",
-                # This URL is valid for 15 minutes
                 expiration=datetime.timedelta(minutes=15),
-                # Allow GET requests using this URL.
                 method="GET",
             )
-            print(url)
-            b10_cp_path = _b10cp_path()
-            print(b10_cp_path)
             _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
-            # blob.download_to_filename(dst_file)
         except Exception as e:
             raise RuntimeError(f"Failure downloading file from GCS: {e}")
     else:
