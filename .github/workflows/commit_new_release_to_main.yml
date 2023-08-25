@@ -25,7 +25,11 @@ jobs:
 
     - name: Merge release into main with priority on main changes
       run: |
+        git remote -v
+        git branch -A
+        git checkout release
         git checkout main
+
         git merge --strategy-option=ours origin/release -m "Merge release into main prioritizing main changes"
       env:
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
