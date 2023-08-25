@@ -54,9 +54,6 @@ WORKDIR $APP_HOME
 {% endblock %}
 
 
-{% block cache_weights %}
-{% endblock %}
-
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
 COPY ./{{config.bundled_packages_dir}} /packages

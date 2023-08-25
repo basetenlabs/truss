@@ -143,7 +143,6 @@ class BasetenApi:
             oracle{{
                 id
                 name
-                id
                 versions{{
                     id
                     semver
@@ -157,6 +156,42 @@ class BasetenApi:
             }}
         }}
         }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def get_model_by_id(self, model_id: str):
+        query_string = f"""
+        {{
+            model(id: "{model_id}") {{
+                name
+                id
+                primary_version{{
+                    id
+                    semver
+                    truss_hash
+                    truss_signature
+                    is_draft
+                    current_model_deployment_status {{
+                        status
+                    }}
+                }}
+            }}
+          }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    def get_model_version_by_id(self, model_version_id: str):
+        query_string = f"""
+        {{
+            model_version(id: "{model_version_id}") {{
+                id
+                oracle{{
+                    id
+                }}
+            }}
+          }}
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]
