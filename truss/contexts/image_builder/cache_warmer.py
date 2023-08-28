@@ -55,7 +55,8 @@ def download_file(
                 expiration=datetime.timedelta(minutes=15),
                 method="GET",
             )
-            _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
+            proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
+            proc.wait()
         except Exception as e:
             raise RuntimeError(f"Failure downloading file from GCS: {e}")
     else:
