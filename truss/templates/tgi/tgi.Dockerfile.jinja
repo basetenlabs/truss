@@ -1,18 +1,16 @@
-FROM ghcr.io/huggingface/text-generation-inference:0.9.4
-EXPOSE 8080
-
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        nginx supervisor curl && \
-        rm -rf /var/lib/apt/lists/*
-
-# TODO: add support for private models
-{% if hf_access_token %}
-ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
-{% endif %}
-
-
 {%- if hf_cache %}
+FROM python:3.11 as cache_warmer
+
+RUN mkdir -p /app/hf_cache
+WORKDIR /app
+
+        {% if hf_access_token %}
+ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
+        {% endif %}
+        {%- if data_dir_exists %}
 COPY ./data /app/data
+        {%- endif %}
+
 RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 ENV B10CP_PATH_TRUSS /app/b10cp
 COPY ./cache_requirements.txt /app/cache_requirements.txt
@@ -25,10 +23,26 @@ RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{
         {% endfor %}
 {%- endif %}
 
+
+FROM ghcr.io/huggingface/text-generation-inference:0.9.4 as tgi
+EXPOSE 8080
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        nginx supervisor curl && \
+        rm -rf /var/lib/apt/lists/*
+
+
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 ENV SERVER_START_CMD /usr/bin/supervisord
+
+{%- if hf_cache %}
+# TODO(varun): split copy into multiple layers
+COPY --from=cache_warmer ./app/hf_cache /app/hf_cache
+COPY --from=cache_warmer ./root/.cache/huggingface ./root/.cache/huggingface
+{%- endif %}
+
 ENTRYPOINT ["/usr/bin/supervisord"]

@@ -1,17 +1,19 @@
 {%- if hf_cache %}
 FROM python:3.11 as cache_warmer
-# TODO(varun): find a slimer image
 
-RUN mkdir -p /app
+RUN mkdir -p /app/hf_cache
 WORKDIR /app
 
-{% if hf_access_token %}
+        {% if hf_access_token %}
 ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
-{% endif %}
+        {% endif %}
+        {%- if data_dir_exists %}
 COPY ./data /app/data
-COPY ./cache_requirements.txt /app/cache_requirements.txt
-RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-0.5.4-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
+        {%- endif %}
+
+RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 ENV B10CP_PATH_TRUSS /app/b10cp
+COPY ./cache_requirements.txt /app/cache_requirements.txt
 RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 COPY ./cache_warmer.py /cache_warmer.py
         {% for repo, hf_dir in models.items() %}
@@ -23,14 +25,6 @@ RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{
 
 
 FROM baseten/vllm:v0.1 as vllm
-
-# TODO(varun): split into multiple layers
-{%- if hf_cache %}
-COPY --from=cache_warmer ./app/hf_cache /app/hf_cache
-# TODO(varun): copy over Hugging Face cache
-# TODO(varun): split copy into multiple layers
-{%- endif %}
-
 EXPOSE 8080-9000
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -44,4 +38,11 @@ RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 ENV SERVER_START_CMD /usr/bin/supervisord
+
+{%- if hf_cache %}
+# TODO(varun): split copy into multiple layers
+COPY --from=cache_warmer ./app/hf_cache /app/hf_cache
+COPY --from=cache_warmer ./root/.cache/huggingface ./root/.cache/huggingface
+{%- endif %}
+
 ENTRYPOINT ["/usr/bin/supervisord"]
