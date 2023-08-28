@@ -358,10 +358,8 @@ class ServingImageBuilder(ImageBuilder):
             )
 
         # Copy base TrussServer requirements if supplied custom base image
+        base_truss_server_reqs_filepath = SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
         if config.base_image:
-            base_truss_server_reqs_filepath = (
-                SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
-            )
             copy_into_build_dir(
                 base_truss_server_reqs_filepath, BASE_SERVER_REQUIREMENTS_TXT_FILENAME
             )
@@ -374,7 +372,22 @@ class ServingImageBuilder(ImageBuilder):
         if should_install_server_requirements:
             copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
 
-        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
+        with open(base_truss_server_reqs_filepath, "r") as f:
+            base_server_requirements = f.read()
+
+        # If the user has provided python requirements,
+        # append the truss server requirements, so that any conflicts
+        # are detected and cause a build failure. If there are no
+        # requirements provided, we just pass an empty string,
+        # as there's no need to install anything.
+        user_provided_python_requirements = (
+            base_server_requirements + spec.requirements_txt
+            if spec.requirements
+            else ""
+        )
+        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
+            user_provided_python_requirements
+        )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(
