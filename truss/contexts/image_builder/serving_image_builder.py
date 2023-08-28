@@ -206,10 +206,13 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     dockerfile_template = read_template_from_fs(
         TEMPLATES_DIR, "tgi/tgi.Dockerfile.jinja"
     )
+
+    data_dir = build_dir / "data"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         hf_cache=config.hf_cache,
+        data_dir_exists=Path(data_dir).exists(),
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -252,11 +255,13 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     )
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
+    data_dir = build_dir / "data"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         should_install_server_requirements=True,
         hf_cache=config.hf_cache,
+        data_dir_exists=data_dir.exists(),
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
