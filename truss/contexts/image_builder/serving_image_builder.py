@@ -370,10 +370,15 @@ class ServingImageBuilder(ImageBuilder):
         with open(base_truss_server_reqs_filepath, "r") as f:
             base_server_requirements = f.read()
 
+        # If the user has provided python requirements,
+        # append the truss server requirements, so that any conflicts
+        # are detected and cause a build failure. If there are no
+        # requirements provided, we just pass an empty string,
+        # as there's no need to install anything.
         user_provided_python_requirements = (
             base_server_requirements + spec.requirements_txt
             if spec.requirements
-            else spec.requirements_txt
+            else ""
         )
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
             user_provided_python_requirements
