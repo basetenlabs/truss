@@ -45,7 +45,7 @@ async def parse_body(request: Request) -> bytes:
     try:
         return await request.body()
     except ClientDisconnect as exc:
-        raise HTTPException(status_code=499, detail="Unauthorized") from exc
+        raise HTTPException(status_code=499, detail="Client disconnected") from exc
 
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
