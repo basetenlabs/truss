@@ -45,7 +45,6 @@ async def parse_body(request: Request) -> bytes:
     try:
         return await request.body()
     except ClientDisconnect as exc:
-        logging.info("Client disconnected")
         raise HTTPException(status_code=499, detail="Client disconnected") from exc
 
 
