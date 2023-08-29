@@ -1,5 +1,5 @@
 {%- if hf_cache %}
-FROM python:3.11 as cache_warmer
+FROM python:3.11-slim as cache_warmer
 
 RUN mkdir -p /app/hf_cache
 WORKDIR /app
@@ -10,8 +10,8 @@ ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
         {%- if data_dir_exists %}
 COPY ./data /app/data
         {%- endif %}
-        
-RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
+
+RUN apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 ENV B10CP_PATH_TRUSS /app/b10cp
 COPY ./cache_requirements.txt /app/cache_requirements.txt
 RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
@@ -24,7 +24,7 @@ RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{
 {%- endif %}
 
 
-FROM ghcr.io/huggingface/text-generation-inference:0.9.4 as tgi
+FROM ghcr.io/huggingface/text-generation-inference:1.0.3 as tgi
 EXPOSE 8080
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -41,6 +41,7 @@ ENV SERVER_START_CMD /usr/bin/supervisord
 
 {%- if hf_cache %}
 # TODO(varun): split copy into multiple layers
+# TODO(varun): might make sense to copy over data (e.g. gcs credentials) over as well
 COPY --from=cache_warmer ./app/hf_cache /app/hf_cache
 COPY --from=cache_warmer ./root/.cache/huggingface ./root/.cache/huggingface
 {%- endif %}
