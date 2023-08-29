@@ -35,6 +35,7 @@ async def proxy(request: Request):
         request_body = await request.body()
     except ClientDisconnect:
         # If the client disconnects, we don't need to proxy the request
+        request.app.state.logger.info("Client disconnected")
         return Response(status_code=499)
 
     inf_serv_req = client.build_request(
