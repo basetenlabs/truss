@@ -438,8 +438,9 @@ secrets:
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         response = requests.post(full_url, json={})
+        assert response.status_code == 500
         assert_logs_contain_error(
-            container.logs(), "secret not found. Please check available secrets."
+            container.logs(), "'secret' not found. Please check available secrets."
         )
         assert "Error while running predict" in response.json()["error"]["message"]
 
