@@ -17,7 +17,6 @@ class BasetenService(TrussService):
         service_url: str,
         truss_handle: Optional[TrussHandle] = None,
     ):
-
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
@@ -30,10 +29,24 @@ class BasetenService(TrussService):
     def is_ready(self) -> bool:
         raise NotImplementedError
 
-    def predict(self, model_request_body: Dict):
-        invocation_url = f"{self._service_url}/predict"
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def model_version_id(self) -> str:
+        return self._model_version_id
+
+    @property
+    def invocation_url(self) -> str:
+        return f"{self._service_url}/predict"
+
+    def predict(
+        self,
+        model_request_body: Dict,
+    ):
         response = self._send_request(
-            invocation_url, "POST", data=model_request_body, stream=True
+            self.invocation_url, "POST", data=model_request_body, stream=True
         )
 
         if response.headers.get("transfer-encoding") == "chunked":
@@ -43,7 +56,13 @@ class BasetenService(TrussService):
                 for chunk in response.iter_content(
                     chunk_size=8192, decode_unicode=True
                 ):
-                    yield chunk.decode(response.encoding or DEFAULT_STREAM_ENCODING)
+                    # Depending on the content-type of the response,
+                    # iter_content will either emit a byte stream, or a stream
+                    # of strings. Only decode in the bytes case.
+                    if isinstance(chunk, bytes):
+                        yield chunk.decode(response.encoding or DEFAULT_STREAM_ENCODING)
+                    else:
+                        yield chunk
 
             return decode_content()
 

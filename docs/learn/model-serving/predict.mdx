@@ -1,53 +1,58 @@
 ---
-title: "Step 3: Invoke the model"
-description: "Invoke our deployed \"model\" (aka echo server)."
+title: "Step 2: Call the model server"
+description: "Call predict to test the model server"
 ---
 
-Once your model has finished deploying, you can call it from your terminal.
+Once your model server has finished deploying, you can call it from your terminal.
 
-### Run model invocation
+### Call the model server
 
-Model input must be JSON-serializable. For our echo server, we'll just send a basic string.
+Model server input must be JSON-serializable: a string, number, list, or dictionary.
 
 <Note>
 Note the double quotes to make the data parameter a string.
+
+`truss predict` uses the same data formatting on the as cURL.
 </Note>
 
 **Invocation**
 
 ```sh
-truss predict -d '"I am happy!"'
+truss predict -d '"Truss is awesome!"'
 ```
 
 **Response**
 
 ```json
-"I am happy!"
+"Truss is awesome!"
 ```
 
-Our model server is up and running. We can push to it and run model inference. In the next step, we'll set up the last piece of the developer loop on Truss.
+Our model server is up and responding to requests. In the next step, we'll set up the last piece of the developer loop on Truss.
 
 <RequestExample>
 
 ```python model/model.py
-from typing import Any
-
-
 class Model:
-    def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
-        # Load model here and assign to self._model.
         pass
 
-    def predict(self, model_input: Any) -> Any:
+    def predict(self, model_input):
         return model_input
 ```
 
-<Snippet file="base-config.mdx" />
-
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements: []
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
 </RequestExample>

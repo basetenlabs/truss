@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from threading import Thread
 
+import rich
+
 
 class TrussFilesSyncer(Thread):
     """Daemon thread that watches for changes in the user's Truss and syncs to running service."""
@@ -29,6 +31,10 @@ class TrussFilesSyncer(Thread):
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
+        rich.print(f"🚰 Attempting to sync truss at '{self.watch_path}' with remote")
+        self.remote.patch(self.watch_path, self._logger)
+
+        rich.print(f"👀 Watching for changes to truss at '{self.watch_path}' ...")
         for _ in watch(
             self.watch_path, watch_filter=self.watch_filter, raise_interrupt=False
         ):

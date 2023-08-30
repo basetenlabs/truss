@@ -10,6 +10,25 @@ from truss.truss_handle import TrussHandle
 logger = logging.getLogger(__name__)
 
 
+class ModelIdentifier:
+    value: str
+
+
+class ModelName(ModelIdentifier):
+    def __init__(self, name: str):
+        self.value = name
+
+
+class ModelId(ModelIdentifier):
+    def __init__(self, model_id: str):
+        self.value = model_id
+
+
+class ModelVersionId(ModelIdentifier):
+    def __init__(self, model_version_id: str):
+        self.value = model_version_id
+
+
 def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     """
     Check if a model with the given name exists in the Baseten remote.

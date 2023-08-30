@@ -1,13 +1,17 @@
 ---
-title: "Step 4: Watch for changes"
-description: "Keep remote model server synced with local dev."
+title: "Step 3: Enable live reload"
+description: "Patch the model server with local changes"
 ---
 
 You don't have to run `truss push` every time you update your Truss during development. Instead, you can have a live reload workflow where local changes automatically are pushed to the production environment to give you a lightning-fast feedback loop.
 
-### Set up Truss watch
+### Watch for changes
 
-In a new terminal tab, run:
+<Tip>
+Run the `truss watch` command in a new terminal tab in the same working directory, as you'll need to leave it running while you work.
+</Tip>
+
+In a new terminal tab in the same `my-first-truss` working directory, run:
 
 ```sh
 truss watch
@@ -15,31 +19,37 @@ truss watch
 
 Now, as you update your Truss, the changes will be patched onto the model server on the remote host.
 
-Leave `truss watch` running in this new terminal tab for the rest of the tutorial. You can use `Control-C` to exit `truss watch` to stop automatically pushing changes.
+### Use `truss watch` while working
 
-In the next three steps, we'll upgrade our echo server to instead run an ML model. Check the output of `truss watch` after every step to see your local changes reflected live on the production server!
+In the next three steps, we'll deploy a basic ML model to our model server. Check your `truss watch` tab and model logs on Baseten after each step to see the changes you make locally reflected live on your model server.
+
+Leave `truss watch` running in this new terminal tab for the rest of the tutorial. You can use `Control-C` to exit `truss watch` and stop automatically pushing changes.
 
 <RequestExample>
 
 ```python model/model.py
-from typing import Any
-from transformers import pipeline
-
-
 class Model:
-    def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
-        self._model = pipeline("text-classification")
+        pass
 
-    def predict(self, model_input: Any) -> Any:
-        return self._model(model_input)
+    def predict(self, model_input):
+        return model_input
 ```
 
-<Snippet file="base-config.mdx" />
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements: []
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
 
 </RequestExample>

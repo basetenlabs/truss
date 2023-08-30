@@ -1,12 +1,19 @@
 import logging
 from pathlib import Path
+from typing import Tuple
 
+import click
 import yaml
+from requests import ReadTimeout
 from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
+    ModelId,
+    ModelIdentifier,
+    ModelName,
+    ModelVersionId,
     archive_truss,
     create_truss_service,
     exists_model,
@@ -71,32 +78,62 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
-    def get_baseten_service(
-        self, model_name: str, published: bool = False
-    ) -> BasetenService:
-        model_id, model_versions = get_model_versions_info(self._api, model_name)
-        model_version = None
-        if published:
-            for mv in model_versions:
-                if not mv["is_draft"]:
-                    model_version = mv
-                    break
-        else:
-            for mv in model_versions:
-                if mv["is_draft"]:
-                    model_version = mv
-                    break
-        if model_version is None:
-            raise ValueError(
-                "No appropriate model version found. Run `truss push` then try again."
+    def _get_service_url_path_and_model_ids(
+        self, model_identifier: ModelIdentifier, published: bool
+    ) -> Tuple[str, str, str]:
+        if isinstance(model_identifier, ModelName):
+            model_id, model_versions = get_model_versions_info(
+                self._api, model_identifier.value
             )
-        model_version_id = model_version["id"]
+            matching_versions = [
+                model_version
+                for model_version in model_versions
+                # If published is False, then we want to find the draft version
+                if model_version["is_draft"] == (not published)
+            ]
+
+            model_version = matching_versions[0] if matching_versions else None
+            if model_version is None:
+                raise ValueError(
+                    "No appropriate model version found. Run `truss push` then try again."
+                )
+            model_version_id = model_version["id"]
+            service_url_path = f"/model_versions/{model_version_id}"
+
+        elif isinstance(model_identifier, ModelId):
+            model = self._api.get_model_by_id(model_identifier.value)
+            model_id = model["model"]["id"]
+            model_version_id = model["model"]["primary_version"]["id"]
+            service_url_path = f"/models/{model_id}"
+
+        elif isinstance(model_identifier, ModelVersionId):
+            model_version = self._api.get_model_version_by_id(model_identifier.value)
+            model_version_id = model_version["model_version"]["id"]
+            model_id = model_version["model_version"]["oracle"]["id"]
+            service_url_path = f"/model_versions/{model_version_id}"
+
+        else:
+            raise click.UsageError(
+                "You must either be inside of a Truss directory, or provide --model-version or --model options."
+            )
+
+        return service_url_path, model_id, model_version_id
+
+    def get_baseten_service(
+        self, model_identifier: ModelIdentifier, published: bool = False
+    ) -> BasetenService:
+        (
+            service_url_path,
+            model_id,
+            model_version_id,
+        ) = self._get_service_url_path_and_model_ids(model_identifier, published)
+
         return BasetenService(
             model_id=model_id,
             model_version_id=model_version_id,
             is_draft=not published,
             api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
+            service_url=f"{self._remote_url}{service_url_path}",
         )
 
     def get_remote_logs_url(
@@ -104,7 +141,7 @@ class BasetenRemote(TrussRemote):
         model_name: str,
         published: bool = False,
     ) -> str:
-        service = self.get_baseten_service(model_name, published)
+        service = self.get_baseten_service(ModelName(model_name), published)
         return f"{self._remote_url}/models/{service._model_id}/versions/{service._model_version_id}/logs"
 
     def sync_truss_to_dev_version_by_name(
@@ -137,6 +174,11 @@ class BasetenRemote(TrussRemote):
         except yaml.parser.ParserError:
             logger.error("Unable to parse config file")
             return
+        except ValueError:
+            logger.error(
+                f"Error when reading truss from directory {watch_path}", exc_info=True
+            )
+            return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
@@ -145,7 +187,7 @@ class BasetenRemote(TrussRemote):
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
         except Exception:
-            logger.error("Failed to calculate patch")
+            logger.error("Failed to calculate patch, bailing on patching")
             return
         if patch_request:
             if (
@@ -154,7 +196,16 @@ class BasetenRemote(TrussRemote):
             ):
                 logger.info("No changes observed, skipping deployment")
                 return
-            resp = self._api.patch_draft_truss(model_name, patch_request)
+            try:
+                resp = self._api.patch_draft_truss(model_name, patch_request)
+            except ReadTimeout:
+                logger.error(
+                    "Read Timeout when attempting to connect to remote. Bailing on patching"
+                )
+                return
+            except Exception:
+                logger.error("Failed to patch draft deployment, bailing on patching")
+                return
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
@@ -169,6 +220,6 @@ class BasetenRemote(TrussRemote):
                 logger.info(
                     resp.get(
                         "success_message",
-                        f"Model {model_name} patched successfully.",
+                        f"Model {model_name} patched successfully",
                     )
                 )

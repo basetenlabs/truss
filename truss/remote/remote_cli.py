@@ -2,22 +2,21 @@ from typing import List
 
 import rich
 from InquirerPy import inquirer
-from truss.remote.remote_factory import RemoteFactory
+from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
 
 def inquire_remote_config() -> RemoteConfig:
     # TODO(bola): extract questions from remote
     rich.print("💻 Let's add a Baseten remote!")
-    remote_url = inquirer.text(
-        message="🌐 Baseten remote url:",
-        default="https://app.baseten.co",
-        qmark="",
-    ).execute()
+    # If users need to adjust the remote url, they
+    # can do so manually in the .trussrc file.
+    remote_url = "https://app.baseten.co"
     api_key = inquirer.secret(
-        message="🤫 Quiety paste your API_KEY:",
+        message="🤫 Quietly paste your API_KEY:",
         qmark="",
     ).execute()
+
     return RemoteConfig(
         name="baseten",
         configs={
@@ -40,6 +39,8 @@ def inquire_remote_name(available_remotes: List[str]) -> str:
         return available_remotes[0]
     remote_config = inquire_remote_config()
     RemoteFactory.update_remote_config(remote_config)
+
+    rich.print(f"💾 Remote config saved to {USER_TRUSSRC_PATH}")
     return remote_config.name
 
 

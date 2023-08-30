@@ -6,14 +6,22 @@ import sys
 import webbrowser
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import rich
 import rich_click as click
 import truss
-from truss.cli.create import select_server_backend
+from InquirerPy import inquirer
+from truss.cli.create import ask_name, select_server_backend
+from truss.remote.baseten.core import (
+    ModelId,
+    ModelIdentifier,
+    ModelName,
+    ModelVersionId,
+)
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
-from truss.remote.remote_factory import RemoteFactory
+from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
+from truss.truss_config import ModelServer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,6 +59,8 @@ def error_handling(f: Callable[..., object]):
     def wrapper(*args, **kwargs):
         try:
             f(*args, **kwargs)
+        except click.UsageError as e:
+            raise e  # You can re-raise the exception or handle it different
         except Exception as e:
             click.echo(e)
 
@@ -93,8 +103,15 @@ def image():
     default=False,
     help="Create a trainable truss.",
 )
+@click.option(
+    "-b",
+    "--backend",
+    show_default=True,
+    default=ModelServer.TrussServer.value,
+    type=click.Choice([server.value for server in ModelServer]),
+)
 @error_handling
-def init(target_directory, trainable) -> None:
+def init(target_directory, trainable, backend) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -104,13 +121,15 @@ def init(target_directory, trainable) -> None:
             f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
         )
     tr_path = Path(target_directory)
-    build_config = select_server_backend()
+    build_config = select_server_backend(ModelServer[backend])
+    model_name = ask_name()
     truss.init(
         target_directory=target_directory,
         trainable=trainable,
         build_config=build_config,
+        model_name=model_name,
     )
-    click.echo(f"Truss was created in {tr_path}")
+    click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
 
 @image.command()  # type: ignore
@@ -184,10 +203,18 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--logs",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Automatically open remote logs tab",
+)
 @error_handling
 def watch(
     target_directory: str,
     remote: str,
+    logs: bool,
 ) -> None:
     """
     Seamless remote development with truss
@@ -211,10 +238,50 @@ def watch(
         sys.exit(1)
 
     logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
-    rich.print(f"🪵 View logs for your deployment at {logs_url}")
-    webbrowser.open(logs_url)
-    rich.print(f"👀 Watching for changes to truss at '{target_directory}' ...")
+    rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    if not logs:
+        logs = inquirer.confirm(
+            message="🗂  Open logs in a new tab?", default=True
+        ).execute()
+    if logs:
+        webbrowser.open_new_tab(logs_url)
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
+
+
+def _extract_and_validate_model_identifier(
+    target_directory: str,
+    model_id: Optional[str],
+    model_version_id: Optional[str],
+    published: Optional[bool],
+) -> ModelIdentifier:
+    if published and (model_id or model_version_id):
+        raise click.UsageError(
+            "Cannot use --published with --model or --model-version."
+        )
+
+    model_identifier: ModelIdentifier
+    if model_version_id:
+        model_identifier = ModelVersionId(model_version_id)
+    elif model_id:
+        model_identifier = ModelId(model_id)
+    else:
+        tr = _get_truss_from_directory(target_directory=target_directory)
+        model_name = tr.spec.config.model_name
+        if not model_name:
+            raise click.UsageError("Truss config is missing a model name.")
+        model_identifier = ModelName(model_name)
+    return model_identifier
+
+
+def _extract_request_data(data: Optional[str], file: Optional[Path]):
+    if data is not None:
+        return json.loads(data)
+    elif file is not None:
+        return json.loads(Path(file).read_text())
+    else:
+        raise click.UsageError(
+            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+        )
 
 
 @truss_cli.command()
@@ -246,14 +313,27 @@ def watch(
     default=False,
     help="Invoked the published model version.",
 )
-@error_handling
+@click.option(
+    "--model-version",
+    type=str,
+    required=False,
+    help="ID of model version to invoke",
+)
+@click.option(
+    "--model",
+    type=str,
+    required=False,
+    help="ID of model to invoke",
+)
 @echo_output
 def predict(
     target_directory: str,
     remote: str,
-    data: Union[bytes, str],
+    data: Optional[str],
     file: Optional[Path],
     published: Optional[bool],
+    model_version: Optional[str],
+    model: Optional[str],
 ):
     """
     Invokes the packaged model
@@ -269,20 +349,16 @@ def predict(
 
     remote_provider = RemoteFactory.create(remote=remote)
 
-    tr = _get_truss_from_directory(target_directory=target_directory)
+    model_identifier = _extract_and_validate_model_identifier(
+        target_directory,
+        model_id=model,
+        model_version_id=model_version,
+        published=published,
+    )
 
-    model_name = tr.spec.config.model_name
-    if not model_name:
-        raise ValueError("Model name not set. Did you `truss push`?")
+    request_data = _extract_request_data(data=data, file=file)
 
-    if data is not None:
-        request_data = json.loads(data)
-    elif file is not None:
-        request_data = json.loads(Path(file).read_text())
-    else:
-        raise ValueError("At least one of request or request-file must be supplied.")
-
-    service = remote_provider.get_baseten_service(model_name, published)  # type: ignore
+    service = remote_provider.get_baseten_service(model_identifier, published)  # type: ignore
     result = service.predict(request_data)
     if inspect.isgenerator(result):
         for chunk in result:
@@ -337,7 +413,6 @@ def push(
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
-    # Push
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = inquire_model_name()
@@ -350,7 +425,48 @@ def push(
     # TODO(Abu): This needs to be refactored to be more generic
     _ = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
 
-    click.echo(f"Model {model_name} was successfully pushed.")
+    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+
+    if not publish:
+        draft_model_text = """
+|---------------------------------------------------------------------------------------|
+| Your model has been deployed as a draft. Draft models allow you to                    |
+| iterate quickly during the deployment process.                                        |
+|                                                                                       |
+| When you are ready to publish your deployed model as a new version,                   |
+| pass `--publish` to the `truss push` command. To monitor changes to your model and    |
+| rapidly iterate, run the `truss watch` command.                                       |
+|                                                                                       |
+|---------------------------------------------------------------------------------------|
+"""
+
+        click.echo(draft_model_text)
+
+    logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
+    rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    should_open_logs = inquirer.confirm(
+        message="🗂  Open logs in a new tab?", default=True
+    ).execute()
+    if should_open_logs:
+        webbrowser.open_new_tab(logs_url)
+
+
+@truss_cli.command()
+def configure():
+    # Read the original file content
+    with open(USER_TRUSSRC_PATH, "r") as f:
+        original_content = f.read()
+
+    # Open the editor and get the modified content
+    edited_content = click.edit(original_content)
+
+    # If the content was modified, save it
+    if edited_content is not None and edited_content != original_content:
+        with open(USER_TRUSSRC_PATH, "w") as f:
+            f.write(edited_content)
+            click.echo(f"Changes saved to {USER_TRUSSRC_PATH}")
+    else:
+        click.echo("No changes made.")
 
 
 @container.command()  # type: ignore

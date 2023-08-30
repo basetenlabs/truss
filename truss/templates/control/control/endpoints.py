@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx import URL, ConnectError, RemoteProtocolError
-from starlette.requests import Request
+from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
@@ -28,15 +28,20 @@ async def proxy(request: Request):
     client: httpx.AsyncClient = request.app.state.proxy_client
     url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
 
-    # 5 mins request and 2 min connect timeouts
-    # Large values; we don't want requests to fail due to timeout on the proxy
-    timeout = httpx.Timeout(5 * 60.0, connect=2 * 60.0)
+    # 2 min connect timeouts, no timeout for requests.
+    # We don't want requests to fail due to timeout on the proxy
+    timeout = httpx.Timeout(None, connect=2 * 60.0)
+    try:
+        request_body = await request.body()
+    except ClientDisconnect:
+        # If the client disconnects, we don't need to proxy the request
+        return Response(status_code=499)
 
     inf_serv_req = client.build_request(
         request.method,
         url,
         headers=request.headers.raw,
-        content=await request.body(),
+        content=request_body,
         timeout=timeout,
     )
 

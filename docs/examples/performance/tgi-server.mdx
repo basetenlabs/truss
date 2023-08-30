@@ -1,4 +1,94 @@
 ---
-title: Serve models with TGI
-description: "Description"
+title: Serve LLM models with TGI
+description: "Deploy a language model using TGI"
 ---
+
+[TGI](https://github.com/huggingface/text-generation-inference/tree/main) is a model server optimized for language models.
+
+<Tip>
+You can see the config for the finished model on the right. Keep reading for step-by-step instructions on how to generate it.
+</Tip>
+
+This example will cover:
+
+1. Generating the base Truss
+2. Setting sufficient model resources for inference
+3. Deploying the model
+
+### Step 1: Generating the base Truss
+
+Get started by creating a new Truss:
+
+```sh
+truss init --backend TGI opt125
+```
+
+You're going to see a couple of prompts. Follow along with the instructions below:
+1. Type `facebook/opt-125M` when prompted for `model`.
+2. Press the `tab` key when prompted for `endpoint`. Select the `generate_stream` endpoint.
+3. Give your model a name like `OPT-125M`.
+
+Finally, navigate to the directory:
+
+```sh
+cd opt125
+```
+
+### Step 2: Setting resources and other arguments
+
+You'll notice that there's a `config.yaml` in the new directory. This is where we'll set the resources and other arguments for the model. Open the file in your favorite editor.
+
+OPT-125M will need a GPU so let's set the correct resources. Update the `resources` key with the following:
+
+```yaml config.yaml
+resources:
+  accelerator: T4
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
+```
+
+Also notice the `build` key which contains the `model_server` we're using as well as other arguments. These arguments are passed to the underlying vLLM server which you can find [here](https://github.com/vllm-project/vllm/blob/main/vllm/entrypoints/openai/api_server.py).
+
+### Step 3: Deploy the model
+
+<Note>
+You'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys) for this step.
+</Note>
+
+Let's deploy our OPT-125M vLLM model.
+
+```sh
+truss push
+```
+
+You can invoke the model with:
+
+```sh
+truss predict -d '{"inputs": "What is a large language model?", "parameters": {"max_new_tokens": 128, "sample": true}} --published'
+```
+
+<RequestExample>
+
+```yaml config.yaml
+build:
+  arguments:
+    endpoint: generate_stream
+    model: facebook/opt-125M
+  model_server: TGI
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: OPT-125M
+python_version: py39
+requirements: []
+resources:
+  accelerator: T4
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
+secrets: {}
+system_packages: []
+```
+
+</RequestExample>

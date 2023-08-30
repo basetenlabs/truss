@@ -1,0 +1,71 @@
+name: integration-tests
+
+on:
+  workflow_dispatch: # Allows running from actions tab
+
+concurrency:
+  group: main-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  detect-version-changed:
+    runs-on: ubuntu-20.04
+    outputs:
+      version_changed: ${{ steps.versions.outputs.version_changed }}
+      new_version: ${{ steps.versions.outputs.new_version }}
+      new_base_image_version: ${{ steps.versions.outputs.new_base_image_version }}
+      build_base_images: ${{ steps.versions.outputs.build_base_images }}
+      release_version: ${{ steps.versions.outputs.release_version }}
+      is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
+          token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
+          fetch-depth: 2
+      - uses: ./.github/actions/detect-versions/
+        id: versions
+  build-and-push-truss-base-images-if-needed:
+    needs: [detect-version-changed]
+    if: needs.detect-version-changed.outputs.build_base_images == 'true'
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python_version: ["3.8", "3.9", "3.10", "3.11"]
+        use_gpu: ["y", "n"]
+        job_type: ["server", "training"]
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - shell: bash
+        run: |
+          poetry run bin/generate_base_images.py \
+            --use-gpu ${{ matrix.use_gpu }}  \
+            --python-version ${{ matrix.python_version }} \
+            --job-type ${{ matrix.job_type }} \
+            --version-tag ${{ needs.detect-version-changed.outputs.new_base_image_version }} \
+            --skip-login --push
+
+  integration-tests:
+    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
+    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        split_group: ["1", "2", "3", "4", "5"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}

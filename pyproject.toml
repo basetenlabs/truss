@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.5.7rc4"
+version = "0.6.5rc5"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -41,6 +41,7 @@ watchfiles = "^0.19.0"
 huggingface_hub = "^0.16.4"
 rich-click = "^1.6.1"
 inquirerpy = "^0.3.4"
+google-cloud-storage = "2.10.0"
 
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"
@@ -59,6 +60,7 @@ uvicorn = "^0.21.1"
 httpx = "^0.24.1"
 psutil = "^5.9.4"
 huggingface_hub = "^0.16.4"
+google-cloud-storage = "2.10.0"
 
 [tool.poetry.dev-dependencies]
 torch = "^1.9.0"
@@ -91,6 +93,7 @@ mlflow = "^1.29.0"
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
 httpx = {extras = ["cli"], version = "^0.24.1"}
+requests-mock = "^1.11.0"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]

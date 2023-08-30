@@ -1,0 +1,35 @@
+---
+title: "truss init"
+description: "Create a new Truss."
+---
+
+```
+truss init [OPTIONS] TARGET_DIRECTORY
+```
+
+### Options
+
+<ParamField body="-t, --trainable">
+Create a trainable truss. Deprecated.
+</ParamField>
+
+<ParamField body="-b, --backend" type="TrussServer|TGI|VLLM">
+What type of server to create. Default: `TrussServer`.
+</ParamField>
+
+<ParamField body="--help">
+Show help message and exit.
+</ParamField>
+
+### Arguments
+
+<ParamField body="TARGET_DIRECTORY" type="str">
+A Truss is created in this directory
+</ParamField>
+
+
+### Example
+
+```
+truss init whisper-truss
+```

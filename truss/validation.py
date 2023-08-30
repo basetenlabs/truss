@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from typing import Pattern, Set
 
+from truss.constants import REGISTRY_BUILD_SECRET_PREFIX
 from truss.errors import ValidationError
 
 SECRET_NAME_MATCH_REGEX: Pattern[str] = re.compile(r"^[-._a-zA-Z0-9]+$")
@@ -24,7 +25,9 @@ def validate_secret_name(secret_name: str) -> None:
             f"Secret name `{secret_name}` is longer than max allowed 253 chars."
         )
 
-    if not SECRET_NAME_MATCH_REGEX.match(secret_name):
+    if not SECRET_NAME_MATCH_REGEX.match(secret_name) and not secret_name.startswith(
+        REGISTRY_BUILD_SECRET_PREFIX
+    ):
         raise ValueError(
             constraint_violation_msg() + ", invalid characters found in secret name."
         )

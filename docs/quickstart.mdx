@@ -3,11 +3,13 @@ title: 'Quickstart'
 description: 'Create, deploy, and invoke an ML model server in less than 5 minutes'
 ---
 
-In this quickstart guide, we'll package and deploy a [text classification pipeline model](https://huggingface.co/docs/transformers/main_classes/pipelines) from the open-source `transformers` package.
+In this quickstart guide, you will package and deploy a [text classification pipeline model](https://huggingface.co/docs/transformers/main_classes/pipelines).
 
-If you want to go step-by-step through these concepts and more, check out the [learn model deployment tab](/learn/intro) for a detailed introduction to model deployment and Truss.
+<Tip>
+If you want to go step-by-step through these concepts and more, check out the [learn model deployment tutorial](/learn/intro) for a detailed introduction to model deployment and Truss.
+</Tip>
 
-## Install Truss
+## Install the Truss package
 
 Install the latest version of Truss with:
 
@@ -23,7 +25,9 @@ To get started, create a Truss with the following terminal command:
 truss init text-classification
 ```
 
-Select the default `TrussServer` option. Then, navigate to the newly created directory:
+When prompted, give your Truss a name like `Text classification`.
+
+Then, navigate to the newly created directory:
 
 ```sh
 cd text-classification
@@ -31,48 +35,85 @@ cd text-classification
 
 ## Implement the `Model` class
 
-The `Model` class is the heart of a Truss. In it, you write similar code to what you'd write to invoke a model locally in a Python notebook or script.
+One of the two essential files in a Truss is `model/model.py`. In this file, you write a `Model` class: an interface between the ML model that you're packaging and the model server that you're running it on.
 
-<Frame caption="Placeholder image, will get a better one made">
+The code to load and invoke a model in a Jupyter notebook or Python script maps directly to the code used in `model/model.py`.
+
+<Frame>
   <img src="/images/notebook-to-model.png" />
 </Frame>
 
-The model serving code goes in `./text-classification/model/model.py` in your newly created Truss. There are two functions to implement:
+There are two member functions that you must implement in the `Model` class:
 
-* `load()` runs once when the model is spun up and is responsible for initializing `self._model`
-* `predict()` runs each time the model is invoked and handles the inference. It can use any JSON-serializable type as input and output.
+* `load()` loads the model onto the model server. It runs exactly once when the model server is spun up or patched.
+* `predict()` handles model inference. It runs every time the model server is called.
 
 Here's the complete `model/model.py` for the text classification model:
 
+<Tabs>
+<Tab title="Code">
 ```python model/model.py
-from typing import List
 from transformers import pipeline
 
 
 class Model:
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
         self._model = pipeline("text-classification")
 
-    def predict(self, model_input: str) -> List:
+    def predict(self, model_input):
         return self._model(model_input)
 ```
+</Tab>
+<Tab title="Diff">
+```diff model/model.py
++ from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs):
+        self._model = None
+
+    def load(self):
+-       pass
++       self._model = pipeline("text-classification")
+
+    def predict(self, model_input):
+-       return model_input
++       return self._model(model_input)
+```
+</Tab>
+</Tabs>
 
 ## Add model dependencies
 
-The pipeline model relies on Transformers and PyTorch. These dependencies must be specified in the Truss config.
+The other essential file in a Truss is `config.yaml`, which configures the model serving environment. For a complete list of the config options, see [the config reference](/reference/config).
 
-In `./text-classification/config.yaml`, find the line `requirements`. Replace the empty list with:
+The pipeline model relies on [Transformers](https://huggingface.co/docs/transformers/index) and [PyTorch](https://pytorch.org/). These dependencies must be specified in the Truss config.
 
+In `config.yaml`, find the line `requirements`. Replace the empty list with:
+
+<Tabs>
+<Tab title="Code">
 ```yaml config.yaml
 requirements:
   - torch==2.0.1
   - transformers==4.30.0
 ```
+</Tab>
+<Tab title="Diff">
+```diff config.yaml
+- requirements: []
++ requirements:
++   - torch==2.0.1
++   - transformers==4.30.0
+```
+</Tab>
+</Tabs>
 
-No other configuration needs to be changed.
+No other configuration is needed.
 
 ## Deploy the Truss
 
@@ -84,15 +125,13 @@ To set up the Baseten remote, you'll need a [Baseten API key](https://app.basete
 
 ### Run `truss push`
 
-Deploying a model with Truss uses the interactive `truss push` command. The first time you run the command, it will walk you through setting up and a remote host to run your model.
-
 With your Baseten API key ready to paste when prompted, you can deploy your model:
 
 ```sh
 truss push
 ```
 
-You can monitor your model deployment on [your model dashboard on Baseten](https://app.baseten.co/models/).
+You can monitor your model deployment from [your model dashboard on Baseten](https://app.baseten.co/models/).
 
 ## Invoke the model
 
@@ -101,7 +140,7 @@ After the model has finished deploying, you can invoke it from the terminal.
 **Invocation**
 
 ```sh
-truss predict -d '"I am happy!"'
+truss predict -d '"Truss is awesome!"'
 ```
 
 **Response**
@@ -114,3 +153,11 @@ truss predict -d '"I am happy!"'
   }
 ]
 ```
+
+## Learn more
+
+You've completed the quickstart by packaging, deploying, and invoking an ML model with Truss! Next up:
+
+* Discover a live reload model serving workflow with the [Truss user guide](/usage).
+* Go step-by-step through essential concepts in the [Truss tutorial series](/learn/intro).
+* Find a [Truss example](/examples) that matches your use case.

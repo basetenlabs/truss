@@ -1,7 +1,14 @@
 ---
-title: "Step 0: Setup"
-description: "Set up your development environment and create a Truss."
+title: "Step 0: Create a Truss"
+description: "Set up your development environment and create a Truss"
 ---
+
+This tutorial will guide you step-by-step through:
+
+1. Creating a Truss
+2. Connecting your local development environment to a model server
+3. Deploying a [basic text classification model](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.pipeline)
+4. Publishing your model to production
 
 <Tip>
 On the right side, you'll see what your Truss should look like after each step!
@@ -20,39 +27,47 @@ pip install --upgrade truss
 Use the `truss init <folder-name>` command to create a Truss.
 
 ```sh
-truss init my-truss
+truss init my-first-truss
 ```
 
-Select the default `TrussServer` option. Then, navigate to the newly created directory:
+When prompted, give your Truss a name like `My First Truss`
+
+### Get ready to code!
+
+Navigate to the newly created directory:
 
 ```sh
-cd my-truss
+cd my-first-truss
 ```
+
+Open the directory in your favorite text editor, such as Visual Studio Code.
 
 <RequestExample>
 
 ```python model/model.py
-from typing import Any
-
-
 class Model:
-    def __init__(self, **kwargs) -> None:
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, **kwargs):
         self._model = None
 
     def load(self):
-        # Load model here and assign to self._model.
         pass
 
-    def predict(self, model_input: Any) -> Any:
-        model_output = {}
-        # Invoke model on model_input and calculate predictions here.
-        model_output["predictions"] = []
-        return model_output
+    def predict(self, model_input):
+        return model_input
 ```
 
-<Snippet file="base-config.mdx" />
+```yaml config.yaml
+environment_variables: {}
+model_name: My First Truss
+requirements: []
+resources:
+  accelerator: null
+  cpu: "1"
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
+```
+
 
 </RequestExample>
