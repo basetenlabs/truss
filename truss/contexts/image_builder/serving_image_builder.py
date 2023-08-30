@@ -145,7 +145,7 @@ def update_config_and_gather_files(
         model_key = "model"
 
     if server_name != "TrussServer":
-        model_name = config.build.arguments.pop(model_key)
+        model_name = config.build.arguments[model_key]
         if "gs://" in model_name:
             # if we are pulling from a gs bucket, we want to alias it as a part of the cache
             model_to_cache = {"repo_id": model_name}
