@@ -1,4 +1,0 @@
--i https://pypi.org/simple
-
-transformers
-torch
