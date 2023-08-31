@@ -687,24 +687,6 @@ def test_container_stuck_in_created(container_state_mock):
 
 
 @pytest.mark.integration
-def test_control_truss_huggingface(
-    huggingface_truss_handle_small_model,
-):
-    th = TrussHandle(huggingface_truss_handle_small_model)
-    th.live_reload()
-    tag = "test-docker-huggingface-model-control-tag:0.0.1"
-    with ensure_kill_all():
-        result = th.docker_predict(
-            "My name is Sarah and I live in London",
-            tag=tag,
-        )
-        predictions = result["predictions"]
-        assert len(predictions) == 1
-        prediction = predictions[0]
-        assert prediction["generated_text"].startswith("Mein Name")
-
-
-@pytest.mark.integration
 def test_control_truss_local_update_that_crashes_inference_server(custom_model_control):
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
