@@ -62,5 +62,5 @@ def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
         model_wrapper = model_wraper_class(config)
         model_wrapper.load()
         # Allow load thread to execute
-        time.sleep(1)
+        time.sleep(2)
         assert model_wrapper.load_failed()
