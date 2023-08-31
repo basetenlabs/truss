@@ -8,18 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
 
-import numpy as np
 import pytest
 import requests
 from requests.exceptions import RequestException
-from truss.constants import PYTORCH
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.model_frameworks import SKLearn
-from truss.model_inference import (
-    infer_model_information,
-    map_to_supported_python_version,
-    validate_provided_parameters_with_model,
-)
+from truss.model_inference import map_to_supported_python_version
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
 
@@ -59,38 +52,6 @@ class PropagatingThread(Thread):
         return self.ret
 
 
-def test_pytorch_init_arg_validation(
-    pytorch_model_with_init_args, pytorch_model_init_args
-):
-    pytorch_model_with_init_args, _ = pytorch_model_with_init_args
-    # Validates with args and kwargs
-    validate_provided_parameters_with_model(
-        pytorch_model_with_init_args.__class__, pytorch_model_init_args
-    )
-
-    # Errors if bad args
-    with pytest.raises(ValueError):
-        validate_provided_parameters_with_model(
-            pytorch_model_with_init_args.__class__, {"foo": "bar"}
-        )
-
-    # Validates with only args
-    copied_args = pytorch_model_init_args.copy()
-    copied_args.pop("kwarg1")
-    copied_args.pop("kwarg2")
-    validate_provided_parameters_with_model(pytorch_model_with_init_args, copied_args)
-
-    # Requires all args
-    with pytest.raises(ValueError):
-        validate_provided_parameters_with_model(pytorch_model_with_init_args, {})
-
-
-def test_infer_model_information(pytorch_model_with_init_args):
-    model_info = infer_model_information(pytorch_model_with_init_args[0])
-    assert model_info.model_framework == PYTORCH
-    assert model_info.model_type == "MyModel"
-
-
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
@@ -106,18 +67,6 @@ def test_infer_model_information(pytorch_model_with_init_args):
 def test_map_to_supported_python_version(python_version, expected_python_version):
     out_python_version = map_to_supported_python_version(python_version)
     assert out_python_version == expected_python_version
-
-
-@pytest.mark.integration
-def test_binary_request(sklearn_rfc_model):
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-        sklearn_framework = SKLearn()
-        sklearn_framework.to_truss(sklearn_rfc_model, truss_dir)
-        tr = TrussHandle(truss_dir)
-        predictions = tr.docker_predict([[0, 0, 0, 0]], local_port=8090, binary=True)
-        assert len(predictions["probabilities"]) == 1
-        assert np.shape(predictions["probabilities"]) == (1, 3)
 
 
 @pytest.mark.integration
