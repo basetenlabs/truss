@@ -87,8 +87,6 @@ def _build(
 
         if job_type == "server":
             reqs_copy_from = templates_path / "server" / "requirements.txt"
-        elif job_type == "training":
-            reqs_copy_from = templates_path / "training" / "requirements.txt"
         else:
             raise ValueError(f"Unknown job type {job_type}")
 
@@ -123,7 +121,7 @@ def _build_all(
     dry_run: bool = False,
 ):
     if job_types is None:
-        job_types = ["server", "training"]
+        job_types = ["server"]
 
     if python_versions is None:
         python_versions = SUPPORTED_PYTHON_VERSIONS
@@ -168,7 +166,7 @@ if __name__ == "__main__":
         "--job-type",
         nargs="?",
         default="all",
-        choices=["server", "training", "all"],
+        choices=["server", "all"],
         help="Create images for server",
     )
     parser.add_argument(
@@ -199,7 +197,7 @@ if __name__ == "__main__":
         python_versions = {args.python_version}
 
     if args.job_type == "all":
-        job_types = ["server", "training"]
+        job_types = ["server"]
     else:
         job_types = [args.job_type]
 

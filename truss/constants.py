@@ -17,10 +17,6 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
-TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
-TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = (
-    TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME
-)
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME
@@ -36,11 +32,9 @@ SERVING_DIR: pathlib.Path = TEMPLATES_DIR
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
-TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
-TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
 TRAINING_DOCKERFILE_NAME = "Dockerfile"
 
@@ -56,8 +50,6 @@ TRUSS_MODIFIED_TIME = "truss_modified_time"
 # Path of the Truss used to identify which Truss is being referred
 TRUSS_DIR = "truss_dir"
 TRUSS_HASH = "truss_hash"
-TRAINING_TRUSS_HASH = "training_truss_hash"
-TRAINING_LABEL = "training"
 
 HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
 
@@ -92,8 +84,6 @@ PYTORCH_REQ_MODULE_NAMES: Set[str] = {
 MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
 
 INFERENCE_SERVER_PORT = 8080
-
-TRAINING_VARIABLES_FILENAME = "variables.yaml"
 
 HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 

@@ -6,7 +6,6 @@ import sys
 import uuid
 from dataclasses import replace
 from pathlib import Path
-from shutil import rmtree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.error import HTTPError
 
@@ -27,9 +26,6 @@ from tenacity import (
 )
 from truss.constants import (
     INFERENCE_SERVER_PORT,
-    TRAINING_LABEL,
-    TRAINING_TRUSS_HASH,
-    TRAINING_VARIABLES_FILENAME,
     TRUSS,
     TRUSS_DIR,
     TRUSS_HASH,
@@ -38,11 +34,7 @@ from truss.constants import (
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
-from truss.contexts.image_builder.training_image_builder import (
-    TrainingImageBuilderContext,
-)
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
-from truss.contexts.local_loader.train_local import LocalTrainer
 from truss.decorators import proxy_to_shadow_if_scattered
 from truss.docker import (
     Docker,
@@ -145,17 +137,6 @@ class TrussHandle:
         )
         self._store_signature()
         return image
-
-    @proxy_to_shadow_if_scattered
-    def build_training_docker_image(
-        self, build_dir: Optional[Path] = None, tag: Optional[str] = None
-    ):
-        return self._build_image(
-            builder_context=TrainingImageBuilderContext,
-            labels=self._get_training_labels(),
-            build_dir=build_dir,
-            tag=tag,
-        )
 
     def get_docker_image(self, labels: Dict):
         """[Deprecated] Do not use."""
@@ -319,70 +300,6 @@ class TrussHandle:
         return resp.json()
 
     @proxy_to_shadow_if_scattered
-    def docker_train(
-        self,
-        variables: Optional[dict] = None,
-        build_dir: Optional[Path] = None,
-        tag: Optional[str] = None,
-    ):
-        """
-        Train this truss.
-
-        Training generates a docker image and runs it to generate artifacts,
-        which are then populated in the truss' data directory so it can be used
-        for serving.
-        """
-        if variables is None:
-            variables = {}
-
-        image = self.build_training_docker_image(build_dir=build_dir, tag=tag)
-        secrets_mount_dir_path = _prepare_secrets_mount_dir()
-        variables_dir = _prepare_variables_mount_directory()
-        output_dir = _prepare_training_output_mount_directory()
-        with (variables_dir / TRAINING_VARIABLES_FILENAME).open("w") as vars_file:
-            vars_file.write(yaml.dump(variables))
-
-        container = Docker.client().run(
-            image.id,
-            detach=True,
-            mounts=[
-                [
-                    "type=bind",
-                    f"src={str(secrets_mount_dir_path)}",
-                    "target=/secrets",
-                ],
-                [
-                    "type=bind",
-                    f"src={str(self._spec.training_module_dir.resolve())}",
-                    "target=/train",
-                ],
-                [
-                    "type=bind",
-                    f"src={output_dir}",
-                    "target=/output",
-                ],
-                [
-                    "type=bind",
-                    f"src={str(variables_dir)}",
-                    "target=/variables",
-                ],
-            ],
-            # TODO(pankaj): check training resource overrides
-            gpus="all" if self._spec.config.resources.use_gpu else None,
-        )
-        logs_iterator = get_container_logs(container, follow=True, stream=True)
-        for log in logs_iterator:
-            print(log[1].decode("utf-8"), end="")
-        if self._spec.data_dir.exists():
-            rmtree(str(self._spec.data_dir))
-        copy_tree_path(output_dir, self._spec.data_dir)
-        rmtree(str(output_dir))
-        rmtree(str(variables_dir))
-
-    def local_train(self, variables: Optional[dict] = None):
-        LocalTrainer.run(self._truss_dir)(variables)
-
-    @proxy_to_shadow_if_scattered
     def docker_build_setup(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
     ):
@@ -394,18 +311,6 @@ class TrussHandle:
         """
         image_builder = ServingImageBuilderContext.run(self._truss_dir)
         image_builder.prepare_image_build_dir(build_dir, use_hf_secret=use_hf_secret)
-        return image_builder.docker_build_command(build_dir)
-
-    @proxy_to_shadow_if_scattered
-    def training_docker_build_setup(self, build_dir: Optional[Path] = None):
-        """
-        Set up a directory to build training docker image from.
-
-        Returns:
-            docker build command.
-        """
-        image_builder = TrainingImageBuilderContext.run(self._truss_dir)
-        image_builder.prepare_image_build_dir(build_dir)
         return image_builder.docker_build_command(build_dir)
 
     def add_python_requirement(self, python_requirement: str):
@@ -457,21 +362,6 @@ class TrussHandle:
                     **conf.secrets,
                     secret_name: default_secret_value,
                 },
-            )
-        )
-
-    def add_training_variable(self, var_name: str, default_var_value: Any):
-        """Add a training variable to truss model's config."""
-        self._update_config(
-            lambda conf: replace(
-                conf,
-                train=replace(
-                    conf.train,
-                    variables={
-                        **conf.train.variables,
-                        var_name: default_var_value,
-                    },
-                ),
             )
         )
 
@@ -653,7 +543,6 @@ class TrussHandle:
             # Make sure we're looking for serving container for this truss.
             labels = {
                 TRUSS: True,
-                TRAINING_LABEL: False,
                 **labels,
             }
 
@@ -924,27 +813,6 @@ class TrussHandle:
         return {
             TRUSS_DIR: self._truss_dir,
             TRUSS_HASH: self._serving_hash(),
-            TRAINING_LABEL: False,
-            TRUSS: True,
-        }
-
-    def _get_training_labels(self) -> Dict[str, Any]:
-        data_dir_ignore_pattern = f"{str(self._spec.data_dir.name)}/*"
-        model_module_dir_ignore_pattern = f"{str(self._spec.model_module_dir.name)}/*"
-        examples_ignore_pattern = self._spec.examples_path.name
-        ignore_patterns = [
-            "*.pyc",
-            data_dir_ignore_pattern,
-            model_module_dir_ignore_pattern,
-            examples_ignore_pattern,
-        ]
-        return {
-            TRUSS_DIR: self._truss_dir,
-            TRAINING_TRUSS_HASH: directory_content_hash(
-                self._truss_dir,
-                ignore_patterns,
-            ),
-            TRAINING_LABEL: True,
             TRUSS: True,
         }
 
@@ -1037,8 +905,6 @@ class TrussHandle:
         ):
             truss_hash = self._hash_for_mod_time[1]
         else:
-            # TODO(pankaj) Ignore training directory. But this is a bigger change
-            # because it needs syncing with hash generation on baseten side as well.
             truss_hash = directory_content_hash(self._truss_dir)
             self._hash_for_mod_time = (truss_mod_time, truss_hash)
         return truss_hash
@@ -1116,21 +982,6 @@ def _find_example_by_name(examples: List[Example], example_name: str) -> Optiona
 
 def _get_url_from_container(container) -> str:
     return get_urls_from_container(container)[INFERENCE_SERVER_PORT][0]
-
-
-def _prepare_variables_mount_directory() -> Path:
-    """Builds a directory under ~/.truss/variables for the purpose of storing
-    variables to mount for training."""
-    return _create_rand_dir_in_dot_truss("variables")
-
-
-def _prepare_training_output_mount_directory() -> Path:
-    """Builds a directory under ~/.truss/training_output for the purpose of storing
-    output of training.
-
-    This is mounted at /output of the training docker container.
-    """
-    return _create_rand_dir_in_dot_truss("training_output")
 
 
 def _create_rand_dir_in_dot_truss(subdir: str) -> Path:

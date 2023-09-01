@@ -39,10 +39,6 @@ class TrussSpec:
         return self._truss_dir / self._config.model_module_dir
 
     @property
-    def training_module_dir(self) -> Path:
-        return self._truss_dir / self._config.train.training_module_dir
-
-    @property
     def bundled_packages_dir(self) -> Path:
         return self._truss_dir / self._config.bundled_packages_dir
 
@@ -61,23 +57,6 @@ class TrussSpec:
     def model_class_filepath(self) -> Path:
         conf = self._config
         return self._truss_dir / conf.model_module_dir / conf.model_class_filename
-
-    @property
-    def train_class_filepath(self) -> Path:
-        conf = self._config
-        return self.training_module_dir / conf.train.training_class_filename
-
-    @property
-    def train_module_name(self) -> str:
-        return str(Path(self._config.train.training_class_filename).with_suffix(""))
-
-    @property
-    def train_module_fullname(self) -> str:
-        return f"{self._config.train.training_module_dir}.{self.train_module_name}"
-
-    @property
-    def train_class_name(self) -> str:
-        return self._config.train.training_class_name
 
     @property
     def config(self) -> TrussConfig:

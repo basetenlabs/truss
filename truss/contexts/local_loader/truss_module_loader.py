@@ -60,7 +60,7 @@ class TrussModuleLoader:
     @staticmethod
     def import_truss_module(name):
         """
-        Custom import implementation for loading model or training module.
+        Custom import implementation for loading model.
 
         Based on https://docs.python.org/3/library/importlib.html#approximating-importlib-import-module
         """

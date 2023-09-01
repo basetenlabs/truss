@@ -406,14 +406,6 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
 
 
 @pytest.fixture
-def variables_to_artifacts_training_truss(tmp_path):
-    dir_path = tmp_path / "training_truss"
-    handle = init(str(dir_path), trainable=True)
-    handle.spec.train_class_filepath.write_text(VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE)
-    yield dir_path
-
-
-@pytest.fixture
 def custom_model_truss_dir_with_bundled_packages(tmp_path):
     truss_dir_path: Path = tmp_path / "custom_model_truss_dir_with_bundled_packages"
     handle = init(str(truss_dir_path))

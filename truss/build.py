@@ -58,7 +58,6 @@ def init(
     data_files: Optional[List[str]] = None,
     requirements_file: Optional[str] = None,
     bundled_packages: Optional[List[str]] = None,
-    trainable: bool = False,
     build_config: Optional[Build] = None,
     model_name: Optional[str] = None,
 ) -> TrussHandle:
@@ -80,20 +79,12 @@ def init(
     if build_config:
         config.build = build_config
 
-    if trainable:
-        config.train.resources.use_gpu = True
-
     target_directory_path = populate_target_directory(
         config=config,
         target_directory_path=target_directory,
         populate_dirs=config.build.model_server
         in [ModelServer.TrussServer, ModelServer.TRITON],
     )
-
-    if trainable:
-        _populate_default_training_code(
-            config, target_directory_path=Path(target_directory)
-        )
 
     scaf = TrussHandle(target_directory_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
@@ -151,19 +142,3 @@ def _update_truss_props(
 
 def kill_all() -> None:
     kill_containers({TRUSS: True})
-
-
-def _populate_default_training_code(
-    config: TrussConfig,
-    target_directory_path: Path,
-) -> None:
-    """Populate default training code in a truss.
-    Assumes target directory already exists.
-    """
-    # TODO(pankaj): Add support customization based on model framework type, for
-    # now we don't support this.
-    truss_template = "custom"
-    template_path = TEMPLATES_DIR / truss_template
-
-    truss_training_module_dir = target_directory_path / config.train.training_module_dir
-    copy_tree_path(template_path / "train", truss_training_module_dir)
