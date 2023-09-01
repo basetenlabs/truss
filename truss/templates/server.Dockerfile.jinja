@@ -50,10 +50,11 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 # Copy data before code for better caching
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
+{%- else %}
+RUN mkdir /app
 {%- endif %}
 
 {%- if config.hf_cache != None %}
-RUN mkdir /app
 RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 ENV B10CP_PATH_TRUSS /app/b10cp
 COPY ./cache_requirements.txt /app/cache_requirements.txt

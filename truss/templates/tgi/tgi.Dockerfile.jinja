@@ -40,10 +40,9 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 ENV SERVER_START_CMD /usr/bin/supervisord
 
 {%- if hf_cache %}
-# TODO(varun): split copy into multiple layers
-# TODO(varun): might make sense to copy over data (e.g. gcs credentials) over as well
-COPY --from=cache_warmer ./app/hf_cache /app/hf_cache
-COPY --from=cache_warmer ./root/.cache/huggingface ./root/.cache/huggingface
+{% for file in cached_files %}
+COPY --from=cache_warmer ./root/.cache/huggingface/hub/{{file}} /data/{{file}}
+{% endfor %}
 {%- endif %}
 
 ENTRYPOINT ["/usr/bin/supervisord"]

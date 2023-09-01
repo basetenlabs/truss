@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 from google.cloud import storage
-from huggingface_hub import list_repo_files
+from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
@@ -145,7 +145,7 @@ def update_config_and_gather_files(
         model_key = "model"
 
     if server_name != "TrussServer":
-        model_name = config.build.arguments.pop(model_key)
+        model_name = config.build.arguments[model_key]
         if "gs://" in model_name:
             # if we are pulling from a gs bucket, we want to alias it as a part of the cache
             model_to_cache = {"repo_id": model_name}
@@ -160,6 +160,7 @@ def update_config_and_gather_files(
             ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
 
     model_files = {}
+    cached_files = []
     if config.hf_cache:
         curr_dir = Path(__file__).parent.resolve()
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
@@ -181,17 +182,34 @@ def update_config_and_gather_files(
             )
 
             if "gs://" in repo_id:
-                repo_id, _ = split_gs_path(repo_id)
-                repo_id = f"gs://{repo_id}"
+                bucket_name, _ = split_gs_path(repo_id)
+                repo_id = f"gs://{bucket_name}"
 
-            model_files[repo_id] = {
-                "files": filtered_repo_files,
-                "revision": revision,
-            }
+                for filename in filtered_repo_files:
+                    cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
+            else:
+                repo_folder_name = f"models--{repo_id.replace('/', '--')}"
+                for filename in filtered_repo_files:
+                    hf_url = hf_hub_url(repo_id, filename)
+                    hf_file_metadata = get_hf_file_metadata(hf_url)
+
+                    cached_files.append(
+                        f"{repo_folder_name}/blobs/{hf_file_metadata.etag}"
+                    )
+
+                # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
+                cached_files.append(f"{repo_folder_name}/snapshots/")
+
+                # refs just has files with revision commit hashes
+                cached_files.append(f"{repo_folder_name}/refs/")
+
+                cached_files.append(f"version.txt")
+
+            model_files[repo_id] = {"files": filtered_repo_files, "revision": revision}
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
     )
-    return model_files
+    return model_files, cached_files
 
 
 def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
@@ -200,7 +218,9 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     if not build_dir.exists():
         build_dir.mkdir(parents=True)
 
-    model_files = update_config_and_gather_files(config, truss_dir, build_dir, "TGI")
+    model_files, cached_file_paths = update_config_and_gather_files(
+        config, truss_dir, build_dir, "TGI"
+    )
 
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
@@ -213,6 +233,7 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
         models=model_files,
         hf_cache=config.hf_cache,
         data_dir_exists=Path(data_dir).exists(),
+        cached_files=cached_file_paths,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -247,7 +268,9 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     build_config: Build = config.build
     server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
 
-    model_files = update_config_and_gather_files(config, truss_dir, build_dir, "vLLM")
+    model_files, cached_file_paths = update_config_and_gather_files(
+        config, truss_dir, build_dir, "vLLM"
+    )
 
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
@@ -262,6 +285,7 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
         should_install_server_requirements=True,
         hf_cache=config.hf_cache,
         data_dir_exists=data_dir.exists(),
+        cached_files=cached_file_paths,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -376,6 +400,13 @@ class ServingImageBuilder(ImageBuilder):
 
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
+
+        for repo in model_files.keys():
+            print(repo)
+            cache_dir = model_files[repo]["cache_dir"]
+            for file in model_files[repo]["files"]:
+                print(f"\t{cache_dir}/{file}")
+        # assert 1 == 2
 
         self._render_dockerfile(
             build_dir, should_install_server_requirements, model_files, use_hf_secret
