@@ -193,26 +193,6 @@ class Model:
         }
 """
 
-VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE = """
-import json
-
-
-class Train:
-    def __init__(
-       self,
-       config,
-       output_dir,
-       variables,
-    ):
-        self.output_dir = output_dir
-        self.variables = variables
-
-    def train(self):
-        with (self.output_dir / 'variables.json').open('w') as fp:
-            fp.write(json.dumps(self.variables))
-
-"""
-
 
 EXTERNAL_DATA_ACCESS = """
 class Model:

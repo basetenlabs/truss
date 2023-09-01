@@ -12,7 +12,6 @@ from truss.truss_config import (
     HuggingFaceCache,
     HuggingFaceModel,
     Resources,
-    Train,
     TrussConfig,
 )
 from truss.types import ModelFrameworkType
@@ -180,29 +179,6 @@ def test_model_framework(model_framework):
     else:
         new_config["model_framework"] = model_framework.value
         assert new_config == config.to_dict(verbose=False)
-
-
-def test_non_default_train():
-    config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        train=Train(resources=Resources(use_gpu=True, accelerator="A10G")),
-    )
-
-    updated_train = {
-        "resources": {
-            "accelerator": "A10G",
-            "cpu": "1",
-            "memory": "2Gi",
-            "use_gpu": True,
-        },
-        "variables": {},
-    }
-
-    new_config = generate_default_config()
-    new_config["train"] = updated_train
-
-    assert new_config == config.to_dict(verbose=False)
 
 
 def test_huggingface_cache_single_model_default_revision():

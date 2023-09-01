@@ -88,11 +88,11 @@ def truss_module_loaded(
     external_packages_dirs: Optional[List[str]] = None,
 ):
     """
-    Load a truss module: model or train.
+    Load a truss model module.
     Args:
         truss_dir: Directory of truss
         truss_class_module_fullname: Full name of model or train module,
-                                     e.g. 'model.model', 'train.train'
+                                     e.g. 'model.model'
         bundled_packages_dir_name: name of the bundled packages directory
                                    if None then bundled packages are not loaded.
         external_packages_dirs: List of names of the external packages directories
