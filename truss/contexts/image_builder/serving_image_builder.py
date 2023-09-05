@@ -133,31 +133,38 @@ def list_files(repo_id, data_dir, revision=None):
         return list_repo_files(repo_id, revision=revision)
 
 
-def update_config_and_gather_files(
-    config: TrussConfig, truss_dir: Path, build_dir: Path, server_name: str
-):
+def update_model_key(config: TrussConfig):
+    server_name = config.build.model_server
+
+    if server_name == ModelServer.TGI:
+        return "model_id"
+    elif server_name == ModelServer.VLLM:
+        return "model"
+
+
+def update_model_name(config: TrussConfig, model_key: str):
+    if model_key not in config.build.arguments:
+        # We should definitely just use the same key across both vLLM and TGI
+        raise KeyError(
+            "Key for model missing in config or incorrect key used. Remember to use `model` for VLLM and `model_id` for TGI."
+        )
+    model_name = config.build.arguments[model_key]
+    if "gs://" in model_name:
+        # if we are pulling from a gs bucket, we want to alias it as a part of the cache
+        model_to_cache = {"repo_id": model_name}
+        if config.hf_cache:
+            config.hf_cache.models.append(HuggingFaceModel.from_dict(model_to_cache))
+        else:
+            config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
+        config.build.arguments[
+            model_key
+        ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
+    return model_name
+
+
+def copy_files_for_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
-
-    if server_name == "TGI":
-        model_key = "model_id"
-    elif server_name == "vLLM":
-        model_key = "model"
-
-    if server_name != "TrussServer":
-        model_name = config.build.arguments[model_key]
-        if "gs://" in model_name:
-            # if we are pulling from a gs bucket, we want to alias it as a part of the cache
-            model_to_cache = {"repo_id": model_name}
-            if config.hf_cache:
-                config.hf_cache.models.append(
-                    HuggingFaceModel.from_dict(model_to_cache)
-                )
-            else:
-                config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
-            config.build.arguments[
-                model_key
-            ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
 
     model_files = {}
     cached_files = []
@@ -181,35 +188,52 @@ def update_config_and_gather_files(
                 )
             )
 
-            if "gs://" in repo_id:
-                bucket_name, _ = split_gs_path(repo_id)
-                repo_id = f"gs://{bucket_name}"
-
-                for filename in filtered_repo_files:
-                    cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
-            else:
-                repo_folder_name = f"models--{repo_id.replace('/', '--')}"
-                for filename in filtered_repo_files:
-                    hf_url = hf_hub_url(repo_id, filename)
-                    hf_file_metadata = get_hf_file_metadata(hf_url)
-
-                    cached_files.append(
-                        f"{repo_folder_name}/blobs/{hf_file_metadata.etag}"
-                    )
-
-                # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
-                cached_files.append(f"{repo_folder_name}/snapshots/")
-
-                # refs just has files with revision commit hashes
-                cached_files.append(f"{repo_folder_name}/refs/")
-
-                cached_files.append(f"version.txt")
+            cached_files = fetch_files_to_cache(
+                cached_files, repo_id, filtered_repo_files
+            )
 
             model_files[repo_id] = {"files": filtered_repo_files, "revision": revision}
+
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
     )
     return model_files, cached_files
+
+
+def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: list):
+    if "gs://" in repo_id:
+        bucket_name, _ = split_gs_path(repo_id)
+        repo_id = f"gs://{bucket_name}"
+
+        for filename in filtered_repo_files:
+            cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
+    else:
+        repo_folder_name = f"models--{repo_id.replace('/', '--')}"
+        for filename in filtered_repo_files:
+            hf_url = hf_hub_url(repo_id, filename)
+            hf_file_metadata = get_hf_file_metadata(hf_url)
+
+            cached_files.append(f"{repo_folder_name}/blobs/{hf_file_metadata.etag}")
+
+        # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
+        cached_files.append(f"{repo_folder_name}/snapshots/")
+
+        # refs just has files with revision commit hashes
+        cached_files.append(f"{repo_folder_name}/refs/")
+
+        cached_files.append(f"version.txt")
+
+    return cached_files
+
+
+def update_config_and_gather_files(
+    config: TrussConfig, truss_dir: Path, build_dir: Path
+):
+    if config.build.model_server != ModelServer.TrussServer:
+        model_key = update_model_key(config)
+        update_model_name(config, model_key)
+
+    return copy_files_for_cache(config, truss_dir, build_dir)
 
 
 def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
@@ -219,7 +243,7 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
         build_dir.mkdir(parents=True)
 
     model_files, cached_file_paths = update_config_and_gather_files(
-        config, truss_dir, build_dir, "TGI"
+        config, truss_dir, build_dir
     )
 
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
@@ -269,7 +293,7 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
 
     model_files, cached_file_paths = update_config_and_gather_files(
-        config, truss_dir, build_dir, "vLLM"
+        config, truss_dir, build_dir
     )
 
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
@@ -360,9 +384,7 @@ class ServingImageBuilder(ImageBuilder):
         download_external_data(self._spec.external_data, data_dir)
 
         # Download from HuggingFace
-        model_files = update_config_and_gather_files(
-            config, truss_dir, build_dir, server_name="TrussServer"
-        )
+        model_files = update_config_and_gather_files(config, truss_dir, build_dir)
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)

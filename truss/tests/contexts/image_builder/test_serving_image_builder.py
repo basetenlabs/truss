@@ -1,8 +1,20 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
+    copy_files_for_cache,
+    update_model_key,
+    update_model_name,
+)
+from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.truss_config import (
+    Build,
+    HuggingFaceCache,
+    HuggingFaceModel,
+    ModelServer,
+    TrussConfig,
 )
 from truss.truss_handle import TrussHandle
 
@@ -31,3 +43,105 @@ def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
         gen_docker_lines = filter_empty_lines(gen_docker_lines)
         server_docker_lines = filter_empty_lines(server_docker_lines)
         assert gen_docker_lines == server_docker_lines
+
+
+def test_overrides_model_id_vllm():
+    config = TrussConfig(
+        python_version="py39",
+        build=Build(
+            model_server=ModelServer.VLLM,
+            arguments={"endpoint": "Completions", "model": "gs://llama-2-7b/"},
+        ),
+    )
+
+    model_key = update_model_key(config)
+    update_model_name(config, model_key)
+
+    # Assert model overridden in config
+    assert Path(config.build.arguments["model"]) == Path("/app/hf_cache/llama-2-7b")
+    assert config.hf_cache == HuggingFaceCache(
+        models=[HuggingFaceModel(repo_id="gs://llama-2-7b/")]
+    )
+
+
+def test_overrides_model_id_tgi():
+    config = TrussConfig(
+        python_version="py39",
+        build=Build(
+            model_server=ModelServer.TGI,
+            arguments={"endpoint": "Completions", "model_id": "gs://llama-2-7b/"},
+        ),
+    )
+
+    model_key = update_model_key(config)
+    update_model_name(config, model_key)
+
+    # Assert model overridden in config
+    assert Path(config.build.arguments["model_id"]) == Path("/app/hf_cache/llama-2-7b")
+    assert config.hf_cache == HuggingFaceCache(
+        models=[HuggingFaceModel(repo_id="gs://llama-2-7b/")]
+    )
+
+
+def test_correct_hf_files_accessed_for_caching():
+    model = "openai/whisper-small"
+    config = TrussConfig(
+        python_version="py39",
+        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+    )
+
+    with TemporaryDirectory() as tmp_dir:
+        truss_path = Path(tmp_dir)
+        build_path = truss_path / "build"
+        build_path.mkdir(parents=True, exist_ok=True)
+
+        model_files, files_to_cache = copy_files_for_cache(
+            config, truss_path, build_path
+        )
+        assert "version.txt" in files_to_cache
+
+        # It's unlikely the repo will change
+        assert (
+            "models--openai--whisper-small/blobs/1d7734884874f1a1513ed9aa760a4f8e97aaa02fd6d93a3a85d27b2ae9ca596b"
+            in files_to_cache
+        )
+
+        files = model_files[model]["files"]
+
+        assert "model.safetensors" in files
+        assert "tokenizer_config.json" in files
+
+
+@patch("truss.contexts.image_builder.serving_image_builder.list_bucket_files")
+def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
+    mock_list_bucket_files.return_value = [
+        "fake_model-001-of-002.bin",
+        "fake_model-002-of-002.bin",
+    ]
+    model = "gs://crazy-good-new-model-7b"
+
+    config = TrussConfig(
+        python_version="py39",
+        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+    )
+
+    with TemporaryDirectory() as tmp_dir:
+        truss_path = Path(tmp_dir)
+        build_path = truss_path / "build"
+        build_path.mkdir(parents=True, exist_ok=True)
+
+        model_files, files_to_cache = copy_files_for_cache(
+            config, truss_path, build_path
+        )
+
+        assert (
+            "/app/hf_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
+            in files_to_cache
+        )
+        assert (
+            "/app/hf_cache/crazy-good-new-model-7b/fake_model-002-of-002.bin"
+            in files_to_cache
+        )
+
+        assert "fake_model-001-of-002.bin" in model_files[model]["files"]
+        assert "fake_model-001-of-002.bin" in model_files[model]["files"]
