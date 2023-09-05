@@ -1,0 +1,20 @@
+build:
+  arguments:
+    endpoint: Completions
+    model: facebook/opt-125m
+  model_server: VLLM
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: Test vLLM
+python_version: py39
+requirements: []
+hf_cache:
+- repo_id: facebook/opt-125m
+resources:
+  accelerator: null
+  cpu: '2'
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []

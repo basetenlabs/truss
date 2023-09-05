@@ -2,6 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import pytest
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
     copy_files_for_cache,
@@ -145,3 +146,39 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
 
         assert "fake_model-001-of-002.bin" in model_files[model]["files"]
         assert "fake_model-001-of-002.bin" in model_files[model]["files"]
+
+
+@pytest.mark.integration
+def test_tgi_caching_truss():
+    with ensure_kill_all():
+        truss_root = (
+            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
+        )
+        truss_dir = truss_root / "test_data" / "test_tgi_truss"
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+
+@pytest.mark.integration
+def test_vllm_caching_truss():
+    with ensure_kill_all():
+        truss_root = (
+            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
+        )
+        truss_dir = truss_root / "test_data" / "test_vllm_truss"
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+
+@pytest.mark.integration
+def test_truss_server_caching_truss():
+    with ensure_kill_all():
+        truss_root = (
+            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
+        )
+        truss_dir = truss_root / "test_data" / "test_truss_server_caching_truss"
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)

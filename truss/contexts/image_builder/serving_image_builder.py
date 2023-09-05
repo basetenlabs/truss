@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from google.cloud import storage
@@ -146,7 +146,7 @@ def update_model_name(config: TrussConfig, model_key: str):
     if model_key not in config.build.arguments:
         # We should definitely just use the same key across both vLLM and TGI
         raise KeyError(
-            "Key for model missing in config or incorrect key used. Remember to use `model` for VLLM and `model_id` for TGI."
+            "Key for model missing in config or incorrect key used. Use `model` for VLLM and `model_id` for TGI."
         )
     model_name = config.build.arguments[model_key]
     if "gs://" in model_name:
@@ -167,7 +167,7 @@ def copy_files_for_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
     model_files = {}
-    cached_files = []
+    cached_files: List[str] = []
     if config.hf_cache:
         curr_dir = Path(__file__).parent.resolve()
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
@@ -221,7 +221,7 @@ def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: 
         # refs just has files with revision commit hashes
         cached_files.append(f"{repo_folder_name}/refs/")
 
-        cached_files.append(f"version.txt")
+        cached_files.append("version.txt")
 
     return cached_files
 
@@ -384,7 +384,9 @@ class ServingImageBuilder(ImageBuilder):
         download_external_data(self._spec.external_data, data_dir)
 
         # Download from HuggingFace
-        model_files = update_config_and_gather_files(config, truss_dir, build_dir)
+        model_files, cached_files = update_config_and_gather_files(
+            config, truss_dir, build_dir
+        )
 
         # Copy inference server code
         copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
@@ -423,15 +425,18 @@ class ServingImageBuilder(ImageBuilder):
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
-        for repo in model_files.keys():
-            print(repo)
-            cache_dir = model_files[repo]["cache_dir"]
-            for file in model_files[repo]["files"]:
-                print(f"\t{cache_dir}/{file}")
-        # assert 1 == 2
+        requires_access_key = False
+        for model_url in model_files:
+            if "gs://" in model_url:
+                requires_access_key = True
 
         self._render_dockerfile(
-            build_dir, should_install_server_requirements, model_files, use_hf_secret
+            build_dir,
+            should_install_server_requirements,
+            model_files,
+            use_hf_secret,
+            cached_files,
+            requires_access_key,
         )
 
     def _render_dockerfile(
@@ -440,6 +445,8 @@ class ServingImageBuilder(ImageBuilder):
         should_install_server_requirements: bool,
         model_files: Dict[str, Any],
         use_hf_secret: bool,
+        cached_files: List[str],
+        requires_access_key: bool,
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -477,6 +484,8 @@ class ServingImageBuilder(ImageBuilder):
             truss_hash=directory_content_hash(self._truss_dir),
             models=model_files,
             use_hf_secret=use_hf_secret,
+            cached_files=cached_files,
+            requires_access_key=requires_access_key,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
