@@ -162,7 +162,7 @@ def update_model_name(config: TrussConfig, model_key: str):
     return model_name
 
 
-def copy_files_for_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
+def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
@@ -233,7 +233,7 @@ def update_config_and_gather_files(
         model_key = update_model_key(config)
         update_model_name(config, model_key)
 
-    return copy_files_for_cache(config, truss_dir, build_dir)
+    return get_files_to_cache(config, truss_dir, build_dir)
 
 
 def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):

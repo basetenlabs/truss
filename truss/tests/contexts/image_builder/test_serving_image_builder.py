@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
-    copy_files_for_cache,
+    get_files_to_cache,
     update_model_key,
     update_model_name,
 )
@@ -114,9 +114,7 @@ def test_correct_hf_files_accessed_for_caching():
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = copy_files_for_cache(
-            config, truss_path, build_path
-        )
+        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
         assert "version.txt" in files_to_cache
 
         # It's unlikely the repo will change
@@ -149,9 +147,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
-        model_files, files_to_cache = copy_files_for_cache(
-            config, truss_path, build_path
-        )
+        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
 
         assert (
             "/app/hf_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
