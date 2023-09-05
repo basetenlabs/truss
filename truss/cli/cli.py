@@ -96,14 +96,6 @@ def image():
 @truss_cli.command()
 @click.argument("target_directory", required=True)
 @click.option(
-    "-t",
-    "--trainable",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="Create a trainable truss.",
-)
-@click.option(
     "-b",
     "--backend",
     show_default=True,
@@ -125,7 +117,6 @@ def init(target_directory, trainable, backend) -> None:
     model_name = ask_name()
     truss.init(
         target_directory=target_directory,
-        trainable=trainable,
         build_config=build_config,
         model_name=model_name,
     )

@@ -5,46 +5,7 @@ from ast import ClassDef, FunctionDef
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-from truss.constants import (
-    HUGGINGFACE_TRANSFORMER,
-    KERAS,
-    LIGHTGBM,
-    PYTORCH,
-    SKLEARN,
-    TENSORFLOW,
-    XGBOOST,
-)
-from truss.errors import FrameworkNotSupportedError
-
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-def _infer_model_framework(model_class: Any):
-    model_framework, _, _ = model_class.__module__.partition(".")
-    if model_framework == "transformers":
-        return HUGGINGFACE_TRANSFORMER
-    if model_framework not in {SKLEARN, TENSORFLOW, KERAS, LIGHTGBM, XGBOOST}:
-        try:
-            import torch
-
-            if issubclass(model_class, torch.nn.Module):
-                model_framework = PYTORCH
-            else:
-                raise FrameworkNotSupportedError(
-                    f"Models must be one of "
-                    f"{HUGGINGFACE_TRANSFORMER}, {SKLEARN}, "
-                    f"{XGBOOST}, {TENSORFLOW}, {PYTORCH} or "
-                    f"{LIGHTGBM} "
-                )
-        except ModuleNotFoundError:
-            raise FrameworkNotSupportedError(
-                f"Models must be one of "
-                f"{HUGGINGFACE_TRANSFORMER}, {SKLEARN}"
-                f"{XGBOOST}, {TENSORFLOW}, or {PYTORCH}. "
-                f"{LIGHTGBM} "
-            )
-
-    return model_framework
 
 
 @dataclass
@@ -93,17 +54,6 @@ def map_to_supported_python_version(python_version: str) -> str:
         return "py38"
 
     return python_version
-
-
-def infer_model_information(model: Any) -> ModelBuildStageOne:
-    model_class = _model_class(model)
-    model_framework = _infer_model_framework(model_class)
-    model_type = model_class.__name__
-
-    return ModelBuildStageOne(
-        model_type,
-        model_framework,
-    )
 
 
 def _infer_model_init_parameters(model_class: Any) -> Tuple[List, List]:
