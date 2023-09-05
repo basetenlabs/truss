@@ -39,11 +39,12 @@ def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
             server_docker_lines = f.readlines()
 
         def filter_empty_lines(lines):
-            return list(filter(lambda x: x and x != "\n", lines))
+            return list(filter(lambda x: x and x != "\n" and x != "", lines))
 
         gen_docker_lines = filter_empty_lines(gen_docker_lines)
         server_docker_lines = filter_empty_lines(server_docker_lines)
         assert gen_docker_lines == server_docker_lines
+
 
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
@@ -61,7 +62,8 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
             base_requirements_content = f.read()
 
         assert requirements_content == base_requirements_content + "numpy\n"
-        
+
+
 def test_overrides_model_id_vllm():
     config = TrussConfig(
         python_version="py39",

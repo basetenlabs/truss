@@ -11,6 +11,9 @@ python_version: py39
 requirements: []
 hf_cache:
 - repo_id: facebook/opt-125m
+  ignore_patterns:
+    - "*.h5"
+    - "*.msgpack"
 resources:
   accelerator: null
   cpu: '1'
