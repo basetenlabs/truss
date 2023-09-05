@@ -363,10 +363,10 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
 
 
 def _handle_exception():
-    logging.exception("Exception while running predict")
-    raise HTTPException(
-        status_code=500, detail={"message": "Error while running predict"}
-    )
+    # Note that logger.exception logs the stacktrace, such that the user can
+    # debug this error from the logs.
+    logging.exception("Internal Server Error")
+    raise HTTPException(status_code=500, detail={"message": "Internal Server Error"})
 
 
 def _intercept_exceptions_sync(func):
