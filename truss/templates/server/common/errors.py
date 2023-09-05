@@ -94,3 +94,7 @@ async def not_implemented_error_handler(_, exc):
     return JSONResponse(
         status_code=HTTPStatus.NOT_IMPLEMENTED, content={"error": str(exc)}
     )
+
+
+async def http_exception_handler(_, exc):
+    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
