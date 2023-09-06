@@ -29,10 +29,24 @@ class BasetenService(TrussService):
     def is_ready(self) -> bool:
         raise NotImplementedError
 
-    def predict(self, model_request_body: Dict):
-        invocation_url = f"{self._service_url}/predict"
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def model_version_id(self) -> str:
+        return self._model_version_id
+
+    @property
+    def invocation_url(self) -> str:
+        return f"{self._service_url}/predict"
+
+    def predict(
+        self,
+        model_request_body: Dict,
+    ):
         response = self._send_request(
-            invocation_url, "POST", data=model_request_body, stream=True
+            self.invocation_url, "POST", data=model_request_body, stream=True
         )
 
         if response.headers.get("transfer-encoding") == "chunked":

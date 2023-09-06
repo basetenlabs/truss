@@ -15,7 +15,7 @@ import common.errors as errors
 import shared.util as utils
 import uvicorn
 from common.termination_handler_middleware import TerminationHandlerMiddleware
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
@@ -26,6 +26,7 @@ from shared.serialization import (
     truss_msgpack_serialize,
 )
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
 # [IMPORTANT] A lot of things depend on this currently.
@@ -41,7 +42,10 @@ async def parse_body(request: Request) -> bytes:
     """
     Used by FastAPI to read body in an asynchronous manner
     """
-    return await request.body()
+    try:
+        return await request.body()
+    except ClientDisconnect as exc:
+        raise HTTPException(status_code=499, detail="Client disconnected") from exc
 
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
@@ -230,6 +234,7 @@ class TrussServer:
                 errors.ModelNotFound: errors.model_not_found_handler,
                 errors.ModelNotReady: errors.model_not_ready_handler,
                 NotImplementedError: errors.not_implemented_error_handler,
+                HTTPException: errors.http_exception_handler,
                 Exception: errors.generic_exception_handler,
             },
         )

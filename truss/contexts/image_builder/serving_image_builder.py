@@ -145,7 +145,7 @@ def update_config_and_gather_files(
         model_key = "model"
 
     if server_name != "TrussServer":
-        model_name = config.build.arguments.pop(model_key)
+        model_name = config.build.arguments[model_key]
         if "gs://" in model_name:
             # if we are pulling from a gs bucket, we want to alias it as a part of the cache
             model_to_cache = {"repo_id": model_name}
@@ -206,10 +206,13 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     dockerfile_template = read_template_from_fs(
         TEMPLATES_DIR, "tgi/tgi.Dockerfile.jinja"
     )
+
+    data_dir = build_dir / "data"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         hf_cache=config.hf_cache,
+        data_dir_exists=Path(data_dir).exists(),
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -252,11 +255,13 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     )
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
+    data_dir = build_dir / "data"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         should_install_server_requirements=True,
         hf_cache=config.hf_cache,
+        data_dir_exists=data_dir.exists(),
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -353,10 +358,8 @@ class ServingImageBuilder(ImageBuilder):
             )
 
         # Copy base TrussServer requirements if supplied custom base image
+        base_truss_server_reqs_filepath = SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
         if config.base_image:
-            base_truss_server_reqs_filepath = (
-                SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
-            )
             copy_into_build_dir(
                 base_truss_server_reqs_filepath, BASE_SERVER_REQUIREMENTS_TXT_FILENAME
             )
@@ -369,7 +372,22 @@ class ServingImageBuilder(ImageBuilder):
         if should_install_server_requirements:
             copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
 
-        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
+        with open(base_truss_server_reqs_filepath, "r") as f:
+            base_server_requirements = f.read()
+
+        # If the user has provided python requirements,
+        # append the truss server requirements, so that any conflicts
+        # are detected and cause a build failure. If there are no
+        # requirements provided, we just pass an empty string,
+        # as there's no need to install anything.
+        user_provided_python_requirements = (
+            base_server_requirements + spec.requirements_txt
+            if spec.requirements
+            else ""
+        )
+        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
+            user_provided_python_requirements
+        )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(
