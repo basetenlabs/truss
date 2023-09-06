@@ -13,6 +13,8 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
 
     - name: Configure Git user as basetenbot
       run: |
