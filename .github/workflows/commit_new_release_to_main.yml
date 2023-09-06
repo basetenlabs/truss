@@ -22,6 +22,7 @@ jobs:
     - name: Fetch all branches
       run: |
         git fetch --all --unshallow
+        git checkout release
         git pull origin release
 
     - name: Merge release into main with priority on main changes
