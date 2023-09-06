@@ -1,7 +1,9 @@
-import boto3
 from io import BytesIO
 
+import boto3
+
 s3 = boto3.client("s3")
+
 
 def get_byte_stream_for_s3_path(s3_path: str) -> BytesIO:
     """
@@ -16,6 +18,7 @@ def get_byte_stream_for_s3_path(s3_path: str) -> BytesIO:
     bucket_name, s3_key = s3_path.replace("s3://", "").split("/", 1)
     s3_object = s3.get_object(Bucket=bucket_name, Key=s3_key)
     return BytesIO(s3_object["Body"].read())
+
 
 def download_from_s3(s3_path: str, local_path: str) -> None:
     """
