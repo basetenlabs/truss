@@ -183,7 +183,10 @@ def test_vllm_caching_truss():
         truss_dir = truss_root / "test_data" / "test_vllm_truss"
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        print(container.logs)
 
 
 @pytest.mark.integration

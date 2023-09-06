@@ -133,7 +133,7 @@ def list_files(repo_id, data_dir, revision=None):
         return list_repo_files(repo_id, revision=revision)
 
 
-def update_model_key(config: TrussConfig):
+def update_model_key(config: TrussConfig) -> str:
     server_name = config.build.model_server
 
     if server_name == ModelServer.TGI:
@@ -141,8 +141,12 @@ def update_model_key(config: TrussConfig):
     elif server_name == ModelServer.VLLM:
         return "model"
 
+    raise ValueError(
+        f"Invalid server name (must be `TGI` or `VLLM`, not `{server_name}`)."
+    )
 
-def update_model_name(config: TrussConfig, model_key: str):
+
+def update_model_name(config: TrussConfig, model_key: str) -> str:
     if model_key not in config.build.arguments:
         # We should definitely just use the same key across both vLLM and TGI
         raise KeyError(
@@ -252,11 +256,13 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     )
 
     data_dir = build_dir / "data"
+    credentials_file = data_dir / "service_account.json"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         hf_cache=config.hf_cache,
-        data_dir_exists=Path(data_dir).exists(),
+        data_dir_exists=data_dir.exists(),
+        credentials_exists=credentials_file.exists(),
         cached_files=cached_file_paths,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
@@ -303,12 +309,14 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
     data_dir = build_dir / "data"
+    credentials_file = data_dir / "service_account.json"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         should_install_server_requirements=True,
         hf_cache=config.hf_cache,
         data_dir_exists=data_dir.exists(),
+        credentials_exists=credentials_file.exists(),
         cached_files=cached_file_paths,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
@@ -438,18 +446,12 @@ class ServingImageBuilder(ImageBuilder):
         )
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
-        requires_access_key = False
-        for model_url in model_files:
-            if "gs://" in model_url:
-                requires_access_key = True
-
         self._render_dockerfile(
             build_dir,
             should_install_server_requirements,
             model_files,
             use_hf_secret,
             cached_files,
-            requires_access_key,
         )
 
     def _render_dockerfile(
@@ -459,11 +461,11 @@ class ServingImageBuilder(ImageBuilder):
         model_files: Dict[str, Any],
         use_hf_secret: bool,
         cached_files: List[str],
-        requires_access_key: bool,
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
+        credentials_file = data_dir / "service_account.json"
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
@@ -498,7 +500,7 @@ class ServingImageBuilder(ImageBuilder):
             models=model_files,
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
-            requires_access_key=requires_access_key,
+            credentials_exists=credentials_file.exists(),
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
