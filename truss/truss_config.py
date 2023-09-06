@@ -117,7 +117,7 @@ class HuggingFaceModel:
 
 @dataclass
 class HuggingFaceCache:
-    models: List[HuggingFaceModel]
+    models: List[HuggingFaceModel] = field(default_factory=list)
 
     @staticmethod
     def from_list(items: List[Dict[str, str]]) -> "HuggingFaceCache":
@@ -441,7 +441,7 @@ class TrussConfig:
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
-    hf_cache: Optional[HuggingFaceCache] = None
+    hf_cache: HuggingFaceCache = field(default_factory=HuggingFaceCache)
 
     @property
     def canonical_python_version(self) -> str:
@@ -489,7 +489,7 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
-            hf_cache=transform_optional(d.get("hf_cache"), HuggingFaceCache.from_list),
+            hf_cache=HuggingFaceCache.from_list(d.get("hf_cache", [])),
         )
         config.validate()
         return config

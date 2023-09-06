@@ -29,13 +29,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import (
-    Build,
-    HuggingFaceCache,
-    HuggingFaceModel,
-    ModelServer,
-    TrussConfig,
-)
+from truss.truss_config import Build, HuggingFaceModel, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
@@ -155,11 +149,9 @@ def update_model_name(config: TrussConfig, model_key: str) -> str:
     model_name = config.build.arguments[model_key]
     if "gs://" in model_name:
         # if we are pulling from a gs bucket, we want to alias it as a part of the cache
-        model_to_cache = {"repo_id": model_name}
-        if config.hf_cache:
-            config.hf_cache.models.append(HuggingFaceModel.from_dict(model_to_cache))
-        else:
-            config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
+        model_to_cache = HuggingFaceModel(model_name)
+        config.hf_cache.models.append(model_to_cache)
+
         config.build.arguments[
             model_key
         ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
@@ -501,6 +493,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
             credentials_exists=credentials_file.exists(),
+            hf_cache=len(config.hf_cache.models) > 0,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)

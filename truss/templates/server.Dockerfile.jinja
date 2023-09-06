@@ -1,4 +1,4 @@
-{%- if config.hf_cache %}
+{%- if hf_cache %}
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %}
 
@@ -65,11 +65,16 @@ RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
 
-{%- if config.hf_cache %}
+{%- if hf_cache %}
     {% for file in cached_files %}
+        {%- if credentials_exists %}
+COPY --from=cache_warmer {{ file }} {{ file }}
+        {%- else %}
 COPY --from=cache_warmer ./root/.cache/huggingface/hub/{{file}} /root/.cache/huggingface/hub/{{file}}
+        {%- endif%}
     {% endfor %}
 {%- endif %}
+
 
 {% endblock %}
 
