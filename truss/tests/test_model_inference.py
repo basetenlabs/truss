@@ -36,7 +36,7 @@ def _create_truss(truss_dir: Path, config_contents: str, model_contents: str):
 def _log_contains_error(line: dict, error: str):
     return (
         line["levelname"] == "ERROR"
-        and line["message"] == "Exception while running predict"
+        and line["message"] == "Internal Server Error"
         and error in line["exc_info"]
     )
 
@@ -370,8 +370,9 @@ secrets:
         response = requests.post(full_url, json={})
 
         assert "error" in response.json()
+
         assert_logs_contain_error(container.logs(), "not specified in the config")
-        assert "Error while running predict" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]["message"]
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         # Case where the secret is not mounted
@@ -388,10 +389,11 @@ secrets:
 
         response = requests.post(full_url, json={})
         assert response.status_code == 500
+
         assert_logs_contain_error(
             container.logs(), "'secret' not found. Please check available secrets."
         )
-        assert "Error while running predict" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]["message"]
 
 
 @pytest.mark.integration
@@ -422,7 +424,7 @@ def test_truss_with_errors():
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
 
-        assert "Error while running predict" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]["message"]
 
     model_preprocess_error = """
     class Model:
@@ -450,7 +452,7 @@ def test_truss_with_errors():
         assert "error" in response.json()
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Error while running predict" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]["message"]
 
     model_postprocess_error = """
     class Model:
@@ -477,7 +479,7 @@ def test_truss_with_errors():
         assert response.status_code == 500
         assert "error" in response.json()
         assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Error while running predict" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]["message"]
 
     model_async = """
     class Model:
@@ -503,7 +505,7 @@ def test_truss_with_errors():
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
 
-        assert "Error while running predict" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]["message"]
 
 
 @pytest.mark.integration
