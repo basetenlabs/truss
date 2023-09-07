@@ -366,7 +366,7 @@ def _handle_exception():
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
     logging.exception("Internal Server Error")
-    raise HTTPException(status_code=500, detail={"message": "Internal Server Error"})
+    raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 def _intercept_exceptions_sync(func):

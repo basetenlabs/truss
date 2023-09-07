@@ -424,7 +424,7 @@ def test_truss_with_errors():
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
 
-        assert "Internal Server Error" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]
 
     model_preprocess_error = """
     class Model:
@@ -452,7 +452,7 @@ def test_truss_with_errors():
         assert "error" in response.json()
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Internal Server Error" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]
 
     model_postprocess_error = """
     class Model:
@@ -479,7 +479,7 @@ def test_truss_with_errors():
         assert response.status_code == 500
         assert "error" in response.json()
         assert_logs_contain_error(container.logs(), "ValueError: error")
-        assert "Internal Server Error" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]
 
     model_async = """
     class Model:
@@ -505,7 +505,7 @@ def test_truss_with_errors():
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
 
-        assert "Internal Server Error" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]
 
 
 @pytest.mark.integration
