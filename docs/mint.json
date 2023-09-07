@@ -65,6 +65,12 @@
       ]
     },
     {
+      "group": "Guides",
+      "pages": [
+        "guides/secrets"
+      ]
+    },
+    {
       "group": "Remotes",
       "pages": [
         "remotes/baseten",
