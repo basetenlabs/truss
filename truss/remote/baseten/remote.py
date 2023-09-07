@@ -183,6 +183,13 @@ class BasetenRemote(TrussRemote):
         dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
+        if not (truss_hash and truss_signature):
+            logger.error(
+                """Failed to inspect a running remote deployment to watch for changes.
+Ensure that there exists a running remote deployment before attempting to watch for changes
+            """
+            )
+            return
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
