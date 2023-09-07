@@ -433,7 +433,7 @@ def push(
 
         click.echo(draft_model_text)
 
-    logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
+    logs_url = remote_provider.get_remote_logs_url(model_name, publish)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
     should_open_logs = inquirer.confirm(
         message="🗂  Open logs in a new tab?", default=True
