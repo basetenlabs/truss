@@ -4,7 +4,6 @@
 
 FROM baseten/vllm:v0.3 as vllm
 
-FROM baseten/vllm:v0.1 as vllm
 EXPOSE 8080-9000
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
