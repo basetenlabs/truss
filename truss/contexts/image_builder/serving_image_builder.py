@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from google.cloud import storage
-from huggingface_hub import list_repo_files
+from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
@@ -29,13 +29,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import (
-    Build,
-    HuggingFaceCache,
-    HuggingFaceModel,
-    ModelServer,
-    TrussConfig,
-)
+from truss.truss_config import Build, HuggingFaceModel, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
@@ -133,33 +127,43 @@ def list_files(repo_id, data_dir, revision=None):
         return list_repo_files(repo_id, revision=revision)
 
 
-def update_config_and_gather_files(
-    config: TrussConfig, truss_dir: Path, build_dir: Path, server_name: str
-):
+def update_model_key(config: TrussConfig) -> str:
+    server_name = config.build.model_server
+
+    if server_name == ModelServer.TGI:
+        return "model_id"
+    elif server_name == ModelServer.VLLM:
+        return "model"
+
+    raise ValueError(
+        f"Invalid server name (must be `TGI` or `VLLM`, not `{server_name}`)."
+    )
+
+
+def update_model_name(config: TrussConfig, model_key: str) -> str:
+    if model_key not in config.build.arguments:
+        # We should definitely just use the same key across both vLLM and TGI
+        raise KeyError(
+            "Key for model missing in config or incorrect key used. Use `model` for VLLM and `model_id` for TGI."
+        )
+    model_name = config.build.arguments[model_key]
+    if "gs://" in model_name:
+        # if we are pulling from a gs bucket, we want to alias it as a part of the cache
+        model_to_cache = HuggingFaceModel(model_name)
+        config.hf_cache.models.append(model_to_cache)
+
+        config.build.arguments[
+            model_key
+        ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
+    return model_name
+
+
+def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-    if server_name == "TGI":
-        model_key = "model_id"
-    elif server_name == "vLLM":
-        model_key = "model"
-
-    if server_name != "TrussServer":
-        model_name = config.build.arguments[model_key]
-        if "gs://" in model_name:
-            # if we are pulling from a gs bucket, we want to alias it as a part of the cache
-            model_to_cache = {"repo_id": model_name}
-            if config.hf_cache:
-                config.hf_cache.models.append(
-                    HuggingFaceModel.from_dict(model_to_cache)
-                )
-            else:
-                config.hf_cache = HuggingFaceCache.from_list([model_to_cache])
-            config.build.arguments[
-                model_key
-            ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
-
     model_files = {}
+    cached_files: List[str] = []
     if config.hf_cache:
         curr_dir = Path(__file__).parent.resolve()
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
@@ -180,18 +184,52 @@ def update_config_and_gather_files(
                 )
             )
 
-            if "gs://" in repo_id:
-                repo_id, _ = split_gs_path(repo_id)
-                repo_id = f"gs://{repo_id}"
+            cached_files = fetch_files_to_cache(
+                cached_files, repo_id, filtered_repo_files
+            )
 
-            model_files[repo_id] = {
-                "files": filtered_repo_files,
-                "revision": revision,
-            }
+            model_files[repo_id] = {"files": filtered_repo_files, "revision": revision}
+
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
     )
-    return model_files
+    return model_files, cached_files
+
+
+def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: list):
+    if "gs://" in repo_id:
+        bucket_name, _ = split_gs_path(repo_id)
+        repo_id = f"gs://{bucket_name}"
+
+        for filename in filtered_repo_files:
+            cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
+    else:
+        repo_folder_name = f"models--{repo_id.replace('/', '--')}"
+        for filename in filtered_repo_files:
+            hf_url = hf_hub_url(repo_id, filename)
+            hf_file_metadata = get_hf_file_metadata(hf_url)
+
+            cached_files.append(f"{repo_folder_name}/blobs/{hf_file_metadata.etag}")
+
+        # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
+        cached_files.append(f"{repo_folder_name}/snapshots/")
+
+        # refs just has files with revision commit hashes
+        cached_files.append(f"{repo_folder_name}/refs/")
+
+        cached_files.append("version.txt")
+
+    return cached_files
+
+
+def update_config_and_gather_files(
+    config: TrussConfig, truss_dir: Path, build_dir: Path
+):
+    if config.build.model_server != ModelServer.TrussServer:
+        model_key = update_model_key(config)
+        update_model_name(config, model_key)
+
+    return get_files_to_cache(config, truss_dir, build_dir)
 
 
 def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
@@ -200,7 +238,9 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     if not build_dir.exists():
         build_dir.mkdir(parents=True)
 
-    model_files = update_config_and_gather_files(config, truss_dir, build_dir, "TGI")
+    model_files, cached_file_paths = update_config_and_gather_files(
+        config, truss_dir, build_dir
+    )
 
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
@@ -208,11 +248,14 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     )
 
     data_dir = build_dir / "data"
+    credentials_file = data_dir / "service_account.json"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         hf_cache=config.hf_cache,
-        data_dir_exists=Path(data_dir).exists(),
+        data_dir_exists=data_dir.exists(),
+        credentials_exists=credentials_file.exists(),
+        cached_files=cached_file_paths,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -247,7 +290,9 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     build_config: Build = config.build
     server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
 
-    model_files = update_config_and_gather_files(config, truss_dir, build_dir, "vLLM")
+    model_files, cached_file_paths = update_config_and_gather_files(
+        config, truss_dir, build_dir
+    )
 
     hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
     dockerfile_template = read_template_from_fs(
@@ -256,12 +301,15 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
     data_dir = build_dir / "data"
+    credentials_file = data_dir / "service_account.json"
     dockerfile_content = dockerfile_template.render(
         hf_access_token=hf_access_token,
         models=model_files,
         should_install_server_requirements=True,
         hf_cache=config.hf_cache,
         data_dir_exists=data_dir.exists(),
+        credentials_exists=credentials_file.exists(),
+        cached_files=cached_file_paths,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -336,8 +384,8 @@ class ServingImageBuilder(ImageBuilder):
         download_external_data(self._spec.external_data, data_dir)
 
         # Download from HuggingFace
-        model_files = update_config_and_gather_files(
-            config, truss_dir, build_dir, server_name="TrussServer"
+        model_files, cached_files = update_config_and_gather_files(
+            config, truss_dir, build_dir
         )
 
         # Copy inference server code
@@ -391,7 +439,11 @@ class ServingImageBuilder(ImageBuilder):
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(
-            build_dir, should_install_server_requirements, model_files, use_hf_secret
+            build_dir,
+            should_install_server_requirements,
+            model_files,
+            use_hf_secret,
+            cached_files,
         )
 
     def _render_dockerfile(
@@ -400,10 +452,12 @@ class ServingImageBuilder(ImageBuilder):
         should_install_server_requirements: bool,
         model_files: Dict[str, Any],
         use_hf_secret: bool,
+        cached_files: List[str],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
+        credentials_file = data_dir / "service_account.json"
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
@@ -437,6 +491,9 @@ class ServingImageBuilder(ImageBuilder):
             truss_hash=directory_content_hash(self._truss_dir),
             models=model_files,
             use_hf_secret=use_hf_secret,
+            cached_files=cached_files,
+            credentials_exists=credentials_file.exists(),
+            hf_cache=len(config.hf_cache.models) > 0,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)

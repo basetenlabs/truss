@@ -1,5 +1,5 @@
 ARG PYVERSION=py39
-FROM baseten/truss-server-base:3.9-v0.4.3
+FROM baseten/truss-server-base:3.9-v0.4.3 as truss_server
 
 ENV PYTHON_EXECUTABLE /usr/local/bin/python3
 

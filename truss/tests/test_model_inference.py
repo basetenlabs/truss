@@ -372,7 +372,7 @@ secrets:
         assert "error" in response.json()
 
         assert_logs_contain_error(container.logs(), "not specified in the config")
-        assert "Internal Server Error" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         # Case where the secret is not mounted
@@ -393,7 +393,7 @@ secrets:
         assert_logs_contain_error(
             container.logs(), "'secret' not found. Please check available secrets."
         )
-        assert "Internal Server Error" in response.json()["error"]["message"]
+        assert "Internal Server Error" in response.json()["error"]
 
 
 @pytest.mark.integration
