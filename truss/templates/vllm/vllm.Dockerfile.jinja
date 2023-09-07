@@ -1,4 +1,4 @@
-FROM baseten/vllm:v0.1
+FROM baseten/vllm:v0.2
 
 EXPOSE 8080-9000
 
@@ -29,6 +29,7 @@ RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{
         {% endfor %}
 {%- endif %}
 
+RUN pip install pandas --no-cache-dir && rm -rf /root/.cache/pip
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 
 RUN mkdir -p /var/log/supervisor
