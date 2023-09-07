@@ -1,7 +1,7 @@
 from http import HTTPStatus
 from typing import Optional
 
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 
 class ModelMissingError(Exception):
@@ -97,4 +97,4 @@ async def not_implemented_error_handler(_, exc):
 
 
 async def http_exception_handler(_, exc):
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+    return Response(status_code=exc.status_code, content=exc.detail)
