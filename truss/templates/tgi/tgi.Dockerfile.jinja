@@ -19,13 +19,8 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 ENV SERVER_START_CMD /usr/bin/supervisord
 
 {%- if hf_cache %}
-        {% for file in cached_files %}
-                {%- if credentials_exists %}
-COPY --from=cache_warmer {{file}} {{file}}
-                {%- else %}
-COPY --from=cache_warmer ./root/.cache/huggingface/hub/{{file}} /data/{{file}}
-                {%- endif %}
-        {% endfor %}
+        {%- set hf_dst_directory="/data/"%}
+        {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}
 
 ENTRYPOINT ["/usr/bin/supervisord"]

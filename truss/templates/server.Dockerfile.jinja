@@ -66,13 +66,8 @@ RUN python3 -m venv /control/.env \
     {%- endif %}
 
 {%- if hf_cache %}
-    {% for file in cached_files %}
-        {%- if credentials_exists %}
-COPY --from=cache_warmer {{ file }} {{ file }}
-        {%- else %}
-COPY --from=cache_warmer ./root/.cache/huggingface/hub/{{file}} /root/.cache/huggingface/hub/{{file}}
-        {%- endif%}
-    {% endfor %}
+    {%- set hf_dst_directory="/root/.cache/huggingface/hub/"%}
+    {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}
 
 

@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -171,7 +172,11 @@ def test_tgi_caching_truss():
         truss_dir = truss_root / "test_data" / "test_tgi_truss"
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        time.sleep(5)
+        assert "Successfully downloaded weights." in container.logs()
 
 
 @pytest.mark.integration
@@ -195,4 +200,8 @@ def test_truss_server_caching_truss():
         truss_dir = truss_root / "test_data" / "test_truss_server_caching_truss"
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        time.sleep(5)
+        assert "Downloading model.safetensors:" not in container.logs()
