@@ -1,5 +1,5 @@
 import time
-from typing import Callable
+from typing import Callable, Optional
 
 
 def retry(
@@ -8,6 +8,7 @@ def retry(
     logging_fn: Callable,
     base_message: str,
     gap_seconds: float = 0.0,
+    logging_exc_fn: Optional[Callable] = None,
 ):
     i = 0
     while i <= count:
@@ -15,6 +16,8 @@ def retry(
             fn()
             return
         except Exception as exc:
+            if logging_exc_fn:
+                logging_exc_fn(exc)
             msg = base_message
             if i >= count:
                 raise exc

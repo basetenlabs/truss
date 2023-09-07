@@ -166,6 +166,7 @@ class ModelWrapper:
                 self._logger.warn,
                 "Failed to load model.",
                 gap_seconds=1.0,
+                logging_exc_fn=self._logger.exception,
             )
 
     async def preprocess(
