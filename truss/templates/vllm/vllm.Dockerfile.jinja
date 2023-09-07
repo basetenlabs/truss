@@ -2,6 +2,7 @@
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %}
 
+FROM baseten/vllm:v0.3 as vllm
 
 FROM baseten/vllm:v0.1 as vllm
 EXPOSE 8080-9000

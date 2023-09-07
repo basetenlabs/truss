@@ -103,7 +103,7 @@ def image():
     type=click.Choice([server.value for server in ModelServer]),
 )
 @error_handling
-def init(target_directory, trainable, backend) -> None:
+def init(target_directory, backend) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
