@@ -175,7 +175,7 @@ def test_tgi_caching_truss():
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
-        time.sleep(5)
+        time.sleep(15)
         assert "Successfully downloaded weights." in container.logs()
 
 
@@ -203,5 +203,5 @@ def test_truss_server_caching_truss():
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
-        time.sleep(5)
+        time.sleep(15)
         assert "Downloading model.safetensors:" not in container.logs()
