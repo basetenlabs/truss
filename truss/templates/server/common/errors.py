@@ -97,4 +97,6 @@ async def not_implemented_error_handler(_, exc):
 
 
 async def http_exception_handler(_, exc):
-    return Response(status_code=HTTPStatus.OK, content="Exception :" + str(exc))
+    return Response(
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content="Exception :" + str(exc)
+    )
