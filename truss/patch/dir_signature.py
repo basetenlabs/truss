@@ -14,7 +14,12 @@ def directory_content_signature(root: Path) -> Dict[str, str]:
 
     Hash of directories is marked None.
     """
-    paths = list(root.glob("**/*"))
+    paths = list(
+        filter(
+            lambda path: not str(path.relative_to(root)).startswith("data/"),
+            list(root.glob("**/*")),
+        )
+    )
     paths.sort(key=lambda p: p.relative_to(root))
 
     def path_hash(pth: Path):
