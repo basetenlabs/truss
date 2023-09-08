@@ -1,0 +1,7 @@
+{% for file in cached_files %}
+    {%- if credentials_exists %}
+COPY --from=cache_warmer {{file}} {{file}}
+    {%- else %}
+COPY --from=cache_warmer ./root/.cache/huggingface/hub/{{file}} {{hf_dst_directory}}{{file}}
+    {%- endif %}
+{% endfor %}

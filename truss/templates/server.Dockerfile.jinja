@@ -1,3 +1,7 @@
+{%- if hf_cache %}
+{%- include "cache.Dockerfile.jinja" %}
+{%- endif %}
+
 {% extends "base.Dockerfile.jinja" %}
 
 {% block base_image_patch %}
@@ -52,20 +56,6 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
-{%- if config.hf_cache != None %}
-RUN mkdir -p /app
-RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
-ENV B10CP_PATH_TRUSS /app/b10cp
-COPY ./cache_requirements.txt /app/cache_requirements.txt
-RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-COPY ./cache_warmer.py /cache_warmer.py
-    {% for repo, hf_dir in models.items() %}
-        {% for file in hf_dir.files %}
-{{ "RUN --mount=type=secret,id=hf_access_token,dst=/etc/secrets/hf_access_token" if use_hf_secret else "RUN" }} $PYTHON_EXECUTABLE /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
-        {% endfor %}
-    {% endfor %}
-{%- endif %}
-
 COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml
@@ -74,6 +64,13 @@ COPY ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
+
+{%- if hf_cache %}
+    {%- set hf_dst_directory="/root/.cache/huggingface/hub/"%}
+    {%- include "copy_cache_files.Dockerfile.jinja"%}
+{%- endif %}
+
+
 {% endblock %}
 
 {% block run %}
