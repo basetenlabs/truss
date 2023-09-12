@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -203,6 +204,14 @@ def test_non_default_train():
     new_config["train"] = updated_train
 
     assert new_config == config.to_dict(verbose=False)
+
+
+def test_null_hf_cache_key():
+    config_yaml_dict = {"hf_cache": None}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
+        yaml.safe_dump(config_yaml_dict, tmp_file)
+    config = TrussConfig.from_yaml(Path(tmp_file.name))
+    assert config.hf_cache == HuggingFaceCache.from_list([])
 
 
 def test_huggingface_cache_single_model_default_revision():
