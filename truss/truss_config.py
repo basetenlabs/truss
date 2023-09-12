@@ -489,7 +489,10 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
-            hf_cache=HuggingFaceCache.from_list(d.get("hf_cache", [])),
+            hf_cache=transform_optional(
+                d.get("hf_cache") or [],
+                HuggingFaceCache.from_list,
+            ),
         )
         config.validate()
         return config
