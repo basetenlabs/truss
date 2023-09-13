@@ -114,6 +114,9 @@ def list_bucket_files(bucket_name, data_dir, is_trusted=False):
 
     all_objects = []
     for blob in blobs:
+        # leave out folders
+        if blob.name[-1] == "/":
+            continue
         all_objects.append(blob.name)
 
     return all_objects
