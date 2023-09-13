@@ -163,6 +163,44 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         assert "fake_model-001-of-002.bin" in model_files[model]["files"]
 
 
+@patch("truss.contexts.image_builder.serving_image_builder.list_bucket_files")
+def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
+    mock_list_bucket_files.return_value = [
+        "folder_a/folder_b/fake_model-001-of-002.bin",
+        "folder_a/folder_b/fake_model-002-of-002.bin",
+    ]
+    model = "gs://crazy-good-new-model-7b/folder_a/folder_b"
+
+    config = TrussConfig(
+        python_version="py39",
+        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+    )
+
+    with TemporaryDirectory() as tmp_dir:
+        truss_path = Path(tmp_dir)
+        build_path = truss_path / "build"
+        build_path.mkdir(parents=True, exist_ok=True)
+
+        model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        print(files_to_cache)
+
+        assert (
+            "/app/hf_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
+            in files_to_cache
+        )
+        assert (
+            "/app/hf_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-002-of-002.bin"
+            in files_to_cache
+        )
+
+        assert (
+            "folder_a/folder_b/fake_model-001-of-002.bin" in model_files[model]["files"]
+        )
+        assert (
+            "folder_a/folder_b/fake_model-001-of-002.bin" in model_files[model]["files"]
+        )
+
+
 @pytest.mark.integration
 def test_tgi_caching_truss():
     with ensure_kill_all():

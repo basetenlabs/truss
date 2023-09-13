@@ -32,14 +32,28 @@ def _download_from_url_using_b10cp(
     )
 
 
+def split_gs_path(gs_path):
+    # Remove the 'gs://' prefix
+    path = gs_path.replace("gs://", "")
+
+    # Split on the first slash
+    parts = path.split("/", 1)
+
+    bucket_name = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    return bucket_name, prefix
+
+
 def download_file(
     repo_name, file_name, revision_name=None, key_file="/app/data/service_account.json"
 ):
     # Check if repo_name starts with "gs://"
     if "gs://" in repo_name:
         # Create directory if not exist
+        bucket_name, _ = split_gs_path(repo_name)
         repo_name = repo_name.replace("gs://", "")
-        cache_dir = Path(f"/app/hf_cache/{repo_name}")
+        cache_dir = Path(f"/app/hf_cache/{bucket_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Connect to GCS storage
@@ -47,6 +61,7 @@ def download_file(
             storage_client = storage.Client.from_service_account_json(key_file)
             bucket = storage_client.bucket(repo_name)
             blob = bucket.blob(file_name)
+
             dst_file = Path(f"{cache_dir}/{file_name}")
             if not dst_file.parent.exists():
                 dst_file.parent.mkdir(parents=True)
