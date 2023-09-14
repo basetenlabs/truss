@@ -7,6 +7,7 @@ from typing import Optional
 
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
+from truss.contexts.image_builder.util import split_gs_path
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
@@ -32,19 +33,6 @@ def _download_from_url_using_b10cp(
     )
 
 
-def split_gs_path(gs_path):
-    # Remove the 'gs://' prefix
-    path = gs_path.replace("gs://", "")
-
-    # Split on the first slash
-    parts = path.split("/", 1)
-
-    bucket_name = parts[0]
-    prefix = parts[1] if len(parts) > 1 else ""
-
-    return bucket_name, prefix
-
-
 def download_file(
     repo_name, file_name, revision_name=None, key_file="/app/data/service_account.json"
 ):
@@ -59,7 +47,7 @@ def download_file(
         # Connect to GCS storage
         try:
             storage_client = storage.Client.from_service_account_json(key_file)
-            bucket = storage_client.bucket(repo_name)
+            bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(file_name)
 
             dst_file = Path(f"{cache_dir}/{file_name}")

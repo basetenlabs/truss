@@ -23,6 +23,7 @@ from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
     TRUSS_BASE_IMAGE_VERSION_TAG,
     file_is_not_empty,
+    split_gs_path,
     to_dotted_python_version,
     truss_base_image_name,
     truss_base_image_tag,
@@ -85,19 +86,6 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
 
     (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(_spec.requirements_txt)
     (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
-
-
-def split_gs_path(gs_path):
-    # Remove the 'gs://' prefix
-    path = gs_path.replace("gs://", "")
-
-    # Split on the first slash
-    parts = path.split("/", 1)
-
-    bucket_name = parts[0]
-    prefix = parts[1] if len(parts) > 1 else ""
-
-    return bucket_name, prefix
 
 
 def list_bucket_files(bucket_name, data_dir, is_trusted=False):

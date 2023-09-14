@@ -60,3 +60,16 @@ def to_dotted_python_version(truss_python_version: str) -> str:
     e.g. py39 to 3.9
     """
     return f"{truss_python_version[2]}.{truss_python_version[3:]}"
+
+
+def split_gs_path(gs_path):
+    # Remove the 'gs://' prefix
+    path = gs_path.replace("gs://", "")
+
+    # Split on the first slash
+    parts = path.split("/", 1)
+
+    bucket_name = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    return bucket_name, prefix
