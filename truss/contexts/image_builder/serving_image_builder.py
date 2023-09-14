@@ -231,7 +231,6 @@ def update_config_and_gather_files(
     if config.build.model_server != ModelServer.TrussServer:
         model_key = update_model_key(config)
         update_model_name(config, model_key)
-
     return get_files_to_cache(config, truss_dir, build_dir)
 
 
@@ -481,6 +480,8 @@ class ServingImageBuilder(ImageBuilder):
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
+
+        hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -497,6 +498,7 @@ class ServingImageBuilder(ImageBuilder):
             cached_files=cached_files,
             credentials_exists=credentials_file.exists(),
             hf_cache=len(config.hf_cache.models) > 0,
+            hf_access_token=hf_access_token,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
