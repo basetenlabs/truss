@@ -40,7 +40,6 @@ def download_file(
     if "gs://" in repo_name:
         # Create directory if not exist
         bucket_name, _ = split_gs_path(repo_name)
-        repo_name = repo_name.replace("gs://", "")
         cache_dir = Path(f"/app/hf_cache/{bucket_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
