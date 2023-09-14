@@ -1,0 +1,46 @@
+---
+title: How to use parent images
+description: "A guide to configuring a parent image for your truss"
+---
+
+
+Bring your own parent image with Truss.
+
+## Setting a parent image in config.yaml
+
+To specify a parent image to build a truss container image from in your `config.yaml` configure a `base_image`.
+
+```yaml config.yaml
+base_image:
+  image: <image_name:tag>
+  python_executable_path: <path-to-python>
+```
+
+where `python_executable_path` is a path to a python executable with which to run your server.
+
+## Example usage
+
+This [example truss](https://github.com/basetenlabs/truss/tree/main/examples/nemo-titanet) demonstrates how to properly configure a parent image for Nvidia NeMo TitaNet:
+
+```yaml config.yaml
+base_image:
+  image: nvcr.io/nvidia/nemo:23.03
+  python_executable_path: /usr/bin/python
+apply_library_patches: true
+bundled_packages_dir: packages
+data_dir: data
+requirements:
+- PySoundFile
+live_reload: false
+resources:
+  accelerator: T4
+  cpu: 2500m
+  memory: 4512Mi
+  use_gpu: true
+secrets: {}
+spec_version: '2.0'
+system_packages:
+- python3.8-venv
+```
+
+For configuring private parent images see the [secrets guide](secrets#using-secrets-at-build-time)
