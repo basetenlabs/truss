@@ -17,6 +17,6 @@ RUN pip install -r /app/cache_requirements.txt --no-cache-dir && rm -rf /root/.c
 COPY ./cache_warmer.py /cache_warmer.py
 {% for repo, hf_dir in models.items() %}
         {% for file in hf_dir.files %}
-RUN python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
+{{ "RUN --mount=type=secret,id=hf_access_token,dst=/etc/secrets/hf_access_token" if use_hf_secret else "RUN" }} python3 /cache_warmer.py {{file}} {{repo}} {% if hf_dir.revision != None %}{{hf_dir.revision}}{% endif %}
         {% endfor %}
 {% endfor %}
