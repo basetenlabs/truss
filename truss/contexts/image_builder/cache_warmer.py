@@ -57,19 +57,23 @@ def download_file(
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Connect to GCS storage
-        try:
-            storage_client = storage.Client.from_service_account_json(key_file)
-            bucket = storage_client.bucket(repo_name)
-            blob = bucket.blob(file_name)
+        storage_client = storage.Client.from_service_account_json(key_file)
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(file_name)
 
-            dst_file = Path(f"{cache_dir}/{file_name}")
-            if not dst_file.parent.exists():
-                dst_file.parent.mkdir(parents=True)
-            url = blob.generate_signed_url(
-                version="v4",
-                expiration=datetime.timedelta(minutes=15),
-                method="GET",
-            )
+        dst_file = Path(f"{cache_dir}/{file_name}")
+        if not dst_file.parent.exists():
+            dst_file.parent.mkdir(parents=True)
+
+        if not blob.exists(storage_client):
+            raise RuntimeError(f"File not found on GCS bucket: {blob.name}")
+
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(minutes=15),
+            method="GET",
+        )
+        try:
             proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
             proc.wait()
         except Exception as e:

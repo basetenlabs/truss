@@ -106,6 +106,7 @@ class ModelContainerPatchApplier:
                     self._pip_path,
                     "install",
                     python_requirement_patch.requirement,
+                    "--upgrade",
                 ],
                 check=True,
             )
