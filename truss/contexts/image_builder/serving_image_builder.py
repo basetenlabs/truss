@@ -45,6 +45,7 @@ BUILD_CONTROL_SERVER_DIR_NAME = "control"
 CONFIG_FILE = "config.yaml"
 
 HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
+HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
 
 def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
@@ -234,7 +235,9 @@ def update_config_and_gather_files(
     return get_files_to_cache(config, truss_dir, build_dir)
 
 
-def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
+def create_tgi_build_dir(
+    config: TrussConfig, build_dir: Path, truss_dir: Path, use_hf_secret: bool
+):
     copy_tree_path(truss_dir, build_dir)
 
     if not build_dir.exists():
@@ -258,6 +261,8 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
         data_dir_exists=data_dir.exists(),
         credentials_exists=credentials_file.exists(),
         cached_files=cached_file_paths,
+        use_hf_secret=use_hf_secret,
+        hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -279,7 +284,9 @@ def create_tgi_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     supervisord_filepath.write_text(supervisord_contents)
 
 
-def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
+def create_vllm_build_dir(
+    config: TrussConfig, build_dir: Path, truss_dir: Path, use_hf_secret
+):
     copy_tree_path(truss_dir, build_dir)
 
     server_endpoint_config = {
@@ -312,6 +319,8 @@ def create_vllm_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path)
         data_dir_exists=data_dir.exists(),
         credentials_exists=credentials_file.exists(),
         cached_files=cached_file_paths,
+        use_hf_secret=use_hf_secret,
+        hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -361,10 +370,10 @@ class ServingImageBuilder(ImageBuilder):
             build_dir = build_truss_target_directory(model_framework_name)
 
         if config.build.model_server is ModelServer.TGI:
-            create_tgi_build_dir(config, build_dir, truss_dir)
+            create_tgi_build_dir(config, build_dir, truss_dir, use_hf_secret)
             return
         elif config.build.model_server is ModelServer.VLLM:
-            create_vllm_build_dir(config, build_dir, truss_dir)
+            create_vllm_build_dir(config, build_dir, truss_dir, use_hf_secret)
             return
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
@@ -481,6 +490,7 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
 
+        hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
@@ -497,6 +507,8 @@ class ServingImageBuilder(ImageBuilder):
             cached_files=cached_files,
             credentials_exists=credentials_file.exists(),
             hf_cache=len(config.hf_cache.models) > 0,
+            hf_access_token=hf_access_token,
+            hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
