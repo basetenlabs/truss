@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from truss.contexts.image_builder.serving_image_builder import (
+    HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_cache,
     update_model_key,
@@ -253,13 +254,10 @@ def test_hf_cache_dockerfile():
     builder_context = ServingImageBuilderContext
     image_builder = builder_context.run(tr.spec.truss_dir)
 
-    secret_mount = (
-        "RUN --mount=type=secret,id=hf-access-token,dst=/etc/secrets/hf_access_token"
-    )
+    secret_mount = f"RUN --mount=type=secret,id={HF_ACCESS_TOKEN_FILE_NAME}"
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
-            print(gen_docker_file)
             assert secret_mount in gen_docker_file

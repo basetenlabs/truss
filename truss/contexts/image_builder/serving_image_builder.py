@@ -45,6 +45,7 @@ BUILD_CONTROL_SERVER_DIR_NAME = "control"
 CONFIG_FILE = "config.yaml"
 
 HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
+HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
 
 def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
@@ -261,6 +262,7 @@ def create_tgi_build_dir(
         credentials_exists=credentials_file.exists(),
         cached_files=cached_file_paths,
         use_hf_secret=use_hf_secret,
+        hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -318,6 +320,7 @@ def create_vllm_build_dir(
         credentials_exists=credentials_file.exists(),
         cached_files=cached_file_paths,
         use_hf_secret=use_hf_secret,
+        hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
     )
     dockerfile_filepath = build_dir / "Dockerfile"
     dockerfile_filepath.write_text(dockerfile_content)
@@ -505,6 +508,7 @@ class ServingImageBuilder(ImageBuilder):
             credentials_exists=credentials_file.exists(),
             hf_cache=len(config.hf_cache.models) > 0,
             hf_access_token=hf_access_token,
+            hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
