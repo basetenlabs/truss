@@ -243,3 +243,23 @@ def test_truss_server_caching_truss():
         )
         time.sleep(15)
         assert "Downloading model.safetensors:" not in container.logs()
+
+
+def test_hf_cache_dockerfile():
+    truss_root = Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
+    truss_dir = truss_root / "test_data" / "test_truss_server_caching_truss"
+    tr = TrussHandle(truss_dir)
+
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(tr.spec.truss_dir)
+
+    secret_mount = (
+        "RUN --mount=type=secret,id=hf-access-token,dst=/etc/secrets/hf_access_token"
+    )
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path, use_hf_secret=True)
+        with open(tmp_path / "Dockerfile", "r") as f:
+            gen_docker_file = f.read()
+            print(gen_docker_file)
+            assert secret_mount in gen_docker_file
