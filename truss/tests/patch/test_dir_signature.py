@@ -29,7 +29,7 @@ def test_directory_content_signature_no_data_dir(tmp_path):
     data_dir.mkdir()
     (data_dir / "file3").touch()
 
-    content_sign = directory_content_signature(root)
+    content_sign = directory_content_signature(root=root, ignore_patterns=["data/*"])
 
     assert content_sign.keys() == {
         "data",

@@ -1,10 +1,13 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Optional
 
 from truss.patch.hash import file_content_hash_str
+from truss.patch.utils import path_matches_any_pattern
 
 
-def directory_content_signature(root: Path) -> Dict[str, str]:
+def directory_content_signature(
+    root: Path, ignore_patterns: Optional[List[str]] = None
+) -> Dict[str, str]:
     """Calculate content signature of a filesystem directory.
 
     Sort all files by path, store file path with content hash.
@@ -14,12 +17,12 @@ def directory_content_signature(root: Path) -> Dict[str, str]:
 
     Hash of directories is marked None.
     """
-    paths = list(
-        filter(
-            lambda path: not str(path.relative_to(root)).startswith("data/"),
-            list(root.glob("**/*")),
-        )
-    )
+
+    paths = [
+        path
+        for path in root.glob("**/*")
+        if not path_matches_any_pattern(path.relative_to(root), ignore_patterns)
+    ]
     paths.sort(key=lambda p: p.relative_to(root))
 
     def path_hash(pth: Path):
