@@ -1,4 +1,3 @@
-
 server {
     listen 8080;
 
@@ -11,6 +10,7 @@ server {
     # Readiness
     location ~ ^/v1/models/model$ {
         proxy_redirect off;
+        proxy_read_timeout 300s;
 
         rewrite ^/v1/models/model$ /v1/models break;
 
@@ -20,6 +20,7 @@ server {
     # Predict
     location ~ ^/v1/models/model:predict$ {
         proxy_redirect off;
+        proxy_read_timeout 300s;
 
         rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
 
