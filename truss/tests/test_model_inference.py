@@ -336,8 +336,8 @@ secrets:
     """
 
     config_with_no_secret = "model_name: secrets-truss"
-    missing_secret_error_message = """Please check that:
-  * The secret is defined in the secrets section of your config file
+    missing_secret_error_message = """Secret 'secret' not found. Please ensure that:
+  * Secret 'secret' is defined in the 'secrets' section of the Truss config file
   * The model was pushed with the --trusted flag"""
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:

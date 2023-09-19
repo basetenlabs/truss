@@ -60,8 +60,9 @@ class Secrets(Mapping):
 
 def _secret_missing_error_message(key: str) -> str:
     return f"""
-Secret '{key}' not found. Please check that:
-  * The secret is defined in the secrets section of your config file
+Secret '{key}' not found. Please ensure that:
+  * Secret '{key}' is defined in the 'secrets' section of the Truss config file
   * The model was pushed with the --trusted flag
+  * Secret '{key}' is defined in the secret manager
  Read more about secrets here: {SECRETS_DOC_LINK}.
     """
