@@ -1,0 +1,71 @@
+---
+title: How to use base images
+description: "A guide to configuring a base image for your truss"
+---
+
+
+Model serving enviroments will often be standardized as container images to avoid wrangling python, system, and other requirements needed to run your model on every deploy.
+Leverage your existing container artifacts by bringing your own base image to Truss.
+
+## Setting a base image in config.yaml
+
+To specify a base image to build a truss container image from in your `config.yaml` configure a `base_image`.
+
+```yaml config.yaml
+base_image:
+  image: <image_name:tag>
+  python_executable_path: <path-to-python>
+```
+
+where `python_executable_path` is a path to a python executable with which to run your server.
+
+## Example usage
+
+This [example truss](https://github.com/basetenlabs/truss/tree/main/examples/nemo-titanet) demonstrates how to properly configure a base image for Nvidia NeMo TitaNet:
+
+```yaml config.yaml
+base_image:
+  image: nvcr.io/nvidia/nemo:23.03
+  python_executable_path: /usr/bin/python
+apply_library_patches: true
+bundled_packages_dir: packages
+data_dir: data
+requirements:
+- PySoundFile
+live_reload: false
+resources:
+  accelerator: T4
+  cpu: 2500m
+  memory: 4512Mi
+  use_gpu: true
+secrets: {}
+spec_version: '2.0'
+system_packages:
+- python3.8-venv
+```
+
+## Configuring private base images with build time secrets
+
+Secrets of the form `DOCKER_REGISTRY_<REGISTRY_URL>` will be supplied to your model build to authenticate image pulls from private container registries.
+For information on where to store secret values see the [secrets guide](secrets#storing-secrets-on-your-remote).
+
+For example, to configure docker credentials to a private dockerhub repository your `config.yaml` should include the following secret and placeholder:
+
+```yaml config.yaml
+secrets:
+  DOCKER_REGISTRY_https://index.docker.io/v1/: null
+```
+
+along with a configured Baseten secret `DOCKER_REGISTRY_https://index.docker.io/v1/` with a base64 encoded `username:password` secret value:
+
+```sh
+echo -n 'username:password' | base64
+```
+
+To add docker credentials for gcloud artifact registry provide an [access token](https://cloud.google.com/artifact-registry/docs/docker/authentication#token) as the secret value.
+For example, to configure authentication for a repository in `us-west2` your `config.yaml` should include the following secret and placeholder:
+
+```yaml config.yaml
+secrets:
+  DOCKER_REGISTRY_us-west2-docker.pkg.dev: null
+```
