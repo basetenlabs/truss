@@ -336,6 +336,9 @@ secrets:
     """
 
     config_with_no_secret = "model_name: secrets-truss"
+    missing_secret_error_message = """Please check that:
+  * The secret is defined in the secrets section of your config file
+  * The model was pushed with the --trusted flag"""
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
@@ -371,7 +374,7 @@ secrets:
 
         assert "error" in response.json()
 
-        assert_logs_contain_error(container.logs(), "not specified in the config")
+        assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
@@ -390,9 +393,7 @@ secrets:
         response = requests.post(full_url, json={})
         assert response.status_code == 500
 
-        assert_logs_contain_error(
-            container.logs(), "'secret' not found. Please check available secrets."
-        )
+        assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
 
 

@@ -1,7 +1,9 @@
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
+
+SECRETS_DOC_LINK = "https://truss.baseten.co/docs/using-secrets"
 
 
 class SecretNotFound(Exception):
@@ -17,7 +19,7 @@ class SecretsResolver:
         return Secrets(config.get("secrets", {}))
 
     @staticmethod
-    def _resolve_secret(secret_name: str, default_value: str):
+    def _resolve_secret(secret_name: str, default_value: Optional[str]):
         secret_value = default_value
         secret_env_var_name = SecretsResolver.SECRET_ENV_VAR_PREFIX + secret_name
         if secret_env_var_name in os.environ:
@@ -39,15 +41,11 @@ class Secrets(Mapping):
 
     def __getitem__(self, key: str) -> str:
         if key not in self._base_secrets:
-            # Note this is the case where the secrets are not specified in
-            # config.yaml
-            raise SecretNotFound(f"Secret '{key}' not specified in the config.")
+            raise SecretNotFound(_secret_missing_error_message(key))
 
         found_secret = SecretsResolver._resolve_secret(key, self._base_secrets[key])
         if not found_secret:
-            raise SecretNotFound(
-                f"Secret '{key}' not found. Please check available secrets."
-            )
+            raise SecretNotFound(_secret_missing_error_message(key))
 
         return found_secret
 
@@ -58,3 +56,12 @@ class Secrets(Mapping):
 
     def __len__(self):
         return len(self._base_secrets)
+
+
+def _secret_missing_error_message(key: str) -> str:
+    return f"""
+Secret '{key}' not found. Please check that:
+  * The secret is defined in the secrets section of your config file
+  * The model was pushed with the --trusted flag
+ Read more about secrets here: {SECRETS_DOC_LINK}.
+    """
