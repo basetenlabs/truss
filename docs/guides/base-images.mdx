@@ -47,7 +47,9 @@ system_packages:
 ## Configuring private base images with build time secrets
 
 Secrets of the form `DOCKER_REGISTRY_<REGISTRY_URL>` will be supplied to your model build to authenticate image pulls from private container registries.
-For example, to configure docker credentials to a private dockerhub repository your `config.yaml` should include:
+For information on where to store secret values see the [secrets guide](secrets#storing-secrets-on-your-remote).
+
+For example, to configure docker credentials to a private dockerhub repository your `config.yaml` should include the following secret and placeholder:
 
 ```yaml config.yaml
 secrets:
@@ -61,11 +63,9 @@ echo -n 'username:password' | base64
 ```
 
 To add docker credentials for gcloud artifact registry provide an [access token](https://cloud.google.com/artifact-registry/docs/docker/authentication#token) as the secret value.
-For example, to configure authentication for a repository in `us-west2` your `config.yaml` should include:
+For example, to configure authentication for a repository in `us-west2` your `config.yaml` should include the following secret and placeholder:
 
 ```yaml config.yaml
 secrets:
   DOCKER_REGISTRY_us-west2-docker.pkg.dev: null
 ```
-
-For more information on configuring secrets see the [secrets guide](secrets)
