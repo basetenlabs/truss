@@ -42,6 +42,7 @@ DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
 class Accelerator(Enum):
     T4 = "T4"
+    L4 = "L4"
     A10G = "A10G"
     V100 = "V100"
     A100 = "A100"
