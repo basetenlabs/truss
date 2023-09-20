@@ -1,5 +1,6 @@
 
 server {
+    # We use the proxy_read_timeout directive here (instead of proxy_send_timeout) as it sets the timeout for reading a response from the proxied server vs. setting a timeout for sending a request to the proxied server.
     listen 8080;
 
     # Liveness
@@ -11,6 +12,7 @@ server {
     # Readiness
     location ~ ^/v1/models/model$ {
         proxy_redirect off;
+        proxy_read_timeout 300s;
 
         rewrite ^/v1/models/model$ /health break;
 
@@ -20,6 +22,7 @@ server {
     # Predict
     location ~ ^/v1/models/model:predict$ {
         proxy_redirect off;
+        proxy_read_timeout 300s;
 
         rewrite ^/v1/models/model:predict$ /{{endpoint}} break;
 

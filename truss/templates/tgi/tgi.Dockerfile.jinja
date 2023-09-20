@@ -16,6 +16,10 @@ COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+{% for env_var_name, env_var_value in config.environment_variables.items() %}
+ENV {{ env_var_name }} {{ env_var_value }}
+{% endfor %}
+
 ENV SERVER_START_CMD /usr/bin/supervisord
 
 {%- if hf_cache %}
