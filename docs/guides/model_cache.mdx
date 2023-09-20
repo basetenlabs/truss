@@ -20,6 +20,8 @@ To enable caching, simply add `hf_cache` to your `config.yml` with a valid `repo
 - `allow_patterns`: Only cache files that match specified patterns. Utilize Unix shell-style wildcards to denote these patterns.
 - `ignore_patterns`: Conversely, you can also denote file patterns to ignore, hence streamlining the caching process.
 
+Here is an example of a well written `hf_cache` for Stable Diffusion XL. Note how it only pulls the model weights that it needs using `allow_patterns`.
+
 ```yaml
 hf_cache:
   - repo_id: madebyollin/sdxl-vae-fp16-fix
@@ -38,6 +40,7 @@ hf_cache:
       - sd_xl_refiner_1.0.safetensors
 ```
 
+Many Hugging Face repos have model weights in different formats (`.bin`, `.safetensors`, `.h5`, `.msgpack`, etc.). You only need one of these most of the time. To minimize cold starts, ensure that you only cache the weights you need.
 
 There are also some additional steps depending on the cloud bucket you want to query.
 
