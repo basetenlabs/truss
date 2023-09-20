@@ -255,6 +255,7 @@ def create_tgi_build_dir(
     data_dir = build_dir / "data"
     credentials_file = data_dir / "service_account.json"
     dockerfile_content = dockerfile_template.render(
+        config=config,
         hf_access_token=hf_access_token,
         models=model_files,
         hf_cache=config.hf_cache,
@@ -312,6 +313,7 @@ def create_vllm_build_dir(
     data_dir = build_dir / "data"
     credentials_file = data_dir / "service_account.json"
     dockerfile_content = dockerfile_template.render(
+        config=config,
         hf_access_token=hf_access_token,
         models=model_files,
         should_install_server_requirements=True,
