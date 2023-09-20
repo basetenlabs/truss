@@ -67,7 +67,8 @@
     {
       "group": "Guides",
       "pages": [
-        "guides/secrets"
+        "guides/secrets",
+        "guides/model_cache"
       ]
     },
     {
