@@ -41,7 +41,7 @@ hf_cache:
 
 There are also some additional steps depending on the cloud bucket you want to query.
 
-## HuggingFace (recommended)
+### HuggingFace (recommended)
 For any public Hugging Face repo, you don't need to do anything else. Adding the `hf_cache` key with an appropriate `repo_id` should be enough.
 
 However, if you want to access a gated repo like Llama 2 (and you're deploying to Baseten), there's a few steps you need to take:
@@ -61,7 +61,7 @@ If you run into any issues, run through all the steps above again and make sure 
 Weights will be cached in the standard Hugging Face cache directory, `~/.cache/huggingface/hub/models--{your_model_name}/`.
 
 
-## Google Cloud Storage
+### Google Cloud Storage
 Similar to above, you do not need to do anythign else for public GCS buckets.
 
 For a private GCS bucket, first export your service account key. Rename it to be `service_account.json` and add it to the `data` directory of your Truss.
@@ -69,6 +69,6 @@ For a private GCS bucket, first export your service account key. Rename it to be
 Weights will be cached at `/app/hf_cache/{your_bucket_name}`.
 
 
-## Other Buckets
+### Other Buckets
 
 We're currently workign on adding support for more bucket types, including AWS S3. If you have any suggestions, please [leave an issue](https://github.com/basetenlabs/truss/issues) on our GitHub repo.
