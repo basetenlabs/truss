@@ -1,0 +1,74 @@
+---
+title: Caching model weights
+description: "Accelerate cold starts by caching your weights"
+---
+
+Truss natively supports automatic caching for model weights. This is a simple yet effective strategy to enhance deployment speed and operational efficiency when it comes to cold starts and scaling beyond a single replica.
+
+## What is a "cold start"?
+"Cold start" is a term used to refer to the time taken by a model to boot up after being idle. This process can become a critical factor in serverless environments, as it can significantly influence the model response time, customer satisfaction, and cost.
+
+Without caching our model's weights, we would need to download weights every time we scale up. Caching model weights circumvents this download process. When our new instance boots up, the server automatically finds the cached weights and can proceed with starting up the endpoint.
+
+In practice, this reduces the cold start for large models to just a few seconds. For example, Stable Diffusion XL can take a few minutes to boot up without caching. With caching, it takes just under 10 seconds to load.
+
+## Enabling Caching for a Model
+
+To enable caching, simply add `hf_cache` to your `config.yml` with a valid `repo_id`. The `hf_cache` has a few key configurations:
+- `repo_id` (required): The endpoint for your cloud bucket. Currently, we support Hugging Face and Google Cloud Storage.
+- `revision`: Points to your revision. This is only relevant if you are pulling By default, it refers to `main`.
+- `allow_patterns`: Only cache files that match specified patterns. Utilize Unix shell-style wildcards to denote these patterns.
+- `ignore_patterns`: Conversely, you can also denote file patterns to ignore, hence streamlining the caching process.
+
+```yaml
+hf_cache:
+  - repo_id: madebyollin/sdxl-vae-fp16-fix
+    allow_patterns:
+      - config.json
+      - diffusion_pytorch_model.safetensors
+  - repo_id: stabilityai/stable-diffusion-xl-base-1.0
+    allow_patterns:
+      - "*.json"
+      - "*.fp16.safetensors"
+      - sd_xl_base_1.0.safetensors
+  - repo_id: stabilityai/stable-diffusion-xl-refiner-1.0
+    allow_patterns:
+      - "*.json"
+      - "*.fp16.safetensors"
+      - sd_xl_refiner_1.0.safetensors
+```
+
+
+There are also some additional steps depending on the cloud bucket you want to query.
+
+## HuggingFace (recommended)
+For any public Hugging Face repo, you don't need to do anything else. Adding the `hf_cache` key with an appropriate `repo_id` should be enough.
+
+However, if you want to access a gated repo like Llama 2 (and you're deploying to Baseten), there's a few steps you need to take:
+1. Grab an API key from Hugging Face with `read` access. Make sure you have access to the model you want to serve.
+2. Paste your API key in your secrets manager in Baseten under the key `hf_access_token`.
+3. In your `config.yml`, add the following code:
+
+```yaml
+secrets:
+    hf_access_token: null
+```
+
+If you are testing Truss builds locally, you can paste your actual `hf_access_token` here. Make sure that the key `secrets` only shows up once in your `config.yml`.
+
+If you run into any issues, run through all the steps above again and make sure you did not mispell the name of the repo or paste an incorrect API key.
+
+Weights will be cached in the standard Hugging Face cache directory, `~/.cache/huggingface/hub/models--{your_model_name}/`.
+
+
+## Google Cloud Storage
+Similar to above, you do not need to do anythign else for public GCS buckets.
+
+For a private GCS bucket, first export your service account key. Rename it to be `service_account.json` and add it to the `data` directory of your Truss.
+
+Weights will be cached at `/app/hf_cache/{your_bucket_name}`.
+
+
+## Other Buckets
+
+We're currently workign on adding support for more bucket types, including AWS S3. If you have any suggestions, please [leave an issue](https://github.com/basetenlabs/truss/issues) on our GitHub repo.
