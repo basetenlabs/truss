@@ -68,7 +68,8 @@
       "group": "Guides",
       "pages": [
         "guides/secrets",
-        "guides/base-images"
+        "guides/base-images",
+        "guides/model-cache"
       ]
     },
     {
