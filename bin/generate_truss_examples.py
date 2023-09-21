@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import yaml
 
@@ -44,7 +44,7 @@ def fetch_file_contents(path: str):
         return f.read()
 
 
-def _fetch_example_dirs(root_dir):
+def _fetch_example_dirs(root_dir: str) -> List[str]:
     """
     Walk through the directory structure from the root directory and
     find all directories that have the specified file in it.
@@ -58,7 +58,7 @@ def _fetch_example_dirs(root_dir):
     return dirs_with_file
 
 
-def _get_example_destination(truss_directory) -> Path:
+def _get_example_destination(truss_directory: str) -> Path:
     """
     Get the destination directory for the example.
     """
@@ -80,7 +80,7 @@ def _get_file_type(file_path: str) -> FileType:
 
 
 class ContentBlock:
-    def formatted_content(self):
+    def formatted_content(self) -> str:
         raise NotImplementedError
 
 
@@ -90,7 +90,7 @@ class CodeBlock(ContentBlock):
         self.file_path = file_path
         self.content = ""
 
-    def formatted_content(self):
+    def formatted_content(self) -> str:
         return f"\n```{self.file_type.value} {self.file_path}\n{self.content}```"
 
 
@@ -98,7 +98,7 @@ class MarkdownBlock(ContentBlock):
     def __init__(self, content: str):
         self.content = content
 
-    def formatted_content(self):
+    def formatted_content(self) -> str:
         # Remove the first comment and space character, such that
         # "# Hello" becomes "Hello
         return self.content.strip()[2:]
@@ -110,7 +110,7 @@ class MarkdownExtractor:
         self.file_path = file_path
 
         self.blocks: List[ContentBlock] = []
-        self.current_code_block = None
+        self.current_code_block: Optional[CodeBlock] = None
 
     def ingest(self, line: str):
         stripped_line = line.strip()
@@ -125,7 +125,7 @@ class MarkdownExtractor:
                 self.blocks.append(self.current_code_block)
             self.current_code_block.content += line + "\n"
 
-    def _formatted_request_example(self):
+    def _formatted_request_example(self) -> str:
         code_blocks = [block for block in self.blocks if isinstance(block, CodeBlock)]
         code_content = "".join([code_block.content for code_block in code_blocks])
 
@@ -158,7 +158,7 @@ def _generate_request_example_block(code: str):
 """
 
 
-def _generate_truss_example(truss_directory):
+def _generate_truss_example(truss_directory: str):
     print("Generating example for: ", truss_directory)
     doc_information = yaml.safe_load(
         fetch_file_contents(f"{truss_directory}/{DOC_CONFIGURATION_FILE}")
@@ -195,7 +195,7 @@ def _format_group_name(group_name: str) -> str:
     return " ".join(group_name.split("_")[1:]).capitalize()
 
 
-def _update_toc(example_dirs):
+def _update_toc(example_dirs: List[str]):
     """
     Update the table of contents in the README.md file.
     """
