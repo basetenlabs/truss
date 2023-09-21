@@ -5,9 +5,10 @@ import subprocess
 import sys
 import yaml
 import json
+import itertools
 
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 
 DOC_CONFIGURATION_FILE = "doc.yaml"
@@ -125,14 +126,22 @@ class MarkdownExtractor:
                 self.blocks.append(self.current_code_block)
             self.current_code_block.content += line + "\n"
 
-    def complete(self) -> str:
-        if self.current_code_block is not None:
-            self.blocks.append(self.current_code_block)
+    def _formatted_request_example(self):
+        code_blocks = [block for block in self.blocks if isinstance(block, CodeBlock)]
+        code_content = "".join([code_block.content for code_block in code_blocks])
 
-        return "\n".join([block.formatted_content() for block in self.blocks])
+        return f"""```{self.file_type.value} {self.file_path}\n{code_content}```"""
+
+    def complete(self) -> Tuple[str, str]:
+        full_content = "\n".join([block.formatted_content() for block in self.blocks])
+
+        return (
+            full_content + "\n",
+            self._formatted_request_example(),
+        )
 
 
-def _extract_mdx_content(full_file_path: str, path: str) -> str:
+def _extract_mdx_content_and_code(full_file_path: str, path: str) -> Tuple[str, str]:
     file_content = fetch_file_contents(full_file_path)
     file_type = _get_file_type(path)
     extractor = MarkdownExtractor(file_type, path)
@@ -142,13 +151,21 @@ def _extract_mdx_content(full_file_path: str, path: str) -> str:
     return extractor.complete()
 
 
+def _generate_request_example_block(code: str):
+    return f"""
+<RequestExample>
+{code}
+</RequestExample>
+"""
+
+
 def _generate_truss_example(truss_directory):
+    print("Generating example for: ", truss_directory)
     doc_information = yaml.safe_load(
         fetch_file_contents(f"{truss_directory}/{DOC_CONFIGURATION_FILE}")
     )
 
     example_destination = _get_example_destination(truss_directory)
-    print("Destination: ", example_destination)
 
     header = f"""---
 title: "{doc_information["title"]}"
@@ -157,11 +174,16 @@ description: "{doc_information["description"]}"
 """
     files_to_scrape = doc_information["files"]
 
-    file_content = "\n".join(
-        [
-            _extract_mdx_content(Path(truss_directory) / file, file)
+    full_content, code_blocks = zip(
+        *[
+            _extract_mdx_content_and_code(Path(truss_directory) / file, file)
             for file in files_to_scrape
         ]
+    )
+
+    full_code_block = "\n".join(code_blocks)
+    file_content = "\n".join(full_content) + _generate_request_example_block(
+        full_code_block
     )
     example_content = f"""{header}\n{file_content}"""
     path_to_example = Path(example_destination)
@@ -170,23 +192,43 @@ description: "{doc_information["description"]}"
     path_to_example.write_text(example_content)
 
 
+def _format_group_name(group_name: str) -> str:
+    return " ".join(group_name.split("_")[1:]).capitalize()
+
+
 def _update_toc(example_dirs):
     """
     Update the table of contents in the README.md file.
     """
-    print(example_dirs)
+    transformed_example_paths = [Path(example).parts[1:] for example in example_dirs]
+
     mint_config = json.loads(fetch_file_contents(MINT_CONFIG_PATH))
     navigation = mint_config["navigation"]
 
-    examples_group = [item for item in navigation if item["group"] == "Examples"][0]
-    # examples_group["pages"].append()
+    examples_section = [item for item in navigation if item["group"] == "Examples"][0]
+
+    grouped_examples = itertools.groupby(
+        transformed_example_paths, key=lambda example: example[0]
+    )
+
+    for example_group_name, example_group in grouped_examples:
+        examples_section["pages"].append(
+            {
+                "group": _format_group_name(example_group_name),
+                "pages": [
+                    f"examples/{example[0]}/{example[1]}"
+                    for example in list(example_group)
+                ],
+            }
+        )
+    serialized_mint_config = json.dumps(mint_config, indent=2)
+    Path(MINT_CONFIG_PATH).write_text(serialized_mint_config)
 
 
 def generate_truss_examples():
     clone_repo()
 
     example_dirs = _fetch_example_dirs(DESTINATION_DIR)
-    print(f"Directories containing {DOC_CONFIGURATION_FILE}:")
     for truss_directory in example_dirs:
         _generate_truss_example(truss_directory)
 
