@@ -1,15 +1,14 @@
-import os
 import enum
+import itertools
+import json
+import os
 import shutil
 import subprocess
 import sys
-import yaml
-import json
-import itertools
-
 from pathlib import Path
 from typing import List, Tuple
 
+import yaml
 
 DOC_CONFIGURATION_FILE = "doc.yaml"
 TRUSS_EXAMPLES_REPO = "https://github.com/basetenlabs/truss-examples-2"
