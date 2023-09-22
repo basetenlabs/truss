@@ -35,7 +35,7 @@ Let's dive into a concrete example:
   <img src="/images/concurrency-flow-chart-high-level.png" />
 </Frame>
 
-Let's say that there is a single replica of a modela, and the concurrency target is 2. If 5 requests come in, the first two will
+Let's say that there is a single replica of a model, and the concurrency target is 2. If 5 requests come in, the first 2 will
 be sent to the replica, and the other 3 get queued up. Once the requests on the container complete the queued up
 requests will make it to the model container.
 
