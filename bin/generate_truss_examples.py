@@ -1,3 +1,14 @@
+"""
+Script to take the Truss examples in https://github.com/basetenlabs/truss-examples-2,
+and generate documentation.
+
+
+
+Usage:
+```
+$ poetry run python bin/generate_truss_examples.py
+```
+"""
 import enum
 import itertools
 import json
@@ -91,6 +102,14 @@ class CodeBlock(ContentBlock):
         self.content = ""
 
     def formatted_content(self) -> str:
+        """
+        Outputs code blocks in the format:
+
+        ```python main.py
+        def main():
+            ...
+        ```
+        """
         return f"\n```{self.file_type.value} {self.file_path}\n{self.content}```"
 
 
@@ -105,6 +124,11 @@ class MarkdownBlock(ContentBlock):
 
 
 class MarkdownExtractor:
+    """
+    Class that supports ingesting a code file line-by-line, and produces a formatted
+    mdx file.
+    """
+
     def __init__(self, file_type: FileType, file_path: str):
         self.file_type = file_type
         self.file_path = file_path
@@ -113,6 +137,15 @@ class MarkdownExtractor:
         self.current_code_block: Optional[CodeBlock] = None
 
     def ingest(self, line: str):
+        """
+        For each line, check that it is a comment by the presence of "#".
+        If it is a comment, append it to the blocks.
+
+        If it is not a comment, either append to the current code block, or
+        create a new code block if this isn't one.
+
+        When this is finished, we can then very easily produce the mdx file.
+        """
         stripped_line = line.strip()
 
         # Case of Markdown line
@@ -126,12 +159,17 @@ class MarkdownExtractor:
             self.current_code_block.content += line + "\n"
 
     def _formatted_request_example(self) -> str:
+        """
+        A key part of the mdx file is that each has a <RequestExample> block at the
+        bottom the file. This generates that for the given file by appending all the
+        CodeBlocks together.
+        """
         code_blocks = [block for block in self.blocks if isinstance(block, CodeBlock)]
         code_content = "".join([code_block.content for code_block in code_blocks])
 
         return f"""```{self.file_type.value} {self.file_path}\n{code_content}```"""
 
-    def complete(self) -> Tuple[str, str]:
+    def mdx_content(self) -> Tuple[str, str]:
         full_content = "\n".join([block.formatted_content() for block in self.blocks])
 
         return (
@@ -147,7 +185,7 @@ def _extract_mdx_content_and_code(full_file_path: str, path: str) -> Tuple[str, 
     for line in file_content.splitlines():
         extractor.ingest(line)
 
-    return extractor.complete()
+    return extractor.mdx_content()
 
 
 def _generate_request_example_block(code: str):
@@ -192,13 +230,26 @@ description: "{doc_information["description"]}"
 
 
 def _format_group_name(group_name: str) -> str:
+    """
+    This function takes the parent directory name in, and converts it
+    into a more human readable format for the table of contents.
+
+    Note that parent directory names are assumed to be in the format:
+    * 1_introduction/...
+    * 2_image_classification/...
+    """
     return " ".join(group_name.split("_")[1:]).capitalize()
 
 
-def _update_toc(example_dirs: List[str]):
+def update_toc(example_dirs: List[str]):
     """
     Update the table of contents in the README.md file.
+
+    Parameters:
+    example_dirs: List of directories as strings in the form "truss-examples-2/..."
     """
+
+    # Exclude the root directory ("truss_examples") from the path
     transformed_example_paths = [Path(example).parts[1:] for example in example_dirs]
 
     mint_config = json.loads(fetch_file_contents(MINT_CONFIG_PATH))
@@ -206,11 +257,20 @@ def _update_toc(example_dirs: List[str]):
 
     examples_section = [item for item in navigation if item["group"] == "Examples"][0]
 
-    grouped_examples = sorted(
-        itertools.groupby(transformed_example_paths, key=lambda example: example[0]),
+    # Group together by the parent directory. ie:
+    #
+    # * 3_llms/llm
+    # * 3_llms/llm-streaming
+    #
+    # will be grouped together with they key "3_llms". This allows us to have proper
+    # nesting in the table of contents.
+    grouped_examples = itertools.groupby(
+        sorted(transformed_example_paths, key=lambda example: example[0]),
         key=lambda example: example[0],
     )
 
+    # TODO: Chage this to instead of appending to pages, to instead replace the pages
+    # before we productionize this.
     for example_group_name, example_group in grouped_examples:
         examples_section["pages"].append(
             {
@@ -226,13 +286,19 @@ def _update_toc(example_dirs: List[str]):
 
 
 def generate_truss_examples():
+    """
+    Walk through the Truss examples repo, and for each
+    of the examples in the repo, generate documentation.
+
+    Finish the process by updating the table of contents.
+    """
     clone_repo()
 
     example_dirs = _fetch_example_dirs(DESTINATION_DIR)
     for truss_directory in example_dirs:
         _generate_truss_example(truss_directory)
 
-    _update_toc(example_dirs)
+    update_toc(example_dirs)
 
 
 if __name__ == "__main__":
