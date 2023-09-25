@@ -82,6 +82,7 @@ pytest-split = "^0.8.1"
 httpx = {extras = ["cli"], version = "^0.24.1"}
 requests-mock = "^1.11.0"
 flask = "^2.3.3"
+types-requests = "2.31.0.4"
 
 [build-system]
 requires = ["poetry-core>=1.2.1"]
