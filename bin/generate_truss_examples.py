@@ -206,8 +206,9 @@ def _update_toc(example_dirs: List[str]):
 
     examples_section = [item for item in navigation if item["group"] == "Examples"][0]
 
-    grouped_examples = itertools.groupby(
-        transformed_example_paths, key=lambda example: example[0]
+    grouped_examples = sorted(
+        itertools.groupby(transformed_example_paths, key=lambda example: example[0]),
+        key=lambda example: example[0],
     )
 
     for example_group_name, example_group in grouped_examples:
