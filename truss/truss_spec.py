@@ -200,6 +200,13 @@ class TrussSpec:
     def apply_library_patches(self) -> bool:
         return self._config.apply_library_patches
 
+    @property
+    def hash_ignore_patterns(self) -> List[str]:
+        """By default, data directory contents are ignored when hashing,
+        as patching is not supported for these changes.
+        """
+        return [f"{self.data_dir}/*"]
+
 
 def _join_lines(lines: List[str]) -> str:
     return "\n".join(lines) + "\n"

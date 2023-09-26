@@ -489,7 +489,7 @@ class ServingImageBuilder(ImageBuilder):
             data_dir_exists=data_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(
-                self._truss_dir, [f"{self._spec.data_dir}/*"]
+                self._truss_dir, self._spec.hash_ignore_patterns
             ),
             models=model_files,
             use_hf_secret=use_hf_secret,
