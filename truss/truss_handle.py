@@ -846,12 +846,15 @@ class TrussHandle:
         if patch_ops is None:
             return None
 
-        next_sign = calc_truss_signature(self._truss_dir)
         return PatchDetails(
             prev_signature=prev_sign,
             prev_hash=prev_truss_hash,
-            next_hash=directory_content_hash(self._truss_dir),
-            next_signature=next_sign,
+            next_hash=directory_content_hash(
+                self._truss_dir, self._spec.hash_ignore_patterns
+            ),
+            next_signature=calc_truss_signature(
+                self._truss_dir, self._spec.hash_ignore_patterns
+            ),
             patch_ops=patch_ops,
         )
 
@@ -1039,7 +1042,9 @@ class TrussHandle:
         else:
             # TODO(pankaj) Ignore training directory. But this is a bigger change
             # because it needs syncing with hash generation on baseten side as well.
-            truss_hash = directory_content_hash(self._truss_dir)
+            truss_hash = directory_content_hash(
+                self._truss_dir, self._spec.hash_ignore_patterns
+            )
             self._hash_for_mod_time = (truss_mod_time, truss_hash)
         return truss_hash
 
