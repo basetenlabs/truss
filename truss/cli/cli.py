@@ -276,7 +276,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
 
 
 @truss_cli.command()
-@click.option("--target_directory", required=False, help="Directory of truss")
+@click.option("--target-directory", required=False, help="Directory of truss")
 @click.option(
     "--remote",
     type=str,
