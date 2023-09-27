@@ -1,0 +1,71 @@
+---
+title: "How to stream results"
+description: "A guide to streaming results from a Truss"
+---
+
+The worst part of using generative AI tools is the long wait time during model inference. For some types of generative models, including large language models (LLMs), you can start getting results 10X faster by streaming model output as it is generated.
+
+LLMs have two properties that make streaming output particularly useful:
+
+Generating a complete response takes time, easily 10 seconds or more for longer outputs
+Partial outputs are often useful!
+
+When you host your LLMs with Baseten, you can stream responses. Instead of having to wait for the entire output to be generated, you can immediately start returning results to users with a sub-one-second time-to-first-token.
+
+<Frame>
+  <img src="/images/streaming-gif.gif" />
+</Frame>
+
+
+# How to Enable Streaming
+
+To enable streaming in your Truss, you can write your predict function in your Truss to return a Python generator, instead of a JSON serializable object.
+
+So where a non-streaming Truss might look something like this:
+
+```python
+class Model:
+    def __init__(self...):
+        …
+
+    def load(self):
+        …
+
+    def predict(self, model_input: dict):
+        outputs = ["some", "model", "output"]
+        return outputs
+```
+
+
+To enable streaming, you would write your predict function something like this:
+
+```python
+def predict(self, model_input):
+    def inner():
+        outputs = ["some", "model", "output"]
+        for output in outputs:
+            yield output
+    return inner()
+```
+
+This indicates to Truss that the results should be streamed, and that the generator should be used to stream the results.
+For streaming, we use [Chunked Transfer-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Transfer-Encoding),
+although we will support other approaches (such as Server-sent events) in the future.
+
+See the [Llama-2-chat 7B Truss example](../examples/streaming) for a more in-depth LLM example.
+
+# Invoke Model
+
+After you’ve deployed a Truss that streams, or deployed a model from the Baseten model library that supports streaming, like Llama-2-chat 7B, you can start to invoke your model and stream results!
+
+Call the model predict endpoint with any HTTP client. Note that curl by default buffers content, so use the --no-buffer option to prevent this.
+
+```bash
+$ curl -X POST " https://app.baseten.co/models/abcd1234/predict" \
+-H 'Authorization: Api-Key $YOUR_API_KEY' \
+-d '{
+"prompt": "What is the difference between a wizard and a sorcerer?",
+"temperature": 0.3
+}'
+--no-buffer
+```

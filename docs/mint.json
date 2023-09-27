@@ -69,7 +69,8 @@
       "pages": [
         "guides/secrets",
         "guides/base-images",
-        "guides/concurrency"
+        "guides/concurrency",
+        "guides/streaming"
       ]
     },
     {
