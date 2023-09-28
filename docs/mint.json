@@ -69,7 +69,8 @@
       "pages": [
         "guides/secrets",
         "guides/base-images",
-        "guides/model-cache"
+        "guides/model-cache",
+        "guides/concurrency"
       ]
     },
     {
