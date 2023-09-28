@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import yaml
 
@@ -235,10 +235,26 @@ def _format_group_name(group_name: str) -> str:
     into a more human readable format for the table of contents.
 
     Note that parent directory names are assumed to be in the format:
-    * 1_introduction/...
-    * 2_image_classification/...
+    * 1_introduction/... (becomes "Introduction")
+    * 2_image_classification/... (becomes "Image classification")
+    * 3_llms/... (becomes "LLMs")
     """
-    return " ".join(group_name.split("_")[1:]).capitalize()
+    lowercase_name = " ".join(group_name.split("_")[1:])
+    # Capitalize the first letter. We do this rather than
+    # use .capitalize() or .title() because we want to preserve
+    # the case of subsequent letters
+    return lowercase_name[0].upper() + lowercase_name[1:]
+
+
+def _toc_section(
+    example_group_name: str, example_group: Iterator[Tuple[str, ...]]
+) -> dict:
+    return {
+        "group": _format_group_name(example_group_name),
+        "pages": [
+            f"examples/{example[0]}/{example[1]}" for example in list(example_group)
+        ],
+    }
 
 
 def update_toc(example_dirs: List[str]):
@@ -269,18 +285,11 @@ def update_toc(example_dirs: List[str]):
         key=lambda example: example[0],
     )
 
-    # TODO: Chage this to instead of appending to pages, to instead replace the pages
-    # before we productionize this.
-    for example_group_name, example_group in grouped_examples:
-        examples_section["pages"].append(
-            {
-                "group": _format_group_name(example_group_name),
-                "pages": [
-                    f"examples/{example[0]}/{example[1]}"
-                    for example in list(example_group)
-                ],
-            }
-        )
+    examples_section["pages"] = [
+        _toc_section(example_group_name, example_group)
+        for example_group_name, example_group in grouped_examples
+    ]
+
     serialized_mint_config = json.dumps(mint_config, indent=2)
     Path(MINT_CONFIG_PATH).write_text(serialized_mint_config)
 

@@ -1,0 +1,94 @@
+---
+title: "High Performance LLMs with TGI"
+description: "Deploy a language model with TGI"
+---
+
+[TGI](https://github.com/huggingface/text-generation-inference/tree/main) is a model server optimized for
+language models. In this example, we put together a Truss that serves the model Falcon 7B using TGI.
+
+For Trusses that use TGI, there is no user code to define, so there is only a config.yaml file.
+You can run any model that supports TGI.
+
+```yaml config.yaml
+build:
+  arguments:
+```
+The endpoint argument has two options:
+  * **generate**: This returns the response as JSON when the full response is generated
+  * **generate_stream**: If you choose this option, results will be streamed as they are ready, using
+    server-sent events
+
+```yaml config.yaml
+    endpoint: generate_stream
+```
+Select the model that you'd like to use with TGI
+
+```yaml config.yaml
+    model: tiiuae/falcon-7b
+```
+The `model_server` parameter allows you to specify a supported backend (in this example, TGI)
+
+```yaml config.yaml
+  model_server: TGI
+```
+Another important parameter to configure if you are choosing TGI is the `predict_concurrency`.
+One of the main benefits of TGI is continuous batching -- in which multiple requests can be
+processed at the same time. Without `predict_concurrency` set to a high enough number, you cannot take advantage of this
+feature.
+
+```yaml config.yaml
+runtime:
+  predict_concurrency: 128
+```
+The remaining config options listed are standard Truss Config options.
+
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: Falcon-TGI
+python_version: py39
+requirements: []
+resources:
+  accelerator: A10G
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
+secrets: {}
+system_packages: []
+```
+# Deploy the model
+
+Deploy the TGI model like you would other Trusses, with:
+```bash
+$ truss push
+```
+You can then invoke the model with:
+```bash
+$ truss predict -d '{"inputs": "What is a large language model?", "parameters": {"max_new_tokens": 128, "sample": true}}' --published
+```
+
+<RequestExample>
+```yaml config.yaml
+build:
+  arguments:
+    endpoint: generate_stream
+    model: tiiuae/falcon-7b
+  model_server: TGI
+runtime:
+  predict_concurrency: 128
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: Falcon-TGI
+python_version: py39
+requirements: []
+resources:
+  accelerator: A10G
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: true
+secrets: {}
+system_packages: []
+```
+</RequestExample>

@@ -55,13 +55,32 @@
     {
       "group": "Examples",
       "pages": [
-        "examples/private-model",
-        "examples/system-packages",
-        "examples/streaming",
-        "examples/pre-process",
-        "examples/performance/cached-weights",
-        "examples/performance/tgi-server",
-        "examples/performance/vllm-server"
+        {
+          "group": "Introduction",
+          "pages": [
+            "examples/1_introduction/getting-started-bert"
+          ]
+        },
+        {
+          "group": "LLMs",
+          "pages": [
+            "examples/3_LLMs/llm-with-streaming"
+          ]
+        },
+        {
+          "group": "High performance",
+          "pages": [
+            "examples/6_high_performance/vllm",
+            "examples/6_high_performance/tgi"
+          ]
+        },
+        {
+          "group": "Misc",
+          "pages": [
+            "examples/7_misc/private-huggingface-model",
+            "examples/7_misc/system-packages"
+          ]
+        }
       ]
     },
     {
@@ -167,7 +186,7 @@
   ],
   "analytics": {
     "gtm": {
-        "tagId": "GTM-WXD4NQTW"
+      "tagId": "GTM-WXD4NQTW"
     }
   }
 }
