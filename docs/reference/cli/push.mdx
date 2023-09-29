@@ -7,29 +7,29 @@ description: "Pushes a truss to a TrussRemote."
 truss push [OPTIONS] [TARGET_DIRECTORY]
 ```
 
-### Options
+## Options
 
 <ParamField body="--remote" type="TEXT">
-Name of the remote in .trussrc to patch changes to
+Name of the remote in .trussrc to patch changes to.
 </ParamField>
-<ParamField body="--publish">
+<ParamField body="--publish" type="BOOL">
 Publish truss as production deployment.
 </ParamField>
-<ParamField body="--trusted">
+<ParamField body="--trusted" type="BOOL">
 Give Truss access to secrets on remote host.
 </ParamField>
 <ParamField body="--help">
 Show help message and exit.
 </ParamField>
 
-### Arguments
+## Arguments
 
 <ParamField body="TARGET_DIRECTORY" type="Optional">
 A Truss directory. If none, use current directory.
 </ParamField>
 
 
-### Examples
+## Examples
 
 ```
 truss push

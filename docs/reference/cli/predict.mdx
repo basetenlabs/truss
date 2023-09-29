@@ -7,11 +7,8 @@ description: "Invokes the packaged model."
 truss predict [OPTIONS]
 ```
 
-### Options
+## Options
 
-<ParamField body="--target-directory" type="TEXT">
-A Truss directory. If none, use current directory.
-</ParamField>
 <ParamField body="--remote" type="TEXT">
 Name of the remote in .trussrc to patch changes to.
 </ParamField>
@@ -21,15 +18,23 @@ String formatted as json that represents request.
 <ParamField body="-f, --file" type="PATH">
 Path to json file containing the request.
 </ParamField>
-<ParamField body="--published">
-Invoked the published model version.
+<ParamField body="--model_version" type="TEXT">
+ID of model version to invoke.
+</ParamField>
+<ParamField body="--model" type="TEXT">
+ID of model to invoke.
 </ParamField>
 <ParamField body="--help">
 Show help message and exit.
 </ParamField>
 
+## Arguments
 
-### Examples
+<ParamField body="TARGET_DIRECTORY" type="Optional">
+A Truss directory. If none, use current directory.
+</ParamField>
+
+## Examples
 
 ```
 truss predict -d '{"prompt": "What is the meaning of life?"}'

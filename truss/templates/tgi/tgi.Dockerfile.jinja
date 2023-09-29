@@ -3,7 +3,7 @@
 {%- endif %}
 
 
-FROM ghcr.io/huggingface/text-generation-inference:1.0.3 as tgi
+FROM ghcr.io/huggingface/text-generation-inference:1.1.0 as tgi
 EXPOSE 8080
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

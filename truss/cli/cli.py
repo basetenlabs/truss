@@ -353,7 +353,7 @@ def predict(
     result = service.predict(request_data)
     if inspect.isgenerator(result):
         for chunk in result:
-            rich.print(chunk, end="")
+            click.echo(chunk, nl=False)
         return
     rich.print_json(data=result)
 
