@@ -503,7 +503,9 @@ class ServingImageBuilder(ImageBuilder):
             live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
-            truss_hash=directory_content_hash(self._truss_dir),
+            truss_hash=directory_content_hash(
+                self._truss_dir, self._spec.hash_ignore_patterns
+            ),
             models=model_files,
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,

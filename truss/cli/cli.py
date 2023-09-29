@@ -276,7 +276,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
 
 
 @truss_cli.command()
-@click.option("--target_directory", required=False, help="Directory of truss")
+@click.option("--target-directory", required=False, help="Directory of truss")
 @click.option(
     "--remote",
     type=str,
@@ -353,7 +353,7 @@ def predict(
     result = service.predict(request_data)
     if inspect.isgenerator(result):
         for chunk in result:
-            rich.print(chunk, end="")
+            click.echo(chunk, nl=False)
         return
     rich.print_json(data=result)
 
