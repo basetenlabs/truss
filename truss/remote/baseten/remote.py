@@ -23,7 +23,7 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
-from truss.remote.truss_remote import TrussRemote
+from truss.remote.truss_remote import TrussRemote, TrussService
 from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
 
@@ -119,9 +119,13 @@ class BasetenRemote(TrussRemote):
 
         return service_url_path, model_id, model_version_id
 
-    def get_baseten_service(
-        self, model_identifier: ModelIdentifier, published: bool = False
-    ) -> BasetenService:
+    def get_service(self, **kwargs) -> BasetenService:
+        try:
+            model_identifier = kwargs["model_identifier"]
+        except KeyError:
+            raise ValueError("Baseten Service requires a model_identifier")
+
+        published = kwargs.get("published", False)
         (
             service_url_path,
             model_id,
@@ -138,11 +142,9 @@ class BasetenRemote(TrussRemote):
 
     def get_remote_logs_url(
         self,
-        model_name: str,
-        published: bool = False,
+        service: TrussService,
     ) -> str:
-        service = self.get_baseten_service(ModelName(model_name), published)
-        return f"{self._remote_url}/models/{service._model_id}/versions/{service._model_version_id}/logs"
+        return service.logs_url(self._remote_url)
 
     def sync_truss_to_dev_version_by_name(
         self,
