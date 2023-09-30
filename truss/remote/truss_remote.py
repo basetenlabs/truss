@@ -204,10 +204,11 @@ class TrussRemote(ABC):
         Get a TrussService object for interacting with the remote service.
 
         This method should be implemented in subclasses and return a TrussService
-        object for interacting with the remote service.
+        object for interacting with the remote service. This support keyword args,
+        so that implementing remotes can be flexible with how a service is instantiated.
 
         Args:
-            **kwargs: Additional keyword arguments for the get_service operation.
+            **kwargs: Keyword arguments for the get_service operation.
 
         """
         pass
