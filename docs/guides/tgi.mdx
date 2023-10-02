@@ -3,7 +3,7 @@ title: "High performance model serving with TGI"
 description: "A guide to using TGI for your model"
 ---
 
-TGI, or Text Generation Inference, is a high performance model server for language models built by Huggingface. In this doc, we'll cover when to use TGI, how to tune TGI for performance and how to deploy it to Baseten.
+[TGI](https://huggingface.co/text-generation-inference), or Text Generation Inference, is a high performance model server for language models built by Huggingface. In this doc, we'll cover when to use TGI, how to tune TGI for performance and how to deploy it to Baseten.
 
 # What is TGI?
 
@@ -12,25 +12,24 @@ TGI consists of 2 parts:
 1. A high performance, Rust-based server
 2. A set of optimized model implementations that outperform generic implementations
 
-To optimize GPU utilization and improve throughput / latency, it's common to implement optimizations at the server-level and the model-level.
-
+To optimize GPU utilization and improve throughput & latency, it's common to implement optimizations at the server level and the model level.
 
 It's worth noting that TGI can only be used for a certain subset of models. As of September 2023, this includes:
 
-- BLOOM
+- Mistral 7B
+- Llama V2
+- Llama
+- MPT
+- Code Llama
+- Falcon 40B
+- Falcon 7B
 - FLAN-T5
+- BLOOM
 - Galactica
 - GPT-Neox
-- Llama
 - OPT
 - SantaCoder
 - Starcoder
-- Falcon 7B
-- Falcon 40B
-- MPT
-- Llama V2
-- Code Llama
-
 
 You should use TGI if you care about model latency / throughput and want to be able stream results. It's worth nothing that tuning TGI to achieve max performance requires a dedicated effort and is different for every model and what metric you'd like to optimize for.
 
@@ -80,7 +79,7 @@ Now that we have a TGI model, let's deploy this model to Baseten and see how it 
 
 You'll need an API key to deploy your model. You can get one by navigating to your Baseten settings [page](https://app.baseten.co/settings/account/api_keys). To push the model to Baseten, run the following command:
 ```
-(truss-py3.9) @aspctu $ truss push --publish
+$ truss push --publish
 ```
 
 Let's walk through what this command is doing
@@ -92,7 +91,7 @@ Let's walk through what this command is doing
 After running this command, you'll be prompted to pass in your API key. Once you've done that, you can view your deployment status from the Baseten dashboard. Once the model has been deployed, you can invoke it by running the following command:
 
 ```
-truss predict -d '{"inputs": "What is a large language model?", "parameters": {"max_new_tokens": 128, "sample": true}} --published'
+$ truss predict -d '{"inputs": "What is a large language model?", "parameters": {"max_new_tokens": 128, "sample": true}} --published'
 ```
 Let's walk through what this command is doing
 ```
@@ -104,20 +103,20 @@ Let's walk through what this command is doing
 
 # Tuning your TGI server
 
-After deploying your model, you may notice that you're not getting the performance you'd like out of TGI. If you navigate to the `target_directory` from above, you'll find a `config.yaml` file that contains a key `build`. The following is a set of arguments you can pass to the `build` key to tune TGI for max performance:
+After deploying your model, you may notice that you're not getting the performance you'd like out of TGI. If you navigate to the `target_directory` from above, you'll find a `config.yaml` file that contains a key `build`. The following is a set of arguments you can pass to the `build` key to tune TGI for max performance
 
-1. `max_input_length`
+1. `max_input_length` (default: 1024)
 This parameter represents the maximum allowed input length expressed in the number of tokens.
 
-If you expect longer sequences as input, you might need to adjust this parameter accordingly, keeping in mind that longer sequences may impact the overall memory required to handle the load. If you know that you'll send less than the max length allowed by the model, it's advantageous to set this parameter. When TGI starts up, it calculates how much memory to reserve per request and setting this value allows TGI to accurately allocate the correct amount of memory.
+If you expect longer sequences as input, you might need to adjust this parameter accordingly, keeping in mind that longer sequences may impact the overall memory required to handle the load. If you know that you'll send less than the max length allowed by the model, it's advantageous to set this parameter. When TGI starts up, it calculates how much memory to reserve per request and setting this value allows TGI to accurately allocate the correct amount of memory. In short, higher values take up more GPU memory but afford you the ability to send longer prompts.
 
-2. `max_total_tokens`
+2. `max_total_tokens` (default: 2048)
 
 This is a crucial parameter defining the "memory budget" of all requests. It is the total number of input tokens and max_new_tokens across all requests that TGI can handle at a given time. For example, with a value of 2048, users can send either a prompt of 1000 and ask for 1048 new tokens, or send a prompt of 1 and ask for 2047 max_new_tokens.
 
-If you encounter memory limitations or need to optimize memory usage based on client requirements, adjusting this parameter could help in efficiently managing the memory usage.
+If you encounter memory limitations or need to optimize memory usage based on client requirements, adjusting this parameter could help in efficiently managing the memory usage. Higher values take up more GPU memory but allow you longer (prompts + generated text). The tradeoff here is that higher values will increase throughput but will increase individual request latency.
 
-3. `max_batch_prefill_tokens`
+3. `max_batch_prefill_tokens` (default: 4096)
 
 TGI splits up the generation process into 2 phases: prefill and generation. The prefill phase reads in the input tokens and generates the first output token. This parameter controls, in a given batch of requests, how many tokens can be processed at once during the prefill phase. This value should be __at least__ the value for `max_input_length`.
 
@@ -127,14 +126,14 @@ Similar to max input length, if your input tokens are constrained, this is worth
 
 Similar to `max_batch_prefill_tokens`, this represents the entire token count across a batch; the total input tokens + the total generated tokens. In short, this value should be the top end of number of tokens that can fit on the GPU after the model has been loaded.
 
-This value is particularly important when maximizing GPU utilization.
+This value is particularly important when maximizing GPU utilization. The tradeoff here is that higher values will increase throughput but will increase individual request latency.
 
 6. `max_waiting_tokens`
 
 This setting defines how many tokens can be passed before forcing the waiting queries to be put on the batch. Adjusting this value will help in optimizing the overall latency for end-users by managing how quickly waiting queries are allowed a slot in the running batch.
 
-Tune this parameter when optimizing for end-user latency and to manage the compute allocation between prefill and decode operations efficiently.
+Tune this parameter when optimizing for end-user latency and to manage the compute allocation between prefill and decode operations efficiently. The tradeoff here is that higher values will increase throughput but will increase individual request latency because of the additional time it takes to fill up the batch.
 
 7. `sharded`
 
-This setting defines whether to shard the model across multiple GPUs. Use this when deploying on multi-GPU setups and want to improve the resource utilization and potentially the throughput of the server.
+This setting defines whether to shard the model across multiple GPUs. Use this when deploying on multi-GPU setups and want to improve the resource utilization and potentially the throughput of the server. You'd want to disable this if you're loading other models on another GPU.
