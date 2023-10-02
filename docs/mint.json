@@ -53,6 +53,16 @@
       ]
     },
     {
+      "group": "Guides",
+      "pages": [
+        "guides/secrets",
+        "guides/base-images",
+        "guides/model-cache",
+        "guides/concurrency",
+        "guides/tgi"
+      ]
+    },
+    {
       "group": "Examples",
       "pages": [
         "examples/private-model",
@@ -62,15 +72,6 @@
         "examples/performance/cached-weights",
         "examples/performance/tgi-server",
         "examples/performance/vllm-server"
-      ]
-    },
-    {
-      "group": "Guides",
-      "pages": [
-        "guides/secrets",
-        "guides/base-images",
-        "guides/model-cache",
-        "guides/concurrency"
       ]
     },
     {
