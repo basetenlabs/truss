@@ -57,7 +57,7 @@ COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
 COPY ./server /app
-COPY ./{{ config.model_module_dir }} /app/model
+COPY ./{{ config.model_module_dir }}/* /app/model
 COPY ./config.yaml /app/config.yaml
     {%- if config.live_reload %}
 COPY ./control /control
