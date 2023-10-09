@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import sys
-import webbrowser
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Optional
@@ -11,7 +10,6 @@ from typing import Callable, Optional
 import rich
 import rich_click as click
 import truss
-from InquirerPy import inquirer
 from truss.cli.create import ask_name, select_server_backend
 from truss.remote.baseten.core import (
     ModelId,
@@ -228,15 +226,10 @@ def watch(
         )
         sys.exit(1)
 
-    logs_url = remote_provider.get_remote_logs_url(model_name)  # type: ignore[attr-defined]
+    service = remote_provider.get_service(model_identifier=ModelName(model_name))
+    logs_url = remote_provider.get_remote_logs_url(service)
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
-    if not logs:
-        logs = inquirer.confirm(
-            message="🗂  Open logs in a new tab?", default=True
-        ).execute()
-    if logs:
-        webbrowser.open_new_tab(logs_url)
-    remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)  # type: ignore
+    remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
 
 
 def _extract_and_validate_model_identifier(
@@ -276,7 +269,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
 
 
 @truss_cli.command()
-@click.option("--target_directory", required=False, help="Directory of truss")
+@click.option("--target-directory", required=False, help="Directory of truss")
 @click.option(
     "--remote",
     type=str,
@@ -349,11 +342,13 @@ def predict(
 
     request_data = _extract_request_data(data=data, file=file)
 
-    service = remote_provider.get_baseten_service(model_identifier, published)  # type: ignore
+    service = remote_provider.get_service(
+        model_identifier=model_identifier, published=published
+    )
     result = service.predict(request_data)
     if inspect.isgenerator(result):
         for chunk in result:
-            rich.print(chunk, end="")
+            click.echo(chunk, nl=False)
         return
     rich.print_json(data=result)
 
@@ -414,11 +409,11 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    _ = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
+    service = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
-    if not publish:
+    if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
 | Your model has been deployed as a draft. Draft models allow you to                    |
@@ -433,13 +428,8 @@ def push(
 
         click.echo(draft_model_text)
 
-    logs_url = remote_provider.get_remote_logs_url(model_name, publish)  # type: ignore[attr-defined]
+    logs_url = remote_provider.get_remote_logs_url(service)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
-    should_open_logs = inquirer.confirm(
-        message="🗂  Open logs in a new tab?", default=True
-    ).execute()
-    if should_open_logs:
-        webbrowser.open_new_tab(logs_url)
 
 
 @truss_cli.command()

@@ -1,8 +1,8 @@
-import fnmatch
 from pathlib import Path
 from typing import Any, List, Optional
 
 from blake3 import blake3
+from truss.patch.utils import path_matches_any_pattern
 
 
 def directory_content_hash(
@@ -22,7 +22,7 @@ def directory_content_hash(
     paths = [
         path
         for path in root.glob("**/*")
-        if not _path_matches_any_pattern(path.relative_to(root), ignore_patterns)
+        if not path_matches_any_pattern(path.relative_to(root), ignore_patterns)
     ]
     paths.sort(key=lambda p: p.relative_to(root))
     for path in paths:
@@ -72,14 +72,3 @@ def str_hash_str(content: str) -> str:
     hasher = blake3()
     hasher.update(content.encode("utf-8"))
     return hasher.hexdigest()
-
-
-def _path_matches_any_pattern(path: Path, patterns: Optional[List[str]]) -> bool:
-    if patterns is None:
-        return False
-
-    for pattern in patterns:
-        if fnmatch.fnmatch(str(path), pattern):
-            return True
-
-    return False

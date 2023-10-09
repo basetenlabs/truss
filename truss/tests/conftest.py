@@ -558,6 +558,22 @@ def _custom_model_from_code(
     return dir_path
 
 
+@pytest.fixture
+def custom_model_data_dir(tmp_path: Path):
+    data_file = tmp_path / "foo.bar"
+    data_file.touch()
+
+    def add_data(handle):
+        handle.add_data(str(data_file.resolve()))
+
+    yield _custom_model_from_code(
+        tmp_path,
+        "data_dir_truss",
+        CUSTOM_MODEL_CODE,
+        handle_ops=add_data,
+    )
+
+
 class Helpers:
     @staticmethod
     @contextlib.contextmanager

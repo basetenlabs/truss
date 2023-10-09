@@ -53,6 +53,16 @@
       ]
     },
     {
+      "group": "Guides",
+      "pages": [
+        "guides/secrets",
+        "guides/base-images",
+        "guides/model-cache",
+        "guides/concurrency",
+        "guides/tgi"
+      ]
+    },
+    {
       "group": "Examples",
       "pages": [
         "examples/1_introduction/getting-started-bert",
@@ -62,14 +72,6 @@
         "examples/6_high_performance/tgi",
         "examples/7_misc/private-huggingface-model",
         "examples/7_misc/system-packages"
-      ]
-    },
-    {
-      "group": "Guides",
-      "pages": [
-        "guides/secrets",
-        "guides/base-images",
-        "guides/concurrency"
       ]
     },
     {
