@@ -3,6 +3,12 @@ title: "LLM with Streaming"
 description: "Building an LLM with streaming output"
 ---
 
+
+        <Card
+          title="View on Github"
+          icon="github" href="https://github.com/basetenlabs/truss-examples-2/tree/main/3_LLMs/llm-with-streaming">
+        </Card>
+
 In this example, we go through a Truss that serves an LLM, and streams the output to the client.
 
 # Why Streaming?
@@ -143,11 +149,13 @@ and a few other related libraries.
 
 ```yaml config.yaml
 model_name: "LLM with Streaming"
+model_metadata:
+    example_model_input: {"prompt": "what is the meaning of life"}
 requirements:
 - torch==2.0.1
 - peft==0.4.0
 - scipy==1.11.1
-- sentencepiece==1.11.1
+- sentencepiece==0.1.99
 - accelerate==0.21.0
 - bitsandbytes==0.41.1
 - einops==0.6.1
@@ -235,11 +243,13 @@ class Model:
 ```
 ```yaml config.yaml
 model_name: "LLM with Streaming"
+model_metadata:
+    example_model_input: {"prompt": "what is the meaning of life"}
 requirements:
 - torch==2.0.1
 - peft==0.4.0
 - scipy==1.11.1
-- sentencepiece==1.11.1
+- sentencepiece==0.1.99
 - accelerate==0.21.0
 - bitsandbytes==0.41.1
 - einops==0.6.1

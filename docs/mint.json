@@ -55,32 +55,13 @@
     {
       "group": "Examples",
       "pages": [
-        {
-          "group": "Introduction",
-          "pages": [
-            "examples/1_introduction/getting-started-bert"
-          ]
-        },
-        {
-          "group": "LLMs",
-          "pages": [
-            "examples/3_LLMs/llm-with-streaming"
-          ]
-        },
-        {
-          "group": "High performance",
-          "pages": [
-            "examples/6_high_performance/vllm",
-            "examples/6_high_performance/tgi"
-          ]
-        },
-        {
-          "group": "Misc",
-          "pages": [
-            "examples/7_misc/private-huggingface-model",
-            "examples/7_misc/system-packages"
-          ]
-        }
+        "examples/1_introduction/getting-started-bert",
+        "examples/2_image_classification/clip",
+        "examples/3_LLMs/llm-with-streaming",
+        "examples/6_high_performance/vllm",
+        "examples/6_high_performance/tgi",
+        "examples/7_misc/private-huggingface-model",
+        "examples/7_misc/system-packages"
       ]
     },
     {

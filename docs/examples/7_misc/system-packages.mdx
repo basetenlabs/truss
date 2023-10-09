@@ -3,6 +3,12 @@ title: "Model with system packages"
 description: "Deploy a model with both Python and system dependencies"
 ---
 
+
+        <Card
+          title="View on Github"
+          icon="github" href="https://github.com/basetenlabs/truss-examples-2/tree/main/7_misc/system-packages">
+        </Card>
+
 In this example, we build a Truss with a model that requires specific system packages.
 
 To add system packages to your Truss, you can add a `system_packages` key to your config.yaml file,
@@ -52,7 +58,8 @@ and `system_packages` sections.
 ```yaml config.yaml
 environment_variables: {}
 external_package_dirs: []
-model_metadata: {}
+model_metadata:
+    example_model_input: {"url": "https://templates.invoicehome.com/invoice-template-us-neat-750px.png", "prompt": "What is the invoice number?"}
 model_name: LayoutLM Document QA
 python_version: py39
 ```
@@ -112,7 +119,8 @@ class Model:
 ```yaml config.yaml
 environment_variables: {}
 external_package_dirs: []
-model_metadata: {}
+model_metadata:
+    example_model_input: {"url": "https://templates.invoicehome.com/invoice-template-us-neat-750px.png", "prompt": "What is the invoice number?"}
 model_name: LayoutLM Document QA
 python_version: py39
 requirements:

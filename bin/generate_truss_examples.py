@@ -10,14 +10,13 @@ $ poetry run python bin/generate_truss_examples.py
 ```
 """
 import enum
-import itertools
 import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import yaml
 
@@ -209,6 +208,14 @@ title: "{doc_information["title"]}"
 description: "{doc_information["description"]}"
 ---
 """
+
+    path_in_examples_repo = "/".join(Path(truss_directory).parts[1:])
+    link_to_github = f"""
+        <Card
+          title="View on Github"
+          icon="github" href="{TRUSS_EXAMPLES_REPO}/tree/main/{path_in_examples_repo}">
+        </Card>
+    """
     files_to_scrape = doc_information["files"]
 
     full_content, code_blocks = zip(
@@ -222,7 +229,7 @@ description: "{doc_information["description"]}"
     file_content = "\n".join(full_content) + _generate_request_example_block(
         full_code_block
     )
-    example_content = f"""{header}\n{file_content}"""
+    example_content = f"""{header}\n{link_to_github}\n{file_content}"""
     path_to_example = Path(example_destination)
     path_to_example.parent.mkdir(parents=True, exist_ok=True)
 
@@ -246,17 +253,6 @@ def _format_group_name(group_name: str) -> str:
     return lowercase_name[0].upper() + lowercase_name[1:]
 
 
-def _toc_section(
-    example_group_name: str, example_group: Iterator[Tuple[str, ...]]
-) -> dict:
-    return {
-        "group": _format_group_name(example_group_name),
-        "pages": [
-            f"examples/{example[0]}/{example[1]}" for example in list(example_group)
-        ],
-    }
-
-
 def update_toc(example_dirs: List[str]):
     """
     Update the table of contents in the README.md file.
@@ -273,21 +269,12 @@ def update_toc(example_dirs: List[str]):
 
     examples_section = [item for item in navigation if item["group"] == "Examples"][0]
 
-    # Group together by the parent directory. ie:
-    #
-    # * 3_llms/llm
-    # * 3_llms/llm-streaming
-    #
-    # will be grouped together with they key "3_llms". This allows us to have proper
-    # nesting in the table of contents.
-    grouped_examples = itertools.groupby(
-        sorted(transformed_example_paths, key=lambda example: example[0]),
-        key=lambda example: example[0],
-    )
-
+    # Sort examples by the group name
     examples_section["pages"] = [
-        _toc_section(example_group_name, example_group)
-        for example_group_name, example_group in grouped_examples
+        f"examples/{example_path[0]}/{example_path[1]}"
+        for example_path in sorted(
+            transformed_example_paths, key=lambda example: example[0]
+        )
     ]
 
     serialized_mint_config = json.dumps(mint_config, indent=2)

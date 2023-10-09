@@ -3,6 +3,12 @@ title: "Getting Started: Text Classification"
 description: "Building your first Truss"
 ---
 
+
+        <Card
+          title="View on Github"
+          icon="github" href="https://github.com/basetenlabs/truss-examples-2/tree/main/1_introduction/getting-started-bert">
+        </Card>
+
 In this example, we go through building your first Truss model. We'll be using the HuggingFace transformers
 library to build a text classification model that can detect sentiment of text.
 
@@ -63,7 +69,9 @@ such as the name, and the Python version to build with.
 ```yaml config.yaml
 model_name: bert
 python_version: py310
-model_metadata: {}
+model_metadata:
+  example_model_input: { "text": "Hello my name is {MASK}" }
+
 
 ```
 ### Set up python requirements
@@ -135,7 +143,9 @@ class Model:
 ```yaml config.yaml
 model_name: bert
 python_version: py310
-model_metadata: {}
+model_metadata:
+  example_model_input: { "text": "Hello my name is {MASK}" }
+
 
 requirements:
   - torch==2.0.1
