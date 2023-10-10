@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import requests
 from truss.remote.baseten.auth import AuthService
@@ -59,38 +58,57 @@ class BasetenApi:
 
     def create_model_from_truss(
         self,
-        model_name,
-        s3_key,
-        config,
-        semver_bump,
-        client_version,
-        is_trusted=False,
-        model_id: Optional[str] = None,
+        model_name: str,
+        s3_key: str,
+        config: str,
+        semver_bump: str,
+        client_version: str,
+        is_trusted: bool,
     ):
-        if model_id:
-            mutation = "create_model_version_from_truss"
-            first_arg = f'model_id: "{model_id}"'
-        else:
-            mutation = "create_model_from_truss"
-            first_arg = f'name: "{model_name}"'
-
         query_string = f"""
         mutation {{
-        {mutation}({first_arg},
-                    s3_key: "{s3_key}",
-                    config: "{config}",
-                    semver_bump: "{semver_bump}",
-                    client_version: "{client_version}",
-                    is_trusted: {'true' if is_trusted else 'false'}
-    ) {{
-            id,
-            name,
-            version_id
-        }}
+            create_model_from_truss(
+                name: "{model_name}",
+                s3_key: "{s3_key}",
+                config: "{config}",
+                semver_bump: "{semver_bump}",
+                client_version: "{client_version}",
+                is_trusted: {'true' if is_trusted else 'false'}
+            ) {{
+                id,
+                name,
+                version_id
+            }}
         }}
         """
         resp = self._post_graphql_query(query_string)
-        return resp["data"][mutation]
+        return resp["data"]["create_model_from_truss"]
+
+    def create_model_version_from_truss(
+        self,
+        model_id: str,
+        s3_key: str,
+        config: str,
+        semver_bump: str,
+        client_version: str,
+        is_trusted: bool,
+    ):
+        query_string = f"""
+        mutation {{
+            create_model_version_from_truss(
+                model_id: "{model_id}"
+                s3_key: "{s3_key}",
+                config: "{config}",
+                semver_bump: "{semver_bump}",
+                client_version: "{client_version}",
+                is_trusted: {'true' if is_trusted else 'false'}
+            ) {{
+                id
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["create_model_version_from_truss"]
 
     def create_development_model_from_truss(
         self,
