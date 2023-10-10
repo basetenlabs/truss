@@ -142,6 +142,13 @@ class TrussService(ABC):
         """
         return {}
 
+    @abstractmethod
+    def logs_url(self, base_url: str) -> str:
+        """
+        Get the URL for the service logs.
+        """
+        pass
+
 
 class TrussRemote(ABC):
     """
@@ -189,6 +196,45 @@ class TrussRemote(ABC):
         Args:
             **kwargs: Additional keyword arguments for the authentication operation.
         """
+        pass
+
+    @abstractmethod
+    def get_service(self, **kwargs):
+        """
+        Get a TrussService object for interacting with the remote service.
+
+        This method should be implemented in subclasses and return a TrussService
+        object for interacting with the remote service. This support keyword args,
+        so that implementing remotes can be flexible with how a service is instantiated.
+
+        Args:
+            **kwargs: Keyword arguments for the get_service operation.
+
+        """
+        pass
+
+    @abstractmethod
+    def get_remote_logs_url(self, service: TrussService) -> str:
+        """
+        Get the URL for the remote service logs.
+
+        Args:
+            service: The TrussService object for interacting with the remote service.
+        """
+        pass
+
+    @abstractmethod
+    def sync_truss_to_dev_version_by_name(self, model_name: str, target_directory: str):
+        """
+        This method watches for changes to files in the `target_directory`,
+        and syncs them to the development version of the model, identified
+        by name.
+
+        Args:
+            model_name: The name of the model to sync to the dev version
+            target_directory: The directory to sync the model to
+        """
+
         pass
 
 

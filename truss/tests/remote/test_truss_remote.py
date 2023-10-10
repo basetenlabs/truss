@@ -27,6 +27,9 @@ class TestTrussService(TrussService):
             return True
         return False
 
+    def logs_url(self, base_url: str) -> str:
+        return f"{base_url}/logs"
+
 
 def mock_successful_response():
     response = Response()
