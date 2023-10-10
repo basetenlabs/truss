@@ -157,5 +157,4 @@ def create_truss_service(
         is_trusted=is_trusted,
     )
     model_version_id = model_version_json["id"]
-    model_version = api.get_model_version_by_id(model_version_id)
-    return (model_version["model_version"]["oracle"]["id"], model_version_id)
+    return (model_id, model_version_id)
