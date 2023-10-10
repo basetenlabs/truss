@@ -106,8 +106,8 @@ def create_truss_service(
     model_name: str,
     s3_key: str,
     config: str,
-    semver_bump: Optional[str] = "MINOR",
-    is_trusted: Optional[bool] = False,
+    semver_bump: str = "MINOR",
+    is_trusted: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
 ) -> Tuple[str, str]:
@@ -133,15 +133,28 @@ def create_truss_service(
             f"truss=={truss.version()}",
             is_trusted,
         )
-    else:
-        model_version_json = api.create_model_from_truss(
-            model_name,
-            s3_key,
-            config,
-            semver_bump,
-            f"truss=={truss.version()}",
-            is_trusted,
-            model_id,
-        )
 
-    return (model_version_json["id"], model_version_json["version_id"])
+        return (model_version_json["id"], model_version_json["version_id"])
+
+    if model_id is None:
+        model_version_json = api.create_model_from_truss(
+            model_name=model_name,
+            s3_key=s3_key,
+            config=config,
+            semver_bump=semver_bump,
+            client_version=f"truss=={truss.version()}",
+            is_trusted=is_trusted,
+        )
+        return (model_version_json["id"], model_version_json["version_id"])
+
+    # Case where there is a model id already, create another version
+    model_version_json = api.create_model_version_from_truss(
+        model_id=model_id,
+        s3_key=s3_key,
+        config=config,
+        semver_bump=semver_bump,
+        client_version=f"truss=={truss.version()}",
+        is_trusted=is_trusted,
+    )
+    model_version_id = model_version_json["id"]
+    return (model_id, model_version_id)
