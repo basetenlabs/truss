@@ -21,8 +21,8 @@ from typing import List, Optional, Tuple
 import yaml
 
 DOC_CONFIGURATION_FILE = "doc.yaml"
-TRUSS_EXAMPLES_REPO = "https://github.com/basetenlabs/truss-examples-2"
-DESTINATION_DIR = "truss-examples-2"
+TRUSS_EXAMPLES_REPO = "https://github.com/basetenlabs/truss-examples"
+DESTINATION_DIR = "truss-examples"
 MINT_CONFIG_PATH = "docs/mint.json"
 
 
