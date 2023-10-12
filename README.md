@@ -13,7 +13,7 @@
 
 See Trusses for popular models including:
 
-* 🦙 [Llama 2 7B](https://github.com/basetenlabs/truss-examples/tree/main/llama-2-7b-chat) ([13B](https://github.com/basetenlabs/truss-examples/tree/main/llama-2-13b-chat)) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/llama-2-70b-chat))
+* 🦙 [Llama 2 7B](https://github.com/basetenlabs/truss-examples/tree/main/model_library/llama-2-7b-chat) ([13B](https://github.com/basetenlabs/truss-examples/tree/main/model_library/llama-2-13b-chat)) ([70B](https://github.com/basetenlabs/truss-examples/tree/main/model_library/llama-2-70b-chat))
 * 🎨 [Stable Diffusion XL](https://github.com/basetenlabs/truss-examples/tree/main/stable-diffusion-xl-1.0)
 * 🗣 [Whisper](https://github.com/basetenlabs/truss-examples/tree/main/whisper-truss)
 
