@@ -72,6 +72,7 @@
         "examples/4_image_generation/sdxl",
         "examples/6_high_performance/vllm",
         "examples/6_high_performance/tgi",
+        "examples/6_high_performance/cached-weights",
         "examples/7_misc/private-huggingface-model",
         "examples/7_misc/system-packages"
       ]
