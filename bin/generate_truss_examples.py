@@ -1,8 +1,6 @@
 """
-Script to take the Truss examples in https://github.com/basetenlabs/truss-examples-2,
+Script to take the Truss examples in https://github.com/basetenlabs/truss-examples,
 and generate documentation.
-
-
 
 Usage:
 ```
@@ -36,7 +34,7 @@ def clone_repo():
     If the destination directory exists, remove it.
     Then, clone the given repo into the specified directory.
     """
-    if os.path.exists(DESTINATION_DIR):
+    if Path(DESTINATION_DIR).exists():
         shutil.rmtree(DESTINATION_DIR)
 
     try:
@@ -79,7 +77,7 @@ def _get_example_destination(truss_directory: str) -> Path:
 
 
 def _get_file_type(file_path: str) -> FileType:
-    _, extension = os.path.splitext(file_path)
+    extension = Path(file_path).suffix
     if extension == ".yaml":
         return FileType.YAML
 
