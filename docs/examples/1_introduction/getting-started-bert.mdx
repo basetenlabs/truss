@@ -1,0 +1,166 @@
+---
+title: "Getting Started"
+description: "Building your first Truss"
+---
+
+
+        <Card
+          title="View on Github"
+          icon="github" href="https://github.com/basetenlabs/truss-examples/tree/main/1_introduction/getting-started-bert">
+        </Card>
+
+In this example, we go through building your first Truss model. We'll be using the HuggingFace transformers
+library to build a text classification model that can detect sentiment of text.
+
+# Step 1: Implementing the model
+
+Set up imports for this model. In this example, we simply use the HuggingFace transformers library.
+
+```python model/model.py
+from transformers import pipeline
+
+```
+Every Truss model must implement a `Model` class. This class must have:
+ * an `__init__` function
+ * a `load` function
+ * a `predict` function
+
+In the `__init__` function, set up any variables that will be used in the `load` and `predict` functions.
+
+```python model/model.py
+class Model:
+    def __init__(self, **kwargs):
+        self._model = None
+
+```
+In the `load` function of the Truss, we implement logic
+involved in downloading the model and loading it into memory.
+For this Truss example, we define a HuggingFace pipeline, and choose
+the `text-classification` task, which uses BERT for text classification under the hood.
+
+Note that the the load function runs when the
+
+```python model/model.py
+    def load(self):
+        self._model = pipeline("text-classification")
+
+```
+In the `predict` function of the Truss, we implement logic related
+to actual inference. For this example,  we just call the HuggingFace pipeline
+that we set up in the `load` function.
+
+```python model/model.py
+    def predict(self, model_input):
+        return self._model(model_input)
+```
+
+# Step 2: Writing the config.yaml
+
+Each Truss has a config.yaml file where we can configure
+options related to the deployment. It's in this file where
+we can define requirements, resources, and runtime options like
+secrets and environment variables
+
+### Basic Options
+
+In this section, we can define basic metadata about the model,
+such as the name, and the Python version to build with.
+
+```yaml config.yaml
+model_name: bert
+python_version: py310
+model_metadata:
+  example_model_input: { "text": "Hello my name is {MASK}" }
+
+
+```
+### Set up python requirements
+
+In this section, we define any pip requirements that
+we need to run the model. To run this, we need PyTorch
+and Tranformers.
+
+```yaml config.yaml
+requirements:
+  - torch==2.0.1
+  - transformers==4.33.2
+
+```
+### Configure the resources needed
+
+In this section, we can configure resources
+needed to deploy this model. Here, we have no need for a GPU
+so we leave the accelerator section blank.
+
+```yaml config.yaml
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+
+```
+### Other config options
+
+Truss also has provisions for adding other runtime options
+packages. In this example, we don't need these, so we leave
+this empty for now.
+
+```yaml config.yaml
+secrets: {}
+system_packages: []
+environment_variables: {}
+external_package_dirs: []
+
+```
+# Step 3: Deploying & running inference
+
+Deploy the model with the following command:
+
+```bash
+$ truss push
+```
+
+And then you can performance inference with:
+```
+$ truss predict -d '"Truss is awesome!"'
+```
+
+<RequestExample>
+```python model/model.py
+from transformers import pipeline
+
+class Model:
+    def __init__(self, **kwargs):
+        self._model = None
+
+    def load(self):
+        self._model = pipeline("text-classification")
+
+    def predict(self, model_input):
+        return self._model(model_input)
+```
+```yaml config.yaml
+model_name: bert
+python_version: py310
+model_metadata:
+  example_model_input: { "text": "Hello my name is {MASK}" }
+
+
+requirements:
+  - torch==2.0.1
+  - transformers==4.33.2
+
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+
+secrets: {}
+system_packages: []
+environment_variables: {}
+external_package_dirs: []
+
+```
+</RequestExample>

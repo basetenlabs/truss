@@ -1,0 +1,140 @@
+---
+title: "Model with system packages"
+description: "Deploy a model with both Python and system dependencies"
+---
+
+
+        <Card
+          title="View on Github"
+          icon="github" href="https://github.com/basetenlabs/truss-examples/tree/main/7_misc/system-packages">
+        </Card>
+
+In this example, we build a Truss with a model that requires specific system packages.
+
+To add system packages to your Truss, you can add a `system_packages` key to your config.yaml file,
+for instance:
+To add system packages to your model serving environment, open config.yaml and
+update the system_packages key with a list of apt-installable Debian packages:
+
+```yaml config.yaml
+system_packages:
+ - tesseract-ocr
+```
+
+For this example, we use the [LayoutLM Document QA](https://huggingface.co/impira/layoutlm-document-qa) model,
+a multimodal model that answers questions about provided invoice documents. This model requires a system
+package, tesseract-ocr, which needs to be included in the model serving environment.
+
+# Setting up the model.py
+
+For this model, we use the HuggingFace transformers library, and the the document-question-answering task.
+
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._model = None
+
+    def load(self):
+        self._model = pipeline(
+            "document-question-answering",
+            model="impira/layoutlm-document-qa",
+        )
+
+    def predict(self, model_input):
+        return self._model(
+            model_input["url"],
+            model_input["prompt"]
+        )
+```
+
+# Setting up the config.yaml file
+
+The main items that need to be configured in the config.yaml file are requirements
+and `system_packages` sections.
+
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs: []
+model_metadata:
+    example_model_input: {"url": "https://templates.invoicehome.com/invoice-template-us-neat-750px.png", "prompt": "What is the invoice number?"}
+model_name: LayoutLM Document QA
+python_version: py39
+```
+Specify the versions of the Python requirements that are needed.
+<Note>Always pin exact versions for your Python dependencies. The ML/AI space moves fast, so you want to have an up-to-date version of each package while also being protected from breaking changes.</Note>
+
+```yaml config.yaml
+requirements:
+- Pillow==10.0.0
+- pytesseract==0.3.10
+- torch==2.0.1
+- transformers==4.30.2
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: false
+  accelerator: null
+secrets: {}
+```
+The system_packages section is the other important bit here, you can
+add any package that's available via `apt` on Debian.
+
+```yaml config.yaml
+system_packages:
+- tesseract-ocr
+```
+# Deploy the model
+```bash
+$ truss push
+```
+You can then invoke the model with:
+```
+$ truss predict -d '{"url": "https://templates.invoicehome.com/invoice-template-us-neat-750px.png", "prompt": "What is the invoice number?"}'
+```
+
+<RequestExample>
+```python model/model.py
+from transformers import pipeline
+
+
+class Model:
+    def __init__(self, **kwargs) -> None:
+        self._model = None
+
+    def load(self):
+        self._model = pipeline(
+            "document-question-answering",
+            model="impira/layoutlm-document-qa",
+        )
+
+    def predict(self, model_input):
+        return self._model(
+            model_input["url"],
+            model_input["prompt"]
+        )
+```
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs: []
+model_metadata:
+    example_model_input: {"url": "https://templates.invoicehome.com/invoice-template-us-neat-750px.png", "prompt": "What is the invoice number?"}
+model_name: LayoutLM Document QA
+python_version: py39
+requirements:
+- Pillow==10.0.0
+- pytesseract==0.3.10
+- torch==2.0.1
+- transformers==4.30.2
+resources:
+  cpu: "4"
+  memory: 16Gi
+  use_gpu: false
+  accelerator: null
+secrets: {}
+system_packages:
+- tesseract-ocr
+```
+</RequestExample>
