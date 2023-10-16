@@ -398,8 +398,13 @@ secrets:
 
 
 @pytest.mark.integration
-def test_streaming_postprocess():
-    # Define a truss that sleeps for 2 seconds during the postprocess step.
+def test_postprocess_with_streaming_predict():
+    """
+    Test a Truss that has streaming response from both predict and postprocess.
+    In this case, the postprocess step continues to happen within the predict lock,
+    so we don't bother testing the lock scenario, just the behavior that the postprocess
+    function is applied.
+    """
     model = """
     import time
 
@@ -424,12 +429,53 @@ def test_streaming_postprocess():
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
+        response = requests.post(full_url, json={}, stream=True)
+        # Note that the postprocess function is applied to the
+        # streamed response.
+        assert response.content == b"0 modified1 modified"
+
+
+@pytest.mark.integration
+def test_streaming_postprocess():
+    """
+    Tests a Truss where predict returns non-streaming, but postprocess is streamd, and
+    ensures that the postprocess step does not happen within the predict lock. To do this,
+    we sleep for two seconds during the postprocess streaming process, and fire off two
+    requests with a total timeout of 3 seconds, ensuring that if they were serialized
+    the test would fail.
+    """
+    model = """
+    import time
+
+    class Model:
+        def postprocess(self, response):
+            for item in response:
+                time.sleep(1)
+                yield item + " modified"
+
+        def predict(self, request):
+            return ["0", "1"]
+    """
+
+    config = "model_name: error-truss"
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         def make_request(delay: int):
             # For streamed responses, requests does not start receiving content from server until
             # `iter_content` is called, so we must call this in order to get an actual timeout.
             time.sleep(delay)
-            list(requests.post(full_url, json={}, stream=True).iter_content())
+            response = requests.post(full_url, json={}, stream=True)
+
+            assert response.status_code == 200
+            assert response.content == b"0 modified1 modified"
 
         with ThreadPoolExecutor() as e:
             # We use concurrent.futures.wait instead of the timeout property
@@ -444,10 +490,69 @@ def test_streaming_postprocess():
             assert first_request in done
             assert second_request in done
 
+            for future in done:
+                # Ensure that both futures completed without error
+                future.result()
+
 
 @pytest.mark.integration
 def test_postprocess():
-    pass
+    """
+    Tests a Truss that has a postprocess step defined, and ensures that the
+    postprocess does not happen within the predict lock. To do this, we sleep
+    for two seconds during the postprocess, and fire off two requests with a total
+    timeout of 3 seconds, ensureing that if they were serialized the test would fail.
+    """
+
+    model = """
+    import time
+
+    class Model:
+        def postprocess(self, response):
+            updated_items = []
+            for item in response:
+                time.sleep(1)
+                updated_items.append(item + " modified")
+            return updated_items
+
+        def predict(self, request):
+            return ["0", "1"]
+
+    """
+
+    config = "model_name: error-truss"
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        def make_request(delay: int):
+            time.sleep(delay)
+            response = requests.post(full_url, json={})
+            assert response.status_code == 200
+            assert response.json() == ["0 modified", "1 modified"]
+
+        with ThreadPoolExecutor() as e:
+            # We use concurrent.futures.wait instead of the timeout property
+            # on requests, since requests timeout property has a complex interaction
+            # with streaming.
+            first_request = e.submit(make_request, 0)
+            second_request = e.submit(make_request, 0.2)
+            futures = [first_request, second_request]
+            done, _ = concurrent.futures.wait(futures, timeout=3)
+            # Ensure that both requests complete within the 3 second timeout,
+            # as the predict lock is not held through the postprocess step
+            assert first_request in done
+            assert second_request in done
+
+            for future in done:
+                # Ensure that both futures completed without error
+                future.result()
 
 
 @pytest.mark.integration
