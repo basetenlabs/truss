@@ -225,7 +225,7 @@ class ModelWrapper:
         if inspect.isasyncgenfunction(
             self._model.postprocess
         ) or inspect.isgeneratorfunction(self._model.postprocess):
-            return self._model.postprocess(response, headers)
+            return self._model.postprocess(response)
 
         if inspect.iscoroutinefunction(self._model.postprocess):
             return await _intercept_exceptions_async(self._model.postprocess)(response)
@@ -264,10 +264,16 @@ class ModelWrapper:
         async with deferred_semaphore(self._predict_semaphore) as semaphore_manager:
             response = await self.predict(payload, headers)
 
-            processed_response = await self.postprocess(response)
-
             # Streaming cases
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
+                if hasattr(self._model, "postprocess"):
+                    logging.warning(
+                        "Predict returned a streaming response, while a postprocess is defined."
+                        "Note that in this case, the postprocess will run within the predict lock."
+                    )
+
+                    response = await self.postprocess(response)
+
                 async_generator = _force_async_generator(response)
 
                 if headers and headers.get("accept") == "application/json":
@@ -309,7 +315,8 @@ class ModelWrapper:
 
                 return _response_generator()
 
-            return processed_response
+        processed_response = await self.postprocess(response)
+        return processed_response
 
 
 class ResponseChunk:
