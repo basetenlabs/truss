@@ -142,7 +142,7 @@ class BasetenEndpoints:
 
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.
-        if isinstance(response, AsyncGenerator):
+        if isinstance(response, (AsyncGenerator, Generator)):
             # media_type in StreamingResponse sets the Content-Type header
             return StreamingResponse(response, media_type="application/octet-stream")
 
