@@ -4,6 +4,11 @@
     "default": "light",
     "isHidden": true
   },
+  "analytics": {
+    "gtm": {
+        "tagId": "GTM-5Z2TLX86"
+    }
+  },
   "anchors": [
     {
       "icon": "b",
@@ -169,10 +174,5 @@
       "name": "Issues",
       "url": "https://github.com/basetenlabs/truss/issues"
     }
-  ],
-  "analytics": {
-    "gtm": {
-      "tagId": "GTM-WXD4NQTW"
-    }
-  }
+  ]
 }
