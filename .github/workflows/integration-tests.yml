@@ -31,9 +31,10 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
+        platform: ["amd64", "arm64"]
         python_version: ["3.8", "3.9", "3.10", "3.11"]
         use_gpu: ["y", "n"]
-        job_type: ["server", "training"]
+        job_type: ["server"]
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -54,6 +55,7 @@ jobs:
             --python-version ${{ matrix.python_version }} \
             --job-type ${{ matrix.job_type }} \
             --version-tag ${{ needs.detect-version-changed.outputs.new_base_image_version }} \
+            --arch ${{ matrix.platform }} \
             --skip-login --push
 
   integration-tests:

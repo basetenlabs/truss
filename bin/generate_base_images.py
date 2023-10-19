@@ -15,6 +15,8 @@ from truss.contexts.image_builder.util import (
     truss_base_image_tag,
 )
 
+SUPPORTED_ARCHITECTURES = {"amd64", "arm64"}
+
 base_path = Path(__file__).parent.parent
 templates_path = base_path / "truss" / "templates"
 sys.path.append(str(base_path))
@@ -62,6 +64,7 @@ def _build(
     job_type: str = "server",
     push: bool = False,
     version_tag: Optional[str] = None,
+    arch: str = "amd64",
     dry_run: bool = True,
 ):
     image_name = truss_base_image_name(job_type=job_type)
@@ -104,7 +107,7 @@ def _build(
             "docker",
             "buildx",
             "build",
-            "--platform=linux/amd64",
+            # f"--platform=linux/{arch}",
             ".",
             "-t",
             image_with_tag,
@@ -120,6 +123,7 @@ def _build_all(
     use_gpu_values: Optional[List[bool]] = None,
     push: bool = False,
     version_tag: Optional[str] = None,
+    archs: Optional[Set[str]] = None,
     dry_run: bool = False,
 ):
     if job_types is None:
@@ -128,20 +132,25 @@ def _build_all(
     if python_versions is None:
         python_versions = SUPPORTED_PYTHON_VERSIONS
 
+    if archs is None:
+        archs = SUPPORTED_ARCHITECTURES
+
     if use_gpu_values is None:
         use_gpu_values = [True, False]
 
     for job_type in job_types:
         for python_version in python_versions:
             for use_gpu in use_gpu_values:
-                _build(
-                    job_type=job_type,
-                    python_version=python_version,
-                    use_gpu=use_gpu,
-                    push=push,
-                    version_tag=version_tag,
-                    dry_run=dry_run,
-                )
+                for arch in archs:
+                    _build(
+                        job_type=job_type,
+                        python_version=python_version,
+                        use_gpu=use_gpu,
+                        push=push,
+                        version_tag=version_tag,
+                        arch=arch,
+                        dry_run=dry_run,
+                    )
 
 
 if __name__ == "__main__":
@@ -186,6 +195,13 @@ if __name__ == "__main__":
         help="Build images for specific python version or all",
     )
     parser.add_argument(
+        "--arch",
+        nargs="?",
+        default="all",
+        choices=[*SUPPORTED_ARCHITECTURES, "all"],
+        help="Build images for specific architecture or all",
+    )
+    parser.add_argument(
         "--skip-login",
         action=BooleanOptionalAction,
         default=False,
@@ -197,6 +213,11 @@ if __name__ == "__main__":
         python_versions = SUPPORTED_PYTHON_VERSIONS
     else:
         python_versions = {args.python_version}
+
+    if args.arch == "all":
+        arch = SUPPORTED_ARCHITECTURES
+    else:
+        arch = {args.arch}
 
     if args.job_type == "all":
         job_types = ["server", "training"]
@@ -214,5 +235,6 @@ if __name__ == "__main__":
         use_gpu_values=use_gpu_values,
         push=args.push,
         version_tag=args.version_tag,
+        archs=arch,
         dry_run=args.dry_run,
     )
