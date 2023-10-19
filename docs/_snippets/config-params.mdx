@@ -1,7 +1,8 @@
-<ParamField body="description" type="str">
+### `description`
+
 Describe your model for documentation purposes.
-</ParamField>
-<ParamField body="environment_variables" type="Dict[str, str]">
+### `environment_variables`
+
 <Warning>
 Do not store secret values directly in environment variables (or anywhere in the config file). See the `secrets` arg for information on properly managing secrets.
 </Warning>
@@ -13,19 +14,17 @@ environment_variables:
   ENVIRONMENT: Staging
   DB_URL: https://my_database.example.com/
 ```
-</ParamField>
-<ParamField body="model_metadata" type="Dict[str, str]">
+
+### `model_metadata`
 Set any additional metadata in this catch-all field. The entire contents of the config file are available to the model at runtime, so this is a good place to store any custom information that model needs. For example, scikit-learn models include a flag here that indicates whether the model supports returning probabilities alongside predictions.
 
 ```yaml
 model_metadata:
   supports_predict_proba: true
 ```
-</ParamField>
-<ParamField body="model_name" type="str">
-The model's name, for documentation purposes.
-</ParamField>
-<ParamField body="requirements" type="List[str]">
+
+### `requirements`
+
 List the Python dependencies that the model depends on. The requirements should be provided in the [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/), but as a yaml list.
 
 We strongly recommend pinning versions in your requirements.
@@ -38,19 +37,18 @@ requirements:
 - numpy==1.20.3
 - scipy==1.7.3
 ```
-</ParamField>
-<ParamField body="resources" type="Dict[str, str]">
-Specify model server runtime resources such as CPU, RAM and GPU.
 
-```yaml
-resources:
-  cpu: "3"
-  memory: 14Gi
-  use_gpu: true
-  accelerator: A10G
-```
-</ParamField>
-<ParamField body="secrets" type="Dict[str, str]">
+### `resources`
+
+#### `resources.cpu`
+
+#### `resources.memory`
+
+#### `resources.use_gpu`
+
+#### `resources.accelerator`
+
+### `secrets`
 <Warning>
 This field can be used to specify the keys for such secrets and dummy default
 values. ***Never store actual secret values in the config***. Dummy default
@@ -66,8 +64,8 @@ information from s3 and may need access to AWS credentials for that.
 secrets:
   hf_access_token: "ACCESS TOKEN"
 ```
-</ParamField>
-<ParamField body="system_packages" type="List[str]">
+
+### `system_packages`
 Specify any system packages that you would typically install using `apt` on a Debian operating system.
 
 ```yaml
@@ -76,4 +74,18 @@ system_packages:
 - libsm6
 - libxext6
 ```
-</ParamField>
+
+### `runtime`
+
+#### `runtime.predict_concurrency`
+
+
+### `external_package_dirs`
+
+
+### `build`
+
+
+#### `build.model_server`
+
+#### `build.arguments`
