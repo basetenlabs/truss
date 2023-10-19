@@ -6,6 +6,12 @@ Usage:
 ```
 $ poetry run python bin/generate_truss_examples.py
 ```
+
+Development:
+
+Run this on a branch of truss-examples repo with:
+
+$ poetry run python bin/generate_truss_examples.py $BRANCH_NAME
 """
 import enum
 import json
@@ -20,6 +26,7 @@ import yaml
 
 DOC_CONFIGURATION_FILE = "doc.yaml"
 TRUSS_EXAMPLES_REPO = "https://github.com/basetenlabs/truss-examples"
+DEFAULT_BRANCH = "main"
 DESTINATION_DIR = "truss-examples"
 MINT_CONFIG_PATH = "docs/mint.json"
 
@@ -29,7 +36,7 @@ class FileType(enum.Enum):
     PYTHON = "python"
 
 
-def clone_repo():
+def clone_repo(branch: str):
     """
     If the destination directory exists, remove it.
     Then, clone the given repo into the specified directory.
@@ -41,6 +48,7 @@ def clone_repo():
         subprocess.run(
             ["git", "clone", TRUSS_EXAMPLES_REPO, DESTINATION_DIR], check=True
         )
+        subprocess.run(["git", "checkout", branch], cwd=DESTINATION_DIR, check=True)
         print(f"Successfully cloned {TRUSS_EXAMPLES_REPO} to {DESTINATION_DIR}")
     except subprocess.CalledProcessError as e:
         print(f"Error cloning the repo: {e}")
@@ -279,14 +287,14 @@ def update_toc(example_dirs: List[str]):
     Path(MINT_CONFIG_PATH).write_text(serialized_mint_config)
 
 
-def generate_truss_examples():
+def generate_truss_examples(branch: str = DEFAULT_BRANCH):
     """
     Walk through the Truss examples repo, and for each
     of the examples in the repo, generate documentation.
 
     Finish the process by updating the table of contents.
     """
-    clone_repo()
+    clone_repo(branch)
 
     example_dirs = _fetch_example_dirs(DESTINATION_DIR)
     for truss_directory in example_dirs:
@@ -296,4 +304,8 @@ def generate_truss_examples():
 
 
 if __name__ == "__main__":
-    generate_truss_examples()
+    if len(sys.argv) > 1:
+        branch = sys.argv[1]
+        generate_truss_examples(branch)
+    else:
+        generate_truss_examples()
