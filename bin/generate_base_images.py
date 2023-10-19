@@ -107,7 +107,7 @@ def _build(
             "docker",
             "buildx",
             "build",
-            # f"--platform=linux/{arch}",
+            f"--platform=linux/{arch}",
             ".",
             "-t",
             image_with_tag,
