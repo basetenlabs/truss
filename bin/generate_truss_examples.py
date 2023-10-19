@@ -79,9 +79,9 @@ def _get_example_destination(truss_directory: str) -> Path:
     Get the destination directory for the example.
     """
     original_path = Path(truss_directory)
-    folder, example = original_path.parts[1:]
-    example_file = f"{example}.mdx"
-    return Path("docs/examples") / folder / example_file
+    example_path = "/".join(original_path.parts[1:])
+    example_file_path = f"{example_path}.mdx"
+    return Path("docs/examples") / example_file_path
 
 
 def _get_file_type(file_path: str) -> FileType:
@@ -268,7 +268,9 @@ def update_toc(example_dirs: List[str]):
     """
 
     # Exclude the root directory ("truss_examples") from the path
-    transformed_example_paths = [Path(example).parts[1:] for example in example_dirs]
+    transformed_example_paths = [
+        "/".join(Path(example).parts[1:]) for example in example_dirs
+    ]
 
     mint_config = json.loads(fetch_file_contents(MINT_CONFIG_PATH))
     navigation = mint_config["navigation"]
@@ -277,10 +279,7 @@ def update_toc(example_dirs: List[str]):
 
     # Sort examples by the group name
     examples_section["pages"] = [
-        f"examples/{example_path[0]}/{example_path[1]}"
-        for example_path in sorted(
-            transformed_example_paths, key=lambda example: example[0]
-        )
+        f"examples/{example_path}" for example_path in sorted(transformed_example_paths)
     ]
 
     serialized_mint_config = json.dumps(mint_config, indent=2)
@@ -304,8 +303,9 @@ def generate_truss_examples(branch: str = DEFAULT_BRANCH):
 
 
 if __name__ == "__main__":
+    # The first arg is optionally the branch name
+    # of truss-examples repo to use.
     if len(sys.argv) > 1:
-        branch = sys.argv[1]
-        generate_truss_examples(branch)
+        generate_truss_examples(sys.argv[1])
     else:
         generate_truss_examples()
