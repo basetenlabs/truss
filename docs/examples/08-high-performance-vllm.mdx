@@ -6,7 +6,7 @@ description: "Deploy a language model with vLLM"
 
         <Card
           title="View on Github"
-          icon="github" href="https://github.com/basetenlabs/truss-examples/tree/main/6_high_performance/vllm">
+          icon="github" href="https://github.com/basetenlabs/truss-examples/tree/main/08-high-performance-vllm">
         </Card>
 
 [vLLM](https://github.com/vllm-project/vllm) is a Python-based package that optimizes the Attention
@@ -51,8 +51,9 @@ The remaining config options listed are standard Truss Config options.
 ```yaml config.yaml
 environment_variables: {}
 external_package_dirs: []
-model_metadata: {}
-model_name: OPT-125M
+model_metadata:
+  example_model_input: {"prompt": "What is the meaning of life?"}
+model_name: OPT-125M vLLM
 python_version: py39
 requirements: []
 resources:
@@ -85,8 +86,9 @@ runtime:
   predict_concurrency: 128
 environment_variables: {}
 external_package_dirs: []
-model_metadata: {}
-model_name: OPT-125M
+model_metadata:
+  example_model_input: {"prompt": "What is the meaning of life?"}
+model_name: OPT-125M vLLM
 python_version: py39
 requirements: []
 resources:
