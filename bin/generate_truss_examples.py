@@ -6,6 +6,12 @@ Usage:
 ```
 $ poetry run python bin/generate_truss_examples.py
 ```
+
+Development:
+
+Run this on a branch of truss-examples repo with:
+
+$ poetry run python bin/generate_truss_examples.py $BRANCH_NAME
 """
 import enum
 import json
@@ -20,6 +26,7 @@ import yaml
 
 DOC_CONFIGURATION_FILE = "doc.yaml"
 TRUSS_EXAMPLES_REPO = "https://github.com/basetenlabs/truss-examples"
+DEFAULT_BRANCH = "main"
 DESTINATION_DIR = "truss-examples"
 MINT_CONFIG_PATH = "docs/mint.json"
 
@@ -29,7 +36,7 @@ class FileType(enum.Enum):
     PYTHON = "python"
 
 
-def clone_repo():
+def clone_repo(branch: str):
     """
     If the destination directory exists, remove it.
     Then, clone the given repo into the specified directory.
@@ -41,6 +48,7 @@ def clone_repo():
         subprocess.run(
             ["git", "clone", TRUSS_EXAMPLES_REPO, DESTINATION_DIR], check=True
         )
+        subprocess.run(["git", "checkout", branch], cwd=DESTINATION_DIR, check=True)
         print(f"Successfully cloned {TRUSS_EXAMPLES_REPO} to {DESTINATION_DIR}")
     except subprocess.CalledProcessError as e:
         print(f"Error cloning the repo: {e}")
@@ -71,9 +79,9 @@ def _get_example_destination(truss_directory: str) -> Path:
     Get the destination directory for the example.
     """
     original_path = Path(truss_directory)
-    folder, example = original_path.parts[1:]
-    example_file = f"{example}.mdx"
-    return Path("docs/examples") / folder / example_file
+    example_path = "/".join(original_path.parts[1:])
+    example_file_path = f"{example_path}.mdx"
+    return Path("docs/examples") / example_file_path
 
 
 def _get_file_type(file_path: str) -> FileType:
@@ -260,7 +268,9 @@ def update_toc(example_dirs: List[str]):
     """
 
     # Exclude the root directory ("truss_examples") from the path
-    transformed_example_paths = [Path(example).parts[1:] for example in example_dirs]
+    transformed_example_paths = [
+        "/".join(Path(example).parts[1:]) for example in example_dirs
+    ]
 
     mint_config = json.loads(fetch_file_contents(MINT_CONFIG_PATH))
     navigation = mint_config["navigation"]
@@ -269,24 +279,21 @@ def update_toc(example_dirs: List[str]):
 
     # Sort examples by the group name
     examples_section["pages"] = [
-        f"examples/{example_path[0]}/{example_path[1]}"
-        for example_path in sorted(
-            transformed_example_paths, key=lambda example: example[0]
-        )
+        f"examples/{example_path}" for example_path in sorted(transformed_example_paths)
     ]
 
     serialized_mint_config = json.dumps(mint_config, indent=2)
     Path(MINT_CONFIG_PATH).write_text(serialized_mint_config)
 
 
-def generate_truss_examples():
+def generate_truss_examples(branch: str = DEFAULT_BRANCH):
     """
     Walk through the Truss examples repo, and for each
     of the examples in the repo, generate documentation.
 
     Finish the process by updating the table of contents.
     """
-    clone_repo()
+    clone_repo(branch)
 
     example_dirs = _fetch_example_dirs(DESTINATION_DIR)
     for truss_directory in example_dirs:
@@ -296,4 +303,9 @@ def generate_truss_examples():
 
 
 if __name__ == "__main__":
-    generate_truss_examples()
+    # The first arg is optionally the branch name
+    # of truss-examples repo to use.
+    if len(sys.argv) > 1:
+        generate_truss_examples(sys.argv[1])
+    else:
+        generate_truss_examples()
