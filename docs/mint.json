@@ -148,12 +148,12 @@
   ],
   "tabs": [
     {
-      "name": "Learn model deployment",
-      "url": "learn"
-    },
-    {
       "name": "Reference docs",
       "url": "reference"
+    },
+    {
+      "name": "Learn model deployment",
+      "url": "learn"
     },
     {
       "name": "Contributor guides",

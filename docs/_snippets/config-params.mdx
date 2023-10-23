@@ -1,7 +1,35 @@
-<ParamField body="description" type="str">
+### `model_name`
+
+Name of your model
+### `description`
+
 Describe your model for documentation purposes.
-</ParamField>
-<ParamField body="environment_variables" type="Dict[str, str]">
+### `model_class_name`
+(default: `Model`)
+
+The name of the class that defines your Truss model. Note that this class must implement
+at least a `predict` method.
+### `model_module_dir`
+(default: `model`)
+
+Folder in the Truss where to find the model class.
+### `data_dir`
+(default: `data/`)
+
+Folder where to place data files in your Truss. Note that you can access this within your model like so:
+
+
+```python model/model.py
+class Model:
+  def __init__(self, **kwargs):
+    data_dir = kwargs["data_dir"]
+
+  ...
+```
+
+
+### `environment_variables`
+
 <Warning>
 Do not store secret values directly in environment variables (or anywhere in the config file). See the `secrets` arg for information on properly managing secrets.
 </Warning>
@@ -13,19 +41,19 @@ environment_variables:
   ENVIRONMENT: Staging
   DB_URL: https://my_database.example.com/
 ```
-</ParamField>
-<ParamField body="model_metadata" type="Dict[str, str]">
+
+### `model_metadata`
 Set any additional metadata in this catch-all field. The entire contents of the config file are available to the model at runtime, so this is a good place to store any custom information that model needs. For example, scikit-learn models include a flag here that indicates whether the model supports returning probabilities alongside predictions.
 
 ```yaml
 model_metadata:
   supports_predict_proba: true
 ```
-</ParamField>
-<ParamField body="model_name" type="str">
-The model's name, for documentation purposes.
-</ParamField>
-<ParamField body="requirements" type="List[str]">
+
+This is also where display metdata can be stored
+
+### `requirements`
+
 List the Python dependencies that the model depends on. The requirements should be provided in the [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/), but as a yaml list.
 
 We strongly recommend pinning versions in your requirements.
@@ -38,19 +66,46 @@ requirements:
 - numpy==1.20.3
 - scipy==1.7.3
 ```
-</ParamField>
-<ParamField body="resources" type="Dict[str, str]">
-Specify model server runtime resources such as CPU, RAM and GPU.
+
+### `resources`
+
+The `resources` section is where you specify the compute resources that your model needs. This includes CPU, memory, and GPU resources.
+If you need a GPU, you must also set `resources.use_gpu` to `true`.
+
+#### `resources.cpu`
+
+CPU resources needed, expressed as either a raw number, or "millicpus". For example, `1000m` and `1` are equivalent.
+Fractional CPU amounts can be requested using millicpus. For example, `500m` is half of a CPU core.
+
+#### `resources.memory`
+
+CPU RAM needed, expressed as a number with units. Units acceptable include "Gi" (Gibibytes), "G" (Gigabytes), "Mi" (Mebibytes), and"M" (Megabytes). For example, `1Gi` and `1024Mi` are equivalent.
+
+#### `resources.use_gpu`
+
+Whether or not a GPU is required for this model.
+
+#### `resources.accelerator`
+
+Which GPU you would like for your instance. Available Nvidia GPUs supported in Truss include:
+* T4
+* L4
+* A10G
+* V100
+* A100
+
+Note that if you need multiple GPUs to server your model, you can use the `:` operator to request multiple
+GPUs on your instance, eg:
 
 ```yaml
 resources:
-  cpu: "3"
-  memory: 14Gi
-  use_gpu: true
-  accelerator: A10G
+  ...
+  accelerator: A10G:2 # Requests 2 A10Gs
+
 ```
-</ParamField>
-<ParamField body="secrets" type="Dict[str, str]">
+
+
+### `secrets`
 <Warning>
 This field can be used to specify the keys for such secrets and dummy default
 values. ***Never store actual secret values in the config***. Dummy default
@@ -66,8 +121,8 @@ information from s3 and may need access to AWS credentials for that.
 secrets:
   hf_access_token: "ACCESS TOKEN"
 ```
-</ParamField>
-<ParamField body="system_packages" type="List[str]">
+
+### `system_packages`
 Specify any system packages that you would typically install using `apt` on a Debian operating system.
 
 ```yaml
@@ -76,4 +131,136 @@ system_packages:
 - libsm6
 - libxext6
 ```
-</ParamField>
+
+### `python_version`
+
+Which version of Python you'd like to use. Supported versions include:
+
+* py39
+* py310
+* py311
+
+### `base_image`
+
+The `base_image` option is used if you need to bring your own custom base image.
+Custom base images are useful if there are scripts that need to run at build time, or dependencies
+that are complicated to install. After creating a custom base image, you can specify it
+in this field.
+
+See [Custom Base Images](guides/base-images) for more detail on how to use these.
+
+#### `base_image.image`
+
+A path to the docker image you'd like to use, as
+an example, `nvcr.io/nvidia/nemo:23.03`.
+
+####  `base_image.python_executable_path`
+
+A path to the Python executable on the image. For instance, `/usr/bin/python`.
+
+Tying it together, a custom base image configuration might look
+like this:
+
+```yaml
+base_image:
+  image: nvcr.io/nvidia/nemo:23.03
+  python_executable_path: /usr/bin/python
+  ```
+### `runtime`
+
+Runtime settings for your model instance.
+
+#### `runtime.predict_concurrency`
+(default: `1`)
+
+This field governs how much concurrency can run in the predict method of your model. This is useful
+if you have a model that has support for parallelism, and you'd like to take advantage of that.
+By default, this value is set to 1, implying that `predict` can only run for one request at a time.
+This protects the GPU from being over-utilized, and is a good default for many models.
+
+See [How to configure concurrency](guides/concurrency) for more detail on how to set this value.
+### `external_data`
+
+Use `external_data` if you have data that you want to be bundled in your image at build time.
+This is useful if you have a large amount of data that you want to be available to your model.
+By including it at build-time, you reduce the cold-start time of your instance, as the data is
+already available in the image. You can use it like so:
+
+```yaml config.yaml
+external_data:
+- url: https://my-bucket.s3.amazonaws.com/my-data.tar.gz
+  local_data_path: data/my-data.tar.gz
+  name: my-data
+```
+#### `external_data.<list_item>.url`
+
+The URL to download data from.
+#### `external_data.<list_item>.local_data_path`
+
+The path on the image where the data will be downloaded to.
+#### `external_data.<list_item>.name`
+
+You can set a name for the data, which is useful for readability-purposes.
+Not required.
+### `build`
+
+The `build` section is used to define options for custom servers.
+The two main model servers we support are `TGI` an `vLLM`. These are
+highly optimized servers that are built to support specific LLMs.
+
+See the following examples for how to use each of these:
+* [TGI](examples/07-high-performance-tgi)
+* [vLLM](examples/08-high-performance-vllm)
+
+Example configuration for TGI, running Falcon-7B:
+
+```yaml config.yaml
+build:
+  arguments:
+    endpoint: generate_stream
+    model_id: tiiuae/falcon-7b
+  model_server: TGI
+```
+
+#### `build.model_server`
+
+Either `VLLM` for vLLM, or `TGI` for TGI.
+
+#### `build.arguments`
+
+The arguments for the model server. This includes information such as which model you intend to load, and
+which endpoin from the server you'd like to use.
+
+### `hf_cache`
+
+The `hf_cache` section is used for caching model weights at build-time. This is one of the biggest levers
+for decreasing cold start times, as downloading weights can be one of the lengthiest parts of starting a new
+model instance. Using this section ensures that model weights are cached at _build_ time.
+
+See the [model cache guide](guides/model-cache) for the full details on how to use this field.
+
+<Note>
+  Despite the fact that this field is called the `hf_cache`, there are multiple backends supported, not just Hugging Face. You can
+  also cache weights stored on GCS, for instance.
+</Note>
+
+#### `hf_cache.<list_item>.repo_id`
+
+The endpoint for your cloud bucket. Currently, we support Hugging Face and Google Cloud Storage.
+
+Example: `madebyollin/sdxl-vae-fp16-fix` for a Hugging Face repo, or `gcs://path-to-my-bucket` for
+a GCS bucket.
+
+#### `hf_cache.<list_item>.revision`
+
+Points to your revision. This is only relevant if you are pulling By default, it refers to `main`.
+
+#### `hf_cache.<list_item>.allow_patterns`
+
+Only cache files that match specified patterns. Utilize Unix shell-style wildcards to denote these patterns.
+By default, all paths are included.
+
+#### `hf_cache.<list_item>.ignore_patterns`
+
+Conversely, you can also denote file patterns to ignore, hence streamlining the caching process.
+By default, nothing is ignored.
