@@ -59,7 +59,7 @@ class TrussService(ABC):
         if method == "GET":
             response = requests.request(method, url, headers=headers, stream=stream)
         elif method == "POST":
-            if not data:
+            if data is None:
                 raise ValueError("POST request must have data")
             response = requests.request(
                 method, url, json=data, headers=headers, stream=stream
