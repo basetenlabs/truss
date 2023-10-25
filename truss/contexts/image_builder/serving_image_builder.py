@@ -108,13 +108,12 @@ def list_gcs_bucket_files(
     data_dir,
     is_trusted=False,
 ):
-    # TODO(varun): provide support for aws s3
-
     if is_trusted:
         storage_client = storage.Client.from_service_account_json(
             data_dir / "service_account.json"
         )
     else:
+        # TODO(varun): handle public gcs buckets
         storage_client = storage.Client()
     bucket_name, prefix = split_path(bucket_name)
     blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
@@ -146,8 +145,6 @@ def parse_s3_service_account_file(file_path):
 
 
 def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
-    print(bucket_name)
-
     if is_trusted:
         AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
             data_dir / "service_account.json"
@@ -155,6 +152,7 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
         session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
         s3 = session.resource("s3")
     else:
+        # TODO(varun): handle public s3 buckets
         s3 = boto3.client("s3")
 
     bucket_name, _ = split_path(bucket_name, prefix="s3://")
@@ -162,7 +160,6 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
 
     all_objects = []
     for blob in bucket.objects.all():
-        print(blob.key)
         all_objects.append(blob.key)
 
     return all_objects
