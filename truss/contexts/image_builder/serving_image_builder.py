@@ -113,7 +113,6 @@ def list_gcs_bucket_files(
             data_dir / "service_account.json"
         )
     else:
-        # TODO(varun): handle public gcs buckets
         storage_client = storage.Client()
     bucket_name, prefix = split_path(bucket_name)
     blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
@@ -152,7 +151,6 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
         session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
         s3 = session.resource("s3")
     else:
-        # TODO(varun): handle public s3 buckets
         s3 = boto3.client("s3")
 
     bucket_name, _ = split_path(bucket_name, prefix="s3://")
@@ -166,10 +164,15 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
 
 
 def list_files(repo_id, data_dir, revision=None):
+    credentials_file = data_dir / "service_account.json"
     if repo_id.startswith("gs://"):
-        return list_gcs_bucket_files(repo_id, data_dir, is_trusted=True)
+        return list_gcs_bucket_files(
+            repo_id, data_dir, is_trusted=credentials_file.exists()
+        )
     elif repo_id.startswith("s3://"):
-        return list_s3_bucket_files(repo_id, data_dir, is_trusted=True)
+        return list_s3_bucket_files(
+            repo_id, data_dir, is_trusted=credentials_file.exists()
+        )
     else:
         # we assume it's a HF bucket
         return list_repo_files(repo_id, revision=revision)
