@@ -359,14 +359,16 @@ def create_trtllm_build_dir(
     )
     tensorrt_content = tensorrt_template.render(
         engine_dir="/app/model/inflight_batcher_llm/tensorrt_llm/1/",
-        max_tokens_in_paged_kv_cache=10000
-        or build_args["max_tokens_in_paged_kv_cache"],
-        batch_scheduler_policy="oldest" or build_args["batch_scheduler_policy"],
-        kv_cache_free_gpu_mem_fraction=0.1
-        or build_args["kv_cache_free_gpu_mem_fraction"],
-        max_num_sequences=64 or build_args["max_num_sequences"],
-        enable_trt_overlap=True or build_args["enable_trt_overlap"],
-        decoupled_mode=True or build_args["decoupled_mode"],
+        max_tokens_in_paged_kv_cache=build_args.get(
+            "max_tokens_in_paged_kv_cache", 10000
+        ),
+        batch_scheduler_policy=build_args.get(
+            "batch_scheduler_policy", "max_utilization"
+        ),
+        kv_cache_free_gpu_mem_fraction=build_args.get("kv_cache_free_gpu_mem", 0.1),
+        max_num_sequences=build_args.get("max_num_sequences", 64),
+        enable_trt_overlap=build_args.get("enable_trt_overlap", True),
+        decoupled_mode=build_args.get("decoupled_mode", True),
     )
     tensorrt_filepath = target_model_directory_path / "tensorrt_llm" / "config.pbtxt"
     tensorrt_filepath.write_text(tensorrt_content)
