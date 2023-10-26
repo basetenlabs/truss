@@ -166,7 +166,6 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
 
 
 def list_files(repo_id, data_dir, revision=None):
-    # TODO(varun): a Truss can only pull from GCS or S3, but not a mix... make the service account files unique
     gcs_credentials_file = data_dir / "service_account.json"
     s3_credentials_file = data_dir / "s3_credentials.json"
 

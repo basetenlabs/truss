@@ -74,6 +74,7 @@ class RepositoryFile:
         self.client = None
         self.bucket_name = None
         self.bucket = None
+        self.is_private = True
 
     @staticmethod
     def create(repo_name, file_name, revision_name):
