@@ -1,0 +1,18 @@
+build:
+  arguments:
+    engine_repository: joostinyi-baseten/llama7b-fp16-trtllm
+    tokenizer_dir: "NousResearch/Llama-2-7b-hf"
+  model_server: TRTLLM
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: modelx
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
