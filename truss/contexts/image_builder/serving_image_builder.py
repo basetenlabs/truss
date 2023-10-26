@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import boto3
 import yaml
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
@@ -88,29 +90,31 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
     (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
 
 
-def split_gs_path(gs_path):
+def split_path(path, prefix="gs://"):
     # Remove the 'gs://' prefix
-    path = gs_path.replace("gs://", "")
+    path = path.replace(prefix, "")
 
     # Split on the first slash
     parts = path.split("/", 1)
 
     bucket_name = parts[0]
-    prefix = parts[1] if len(parts) > 1 else ""
+    path = parts[1] if len(parts) > 1 else ""
 
-    return bucket_name, prefix
+    return bucket_name, path
 
 
-def list_bucket_files(bucket_name, data_dir, is_trusted=False):
-    # TODO(varun): provide support for aws s3
-
+def list_gcs_bucket_files(
+    bucket_name,
+    data_dir,
+    is_trusted=False,
+):
     if is_trusted:
         storage_client = storage.Client.from_service_account_json(
             data_dir / "service_account.json"
         )
     else:
         storage_client = storage.Client()
-    bucket_name, prefix = split_gs_path(bucket_name)
+    bucket_name, prefix = split_path(bucket_name)
     blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
 
     all_objects = []
@@ -123,9 +127,52 @@ def list_bucket_files(bucket_name, data_dir, is_trusted=False):
     return all_objects
 
 
+def parse_s3_service_account_file(file_path):
+    # open the json file
+    with open(file_path, "r") as f:
+        data = json.load(f)
+
+    # validate the data
+    if "aws_access_key_id" not in data or "aws_secret_access_key" not in data:
+        raise ValueError("Invalid AWS credentials file")
+
+    # parse the data
+    aws_access_key_id = data["aws_access_key_id"]
+    aws_secret_access_key = data["aws_secret_access_key"]
+
+    return aws_access_key_id, aws_secret_access_key
+
+
+def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
+    if is_trusted:
+        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
+            data_dir / "service_account.json"
+        )
+        session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        s3 = session.resource("s3")
+    else:
+        s3 = boto3.client("s3")
+
+    bucket_name, _ = split_path(bucket_name, prefix="s3://")
+    bucket = s3.Bucket(bucket_name)
+
+    all_objects = []
+    for blob in bucket.objects.all():
+        all_objects.append(blob.key)
+
+    return all_objects
+
+
 def list_files(repo_id, data_dir, revision=None):
-    if repo_id.startswith(("s3://", "gs://")):
-        return list_bucket_files(repo_id, data_dir, is_trusted=True)
+    credentials_file = data_dir / "service_account.json"
+    if repo_id.startswith("gs://"):
+        return list_gcs_bucket_files(
+            repo_id, data_dir, is_trusted=credentials_file.exists()
+        )
+    elif repo_id.startswith("s3://"):
+        return list_s3_bucket_files(
+            repo_id, data_dir, is_trusted=credentials_file.exists()
+        )
     else:
         # we assume it's a HF bucket
         return list_repo_files(repo_id, revision=revision)
@@ -201,9 +248,15 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
 
 
 def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: list):
-    if "gs://" in repo_id:
-        bucket_name, _ = split_gs_path(repo_id)
+    if repo_id.startswith("gs://"):
+        bucket_name, _ = split_path(repo_id)
         repo_id = f"gs://{bucket_name}"
+
+        for filename in filtered_repo_files:
+            cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
+    elif repo_id.startswith("s3://"):
+        bucket_name, _ = split_path(repo_id, prefix="s3://")
+        repo_id = f"s3://{bucket_name}"
 
         for filename in filtered_repo_files:
             cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")

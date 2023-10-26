@@ -132,7 +132,12 @@ class BasetenEndpoints:
         if self.is_binary(request):
             body = truss_msgpack_deserialize(body_raw)
         else:
-            body = json.loads(body_raw)
+            try:
+                body = json.loads(body_raw)
+            except json.JSONDecodeError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid JSON payload: {str(e)}"
+                )
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         response: Union[Dict, Generator] = await model(
