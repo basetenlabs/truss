@@ -115,10 +115,11 @@ class GCSFile(RepositoryFile):
         self.bucket_name, _ = split_path(repo_name, prefix="gs://")
 
         # Connect to GCS storage
-        if os.path.exists(key_file):
+        self.is_private = os.path.exists(key_file)
+        if self.is_private:
             self.client = storage.Client.from_service_account_json(key_file)
         else:
-            self.client = storage.Client()
+            self.client = storage.Client.create_anonymous_client()
 
         self.bucket = self.client.bucket(self.bucket_name)
 
@@ -135,11 +136,15 @@ class GCSFile(RepositoryFile):
         if not blob.exists(self.client):
             raise RuntimeError(f"File not found on GCS bucket: {blob.name}")
 
-        url = blob.generate_signed_url(
-            version="v4",
-            expiration=datetime.timedelta(minutes=15),
-            method="GET",
-        )
+        if self.is_private:
+            url = blob.generate_signed_url(
+                version="v4",
+                expiration=datetime.timedelta(minutes=15),
+                method="GET",
+            )
+        else:
+            base_url = "https://storage.googleapis.com"
+            url = f"{base_url}/{self.bucket_name}/{blob.name}"
         try:
             proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
             proc.wait()

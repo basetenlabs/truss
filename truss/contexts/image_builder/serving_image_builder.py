@@ -115,7 +115,7 @@ def list_gcs_bucket_files(
             data_dir / "service_account.json"
         )
     else:
-        storage_client = storage.Client()
+        storage_client = storage.Client.create_anonymous_client()
     bucket_name, prefix = split_path(bucket_name)
     blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
 
