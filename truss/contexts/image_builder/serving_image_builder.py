@@ -288,6 +288,90 @@ def update_config_and_gather_files(
     return get_files_to_cache(config, truss_dir, build_dir)
 
 
+def create_trtllm_build_dir(
+    config: TrussConfig, build_dir: Path, truss_dir: Path, use_hf_secret: bool = False
+):
+    if not build_dir.exists():
+        build_dir.mkdir(parents=True)
+
+    build_args = config.build.arguments.copy()
+
+    # Set up build context directory
+    target_model_directory_path = build_dir / "model" / "inflight_batcher_llm"
+    source_model_directory_path = (
+        TEMPLATES_DIR / "trtllm" / "model" / "inflight_batcher_llm"
+    )
+
+    copy_tree_path(source_model_directory_path, target_model_directory_path)
+    copy_tree_or_file(TEMPLATES_DIR / "trtllm/proxy.conf", build_dir / "proxy.conf")
+    copy_tree_or_file(
+        TEMPLATES_DIR / "trtllm/supervisord.conf", build_dir / "supervisord.conf"
+    )
+    copy_tree_or_file(
+        TEMPLATES_DIR / "trtllm/download_engine.py", build_dir / "download_engine.py"
+    )
+
+    tokenizer_type = build_args.get("tokenizer_type", "auto")
+    tokenizer_dir = build_args["tokenizer_dir"]
+
+    # Render dockerfile
+    dockerfile_template = read_template_from_fs(
+        TEMPLATES_DIR, "trtllm/trtllm.Dockerfile.jinja"
+    )
+    dockerfile_content = dockerfile_template.render(
+        engine_repository=build_args["engine_repository"],
+    )
+    dockerfile_filepath = build_dir / "Dockerfile"
+    dockerfile_filepath.write_text(dockerfile_content)
+
+    # Render config.pbtxt for preprocess model
+    preprocessing_template = read_template_from_fs(
+        TEMPLATES_DIR,
+        "trtllm/model/inflight_batcher_llm/preprocessing/config.pbtxt.jinja",
+    )
+    preprocessing_template_content = preprocessing_template.render(
+        tokenizer_type=tokenizer_type,
+        tokenizer_dir=tokenizer_dir,
+    )
+    preprocessing_filepath = (
+        target_model_directory_path / "preprocessing" / "config.pbtxt"
+    )
+    preprocessing_filepath.write_text(preprocessing_template_content)
+
+    # Render config.pbtxt for postprocess model
+    postprocessing_template = read_template_from_fs(
+        TEMPLATES_DIR,
+        "trtllm/model/inflight_batcher_llm/postprocessing/config.pbtxt.jinja",
+    )
+    postprocessing_template_content = postprocessing_template.render(
+        tokenizer_type=tokenizer_type,
+        tokenizer_dir=tokenizer_dir,
+    )
+    postprocessing_filepath = (
+        target_model_directory_path / "postprocessing" / "config.pbtxt"
+    )
+    postprocessing_filepath.write_text(postprocessing_template_content)
+
+    # Render config.pbtxt for core TRTLLM model
+    tensorrt_template = read_template_from_fs(
+        TEMPLATES_DIR,
+        "trtllm/model/inflight_batcher_llm/tensorrt_llm/config.pbtxt.jinja",
+    )
+    tensorrt_content = tensorrt_template.render(
+        engine_dir="/app/model/inflight_batcher_llm/tensorrt_llm/1/",
+        max_tokens_in_paged_kv_cache=10000
+        or build_args["max_tokens_in_paged_kv_cache"],
+        batch_scheduler_policy="oldest" or build_args["batch_scheduler_policy"],
+        kv_cache_free_gpu_mem_fraction=0.1
+        or build_args["kv_cache_free_gpu_mem_fraction"],
+        max_num_sequences=64 or build_args["max_num_sequences"],
+        enable_trt_overlap=True or build_args["enable_trt_overlap"],
+        decoupled_mode=True or build_args["decoupled_mode"],
+    )
+    tensorrt_filepath = target_model_directory_path / "tensorrt_llm" / "config.pbtxt"
+    tensorrt_filepath.write_text(tensorrt_content)
+
+
 def create_tgi_build_dir(
     config: TrussConfig, build_dir: Path, truss_dir: Path, use_hf_secret: bool
 ):
@@ -432,6 +516,9 @@ class ServingImageBuilder(ImageBuilder):
             return
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
+            return
+        elif config.build.model_server is ModelServer.TRTLLM:
+            create_trtllm_build_dir(config, build_dir, truss_dir)
             return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]

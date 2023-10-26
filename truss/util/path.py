@@ -18,13 +18,16 @@ FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 def copy_tree_path(src: Path, dest: Path) -> None:
     """Copy a directory tree, ignoring files specified in .truss_ignore."""
+    print(f"Copying tree {src}")
     patterns = load_trussignore_patterns()
 
     if not dest.exists():
         dest.mkdir(parents=True)
-
+    print(f"{list(src.rglob('*'))}")
     for sub_path in src.rglob("*"):
+        print(sub_path)
         if is_ignored(sub_path, patterns, base_dir=src):
+            print(f"{sub_path} is ignored")
             continue
 
         dest_fp = dest / sub_path.relative_to(src)

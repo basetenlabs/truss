@@ -1,0 +1,24 @@
+FROM localhost:5000/triton_trt_llm:latest
+EXPOSE 8080
+
+WORKDIR $APP_HOME
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        nginx supervisor curl && \
+        rm -rf /var/lib/apt/lists/*
+
+
+COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
+COPY ./model/ /app/model/
+COPY ./download_engine.py /app/download_engine.py
+
+RUN mkdir -p /var/log/supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+RUN pip install huggingface_hub
+
+# Download file
+RUN python3 /app/download_engine.py --engine-repository {{ engine_repository }} --output-dir /app/model/inflight_batcher_llm/tensorrt_llm/1/
+
+ENV SERVER_START_CMD /usr/bin/supervisord
+# ENTRYPOINT ["/usr/bin/supervisord"]
