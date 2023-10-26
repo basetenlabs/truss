@@ -1,6 +1,6 @@
 build:
   arguments:
-    engine_repository: joostinyi-baseten/llama7b-fp16-trtllm
+    engine_repository: "baseten/llama-7b-no-quant-tp1-trtllm-engine"
     tokenizer_dir: "NousResearch/Llama-2-7b-hf"
   model_server: TRTLLM
 environment_variables: {}

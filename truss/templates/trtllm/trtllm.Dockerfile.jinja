@@ -21,4 +21,4 @@ RUN pip install huggingface_hub
 RUN python3 /app/download_engine.py --engine-repository {{ engine_repository }} --output-dir /app/model/inflight_batcher_llm/tensorrt_llm/1/
 
 ENV SERVER_START_CMD /usr/bin/supervisord
-# ENTRYPOINT ["/usr/bin/supervisord"]
+ENTRYPOINT ["/usr/bin/supervisord"]
