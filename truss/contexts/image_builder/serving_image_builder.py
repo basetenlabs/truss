@@ -155,13 +155,13 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
     else:
         s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
 
-    bucket_name, _ = split_path(bucket_name, prefix="s3://")
+    # path may be like "folderA/folderB"
+    bucket_name, path = split_path(bucket_name, prefix="s3://")
     bucket = s3.Bucket(bucket_name)
 
     all_objects = []
-    for blob in bucket.objects.all():
+    for blob in bucket.objects.filter(Prefix=path):
         all_objects.append(blob.key)
-
     return all_objects
 
 
@@ -572,7 +572,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
             gcs_credentials_exists=gcs_credentials_file.exists(),
-            s3_credentials_exits=s3_credentials_file.exists(),
+            s3_credentials_exists=s3_credentials_file.exists(),
             hf_cache=len(config.hf_cache.models) > 0,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
