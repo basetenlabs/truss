@@ -148,7 +148,7 @@ class GCSFile(RepositoryFile):
 
 
 class S3File(RepositoryFile):
-    def connect(self, key_file="/app/data/service_account.json"):
+    def connect(self, key_file="/app/data/s3_credentials.json"):
         self.bucket_name, _ = split_path(repo_name, prefix="s3://")
 
         if os.path.exists(key_file):
@@ -191,11 +191,9 @@ class S3File(RepositoryFile):
             raise RuntimeError(f"Failure downloading file from S3: {e}")
 
 
-def download_file(
-    repo_name, file_name, revision_name=None, key_file="/app/data/service_account.json"
-):
+def download_file(repo_name, file_name, revision_name=None):
     file = RepositoryFile.create(repo_name, file_name, revision_name)
-    file.connect(key_file=key_file)
+    file.connect()
     file.download_to_cache()
 
 

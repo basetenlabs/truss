@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 import yaml
+from botocore import UNSIGNED
+from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
@@ -146,12 +148,12 @@ def parse_s3_service_account_file(file_path):
 def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
     if is_trusted:
         AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
-            data_dir / "service_account.json"
+            data_dir / "s3_credentials.json"
         )
         session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
         s3 = session.resource("s3")
     else:
-        s3 = boto3.client("s3")
+        s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
 
     bucket_name, _ = split_path(bucket_name, prefix="s3://")
     bucket = s3.Bucket(bucket_name)
@@ -164,14 +166,17 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
 
 
 def list_files(repo_id, data_dir, revision=None):
-    credentials_file = data_dir / "service_account.json"
+    # TODO(varun): a Truss can only pull from GCS or S3, but not a mix... make the service account files unique
+    gcs_credentials_file = data_dir / "service_account.json"
+    s3_credentials_file = data_dir / "s3_credentials.json"
+
     if repo_id.startswith("gs://"):
         return list_gcs_bucket_files(
-            repo_id, data_dir, is_trusted=credentials_file.exists()
+            repo_id, data_dir, is_trusted=gcs_credentials_file.exists()
         )
     elif repo_id.startswith("s3://"):
         return list_s3_bucket_files(
-            repo_id, data_dir, is_trusted=credentials_file.exists()
+            repo_id, data_dir, is_trusted=s3_credentials_file.exists()
         )
     else:
         # we assume it's a HF bucket
@@ -306,14 +311,16 @@ def create_tgi_build_dir(
     )
 
     data_dir = build_dir / "data"
-    credentials_file = data_dir / "service_account.json"
+    gcs_credentials_file = data_dir / "service_account.json"
+    s3_credentials_file = data_dir / "s3_credentials.json"
     dockerfile_content = dockerfile_template.render(
         config=config,
         hf_access_token=hf_access_token,
         models=model_files,
         hf_cache=config.hf_cache,
         data_dir_exists=data_dir.exists(),
-        credentials_exists=credentials_file.exists(),
+        gcs_credentials_exists=gcs_credentials_file.exists(),
+        s3_credentials_exists=s3_credentials_file.exists(),
         cached_files=cached_file_paths,
         use_hf_secret=use_hf_secret,
         hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
@@ -364,7 +371,8 @@ def create_vllm_build_dir(
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
     data_dir = build_dir / "data"
-    credentials_file = data_dir / "service_account.json"
+    gcs_credentials_file = data_dir / "service_account.json"
+    s3_credentials_file = data_dir / "s3_credentials.json"
     dockerfile_content = dockerfile_template.render(
         config=config,
         hf_access_token=hf_access_token,
@@ -372,7 +380,8 @@ def create_vllm_build_dir(
         should_install_server_requirements=True,
         hf_cache=config.hf_cache,
         data_dir_exists=data_dir.exists(),
-        credentials_exists=credentials_file.exists(),
+        gcs_credentials_exists=gcs_credentials_file.exists(),
+        s3_credentials_exists=s3_credentials_file.exists(),
         cached_files=cached_file_paths,
         use_hf_secret=use_hf_secret,
         hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
@@ -523,7 +532,8 @@ class ServingImageBuilder(ImageBuilder):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        credentials_file = data_dir / "service_account.json"
+        gcs_credentials_file = data_dir / "service_account.json"
+        s3_credentials_file = data_dir / "s3_credentials.json"
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
@@ -562,7 +572,8 @@ class ServingImageBuilder(ImageBuilder):
             models=model_files,
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
-            credentials_exists=credentials_file.exists(),
+            gcs_credentials_exists=gcs_credentials_file.exists(),
+            s3_credentials_exits=s3_credentials_file.exists(),
             hf_cache=len(config.hf_cache.models) > 0,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
