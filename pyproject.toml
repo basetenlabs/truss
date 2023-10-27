@@ -16,7 +16,7 @@ keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learnin
 "Baseten" = "https://baseten.co"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.12"
+python = ">=3.8,<3.13"
 numpy = "1.23.5"
 msgpack = ">=1.0.2"
 msgpack-numpy = ">=0.4.7.1"
