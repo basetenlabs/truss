@@ -491,7 +491,7 @@ class TrussConfig:
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
             hf_cache=transform_optional(
-                d.get("hf_cache") or [],
+                d.get("hf_cache") or d.get("model_cache") or [],
                 HuggingFaceCache.from_list,
             ),
         )
