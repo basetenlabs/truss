@@ -506,8 +506,8 @@ class TrussConfig:
             if "hf_cache" in raw_data:
                 warnings.warn(
                     "Warning: `hf_cache` is deprecated in favor of `model_cache`. \
-                        Everything will run as before, but if you are pulling weights from S3 or GCS, they will be \
-                            stored at /app/model_cache instead of /app/hf_cache as before."
+                    Everything will run as before, but if you are pulling weights from S3 or GCS, they will be \
+                    stored at /app/model_cache instead of /app/hf_cache as before."
                 )
             return TrussConfig.from_dict(raw_data)
 
