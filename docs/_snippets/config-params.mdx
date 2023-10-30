@@ -231,36 +231,36 @@ Either `VLLM` for vLLM, or `TGI` for TGI.
 The arguments for the model server. This includes information such as which model you intend to load, and
 which endpoin from the server you'd like to use.
 
-### `hf_cache`
+### `model_cache`
 
-The `hf_cache` section is used for caching model weights at build-time. This is one of the biggest levers
+The `model_cache` section is used for caching model weights at build-time. This is one of the biggest levers
 for decreasing cold start times, as downloading weights can be one of the lengthiest parts of starting a new
 model instance. Using this section ensures that model weights are cached at _build_ time.
 
 See the [model cache guide](guides/model-cache) for the full details on how to use this field.
 
 <Note>
-  Despite the fact that this field is called the `hf_cache`, there are multiple backends supported, not just Hugging Face. You can
+  Despite the fact that this field is called the `model_cache`, there are multiple backends supported, not just Hugging Face. You can
   also cache weights stored on GCS, for instance.
 </Note>
 
-#### `hf_cache.<list_item>.repo_id`
+#### `model_cache.<list_item>.repo_id`
 
 The endpoint for your cloud bucket. Currently, we support Hugging Face and Google Cloud Storage.
 
 Example: `madebyollin/sdxl-vae-fp16-fix` for a Hugging Face repo, or `gcs://path-to-my-bucket` for
 a GCS bucket.
 
-#### `hf_cache.<list_item>.revision`
+#### `model_cache.<list_item>.revision`
 
 Points to your revision. This is only relevant if you are pulling By default, it refers to `main`.
 
-#### `hf_cache.<list_item>.allow_patterns`
+#### `model_cache.<list_item>.allow_patterns`
 
 Only cache files that match specified patterns. Utilize Unix shell-style wildcards to denote these patterns.
 By default, all paths are included.
 
-#### `hf_cache.<list_item>.ignore_patterns`
+#### `model_cache.<list_item>.ignore_patterns`
 
 Conversely, you can also denote file patterns to ignore, hence streamlining the caching process.
 By default, nothing is ignored.

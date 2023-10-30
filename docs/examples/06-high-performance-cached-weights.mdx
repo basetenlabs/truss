@@ -89,9 +89,9 @@ requirements:
 - sentencepiece==0.1.99
 - protobuf==4.24.4
 ```
-# Configuring the hf_cache
+# Configuring the model_cache
 
-To cache model weights, set the `hf_cache` key.
+To cache model weights, set the `model_cache` key.
 The `repo_id` field allows you to specify a Huggingface
 repo to pull down and cache at build-time, and the `ignore_patterns`
 field allows you to specify files to ignore. If this is specified, then
@@ -100,7 +100,7 @@ this repo won't have to be pulled during runtime.
 Check out the [guide](https://truss.baseten.co/guides/model-cache) for more info.
 
 ```yaml config.yaml
-hf_cache:
+model_cache:
 - repo_id: "NousResearch/Llama-2-7b-chat-hf"
   ignore_patterns:
   - "*.bin"
@@ -197,7 +197,7 @@ requirements:
 - transformers==4.34.0
 - sentencepiece==0.1.99
 - protobuf==4.24.4
-hf_cache:
+model_cache:
 - repo_id: "NousResearch/Llama-2-7b-chat-hf"
   ignore_patterns:
   - "*.bin"

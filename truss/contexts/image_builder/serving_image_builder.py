@@ -205,11 +205,11 @@ def update_model_name(config: TrussConfig, model_key: str) -> str:
     if "gs://" in model_name:
         # if we are pulling from a gs bucket, we want to alias it as a part of the cache
         model_to_cache = HuggingFaceModel(model_name)
-        config.hf_cache.models.append(model_to_cache)
+        config.model_cache.models.append(model_to_cache)
 
         config.build.arguments[
             model_key
-        ] = f"/app/hf_cache/{model_name.replace('gs://', '')}"
+        ] = f"/app/model_cache/{model_name.replace('gs://', '')}"
     return model_name
 
 
@@ -219,10 +219,10 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
 
     model_files = {}
     cached_files: List[str] = []
-    if config.hf_cache:
+    if config.model_cache:
         curr_dir = Path(__file__).parent.resolve()
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
-        for model in config.hf_cache.models:
+        for model in config.model_cache.models:
             repo_id = model.repo_id
             revision = model.revision
 
@@ -257,13 +257,13 @@ def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: 
         repo_id = f"gs://{bucket_name}"
 
         for filename in filtered_repo_files:
-            cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
+            cached_files.append(f"/app/model_cache/{bucket_name}/{filename}")
     elif repo_id.startswith("s3://"):
         bucket_name, _ = split_path(repo_id, prefix="s3://")
         repo_id = f"s3://{bucket_name}"
 
         for filename in filtered_repo_files:
-            cached_files.append(f"/app/hf_cache/{bucket_name}/{filename}")
+            cached_files.append(f"/app/model_cache/{bucket_name}/{filename}")
     else:
         repo_folder_name = f"models--{repo_id.replace('/', '--')}"
         for filename in filtered_repo_files:
@@ -316,7 +316,7 @@ def create_tgi_build_dir(
         config=config,
         hf_access_token=hf_access_token,
         models=model_files,
-        hf_cache=config.hf_cache,
+        model_cache=config.model_cache,
         data_dir_exists=data_dir.exists(),
         gcs_credentials_exists=gcs_credentials_file.exists(),
         s3_credentials_exists=s3_credentials_file.exists(),
@@ -377,7 +377,7 @@ def create_vllm_build_dir(
         hf_access_token=hf_access_token,
         models=model_files,
         should_install_server_requirements=True,
-        hf_cache=config.hf_cache,
+        model_cache=config.model_cache,
         data_dir_exists=data_dir.exists(),
         gcs_credentials_exists=gcs_credentials_file.exists(),
         s3_credentials_exists=s3_credentials_file.exists(),
@@ -573,7 +573,7 @@ class ServingImageBuilder(ImageBuilder):
             cached_files=cached_files,
             gcs_credentials_exists=gcs_credentials_file.exists(),
             s3_credentials_exists=s3_credentials_file.exists(),
-            hf_cache=len(config.hf_cache.models) > 0,
+            model_cache=len(config.model_cache.models) > 0,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
         )

@@ -1,4 +1,4 @@
-{%- if hf_cache %}
+{%- if model_cache %}
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %}
 
@@ -22,7 +22,7 @@ ENV {{ env_var_name }} {{ env_var_value }}
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 
-{%- if hf_cache %}
+{%- if model_cache %}
         {%- set hf_dst_directory="/data/"%}
         {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}

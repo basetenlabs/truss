@@ -1,4 +1,4 @@
-{%- if hf_cache %}
+{%- if model_cache %}
 {%- include "cache.Dockerfile.jinja" %}
 {%- endif %}
 
@@ -65,7 +65,7 @@ RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
 
-{%- if hf_cache %}
+{%- if model_cache %}
     {%- set hf_dst_directory="/root/.cache/huggingface/hub/"%}
     {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}

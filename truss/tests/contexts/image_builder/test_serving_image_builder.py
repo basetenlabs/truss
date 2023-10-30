@@ -79,8 +79,8 @@ def test_overrides_model_id_vllm():
     update_model_name(config, model_key)
 
     # Assert model overridden in config
-    assert Path(config.build.arguments["model"]) == Path("/app/hf_cache/llama-2-7b")
-    assert config.hf_cache == HuggingFaceCache(
+    assert Path(config.build.arguments["model"]) == Path("/app/model_cache/llama-2-7b")
+    assert config.model_cache == HuggingFaceCache(
         models=[HuggingFaceModel(repo_id="gs://llama-2-7b/")]
     )
 
@@ -98,8 +98,10 @@ def test_overrides_model_id_tgi():
     update_model_name(config, model_key)
 
     # Assert model overridden in config
-    assert Path(config.build.arguments["model_id"]) == Path("/app/hf_cache/llama-2-7b")
-    assert config.hf_cache == HuggingFaceCache(
+    assert Path(config.build.arguments["model_id"]) == Path(
+        "/app/model_cache/llama-2-7b"
+    )
+    assert config.model_cache == HuggingFaceCache(
         models=[HuggingFaceModel(repo_id="gs://llama-2-7b/")]
     )
 
@@ -108,7 +110,7 @@ def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
         python_version="py39",
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -141,7 +143,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -152,11 +154,11 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
 
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
             in files_to_cache
         )
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/fake_model-002-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/fake_model-002-of-002.bin"
             in files_to_cache
         )
 
@@ -174,7 +176,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -185,11 +187,11 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
 
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
             in files_to_cache
         )
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/fake_model-002-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/fake_model-002-of-002.bin"
             in files_to_cache
         )
 
@@ -207,7 +209,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -219,11 +221,11 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         print(files_to_cache)
 
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
             in files_to_cache
         )
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-002-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-002-of-002.bin"
             in files_to_cache
         )
 
@@ -245,7 +247,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -257,11 +259,11 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         print(files_to_cache)
 
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
             in files_to_cache
         )
         assert (
-            "/app/hf_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-002-of-002.bin"
+            "/app/model_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-002-of-002.bin"
             in files_to_cache
         )
 
@@ -317,7 +319,7 @@ def test_truss_server_caching_truss():
         assert "Downloading model.safetensors:" not in container.logs()
 
 
-def test_hf_cache_dockerfile():
+def test_model_cache_dockerfile():
     truss_root = Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
     truss_dir = truss_root / "test_data" / "test_truss_server_caching_truss"
     tr = TrussHandle(truss_dir)

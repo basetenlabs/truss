@@ -206,47 +206,49 @@ def test_non_default_train():
     assert new_config == config.to_dict(verbose=False)
 
 
-def test_null_hf_cache_key():
-    config_yaml_dict = {"hf_cache": None}
+def test_null_model_cache_key():
+    config_yaml_dict = {"model_cache": None}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
         yaml.safe_dump(config_yaml_dict, tmp_file)
     config = TrussConfig.from_yaml(Path(tmp_file.name))
-    assert config.hf_cache == HuggingFaceCache.from_list([])
+    assert config.model_cache == HuggingFaceCache.from_list([])
 
 
 def test_huggingface_cache_single_model_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model")]),
+        model_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model")]),
     )
 
     new_config = generate_default_config()
-    new_config["hf_cache"] = [
+    new_config["model_cache"] = [
         {
             "repo_id": "test/model",
         }
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
 
 
 def test_huggingface_cache_single_model_non_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        hf_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model", "not-main")]),
+        model_cache=HuggingFaceCache(
+            models=[HuggingFaceModel("test/model", "not-main")]
+        ),
     )
 
-    assert config.to_dict(verbose=False)["hf_cache"][0].get("revision") == "not-main"
+    assert config.to_dict(verbose=False)["model_cache"][0].get("revision") == "not-main"
 
 
 def test_huggingface_cache_multiple_models_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        hf_cache=HuggingFaceCache(
+        model_cache=HuggingFaceCache(
             models=[
                 HuggingFaceModel("test/model1", "main"),
                 HuggingFaceModel("test/model2"),
@@ -255,7 +257,7 @@ def test_huggingface_cache_multiple_models_default_revision():
     )
 
     new_config = generate_default_config()
-    new_config["hf_cache"] = [
+    new_config["model_cache"] = [
         {"repo_id": "test/model1", "revision": "main"},
         {
             "repo_id": "test/model2",
@@ -263,15 +265,15 @@ def test_huggingface_cache_multiple_models_default_revision():
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") == "main"
-    assert config.to_dict(verbose=True)["hf_cache"][1].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") == "main"
+    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
 
 
 def test_huggingface_cache_multiple_models_mixed_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        hf_cache=HuggingFaceCache(
+        model_cache=HuggingFaceCache(
             models=[
                 HuggingFaceModel("test/model1"),
                 HuggingFaceModel("test/model2", "not-main2"),
@@ -280,7 +282,7 @@ def test_huggingface_cache_multiple_models_mixed_revision():
     )
 
     new_config = generate_default_config()
-    new_config["hf_cache"] = [
+    new_config["model_cache"] = [
         {
             "repo_id": "test/model1",
         },
@@ -288,8 +290,8 @@ def test_huggingface_cache_multiple_models_mixed_revision():
     ]
 
     assert new_config == config.to_dict(verbose=False)
-    assert config.to_dict(verbose=True)["hf_cache"][0].get("revision") is None
-    assert config.to_dict(verbose=True)["hf_cache"][1].get("revision") == "not-main2"
+    assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
+    assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
 def test_empty_config():

@@ -3,7 +3,7 @@ title: Deploy Llama 2 with Caching
 description: "Enable fast cold starts for a model with private Hugging Face weights"
 ---
 
-In this example, we will cover how you can use the `hf_cache` key in your Truss's `config.yml` to automatically bundle model weights from a private Hugging Face repo.
+In this example, we will cover how you can use the `model_cache` key in your Truss's `config.yml` to automatically bundle model weights from a private Hugging Face repo.
 
 <Tip>
 Bundling model weights can significantly reduce cold start times because your instance won't waste time downloading the model weights from Hugging Face's servers.
@@ -116,10 +116,10 @@ Always pin exact versions for your Python dependencies. The ML/AI space moves fa
 
 ### Step 3: Configure Hugging Face caching
 
-Finally, we can configure Hugging Face caching in `config.yaml` by adding the `hf_cache` key. When building the image for your Llama 2 deployment, the Llama 2 model weights will be downloaded and cached for future use.
+Finally, we can configure Hugging Face caching in `config.yaml` by adding the `model_cache` key. When building the image for your Llama 2 deployment, the Llama 2 model weights will be downloaded and cached for future use.
 
 ```yaml config.yaml
-hf_cache:
+model_cache:
 - repo_id: "meta-llama/Llama-2-7b-chat-hf"
   ignore_patterns:
   - "*.bin"
@@ -163,7 +163,7 @@ requirements:
 - safetensors==0.3.2
 - torch==2.0.1
 - transformers==4.30.2
-hf_cache:
+model_cache:
 - repo_id: "NousResearch/Llama-2-7b-chat-hf"
   ignore_patterns:
   - "*.bin"

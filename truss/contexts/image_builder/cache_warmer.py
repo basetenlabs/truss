@@ -125,7 +125,7 @@ class GCSFile(RepositoryFile):
         self.bucket = self.client.bucket(self.bucket_name)
 
     def download_to_cache(self):
-        cache_dir = Path(f"/app/hf_cache/{self.bucket_name}")
+        cache_dir = Path(f"/app/model_cache/{self.bucket_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         dst_file = Path(f"{cache_dir}/{self.file_name}")
@@ -174,7 +174,7 @@ class S3File(RepositoryFile):
             self.client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
     def download_to_cache(self):
-        cache_dir = Path(f"/app/hf_cache/{self.bucket_name}")
+        cache_dir = Path(f"/app/model_cache/{self.bucket_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         dst_file = Path(f"{cache_dir}/{self.file_name}")

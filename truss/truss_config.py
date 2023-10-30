@@ -442,7 +442,7 @@ class TrussConfig:
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
-    hf_cache: HuggingFaceCache = field(default_factory=HuggingFaceCache)
+    model_cache: HuggingFaceCache = field(default_factory=HuggingFaceCache)
 
     @property
     def canonical_python_version(self) -> str:
@@ -490,8 +490,8 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
-            hf_cache=transform_optional(
-                d.get("hf_cache") or d.get("model_cache") or [],
+            model_cache=transform_optional(
+                d.get("model_cache") or d.get("hf_cache") or [],
                 HuggingFaceCache.from_list,
             ),
         )
@@ -575,7 +575,7 @@ def obj_to_dict(obj, verbose: bool = False):
                     field_curr_value, lambda data: data.to_list()
                 )
             elif isinstance(field_curr_value, HuggingFaceCache):
-                d["hf_cache"] = transform_optional(
+                d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
             else:
