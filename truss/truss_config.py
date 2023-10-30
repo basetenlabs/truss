@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
@@ -502,6 +503,12 @@ class TrussConfig:
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
+            if "hf_cache" in raw_data:
+                warnings.warn(
+                    "Warning: `hf_cache` is deprecated in favor of `model_cache`. \
+                        Everything will run as before, but if you are pulling weights from S3 or GCS, they will be \
+                            stored at /app/model_cache instead of /app/hf_cache as before."
+                )
             return TrussConfig.from_dict(raw_data)
 
     def write_to_yaml_file(self, path: Path, verbose: bool = True):
