@@ -40,6 +40,8 @@ huggingface_hub = "^0.16.4"
 rich-click = "^1.6.1"
 inquirerpy = "^0.3.4"
 google-cloud-storage = "2.10.0"
+botocore =">=1.31.7"
+
 
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"
@@ -58,6 +60,7 @@ httpx = "^0.24.1"
 psutil = "^5.9.4"
 huggingface_hub = "^0.16.4"
 google-cloud-storage = "2.10.0"
+boto3 = "^1.26.157"
 
 [tool.poetry.dev-dependencies]
 ipython = "^7.16"

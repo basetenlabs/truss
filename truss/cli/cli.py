@@ -258,14 +258,17 @@ def _extract_and_validate_model_identifier(
 
 
 def _extract_request_data(data: Optional[str], file: Optional[Path]):
-    if data is not None:
-        return json.loads(data)
-    elif file is not None:
-        return json.loads(Path(file).read_text())
-    else:
-        raise click.UsageError(
-            "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
-        )
+    try:
+        if data is not None:
+            return json.loads(data)
+        if file is not None:
+            return json.loads(Path(file).read_text())
+    except json.JSONDecodeError:
+        raise click.UsageError("Request data must be valid json.")
+
+    raise click.UsageError(
+        "You must provide exactly one of '--data (-d)' or '--file (-f)' options."
+    )
 
 
 @truss_cli.command()
