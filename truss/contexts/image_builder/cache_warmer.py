@@ -11,11 +11,14 @@ from typing import Optional
 import boto3
 from botocore import UNSIGNED
 from botocore.client import Config
+from botocore.exceptions import ClientError, NoCredentialsError
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
+GCS_CREDENTIALS = "/app/data/service_account.json"
+S3_CREDENTIALS = "/app/data/s3_credentials.json"
 
 
 def _b10cp_path() -> Optional[str]:
@@ -124,10 +127,9 @@ class GCSFile(RepositoryFile):
         # Create GCS Client
         bucket_name, _ = split_path(repo_name, prefix="gs://")
 
-        key_file = "/app/data/service_account.json"
-        is_private = os.path.exists(key_file)
+        is_private = os.path.exists(GCS_CREDENTIALS)
         if is_private:
-            client = storage.Client.from_service_account_json(key_file)
+            client = storage.Client.from_service_account_json(GCS_CREDENTIALS)
         else:
             client = storage.Client.create_anonymous_client()
 
@@ -164,9 +166,8 @@ class S3File(RepositoryFile):
         # Create S3 Client
         bucket_name, _ = split_path(repo_name, prefix="s3://")
 
-        key_file = "/app/data/s3_credentials.jso"
-        if os.path.exists(key_file):
-            s3_credentials = parse_s3_credentials_file(key_file)
+        if os.path.exists(S3_CREDENTIALS):
+            s3_credentials = parse_s3_credentials_file(S3_CREDENTIALS)
             client = boto3.client(
                 "s3",
                 aws_access_key_id=s3_credentials.access_key_id,
@@ -190,6 +191,14 @@ class S3File(RepositoryFile):
                 "get_object",
                 Params={"Bucket": bucket_name, "Key": file_name},
                 ExpiresIn=3600,
+            )
+        except NoCredentialsError as nce:
+            raise RuntimeError(
+                f"No AWS credentials found\nOriginal exception: {str(nce)}"
+            )
+        except ClientError as ce:
+            raise RuntimeError(
+                f"Client error when accessing the S3 bucket (check your credentials): {str(ce)}"
             )
         except Exception as exc:
             raise RuntimeError(
@@ -215,11 +224,6 @@ def download_file_using_b10cp(url, dst_file, file_name):
 
     except ValueError as value_error:
         raise RuntimeError(f"Failure due to an error: {value_error}")
-
-    except Exception as general_error:
-        raise RuntimeError(
-            f"Unspecified failure during file ({file_name}) download: {general_error}"
-        )
 
 
 def download_file(repo_name, file_name, revision_name=None):

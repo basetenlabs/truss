@@ -47,6 +47,8 @@ BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
+GCS_CREDENTIALS = "service_account.json"
+S3_CREDENTIALS = "s3_credentials.json"
 
 HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
@@ -202,14 +204,14 @@ def update_model_name(config: TrussConfig, model_key: str) -> str:
             "Key for model missing in config or incorrect key used. Use `model` for VLLM and `model_id` for TGI."
         )
     model_name = config.build.arguments[model_key]
-    if "gs://" in model_name:
+    if "gs://" in model_name or "s3://" in model_name:
         # if we are pulling from a gs bucket, we want to alias it as a part of the cache
         model_to_cache = ModelRepo(model_name)
         config.model_cache.models.append(model_to_cache)
 
-        config.build.arguments[
-            model_key
-        ] = f"/app/model_cache/{model_name.replace('gs://', '')}"
+        prefix_removed = model_name[4:]  # removes "gs://" or "s3://"
+
+        config.build.arguments[model_key] = f"/app/model_cache/{prefix_removed}"
     return model_name
 
 
@@ -370,8 +372,8 @@ def create_vllm_build_dir(
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
     data_dir = build_dir / "data"
-    gcs_credentials_file = data_dir / "service_account.json"
-    s3_credentials_file = data_dir / "s3_credentials.json"
+    gcs_credentials_file = data_dir / GCS_CREDENTIALS
+    s3_credentials_file = data_dir / S3_CREDENTIALS
     dockerfile_content = dockerfile_template.render(
         config=config,
         hf_access_token=hf_access_token,
