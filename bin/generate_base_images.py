@@ -104,13 +104,18 @@ def _build(
             "docker",
             "buildx",
             "build",
-            "--platform=linux/amd64",
+            "--platform=linux/arm64,linux/amd64",
             ".",
             "-t",
             image_with_tag,
         ]
         if push:
             cmd.append("--push")
+
+        # Needed to support multi-arch build.
+        subprocess.run(
+            ["docker", "buildx", "create", "--use"], cwd=build_ctx_path, check=True
+        )
         subprocess.run(cmd, cwd=build_ctx_path, check=True)
 
 
