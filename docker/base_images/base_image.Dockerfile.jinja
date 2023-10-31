@@ -1,19 +1,19 @@
 {% if use_gpu %}
-FROM nvidia/cuda:11.2.1-base-ubuntu20.04
-ENV CUDNN_VERSION=8.1.0.77
-ENV CUDA=11.2
+FROM nvidia/cuda:12.2.2-base-ubuntu20.04
+ENV CUDNN_VERSION=8.9.5.29
+ENV CUDA=12.2
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub && \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
-        cuda-command-line-tools-11-2 \
-        libcublas-11-2 \
-        libcublas-dev-11-2 \
-        libcufft-11-2 \
-        libcurand-11-2 \
-        libcusolver-11-2 \
-        libcusparse-11-2 \
+        cuda-command-line-tools-12-2 \
+        libcublas-12-2 \
+        libcublas-dev-12-2 \
+        libcufft-12-2 \
+        libcurand-12-2 \
+        libcusolver-12-2 \
+        libcusparse-12-2 \
         libcudnn8=${CUDNN_VERSION}-1+cuda${CUDA} \
         libgomp1 \
         && \
