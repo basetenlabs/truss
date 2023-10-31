@@ -88,7 +88,7 @@ class RepositoryFile(ABC):
         self.revision_name = revision_name
 
     @staticmethod
-    def create(new_repo_name, new_file_name, new_revision_name):
+    def from_file(new_repo_name, new_file_name, new_revision_name):
         if new_repo_name.startswith("gs://"):
             repository_class = GCSFile
         elif new_repo_name.startswith("s3://"):
@@ -223,7 +223,7 @@ def download_file_using_b10cp(url, dst_file, file_name):
 
 
 def download_file(repo_name, file_name, revision_name=None):
-    file = RepositoryFile.create(repo_name, file_name, revision_name)
+    file = RepositoryFile.from_file(repo_name, file_name, revision_name)
     file.download_to_cache()
 
 
