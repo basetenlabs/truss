@@ -10,8 +10,8 @@ from truss.truss_config import (
     Accelerator,
     AcceleratorSpec,
     BaseImage,
-    HuggingFaceCache,
-    HuggingFaceModel,
+    ModelCache,
+    ModelRepo,
     Resources,
     Train,
     TrussConfig,
@@ -211,14 +211,22 @@ def test_null_model_cache_key():
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
         yaml.safe_dump(config_yaml_dict, tmp_file)
     config = TrussConfig.from_yaml(Path(tmp_file.name))
-    assert config.model_cache == HuggingFaceCache.from_list([])
+    assert config.model_cache == ModelCache.from_list([])
+
+
+def test_null_hf_cache_key():
+    config_yaml_dict = {"hf_cache": None}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
+        yaml.safe_dump(config_yaml_dict, tmp_file)
+    config = TrussConfig.from_yaml(Path(tmp_file.name))
+    assert config.model_cache == ModelCache.from_list([])
 
 
 def test_huggingface_cache_single_model_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=HuggingFaceCache(models=[HuggingFaceModel("test/model")]),
+        model_cache=ModelCache(models=[ModelRepo("test/model")]),
     )
 
     new_config = generate_default_config()
@@ -236,9 +244,7 @@ def test_huggingface_cache_single_model_non_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=HuggingFaceCache(
-            models=[HuggingFaceModel("test/model", "not-main")]
-        ),
+        model_cache=ModelCache(models=[ModelRepo("test/model", "not-main")]),
     )
 
     assert config.to_dict(verbose=False)["model_cache"][0].get("revision") == "not-main"
@@ -248,10 +254,10 @@ def test_huggingface_cache_multiple_models_default_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=HuggingFaceCache(
+        model_cache=ModelCache(
             models=[
-                HuggingFaceModel("test/model1", "main"),
-                HuggingFaceModel("test/model2"),
+                ModelRepo("test/model1", "main"),
+                ModelRepo("test/model2"),
             ]
         ),
     )
@@ -273,10 +279,10 @@ def test_huggingface_cache_multiple_models_mixed_revision():
     config = TrussConfig(
         python_version="py39",
         requirements=[],
-        model_cache=HuggingFaceCache(
+        model_cache=ModelCache(
             models=[
-                HuggingFaceModel("test/model1"),
-                HuggingFaceModel("test/model2", "not-main2"),
+                ModelRepo("test/model1"),
+                ModelRepo("test/model2", "not-main2"),
             ]
         ),
     )

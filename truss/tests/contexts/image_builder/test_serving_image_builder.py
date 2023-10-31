@@ -12,13 +12,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     update_model_name,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_config import (
-    Build,
-    HuggingFaceCache,
-    HuggingFaceModel,
-    ModelServer,
-    TrussConfig,
-)
+from truss.truss_config import Build, ModelCache, ModelRepo, ModelServer, TrussConfig
 from truss.truss_handle import TrussHandle
 
 BASE_DIR = Path(__file__).parent
@@ -80,8 +74,8 @@ def test_overrides_model_id_vllm():
 
     # Assert model overridden in config
     assert Path(config.build.arguments["model"]) == Path("/app/model_cache/llama-2-7b")
-    assert config.model_cache == HuggingFaceCache(
-        models=[HuggingFaceModel(repo_id="gs://llama-2-7b/")]
+    assert config.model_cache == ModelCache(
+        models=[ModelRepo(repo_id="gs://llama-2-7b/")]
     )
 
 
@@ -101,8 +95,8 @@ def test_overrides_model_id_tgi():
     assert Path(config.build.arguments["model_id"]) == Path(
         "/app/model_cache/llama-2-7b"
     )
-    assert config.model_cache == HuggingFaceCache(
-        models=[HuggingFaceModel(repo_id="gs://llama-2-7b/")]
+    assert config.model_cache == ModelCache(
+        models=[ModelRepo(repo_id="gs://llama-2-7b/")]
     )
 
 
@@ -110,7 +104,7 @@ def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
         python_version="py39",
-        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -143,7 +137,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -176,7 +170,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -209,7 +203,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -247,7 +241,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
 
     config = TrussConfig(
         python_version="py39",
-        model_cache=HuggingFaceCache(models=[HuggingFaceModel(repo_id=model)]),
+        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
     )
 
     with TemporaryDirectory() as tmp_dir:

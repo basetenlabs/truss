@@ -3,6 +3,8 @@ import json
 import os
 import subprocess
 import sys
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -36,21 +38,34 @@ def _download_from_url_using_b10cp(
     )
 
 
-def parse_s3_service_account_file(file_path):
+@dataclass
+class AWSCredentials:
+    access_key_id: str
+    secret_access_key: str
+    region: str
+
+
+def parse_s3_credentials_file(key_file_path: str) -> AWSCredentials:
     # open the json file
-    with open(file_path, "r") as f:
+    with open(key_file_path, "r") as f:
         data = json.load(f)
 
     # validate the data
-    if "aws_access_key_id" not in data or "aws_secret_access_key" not in data:
+    if (
+        "aws_access_key_id" not in data
+        or "aws_secret_access_key" not in data
+        or "aws_region" not in data
+    ):
         raise ValueError("Invalid AWS credentials file")
 
-    # parse the data
-    aws_access_key_id = data["aws_access_key_id"]
-    aws_secret_access_key = data["aws_secret_access_key"]
-    aws_region = data["aws_region"]
+    # create an AWS Service Account object
+    aws_sa = AWSCredentials(
+        access_key_id=data["aws_access_key_id"],
+        secret_access_key=data["aws_secret_access_key"],
+        region=data["aws_region"],
+    )
 
-    return aws_access_key_id, aws_secret_access_key, aws_region
+    return aws_sa
 
 
 def split_path(path, prefix="gs://"):
@@ -66,30 +81,23 @@ def split_path(path, prefix="gs://"):
     return bucket_name, path
 
 
-class RepositoryFile:
+class RepositoryFile(ABC):
     def __init__(self, repo_name, file_name, revision_name):
         self.repo_name = repo_name
         self.file_name = file_name
         self.revision_name = revision_name
-        self.client = None
-        self.bucket_name = None
-        self.bucket = None
-        self.is_private = True
 
     @staticmethod
-    def create(repo_name, file_name, revision_name):
-        if repo_name.startswith("gs://"):
+    def create(new_repo_name, new_file_name, new_revision_name):
+        if new_repo_name.startswith("gs://"):
             repository_class = GCSFile
-        elif repo_name.startswith("s3://"):
+        elif new_repo_name.startswith("s3://"):
             repository_class = S3File
         else:
             repository_class = HuggingFaceFile
-        return repository_class(repo_name, file_name, revision_name)
+        return repository_class(new_repo_name, new_file_name, new_revision_name)
 
-    def connect(self, key_file=None):
-        # connect to the correct repo and set up accessors
-        pass
-
+    @abstractmethod
     def download_to_cache(self):
         pass
 
@@ -112,32 +120,33 @@ class HuggingFaceFile(RepositoryFile):
 
 
 class GCSFile(RepositoryFile):
-    def connect(self, key_file="/app/data/service_account.json"):
-        self.bucket_name, _ = split_path(repo_name, prefix="gs://")
-
-        # Connect to GCS storage
-        self.is_private = os.path.exists(key_file)
-        if self.is_private:
-            self.client = storage.Client.from_service_account_json(key_file)
-        else:
-            self.client = storage.Client.create_anonymous_client()
-
-        self.bucket = self.client.bucket(self.bucket_name)
-
     def download_to_cache(self):
-        cache_dir = Path(f"/app/model_cache/{self.bucket_name}")
+        # Create GCS Client
+        bucket_name, _ = split_path(repo_name, prefix="gs://")
+
+        key_file = "/app/data/service_account.json"
+        is_private = os.path.exists(key_file)
+        if is_private:
+            client = storage.Client.from_service_account_json(key_file)
+        else:
+            client = storage.Client.create_anonymous_client()
+
+        bucket = client.bucket(bucket_name)
+
+        # Cache file
+        cache_dir = Path(f"/app/model_cache/{bucket_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        dst_file = Path(f"{cache_dir}/{self.file_name}")
+        dst_file = cache_dir / self.file_name
         if not dst_file.parent.exists():
             dst_file.parent.mkdir(parents=True)
 
-        blob = self.bucket.blob(self.file_name)
+        blob = bucket.blob(self.file_name)
 
-        if not blob.exists(self.client):
+        if not blob.exists(client):
             raise RuntimeError(f"File not found on GCS bucket: {blob.name}")
 
-        if self.is_private:
+        if is_private:
             url = blob.generate_signed_url(
                 version="v4",
                 expiration=datetime.timedelta(minutes=15),
@@ -145,61 +154,76 @@ class GCSFile(RepositoryFile):
             )
         else:
             base_url = "https://storage.googleapis.com"
-            url = f"{base_url}/{self.bucket_name}/{blob.name}"
-        try:
-            proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
-            proc.wait()
-        except Exception as e:
-            raise RuntimeError(f"Failure downloading file from GCS: {e}")
+            url = f"{base_url}/{bucket_name}/{blob.name}"
+
+        download_file_using_b10cp(url, dst_file, self.file_name)
 
 
 class S3File(RepositoryFile):
-    def connect(self, key_file="/app/data/s3_credentials.json"):
-        self.bucket_name, _ = split_path(repo_name, prefix="s3://")
+    def download_to_cache(self):
+        # Create S3 Client
+        bucket_name, _ = split_path(repo_name, prefix="s3://")
 
+        key_file = "/app/data/s3_credentials.jso"
         if os.path.exists(key_file):
-            (
-                AWS_ACCESS_KEY_ID,
-                AWS_SECRET_ACCESS_KEY,
-                AWS_REGION,
-            ) = parse_s3_service_account_file(key_file)
-            self.client = boto3.client(
+            s3_credentials = parse_s3_credentials_file(key_file)
+            client = boto3.client(
                 "s3",
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-                region_name=AWS_REGION,
+                aws_access_key_id=s3_credentials.access_key_id,
+                aws_secret_access_key=s3_credentials.secret_access_key,
+                region_name=s3_credentials.region,
                 config=Config(signature_version="s3v4"),
             )
         else:
-            self.client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+            client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
-    def download_to_cache(self):
-        cache_dir = Path(f"/app/model_cache/{self.bucket_name}")
+        # Cache file
+        cache_dir = Path(f"/app/model_cache/{bucket_name}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        dst_file = Path(f"{cache_dir}/{self.file_name}")
+        dst_file = cache_dir / self.file_name
         if not dst_file.parent.exists():
             dst_file.parent.mkdir(parents=True)
 
         try:
-            url = self.client.generate_presigned_url(
+            url = client.generate_presigned_url(
                 "get_object",
-                Params={"Bucket": self.bucket_name, "Key": file_name},
+                Params={"Bucket": bucket_name, "Key": file_name},
                 ExpiresIn=3600,
             )
-        except Exception:
-            raise RuntimeError(f"File not found on S3 bucket: {file_name}")
+        except Exception as exc:
+            raise RuntimeError(
+                f"File not found on S3 bucket: {file_name}\nOriginal exception: {str(exc)}"
+            )
 
-        try:
-            proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
-            proc.wait()
-        except Exception as e:
-            raise RuntimeError(f"Failure downloading file from S3: {e}")
+        download_file_using_b10cp(url, dst_file, self.file_name)
+
+
+def download_file_using_b10cp(url, dst_file, file_name):
+    try:
+        proc = _download_from_url_using_b10cp(_b10cp_path(), url, dst_file)
+        proc.wait()
+
+    except FileNotFoundError as file_error:
+        raise RuntimeError(f"Failure due to file ({file_name}) not found: {file_error}")
+
+    except TimeoutError as timeout_error:
+        raise RuntimeError(f"Failure due to timeout: {timeout_error}")
+
+    except OSError as os_error:
+        raise RuntimeError(f"Failure due to a system error: {os_error}")
+
+    except ValueError as value_error:
+        raise RuntimeError(f"Failure due to an error: {value_error}")
+
+    except Exception as general_error:
+        raise RuntimeError(
+            f"Unspecified failure during file ({file_name}) download: {general_error}"
+        )
 
 
 def download_file(repo_name, file_name, revision_name=None):
     file = RepositoryFile.create(repo_name, file_name, revision_name)
-    file.connect()
     file.download_to_cache()
 
 

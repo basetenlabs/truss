@@ -1,4 +1,4 @@
-import warnings
+import logging
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
@@ -40,6 +40,10 @@ DEFAULT_TRAINING_MODULE_DIR = "train"
 
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class Accelerator(Enum):
     T4 = "T4"
@@ -79,7 +83,7 @@ class AcceleratorSpec:
 
 
 @dataclass
-class HuggingFaceModel:
+class ModelRepo:
     repo_id: str = ""
     revision: Optional[str] = None
     allow_patterns: Optional[List[str]] = None
@@ -95,7 +99,7 @@ class HuggingFaceModel:
         allow_patterns = d.get("allow_patterns", None)
         ignore_pattenrs = d.get("ignore_patterns", None)
 
-        return HuggingFaceModel(
+        return ModelRepo(
             repo_id=repo_id,
             revision=revision,
             allow_patterns=allow_patterns,
@@ -118,12 +122,12 @@ class HuggingFaceModel:
 
 
 @dataclass
-class HuggingFaceCache:
-    models: List[HuggingFaceModel] = field(default_factory=list)
+class ModelCache:
+    models: List[ModelRepo] = field(default_factory=list)
 
     @staticmethod
-    def from_list(items: List[Dict[str, str]]) -> "HuggingFaceCache":
-        return HuggingFaceCache([HuggingFaceModel.from_dict(item) for item in items])
+    def from_list(items: List[Dict[str, str]]) -> "ModelCache":
+        return ModelCache([ModelRepo.from_dict(item) for item in items])
 
     def to_list(self, verbose=False) -> List[Dict[str, str]]:
         return [model.to_dict(verbose=verbose) for model in self.models]
@@ -443,7 +447,7 @@ class TrussConfig:
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
 
-    model_cache: HuggingFaceCache = field(default_factory=HuggingFaceCache)
+    model_cache: ModelCache = field(default_factory=ModelCache)
 
     @property
     def canonical_python_version(self) -> str:
@@ -493,7 +497,7 @@ class TrussConfig:
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
             model_cache=transform_optional(
                 d.get("model_cache") or d.get("hf_cache") or [],
-                HuggingFaceCache.from_list,
+                ModelCache.from_list,
             ),
         )
         config.validate()
@@ -504,7 +508,7 @@ class TrussConfig:
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
             if "hf_cache" in raw_data:
-                warnings.warn(
+                logger.warning(
                     """Warning: `hf_cache` is deprecated in favor of `model_cache`.
                     Everything will run as before, but if you are pulling weights from S3 or GCS, they will be
                     stored at /app/model_cache instead of /app/hf_cache as before."""
@@ -581,7 +585,7 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["external_data"] = transform_optional(
                     field_curr_value, lambda data: data.to_list()
                 )
-            elif isinstance(field_curr_value, HuggingFaceCache):
+            elif isinstance(field_curr_value, ModelCache):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )

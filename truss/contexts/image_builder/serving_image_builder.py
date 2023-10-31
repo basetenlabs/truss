@@ -33,7 +33,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import Build, HuggingFaceModel, ModelServer, TrussConfig
+from truss.truss_config import Build, ModelRepo, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
@@ -204,7 +204,7 @@ def update_model_name(config: TrussConfig, model_key: str) -> str:
     model_name = config.build.arguments[model_key]
     if "gs://" in model_name:
         # if we are pulling from a gs bucket, we want to alias it as a part of the cache
-        model_to_cache = HuggingFaceModel(model_name)
+        model_to_cache = ModelRepo(model_name)
         config.model_cache.models.append(model_to_cache)
 
         config.build.arguments[
