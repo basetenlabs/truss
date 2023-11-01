@@ -1,4 +1,5 @@
 import json
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -57,6 +58,144 @@ HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
 HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
 HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
+
+
+class RemoteCache(ABC):
+    def __init__(self, repo_name, data_dir, revision=None):
+        self.repo_name = repo_name
+        self.data_dir = data_dir
+        self.revision = revision
+
+    @staticmethod
+    def from_repo(repo_name, data_dir):
+        if repo_name.startswith("gs://"):
+            repository_class = GCSCache
+        elif repo_name.startswith("s3://"):
+            repository_class = S3Cache
+        else:
+            repository_class = HuggingFaceCache
+        return repository_class(repo_name, data_dir)
+
+    def filter(self, allow_patterns, ignore_patterns):
+        return list(
+            filter_repo_objects(
+                items=self.list_files(revision=self.revision),
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+            )
+        )
+
+    @abstractmethod
+    def list_files(self, revision=None):
+        pass
+
+    @abstractmethod
+    def prepare_for_cache(self, filenames):
+        pass
+
+
+class GCSCache(RemoteCache):
+    def list_files(self, revision=None):
+        gcs_credentials_file = self.data_dir / GCS_CREDENTIALS
+
+        if gcs_credentials_file.exists():
+            storage_client = storage.Client.from_service_account_json(
+                gcs_credentials_file
+            )
+        else:
+            storage_client = storage.Client.create_anonymous_client()
+
+        bucket_name, prefix = split_path(self.repo_name, prefix="gs://")
+        blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
+
+        all_objects = []
+        for blob in blobs:
+            # leave out folders
+            if blob.name[-1] == "/":
+                continue
+            all_objects.append(blob.name)
+
+        return all_objects
+
+    def prepare_for_cache(self, filenames):
+        bucket_name, _ = split_path(self.repo_name, prefix="gs://")
+
+        files_to_cache = []
+        for filename in filenames:
+            file_location = str(CLOUD_BUCKET_CACHE / bucket_name / filename)
+            files_to_cache.append(CachedFile(source=file_location, dst=file_location))
+
+        return files_to_cache
+
+
+class S3Cache(RemoteCache):
+    def list_files(self, revision=None):
+        s3_credentials_file = self.data_dir / S3_CREDENTIALS
+
+        if s3_credentials_file.exists():
+            AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
+                self.data_dir / S3_CREDENTIALS
+            )
+            session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+            s3 = session.resource("s3")
+        else:
+            s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
+
+        # path may be like "folderA/folderB"
+        bucket_name, path = split_path(self.repo_name, prefix="s3://")
+        bucket = s3.Bucket(bucket_name)
+
+        all_objects = []
+        for blob in bucket.objects.filter(Prefix=path):
+            all_objects.append(blob.key)
+        return all_objects
+
+    def prepare_for_cache(self, filenames):
+        bucket_name, _ = split_path(self.repo_name, prefix="s3://")
+
+        files_to_cache = []
+        for filename in filenames:
+            file_location = str(CLOUD_BUCKET_CACHE / bucket_name / filename)
+            files_to_cache.append(CachedFile(source=file_location, dst=file_location))
+
+        return files_to_cache
+
+
+def hf_cache_file_from_location(path: str):
+    src_file_location = str(HF_SOURCE_DIR / path)
+    dst_file_location = str(HF_CACHE_DIR / path)
+    cache_file = CachedFile(source=src_file_location, dst=dst_file_location)
+    return cache_file
+
+
+class HuggingFaceCache(RemoteCache):
+    def list_files(self, revision=None):
+        return list_repo_files(self.repo_name, revision=revision)
+
+    def prepare_for_cache(self, filenames):
+        files_to_cache = []
+        repo_folder_name = f"models--{self.repo_name.replace('/', '--')}"
+        for filename in filenames:
+            hf_url = hf_hub_url(self.repo_name, filename)
+            hf_file_metadata = get_hf_file_metadata(hf_url)
+
+            files_to_cache.append(
+                hf_cache_file_from_location(
+                    f"{repo_folder_name}/blobs/{hf_file_metadata.etag}"
+                )
+            )
+
+        # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
+        files_to_cache.append(
+            hf_cache_file_from_location(f"{repo_folder_name}/snapshots/")
+        )
+
+        # refs just has files with revision commit hashes
+        files_to_cache.append(hf_cache_file_from_location(f"{repo_folder_name}/refs/"))
+
+        files_to_cache.append(hf_cache_file_from_location("version.txt"))
+
+        return files_to_cache
 
 
 def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
@@ -118,30 +257,6 @@ class CachedFile:
     dst: str
 
 
-def list_gcs_bucket_files(
-    bucket_name,
-    data_dir,
-    is_trusted=False,
-):
-    if is_trusted:
-        storage_client = storage.Client.from_service_account_json(
-            data_dir / GCS_CREDENTIALS
-        )
-    else:
-        storage_client = storage.Client.create_anonymous_client()
-    bucket_name, prefix = split_path(bucket_name)
-    blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
-
-    all_objects = []
-    for blob in blobs:
-        # leave out folders
-        if blob.name[-1] == "/":
-            continue
-        all_objects.append(blob.name)
-
-    return all_objects
-
-
 def parse_s3_service_account_file(file_path):
     # open the json file
     with open(file_path, "r") as f:
@@ -156,43 +271,6 @@ def parse_s3_service_account_file(file_path):
     aws_secret_access_key = data["aws_secret_access_key"]
 
     return aws_access_key_id, aws_secret_access_key
-
-
-def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
-    if is_trusted:
-        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
-            data_dir / S3_CREDENTIALS
-        )
-        session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-        s3 = session.resource("s3")
-    else:
-        s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
-
-    # path may be like "folderA/folderB"
-    bucket_name, path = split_path(bucket_name, prefix="s3://")
-    bucket = s3.Bucket(bucket_name)
-
-    all_objects = []
-    for blob in bucket.objects.filter(Prefix=path):
-        all_objects.append(blob.key)
-    return all_objects
-
-
-def list_files(repo_id, data_dir, revision=None):
-    gcs_credentials_file = data_dir / GCS_CREDENTIALS
-    s3_credentials_file = data_dir / S3_CREDENTIALS
-
-    if repo_id.startswith("gs://"):
-        return list_gcs_bucket_files(
-            repo_id, data_dir, is_trusted=gcs_credentials_file.exists()
-        )
-    elif repo_id.startswith("s3://"):
-        return list_s3_bucket_files(
-            repo_id, data_dir, is_trusted=s3_credentials_file.exists()
-        )
-    else:
-        # we assume it's a HF bucket
-        return list_repo_files(repo_id, revision=revision)
 
 
 def update_model_key(config: TrussConfig) -> str:
@@ -230,8 +308,8 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-    model_files = {}
-    cached_files: List[str] = []
+    remote_model_files = {}
+    local_cached_files: List[CachedFile] = []
     if config.model_cache:
         curr_dir = Path(__file__).parent.resolve()
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
@@ -242,71 +320,19 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
             allow_patterns = model.allow_patterns
             ignore_patterns = model.ignore_patterns
 
-            filtered_repo_files = list(
-                filter_repo_objects(
-                    items=list_files(
-                        repo_id, truss_dir / config.data_dir, revision=revision
-                    ),
-                    allow_patterns=allow_patterns,
-                    ignore_patterns=ignore_patterns,
-                )
-            )
+            model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
+            remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
+            local_cached_files += model_cache.prepare_for_cache(remote_filtered_files)
 
-            cached_files = fetch_files_to_cache(
-                cached_files, repo_id, filtered_repo_files
-            )
-
-            model_files[repo_id] = {"files": filtered_repo_files, "revision": revision}
+            remote_model_files[repo_id] = {
+                "files": remote_filtered_files,
+                "revision": revision,
+            }
 
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
     )
-    return model_files, cached_files
-
-
-def hf_cache_file_from_location(path: str):
-    src_file_location = str(HF_SOURCE_DIR / path)
-    dst_file_location = str(HF_CACHE_DIR / path)
-    cache_file = CachedFile(source=src_file_location, dst=dst_file_location)
-    return cache_file
-
-
-def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: list):
-    if repo_id.startswith("gs://"):
-        bucket_name, _ = split_path(repo_id)
-
-        for filename in filtered_repo_files:
-            file_location = str(CLOUD_BUCKET_CACHE / bucket_name / filename)
-            cached_files.append(CachedFile(source=file_location, dst=file_location))
-    elif repo_id.startswith("s3://"):
-        bucket_name, _ = split_path(repo_id, prefix="s3://")
-
-        for filename in filtered_repo_files:
-            file_location = str(CLOUD_BUCKET_CACHE / bucket_name / filename)
-            cached_files.append(CachedFile(source=file_location, dst=file_location))
-    else:
-        repo_folder_name = f"models--{repo_id.replace('/', '--')}"
-        for filename in filtered_repo_files:
-            hf_url = hf_hub_url(repo_id, filename)
-            hf_file_metadata = get_hf_file_metadata(hf_url)
-
-            cached_files.append(
-                hf_cache_file_from_location(
-                    f"{repo_folder_name}/blobs/{hf_file_metadata.etag}"
-                )
-            )
-
-        # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
-        cached_files.append(
-            hf_cache_file_from_location(f"{repo_folder_name}/snapshots/")
-        )
-
-        # refs just has files with revision commit hashes
-        cached_files.append(hf_cache_file_from_location(f"{repo_folder_name}/refs/"))
-
-        cached_files.append(hf_cache_file_from_location("version.txt"))
-
-    return cached_files
+    return remote_model_files, local_cached_files
 
 
 def update_config_and_gather_files(

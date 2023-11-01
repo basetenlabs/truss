@@ -100,6 +100,10 @@ def test_overrides_model_id_tgi():
     )
 
 
+def flatten_cached_files(local_cache_files):
+    return [file.source for file in local_cache_files]
+
+
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
@@ -112,12 +116,18 @@ def test_correct_hf_files_accessed_for_caching():
         build_path = truss_path / "build"
         build_path.mkdir(parents=True, exist_ok=True)
 
+        hf_path = Path("root/.cache/huggingface/hub")
+
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
-        assert "version.txt" in files_to_cache
+        files_to_cache = flatten_cached_files(files_to_cache)
+        assert str(hf_path / "version.txt") in files_to_cache
 
         # It's unlikely the repo will change
         assert (
-            "models--openai--whisper-small/blobs/1d7734884874f1a1513ed9aa760a4f8e97aaa02fd6d93a3a85d27b2ae9ca596b"
+            str(
+                hf_path
+                / "models--openai--whisper-small/blobs/59ef8a839f271fa2183c6a4c302669d097e43b6d"
+            )
             in files_to_cache
         )
 
@@ -127,7 +137,7 @@ def test_correct_hf_files_accessed_for_caching():
         assert "tokenizer_config.json" in files
 
 
-@patch("truss.contexts.image_builder.serving_image_builder.list_gcs_bucket_files")
+@patch("truss.contexts.image_builder.serving_image_builder.GCSCache.list_files")
 def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     mock_list_bucket_files.return_value = [
         "fake_model-001-of-002.bin",
@@ -146,6 +156,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path.mkdir(parents=True, exist_ok=True)
 
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
             "/app/model_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
@@ -160,7 +171,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
         assert "fake_model-001-of-002.bin" in model_files[model]["files"]
 
 
-@patch("truss.contexts.image_builder.serving_image_builder.list_s3_bucket_files")
+@patch("truss.contexts.image_builder.serving_image_builder.S3Cache.list_files")
 def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
     mock_list_bucket_files.return_value = [
         "fake_model-001-of-002.bin",
@@ -179,6 +190,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path.mkdir(parents=True, exist_ok=True)
 
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
+        files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
             "/app/model_cache/crazy-good-new-model-7b/fake_model-001-of-002.bin"
@@ -193,7 +205,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
         assert "fake_model-001-of-002.bin" in model_files[model]["files"]
 
 
-@patch("truss.contexts.image_builder.serving_image_builder.list_gcs_bucket_files")
+@patch("truss.contexts.image_builder.serving_image_builder.GCSCache.list_files")
 def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
     mock_list_bucket_files.return_value = [
         "folder_a/folder_b/fake_model-001-of-002.bin",
@@ -212,7 +224,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         build_path.mkdir(parents=True, exist_ok=True)
 
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
-        print(files_to_cache)
+        files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
             "/app/model_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
@@ -231,7 +243,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
         )
 
 
-@patch("truss.contexts.image_builder.serving_image_builder.list_s3_bucket_files")
+@patch("truss.contexts.image_builder.serving_image_builder.S3Cache.list_files")
 def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
     mock_list_bucket_files.return_value = [
         "folder_a/folder_b/fake_model-001-of-002.bin",
@@ -250,7 +262,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         build_path.mkdir(parents=True, exist_ok=True)
 
         model_files, files_to_cache = get_files_to_cache(config, truss_path, build_path)
-        print(files_to_cache)
+        files_to_cache = flatten_cached_files(files_to_cache)
 
         assert (
             "/app/model_cache/crazy-good-new-model-7b/folder_a/folder_b/fake_model-001-of-002.bin"
