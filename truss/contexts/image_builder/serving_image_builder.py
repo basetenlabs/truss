@@ -125,7 +125,7 @@ def list_gcs_bucket_files(
 ):
     if is_trusted:
         storage_client = storage.Client.from_service_account_json(
-            data_dir / "service_account.json"
+            data_dir / GCS_CREDENTIALS
         )
     else:
         storage_client = storage.Client.create_anonymous_client()
@@ -161,7 +161,7 @@ def parse_s3_service_account_file(file_path):
 def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
     if is_trusted:
         AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
-            data_dir / "s3_credentials.json"
+            data_dir / S3_CREDENTIALS
         )
         session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
         s3 = session.resource("s3")
@@ -179,8 +179,8 @@ def list_s3_bucket_files(bucket_name, data_dir, is_trusted=False):
 
 
 def list_files(repo_id, data_dir, revision=None):
-    gcs_credentials_file = data_dir / "service_account.json"
-    s3_credentials_file = data_dir / "s3_credentials.json"
+    gcs_credentials_file = data_dir / GCS_CREDENTIALS
+    s3_credentials_file = data_dir / S3_CREDENTIALS
 
     if repo_id.startswith("gs://"):
         return list_gcs_bucket_files(
@@ -336,8 +336,8 @@ def create_tgi_build_dir(
     )
 
     data_dir = build_dir / "data"
-    gcs_credentials_file = data_dir / "service_account.json"
-    s3_credentials_file = data_dir / "s3_credentials.json"
+    gcs_credentials_file = data_dir / GCS_CREDENTIALS
+    s3_credentials_file = data_dir / S3_CREDENTIALS
     dockerfile_content = dockerfile_template.render(
         config=config,
         hf_access_token=hf_access_token,
@@ -557,8 +557,8 @@ class ServingImageBuilder(ImageBuilder):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        gcs_credentials_file = data_dir / "service_account.json"
-        s3_credentials_file = data_dir / "s3_credentials.json"
+        gcs_credentials_file = data_dir / GCS_CREDENTIALS
+        s3_credentials_file = data_dir / S3_CREDENTIALS
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
