@@ -121,6 +121,7 @@ def test_build_serving_docker_image_from_user_base_image_live_reload(
         assert "It returned with code 1" in str(exc)
 
 
+@pytest.mark.skip(reason="Training Integration tests not supported")
 @pytest.mark.integration
 def test_build_training_docker_image_from_user_base_image(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
@@ -235,6 +236,7 @@ def test_docker_predict_model_with_external_packages(
         assert result == [1, 1]
 
 
+@pytest.mark.skip(reason="Training Integration tests not supported")
 @pytest.mark.integration
 def test_docker_train(variables_to_artifacts_training_truss):
     th = TrussHandle(variables_to_artifacts_training_truss)
