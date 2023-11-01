@@ -66,7 +66,6 @@ RUN python3 -m venv /control/.env \
     {%- endif %}
 
 {%- if model_cache %}
-    {%- set hf_dst_directory="/root/.cache/huggingface/hub/"%}
     {%- include "copy_cache_files.Dockerfile.jinja"%}
 {%- endif %}
 

@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -53,6 +54,10 @@ S3_CREDENTIALS = "s3_credentials.json"
 HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
+CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
+HF_SOURCE_DIR = Path("./root/.cache/huggingface/hub/")
+HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
+
 
 def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     _spec = TrussSpec(truss_dir)
@@ -105,6 +110,12 @@ def split_path(path, prefix="gs://"):
     path = parts[1] if len(parts) > 1 else ""
 
     return bucket_name, path
+
+
+@dataclass
+class CachedFile:
+    source: str
+    dst: str
 
 
 def list_gcs_bucket_files(
@@ -253,34 +264,47 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     return model_files, cached_files
 
 
+def hf_cache_file_from_location(path: str):
+    src_file_location = str(HF_SOURCE_DIR / path)
+    dst_file_location = str(HF_CACHE_DIR / path)
+    cache_file = CachedFile(source=src_file_location, dst=dst_file_location)
+    return cache_file
+
+
 def fetch_files_to_cache(cached_files: list, repo_id: str, filtered_repo_files: list):
     if repo_id.startswith("gs://"):
         bucket_name, _ = split_path(repo_id)
-        repo_id = f"gs://{bucket_name}"
 
         for filename in filtered_repo_files:
-            cached_files.append(f"/app/model_cache/{bucket_name}/{filename}")
+            file_location = str(CLOUD_BUCKET_CACHE / bucket_name / filename)
+            cached_files.append(CachedFile(source=file_location, dst=file_location))
     elif repo_id.startswith("s3://"):
         bucket_name, _ = split_path(repo_id, prefix="s3://")
-        repo_id = f"s3://{bucket_name}"
 
         for filename in filtered_repo_files:
-            cached_files.append(f"/app/model_cache/{bucket_name}/{filename}")
+            file_location = str(CLOUD_BUCKET_CACHE / bucket_name / filename)
+            cached_files.append(CachedFile(source=file_location, dst=file_location))
     else:
         repo_folder_name = f"models--{repo_id.replace('/', '--')}"
         for filename in filtered_repo_files:
             hf_url = hf_hub_url(repo_id, filename)
             hf_file_metadata = get_hf_file_metadata(hf_url)
 
-            cached_files.append(f"{repo_folder_name}/blobs/{hf_file_metadata.etag}")
+            cached_files.append(
+                hf_cache_file_from_location(
+                    f"{repo_folder_name}/blobs/{hf_file_metadata.etag}"
+                )
+            )
 
         # snapshots is just a set of folders with symlinks -- we can copy the entire thing separately
-        cached_files.append(f"{repo_folder_name}/snapshots/")
+        cached_files.append(
+            hf_cache_file_from_location(f"{repo_folder_name}/snapshots/")
+        )
 
         # refs just has files with revision commit hashes
-        cached_files.append(f"{repo_folder_name}/refs/")
+        cached_files.append(hf_cache_file_from_location(f"{repo_folder_name}/refs/"))
 
-        cached_files.append("version.txt")
+        cached_files.append(hf_cache_file_from_location("version.txt"))
 
     return cached_files
 
