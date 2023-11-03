@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 import boto3
 import yaml
@@ -67,7 +69,8 @@ class RemoteCache(ABC):
         self.revision = revision
 
     @staticmethod
-    def from_repo(repo_name, data_dir):
+    def from_repo(repo_name: str, data_dir: Path) -> "RemoteCache":
+        repository_class: Type["RemoteCache"]
         if repo_name.startswith("gs://"):
             repository_class = GCSCache
         elif repo_name.startswith("s3://"):
