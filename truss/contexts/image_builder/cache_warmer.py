@@ -6,7 +6,7 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Type
 
 import boto3
 from botocore import UNSIGNED
@@ -92,7 +92,10 @@ class RepositoryFile(ABC):
         self.revision_name = revision_name
 
     @staticmethod
-    def from_file(new_repo_name, new_file_name, new_revision_name):
+    def from_file(
+        new_repo_name: str, new_file_name: str, new_revision_name: str
+    ) -> "RepositoryFile":
+        repository_class: Type["RepositoryFile"]
         if new_repo_name.startswith("gs://"):
             repository_class = GCSFile
         elif new_repo_name.startswith("s3://"):
