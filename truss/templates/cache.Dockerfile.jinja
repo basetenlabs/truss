@@ -6,11 +6,9 @@ WORKDIR /app
 {% if hf_access_token %}
 ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
 {% endif %}
-{%- if gcs_credentials_exists %}
-COPY ./data/service_account.json /app/data/service_account.json
-{%- endif %}
-{%- if s3_credentials_exists %}
-COPY ./data/s3_credentials.json /app/data/s3_credentials.json
+
+{% for credential in credentials_to_exist  %}
+COPY .{{credential}} /app/{{credential}}
 {%- endif %}
 
 RUN apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp

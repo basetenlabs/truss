@@ -217,15 +217,6 @@ def download_file_using_b10cp(url, dst_file, file_name):
     except FileNotFoundError as file_error:
         raise RuntimeError(f"Failure due to file ({file_name}) not found: {file_error}")
 
-    except TimeoutError as timeout_error:
-        raise RuntimeError(f"Failure due to timeout: {timeout_error}")
-
-    except OSError as os_error:
-        raise RuntimeError(f"Failure due to a system error: {os_error}")
-
-    except ValueError as value_error:
-        raise RuntimeError(f"Failure due to an error: {value_error}")
-
 
 def download_file(repo_name, file_name, revision_name=None):
     file = RepositoryFile.from_file(repo_name, file_name, revision_name)

@@ -309,7 +309,7 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
     remote_model_files = {}
-    local_cached_files: List[CachedFile] = []
+    local_files_to_cache: List[CachedFile] = []
     if config.model_cache:
         curr_dir = Path(__file__).parent.resolve()
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
@@ -322,7 +322,7 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
 
             model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
             remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
-            local_cached_files += model_cache.prepare_for_cache(remote_filtered_files)
+            local_files_to_cache += model_cache.prepare_for_cache(remote_filtered_files)
 
             remote_model_files[repo_id] = {
                 "files": remote_filtered_files,
@@ -332,7 +332,7 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
     copy_into_build_dir(
         TEMPLATES_DIR / "cache_requirements.txt", "cache_requirements.txt"
     )
-    return remote_model_files, local_cached_files
+    return remote_model_files, local_files_to_cache
 
 
 def update_config_and_gather_files(
@@ -585,6 +585,13 @@ class ServingImageBuilder(ImageBuilder):
         bundled_packages_dir = build_dir / config.bundled_packages_dir
         gcs_credentials_file = data_dir / GCS_CREDENTIALS
         s3_credentials_file = data_dir / S3_CREDENTIALS
+        credentials = [gcs_credentials_file, s3_credentials_file]
+
+        credentials_to_cache = []
+        for file in credentials:
+            if file.exists():
+                credentials_to_cache.append(str(file))
+
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
@@ -623,8 +630,7 @@ class ServingImageBuilder(ImageBuilder):
             models=model_files,
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
-            gcs_credentials_exists=gcs_credentials_file.exists(),
-            s3_credentials_exists=s3_credentials_file.exists(),
+            credentials_to_cache=credentials_to_cache,
             model_cache=len(config.model_cache.models) > 0,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
