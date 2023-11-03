@@ -198,6 +198,19 @@ class HuggingFaceCache(RemoteCache):
         return files_to_cache
 
 
+def get_credentials_to_cache(data_dir: Path) -> List[str]:
+    gcs_credentials_file = data_dir / GCS_CREDENTIALS
+    s3_credentials_file = data_dir / S3_CREDENTIALS
+    credentials = [gcs_credentials_file, s3_credentials_file]
+
+    credentials_to_cache = []
+    for file in credentials:
+        if file.exists():
+            credentials_to_cache.append(str(file))
+
+    return credentials_to_cache
+
+
 def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
     _spec = TrussSpec(truss_dir)
     if not build_dir.exists():
@@ -362,16 +375,13 @@ def create_tgi_build_dir(
     )
 
     data_dir = build_dir / "data"
-    gcs_credentials_file = data_dir / GCS_CREDENTIALS
-    s3_credentials_file = data_dir / S3_CREDENTIALS
     dockerfile_content = dockerfile_template.render(
         config=config,
         hf_access_token=hf_access_token,
         models=model_files,
         model_cache=config.model_cache,
         data_dir_exists=data_dir.exists(),
-        gcs_credentials_exists=gcs_credentials_file.exists(),
-        s3_credentials_exists=s3_credentials_file.exists(),
+        credentials_to_cache=get_credentials_to_cache(data_dir),
         cached_files=cached_file_paths,
         use_hf_secret=use_hf_secret,
         hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
@@ -422,8 +432,7 @@ def create_vllm_build_dir(
     nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
 
     data_dir = build_dir / "data"
-    gcs_credentials_file = data_dir / GCS_CREDENTIALS
-    s3_credentials_file = data_dir / S3_CREDENTIALS
+
     dockerfile_content = dockerfile_template.render(
         config=config,
         hf_access_token=hf_access_token,
@@ -431,8 +440,7 @@ def create_vllm_build_dir(
         should_install_server_requirements=True,
         model_cache=config.model_cache,
         data_dir_exists=data_dir.exists(),
-        gcs_credentials_exists=gcs_credentials_file.exists(),
-        s3_credentials_exists=s3_credentials_file.exists(),
+        credentials_to_cache=get_credentials_to_cache(data_dir),
         cached_files=cached_file_paths,
         use_hf_secret=use_hf_secret,
         hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
@@ -583,14 +591,6 @@ class ServingImageBuilder(ImageBuilder):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        gcs_credentials_file = data_dir / GCS_CREDENTIALS
-        s3_credentials_file = data_dir / S3_CREDENTIALS
-        credentials = [gcs_credentials_file, s3_credentials_file]
-
-        credentials_to_cache = []
-        for file in credentials:
-            if file.exists():
-                credentials_to_cache.append(str(file))
 
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
@@ -630,7 +630,7 @@ class ServingImageBuilder(ImageBuilder):
             models=model_files,
             use_hf_secret=use_hf_secret,
             cached_files=cached_files,
-            credentials_to_cache=credentials_to_cache,
+            credentials_to_cache=get_credentials_to_cache(data_dir),
             model_cache=len(config.model_cache.models) > 0,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
