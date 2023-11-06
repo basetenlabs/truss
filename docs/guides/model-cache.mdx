@@ -157,6 +157,32 @@ your-truss
 |. └── s3_credentials.json
 ```
 
+When you are generating credentials, make sure that the resulting keys have at minimum the following IAM policy:
+
+```json
+{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": [
+                    "s3:GetObject",
+                    "s3:ListObjects",
+                ],
+                "Effect": "Allow",
+                "Resource": ["arn:aws:s3:::S3_BUCKET/PATH_TO_MODEL/*"]
+            },
+            {
+                "Action": [
+                    "s3:ListBucket",
+                ],
+                "Effect": "Allow",
+                "Resource": ["arn:aws:s3:::S3_BUCKET"]
+            }
+        ]
+    }
+```
+
+
 <Warning>
 If you are using version control, like git, for your Truss, make sure to add `s3_credentials.json` to your `.gitignore` file. You don't want to accidentally expose your service account key.
 </Warning>
