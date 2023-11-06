@@ -300,25 +300,25 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     is_flag=True,
     required=False,
     default=False,
-    help="Invoked the published model version.",
+    help="Call the published model deployment.",
 )
 @click.option(
     "--model-version",
     type=str,
     required=False,
-    help="[DEPRECATED] Use --model-deployment instead, this will be removed in future release. ID of model version",
+    help="[DEPRECATED] Use --model-deployment instead, this will be removed in future release. ID of model deployment",
 )
 @click.option(
     "--model-deployment",
     type=str,
     required=False,
-    help="ID of model deployment to invoke",
+    help="ID of model deployment to call",
 )
 @click.option(
     "--model",
     type=str,
     required=False,
-    help="ID of model to invoke",
+    help="ID of model to call",
 )
 @echo_output
 def predict(
@@ -332,7 +332,7 @@ def predict(
     model: Optional[str],
 ):
     """
-    Invokes the packaged model
+    Calls the packaged model
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
@@ -438,7 +438,7 @@ def push(
 | Your model has been deployed as a development model. Development models allow you to  |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
-| When you are ready to publish your deployed model as a new version,                   |
+| When you are ready to publish your deployed model as a new deployment,                |
 | pass `--publish` to the `truss push` command. To monitor changes to your model and    |
 | rapidly iterate, run the `truss watch` command.                                       |
 |                                                                                       |
