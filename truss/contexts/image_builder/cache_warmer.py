@@ -132,7 +132,9 @@ class GCSFile(RepositoryFile):
         bucket_name, _ = split_path(repo_name, prefix="gs://")
 
         is_private = os.path.exists(GCS_CREDENTIALS)
+        print(is_private)
         if is_private:
+            print("loading...")
             client = storage.Client.from_service_account_json(GCS_CREDENTIALS)
         else:
             client = storage.Client.create_anonymous_client()

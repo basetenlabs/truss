@@ -7,8 +7,8 @@ WORKDIR /app
 ENV HUGGING_FACE_HUB_TOKEN {{hf_access_token}}
 {% endif %}
 
-{% for credential in credentials_to_exist  %}
-COPY .{{credential}} /app/{{credential}}
+{% for credential in credentials_to_cache  %}
+COPY ./{{credential}} /app/{{credential}}
 {% endfor %}
 
 RUN apt-get -y update; apt-get -y install curl; curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp

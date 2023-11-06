@@ -209,7 +209,8 @@ def get_credentials_to_cache(data_dir: Path) -> List[str]:
     credentials_to_cache = []
     for file in credentials:
         if file.exists():
-            credentials_to_cache.append(str(file))
+            build_path = Path(*file.parts[-2:])
+            credentials_to_cache.append(str(build_path))
 
     return credentials_to_cache
 
