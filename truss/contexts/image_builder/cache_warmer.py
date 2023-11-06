@@ -47,6 +47,7 @@ class AWSCredentials:
     access_key_id: str
     secret_access_key: str
     region: str
+    session_token: Optional[str]
 
 
 def parse_s3_credentials_file(key_file_path: str) -> AWSCredentials:
@@ -67,6 +68,7 @@ def parse_s3_credentials_file(key_file_path: str) -> AWSCredentials:
         access_key_id=data["aws_access_key_id"],
         secret_access_key=data["aws_secret_access_key"],
         region=data["aws_region"],
+        session_token=data.get("aws_session_token", None),
     )
 
     return aws_sa
@@ -179,6 +181,7 @@ class S3File(RepositoryFile):
                 aws_access_key_id=s3_credentials.access_key_id,
                 aws_secret_access_key=s3_credentials.secret_access_key,
                 region_name=s3_credentials.region,
+                aws_session_token=s3_credentials.session_token,
                 config=Config(signature_version="s3v4"),
             )
         else:

@@ -135,6 +135,7 @@ model_cache:
 If you are accessing a public GCS bucket, you can ignore the subsequent steps, but make sure you set an appropriate appropriate policy on your bucket. Users should be able to list and view all files. Otherwise, the model build will fail.
 
 However, for a private S3 bucket, you need to first find your `aws_access_key_id`, `aws_secret_access_key`, and `aws_region` in your AWS dashboard. Create a file named `s3_credentials.json`. Inside this file, add the credentials that you identified earlier as shown below. Place this file into the `data` directory of your Truss.
+The key `aws_session_token` can be included, but is optional.
 
 Here is an example of how your `s3_credentials.json` file should look:
 
