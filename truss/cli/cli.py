@@ -43,6 +43,8 @@ click.rich_click.COMMAND_GROUPS = {
     ]
 }
 
+console = rich.console.Console()
+
 
 def echo_output(f: Callable[..., object]):
     @wraps(f)
@@ -304,7 +306,13 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     "--model-version",
     type=str,
     required=False,
-    help="ID of model version to invoke",
+    help="[DEPRECATED] Use --model-deployment instead, this will be removed in future release. ID of model version",
+)
+@click.option(
+    "--model-deployment",
+    type=str,
+    required=False,
+    help="ID of model deployment to invoke",
 )
 @click.option(
     "--model",
@@ -320,6 +328,7 @@ def predict(
     file: Optional[Path],
     published: Optional[bool],
     model_version: Optional[str],
+    model_deployment: Optional[str],
     model: Optional[str],
 ):
     """
@@ -336,10 +345,17 @@ def predict(
 
     remote_provider = RemoteFactory.create(remote=remote)
 
+    if model_version:
+        console.print(
+            "[DEPRECATED] --model-version is deprecated, use --model-deployment instead.",
+            style="yellow",
+        )
+        model_deployment = model_version
+
     model_identifier = _extract_and_validate_model_identifier(
         target_directory,
         model_id=model,
-        model_version_id=model_version,
+        model_version_id=model_deployment,
         published=published,
     )
 
@@ -419,7 +435,7 @@ def push(
     if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
-| Your model has been deployed as a draft. Draft models allow you to                    |
+| Your model has been deployed as a development model. Development models allow you to  |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new version,                   |
