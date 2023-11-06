@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +25,10 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRITON_SERVER_CODE_DIR,
+)
+from truss.contexts.image_builder.cache_warmer import (
+    AWSCredentials,
+    parse_s3_credentials_file,
 )
 from truss.contexts.image_builder.image_builder import ImageBuilder
 from truss.contexts.image_builder.util import (
@@ -136,10 +139,15 @@ class S3Cache(RemoteCache):
         s3_credentials_file = self.data_dir / S3_CREDENTIALS
 
         if s3_credentials_file.exists():
-            AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY = parse_s3_service_account_file(
+            s3_credentials: AWSCredentials = parse_s3_credentials_file(
                 self.data_dir / S3_CREDENTIALS
             )
-            session = boto3.Session(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+            session = boto3.Session(
+                aws_access_key_id=s3_credentials.access_key_id,
+                aws_secret_access_key=s3_credentials.secret_access_key,
+                aws_session_token=s3_credentials.session_token,
+                region_name=s3_credentials.region,
+            )
             s3 = session.resource("s3")
         else:
             s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
@@ -272,22 +280,6 @@ def split_path(path, prefix="gs://"):
 class CachedFile:
     source: str
     dst: str
-
-
-def parse_s3_service_account_file(file_path):
-    # open the json file
-    with open(file_path, "r") as f:
-        data = json.load(f)
-
-    # validate the data
-    if "aws_access_key_id" not in data or "aws_secret_access_key" not in data:
-        raise ValueError("Invalid AWS credentials file")
-
-    # parse the data
-    aws_access_key_id = data["aws_access_key_id"]
-    aws_secret_access_key = data["aws_secret_access_key"]
-
-    return aws_access_key_id, aws_secret_access_key
 
 
 def update_model_key(config: TrussConfig) -> str:
