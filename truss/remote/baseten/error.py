@@ -1,6 +1,3 @@
-import json
-
-
 class Error(Exception):
     """Base Baseten Error"""
 
@@ -17,16 +14,7 @@ class ApiError(Error):
         self.response = response
 
     def __str__(self):
-        error_str = self.message
-        if (
-            self.response is not None
-        ):  # non-200 Response objects are falsy, hence the not None.
-            error_message = json.loads(self.response.content)
-            error_message = (
-                error_message["error"] if "error" in error_message else error_message
-            )
-            error_str = f"{error_str}\n<Server response: {error_message}>"
-        return error_str
+        return self.message
 
 
 class AuthorizationError(Error):
