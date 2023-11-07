@@ -9,12 +9,7 @@ class Error(Exception):
 class ApiError(Error):
     """Errors in calling the Baseten API."""
 
-    def __init__(self, message, response=None):
-        super().__init__(message)
-        self.response = response
-
-    def __str__(self):
-        return self.message
+    pass
 
 
 class AuthorizationError(Error):
