@@ -430,15 +430,14 @@ def push(
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
 
+    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+
     # Log a warning if using secrets without --trusted.
     if tr.spec.config.secrets and not trusted:
         not_trusted_text = """
 Warning: your Truss has secrets but was not pushed with --trusted.
-Please push with --trusted to grant access to secrets.
-"""
-        click.echo(not_trusted_text)
-
-    click.echo(f"✨ Model {model_name} was successfully pushed ✨")
+Please push with --trusted to grant access to secrets."""
+        console.print(not_trusted_text, style="yellow")
 
     if service.is_draft:
         draft_model_text = """
