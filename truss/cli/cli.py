@@ -432,13 +432,6 @@ def push(
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
-    # Log a warning if using secrets without --trusted.
-    if tr.spec.config.secrets and not trusted:
-        not_trusted_text = """
-Warning: your Truss has secrets but was not pushed with --trusted.
-Please push with --trusted to grant access to secrets."""
-        console.print(not_trusted_text, style="yellow")
-
     if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
@@ -453,6 +446,14 @@ Please push with --trusted to grant access to secrets."""
 """
 
         click.echo(draft_model_text)
+
+    # Log a warning if using secrets without --trusted.
+    # TODO(helen): this could be moved to a separate function that includes more config checks.
+    if tr.spec.config.secrets and not trusted:
+        not_trusted_text = """Warning: your Truss has secrets but was not pushed with --trusted.
+Please push with --trusted to grant access to secrets.
+"""
+        console.print(not_trusted_text, style="red")
 
     logs_url = remote_provider.get_remote_logs_url(service)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
