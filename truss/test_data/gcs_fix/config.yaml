@@ -1,19 +1,12 @@
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
-model_name: test
+model_name: gcs fix
 python_version: py39
-requirements:
-- transformers
-- torch
-model_cache:
-- repo_id: julien-c/EsperBERTo-small
-  ignore_patterns:
-    - "*.bin"
-    - "*.msgpack"
+requirements: []
 resources:
   accelerator: null
-  cpu: '2'
+  cpu: '1'
   memory: 2Gi
   use_gpu: false
 secrets: {}

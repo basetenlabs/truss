@@ -43,6 +43,8 @@ click.rich_click.COMMAND_GROUPS = {
     ]
 }
 
+console = rich.console.Console()
+
 
 def echo_output(f: Callable[..., object]):
     @wraps(f)
@@ -298,19 +300,25 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     is_flag=True,
     required=False,
     default=False,
-    help="Invoked the published model version.",
+    help="Call the published model deployment.",
 )
 @click.option(
     "--model-version",
     type=str,
     required=False,
-    help="ID of model version to invoke",
+    help="[DEPRECATED] Use --model-deployment instead, this will be removed in future release. ID of model deployment",
+)
+@click.option(
+    "--model-deployment",
+    type=str,
+    required=False,
+    help="ID of model deployment to call",
 )
 @click.option(
     "--model",
     type=str,
     required=False,
-    help="ID of model to invoke",
+    help="ID of model to call",
 )
 @echo_output
 def predict(
@@ -320,10 +328,11 @@ def predict(
     file: Optional[Path],
     published: Optional[bool],
     model_version: Optional[str],
+    model_deployment: Optional[str],
     model: Optional[str],
 ):
     """
-    Invokes the packaged model
+    Calls the packaged model
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
@@ -336,10 +345,17 @@ def predict(
 
     remote_provider = RemoteFactory.create(remote=remote)
 
+    if model_version:
+        console.print(
+            "[DEPRECATED] --model-version is deprecated, use --model-deployment instead.",
+            style="yellow",
+        )
+        model_deployment = model_version
+
     model_identifier = _extract_and_validate_model_identifier(
         target_directory,
         model_id=model,
-        model_version_id=model_version,
+        model_version_id=model_deployment,
         published=published,
     )
 
@@ -419,10 +435,10 @@ def push(
     if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
-| Your model has been deployed as a draft. Draft models allow you to                    |
+| Your model has been deployed as a development model. Development models allow you to  |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
-| When you are ready to publish your deployed model as a new version,                   |
+| When you are ready to publish your deployed model as a new deployment,                |
 | pass `--publish` to the `truss push` command. To monitor changes to your model and    |
 | rapidly iterate, run the `truss watch` command.                                       |
 |                                                                                       |

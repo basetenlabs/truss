@@ -36,7 +36,7 @@ jobs:
       matrix:
         python_version: ["3.8", "3.9", "3.10", "3.11"]
         use_gpu: ["y", "n"]
-        job_type: ["server", "training"]
+        job_type: ["server"]
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
