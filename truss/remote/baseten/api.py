@@ -181,11 +181,14 @@ class BasetenApi:
 
     # TODO(helen): change naming to disambiguate from get_model_version_by_id
     def get_model_versions_by_id(self, model_id: str):
+        # TODO(helen): this doesn't work--need to update model_version query to
+        # support querying by model ID
         query_string = f"""
         {{
-            model_version(id: "{model_id}") {{
-                name
+        model_version(id: "{model_id}") {{
+            oracle{{
                 id
+                name
                 versions{{
                     id
                     semver
@@ -198,12 +201,13 @@ class BasetenApi:
                     }}
                 }}
             }}
-          }}
+        }}
+        }}
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
-    # TODO(helen): remove
+    # TODO(helen): consider removing after get_model_versions_by_id works
     def get_model_by_id(self, model_id: str):
         query_string = f"""
         {{
