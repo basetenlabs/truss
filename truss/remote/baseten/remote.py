@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import click
 import yaml
@@ -19,6 +19,7 @@ from truss.remote.baseten.core import (
     exists_model,
     get_dev_version_info,
     get_model_versions_info,
+    get_model_versions_info_by_id,
     upload_truss,
 )
 from truss.remote.baseten.service import BasetenService
@@ -78,45 +79,72 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
-    def _get_service_url_path_and_model_ids(
-        self, model_identifier: ModelIdentifier, published: bool
-    ) -> Tuple[str, str, str]:
-        if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions_info(
-                self._api, model_identifier.value
+    # TODO(helen): consider free function; add docstring
+    @staticmethod
+    def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
+        # Filter model_versions according to published.
+        matching_versions = [
+            model_version
+            for model_version in model_versions
+            # If published is False, then we want to find the draft version
+            if model_version["is_draft"] == (not published)
+        ]
+
+        if not matching_versions:
+            raise ValueError(
+                "No appropriate model version found. Run `truss push` then try again."
             )
-            matching_versions = [
-                model_version
-                for model_version in model_versions
-                # If published is False, then we want to find the draft version
-                if model_version["is_draft"] == (not published)
-            ]
 
-            model_version = matching_versions[0] if matching_versions else None
-            if model_version is None:
-                raise ValueError(
-                    "No appropriate model version found. Run `truss push` then try again."
-                )
-            model_version_id = model_version["id"]
-            service_url_path = f"/model_versions/{model_version_id}"
+        if not published:
+            # Return the development model version.
+            return matching_versions[0]
 
-        elif isinstance(model_identifier, ModelId):
-            model = self._api.get_model_by_id(model_identifier.value)
-            model_id = model["model"]["id"]
-            model_version_id = model["model"]["primary_version"]["id"]
-            service_url_path = f"/models/{model_id}"
+        # Return the production deployment version.
+        for model_version in matching_versions:
+            # TODO(helen): confirm whether this the right way to check whether a model is prod
+            if model_version["is_primary"]:
+                return model_version
 
-        elif isinstance(model_identifier, ModelVersionId):
+        # TODO(helen): published models exist but no prod model. is this possible?
+        # if not allowed, raise an error
+        return model_version
+
+    # TODO(helen): consider making this a static or free function; add docstring
+    def _get_model_and_version_ids(
+        self, model_identifier: ModelIdentifier, published: bool
+    ) -> Tuple[str, str]:
+        if isinstance(model_identifier, ModelVersionId):
             model_version = self._api.get_model_version_by_id(model_identifier.value)
             model_version_id = model_version["model_version"]["id"]
             model_id = model_version["model_version"]["oracle"]["id"]
-            service_url_path = f"/model_versions/{model_version_id}"
+            return model_id, model_version_id
 
+        # Get model versions by either model name or ID.
+        if isinstance(model_identifier, ModelName):
+            model_id, model_versions = get_model_versions_info(
+                self._api, model_identifier
+            )
+        elif isinstance(model_identifier, ModelId):
+            model_id, model_versions = get_model_versions_info_by_id(
+                self._api, model_identifier
+            )
         else:
+            # Model identifier is of invalid type.
             raise click.UsageError(
                 "You must either be inside of a Truss directory, or provide --model-version or --model options."
             )
 
+        model_version = self._get_matching_version(model_versions, published)
+        model_version_id = model_version["id"]
+        return model_id, model_version_id
+
+    def _get_service_url_path_and_model_ids(
+        self, model_identifier: ModelIdentifier, published: bool
+    ) -> Tuple[str, str, str]:
+        model_id, model_version_id = self._get_model_and_version_ids(
+            model_identifier, published
+        )
+        service_url_path = f"/model_versions/{model_version_id}"
         return service_url_path, model_id, model_version_id
 
     def get_service(self, **kwargs) -> BasetenService:

@@ -167,6 +167,7 @@ class BasetenApi:
                     truss_hash
                     truss_signature
                     is_draft
+                    is_primary
                     current_model_deployment_status {{
                         status
                     }}
@@ -178,6 +179,31 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    # TODO(helen): change naming to disambiguate from get_model_version_by_id
+    def get_model_versions_by_id(self, model_id: str):
+        query_string = f"""
+        {{
+            model_version(id: "{model_id}") {{
+                name
+                id
+                versions{{
+                    id
+                    semver
+                    truss_hash
+                    truss_signature
+                    is_draft
+                    is_primary
+                    current_model_deployment_status {{
+                        status
+                    }}
+                }}
+            }}
+          }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
+    # TODO(helen): remove
     def get_model_by_id(self, model_id: str):
         query_string = f"""
         {{

@@ -1,5 +1,5 @@
 import logging
-from typing import IO, Optional, Tuple
+from typing import IO, List, Optional, Tuple
 
 import truss
 from truss.remote.baseten.api import BasetenApi
@@ -47,8 +47,17 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     return None
 
 
-def get_model_versions_info(api: BasetenApi, model_name) -> Tuple[str, dict]:
-    query_result = api.get_model(model_name)["model_version"]["oracle"]
+def get_model_versions_info(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:
+    query_result = api.get_model(model_name.value)["model_version"]["oracle"]
+    return (query_result["id"], query_result["versions"])
+
+
+def get_model_versions_info_by_id(
+    api: BasetenApi, model_id: ModelId
+) -> Tuple[str, List]:
+    query_result = api.get_model_versions_by_id(model_id.value)["model_version"][
+        "oracle"
+    ]
     return (query_result["id"], query_result["versions"])
 
 
