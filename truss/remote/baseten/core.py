@@ -55,9 +55,7 @@ def get_model_versions_info(api: BasetenApi, model_name: ModelName) -> Tuple[str
 def get_model_versions_info_by_id(
     api: BasetenApi, model_id: ModelId
 ) -> Tuple[str, List]:
-    query_result = api.get_model_versions_by_id(model_id.value)["model_version"][
-        "oracle"
-    ]
+    query_result = api.get_model_by_id(model_id.value)["model"]
     return (query_result["id"], query_result["versions"])
 
 
