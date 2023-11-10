@@ -157,7 +157,11 @@ class S3Cache(RemoteCache):
 
         all_objects = []
         for blob in bucket.objects.filter(Prefix=path):
+            # leave out folders
+            if blob.key[-1] == "/":
+                continue
             all_objects.append(blob.key)
+
         return all_objects
 
     def prepare_for_cache(self, filenames):
