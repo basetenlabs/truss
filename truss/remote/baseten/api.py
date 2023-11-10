@@ -157,10 +157,9 @@ class BasetenApi:
     def get_model(self, model_name):
         query_string = f"""
         {{
-        model_version(name: "{model_name}") {{
-            oracle{{
-                id
+            model(name: "{model_name}") {{
                 name
+                id
                 versions{{
                     id
                     semver
@@ -173,7 +172,6 @@ class BasetenApi:
                     }}
                 }}
             }}
-        }}
         }}
         """
         resp = self._post_graphql_query(query_string)
@@ -197,7 +195,7 @@ class BasetenApi:
                     }}
                 }}
             }}
-          }}
+        }}
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]

@@ -48,7 +48,7 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
 
 
 def get_model_versions_info(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:
-    query_result = api.get_model(model_name.value)["model_version"]["oracle"]
+    query_result = api.get_model(model_name.value)["model"]
     return (query_result["id"], query_result["versions"])
 
 
@@ -61,7 +61,7 @@ def get_model_versions_info_by_id(
 
 def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
     model = api.get_model(model_name)
-    versions = model["model_version"]["oracle"]["versions"]
+    versions = model["model"]["versions"]
     for version in versions:
         if version["is_draft"] is True:
             return version
