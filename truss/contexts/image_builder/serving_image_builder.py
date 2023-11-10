@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
 import yaml
@@ -42,7 +42,6 @@ from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.truss_config import Build, ModelRepo, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.util.download import download_external_data
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -242,7 +241,6 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
 
     model_repository_path = build_dir / "model"
     user_truss_path = model_repository_path / "truss"  # type: ignore[operator]
-    data_dir = model_repository_path / config.data_dir  # type: ignore[operator]
 
     copy_tree_path(TRITON_SERVER_CODE_DIR / "model", model_repository_path)
     copy_tree_path(TRITON_SERVER_CODE_DIR / "root", build_dir)
@@ -255,9 +253,6 @@ def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Pat
     # Override config.yml
     with (model_repository_path / "truss" / CONFIG_FILE).open("w") as config_file:
         yaml.dump(config.to_dict(verbose=True), config_file)
-
-    # Download external data
-    download_external_data(_spec.external_data, data_dir)
 
     (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(_spec.requirements_txt)
     (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
@@ -510,8 +505,16 @@ class ServingImageBuilder(ImageBuilder):
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
 
-        # Download external data
-        download_external_data(self._spec.external_data, data_dir)
+        external_data_files: list = []
+        data_dir = Path("/app/data/")
+        if self._spec.external_data is not None:
+            for ext_file in self._spec.external_data.items:
+                external_data_files.append(
+                    (
+                        ext_file.url,
+                        (data_dir / ext_file.local_data_path).resolve(),
+                    )
+                )
 
         # Download from HuggingFace
         model_files, cached_files = update_config_and_gather_files(
@@ -574,6 +577,7 @@ class ServingImageBuilder(ImageBuilder):
             model_files,
             use_hf_secret,
             cached_files,
+            external_data_files,
         )
 
     def _render_dockerfile(
@@ -583,6 +587,7 @@ class ServingImageBuilder(ImageBuilder):
         model_files: Dict[str, Any],
         use_hf_secret: bool,
         cached_files: List[str],
+        external_data_files: List[Tuple[str, str]],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -630,6 +635,7 @@ class ServingImageBuilder(ImageBuilder):
             model_cache=len(config.model_cache.models) > 0,
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
+            external_data_files=external_data_files,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
