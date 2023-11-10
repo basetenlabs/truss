@@ -59,13 +59,21 @@ def get_model_versions_info_by_id(
     return (query_result["id"], query_result["versions"])
 
 
-def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
-    model = api.get_model(model_name)
-    versions = model["model"]["versions"]
+# TODO(helen): add test coverage
+def get_dev_version_info_from_versions(versions: List[dict]) -> dict:
     for version in versions:
         if version["is_draft"] is True:
             return version
-    raise ValueError(f"No development version found with model name: {model_name}")
+    raise ValueError("No development version found")
+
+
+def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
+    model = api.get_model(model_name)
+    versions = model["model"]["versions"]
+    try:
+        return get_dev_version_info_from_versions(versions)
+    except ValueError:
+        raise ValueError(f"No development version found with model name: {model_name}")
 
 
 def archive_truss(truss_handle: TrussHandle) -> IO:
