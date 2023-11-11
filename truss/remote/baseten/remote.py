@@ -89,7 +89,7 @@ class BasetenRemote(TrussRemote):
             try:
                 return get_dev_version_info_from_versions(model_versions)
             except ValueError:
-                raise ValueError(
+                raise click.UsageError(
                     "No development model found. Run `truss push` then try again."
                 )
 
@@ -97,7 +97,7 @@ class BasetenRemote(TrussRemote):
         try:
             return get_prod_version_info_from_versions(model_versions)
         except ValueError:
-            raise ValueError(
+            raise click.UsageError(
                 "No production model found. Run `truss push --publish` then try again."
             )
 
