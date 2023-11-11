@@ -76,6 +76,17 @@ def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
         raise ValueError(f"No development version found with model name: {model_name}")
 
 
+# TODO(helen): add test coverage
+def get_prod_version_info_from_versions(versions: List[dict]) -> dict:
+    # Loop over versions instead of using the primary_version field because
+    # primary_version is set to the development version ID if no published
+    # models exist.
+    for version in versions:
+        if version["is_primary"] and not version["is_draft"]:
+            return version
+    raise ValueError("No production version found")
+
+
 def archive_truss(truss_handle: TrussHandle) -> IO:
     """
     Archive a TrussHandle into a tar file.
