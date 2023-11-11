@@ -59,7 +59,6 @@ def get_model_versions_info_by_id(
     return (query_result["id"], query_result["versions"])
 
 
-# TODO(helen): add test coverage
 def get_dev_version_info_from_versions(versions: List[dict]) -> dict:
     for version in versions:
         if version["is_draft"] is True:
@@ -76,7 +75,6 @@ def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
         raise ValueError(f"No development version found with model name: {model_name}")
 
 
-# TODO(helen): add test coverage
 def get_prod_version_info_from_versions(versions: List[dict]) -> dict:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published

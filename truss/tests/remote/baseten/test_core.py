@@ -1,6 +1,7 @@
 from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
+import pytest
 from truss.remote.baseten import core
 
 
@@ -28,3 +29,51 @@ def test_upload_truss():
     core.multipart_upload_boto3.return_value = None
     test_file = NamedTemporaryFile()
     assert core.upload_truss(api, test_file) == "key"
+
+
+def test_get_dev_version_info_from_versions():
+    versions = [
+        {"id": "1", "is_draft": False},
+        {"id": "2", "is_draft": True},
+    ]
+    dev_version_info = core.get_dev_version_info_from_versions(versions)
+    assert dev_version_info["id"] == "2"
+
+
+def test_get_dev_version_info_from_versions_error():
+    versions = [
+        {"id": "1", "is_draft": False},
+    ]
+    with pytest.raises(ValueError):
+        core.get_dev_version_info_from_versions(versions)
+
+
+def test_get_dev_version_info():
+    versions = [
+        {"id": "1", "is_draft": False},
+        {"id": "2", "is_draft": True},
+    ]
+    api = MagicMock()
+    api.get_model.return_value = {"model": {"versions": versions}}
+
+    dev_version_info = core.get_dev_version_info(api, "my_model")
+    assert dev_version_info["id"] == "2"
+
+
+def test_get_prod_version_info_from_versions():
+    versions = [
+        {"id": "1", "is_draft": False, "is_primary": False},
+        {"id": "2", "is_draft": True, "is_primary": False},
+        {"id": "3", "is_draft": False, "is_primary": True},
+    ]
+    prod_version_info = core.get_prod_version_info_from_versions(versions)
+    assert prod_version_info["id"] == "3"
+
+
+def test_get_prod_version_info_from_versions_error():
+    versions = [
+        {"id": "1", "is_draft": True, "is_primary": False},
+        {"id": "2", "is_draft": False, "is_primary": False},
+    ]
+    with pytest.raises(ValueError):
+        core.get_prod_version_info_from_versions(versions)
