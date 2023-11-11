@@ -101,12 +101,13 @@ class BasetenRemote(TrussRemote):
                 "No production model found. Run `truss push --publish` then try again."
             )
 
-    # TODO(helen): consider making this a static or free function; add docstring
+    # TODO(helen): consider free function; add docstring
+    @staticmethod
     def _get_service_url_path_and_model_ids(
-        self, model_identifier: ModelIdentifier, published: bool
+        api: BasetenApi, model_identifier: ModelIdentifier, published: bool
     ) -> Tuple[str, str, str]:
         if isinstance(model_identifier, ModelVersionId):
-            model_version = self._api.get_model_version_by_id(model_identifier.value)
+            model_version = api.get_model_version_by_id(model_identifier.value)
             model_version_id = model_version["model_version"]["id"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
@@ -114,12 +115,10 @@ class BasetenRemote(TrussRemote):
 
         # Get model versions by either model name or ID.
         if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions_info(
-                self._api, model_identifier
-            )
+            model_id, model_versions = get_model_versions_info(api, model_identifier)
         elif isinstance(model_identifier, ModelId):
             model_id, model_versions = get_model_versions_info_by_id(
-                self._api, model_identifier
+                api, model_identifier
             )
         else:
             # Model identifier is of invalid type.
@@ -127,7 +126,7 @@ class BasetenRemote(TrussRemote):
                 "You must either be inside of a Truss directory, or provide --model-version or --model options."
             )
 
-        model_version = self._get_matching_version(model_versions, published)
+        model_version = BasetenRemote._get_matching_version(model_versions, published)
         model_version_id = model_version["id"]
         # TODO(helen): comment on why we use models endpoint instead of
         # model_versions. If primary version changes while this is executing,
@@ -146,7 +145,9 @@ class BasetenRemote(TrussRemote):
             service_url_path,
             model_id,
             model_version_id,
-        ) = self._get_service_url_path_and_model_ids(model_identifier, published)
+        ) = self._get_service_url_path_and_model_ids(
+            self._api, model_identifier, published
+        )
 
         return BasetenService(
             model_id=model_id,
