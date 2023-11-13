@@ -81,7 +81,6 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
-    # TODO(helen): consider free function; add docstring
     @staticmethod
     def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
         if not published:
@@ -101,7 +100,6 @@ class BasetenRemote(TrussRemote):
                 "No production model found. Run `truss push --publish` then try again."
             )
 
-    # TODO(helen): consider free function; add docstring
     @staticmethod
     def _get_service_url_path_and_model_ids(
         api: BasetenApi, model_identifier: ModelIdentifier, published: bool
