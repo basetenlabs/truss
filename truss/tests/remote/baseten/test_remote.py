@@ -29,6 +29,18 @@ def test_get_service_by_version_id():
     assert service.model_version_id == "version_id"
 
 
+def test_get_service_by_version_id_no_version():
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    model_version_response = {"errors": [{"message": "error"}]}
+    with requests_mock.Mocker() as m:
+        m.post(
+            remote._api._api_url,
+            json=model_version_response,
+        )
+        with pytest.raises(click.UsageError):
+            remote.get_service(model_identifier=ModelVersionId("version_id"))
+
+
 def test_get_service_by_model_name():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 

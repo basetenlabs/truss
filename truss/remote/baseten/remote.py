@@ -24,6 +24,7 @@ from truss.remote.baseten.core import (
     get_prod_version_info_from_versions,
     upload_truss,
 )
+from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote, TrussService
@@ -105,7 +106,12 @@ class BasetenRemote(TrussRemote):
         api: BasetenApi, model_identifier: ModelIdentifier, published: bool
     ) -> Tuple[str, str, str]:
         if isinstance(model_identifier, ModelVersionId):
-            model_version = api.get_model_version_by_id(model_identifier.value)
+            try:
+                model_version = api.get_model_version_by_id(model_identifier.value)
+            except ApiError:
+                raise click.UsageError(
+                    f"Model version {model_identifier.value} not found."
+                )
             model_version_id = model_version["model_version"]["id"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
