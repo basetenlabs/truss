@@ -81,7 +81,7 @@ def get_prod_version_info_from_versions(versions: List[dict]) -> Optional[dict]:
     # primary_version is set to the development version ID if no published
     # models exist.
     for version in versions:
-        if version["is_primary"] and not version["is_draft"]:
+        if version["is_primary"]:
             return version
     return None
 
