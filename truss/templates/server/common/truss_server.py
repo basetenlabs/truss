@@ -261,6 +261,10 @@ class TrussServer:
     def start(self):
         cfg = uvicorn.Config(
             self.create_application(),
+            # We hard-code the http parser as h11 (the default) in case the user has
+            # httptools installed, which does not work with our requests & version
+            # of uvicorn.
+            http="h11",
             host="0.0.0.0",
             port=self.http_port,
             workers=NUM_WORKERS,

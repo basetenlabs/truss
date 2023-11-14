@@ -59,6 +59,10 @@ class ControlServer:
             application,
             host=application.state.control_server_host,
             port=application.state.control_server_port,
+            # We hard-code the http parser as h11 (the default) in case the user has
+            # httptools installed, which does not work with our requests & version
+            # of uvicorn.
+            http="h11",
         )
         cfg.setup_event_loop()
 
