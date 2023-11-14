@@ -59,7 +59,7 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 {%- if external_data_files %}
 RUN curl -s https://baseten-public.s3.us-west-2.amazonaws.com/bin/b10cp-5fe8dc7da-linux-amd64 -o /app/b10cp; chmod +x /app/b10cp
 {% for url, dst in external_data_files %}
-RUN mkdir -p {{ dst.parent }}; /app/b10cp -source {{ url }} -target {{ dst }}
+RUN mkdir -p {{ dst.parent }}; /app/b10cp -source "{{ url }}" -target "{{ dst }}"
 {% endfor %}
 {%- endif  %}
 
