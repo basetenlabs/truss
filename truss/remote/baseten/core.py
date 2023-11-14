@@ -59,30 +59,31 @@ def get_model_versions_info_by_id(
     return (query_result["id"], query_result["versions"])
 
 
-def get_dev_version_info_from_versions(versions: List[dict]) -> dict:
+def get_dev_version_info_from_versions(versions: List[dict]) -> Optional[dict]:
     for version in versions:
         if version["is_draft"] is True:
             return version
-    raise ValueError("No development version found")
+    return None
 
 
 def get_dev_version_info(api: BasetenApi, model_name: str) -> dict:
     model = api.get_model(model_name)
     versions = model["model"]["versions"]
-    try:
-        return get_dev_version_info_from_versions(versions)
-    except ValueError:
+    dev_version = get_dev_version_info_from_versions(versions)
+    if not dev_version:
+        # TODO(helen): return dev_version in all cases rather than raising an error
         raise ValueError(f"No development version found with model name: {model_name}")
+    return dev_version
 
 
-def get_prod_version_info_from_versions(versions: List[dict]) -> dict:
+def get_prod_version_info_from_versions(versions: List[dict]) -> Optional[dict]:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published
     # models exist.
     for version in versions:
         if version["is_primary"] and not version["is_draft"]:
             return version
-    raise ValueError("No production version found")
+    return None
 
 
 def archive_truss(truss_handle: TrussHandle) -> IO:

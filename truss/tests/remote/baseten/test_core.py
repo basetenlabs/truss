@@ -1,7 +1,6 @@
 from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
-import pytest
 from truss.remote.baseten import core
 
 
@@ -44,8 +43,8 @@ def test_get_dev_version_info_from_versions_error():
     versions = [
         {"id": "1", "is_draft": False},
     ]
-    with pytest.raises(ValueError):
-        core.get_dev_version_info_from_versions(versions)
+    dev_version_info = core.get_dev_version_info_from_versions(versions)
+    assert dev_version_info is None
 
 
 def test_get_dev_version_info():
@@ -75,5 +74,5 @@ def test_get_prod_version_info_from_versions_error():
         {"id": "1", "is_draft": True, "is_primary": False},
         {"id": "2", "is_draft": False, "is_primary": False},
     ]
-    with pytest.raises(ValueError):
-        core.get_prod_version_info_from_versions(versions)
+    prod_version_info = core.get_prod_version_info_from_versions(versions)
+    assert prod_version_info is None
