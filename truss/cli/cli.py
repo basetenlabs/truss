@@ -240,8 +240,10 @@ def _extract_and_validate_model_identifier(
     model_version_id: Optional[str],
     published: Optional[bool],
 ) -> ModelIdentifier:
-    if published and model_version_id:
-        raise click.UsageError("Cannot use --published with --model-version.")
+    if published and (model_id or model_version_id):
+        raise click.UsageError(
+            "Cannot use --published with --model or --model-version."
+        )
 
     model_identifier: ModelIdentifier
     if model_version_id:
