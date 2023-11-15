@@ -38,7 +38,7 @@ class BasetenApi:
         resp_dict = resp.json()
         errors = resp_dict.get("errors")
         if errors:
-            raise ApiError(errors[0]["message"], resp)
+            raise ApiError(errors[0]["message"])
         return resp_dict
 
     def model_s3_upload_credentials(self):
