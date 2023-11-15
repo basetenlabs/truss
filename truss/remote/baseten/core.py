@@ -58,6 +58,15 @@ def get_model_versions_by_id(api: BasetenApi, model_id: ModelId) -> Tuple[str, L
 
 
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
+    """Given a list of model version dicts, returns the development version.
+
+    Args:
+        versions: List of model version dicts from the Baseten API
+
+    Returns:
+        The version in versions corresponding to the development model, or None
+        if no development model exists
+    """
     for version in versions:
         if version["is_draft"] is True:
             return version
@@ -65,6 +74,16 @@ def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
 
 
 def get_dev_version(api: BasetenApi, model_name: str) -> dict:
+    """Queries the Baseten API and returns a dict representing the
+    development version for the given model_name.
+
+    Args:
+        api: BasetenApi instance
+        model_name: Name of the model to get the development version for
+
+    Returns:
+        The development version of the model
+    """
     model = api.get_model(model_name)
     versions = model["model"]["versions"]
     dev_version = get_dev_version_from_versions(versions)
