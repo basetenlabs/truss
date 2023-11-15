@@ -41,21 +41,6 @@ Then to run the entire test suite
 poetry run pytest truss/tests
 ```
 
-### Release
-
-When releasing a version of the library with user-facing changes, be sure to update the [changelog](docs/CHANGELOG.md) with an overview of the changes, along with updating any relevant documentation. Feel free to tag @philipkiely-baseten to write or review any changelog or docs updates.
-To release a new version of the library.
-
-1. Create a PR changing the `pyproject.toml` version
-2. Merge the PR, github actions will auto deploy if it detects the change
-
-Steps to release a new verison of Truss to PyPi:
-
-1. Ensure that the version in `pyproject.toml` matches the version number that we want to release
-2. Create a PR from `main` into `release`, https://github.com/basetenlabs/truss/compare/release...main
-3. After getting a review, merge the PR. After this, a new release will be created and automatically pushed to PyPi.
-
-
 ## Documentation
 
 To learn about Truss see the [official documentation](https://truss.baseten.co).
