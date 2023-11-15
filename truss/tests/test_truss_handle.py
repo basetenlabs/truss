@@ -779,7 +779,7 @@ def test_external_data(custom_model_external_data_access_tuple_fixture):
     th = TrussHandle(truss_dir)
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict([], tag=tag)
+        result = th.docker_predict([], tag=tag, network="host")
         assert result == expected_content
 
 

@@ -135,6 +135,7 @@ class TrussHandle:
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
         cache: bool = True,
+        network: Optional[str] = None,
     ):
         image = self._build_image(
             builder_context=ServingImageBuilderContext,
@@ -142,6 +143,7 @@ class TrussHandle:
             build_dir=build_dir,
             tag=tag,
             cache=cache,
+            network=network,
         )
         self._store_signature()
         return image
@@ -170,6 +172,7 @@ class TrussHandle:
         detach=True,
         patch_ping_url: Optional[str] = None,
         wait_for_server_ready: bool = True,
+        network: Optional[str] = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -193,7 +196,9 @@ class TrussHandle:
         if container_if_patched is not None:
             container = container_if_patched
         else:
-            image = self.build_serving_docker_image(build_dir=build_dir, tag=tag)
+            image = self.build_serving_docker_image(
+                build_dir=build_dir, tag=tag, network=network
+            )
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
 
@@ -273,6 +278,7 @@ class TrussHandle:
         patch_ping_url: Optional[str] = None,
         binary: bool = False,
         stream: bool = False,
+        network: Optional[str] = None,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -300,6 +306,7 @@ class TrussHandle:
                 local_port=local_port,
                 detach=detach,
                 patch_ping_url=patch_ping_url,
+                network=network,
             )
         model_base_url = _get_url_from_container(container)
 
@@ -958,6 +965,7 @@ class TrussHandle:
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
         cache: bool = True,
+        network: Optional[str] = None,
     ):
         image = _docker_image_from_labels(labels=labels)
         if image is not None:
@@ -966,7 +974,7 @@ class TrussHandle:
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = builder_context.run(self._truss_dir)
         build_image_result = image_builder.build_image(
-            build_dir_path, tag, labels=labels, cache=cache
+            build_dir_path, tag, labels=labels, cache=cache, network=network
         )
         return build_image_result
 

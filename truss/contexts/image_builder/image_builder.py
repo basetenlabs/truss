@@ -13,6 +13,7 @@ class ImageBuilder(ABC):
         tag: Optional[str] = None,
         labels: Optional[dict] = None,
         cache: bool = True,
+        network: Optional[str] = None,
     ):
         """Build image.
 
@@ -29,6 +30,7 @@ class ImageBuilder(ABC):
                 labels=labels if labels else {},
                 tags=tag or self.default_tag,
                 cache=cache,
+                network=network,
             )
 
     @property

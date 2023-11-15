@@ -363,7 +363,7 @@ def test_predict_with_external_data_change(
     th.live_reload()
     tag = "test-external-data-access-tag:0.0.1"
     with ensure_kill_all():
-        th.docker_predict([], tag=tag)
+        th.docker_predict([], tag=tag, network="host")
         orig_num_truss_images = len(th.get_all_docker_images())
         th.remove_all_external_data()
         assert th._serving_hash() != th.truss_hash_on_serving_container()
@@ -377,7 +377,7 @@ class Model:
         return None
 """
         update_model_code(truss_dir, new_model_code)
-        th.docker_predict([], tag=tag)
+        th.docker_predict([], tag=tag, network="host")
         content = "foobar"
         filename = "foobar.txt"
         (tmp_path / filename).write_text(content)
@@ -393,7 +393,7 @@ class Model:
         update_model_code(truss_dir, new_model_code)
         url = f"http://host.docker.internal:9089/{filename}"
         th.add_external_data_item(url, filename)
-        result = th.docker_predict([], tag=tag)
+        result = th.docker_predict([], tag=tag, network="host")
         assert result == content
 
         content = "patched content"
@@ -415,7 +415,7 @@ class Model:
                 external_data=new_external_data,
             )
         )
-        result = th.docker_predict([], tag=tag)
+        result = th.docker_predict([], tag=tag, network="host")
         assert result == content and orig_num_truss_images == current_num_docker_images(
             th
         )
