@@ -17,11 +17,11 @@ from truss.remote.baseten.core import (
     archive_truss,
     create_truss_service,
     exists_model,
-    get_dev_version_info,
-    get_dev_version_info_from_versions,
-    get_model_versions_info,
-    get_model_versions_info_by_id,
-    get_prod_version_info_from_versions,
+    get_dev_version,
+    get_dev_version_from_versions,
+    get_model_versions,
+    get_model_versions_by_id,
+    get_prod_version_from_versions,
     upload_truss,
 )
 from truss.remote.baseten.error import ApiError
@@ -86,7 +86,7 @@ class BasetenRemote(TrussRemote):
     def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
         if not published:
             # Return the development model version.
-            dev_version = get_dev_version_info_from_versions(model_versions)
+            dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
                 raise click.UsageError(
                     "No development model found. Run `truss push` then try again."
@@ -94,7 +94,7 @@ class BasetenRemote(TrussRemote):
             return dev_version
 
         # Return the production deployment version.
-        prod_version = get_prod_version_info_from_versions(model_versions)
+        prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
             raise click.UsageError(
                 "No production model found. Run `truss push --publish` then try again."
@@ -118,16 +118,14 @@ class BasetenRemote(TrussRemote):
             return service_url_path, model_id, model_version_id
 
         if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions_info(api, model_identifier)
+            model_id, model_versions = get_model_versions(api, model_identifier)
             model_version = BasetenRemote._get_matching_version(
                 model_versions, published
             )
             model_version_id = model_version["id"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
-            model_id, model_versions = get_model_versions_info_by_id(
-                api, model_identifier
-            )
+            model_id, model_versions = get_model_versions_by_id(api, model_identifier)
             # TODO(helen): make this consistent with getting the service via
             # model_name and respect --published in service_url_path.
             model_version = BasetenRemote._get_matching_version(
@@ -178,9 +176,7 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
     ):
         # verify that development deployment exists for given model name
-        _ = get_dev_version_info(
-            self._api, model_name  # pylint: disable=protected-access
-        )
+        _ = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
         TrussFilesSyncer(
             Path(target_directory),
             self,
@@ -208,7 +204,7 @@ class BasetenRemote(TrussRemote):
             )
             return
         model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
+        dev_version = get_dev_version(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):

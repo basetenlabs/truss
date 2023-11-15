@@ -30,24 +30,24 @@ def test_upload_truss():
     assert core.upload_truss(api, test_file) == "key"
 
 
-def test_get_dev_version_info_from_versions():
+def test_get_dev_version_from_versions():
     versions = [
         {"id": "1", "is_draft": False},
         {"id": "2", "is_draft": True},
     ]
-    dev_version_info = core.get_dev_version_info_from_versions(versions)
-    assert dev_version_info["id"] == "2"
+    dev_version = core.get_dev_version_from_versions(versions)
+    assert dev_version["id"] == "2"
 
 
-def test_get_dev_version_info_from_versions_error():
+def test_get_dev_version_from_versions_error():
     versions = [
         {"id": "1", "is_draft": False},
     ]
-    dev_version_info = core.get_dev_version_info_from_versions(versions)
-    assert dev_version_info is None
+    dev_version = core.get_dev_version_from_versions(versions)
+    assert dev_version is None
 
 
-def test_get_dev_version_info():
+def test_get_dev_version():
     versions = [
         {"id": "1", "is_draft": False},
         {"id": "2", "is_draft": True},
@@ -55,24 +55,24 @@ def test_get_dev_version_info():
     api = MagicMock()
     api.get_model.return_value = {"model": {"versions": versions}}
 
-    dev_version_info = core.get_dev_version_info(api, "my_model")
-    assert dev_version_info["id"] == "2"
+    dev_version = core.get_dev_version(api, "my_model")
+    assert dev_version["id"] == "2"
 
 
-def test_get_prod_version_info_from_versions():
+def test_get_prod_version_from_versions():
     versions = [
         {"id": "1", "is_draft": False, "is_primary": False},
         {"id": "2", "is_draft": True, "is_primary": False},
         {"id": "3", "is_draft": False, "is_primary": True},
     ]
-    prod_version_info = core.get_prod_version_info_from_versions(versions)
-    assert prod_version_info["id"] == "3"
+    prod_version = core.get_prod_version_from_versions(versions)
+    assert prod_version["id"] == "3"
 
 
-def test_get_prod_version_info_from_versions_error():
+def test_get_prod_version_from_versions_error():
     versions = [
         {"id": "1", "is_draft": True, "is_primary": False},
         {"id": "2", "is_draft": False, "is_primary": False},
     ]
-    prod_version_info = core.get_prod_version_info_from_versions(versions)
-    assert prod_version_info is None
+    prod_version = core.get_prod_version_from_versions(versions)
+    assert prod_version is None
