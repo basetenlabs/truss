@@ -117,25 +117,30 @@ class BasetenRemote(TrussRemote):
             service_url_path = f"/model_versions/{model_version_id}"
             return service_url_path, model_id, model_version_id
 
-        # Get model versions by either model name or ID.
         if isinstance(model_identifier, ModelName):
             model_id, model_versions = get_model_versions_info(api, model_identifier)
+            model_version = BasetenRemote._get_matching_version(
+                model_versions, published
+            )
+            model_version_id = model_version["id"]
+            service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
             model_id, model_versions = get_model_versions_info_by_id(
                 api, model_identifier
             )
+            # TODO(helen): make this consistent with getting the service via
+            # model_name and respect --published in service_url_path.
+            model_version = BasetenRemote._get_matching_version(
+                model_versions, published
+            )
+            model_version_id = model_version["id"]
+            service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
             raise click.UsageError(
                 "You must either be inside of a Truss directory, or provide --model-version or --model options."
             )
 
-        model_version = BasetenRemote._get_matching_version(model_versions, published)
-        model_version_id = model_version["id"]
-        # TODO(helen): comment on why we use models endpoint instead of
-        # model_versions. If primary version changes while this is executing,
-        # will service_url_path and model_version_id be inconsistent?
-        service_url_path = f"/models/{model_id}"
         return service_url_path, model_id, model_version_id
 
     def get_service(self, **kwargs) -> BasetenService:
