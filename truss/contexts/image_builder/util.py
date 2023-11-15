@@ -3,15 +3,10 @@ from typing import Optional
 
 from truss import __version__
 
-# This needs to be updated whenever new truss base images are published. This
-# manual nature is by design; at this point we want any new base image releases
-# to be reviewed via code change before landing. This value should be typically
-# set to the latest version of truss library.
-#
-# [IMPORTANT] Make sure all images for this version are published to dockerhub
-# before change to this value lands. This value is used to look for base images
-# when building docker image for a truss.
-TRUSS_BASE_IMAGE_VERSION_TAG = "v0.7.15"
+# This needs to be updated whenever we want to update
+# base images on a merge. Updating this version will cause
+# base images to be pushed with this tag.
+TRUSS_BASE_IMAGE_VERSION_TAG = "v0.7.16"
 
 
 def file_is_empty(path: Path, ignore_hash_style_comments: bool = True) -> bool:
