@@ -157,22 +157,21 @@ class BasetenApi:
     def get_model(self, model_name):
         query_string = f"""
         {{
-        model_version(name: "{model_name}") {{
-            oracle{{
-                id
+            model(name: "{model_name}") {{
                 name
+                id
                 versions{{
                     id
                     semver
                     truss_hash
                     truss_signature
                     is_draft
+                    is_primary
                     current_model_deployment_status {{
                         status
                     }}
                 }}
             }}
-        }}
         }}
         """
         resp = self._post_graphql_query(query_string)

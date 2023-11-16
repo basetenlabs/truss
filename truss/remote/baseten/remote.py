@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import click
 import yaml
@@ -17,10 +17,13 @@ from truss.remote.baseten.core import (
     archive_truss,
     create_truss_service,
     exists_model,
-    get_dev_version_info,
-    get_model_versions_info,
+    get_dev_version,
+    get_dev_version_from_versions,
+    get_model_versions,
+    get_prod_version_from_versions,
     upload_truss,
 )
+from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote, TrussService
@@ -78,41 +81,60 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
         )
 
-    def _get_service_url_path_and_model_ids(
-        self, model_identifier: ModelIdentifier, published: bool
-    ) -> Tuple[str, str, str]:
-        if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions_info(
-                self._api, model_identifier.value
-            )
-            matching_versions = [
-                model_version
-                for model_version in model_versions
-                # If published is False, then we want to find the draft version
-                if model_version["is_draft"] == (not published)
-            ]
-
-            model_version = matching_versions[0] if matching_versions else None
-            if model_version is None:
-                raise ValueError(
-                    "No appropriate model version found. Run `truss push` then try again."
+    @staticmethod
+    def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
+        if not published:
+            # Return the development model version.
+            dev_version = get_dev_version_from_versions(model_versions)
+            if not dev_version:
+                raise click.UsageError(
+                    "No development model found. Run `truss push` then try again."
                 )
-            model_version_id = model_version["id"]
-            service_url_path = f"/model_versions/{model_version_id}"
+            return dev_version
 
-        elif isinstance(model_identifier, ModelId):
-            model = self._api.get_model_by_id(model_identifier.value)
-            model_id = model["model"]["id"]
-            model_version_id = model["model"]["primary_version"]["id"]
-            service_url_path = f"/models/{model_id}"
+        # Return the production deployment version.
+        prod_version = get_prod_version_from_versions(model_versions)
+        if not prod_version:
+            raise click.UsageError(
+                "No production model found. Run `truss push --publish` then try again."
+            )
+        return prod_version
 
-        elif isinstance(model_identifier, ModelVersionId):
-            model_version = self._api.get_model_version_by_id(model_identifier.value)
+    @staticmethod
+    def _get_service_url_path_and_model_ids(
+        api: BasetenApi, model_identifier: ModelIdentifier, published: bool
+    ) -> Tuple[str, str, str]:
+        if isinstance(model_identifier, ModelVersionId):
+            try:
+                model_version = api.get_model_version_by_id(model_identifier.value)
+            except ApiError:
+                raise click.UsageError(
+                    f"Model version {model_identifier.value} not found."
+                )
             model_version_id = model_version["model_version"]["id"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
+            return service_url_path, model_id, model_version_id
 
+        if isinstance(model_identifier, ModelName):
+            model_id, model_versions = get_model_versions(api, model_identifier)
+            model_version = BasetenRemote._get_matching_version(
+                model_versions, published
+            )
+            model_version_id = model_version["id"]
+            service_url_path = f"/model_versions/{model_version_id}"
+        elif isinstance(model_identifier, ModelId):
+            # TODO(helen): consider making this consistent with getting the
+            # service via model_name / respect --published in service_url_path.
+            try:
+                model = api.get_model_by_id(model_identifier.value)
+            except ApiError:
+                raise click.UsageError(f"Model {model_identifier.value} not found.")
+            model_id = model["model"]["id"]
+            model_version_id = model["model"]["primary_version"]["id"]
+            service_url_path = f"/models/{model_id}"
         else:
+            # Model identifier is of invalid type.
             raise click.UsageError(
                 "You must either be inside of a Truss directory, or provide --model-version or --model options."
             )
@@ -130,7 +152,9 @@ class BasetenRemote(TrussRemote):
             service_url_path,
             model_id,
             model_version_id,
-        ) = self._get_service_url_path_and_model_ids(model_identifier, published)
+        ) = self._get_service_url_path_and_model_ids(
+            self._api, model_identifier, published
+        )
 
         return BasetenService(
             model_id=model_id,
@@ -152,9 +176,7 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
     ):
         # verify that development deployment exists for given model name
-        _ = get_dev_version_info(
-            self._api, model_name  # pylint: disable=protected-access
-        )
+        _ = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
         TrussFilesSyncer(
             Path(target_directory),
             self,
@@ -182,7 +204,7 @@ class BasetenRemote(TrussRemote):
             )
             return
         model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version_info(self._api, model_name)  # type: ignore
+        dev_version = get_dev_version(self._api, model_name)  # type: ignore
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
