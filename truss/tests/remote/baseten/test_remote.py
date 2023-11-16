@@ -155,17 +155,12 @@ def test_get_service_by_model_name_no_prod_version():
 def test_get_service_by_model_id():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-        {"id": "3", "is_draft": True, "is_primary": False},
-    ]
     model_response = {
         "data": {
             "model": {
                 "name": "model_name",
                 "id": "model_id",
-                "versions": versions,
+                "primary_version": {"id": "version_id"},
             }
         }
     }
@@ -176,78 +171,18 @@ def test_get_service_by_model_id():
             json=model_response,
         )
 
-        service = remote.get_service(
-            model_identifier=ModelId("model_id"), published=True
-        )
+        service = remote.get_service(model_identifier=ModelId("model_id"))
         assert service.model_id == "model_id"
-        assert service.model_version_id == "2"
-
-        service = remote.get_service(
-            model_identifier=ModelId("model_id"), published=False
-        )
-        assert service.model_id == "model_id"
-        assert service.model_version_id == "3"
+        assert service.model_version_id == "version_id"
 
 
-def test_get_service_by_model_id_no_dev_version():
+def test_get_service_by_model_id_no_model():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": True},
-    ]
-    model_response = {
-        "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "versions": versions,
-            }
-        }
-    }
-
+    model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
         m.post(
             remote._api._api_url,
             json=model_response,
         )
-
-        service = remote.get_service(
-            model_identifier=ModelId("model_id"), published=True
-        )
-        assert service.model_id == "model_id"
-        assert service.model_version_id == "1"
-
         with pytest.raises(click.UsageError):
-            remote.get_service(model_identifier=ModelId("model_id"), published=False)
-
-
-def test_get_service_by_model_id_no_prod_version():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
-    versions = [
-        {"id": "1", "is_draft": True, "is_primary": False},
-    ]
-    model_response = {
-        "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "versions": versions,
-            }
-        }
-    }
-
-    with requests_mock.Mocker() as m:
-        m.post(
-            remote._api._api_url,
-            json=model_response,
-        )
-
-        with pytest.raises(click.UsageError):
-            remote.get_service(model_identifier=ModelId("model_id"), published=True)
-
-        service = remote.get_service(
-            model_identifier=ModelId("model_id"), published=False
-        )
-        assert service.model_id == "model_id"
-        assert service.model_version_id == "1"
+            remote.get_service(model_identifier=ModelId("model_id"))

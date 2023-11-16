@@ -52,11 +52,6 @@ def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, Lis
     return (query_result["id"], query_result["versions"])
 
 
-def get_model_versions_by_id(api: BasetenApi, model_id: ModelId) -> Tuple[str, List]:
-    query_result = api.get_model_by_id(model_id.value)["model"]
-    return (query_result["id"], query_result["versions"])
-
-
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
     """Given a list of model version dicts, returns the development version.
 

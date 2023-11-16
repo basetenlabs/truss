@@ -183,19 +183,18 @@ class BasetenApi:
             model(id: "{model_id}") {{
                 name
                 id
-                versions{{
+                primary_version{{
                     id
                     semver
                     truss_hash
                     truss_signature
                     is_draft
-                    is_primary
                     current_model_deployment_status {{
                         status
                     }}
                 }}
             }}
-        }}
+          }}
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]

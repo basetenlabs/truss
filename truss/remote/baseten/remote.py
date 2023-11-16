@@ -20,7 +20,6 @@ from truss.remote.baseten.core import (
     get_dev_version,
     get_dev_version_from_versions,
     get_model_versions,
-    get_model_versions_by_id,
     get_prod_version_from_versions,
     upload_truss,
 )
@@ -125,13 +124,14 @@ class BasetenRemote(TrussRemote):
             model_version_id = model_version["id"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
-            model_id, model_versions = get_model_versions_by_id(api, model_identifier)
-            # TODO(helen): make this consistent with getting the service via
-            # model_name and respect --published in service_url_path.
-            model_version = BasetenRemote._get_matching_version(
-                model_versions, published
-            )
-            model_version_id = model_version["id"]
+            # TODO(helen): consider making this consistent with getting the
+            # service via model_name / respect --published in service_url_path.
+            try:
+                model = api.get_model_by_id(model_identifier.value)
+            except ApiError:
+                raise click.UsageError(f"Model {model_identifier.value} not found.")
+            model_id = model["model"]["id"]
+            model_version_id = model["model"]["primary_version"]["id"]
             service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
