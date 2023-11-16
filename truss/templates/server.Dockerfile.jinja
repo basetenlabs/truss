@@ -58,7 +58,7 @@ RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache
 
 {%- if external_data_files %}
 {% for url, dst in external_data_files %}
-RUN mkdir -p {{ dst.parent }}; curl "{{ url }}" -o {{ dst }}
+RUN mkdir -p {{ dst.parent }}; wget "{{ url }}" -O {{ dst }}
 {% endfor %}
 {%- endif  %}
 
