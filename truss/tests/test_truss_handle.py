@@ -783,6 +783,16 @@ def test_external_data(custom_model_external_data_access_tuple_fixture):
         assert result == expected_content
 
 
+@pytest.mark.integration
+def test_external_data_gpu(custom_model_external_data_access_tuple_fixture_gpu):
+    truss_dir, expected_content = custom_model_external_data_access_tuple_fixture_gpu
+    th = TrussHandle(truss_dir)
+    tag = "test-external-data-access-tag:0.0.1"
+    with ensure_kill_all():
+        result = th.docker_predict([], tag=tag, network="host")
+        assert result == expected_content
+
+
 def _container_exists(container) -> bool:
     for row in Docker.client().ps():
         if row.id.startswith(container.id):
