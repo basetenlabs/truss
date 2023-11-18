@@ -176,7 +176,13 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
     ):
         # verify that development deployment exists for given model name
-        _ = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
+        dev_version = get_dev_version(
+            self._api, model_name
+        )  # pylint: disable=protected-access
+        if not dev_version:
+            raise click.UsageError(
+                "No development model found. Run `truss push` then try again."
+            )
         TrussFilesSyncer(
             Path(target_directory),
             self,
@@ -205,6 +211,11 @@ class BasetenRemote(TrussRemote):
             return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version(self._api, model_name)  # type: ignore
+        if not dev_version:
+            logger.error(
+                f"No development deployment found with model name: {model_name}"
+            )
+            return
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
