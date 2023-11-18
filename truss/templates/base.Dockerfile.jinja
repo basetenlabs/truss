@@ -2,6 +2,7 @@ ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}} as truss_server
 
 ENV PYTHON_EXECUTABLE {{ config.base_image.python_executable_path or 'python3' }}
+ENV APP_HOME /app
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
@@ -9,8 +10,16 @@ RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 
     || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.11"; exit 1; }
 {% endblock %}
 
+RUN useradd -ms /bin/bash app \
+    && mkdir ${APP_HOME} \
+    && mkdir /control \
+    && chmod -R a=rwx ${APP_HOME} /home/app /control \
+    && chown -R app:app ${APP_HOME} /control
+ENV PATH=${PATH}:/home/app/.local/bin
+
+USER app
 RUN pip install --upgrade pip --no-cache-dir \
-    && rm -rf /root/.cache/pip
+    && rm -rf /home/app/.cache/pip
 
 {% block base_image_patch %}
 {% endblock %}
@@ -18,6 +27,7 @@ RUN pip install --upgrade pip --no-cache-dir \
 {% if config.model_framework.value == 'huggingface_transformer' %}
     {% if config.resources.use_gpu %}
 # HuggingFace pytorch gpu support needs mkl
+USER app
 RUN pip install mkl
     {% endif %}
 {% endif%}
@@ -28,6 +38,7 @@ RUN pip install mkl
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
 COPY ./system_packages.txt system_packages.txt
+USER root
 RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system_packages.txt) \
     && apt-get autoremove -y \
     && apt-get clean -y \
@@ -38,15 +49,14 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system
 
 {% block install_requirements %}
     {%- if should_install_requirements %}
-COPY ./requirements.txt requirements.txt
-RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+COPY --chown=app:app ./requirements.txt requirements.txt
+USER app
+RUN pip install -r requirements.txt --no-cache-dir && rm -rf /home/app/.cache/pip
     {%- endif %}
 {% endblock %}
 
 
 
-
-ENV APP_HOME /app
 WORKDIR $APP_HOME
 
 
@@ -55,8 +65,9 @@ WORKDIR $APP_HOME
 
 
 {% block bundled_packages_copy %}
+USER app
     {%- if bundled_packages_dir_exists %}
-COPY ./{{config.bundled_packages_dir}} /packages
+COPY --chown=app:app ./{{config.bundled_packages_dir}} /packages
     {%- endif %}
 {% endblock %}
 
