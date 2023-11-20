@@ -45,7 +45,9 @@ async def parse_body(request: Request) -> bytes:
     try:
         return await request.body()
     except ClientDisconnect as exc:
-        raise HTTPException(status_code=499, detail="Client disconnected") from exc
+        error_message = "Client disconnected"
+        logging.error(error_message)
+        raise HTTPException(status_code=499, detail=error_message) from exc
 
 
 FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
@@ -135,9 +137,9 @@ class BasetenEndpoints:
             try:
                 body = json.loads(body_raw)
             except json.JSONDecodeError as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid JSON payload: {str(e)}"
-                )
+                error_message = f"Invalid JSON payload: {str(e)}"
+                logging.error(error_message)
+                raise HTTPException(status_code=400, detail=error_message)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         response: Union[Dict, Generator] = await model(
@@ -259,6 +261,10 @@ class TrussServer:
     def start(self):
         cfg = uvicorn.Config(
             self.create_application(),
+            # We hard-code the http parser as h11 (the default) in case the user has
+            # httptools installed, which does not work with our requests & version
+            # of uvicorn.
+            http="h11",
             host="0.0.0.0",
             port=self.http_port,
             workers=NUM_WORKERS,

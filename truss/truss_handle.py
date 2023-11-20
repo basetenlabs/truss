@@ -135,6 +135,7 @@ class TrussHandle:
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
         cache: bool = True,
+        network: Optional[str] = None,
     ):
         image = self._build_image(
             builder_context=ServingImageBuilderContext,
@@ -142,6 +143,7 @@ class TrussHandle:
             build_dir=build_dir,
             tag=tag,
             cache=cache,
+            network=network,
         )
         self._store_signature()
         return image
@@ -170,6 +172,7 @@ class TrussHandle:
         detach=True,
         patch_ping_url: Optional[str] = None,
         wait_for_server_ready: bool = True,
+        network: Optional[str] = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -189,11 +192,15 @@ class TrussHandle:
             Container, which can be used to get information about the running,
             including its id. The id can be used to kill the container.
         """
+        from python_on_whales.exceptions import DockerException
+
         container_if_patched = self._try_patch()
         if container_if_patched is not None:
             container = container_if_patched
         else:
-            image = self.build_serving_docker_image(build_dir=build_dir, tag=tag)
+            image = self.build_serving_docker_image(
+                build_dir=build_dir, tag=tag, network=network
+            )
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
 
@@ -205,22 +212,34 @@ class TrussHandle:
             if patch_ping_url is not None:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
 
-            container = Docker.client().run(
-                image.id,
-                publish=publish_ports,
-                detach=detach,
-                labels=labels,
-                mounts=[
-                    [
-                        "type=bind",
-                        f"src={str(secrets_mount_dir_path)}",
-                        "target=/secrets",
-                    ]
-                ],
-                gpus="all" if self._spec.config.resources.use_gpu else None,
-                envs=envs,
-                add_hosts=[("host.docker.internal", "host-gateway")],
-            )
+            def _run_docker(gpus: Optional[str] = None):
+                return Docker.client().run(
+                    image.id,
+                    publish=publish_ports,
+                    detach=detach,
+                    labels=labels,
+                    mounts=[
+                        [
+                            "type=bind",
+                            f"src={str(secrets_mount_dir_path)}",
+                            "target=/secrets",
+                        ]
+                    ],
+                    gpus=gpus,
+                    envs=envs,
+                    add_hosts=[("host.docker.internal", "host-gateway")],
+                )
+
+            try:
+                container = _run_docker(
+                    "all" if self._spec.config.resources.use_gpu else None
+                )
+            except DockerException:
+                # This is in the case of testing where the Codespace doesn't have a GPU
+                # and we need to run it anyways
+                logger.warn("No GPU is available to docker. Running without a GPU.")
+                container = _run_docker(None)
+
             logger.info(
                 f"Model server started on port {local_port}, docker container id {container.id}"
             )
@@ -273,6 +292,7 @@ class TrussHandle:
         patch_ping_url: Optional[str] = None,
         binary: bool = False,
         stream: bool = False,
+        network: Optional[str] = None,
     ):
         """
         Builds docker image, runs that as a docker container
@@ -300,6 +320,7 @@ class TrussHandle:
                 local_port=local_port,
                 detach=detach,
                 patch_ping_url=patch_ping_url,
+                network=network,
             )
         model_base_url = _get_url_from_container(container)
 
@@ -958,6 +979,7 @@ class TrussHandle:
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,
         cache: bool = True,
+        network: Optional[str] = None,
     ):
         image = _docker_image_from_labels(labels=labels)
         if image is not None:
@@ -966,7 +988,7 @@ class TrussHandle:
         build_dir_path = Path(build_dir) if build_dir is not None else None
         image_builder = builder_context.run(self._truss_dir)
         build_image_result = image_builder.build_image(
-            build_dir_path, tag, labels=labels, cache=cache
+            build_dir_path, tag, labels=labels, cache=cache, network=network
         )
         return build_image_result
 
