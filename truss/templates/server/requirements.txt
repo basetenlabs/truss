@@ -2,7 +2,7 @@
 
 argparse==1.4.0
 aiocontextvars==0.2.2
-cython==0.29.30
+cython>=0.29.30
 msgpack-numpy==0.4.8
 msgpack==1.0.2
 python-json-logger==2.0.2
