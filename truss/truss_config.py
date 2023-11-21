@@ -152,6 +152,12 @@ class Runtime:
 
 
 class ModelServer(Enum):
+    """
+    To determine the image builder path for trusses built from alternative server backends.
+    This enum is also used to gate development deployments to BasetenRemote
+    https://github.com/basetenlabs/truss/blob/7505c17a2ddd4a6fa626b9126772999dc8f3fa86/truss/remote/baseten/remote.py#L56-L57
+    """
+
     TrussServer = "TrussServer"
     TGI = "TGI"
     VLLM = "VLLM"
