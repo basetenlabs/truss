@@ -45,6 +45,10 @@ class BasetenService(TrussService):
         self,
         model_request_body: Dict,
     ):
+        print(
+            f"Calling predict on {'development ' if self._is_draft else ''}deployment ID {self._model_version_id}..."
+        )
+
         response = self._send_request(
             self.invocation_url, "POST", data=model_request_body, stream=True
         )
