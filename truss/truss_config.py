@@ -156,6 +156,7 @@ class ModelServer(Enum):
     TGI = "TGI"
     VLLM = "VLLM"
     TRITON = "TRITON"
+    TRT_LLM = "TRT_LLM"
 
 
 @dataclass
