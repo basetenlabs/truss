@@ -57,8 +57,8 @@ To publish a base image:
 1. Increment Truss version in pyproject.toml
 2. Update `/workspaces/truss/truss/contexts/image_builder/util.py::TRUSS_BASE_IMAGE_VERSION_TAG` to match this version
 3. Create a PR and get it reviewed.
-4. Once the PR is ready to land, use the [image generation script](https://github.com/basetenlabs/truss/blob/main/bin/generate_base_images.py) to build and publish base images. Make sure to use the value of `TRUSS_BASE_IMAGE_VERSION_TAG` for version tag.
 5. Merge the PR.
+6. Upon merge, a Github Action will run that generates all the necessary base images
 6. Make sure integration tests pass.
 
 ### Releasing Truss versions with new base images
