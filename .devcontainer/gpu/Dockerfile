@@ -25,7 +25,6 @@ ENV PATH=/home/vscode/.poetry/bin:$PATH
 
 USER root
 
-# RUN curl https://get.docker.com | sh && sudo systemctl --now enable docker
 RUN distribution=$(. /etc/os-release;echo $ID$VERSION_ID) \
       && curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
       && curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
