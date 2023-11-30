@@ -8,8 +8,9 @@ import time
 from collections.abc import Generator
 from contextlib import asynccontextmanager
 from enum import Enum
+from multiprocessing import Lock
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Thread
 from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
 from anyio import Semaphore, to_thread
@@ -89,7 +90,7 @@ class ModelWrapper:
             return self.ready
 
         # if we are already loading, just pass; our container will return 503 while we're loading
-        if not self._load_lock.acquire(blocking=False):
+        if not self._load_lock.acquire(block=False):
             return False
 
         self._status = ModelWrapper.Status.LOADING
@@ -124,8 +125,12 @@ class ModelWrapper:
 
     def should_load(self) -> bool:
         # don't retry failed loads
+        # multiprocessing.Lock
+        has_acquired_lock = self._load_lock.acquire(block=False)
+        if has_acquired_lock:
+            self._load_lock.release()
         return (
-            not self._load_lock.locked()
+            has_acquired_lock
             and not self._status == ModelWrapper.Status.FAILED
             and not self.ready
         )

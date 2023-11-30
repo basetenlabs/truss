@@ -33,7 +33,7 @@ from starlette.responses import Response
 # Please consider the following when increasing this:
 # 1. Self-termination on model load fail.
 # 2. Graceful termination.
-NUM_WORKERS = 1
+DEFAULT_NUM_WORKERS = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
@@ -267,7 +267,9 @@ class TrussServer:
             http="h11",
             host="0.0.0.0",
             port=self.http_port,
-            workers=NUM_WORKERS,
+            workers=self._config.get("runtime", {}).get(
+                "num_workers", DEFAULT_NUM_WORKERS
+            ),
             log_config={
                 "version": 1,
                 "formatters": {
