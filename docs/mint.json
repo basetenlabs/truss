@@ -84,8 +84,7 @@
     {
       "group": "Remotes",
       "pages": [
-        "remotes/baseten",
-        "remotes/sagemaker"
+        "remotes/baseten"
       ]
     },
     {

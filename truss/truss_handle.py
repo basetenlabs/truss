@@ -192,6 +192,8 @@ class TrussHandle:
             Container, which can be used to get information about the running,
             including its id. The id can be used to kill the container.
         """
+        from python_on_whales.exceptions import DockerException
+
         container_if_patched = self._try_patch()
         if container_if_patched is not None:
             container = container_if_patched
@@ -210,22 +212,34 @@ class TrussHandle:
             if patch_ping_url is not None:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
 
-            container = Docker.client().run(
-                image.id,
-                publish=publish_ports,
-                detach=detach,
-                labels=labels,
-                mounts=[
-                    [
-                        "type=bind",
-                        f"src={str(secrets_mount_dir_path)}",
-                        "target=/secrets",
-                    ]
-                ],
-                gpus="all" if self._spec.config.resources.use_gpu else None,
-                envs=envs,
-                add_hosts=[("host.docker.internal", "host-gateway")],
-            )
+            def _run_docker(gpus: Optional[str] = None):
+                return Docker.client().run(
+                    image.id,
+                    publish=publish_ports,
+                    detach=detach,
+                    labels=labels,
+                    mounts=[
+                        [
+                            "type=bind",
+                            f"src={str(secrets_mount_dir_path)}",
+                            "target=/secrets",
+                        ]
+                    ],
+                    gpus=gpus,
+                    envs=envs,
+                    add_hosts=[("host.docker.internal", "host-gateway")],
+                )
+
+            try:
+                container = _run_docker(
+                    "all" if self._spec.config.resources.use_gpu else None
+                )
+            except DockerException:
+                # This is in the case of testing where the Codespace doesn't have a GPU
+                # and we need to run it anyways
+                logger.warn("No GPU is available to docker. Running without a GPU.")
+                container = _run_docker(None)
+
             logger.info(
                 f"Model server started on port {local_port}, docker container id {container.id}"
             )

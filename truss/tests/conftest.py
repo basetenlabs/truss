@@ -300,6 +300,42 @@ def custom_model_external_data_access_tuple_fixture(tmp_path: Path):
 
 
 @pytest.fixture
+def custom_model_external_data_access_tuple_fixture_gpu(tmp_path: Path):
+    content = "test"
+    filename = "test.txt"
+    (tmp_path / filename).write_text(content)
+    port = 9089
+    proc = subprocess.Popen(
+        ["python", "-m", "http.server", str(port), "--bind", "*"],
+        cwd=tmp_path,
+    )
+    try:
+        url = f"http://localhost:{port}/{filename}"
+        # Add arbitrary get params to get that they don't cause issues, the
+        # server above ignores them.
+        # url_with_get_params = f"{url}?foo=bar&baz=bla"
+        url_with_get_params = f"{url}?foo=bar&baz=bla"
+
+        def modify_handle(h):
+            h.add_external_data_item(
+                url=url_with_get_params, local_data_path="test.txt"
+            )
+            h.enable_gpu()
+
+        yield (
+            _custom_model_from_code(
+                tmp_path,
+                "external_data_access",
+                EXTERNAL_DATA_ACCESS,
+                handle_ops=modify_handle,
+            ),
+            content,
+        )
+    finally:
+        proc.kill()
+
+
+@pytest.fixture
 def custom_model_with_external_package(tmp_path: Path):
     ext_pkg_path = tmp_path / "ext_pkg"
     ext_pkg_path.mkdir()

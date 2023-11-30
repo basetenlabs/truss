@@ -346,7 +346,7 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
 def update_config_and_gather_files(
     config: TrussConfig, truss_dir: Path, build_dir: Path
 ):
-    if config.build.model_server != ModelServer.TrussServer:
+    if config.build.model_server not in [ModelServer.TrussServer, ModelServer.TRT_LLM]:
         model_key = update_model_key(config)
         update_model_name(config, model_key)
     return get_files_to_cache(config, truss_dir, build_dir)
@@ -496,6 +496,7 @@ class ServingImageBuilder(ImageBuilder):
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
             return
+        # ModelServer.TrussServer and ModelServer.TRT_LLM use the default truss image builder
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
