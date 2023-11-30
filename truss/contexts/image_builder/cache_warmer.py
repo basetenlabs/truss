@@ -15,7 +15,6 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from google.cloud import storage
 from huggingface_hub import hf_hub_download
 
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 B10CP_PATH_TRUSS_ENV_VAR_NAME = "B10CP_PATH_TRUSS"
 
 GCS_CREDENTIALS = "/app/data/service_account.json"
