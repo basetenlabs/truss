@@ -17,6 +17,7 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionId,
 )
+from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import ModelServer
@@ -364,6 +365,14 @@ def predict(
     service = remote_provider.get_service(
         model_identifier=model_identifier, published=published
     )
+
+    # Log deployment ID for Baseten models.
+    if isinstance(service, BasetenService):
+        rich.print(
+            f"Calling predict on {'[cyan]development[/cyan] ' if service.is_draft else ''}"
+            f"deployment ID {service.model_version_id}..."
+        )
+
     result = service.predict(request_data)
     if inspect.isgenerator(result):
         for chunk in result:
