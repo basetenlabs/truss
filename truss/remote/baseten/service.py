@@ -80,5 +80,5 @@ class BasetenService(TrussService):
 
     def logs_url(self, base_url: str) -> str:
         return (
-            f"{base_url}/models/{self._model_id}/versions/{self._model_version_id}/logs"
+            f"{base_url}/models/{self._model_id}/logs/{self._model_version_id}"
         )
