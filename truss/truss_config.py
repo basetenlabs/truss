@@ -29,6 +29,7 @@ DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
+DEFAULT_NUM_WORKERS = 1
 
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
@@ -136,18 +137,22 @@ class ModelCache:
 @dataclass
 class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
+    num_workers: int = DEFAULT_NUM_WORKERS
 
     @staticmethod
     def from_dict(d):
         predict_concurrency = d.get("predict_concurrency", DEFAULT_PREDICT_CONCURRENCY)
+        num_workers = d.get("num_workers", DEFAULT_NUM_WORKERS)
 
         return Runtime(
             predict_concurrency=predict_concurrency,
+            num_workers=num_workers,
         )
 
     def to_dict(self):
         return {
             "predict_concurrency": self.predict_concurrency,
+            "num_workers": self.num_workers,
         }
 
 
