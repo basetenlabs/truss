@@ -68,7 +68,7 @@ def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
     return None
 
 
-def get_dev_version(api: BasetenApi, model_name: str) -> dict:
+def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     """Queries the Baseten API and returns a dict representing the
     development version for the given model_name.
 
@@ -81,11 +81,7 @@ def get_dev_version(api: BasetenApi, model_name: str) -> dict:
     """
     model = api.get_model(model_name)
     versions = model["model"]["versions"]
-    dev_version = get_dev_version_from_versions(versions)
-    if not dev_version:
-        # TODO(helen): return dev_version in all cases rather than raising an error
-        raise ValueError(f"No development version found with model name: {model_name}")
-    return dev_version
+    return get_dev_version_from_versions(versions)
 
 
 def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
