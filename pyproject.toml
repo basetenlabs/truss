@@ -17,7 +17,7 @@ keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learnin
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-msgpack = ">=1.0.2"
+
 packaging = ">=20.9"
 python-json-logger = ">=2.0.2"
 PyYAML = "^6.0"
@@ -82,7 +82,9 @@ mypy = "^1.0.0"
 pytest-split = "^0.8.1"
 httpx = {extras = ["cli"], version = "^0.24.1"}
 requests-mock = "^1.11.0"
-flask = "^2.3.3"
+numpy = "1.23.5"
+msgpack = ">=1.0.2"
+msgpack-numpy = ">=0.4.7.1"
 types-requests = "2.31.0.2"
 
 [build-system]
