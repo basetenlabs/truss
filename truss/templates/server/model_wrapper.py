@@ -8,8 +8,9 @@ import time
 from collections.abc import Generator
 from contextlib import asynccontextmanager
 from enum import Enum
+from multiprocessing import Lock
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Thread
 from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
 from anyio import Semaphore, to_thread
@@ -88,29 +89,26 @@ class ModelWrapper:
         if self.ready:
             return self.ready
 
-        # if we are already loading, just pass; our container will return 503 while we're loading
-        if not self._load_lock.acquire(blocking=False):
-            return False
+        # if we are already loading, block on aquiring the lock;
+        # this worker will return 503 while the worker with the lock is loading
+        with self._load_lock:
+            self._status = ModelWrapper.Status.LOADING
 
-        self._status = ModelWrapper.Status.LOADING
+            self._logger.info("Executing model.load()...")
 
-        self._logger.info("Executing model.load()...")
+            try:
+                start_time = time.perf_counter()
+                self.try_load()
+                self.ready = True
+                self._status = ModelWrapper.Status.READY
+                self._logger.info(
+                    f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
+                )
 
-        try:
-            start_time = time.perf_counter()
-            self.try_load()
-            self.ready = True
-            self._status = ModelWrapper.Status.READY
-            self._logger.info(
-                f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
-            )
-
-            return self.ready
-        except Exception:
-            self._logger.exception("Exception while loading model")
-            self._status = ModelWrapper.Status.FAILED
-        finally:
-            self._load_lock.release()
+                return self.ready
+            except Exception:
+                self._logger.exception("Exception while loading model")
+                self._status = ModelWrapper.Status.FAILED
 
         return self.ready
 
@@ -124,11 +122,7 @@ class ModelWrapper:
 
     def should_load(self) -> bool:
         # don't retry failed loads
-        return (
-            not self._load_lock.locked()
-            and not self._status == ModelWrapper.Status.FAILED
-            and not self.ready
-        )
+        return not self._status == ModelWrapper.Status.FAILED and not self.ready
 
     def try_load(self):
         data_dir = Path("data")
