@@ -13,4 +13,3 @@ uvloop==0.17.0
 psutil==5.9.4
 joblib==1.2.0
 requests==2.31.0
-huggingface-hub==0.19.4
