@@ -3,6 +3,7 @@ from typing import IO, List, Optional, Tuple
 
 import truss
 from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
@@ -40,11 +41,18 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     Returns:
         model_id if present, otherwise None
     """
-    models = api.models()
-    for model in models["models"]:
-        if model["name"] == model_name:
-            return model["id"]
-    return None
+    try:
+        model = api.get_model(model_name)
+    except ApiError as e:
+        if (
+            e.graphql_error_code
+            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+        ):
+            return None
+
+        raise e
+
+    return model["model"]["id"]
 
 
 def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:

@@ -2,16 +2,24 @@ from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
 from truss.remote.baseten import core
+from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.error import ApiError
 
 
 def test_exists_model():
+    def mock_get_model(model_name):
+        if model_name == "first model":
+            return {"model": {"id": "1"}}
+        elif model_name == "second model":
+            return {"model": {"id": "2"}}
+        else:
+            raise ApiError(
+                "Oracle not found",
+                BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value,
+            )
+
     api = MagicMock()
-    api.models.return_value = {
-        "models": [
-            {"id": "1", "name": "first model"},
-            {"id": "2", "name": "second model"},
-        ]
-    }
+    api.get_model.side_effect = mock_get_model
 
     assert core.exists_model(api, "first model")
     assert core.exists_model(api, "second model")
