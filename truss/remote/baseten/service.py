@@ -79,6 +79,4 @@ class BasetenService(TrussService):
         return self._auth_service.authenticate().header()
 
     def logs_url(self, base_url: str) -> str:
-        return (
-            f"{base_url}/models/{self._model_id}/versions/{self._model_version_id}/logs"
-        )
+        return f"{base_url}/models/{self._model_id}/logs/{self._model_version_id}"
