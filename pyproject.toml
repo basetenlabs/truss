@@ -17,7 +17,7 @@ keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learnin
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.12"
-numpy = "1.23.5"
+numpy = ">=1.23.5"
 msgpack = ">=1.0.2"
 msgpack-numpy = ">=0.4.7.1"
 packaging = ">=20.9"
