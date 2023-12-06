@@ -62,6 +62,7 @@
       "pages": [
         "guides/secrets",
         "guides/base-images",
+        "guides/data-directory",
         "guides/model-cache",
         "guides/concurrency",
         "guides/tgi"
