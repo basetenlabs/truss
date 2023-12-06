@@ -1,4 +1,5 @@
 import logging
+from enum import Enum
 
 import requests
 from truss.remote.baseten.auth import AuthService
@@ -16,6 +17,9 @@ class BasetenApi:
         api_url: The URL of the Baseten API.
         auth_service: An AuthService instance.
     """
+
+    class GraphQLErrorCodes(Enum):
+        RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
     def __init__(self, api_url: str, auth_service: AuthService):
         self._api_url = api_url
@@ -37,8 +41,12 @@ class BasetenApi:
 
         resp_dict = resp.json()
         errors = resp_dict.get("errors")
+
         if errors:
-            raise ApiError(errors[0]["message"])
+            message = errors[0]["message"]
+            error_code = errors[0].get("extensions", {}).get("code")
+
+            raise ApiError(message, error_code)
         return resp_dict
 
     def model_s3_upload_credentials(self):
