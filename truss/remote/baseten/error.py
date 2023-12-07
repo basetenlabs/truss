@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 class Error(Exception):
     """Base Baseten Error"""
 
@@ -9,7 +12,9 @@ class Error(Exception):
 class ApiError(Error):
     """Errors in calling the Baseten API."""
 
-    pass
+    def __init__(self, message: str, graphql_error_code: Optional[str] = None):
+        super().__init__(message)
+        self.graphql_error_code = graphql_error_code
 
 
 class AuthorizationError(Error):
