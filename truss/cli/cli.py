@@ -396,7 +396,10 @@ def predict(
     is_flag=True,
     required=False,
     default=False,
-    help="Publish truss as non-development deployment. If no production model exists, promote the truss to production.",
+    help=(
+        "Push the truss as a published deployment. If no production "
+        "deployment exists, promote the truss to production."
+    ),
 )
 @click.option(
     "--trusted",
