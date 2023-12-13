@@ -46,6 +46,7 @@ class BasetenRemote(TrussRemote):
         model_name: str,
         publish: bool = True,
         trusted: bool = False,
+        promote: bool = False,
     ):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -70,6 +71,7 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             model_id=model_id,
             is_trusted=trusted,
+            promote=promote,
         )
 
         return BasetenService(
