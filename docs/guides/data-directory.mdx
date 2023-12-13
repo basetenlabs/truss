@@ -10,8 +10,8 @@ For many models, these files are loaded from Hugging Face. However, model files 
 * Public on Hugging Face (default, [example here](/examples/04-image-generation))
 * [Private on Hugging Face](/examples/09-private-huggingface)
 * [Bundled directly with the Truss](#bundling-model-weights-in-truss)
-* [Public on a file host like S3](#loading-public-model-weights-from-s3)
-* [Private on a file host like S3](#loading-private-model-weights-from-s3)
+* [Public cloud storage like S3](#loading-public-model-weights-from-s3)
+* [Private cloud storage like S3](#loading-private-model-weights-from-s3)
 
 ## Bundling model weights in Truss
 
@@ -40,7 +40,7 @@ data/
     model_index.json
 ```
 
-To access the data in the model, use the `self._data_dir()` parameter in the `load()` function of `model/model.py`:
+To access the data in the model, use the `self._data_dir` variable in the `load()` function of `model/model.py`:
 
 ```python
 class Model:
@@ -57,7 +57,7 @@ class Model:
 
 ## Loading public model weights from S3
 
-Bundling multi-gigabyte files with your Truss can be difficult if you have limited local storage. Instead, you can store your model weights and other files in file stores like S3.
+Bundling multi-gigabyte files with your Truss can be difficult if you have limited local storage and can make deployment slow. Instead, you can store your model weights and other files in cloud storage like S3.
 
 Using files from S3 requires four steps:
 
