@@ -111,7 +111,7 @@ class BasetenApi:
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'}
-                promote: {'true' if promote else 'false'}
+                promote_after_deploy: {'true' if promote else 'false'}
             ) {{
                 id
             }}

@@ -476,6 +476,11 @@ Please push with --trusted to grant access to secrets.
 """
         console.print(not_trusted_text, style="red")
 
+    if promote:
+        promotion_text = """Your Truss has been deployed as a production model. After it successfully deploys,
+it will become the next production deployment of your model."""
+        console.print(promotion_text, style="green")
+
     logs_url = remote_provider.get_remote_logs_url(service)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
 
