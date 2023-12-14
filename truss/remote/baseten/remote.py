@@ -56,6 +56,12 @@ class BasetenRemote(TrussRemote):
         gathered_truss = TrussHandle(truss_handle.gather())
         if gathered_truss.spec.model_server != ModelServer.TrussServer:
             publish = True
+
+        if promote:
+            # If we are promoting a model after deploy, it must be published.
+            # Draft models cannot be promoted.
+            publish = True
+
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )
