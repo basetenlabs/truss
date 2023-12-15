@@ -13,10 +13,10 @@ truss push [OPTIONS] [TARGET_DIRECTORY]
 Name of the remote in .trussrc to patch changes to.
 </ParamField>
 <ParamField body="--publish" type="BOOL">
-Push the truss as a published deployment without replacing the production deployment. If no production deployment exists, the published truss will be promoted to production.
+Push the truss as a published deployment. If no production deployment exists, promote the truss to production after deploy completes.
 </ParamField>
 <ParamField body="--promote" type="BOOL">
-Push the truss as the new production deployment, even if a production deployment already exists.
+Push the truss as a published deployment. Even if a production deployment exists, promote the truss to production after deploy completes.
 </ParamField>
 <ParamField body="--trusted" type="BOOL">
 Give Truss access to secrets on remote host.

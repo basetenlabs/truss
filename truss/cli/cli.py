@@ -398,7 +398,20 @@ def predict(
     default=False,
     help=(
         "Push the truss as a published deployment. If no production "
-        "deployment exists, promote the truss to production."
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
+    ),
+)
+@click.option(
+    "--promote",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a published deployment. Even if a production "
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
     ),
 )
 @click.option(
@@ -408,14 +421,6 @@ def predict(
     required=False,
     default=False,
     help="Trust truss with hosted secrets.",
-)
-@click.option(
-    "--promote",
-    type=bool,
-    is_flag=True,
-    required=False,
-    default=False,
-    help="After deploy completes, promotes the truss to production.",
 )
 @error_handling
 def push(
