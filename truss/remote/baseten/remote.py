@@ -47,6 +47,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = True,
         trusted: bool = False,
         promote: bool = False,
+        deployment_name: str = None,
     ):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -61,6 +62,11 @@ class BasetenRemote(TrussRemote):
             # If we are promoting a model after deploy, it must be published.
             # Draft models cannot be promoted.
             publish = True
+
+        if not publish and deployment_name:
+            raise ValueError(
+                "deployment_name cannot be used for development deployment"
+            )
 
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
@@ -78,6 +84,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             is_trusted=trusted,
             promote=promote,
+            deployment_name=deployment_name,
         )
 
         return BasetenService(
