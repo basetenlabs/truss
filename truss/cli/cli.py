@@ -436,7 +436,7 @@ def push(
     publish: bool = False,
     trusted: bool = False,
     promote: bool = False,
-    deployment_name: str = None,
+    deployment_name: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.

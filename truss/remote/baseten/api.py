@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from typing import Optional
 
 import requests
 from truss.remote.baseten.auth import AuthService
@@ -72,7 +73,7 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
-        deployment_name: str,
+        deployment_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
@@ -103,7 +104,7 @@ class BasetenApi:
         client_version: str,
         is_trusted: bool,
         promote: bool = False,
-        deployment_name: str = None,
+        deployment_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
