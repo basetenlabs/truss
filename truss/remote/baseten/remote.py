@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import click
 import yaml
@@ -47,7 +47,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = True,
         trusted: bool = False,
         promote: bool = False,
-        deployment_name: str = None,
+        deployment_name: Optional[str] = None,
     ):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
