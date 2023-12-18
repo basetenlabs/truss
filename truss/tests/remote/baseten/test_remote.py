@@ -3,6 +3,7 @@ import pytest
 import requests_mock
 from truss.remote.baseten.core import ModelId, ModelName, ModelVersionId
 from truss.remote.baseten.remote import BasetenRemote
+from truss.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 
@@ -186,3 +187,30 @@ def test_get_service_by_model_id_no_model():
         )
         with pytest.raises(click.UsageError):
             remote.get_service(model_identifier=ModelId("model_id"))
+
+
+def test_push_raised_value_error_when_deployment_name_and_not_publish(
+    custom_model_truss_dir_with_pre_and_post,
+):
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(
+            remote._api._api_url,
+            json=model_response,
+        )
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+        with pytest.raises(
+            ValueError,
+            match="deployment_name cannot be used for development deployment",
+        ):
+            remote.push(th, "model_name", False, False, False, "dep_name")

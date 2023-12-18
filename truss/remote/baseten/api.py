@@ -83,7 +83,7 @@ class BasetenApi:
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
-                {f'development_name: "{deployment_name}"' if deployment_name else ""}
+                {f'deployment_name: "{deployment_name}"' if deployment_name else ""}
             ) {{
                 id,
                 name,

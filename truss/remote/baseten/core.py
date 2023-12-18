@@ -165,7 +165,7 @@ def create_truss_service(
         semver_bump: Semver bump type, defaults to "MINOR"
         is_trusted: Whether the model is trusted, defaults to False
         promote: Whether to promote the model after deploy, defaults to False
-        deployment_name: Name to apply to the created deployment. Does not apply to development model
+        deployment_name: Name to apply to the created deployment. Not applied to development model
 
     Returns:
         A tuple of the model ID and version ID
