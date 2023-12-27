@@ -38,6 +38,14 @@ def test_truss_with_annotated_inputs_outputs():
             "generated_text": "value",
         }
 
+        # An invalid input
+
+        response = requests.post(full_url, json={"bad_key": "value"})
+
+        assert response.status_code == 400
+        assert "error" in response.json()
+        assert "validation error" in response.json()["error"]
+
         schema_response = requests.get(f"{truss_server_addr}/v1/models/model/schema")
 
         schema = schema_response.json()
