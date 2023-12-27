@@ -1,4 +1,4 @@
-from inspect import Signature
+import inspect
 from typing import AsyncGenerator, Generator, Optional, Union
 
 from pydantic import BaseModel
@@ -10,7 +10,7 @@ class TrussSchema(BaseModel):
     supports_streaming: bool
 
     @classmethod
-    def from_signature(cls, signature: Signature) -> Optional["TrussSchema"]:
+    def from_signature(cls, signature: inspect.Signature) -> Optional["TrussSchema"]:
         """
         Create a TrussSchema from a function signature if annotated, else returns None
         """
@@ -23,7 +23,11 @@ class TrussSchema(BaseModel):
         output_type = None
         supports_streaming = False
 
-        if not issubclass(input_type, BaseModel):
+        if (
+            input_type == inspect.Signature.empty
+            or not isinstance(input_type, type)
+            or not issubclass(input_type, BaseModel)
+        ):
             return None
 
         if issubclass(signature.return_annotation, BaseModel):
@@ -62,7 +66,11 @@ def retrieve_base_class_from_union(union_annotation: type) -> Optional[type]:
     if len(union_args) != 2:
         return None
 
-    pydantic_base_models = [arg for arg in union_args if issubclass(arg, BaseModel)]
+    pydantic_base_models = [
+        arg
+        for arg in union_args
+        if isinstance(arg, type) and issubclass(arg, BaseModel)
+    ]
     generators = [
         arg
         for arg in union_args
