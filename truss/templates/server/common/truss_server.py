@@ -166,6 +166,21 @@ class BasetenEndpoints:
                 headers=response_headers,
             )
 
+    async def schema(self, model_name: str) -> Dict:
+        model: ModelWrapper = self._safe_lookup_model(model_name)
+
+        if model.truss_schema is None:
+            # If there is not a TrussSchema, then we just return an empty dict.
+            return {}
+        else:
+            return {
+                "input_schema": model.truss_schema.input_type.schema(),
+                "output_schema": model.truss_schema.output_type.schema()
+                if model.truss_schema.output_type is not None
+                else None,
+                "supports_streaming": model.truss_schema.supports_streaming,
+            }
+
     @staticmethod
     def is_binary(request: Request):
         return (
@@ -215,6 +230,12 @@ class TrussServer:
                 # readiness endpoint
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
+                ),
+                FastAPIRoute(
+                    r"/v1/models/{model_name}/schema",
+                    self._endpoints.schema,
+                    methods=["GET"],
+                    tags=["V1"],
                 ),
                 FastAPIRoute(
                     r"/v1/models/{model_name}:predict",

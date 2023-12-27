@@ -31,6 +31,7 @@ class ImageBuilder(ABC):
                 tags=tag or self.default_tag,
                 cache=cache,
                 network=network,
+                load=True,
             )
 
     @property
