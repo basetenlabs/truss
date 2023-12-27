@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 class TrussSchema(BaseModel):
     input_type: type
-    output_type: type
+    output_type: Optional[type]
     supports_streaming: bool
 
     @classmethod
@@ -30,7 +30,9 @@ class TrussSchema(BaseModel):
         ):
             return None
 
-        if issubclass(signature.return_annotation, BaseModel):
+        if isinstance(signature.return_annotation, type) and issubclass(
+            signature.return_annotation, BaseModel
+        ):
             output_type = signature.return_annotation
             supports_streaming = False
         elif signature.return_annotation == Generator:
