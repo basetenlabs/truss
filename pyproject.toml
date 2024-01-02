@@ -75,6 +75,7 @@ black = "^22.6.0"
 nbconvert = "^7.2.1"
 ipykernel = "^6.16.0"
 dockerfile = "^3.2.0"
+types-PyYAML = "^6.0.12.12"
 
 [tool.poetry.scripts]
 truss = 'truss.cli:truss_cli'
