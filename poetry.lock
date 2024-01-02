@@ -2861,6 +2861,17 @@ files = [
 types-urllib3 = "*"
 
 [[package]]
+name = "types-setuptools"
+version = "69.0.0.0"
+description = "Typing stubs for setuptools"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "types-setuptools-69.0.0.0.tar.gz", hash = "sha256:b0a06219f628c6527b2f8ce770a4f47550e00d3e8c3ad83e2dc31bc6e6eda95d"},
+    {file = "types_setuptools-69.0.0.0-py3-none-any.whl", hash = "sha256:8c86195bae2ad81e6dea900a570fe9d64a59dbce2b11cc63c046b03246ea77bf"},
+]
+
+[[package]]
 name = "types-urllib3"
 version = "1.26.25.14"
 description = "Typing stubs for urllib3"
@@ -3045,4 +3056,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "1b12576866981873e4f2570b132744d555d82cea09ae1d1c6ec59afbd423a068"
+content-hash = "d35a4ae0e6b7b32ab2349fa234b29807dcb74015008a9c802f6e0ce5d3ce2048"
