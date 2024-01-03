@@ -214,3 +214,30 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
             match="deployment_name cannot be used for development deployment",
         ):
             remote.push(th, "model_name", False, False, False, "dep_name")
+
+
+def test_push_raised_value_error_when_deployment_name_is_not_valid(
+    custom_model_truss_dir_with_pre_and_post,
+):
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(
+            remote._api._api_url,
+            json=model_response,
+        )
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+        with pytest.raises(
+            ValueError,
+            match="deployment_name must only contain alphanumeric, -, _ and . characters",
+        ):
+            remote.push(th, "model_name", True, False, False, "dep//name")
