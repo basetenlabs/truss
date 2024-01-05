@@ -16,9 +16,10 @@ from truss.patch.hash import str_hash_str
 FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 
-def copy_tree_path(src: Path, dest: Path) -> None:
+def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> None:
     """Copy a directory tree, ignoring files specified in .truss_ignore."""
     patterns = load_trussignore_patterns()
+    patterns.extend(ignore_patterns)
 
     if not dest.exists():
         dest.mkdir(parents=True)
@@ -28,7 +29,6 @@ def copy_tree_path(src: Path, dest: Path) -> None:
             continue
 
         dest_fp = dest / sub_path.relative_to(src)
-
         if sub_path.is_dir():
             dest_fp.mkdir(exist_ok=True)
         else:
@@ -148,11 +148,16 @@ def is_ignored(
 
     while path:
         for pattern in patterns:
+            # if "ignore_me" in str(path):
+            #     print(f"{pattern} : {path}")
             if original_path.is_dir() and pattern.endswith("/"):
                 pattern = pattern.rstrip("/")
                 if fnmatch.fnmatch(path.name, pattern):
                     return True
             else:
+                # if "ignore_me" in str(path):
+                #     print(path.name)
+                #     print(fnmatch.fnmatch(path.name, pattern))
                 if fnmatch.fnmatch(path.name, pattern):
                     return True
 
