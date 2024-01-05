@@ -29,6 +29,7 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
             continue
 
         dest_fp = dest / sub_path.relative_to(src)
+
         if sub_path.is_dir():
             dest_fp.mkdir(exist_ok=True)
         else:
@@ -148,16 +149,11 @@ def is_ignored(
 
     while path:
         for pattern in patterns:
-            # if "ignore_me" in str(path):
-            #     print(f"{pattern} : {path}")
             if original_path.is_dir() and pattern.endswith("/"):
                 pattern = pattern.rstrip("/")
                 if fnmatch.fnmatch(path.name, pattern):
                     return True
             else:
-                # if "ignore_me" in str(path):
-                #     print(path.name)
-                #     print(fnmatch.fnmatch(path.name, pattern))
                 if fnmatch.fnmatch(path.name, pattern):
                     return True
 
