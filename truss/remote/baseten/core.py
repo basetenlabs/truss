@@ -149,6 +149,7 @@ def create_truss_service(
     config: str,
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
+    promote: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
 ) -> Tuple[str, str]:
@@ -162,6 +163,7 @@ def create_truss_service(
         config: Base64 encoded JSON string of the Truss config
         semver_bump: Semver bump type, defaults to "MINOR"
         is_trusted: Whether the model is trusted, defaults to False
+        promote: Whether to promote the model after deploy, defaults to False
 
     Returns:
         A tuple of the model ID and version ID
@@ -196,6 +198,7 @@ def create_truss_service(
         semver_bump=semver_bump,
         client_version=f"truss=={truss.version()}",
         is_trusted=is_trusted,
+        promote=promote,
     )
     model_version_id = model_version_json["id"]
     return (model_id, model_version_id)

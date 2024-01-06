@@ -398,7 +398,20 @@ def predict(
     default=False,
     help=(
         "Push the truss as a published deployment. If no production "
-        "deployment exists, promote the truss to production."
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
+    ),
+)
+@click.option(
+    "--promote",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a published deployment. Even if a production "
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
     ),
 )
 @click.option(
@@ -416,6 +429,7 @@ def push(
     model_name: str,
     publish: bool = False,
     trusted: bool = False,
+    promote: bool = False,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -440,7 +454,7 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
-    service = remote_provider.push(tr, model_name, publish=publish, trusted=trusted)  # type: ignore
+    service = remote_provider.push(tr, model_name, publish=publish, trusted=trusted, promote=promote)  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
 
@@ -466,6 +480,11 @@ def push(
 Please push with --trusted to grant access to secrets.
 """
         console.print(not_trusted_text, style="red")
+
+    if promote:
+        promotion_text = """Your Truss has been deployed as a production model. After it successfully deploys,
+it will become the next production deployment of your model."""
+        console.print(promotion_text, style="green")
 
     logs_url = remote_provider.get_remote_logs_url(service)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
