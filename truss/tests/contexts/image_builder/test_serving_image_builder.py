@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -340,3 +341,41 @@ def test_model_cache_dockerfile():
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             assert secret_mount in gen_docker_file
+
+
+def test_ignore_files_during_build_setup(custom_model_truss_dir):
+    th = TrussHandle(custom_model_truss_dir)
+    truss_path = Path(th.spec.truss_dir)
+
+    ignore_files = ["file1.txt", "file2.txt", "file3.txt"]
+    ignore_folder = "ignore_folder/"
+
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
+
+    # adding files to be ignored to the truss directory
+    for file in ignore_files:
+        with open(truss_path / file, "w") as f:
+            f.write("Sample Data")
+
+    # creating a folder with a nested file and writing sample data
+    os.makedirs(truss_path / ignore_folder)
+    with open(truss_path / ignore_folder / "nested_file.txt", "w") as nf:
+        nf.write("Nested File Sample Data")
+
+    # add the ignore folder into .truss_ignore file
+    with open(truss_path / ".truss_ignore", "w") as f:
+        for file in ignore_files:
+            f.write(f"{file}\n")
+        f.write(f"{ignore_folder}\n")
+
+    # create a context and check for ignored files
+    with TemporaryDirectory() as build_dir:
+        build_path = Path(build_dir)
+        image_builder.prepare_image_build_dir(build_path)
+
+        for file in ignore_files:
+            assert not (build_path / file).exists()
+
+        # the ignored folder should also not be in the build directory
+        assert not (build_path / ignore_folder).exists()
