@@ -112,12 +112,22 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     Returns:
         A file-like object containing the tar file
     """
+    truss_dir = truss_handle._spec.truss_dir
+    ignore_patterns = []
+
+    # check for a truss_ignore file and read the ignore patterns if it exists
+    truss_ignore_file = truss_dir / ".truss_ignore"
+    if truss_ignore_file.exists():
+        with open(truss_ignore_file, "r") as f:
+            ignore_patterns = [line.strip() for line in f]
+
     try:
-        truss_dir = truss_handle._spec.truss_dir
-        temp_file = create_tar_with_progress_bar(truss_dir)
+        temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
     except PermissionError:
-        # Windows bug with Tempfile causes PermissionErrors
-        temp_file = create_tar_with_progress_bar(truss_dir, delete=False)
+        # workaround for Windows bug with Tempfile that causes PermissionErrors
+        temp_file = create_tar_with_progress_bar(
+            truss_dir, ignore_patterns, delete=False
+        )
     temp_file.file.seek(0)
     return temp_file
 
