@@ -165,7 +165,7 @@ def test_create_model_from_truss(mock_post, mock_auth_service):
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: false" in gql_mutation
-    assert 'deployment_name: "deployment_name"' in gql_mutation
+    assert 'version_name: "deployment_name"' in gql_mutation
 
 
 @mock.patch("truss.remote.baseten.auth.AuthService")
@@ -193,4 +193,4 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: true" in gql_mutation
-    assert "deployment_name: " not in gql_mutation
+    assert "version_name: " not in gql_mutation
