@@ -169,9 +169,19 @@ class ModelWrapper:
             )
 
     def set_truss_schema(self):
-        self.truss_schema = TrussSchema.from_signature(
-            inspect.signature(self._model.predict), self._logger
+        parameters = (
+            inspect.signature(self._model.preprocess).parameters
+            if hasattr(self._model, "preprocess")
+            else inspect.signature(self._model.predict).parameters
         )
+
+        outputs_annotation = (
+            inspect.signature(self._model.postprocess).return_annotation
+            if hasattr(self._model, "postprocess")
+            else inspect.signature(self._model.predict).return_annotation
+        )
+
+        self.truss_schema = TrussSchema.from_signature(parameters, outputs_annotation)
 
     async def preprocess(
         self,

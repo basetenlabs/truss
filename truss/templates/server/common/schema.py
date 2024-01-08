@@ -1,5 +1,6 @@
 import inspect
-from typing import AsyncGenerator, Awaitable, Generator, Optional, Union
+from types import MappingProxyType
+from typing import Any, AsyncGenerator, Awaitable, Generator, Optional, Union
 
 from pydantic import BaseModel
 
@@ -10,11 +11,13 @@ class TrussSchema(BaseModel):
     supports_streaming: bool
 
     @classmethod
-    def from_signature(cls, signature: inspect.Signature) -> Optional["TrussSchema"]:
+    def from_signature(
+        cls, input_parameters: MappingProxyType, output_annotation: Any
+    ) -> Optional["TrussSchema"]:
         """
         Create a TrussSchema from a function signature if annotated, else returns None
         """
-        parameter_types = list(signature.parameters.values())
+        parameter_types = list(input_parameters.values())
 
         if len(parameter_types) > 1:
             return None
@@ -30,22 +33,20 @@ class TrussSchema(BaseModel):
         ):
             return None
 
-        if isinstance(signature.return_annotation, type) and issubclass(
-            signature.return_annotation, BaseModel
+        if isinstance(output_annotation, type) and issubclass(
+            output_annotation, BaseModel
         ):
-            output_type = signature.return_annotation
+            output_type = output_annotation
             supports_streaming = False
-        elif _is_union_type(signature.return_annotation):
+        elif _is_union_type(output_annotation):
             # Check both types in the union are valid:
-            output_type = retrieve_base_class_from_union(signature.return_annotation)
+            output_type = retrieve_base_class_from_union(output_annotation)
             supports_streaming = True
-        elif _is_generator_type(signature.return_annotation):
+        elif _is_generator_type(output_annotation):
             output_type = None
             supports_streaming = True
-        elif _is_awaitable_type(signature.return_annotation):
-            output_type = retrieve_base_class_from_awaitable(
-                signature.return_annotation
-            )
+        elif _is_awaitable_type(output_annotation):
+            output_type = retrieve_base_class_from_awaitable(output_annotation)
             supports_streaming = False
         else:
             return None
