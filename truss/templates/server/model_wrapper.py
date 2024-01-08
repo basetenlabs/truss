@@ -170,7 +170,7 @@ class ModelWrapper:
 
     def set_truss_schema(self):
         self.truss_schema = TrussSchema.from_signature(
-            inspect.signature(self._model.predict)
+            inspect.signature(self._model.predict), self._logger
         )
 
     async def preprocess(

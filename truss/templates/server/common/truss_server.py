@@ -170,8 +170,8 @@ class BasetenEndpoints:
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         if model.truss_schema is None:
-            # If there is not a TrussSchema, then we just return an empty dict.
-            return {}
+            # If there is not a TrussSchema, we return a 404.
+            raise HTTPException(status_code=404, detail="No schema found")
         else:
             return {
                 "input_schema": model.truss_schema.input_type.schema(),

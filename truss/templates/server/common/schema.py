@@ -1,5 +1,5 @@
 import inspect
-from typing import AsyncGenerator, Generator, Optional, Union
+from typing import AsyncGenerator, Awaitable, Generator, Optional, Union
 
 from pydantic import BaseModel
 
@@ -35,13 +35,18 @@ class TrussSchema(BaseModel):
         ):
             output_type = signature.return_annotation
             supports_streaming = False
-        elif signature.return_annotation == Generator:
-            output_type = None
-            supports_streaming = True
         elif _is_union_type(signature.return_annotation):
             # Check both types in the union are valid:
             output_type = retrieve_base_class_from_union(signature.return_annotation)
             supports_streaming = True
+        elif _is_generator_type(signature.return_annotation):
+            output_type = None
+            supports_streaming = True
+        elif _is_awaitable_type(signature.return_annotation):
+            output_type = retrieve_base_class_from_awaitable(
+                signature.return_annotation
+            )
+            supports_streaming = False
         else:
             return None
 
@@ -52,8 +57,43 @@ class TrussSchema(BaseModel):
         )
 
 
+def _is_generator_type(annotation: type) -> bool:
+    return hasattr(annotation, "__origin__") and issubclass(
+        annotation.__origin__, (Generator, AsyncGenerator)
+    )
+
+
 def _is_union_type(annotation: type) -> bool:
     return hasattr(annotation, "__origin__") and annotation.__origin__ == Union
+
+
+def _is_awaitable_type(annotation: type) -> bool:
+    return hasattr(annotation, "__origin__") and issubclass(
+        annotation.__origin__, Awaitable
+    )
+
+
+def retrieve_base_class_from_awaitable(awaitable_annotation: type) -> Optional[type]:
+    """
+    Returns the base class of an Awaitable type if it is of the form:
+    Awaitable[PydanticBaseModel]
+
+    Else, returns None
+    """
+    (awaitable_type,) = awaitable_annotation.__args__  # type: ignore
+    if isinstance(awaitable_type, type) and issubclass(awaitable_type, BaseModel):
+        return awaitable_type
+
+    return None
+
+
+def _extract_pydantic_base_models(union_args: tuple) -> list:
+    return [
+        retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg
+        for arg in union_args
+        if _is_awaitable_type(arg)
+        or (isinstance(arg, type) and issubclass(arg, BaseModel))
+    ]
 
 
 def retrieve_base_class_from_union(union_annotation: type) -> Optional[type]:
@@ -68,15 +108,12 @@ def retrieve_base_class_from_union(union_annotation: type) -> Optional[type]:
     if len(union_args) != 2:
         return None
 
-    pydantic_base_models = [
-        arg
-        for arg in union_args
-        if isinstance(arg, type) and issubclass(arg, BaseModel)
-    ]
+    pydantic_base_models = _extract_pydantic_base_models(union_args)
     generators = [
         arg
         for arg in union_args
-        if issubclass(arg, Generator) or issubclass(arg, AsyncGenerator)
+        # rewrite this
+        if _is_generator_type(arg)
     ]
 
     if len(pydantic_base_models) != 1 or len(generators) != 1:
