@@ -162,6 +162,7 @@ def create_truss_service(
     promote: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
+    deployment_name: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -174,6 +175,7 @@ def create_truss_service(
         semver_bump: Semver bump type, defaults to "MINOR"
         is_trusted: Whether the model is trusted, defaults to False
         promote: Whether to promote the model after deploy, defaults to False
+        deployment_name: Name to apply to the created deployment. Not applied to development model
 
     Returns:
         A tuple of the model ID and version ID
@@ -197,6 +199,7 @@ def create_truss_service(
             semver_bump=semver_bump,
             client_version=f"truss=={truss.version()}",
             is_trusted=is_trusted,
+            deployment_name=deployment_name,
         )
         return (model_version_json["id"], model_version_json["version_id"])
 
@@ -209,6 +212,7 @@ def create_truss_service(
         client_version=f"truss=={truss.version()}",
         is_trusted=is_trusted,
         promote=promote,
+        deployment_name=deployment_name,
     )
     model_version_id = model_version_json["id"]
     return (model_id, model_version_id)

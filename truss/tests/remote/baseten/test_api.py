@@ -34,6 +34,24 @@ def mock_unsuccessful_response():
     return response
 
 
+def mock_create_model_version_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"data": {"create_model_version_from_truss": {"id": "12345"}}}
+    )
+    return response
+
+
+def mock_create_model_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"data": {"create_model_from_truss": {"id": "12345"}}}
+    )
+    return response
+
+
 @mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_successful_response())
 def test_post_graphql_query_success(mock_post, mock_auth_service):
@@ -64,3 +82,115 @@ def test_post_requests_error(mock_post, mock_auth_service):
     api = BasetenApi(api_url, mock_auth_service)
     with pytest.raises(requests.exceptions.HTTPError):
         api._post_graphql_query("sample_query_string")
+
+
+@mock.patch("truss.remote.baseten.auth.AuthService")
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss(mock_post, mock_auth_service):
+    api_url = "https://test.com/api"
+    api = BasetenApi(api_url, mock_auth_service)
+
+    api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        "client_version",
+        False,
+        False,
+        "deployment_name",
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'model_id: "model_id"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: false" in gql_mutation
+    assert "promote_after_deploy: false" in gql_mutation
+    assert 'name: "deployment_name"' in gql_mutation
+
+
+@mock.patch("truss.remote.baseten.auth.AuthService")
+@mock.patch("requests.post", return_value=mock_create_model_version_response())
+def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_specified(
+    mock_post, mock_auth_service
+):
+    api_url = "https://test.com/api"
+    api = BasetenApi(api_url, mock_auth_service)
+
+    api.create_model_version_from_truss(
+        "model_id",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        "client_version",
+        True,
+        True,
+        deployment_name=None,
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'model_id: "model_id"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: true" in gql_mutation
+    assert "promote_after_deploy: true" in gql_mutation
+    assert "name: " not in gql_mutation
+
+
+@mock.patch("truss.remote.baseten.auth.AuthService")
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss(mock_post, mock_auth_service):
+    api_url = "https://test.com/api"
+    api = BasetenApi(api_url, mock_auth_service)
+
+    api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        "client_version",
+        False,
+        "deployment_name",
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: false" in gql_mutation
+    assert 'version_name: "deployment_name"' in gql_mutation
+
+
+@mock.patch("truss.remote.baseten.auth.AuthService")
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
+    mock_post, mock_auth_service
+):
+    api_url = "https://test.com/api"
+    api = BasetenApi(api_url, mock_auth_service)
+
+    api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        "client_version",
+        True,
+        deployment_name=None,
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: true" in gql_mutation
+    assert "version_name: " not in gql_mutation
