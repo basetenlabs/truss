@@ -211,7 +211,7 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
 
         with pytest.raises(
             ValueError,
-            match="deployment_name cannot be used for development deployment",
+            match="ERROR: deployment name cannot be used for development deployment",
         ):
             remote.push(th, "model_name", False, False, False, "dep_name")
 
@@ -238,6 +238,6 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
 
         with pytest.raises(
             ValueError,
-            match="deployment_name must only contain alphanumeric, -, _ and . characters",
+            match="ERROR: deployment name must only contain alphanumeric, -, _ and . characters",
         ):
             remote.push(th, "model_name", True, False, False, "dep//name")

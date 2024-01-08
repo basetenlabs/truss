@@ -426,7 +426,10 @@ def predict(
     "--deployment-name",
     type=str,
     required=False,
-    help="Name of the deployment created by the push.",
+    help=(
+        "Name of the deployment created by the push. Can only be "
+        "used in combination with --publish or --promote."
+    ),
 )
 @error_handling
 def push(

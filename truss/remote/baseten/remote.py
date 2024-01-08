@@ -66,12 +66,12 @@ class BasetenRemote(TrussRemote):
 
         if not publish and deployment_name:
             raise ValueError(
-                "deployment_name cannot be used for development deployment"
+                "ERROR: deployment name cannot be used for development deployment"
             )
 
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
             raise ValueError(
-                "deployment_name must only contain alphanumeric, -, _ and . characters"
+                "ERROR: deployment name must only contain alphanumeric, -, _ and . characters"
             )
 
         encoded_config_str = base64_encoded_json_str(
