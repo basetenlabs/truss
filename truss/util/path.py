@@ -99,7 +99,9 @@ def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
     return target_directory_path
 
 
-def load_trussignore_patterns(truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH):
+def load_trussignore_patterns(
+    truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH,
+) -> List[str]:
     """Load patterns from a .truss_ignore file"""
     patterns = []
 
