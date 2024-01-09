@@ -7,6 +7,7 @@ from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
+from truss.util.path import load_trussignore_patterns
 
 logger = logging.getLogger(__name__)
 
@@ -112,12 +113,21 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     Returns:
         A file-like object containing the tar file
     """
+    truss_dir = truss_handle._spec.truss_dir
+    ignore_patterns = []
+
+    # check for a truss_ignore file and read the ignore patterns if it exists
+    truss_ignore_file = truss_dir / ".truss_ignore"
+    if truss_ignore_file.exists():
+        ignore_patterns = load_trussignore_patterns(truss_ignore_file=truss_ignore_file)
+
     try:
-        truss_dir = truss_handle._spec.truss_dir
-        temp_file = create_tar_with_progress_bar(truss_dir)
+        temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
     except PermissionError:
-        # Windows bug with Tempfile causes PermissionErrors
-        temp_file = create_tar_with_progress_bar(truss_dir, delete=False)
+        # workaround for Windows bug with Tempfile that causes PermissionErrors
+        temp_file = create_tar_with_progress_bar(
+            truss_dir, ignore_patterns, delete=False
+        )
     temp_file.file.seek(0)
     return temp_file
 

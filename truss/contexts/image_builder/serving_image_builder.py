@@ -47,12 +47,14 @@ from truss.util.path import (
     build_truss_target_directory,
     copy_tree_or_file,
     copy_tree_path,
+    load_trussignore_patterns,
 )
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
+USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
 
@@ -503,8 +505,14 @@ class ServingImageBuilder(ImageBuilder):
         def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
             copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
+        truss_ignore_patterns = []
+        if (truss_dir / USER_TRUSS_IGNORE_FILE).exists():
+            truss_ignore_patterns = load_trussignore_patterns(
+                truss_dir / USER_TRUSS_IGNORE_FILE
+            )
+
         # Copy over truss
-        copy_tree_path(truss_dir, build_dir)
+        copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
