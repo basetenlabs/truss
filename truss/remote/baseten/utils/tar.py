@@ -1,10 +1,10 @@
 import tarfile
 import tempfile
-from fnmatch import fnmatch
 from pathlib import Path
 from typing import IO, Any, Callable, List
 
 from rich.progress import Progress
+from truss.util.path import is_ignored
 
 
 class ReadProgressIndicatorFileHandle:
@@ -23,13 +23,6 @@ class ReadProgressIndicatorFileHandle:
         return getattr(self._file, attr)
 
 
-def should_ignore(
-    file_path: Path, source_dir: Path, ignore_patterns: List[str]
-) -> bool:
-    relative_path = str(file_path.relative_to(source_dir))
-    return any(fnmatch(relative_path, pattern) for pattern in ignore_patterns)
-
-
 def create_tar_with_progress_bar(
     source_dir: Path, ignore_patterns: List[str] = [], delete=True
 ):
@@ -37,7 +30,7 @@ def create_tar_with_progress_bar(
     files_to_include = [
         f
         for f in source_dir.rglob("*")
-        if f.is_file() and not should_ignore(f, source_dir, ignore_patterns)
+        if f.is_file() and not is_ignored(f, ignore_patterns, source_dir)
     ]
 
     total_size = sum(f.stat().st_size for f in files_to_include)
