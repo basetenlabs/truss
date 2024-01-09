@@ -41,13 +41,19 @@ class TrussSchema(BaseModel):
         elif _is_union_type(output_annotation):
             # Check both types in the union are valid:
             output_type = retrieve_base_class_from_union(output_annotation)
+            if not output_type:
+                return None
             supports_streaming = True
         elif _is_generator_type(output_annotation):
             output_type = None
+
             supports_streaming = True
         elif _is_awaitable_type(output_annotation):
             output_type = retrieve_base_class_from_awaitable(output_annotation)
+            if not output_type:
+                return None
             supports_streaming = False
+
         else:
             return None
 
@@ -92,7 +98,7 @@ def _extract_pydantic_base_models(union_args: tuple) -> list:
     return [
         retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg
         for arg in union_args
-        if _is_awaitable_type(arg)
+        if (_is_awaitable_type(arg) and retrieve_base_class_from_awaitable(arg))
         or (isinstance(arg, type) and issubclass(arg, BaseModel))
     ]
 
@@ -100,7 +106,8 @@ def _extract_pydantic_base_models(union_args: tuple) -> list:
 def retrieve_base_class_from_union(union_annotation: type) -> Optional[type]:
     """
     Returns the base class of a Union type if it is of the form:
-    Union[PydanticBaseModel, Generator]
+    Union[PydanticBaseModel, Generator] or in the case of async functions:
+    Union[Awaitable[PydanticBaseModel], AsyncGenerator]
 
     Else, returns None
     """
@@ -110,12 +117,7 @@ def retrieve_base_class_from_union(union_annotation: type) -> Optional[type]:
         return None
 
     pydantic_base_models = _extract_pydantic_base_models(union_args)
-    generators = [
-        arg
-        for arg in union_args
-        # rewrite this
-        if _is_generator_type(arg)
-    ]
+    generators = [arg for arg in union_args if _is_generator_type(arg)]
 
     if len(pydantic_base_models) != 1 or len(generators) != 1:
         return None

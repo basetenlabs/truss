@@ -7,16 +7,6 @@ from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
 
-# Test cases to add:
-# * [done] Normal truss with no annotations
-# * [done] Streaming
-# * [done] Truss that supports both streaming & non-streaming
-# * [done] Async
-# * [done] Async Streaming
-# * [done] Async w/ both streaming and non-streaming
-# * preproces / postprocess
-# * [done] Invalid json input
-
 DEFAULT_CONFIG = """model_name: test-truss"""
 
 
