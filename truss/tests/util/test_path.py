@@ -145,16 +145,12 @@ def test_ignored_files_in_docker_context(
 def test_copy_tree_path_with_truss_ignore(custom_model_truss_dir_with_truss_ignore):
     with tempfile.TemporaryDirectory() as temp_dir:
         dest_dir = Path(temp_dir)
-        path.copy_tree_path(custom_model_truss_dir_with_truss_ignore, dest_dir)
-
         ignored_files_folders = ["random_folder_1", "random_file_1.txt"]
-
-        for sub_path in custom_model_truss_dir_with_truss_ignore.rglob("*"):
-            if sub_path.name not in ignored_files_folders and sub_path.is_file():
-                assert (
-                    dest_dir
-                    / sub_path.relative_to(custom_model_truss_dir_with_truss_ignore)
-                ).exists()
+        path.copy_tree_path(
+            custom_model_truss_dir_with_truss_ignore,
+            dest_dir,
+            ignore_patterns=ignored_files_folders,
+        )
 
         for ignored in ignored_files_folders:
             assert not (dest_dir / ignored).exists()
