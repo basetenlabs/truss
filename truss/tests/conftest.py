@@ -442,7 +442,7 @@ def custom_model_truss_dir_with_truss_ignore(tmp_path):
 
     (truss_dir_path / ".truss_ignore").write_text(
         """
-        random_folder_1
+        random_folder_1/*
         random_file_1.txt
         """
     )

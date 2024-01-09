@@ -36,9 +36,11 @@ def create_tar_with_progress_bar(
     # Exclude files that match the ignore_patterns
     files_to_include = [
         f
-        for f in source_dir.glob("**/*")
+        for f in source_dir.rglob("*")
         if f.is_file() and not should_ignore(f, source_dir, ignore_patterns)
     ]
+    print(files_to_include)
+    assert 1 == 2
 
     total_size = sum(f.stat().st_size for f in files_to_include)
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)
