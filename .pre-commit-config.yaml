@@ -39,7 +39,6 @@ repos:
       - id: mypy
         name: mypy-local
         entry: poetry run mypy
-        args: ["--install-types", "--non-interactive"]
         language: python
         types: [python]
         exclude: ^examples/|^truss/test.+/|model.py$
