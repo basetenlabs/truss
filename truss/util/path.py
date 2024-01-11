@@ -153,12 +153,11 @@ def is_ignored(
         for pattern in patterns:
             if original_path.is_dir() and pattern.endswith("/"):
                 pattern = pattern.rstrip("/")
-                if fnmatch.fnmatch(path.name, pattern):
+                if fnmatch.fnmatch(str(path), pattern):
                     return True
             else:
-                if fnmatch.fnmatch(path.name, pattern):
+                if fnmatch.fnmatch(str(path), pattern):
                     return True
-
         path = path.parent if path.parent != path else None  # type: ignore
         original_path = original_path.parent if original_path.parent != original_path else None  # type: ignore
 
