@@ -153,6 +153,22 @@ def is_ignored(
         for pattern in patterns:
             if original_path.is_dir() and pattern.endswith("/"):
                 pattern = pattern.rstrip("/")
+                # The fnmatch module compares file names against glob-style patterns.
+                # Below are some examples for clarification:
+
+                # Example: If pattern = "*.txt"
+                # It matches any file with a .txt extension, such as "file.txt" or "document.txt".
+                # But it doesn't match "file.docx".
+
+                # Example: If pattern = "data/*"
+                # It matches any file or directory within the 'data' directory, like "data/file1" or "data/dir1".
+
+                # fnmatch.fnmatch(path.name, pattern) checks if the filename component of `path` matches the pattern.
+                # So if path was "dir1/file.txt", path.name is "file.txt".
+
+                # fnmatch.fnmatch(str(path), pattern) checks if the `path` string itself matches the pattern.
+                # So for "dir1/file.txt", it checks that entire string.
+
                 if fnmatch.fnmatch(str(path), pattern) or fnmatch.fnmatch(
                     path.name, pattern
                 ):

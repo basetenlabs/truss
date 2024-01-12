@@ -427,6 +427,12 @@ def custom_model_truss_dir_with_hidden_files(tmp_path):
     (truss_dir_path / ".DS_Store").touch()
     (truss_dir_path / ".git" / ".test_file").touch()
     (truss_dir_path / "data" / "test_file").write_text("123456789")
+
+    (truss_dir_path / "example.txt").write_text("")
+    (truss_dir_path / "temp").mkdir()
+    (truss_dir_path / "temp" / "file.txt").write_text("")
+    (truss_dir_path / "code").mkdir()
+    (truss_dir_path / "code" / "file.txt").write_text("")
     yield truss_dir_path
 
 

@@ -74,6 +74,28 @@ def test_is_ignored(custom_model_truss_dir_with_hidden_files):
         custom_model_truss_dir_with_hidden_files / "model" / "model.py", patterns
     )
 
+    assert not path.is_ignored(
+        custom_model_truss_dir_with_hidden_files / "example.txt",
+        ["*.docx"],
+        base_dir=custom_model_truss_dir_with_hidden_files,
+    )
+    assert path.is_ignored(
+        custom_model_truss_dir_with_hidden_files / "example.txt",
+        ["*.txt"],
+        base_dir=custom_model_truss_dir_with_hidden_files,
+    )
+
+    assert path.is_ignored(
+        custom_model_truss_dir_with_hidden_files / "temp" / "file.txt",
+        ["temp/file.txt"],
+        base_dir=custom_model_truss_dir_with_hidden_files,
+    )
+    assert not path.is_ignored(
+        custom_model_truss_dir_with_hidden_files / "code" / "file.txt",
+        ["temp/*"],
+        base_dir=custom_model_truss_dir_with_hidden_files,
+    )
+
 
 def test_is_ignored_with_base_dir(custom_model_truss_dir_with_hidden_files):
     patterns = path.load_trussignore_patterns(path.FIXED_TRUSS_IGNORE_PATH)
