@@ -2,8 +2,18 @@ from typing import List
 
 import rich
 from InquirerPy import inquirer
+from InquirerPy.validator import ValidationError, Validator
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
+
+
+class NonEmptyValidator(Validator):
+    def validate(self, document):
+        if not document.text.strip():
+            raise ValidationError(
+                message="Please enter a non-empty value",
+                cursor_position=len(document.text),
+            )
 
 
 def inquire_remote_config() -> RemoteConfig:
@@ -15,6 +25,7 @@ def inquire_remote_config() -> RemoteConfig:
     api_key = inquirer.secret(
         message="🤫 Quietly paste your API_KEY:",
         qmark="",
+        validate=NonEmptyValidator(),
     ).execute()
 
     return RemoteConfig(
