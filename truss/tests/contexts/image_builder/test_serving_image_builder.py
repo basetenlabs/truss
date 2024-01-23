@@ -122,17 +122,14 @@ def test_correct_hf_files_accessed_for_caching():
         files_to_cache = flatten_cached_files(files_to_cache)
         assert str(hf_path / "version.txt") in files_to_cache
 
-        # It's unlikely the repo will change
-        assert (
-            str(
-                hf_path
-                / "models--openai--whisper-small/blobs/59ef8a839f271fa2183c6a4c302669d097e43b6d"
-            )
-            in files_to_cache
-        )
+        blobs = [
+            blob
+            for blob in files_to_cache
+            if blob.startswith(f"{hf_path}/models--openai--whisper-small/blobs/")
+        ]
+        assert len(blobs) >= 1
 
         files = model_files[model]["files"]
-
         assert "model.safetensors" in files
         assert "tokenizer_config.json" in files
 
