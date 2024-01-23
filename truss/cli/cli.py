@@ -451,7 +451,7 @@ def push(
     publish: bool = False,
     trusted: bool = False,
     promote: bool = False,
-    preserve_previous_prod_settings: bool = False,
+    preserve_previous_prod_deployment: bool = False,
     deployment_name: Optional[str] = None,
 ) -> None:
     """
@@ -483,7 +483,7 @@ def push(
         publish=publish,
         trusted=trusted,
         promote=promote,
-        preserve_previous_prod_settings=preserve_previous_prod_settings,
+        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
         deployment_name=deployment_name,
     )  # type: ignore
 

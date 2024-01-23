@@ -265,6 +265,6 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
 
         with pytest.raises(
             ValueError,
-            match="preserve-previous-production-settings can only be used with the '--promote' option",
+            match="preserve-previous-production-deployment can only be used with the '--promote' option",
         ):
             remote.push(th, "model_name", False, False, False, True)
