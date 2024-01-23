@@ -330,6 +330,7 @@ class TrussServer:
             def stop_servers():
                 # Send stop signal, then wait for all to exit
                 for server in servers:
+                    utils.kill_child_processes(server.pid)
                     # Sends term signal to the process, which should be handled
                     # by the termination handler.
                     server.stop()

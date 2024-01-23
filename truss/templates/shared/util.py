@@ -60,6 +60,17 @@ def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
     return True
 
 
+def kill_child_processes(parent_pid: int):
+    try:
+        parent = psutil.Process(parent_pid)
+    except psutil.NoSuchProcess:
+        return
+    children = parent.children(recursive=True)
+    for process in children:
+        process.kill()
+        process.wait()
+
+
 X = TypeVar("X")
 Y = TypeVar("Y")
 Z = TypeVar("Z")
