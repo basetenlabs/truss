@@ -48,7 +48,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = True,
         trusted: bool = False,
         promote: bool = False,
-        keep_previous_prod_settings: bool = False,
+        preserve_previous_prod_settings: bool = False,
         deployment_name: Optional[str] = None,
     ):
         if model_name.isspace():
@@ -70,9 +70,9 @@ class BasetenRemote(TrussRemote):
                 "Deployment name cannot be used for development deployment"
             )
 
-        if not promote and keep_previous_prod_settings:
+        if not promote and preserve_previous_prod_settings:
             raise ValueError(
-                "keep-previous-production-settings can only be used with the '--promote' option"
+                "preserve-previous-production-settings can only be used with the '--promote' option"
             )
 
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
@@ -96,7 +96,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             is_trusted=trusted,
             promote=promote,
-            keep_previous_prod_settings=keep_previous_prod_settings,
+            preserve_previous_prod_settings=preserve_previous_prod_settings,
             deployment_name=deployment_name,
         )
 

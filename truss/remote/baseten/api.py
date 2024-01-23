@@ -104,7 +104,7 @@ class BasetenApi:
         client_version: str,
         is_trusted: bool,
         promote: bool = False,
-        keep_previous_prod_settings: bool = False,
+        preserve_previous_prod_settings: bool = False,
         deployment_name: Optional[str] = None,
     ):
         query_string = f"""
@@ -117,7 +117,7 @@ class BasetenApi:
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
                 promote_after_deploy: {'true' if promote else 'false'},
-                scale_down_old_production: {'false' if keep_previous_prod_settings else 'true'},
+                scale_down_old_production: {'false' if preserve_previous_prod_settings else 'true'},
                 {f'name: "{deployment_name}"' if deployment_name else ""}
             ) {{
                 id

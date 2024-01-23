@@ -160,7 +160,7 @@ def create_truss_service(
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
     promote: bool = False,
-    keep_previous_prod_settings: bool = False,
+    preserve_previous_prod_settings: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
@@ -176,7 +176,7 @@ def create_truss_service(
         semver_bump: Semver bump type, defaults to "MINOR"
         is_trusted: Whether the model is trusted, defaults to False
         promote: Whether to promote the model after deploy, defaults to False
-        keep_previous_prod_settings: Wheter to scale old production deployment to zero
+        preserve_previous_prod_settings: Wheter to scale old production deployment to zero
         deployment_name: Name to apply to the created deployment. Not applied to development model
 
     Returns:
@@ -214,7 +214,7 @@ def create_truss_service(
         client_version=f"truss=={truss.version()}",
         is_trusted=is_trusted,
         promote=promote,
-        keep_previous_prod_settings=keep_previous_prod_settings,
+        preserve_previous_prod_settings=preserve_previous_prod_settings,
         deployment_name=deployment_name,
     )
     model_version_id = model_version_json["id"]

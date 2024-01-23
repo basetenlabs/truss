@@ -18,8 +18,8 @@ Push the truss as a published deployment. If no production deployment exists, pr
 <ParamField body="--promote" type="BOOL">
 Push the truss as a published deployment. Even if a production deployment exists, promote the truss to production after deploy completes.
 </ParamField>
-<ParamField body="--keep-previous-production-settings" type="BOOL">
-Keep the previous production deployment's autoscaling setting. When not specified, the previous production deployment will be updated to allow scaling to zero. Can only be use in combination with --promote option
+<ParamField body="--preserve-previous-production-settings" type="BOOL">
+Preserve the previous production deployment's autoscaling setting. When not specified, the previous production deployment will be updated to allow it to scale to zero. Can only be use in combination with --promote option.
 </ParamField>
 <ParamField body="--trusted" type="BOOL">
 Give Truss access to secrets on remote host.
