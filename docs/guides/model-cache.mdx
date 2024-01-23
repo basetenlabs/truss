@@ -51,6 +51,13 @@ model_cache:
 
 Many Hugging Face repos have model weights in different formats (`.bin`, `.safetensors`, `.h5`, `.msgpack`, etc.). You only need one of these most of the time. To minimize cold starts, ensure that you only cache the weights you need.
 
+<Tip>
+### Cache invalidation
+
+Cached model weights are bundled at build time. Thus, the only way to re-cache weights is to trigger a rebuild by creating a new deployment with `truss push`. There is not currently a mechanism for invalidating cached model weights on an existing model.
+
+</Tip>
+
 There are also some additional steps depending on the cloud bucket you want to query.
 
 ### Hugging Face 🤗
