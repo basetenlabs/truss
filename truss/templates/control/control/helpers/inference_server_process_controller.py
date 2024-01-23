@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-import shared.util as utils
 from helpers.context_managers import current_directory
 
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
@@ -50,9 +49,9 @@ class InferenceServerProcessController:
 
     def stop(self):
         if self._inference_server_process is not None:
-            utils.kill_child_processes(self._inference_server_process.pid)
-            self._inference_server_process.kill()
 
+            self._inference_server_process.terminate()
+            self._inference_server_process.wait()
             # Introduce delay to avoid failing to grab the port
             time.sleep(3)
 

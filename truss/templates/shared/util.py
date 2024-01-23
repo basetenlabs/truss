@@ -67,8 +67,10 @@ def kill_child_processes(parent_pid: int):
         return
     children = parent.children(recursive=True)
     for process in children:
+        process.terminate()
+    gone, alive = psutil.wait_procs(children, timeout=3)
+    for process in alive:
         process.kill()
-        process.wait()
 
 
 X = TypeVar("X")
