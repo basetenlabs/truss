@@ -65,7 +65,6 @@ class UvicornCustomServer(multiprocessing.Process):
         self.config = config
 
     def stop(self):
-        utils.kill_child_processes(self.pid)
         self.terminate()
 
     def run(self):
@@ -250,6 +249,7 @@ class TrussServer:
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
+            utils.kill_child_processes(self.pid)
             sys.exit()
 
         termination_handler_middleware = TerminationHandlerMiddleware(
