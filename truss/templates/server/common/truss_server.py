@@ -342,8 +342,7 @@ class TrussServer:
                 for _ in range(termination_check_attempts):
                     time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
                     if utils.all_processes_dead(servers):
-                        # Exit main process
-                        sys.exit()
+                        return
 
             for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
                 signal.signal(sig, lambda sig, frame: stop_servers())
