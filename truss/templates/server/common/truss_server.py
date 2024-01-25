@@ -267,9 +267,7 @@ class TrussServer:
             http="h11",
             host="0.0.0.0",
             port=self.http_port,
-            workers=self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_WORKERS
-            ),
+            workers=DEFAULT_NUM_WORKERS,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -320,7 +318,10 @@ class TrussServer:
             serversocket.bind((cfg.host, cfg.port))
             serversocket.listen(5)
 
-            logging.info(f"starting uvicorn with {cfg.workers} workers")
+            num_workers = (
+                self._config.get("runtime", {}).get("num_workers", DEFAULT_NUM_WORKERS),
+            )
+            logging.info(f"starting {num_workers} uvicorn server processes")
             servers: List[UvicornCustomServer] = []
             for _ in range(cfg.workers):
                 server = UvicornCustomServer(config=cfg, sockets=[serversocket])
