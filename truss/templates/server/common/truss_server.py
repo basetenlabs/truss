@@ -175,6 +175,14 @@ class BasetenEndpoints:
 
 
 class TrussServer:
+    """This wrapper class manages creation and cleanup of uvicorn server processes running the FastAPI inference server app
+
+    TrussServer runs as a main process managing UvicornCustomServer subprocesses that in turn may manage
+    their own worker processes. Notably, this main process is kept alive when running `servers_task()`
+    because of the child uvicorn server processes' main loop.
+
+    """
+
     def __init__(
         self,
         http_port: int,
