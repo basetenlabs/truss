@@ -323,7 +323,7 @@ class TrussServer:
             )
             logging.info(f"starting {num_workers} uvicorn server processes")
             servers: List[UvicornCustomServer] = []
-            for _ in range(cfg.workers):
+            for _ in range(num_workers):
                 server = UvicornCustomServer(config=cfg, sockets=[serversocket])
                 server.start()
                 servers.append(server)
