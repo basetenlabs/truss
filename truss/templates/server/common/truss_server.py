@@ -249,7 +249,7 @@ class TrussServer:
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
-            utils.kill_child_processes(self.pid)
+            utils.kill_child_processes(os.getpid())
             sys.exit()
 
         termination_handler_middleware = TerminationHandlerMiddleware(
