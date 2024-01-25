@@ -147,7 +147,7 @@ Custom base images are useful if there are scripts that need to run at build tim
 that are complicated to install. After creating a custom base image, you can specify it
 in this field.
 
-See [Custom Base Images](guides/base-images) for more detail on how to use these.
+See [Custom Base Images](/guides/base-images) for more detail on how to use these.
 
 #### `base_image.image`
 
@@ -178,7 +178,7 @@ if you have a model that has support for parallelism, and you'd like to take adv
 By default, this value is set to 1, implying that `predict` can only run for one request at a time.
 This protects the GPU from being over-utilized, and is a good default for many models.
 
-See [How to configure concurrency](guides/concurrency) for more detail on how to set this value.
+See [How to configure concurrency](/guides/concurrency) for more detail on how to set this value.
 ### `external_data`
 
 Use `external_data` if you have data that you want to be bundled in your image at build time.
@@ -209,8 +209,8 @@ The two main model servers we support are `TGI` an `vLLM`. These are
 highly optimized servers that are built to support specific LLMs.
 
 See the following examples for how to use each of these:
-* [TGI](examples/07-high-performance-tgi)
-* [vLLM](examples/08-high-performance-vllm)
+* [TGI](/examples/07-high-performance-tgi)
+* [vLLM](/examples/08-high-performance-vllm)
 
 Example configuration for TGI, running Falcon-7B:
 
@@ -237,7 +237,7 @@ The `model_cache` section is used for caching model weights at build-time. This 
 for decreasing cold start times, as downloading weights can be one of the lengthiest parts of starting a new
 model instance. Using this section ensures that model weights are cached at _build_ time.
 
-See the [model cache guide](guides/model-cache) for the full details on how to use this field.
+See the [model cache guide](/guides/model-cache) for the full details on how to use this field.
 
 <Note>
   Despite the fact that this field is called the `model_cache`, there are multiple backends supported, not just Hugging Face. You can
