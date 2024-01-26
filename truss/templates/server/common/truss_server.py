@@ -34,6 +34,7 @@ from starlette.responses import Response
 # 1. Self-termination on model load fail.
 # 2. Graceful termination.
 DEFAULT_NUM_WORKERS = 1
+DEFAULT_NUM_SERVER_PROCESSES = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
@@ -276,9 +277,7 @@ class TrussServer:
             http="h11",
             host="0.0.0.0",
             port=self.http_port,
-            workers=self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_WORKERS
-            ),
+            workers=DEFAULT_NUM_WORKERS,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -329,9 +328,12 @@ class TrussServer:
             serversocket.bind((cfg.host, cfg.port))
             serversocket.listen(5)
 
-            logging.info(f"starting uvicorn with {cfg.workers} workers")
+            num_server_procs = self._config.get("runtime", {}).get(
+                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
+            )
+            logging.info(f"starting {num_server_procs} uvicorn server processes")
             servers: List[UvicornCustomServer] = []
-            for _ in range(cfg.workers):
+            for _ in range(num_server_procs):
                 server = UvicornCustomServer(config=cfg, sockets=[serversocket])
                 server.start()
                 servers.append(server)
