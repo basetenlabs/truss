@@ -29,6 +29,7 @@ transformers library, and defining the `Model` class.
 ```python model/model.py
 from transformers import pipeline
 
+
 class Model:
 ```
 An important step in loading a model that requires authentication is to
@@ -49,7 +50,7 @@ pass the `hf_access_token` secret that is on our Baseten account.
         self._model = pipeline(
             "fill-mask",
             model="baseten/docs-example-gated-model",
-            use_auth_token=self._secrets["hf_access_token"]
+            use_auth_token=self._secrets["hf_access_token"],
         )
 
     def predict(self, model_input):
@@ -103,6 +104,7 @@ $ truss predict -d '"It is a [MASK] world"'
 ```python model/model.py
 from transformers import pipeline
 
+
 class Model:
     def __init__(self, **kwargs) -> None:
         self._secrets = kwargs["secrets"]
@@ -112,7 +114,7 @@ class Model:
         self._model = pipeline(
             "fill-mask",
             model="baseten/docs-example-gated-model",
-            use_auth_token=self._secrets["hf_access_token"]
+            use_auth_token=self._secrets["hf_access_token"],
         )
 
     def predict(self, model_input):
