@@ -175,6 +175,14 @@ class BasetenEndpoints:
 
 
 class TrussServer:
+    """This wrapper class manages creation and cleanup of uvicorn server processes running the FastAPI inference server app
+
+    TrussServer runs as a main process managing UvicornCustomServer subprocesses that in turn may manage
+    their own worker processes. Notably, this main process is kept alive when running `servers_task()`
+    because of the child uvicorn server processes' main loop.
+
+    """
+
     def __init__(
         self,
         http_port: int,
@@ -249,6 +257,7 @@ class TrussServer:
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
+            utils.kill_child_processes(os.getpid())
             sys.exit()
 
         termination_handler_middleware = TerminationHandlerMiddleware(
@@ -341,8 +350,7 @@ class TrussServer:
                 for _ in range(termination_check_attempts):
                     time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
                     if utils.all_processes_dead(servers):
-                        # Exit main process
-                        sys.exit()
+                        return
 
             for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
                 signal.signal(sig, lambda sig, frame: stop_servers())
