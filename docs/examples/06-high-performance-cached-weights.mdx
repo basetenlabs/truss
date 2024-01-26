@@ -44,29 +44,22 @@ class Model:
 
     def load(self):
         self.model = LlamaForCausalLM.from_pretrained(
-            CHECKPOINT,
-            torch_dtype=torch.float16,
-            device_map="auto"
+            CHECKPOINT, torch_dtype=torch.float16, device_map="auto"
         )
-        self.tokenizer = LlamaTokenizer.from_pretrained(
-            CHECKPOINT
-        )
+        self.tokenizer = LlamaTokenizer.from_pretrained(CHECKPOINT)
 
     def predict(self, request: Dict) -> Dict[str, List]:
         prompt = request.pop("prompt")
-        input_ids = self.tokenizer(format_prompt(prompt), return_tensors="pt").input_ids.cuda()
+        input_ids = self.tokenizer(
+            format_prompt(prompt), return_tensors="pt"
+        ).input_ids.cuda()
 
         outputs = self.model.generate(
-            inputs=input_ids,
-            do_sample=True,
-            num_beams=1,
-            max_new_tokens=100
+            inputs=input_ids, do_sample=True, num_beams=1, max_new_tokens=100
         )
         response = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
 
         return {"response": response}
-
-
 ```
 
 # Setting up the config.yaml
@@ -97,7 +90,7 @@ repo to pull down and cache at build-time, and the `ignore_patterns`
 field allows you to specify files to ignore. If this is specified, then
 this repo won't have to be pulled during runtime.
 
-Check out the [guide](/guides/model-cache) for more info.
+Check out the [guide](https://truss.baseten.co/guides/model-cache) for more info.
 
 ```yaml config.yaml
 model_cache:
@@ -159,29 +152,22 @@ class Model:
 
     def load(self):
         self.model = LlamaForCausalLM.from_pretrained(
-            CHECKPOINT,
-            torch_dtype=torch.float16,
-            device_map="auto"
+            CHECKPOINT, torch_dtype=torch.float16, device_map="auto"
         )
-        self.tokenizer = LlamaTokenizer.from_pretrained(
-            CHECKPOINT
-        )
+        self.tokenizer = LlamaTokenizer.from_pretrained(CHECKPOINT)
 
     def predict(self, request: Dict) -> Dict[str, List]:
         prompt = request.pop("prompt")
-        input_ids = self.tokenizer(format_prompt(prompt), return_tensors="pt").input_ids.cuda()
+        input_ids = self.tokenizer(
+            format_prompt(prompt), return_tensors="pt"
+        ).input_ids.cuda()
 
         outputs = self.model.generate(
-            inputs=input_ids,
-            do_sample=True,
-            num_beams=1,
-            max_new_tokens=100
+            inputs=input_ids, do_sample=True, num_beams=1, max_new_tokens=100
         )
         response = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
 
         return {"response": response}
-
-
 ```
 ```yaml config.yaml
 environment_variables: {}
