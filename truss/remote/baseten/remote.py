@@ -157,7 +157,7 @@ class BasetenRemote(TrussRemote):
         else:
             # Model identifier is of invalid type.
             raise click.UsageError(
-                "You must either be inside of a Truss directory, or provide --model-version or --model options."
+                "You must either be inside of a Truss directory, or provide --model-deployment or --model options."
             )
 
         return service_url_path, model_id, model_version_id
