@@ -328,10 +328,8 @@ class TrussServer:
             serversocket.bind((cfg.host, cfg.port))
             serversocket.listen(5)
 
-            num_server_procs = (
-                self._config.get("runtime", {}).get(
-                    "num_workers", DEFAULT_NUM_SERVER_PROCESSES
-                ),
+            num_server_procs = self._config.get("runtime", {}).get(
+                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
             )
             logging.info(f"starting {num_server_procs} uvicorn server processes")
             servers: List[UvicornCustomServer] = []
