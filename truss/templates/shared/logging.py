@@ -22,17 +22,41 @@ class HealthCheckFilter(logging.Filter):
         )
 
 
+class StreamToLogger:
+    """
+    StreamToLogger redirects stdout and stderr to logger
+    """
+
+    def __init__(self, logger, log_level, stream):
+        self.logger = logger
+        self.log_level = log_level
+        self.stream = stream
+
+    def __getattr__(self, name):
+        # we need to pass `isatty` from the stream
+        return getattr(self.stream, name)
+
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.log(self.log_level, line.rstrip())
+
+    def flush(self):
+        pass
+
+
 def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]
+
+    sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO, sys.stdout)  # type: ignore
+    sys.stderr = StreamToLogger(logging.getLogger(), logging.INFO, sys.stderr)  # type: ignore
 
     for logger in loggers:
         logger.setLevel(LEVEL)
         logger.propagate = False
 
         setup = False
-
         # let's not thrash the handlers unnecessarily
         for handler in logger.handlers:
             if handler.name == JSON_LOG_HANDLER.name:
@@ -41,6 +65,7 @@ def setup_logging() -> None:
         if not setup:
             logger.handlers.clear()
             logger.addHandler(JSON_LOG_HANDLER)
+        # print = logger.info
 
         # some special handling for request logging
         if logger.name == "uvicorn.access":
