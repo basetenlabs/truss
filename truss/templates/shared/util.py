@@ -5,6 +5,9 @@ from typing import Callable, Dict, List, TypeVar
 
 import psutil
 
+# number of seconds to wait for truss server child processes before sending kill signal
+CHILD_PROCESS_WAIT_TIMEOUT_SECONDS = 120
+
 
 def model_supports_predict_proba(model: object) -> bool:
     if not hasattr(model, "predict_proba"):
@@ -58,6 +61,21 @@ def all_processes_dead(procs: List[multiprocessing.Process]) -> bool:
         if proc.is_alive():
             return False
     return True
+
+
+def kill_child_processes(parent_pid: int):
+    try:
+        parent = psutil.Process(parent_pid)
+    except psutil.NoSuchProcess:
+        return
+    children = parent.children(recursive=True)
+    for process in children:
+        process.terminate()
+    gone, alive = psutil.wait_procs(
+        children, timeout=CHILD_PROCESS_WAIT_TIMEOUT_SECONDS
+    )
+    for process in alive:
+        process.kill()
 
 
 X = TypeVar("X")
