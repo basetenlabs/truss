@@ -33,7 +33,8 @@ class StreamToLogger:
         self.stream = stream
 
     def __getattr__(self, name):
-        # we need to pass `isatty` from the stream
+        # we need to pass `isatty` from the stream for uvicorn
+        # this is a more general, less hacky fix
         return getattr(self.stream, name)
 
     def write(self, buf):
@@ -57,6 +58,7 @@ def setup_logging() -> None:
         logger.propagate = False
 
         setup = False
+
         # let's not thrash the handlers unnecessarily
         for handler in logger.handlers:
             if handler.name == JSON_LOG_HANDLER.name:
@@ -65,7 +67,6 @@ def setup_logging() -> None:
         if not setup:
             logger.handlers.clear()
             logger.addHandler(JSON_LOG_HANDLER)
-        # print = logger.info
 
         # some special handling for request logging
         if logger.name == "uvicorn.access":
