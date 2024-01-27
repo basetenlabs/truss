@@ -232,29 +232,7 @@ def watch(
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
     logs_url = remote_provider.get_remote_logs_url(service)
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
-
-    # import atexit
-    # import cProfile
-    # import signal
-    # import sys
-
-    # # Enable profiling
-    # rich.print("🔬 Enabling profiling...")
-    # pr = cProfile.Profile()
-    # pr.enable()
-
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
-
-    # def exit():
-    #     pr.disable()
-    #     rich.print("Profiling complete")
-    #     pr.dump_stats("truss_watch_profile.prof")
-
-    # def sig_handler(signo, frame):
-    #     sys.exit(0)
-
-    # atexit.register(exit)
-    # signal.signal(signal.SIGTERM. sig_handler)
 
 
 def _extract_and_validate_model_identifier(

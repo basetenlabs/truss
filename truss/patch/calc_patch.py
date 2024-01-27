@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -58,9 +57,6 @@ def calc_truss_patch(
         ignored. E.g. at the root level, only changes to config.yaml are
         checked, any other changes are ignored.
     """
-    logger.info(
-        f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} calc_truss_patch"
-    )
 
     def _relative_to_root(path: Path) -> str:
         return str(path.relative_to(truss_dir))
@@ -168,9 +164,6 @@ def calc_truss_patch(
         elif _under_unsupported_patch_dir(path):
             logger.info(f"Patching not supported for updating {path}")
             return None
-    logger.info(
-        f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} returning patches from calc_truss_patch"
-    )
     return patches
 
 

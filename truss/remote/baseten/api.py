@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -230,9 +229,6 @@ class BasetenApi:
         return resp["data"]
 
     def patch_draft_truss(self, model_name, patch_request):
-        logger.info(
-            f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} BasetenApi.patch_draft_truss"
-        )
         patch = base64_encoded_json_str(patch_request.to_dict())
         query_string = f"""
         mutation {{
@@ -250,7 +246,4 @@ class BasetenApi:
         }}
         """
         resp = self._post_graphql_query(query_string)
-        logger.info(
-            f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} response from BasetenApi.patch_draft_truss"
-        )
         return resp["data"]["patch_draft_truss"]

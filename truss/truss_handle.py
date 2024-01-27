@@ -5,7 +5,6 @@ import logging
 import sys
 import uuid
 from dataclasses import replace
-from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -858,9 +857,6 @@ class TrussHandle:
         Returns None if signature cannot be found locally for previous truss hash
         or if the change cannot be expressed with currently supported patches.
         """
-        logger.info(
-            f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} TrussHandle.calc_patch"
-        )
         prev_sign_str = LocalConfigHandler.get_signature(prev_truss_hash)
         if prev_sign_str is None:
             logger.info(f"Signature not found for truss for hash {prev_truss_hash}")
