@@ -4,6 +4,7 @@ import random
 import string
 import tempfile
 from contextlib import contextmanager
+from datetime import datetime
 from distutils.dir_util import remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
@@ -24,7 +25,11 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
     if not dest.exists():
         dest.mkdir(parents=True)
 
-    for sub_path in src.rglob("*"):
+    sub_paths = list(src.rglob("*"))
+    print(
+        f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} copy_tree_path, num subpaths: {len(sub_paths)}"
+    )
+    for sub_path in sub_paths:
         if is_ignored(sub_path, patterns, base_dir=src):
             continue
 

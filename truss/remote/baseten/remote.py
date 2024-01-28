@@ -1,5 +1,6 @@
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -204,16 +205,22 @@ class BasetenRemote(TrussRemote):
             raise click.UsageError(
                 "No development model found. Run `truss push` then try again."
             )
+        # TrussFilesSyncer(
+        #     Path(target_directory),
+        #     self,
+        # ).start()
+
+        # # Since the `TrussFilesSyncer` runs a daemon thread, we run this infinite loop on the main
+        # # thread to keep it alive. When this loop is interrupted by the user, then the whole process
+        # # can shutdown gracefully.
+        # while True:
+        #     pass
+
+        # TODO(helen): attempt to run on main thread
         TrussFilesSyncer(
             Path(target_directory),
             self,
-        ).start()
-
-        # Since the `TrussFilesSyncer` runs a daemon thread, we run this infinite loop on the main
-        # thread to keep it alive. When this loop is interrupted by the user, then the whole process
-        # can shutdown gracefully.
-        while True:
-            pass
+        ).run()
 
     def patch(
         self,
@@ -231,6 +238,9 @@ class BasetenRemote(TrussRemote):
             )
             return
         model_name = truss_handle.spec.config.model_name
+        logger.info(
+            f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} calling get_dev_version"
+        )
         dev_version = get_dev_version(self._api, model_name)  # type: ignore
         if not dev_version:
             logger.error(
@@ -246,11 +256,15 @@ Ensure that there exists a running remote deployment before attempting to watch 
             """
             )
             return
+        logger.info(
+            f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')} calling LocalConfigHandler.add_signature"
+        )
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
-        except Exception:
+        except Exception as e:
             logger.error("Failed to calculate patch, bailing on patching")
+            logger.error(e)
             return
         if patch_request:
             if (

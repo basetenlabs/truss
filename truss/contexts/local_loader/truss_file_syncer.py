@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from pathlib import Path
 from threading import Thread
 
@@ -28,6 +29,14 @@ class TrussFilesSyncer(Thread):
         """Watch for files in background and apply appropriate patches."""
         from watchfiles import watch
 
+        # import atexit
+        # import cProfile
+        # import signal
+        # import sys
+        # # Enable profiling
+        # rich.print("🔬 Enabling profiling...")
+        # pr = cProfile.Profile()
+        # pr.enable()
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
@@ -38,4 +47,18 @@ class TrussFilesSyncer(Thread):
         for _ in watch(
             self.watch_path, watch_filter=self.watch_filter, raise_interrupt=False
         ):
+            rich.print(
+                f"{datetime.now().strftime('%a %d %b %Y, %I:%M:%S %p')}: detected changed file"
+            )
             self.remote.patch(self.watch_path, self._logger)
+
+        # def exit():
+        #     pr.disable()
+        #     rich.print("Profiling complete")
+        #     pr.dump_stats("truss_watch_profile.prof")
+
+        # def sig_handler(signo, frame):
+        #     sys.exit(0)
+
+        # atexit.register(exit)
+        # signal.signal(signal.SIGTERM. sig_handler)
