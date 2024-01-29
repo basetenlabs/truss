@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+import time
 from typing import List, Optional, Tuple
 
 import click
@@ -213,7 +214,7 @@ class BasetenRemote(TrussRemote):
         # thread to keep it alive. When this loop is interrupted by the user, then the whole process
         # can shutdown gracefully.
         while True:
-            pass
+            time.sleep(100)
 
     def patch(
         self,
