@@ -431,6 +431,26 @@ def custom_model_truss_dir_with_hidden_files(tmp_path):
 
 
 @pytest.fixture
+def custom_model_truss_dir_with_truss_ignore(tmp_path):
+    truss_dir_path: Path = tmp_path / "custom_model_truss_dir_with_truss_ignore"
+    _ = init(str(truss_dir_path))
+    (truss_dir_path / "random_folder_1").mkdir(parents=True, exist_ok=True)
+    (truss_dir_path / "random_folder_2").mkdir(parents=True, exist_ok=True)
+    (truss_dir_path / "random_file_1.txt").touch()
+    (truss_dir_path / "random_folder_1" / "random_file_2.txt").touch()
+    (truss_dir_path / "random_folder_2" / "random_file_3.txt").touch()
+
+    (truss_dir_path / ".truss_ignore").write_text(
+        """
+        random_folder_1
+        random_file_1.txt
+        """
+    )
+
+    yield truss_dir_path
+
+
+@pytest.fixture
 def custom_model_truss_dir_with_pre_and_post(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post"
     handle = init(str(dir_path))

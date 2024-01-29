@@ -51,6 +51,13 @@ model_cache:
 
 Many Hugging Face repos have model weights in different formats (`.bin`, `.safetensors`, `.h5`, `.msgpack`, etc.). You only need one of these most of the time. To minimize cold starts, ensure that you only cache the weights you need.
 
+<Tip>
+### Cache invalidation
+
+Cached model weights are bundled at build time. Thus, the only way to re-cache weights is to trigger a rebuild by creating a new deployment with `truss push`. There is not currently a mechanism for invalidating cached model weights on an existing model.
+
+</Tip>
+
 There are also some additional steps depending on the cloud bucket you want to query.
 
 ### Hugging Face 🤗
@@ -62,7 +69,7 @@ However, if you want to deploy a model from a gated repo like [Llama 2](https://
     [Grab an API key](https://huggingface.co/settings/tokens) from Hugging Face with `read` access. Make sure you have access to the model you want to serve.
   </Step>
   <Step title="Add it to Baseten Secrets Manager">
-    Paste your API key in your [secrets manager in Baseten](https://app.baseten.co/settings/secrets) under the key `hf_access_token`. You can read more about secrets [here](https://truss.baseten.co/guides/secrets).
+    Paste your API key in your [secrets manager in Baseten](https://app.baseten.co/settings/secrets) under the key `hf_access_token`. You can read more about secrets [here](/guides/secrets).
   </Step>
   <Step title="Update Config">
     In your Truss's `config.yml`, add the following code:
@@ -132,7 +139,7 @@ model_cache:
 ...
 ```
 
-If you are accessing a public GCS bucket, you can ignore the subsequent steps, but make sure you set an appropriate appropriate policy on your bucket. Users should be able to list and view all files. Otherwise, the model build will fail.
+If you are accessing a public S3 bucket, you can ignore the subsequent steps, but make sure you set an appropriate appropriate policy on your bucket. Users should be able to list and view all files. Otherwise, the model build will fail.
 
 However, for a private S3 bucket, you need to first find your `aws_access_key_id`, `aws_secret_access_key`, and `aws_region` in your AWS dashboard. Create a file named `s3_credentials.json`. Inside this file, add the credentials that you identified earlier as shown below. Place this file into the `data` directory of your Truss.
 The key `aws_session_token` can be included, but is optional.

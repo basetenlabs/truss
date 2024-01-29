@@ -34,6 +34,7 @@ from starlette.responses import Response
 # 1. Self-termination on model load fail.
 # 2. Graceful termination.
 DEFAULT_NUM_WORKERS = 1
+DEFAULT_NUM_SERVER_PROCESSES = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
@@ -175,6 +176,14 @@ class BasetenEndpoints:
 
 
 class TrussServer:
+    """This wrapper class manages creation and cleanup of uvicorn server processes running the FastAPI inference server app
+
+    TrussServer runs as a main process managing UvicornCustomServer subprocesses that in turn may manage
+    their own worker processes. Notably, this main process is kept alive when running `servers_task()`
+    because of the child uvicorn server processes' main loop.
+
+    """
+
     def __init__(
         self,
         http_port: int,
@@ -249,6 +258,7 @@ class TrussServer:
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
+            utils.kill_child_processes(os.getpid())
             sys.exit()
 
         termination_handler_middleware = TerminationHandlerMiddleware(
@@ -267,9 +277,7 @@ class TrussServer:
             http="h11",
             host="0.0.0.0",
             port=self.http_port,
-            workers=self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_WORKERS
-            ),
+            workers=DEFAULT_NUM_WORKERS,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -320,9 +328,12 @@ class TrussServer:
             serversocket.bind((cfg.host, cfg.port))
             serversocket.listen(5)
 
-            logging.info(f"starting uvicorn with {cfg.workers} workers")
+            num_server_procs = self._config.get("runtime", {}).get(
+                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
+            )
+            logging.info(f"starting {num_server_procs} uvicorn server processes")
             servers: List[UvicornCustomServer] = []
-            for _ in range(cfg.workers):
+            for _ in range(num_server_procs):
                 server = UvicornCustomServer(config=cfg, sockets=[serversocket])
                 server.start()
                 servers.append(server)
@@ -341,8 +352,7 @@ class TrussServer:
                 for _ in range(termination_check_attempts):
                     time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
                     if utils.all_processes_dead(servers):
-                        # Exit main process
-                        sys.exit()
+                        return
 
             for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
                 signal.signal(sig, lambda sig, frame: stop_servers())

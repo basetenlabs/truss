@@ -47,7 +47,7 @@ system_packages:
 ## Configuring private base images with build time secrets
 
 Secrets of the form `DOCKER_REGISTRY_<REGISTRY_URL>` will be supplied to your model build to authenticate image pulls from private container registries.
-For information on where to store secret values see the [secrets guide](secrets#storing-secrets-on-your-remote).
+For information on where to store secret values see the [secrets guide](/guides/secrets#storing-secrets-on-your-remote).
 
 For example, to configure docker credentials to a private dockerhub repository your `config.yaml` should include the following secret and placeholder:
 

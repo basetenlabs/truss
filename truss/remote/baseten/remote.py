@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+import time
 from typing import List, Optional, Tuple
 
 import click
@@ -48,6 +49,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = True,
         trusted: bool = False,
         promote: bool = False,
+        preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
     ):
         if model_name.isspace():
@@ -66,12 +68,17 @@ class BasetenRemote(TrussRemote):
 
         if not publish and deployment_name:
             raise ValueError(
-                "ERROR: deployment name cannot be used for development deployment"
+                "Deployment name cannot be used for development deployment"
+            )
+
+        if not promote and preserve_previous_prod_deployment:
+            raise ValueError(
+                "preserve-previous-production-deployment can only be used with the '--promote' option"
             )
 
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
             raise ValueError(
-                "ERROR: deployment name must only contain alphanumeric, -, _ and . characters"
+                "Deployment name must only contain alphanumeric, -, _ and . characters"
             )
 
         encoded_config_str = base64_encoded_json_str(
@@ -90,6 +97,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             is_trusted=trusted,
             promote=promote,
+            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
         )
 
@@ -157,7 +165,7 @@ class BasetenRemote(TrussRemote):
         else:
             # Model identifier is of invalid type.
             raise click.UsageError(
-                "You must either be inside of a Truss directory, or provide --model-version or --model options."
+                "You must either be inside of a Truss directory, or provide --model-deployment or --model options."
             )
 
         return service_url_path, model_id, model_version_id
@@ -204,6 +212,8 @@ class BasetenRemote(TrussRemote):
             raise click.UsageError(
                 "No development model found. Run `truss push` then try again."
             )
+
+        # TODO(helen): refactor this such that truss watch runs on the main thread.
         TrussFilesSyncer(
             Path(target_directory),
             self,
@@ -213,7 +223,7 @@ class BasetenRemote(TrussRemote):
         # thread to keep it alive. When this loop is interrupted by the user, then the whole process
         # can shutdown gracefully.
         while True:
-            pass
+            time.sleep(100)
 
     def patch(
         self,
