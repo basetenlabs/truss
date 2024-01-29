@@ -415,6 +415,18 @@ def predict(
     ),
 )
 @click.option(
+    "--preserve-previous-production-deployment",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Preserve the previous production deployment's autoscaling setting. When not specified, "
+        "the previous production deployment will be updated to allow it to scale to zero. "
+        "Can only be use in combination with --promote option"
+    ),
+)
+@click.option(
     "--trusted",
     type=bool,
     is_flag=True,
@@ -439,6 +451,7 @@ def push(
     publish: bool = False,
     trusted: bool = False,
     promote: bool = False,
+    preserve_previous_prod_deployment: bool = False,
     deployment_name: Optional[str] = None,
 ) -> None:
     """
@@ -470,6 +483,7 @@ def push(
         publish=publish,
         trusted=trusted,
         promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
         deployment_name=deployment_name,
     )  # type: ignore
 
