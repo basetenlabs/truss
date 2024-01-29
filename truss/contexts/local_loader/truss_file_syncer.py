@@ -40,8 +40,13 @@ class TrussFilesSyncer(Thread):
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
+        start_time = datetime.now()
         rich.print(f"🚰 Attempting to sync truss at '{self.watch_path}' with remote")
         self.remote.patch(self.watch_path, self._logger)
+        end_time = datetime.now()
+        self._logger.info(
+            f"Synced truss at '{self.watch_path}' with remote in {end_time - start_time}"
+        )
 
         rich.print(f"👀 Watching for changes to truss at '{self.watch_path}' ...")
         for _ in watch(
