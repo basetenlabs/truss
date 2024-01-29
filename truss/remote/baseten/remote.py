@@ -205,6 +205,8 @@ class BasetenRemote(TrussRemote):
             raise click.UsageError(
                 "No development model found. Run `truss push` then try again."
             )
+
+        # TODO(helen): refactor this such that truss watch runs on the main thread.
         TrussFilesSyncer(
             Path(target_directory),
             self,
