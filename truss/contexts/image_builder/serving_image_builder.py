@@ -25,6 +25,7 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRITON_SERVER_CODE_DIR,
+    TRTLLM_TRUSS_DIR,
 )
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
@@ -498,7 +499,6 @@ class ServingImageBuilder(ImageBuilder):
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
             return
-        # ModelServer.TrussServer and ModelServer.TRT_LLM use the default truss image builder
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
@@ -513,6 +513,10 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+
+        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
+        if config.build.model_server is ModelServer.TRT_LLM:
+            copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
