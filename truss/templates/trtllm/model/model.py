@@ -2,7 +2,7 @@ import os
 from itertools import count
 from pathlib import Path
 
-from build_engine_utils import BuildConfig, build_engine
+import build_engine_utils
 from client import TritonClient
 from transformers import AutoTokenizer
 from utils import download_engine, server_loaded
@@ -29,10 +29,11 @@ class Model:
         pipeline_parallel_count = self._config["model_metadata"].get(
             "pipeline_parallelism", 1
         )
+
+        hf_access_token = None
         if "hf_access_token" in self._secrets._base_secrets.keys():
             hf_access_token = self._secrets["hf_access_token"]
-        else:
-            hf_access_token = None
+
         is_external_engine_repo = "engine_repository" in self._config["model_metadata"]
         tokenizer_repository = self._config["model_metadata"]["tokenizer_repository"]
 
@@ -53,15 +54,13 @@ class Model:
                     fp=self._data_dir,
                     auth_token=hf_access_token,
                 )
-        else:
-            build_config = BuildConfig(**self._config["model_metadata"]["engine_build"])
-            build_engine(
-                model_repo=tokenizer_repository,
-                config=build_config,
+
+        if "engine" in self._config["model_metadata"]:
+            # The following code comes from the `build_server` base image
+            build_engine_utils.build_engine_from_config_args(
+                engine_args=self._config["model_metadata"]["engine"],
+                hf_model_repository=tokenizer_repository,
                 dst=self._data_dir,
-                hf_auth_token=hf_access_token,
-                tensor_parallelism=tensor_parallel_count,
-                pipeline_parallelism=pipeline_parallel_count,
             )
 
         # Load Triton Server and model
