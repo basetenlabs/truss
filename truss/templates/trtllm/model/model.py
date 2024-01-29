@@ -2,6 +2,7 @@ import os
 from itertools import count
 from pathlib import Path
 
+from build_engine_utils import BuildConfig, build_engine
 from client import TritonClient
 from transformers import AutoTokenizer
 from utils import download_engine, server_loaded
@@ -33,6 +34,7 @@ class Model:
         else:
             hf_access_token = None
         is_external_engine_repo = "engine_repository" in self._config["model_metadata"]
+        tokenizer_repository = self._config["model_metadata"]["tokenizer_repository"]
 
         # Instantiate TritonClient
         self.triton_client = TritonClient(
@@ -41,7 +43,7 @@ class Model:
             parallel_count=tensor_parallel_count * pipeline_parallel_count,
         )
 
-        # Download model from Hugging Face Hub if specified
+        # Download or build engine
         if is_external_engine_repo:
             if not server_loaded():
                 download_engine(
@@ -51,9 +53,18 @@ class Model:
                     fp=self._data_dir,
                     auth_token=hf_access_token,
                 )
+        else:
+            build_config = BuildConfig(**self._config["model_metadata"]["engine_build"])
+            build_engine(
+                model_repo=tokenizer_repository,
+                config=build_config,
+                dst=self._data_dir,
+                hf_auth_token=hf_access_token,
+                tensor_parallelism=tensor_parallel_count,
+                pipeline_parallelism=pipeline_parallel_count,
+            )
 
         # Load Triton Server and model
-        tokenizer_repository = self._config["model_metadata"]["tokenizer_repository"]
         env = {"triton_tokenizer_repository": tokenizer_repository}
         if hf_access_token is not None:
             env["HUGGING_FACE_HUB_TOKEN"] = hf_access_token

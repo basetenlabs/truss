@@ -518,6 +518,16 @@ class ServingImageBuilder(ImageBuilder):
         if config.build.model_server is ModelServer.TRT_LLM:
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
+            # Check to see if TP and GPU count are the same
+            if "tensor_parallelism" in config.model_metadata:
+                if (
+                    config.model_metadata["tensor_parallelism"]
+                    != config.resources.accelerator.count
+                ):
+                    raise ValueError(
+                        "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                    )
+
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
