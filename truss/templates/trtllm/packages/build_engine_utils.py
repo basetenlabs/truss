@@ -1,65 +1,88 @@
-import logging
-import subprocess
-import sys
-import tempfile
+from enum import Enum
 from pathlib import Path
+from typing import Optional
 
-from huggingface_hub import snapshot_download
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-
-class BuildConfig(BaseModel):
-    cmd: str
-    args: str
-
-    output_arg: str = "--output_dir"
-    model_arg: str = "--model_dir"
-    tensor_parallelism_arg: str = "--tp_size"
-    pipeline_parallelism_arg: str = "--pp_size"
-    world_arg: str = "--world_size"
+# todo(Abu): consolidate this with build_engine.py
+# Enums / BaseClass is duplicated from build_engine so that we know what args / configurations
+# are available to us at run-time.
 
 
-def build_engine_from_cmd_args(
-    hf_model_repo: str,
-    config: BuildConfig,
-    dst: Path,
-    hf_auth_token: str,
-    tensor_parallelism: int,
-    pipeline_parallelism: int,
-):
-    """This implementation directly runs a user-provided command to build the engine."""
-    logging.info(f"building {hf_model_repo} with {config} at {dst}")
+class Quant(Enum):
+    NO_QUANT = "no_quant"
+    WEIGHTS_ONLY = "weights_only"
+    WEIGHTS_KV_INT8 = "weights_kv_int8"
+    SMOOTH_QUANT = "smooth_quant"
 
-    with tempfile.TemporaryDirectory() as model_dst:
-        logging.info(f"download model {hf_model_repo}")
-        snapshot_download(
-            hf_model_repo,
-            local_dir=model_dst,
-            max_workers=4,
-            **({"use_auth_token": hf_auth_token} if hf_auth_token is not None else {}),
-        )
-        build_cmd = (
-            [sys.executable, "/app/tensorrt_llm/" + config.cmd]
-            + config.args.split(" ")
-            + [config.output_arg, str(dst)]
-            + [config.model_arg, str(model_dst)]
-            + [config.tensor_parallelism_arg, str(tensor_parallelism)]
-            + [config.pipeline_parallelism_arg, str(pipeline_parallelism)]
-            + [config.world_arg, str(tensor_parallelism * pipeline_parallelism)]
-        )
-        logging.info(f"build engine with command \"{' '.join(build_cmd)}\"")
-        completed_process = subprocess.run(build_cmd, capture_output=False)
 
-        if completed_process.returncode != 0:
-            raise Exception(
-                f"build failed with {completed_process.returncode} exit code"
-            )
+class EngineType(Enum):
+    LLAMA = "llama"
+    MISTRAL = "mistral"
+
+
+class ArgsConfig(BaseModel):
+    max_input_len: Optional[int] = None
+    max_output_len: Optional[int] = None
+    max_batch_size: Optional[int] = None
+    tp_size: Optional[int] = None
+    pp_size: Optional[int] = None
+    world_size: Optional[int] = None
+    gather_all_token_logits: Optional[bool] = None
+    multi_block_mode: Optional[bool] = None
+    remove_input_padding: Optional[bool] = None
+    use_gpt_attention_plugin: Optional[str] = None
+    paged_kv_cache: Optional[bool] = None
+    use_inflight_batching: Optional[bool] = None
+    enable_context_fmha: Optional[bool] = None
+    use_gemm_plugin: Optional[str] = None
+    use_weight_only: Optional[bool] = None
+    output_dir: Optional[str] = None
+    model_dir: Optional[str] = None
+    ft_model_dir: Optional[str] = None
+    dtype: Optional[str] = None
+    int8_kv_cache: Optional[bool] = None
+    use_smooth_quant: Optional[bool] = None
+    per_token: Optional[bool] = None
+    per_channel: Optional[bool] = None
+    parallel_build: Optional[bool] = None
+
+    # to disable warning because `model_dir` starts with `model_` prefix
+    model_config = ConfigDict(protected_namespaces=())
+
+    def as_command_arguments(self):
+        non_bool_args = [
+            element
+            for arg, value in self.dict().items()
+            for element in [f"--{arg}", str(value)]
+            if value is not None and not isinstance(value, bool)
+        ]
+        bool_args = [
+            f"--{arg}"
+            for arg, value in self.dict().items()
+            if isinstance(value, bool) and value
+        ]
+        return non_bool_args + bool_args
+
+
+class CalibrationConfig(BaseModel):
+    kv_cache: Optional[bool] = None  # either to calibrate kv cache
+    sq_alpha: Optional[float] = None
+
+    def cache_path(self) -> Path:
+        if self.kv_cache is not None:
+            return Path("kv_cache")
+        else:
+            return Path(f"sq_{self.sq_alpha}")
 
 
 def build_engine_from_config_args(
-    engine_args: dict,
-    hf_model_repository: str,
+    repo: str,
+    args: ArgsConfig,
+    quant: Quant,
     dst: Path,
+    calibration: Optional[CalibrationConfig] = None,
+    engine_type: Optional[EngineType] = None,
 ):
     import sys
 
@@ -71,8 +94,13 @@ def build_engine_from_config_args(
     from build_engine import Engine, build_engine
     from trtllm_utils import docker_tag_aware_file_cache
 
-    engine = Engine(**engine_args)
-    engine.repo = hf_model_repository
+    engine = Engine(
+        repo=repo,
+        args=args,
+        quant=quant,
+        calibration=calibration,
+        type=engine_type,
+    )
 
     with docker_tag_aware_file_cache("/root/.cache/trtllm"):
         built_engine = build_engine(engine, download_remote=True)
