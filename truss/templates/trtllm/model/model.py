@@ -58,7 +58,9 @@ class Model:
         if "engine" in self._config["model_metadata"]:
             # The following code comes from the `build_server` base image
             build_engine_utils.build_engine_from_config_args(
-                engine_args=self._config["model_metadata"]["engine"],
+                engine_args=build_engine_utils.EngineBuildArgs.from_config(
+                    self._config["model_metadata"]["engine"]
+                ),
                 hf_model_repository=tokenizer_repository,
                 dst=self._data_dir,
             )

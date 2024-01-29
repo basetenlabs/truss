@@ -76,13 +76,31 @@ class CalibrationConfig(BaseModel):
             return Path(f"sq_{self.sq_alpha}")
 
 
+class EngineBuildArgs(BaseModel):
+    repo: Optional[str] = None
+    args: Optional[ArgsConfig] = None
+    quant: Optional[Quant] = None
+    calibration: Optional[CalibrationConfig] = None
+    engine_type: Optional[EngineType] = None
+
+    @classmethod
+    def from_config(cls, config: dict):
+        return cls(
+            repo=config["repo"] if "repo" in config else None,
+            args=ArgsConfig(**config["args"]),
+            quant=Quant(config["quant"] if "quant" in config else None),
+            calibration=CalibrationConfig(
+                **config["calibration"] if "calibration" in config else None
+            ),
+            engine_type=EngineType(
+                config["engine_type"] if "engine_type" in config else None
+            ),
+        )
+
+
 def build_engine_from_config_args(
-    repo: str,
-    args: ArgsConfig,
-    quant: Quant,
+    engine_build_args: EngineBuildArgs,
     dst: Path,
-    calibration: Optional[CalibrationConfig] = None,
-    engine_type: Optional[EngineType] = None,
 ):
     import sys
 
@@ -94,13 +112,7 @@ def build_engine_from_config_args(
     from build_engine import Engine, build_engine
     from trtllm_utils import docker_tag_aware_file_cache
 
-    engine = Engine(
-        repo=repo,
-        args=args,
-        quant=quant,
-        calibration=calibration,
-        type=engine_type,
-    )
+    engine = Engine(**engine_build_args.model_dump())
 
     with docker_tag_aware_file_cache("/root/.cache/trtllm"):
         built_engine = build_engine(engine, download_remote=True)
