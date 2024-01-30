@@ -1,12 +1,11 @@
 import logging
 from pathlib import Path
-from threading import Thread
 
 import rich
 
 
-class TrussFilesSyncer(Thread):
-    """Daemon thread that watches for changes in the user's Truss and syncs to running service."""
+class TrussFilesSyncer:
+    """Watches for changes in the user's Truss and syncs to running service."""
 
     def __init__(
         self,
@@ -15,7 +14,6 @@ class TrussFilesSyncer(Thread):
     ) -> None:
         from truss.util.path import is_ignored, load_trussignore_patterns
 
-        super().__init__(daemon=True)
         self._logger = logging.Logger(__name__)
         self.watch_path = watch_path
         self.remote = remote

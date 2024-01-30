@@ -1,7 +1,6 @@
 import logging
 import re
 from pathlib import Path
-import time
 from typing import List, Optional, Tuple
 
 import click
@@ -213,17 +212,10 @@ class BasetenRemote(TrussRemote):
                 "No development model found. Run `truss push` then try again."
             )
 
-        # TODO(helen): refactor this such that truss watch runs on the main thread.
         TrussFilesSyncer(
             Path(target_directory),
             self,
-        ).start()
-
-        # Since the `TrussFilesSyncer` runs a daemon thread, we run this infinite loop on the main
-        # thread to keep it alive. When this loop is interrupted by the user, then the whole process
-        # can shutdown gracefully.
-        while True:
-            time.sleep(100)
+        ).run()
 
     def patch(
         self,
