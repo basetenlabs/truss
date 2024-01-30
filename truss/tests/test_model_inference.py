@@ -189,7 +189,7 @@ def test_requirements_file_truss():
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
-        # The prediction imports torch which is specific in a requirements.txt and returns if GPU is availabel.
+        # The prediction imports torch which is specified in a requirements.txt and returns if GPU is available.
         response = requests.post(full_url, json={})
         assert response.status_code == 200
         assert response.json() is False
