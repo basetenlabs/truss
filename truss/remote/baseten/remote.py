@@ -1,12 +1,13 @@
+import asyncio
 import logging
 import re
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import click
+import rich
 import yaml
 from requests import ReadTimeout
-from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
@@ -30,6 +31,10 @@ from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote, TrussService
 from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
+from truss.util.path import is_ignored, load_trussignore_patterns
+from watchfiles import awatch
+
+logger = logging.getLogger(__name__)
 
 
 class BasetenRemote(TrussRemote):
@@ -198,6 +203,22 @@ class BasetenRemote(TrussRemote):
     ) -> str:
         return service.logs_url(self._remote_url)
 
+    async def _watch(self, watch_path: Path, truss_ignore_patterns: List[str]):
+        """Watches for changes in watch_path and sends patch requests for detected changes.
+
+        Changes are detected asynchronously using watchfiles.awatch."""
+
+        def watch_filter(_, path):
+            return not is_ignored(
+                Path(path),
+                truss_ignore_patterns,
+            )
+
+        async for _ in awatch(
+            watch_path, watch_filter=watch_filter, raise_interrupt=False
+        ):
+            self.patch(watch_path)
+
     def sync_truss_to_dev_version_by_name(
         self,
         model_name: str,
@@ -212,15 +233,21 @@ class BasetenRemote(TrussRemote):
                 "No development model found. Run `truss push` then try again."
             )
 
-        TrussFilesSyncer(
-            Path(target_directory),
-            self,
-        ).run()
+        watch_path = Path(target_directory)
+
+        rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
+        self.patch(watch_path)
+
+        # disable watchfiles logger
+        logging.getLogger("watchfiles.main").disabled = True
+
+        rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
+        truss_ignore_patterns = load_trussignore_patterns()
+        asyncio.run(self._watch(watch_path, truss_ignore_patterns))
 
     def patch(
         self,
         watch_path: Path,
-        logger: logging.Logger,
     ):
         try:
             truss_handle = TrussHandle(watch_path)
