@@ -50,8 +50,8 @@ def setup_logging() -> None:
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]
 
-    sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO, sys._stdout)  # type: ignore
-    sys.stderr = StreamToLogger(logging.getLogger(), logging.INFO, sys._stderr)  # type: ignore
+    sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stdout__)  # type: ignore
+    sys.stderr = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stderr__)  # type: ignore
 
     for logger in loggers:
         logger.setLevel(LEVEL)
