@@ -545,14 +545,9 @@ class TrussHandle:
         Replaces requirements in truss model's config with those from the file
         at the given path.
         """
-        with Path(requirements_filepath).open() as req_file:
-            self.update_requirements(
-                [
-                    line.strip()
-                    for line in req_file.readlines()
-                    if not line.strip().startswith("#")
-                ]
-            )
+        self._update_config(
+            lambda conf: replace(conf, requirements_file=requirements_filepath)
+        )
 
     def add_system_package(self, system_package: str):
         """Add a system package requirement to truss model's config."""

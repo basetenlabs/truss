@@ -75,9 +75,6 @@ COPY ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
-
-
-
 {% endblock %}
 
 {% block run %}
