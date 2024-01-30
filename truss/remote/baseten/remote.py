@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+import time
 from typing import List, Optional, Tuple
 
 import click
@@ -48,6 +49,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = True,
         trusted: bool = False,
         promote: bool = False,
+        preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
     ):
         if model_name.isspace():
@@ -67,6 +69,11 @@ class BasetenRemote(TrussRemote):
         if not publish and deployment_name:
             raise ValueError(
                 "Deployment name cannot be used for development deployment"
+            )
+
+        if not promote and preserve_previous_prod_deployment:
+            raise ValueError(
+                "preserve-previous-production-deployment can only be used with the '--promote' option"
             )
 
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
@@ -90,6 +97,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             is_trusted=trusted,
             promote=promote,
+            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
         )
 
@@ -204,6 +212,8 @@ class BasetenRemote(TrussRemote):
             raise click.UsageError(
                 "No development model found. Run `truss push` then try again."
             )
+
+        # TODO(helen): refactor this such that truss watch runs on the main thread.
         TrussFilesSyncer(
             Path(target_directory),
             self,
@@ -213,7 +223,7 @@ class BasetenRemote(TrussRemote):
         # thread to keep it alive. When this loop is interrupted by the user, then the whole process
         # can shutdown gracefully.
         while True:
-            pass
+            time.sleep(100)
 
     def patch(
         self,
