@@ -398,6 +398,38 @@ secrets:
 
 
 @pytest.mark.integration
+def test_prints_captured_in_log():
+    class Model:
+        def predict(self, request):
+            print("This is a message from the Truss: Hello World!")
+            return {}
+
+    config = """model_name: printing-truss"""
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        # Case where the secret is not specified in the config
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
+        tr = TrussHandle(truss_dir)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        _ = requests.post(full_url, json={})
+
+        loglines = container.logs().splitlines()
+        print(loglines)
+        assert any(
+            json.loads(line)["message"]
+            == "This is a message from the Truss: Hello World!"
+            for line in loglines
+        )
+
+
+@pytest.mark.integration
 def test_postprocess_with_streaming_predict():
     """
     Test a Truss that has streaming response from both predict and postprocess.
