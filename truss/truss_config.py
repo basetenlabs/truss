@@ -378,7 +378,7 @@ class TrussConfig:
         model_name (str):
             The model's name, for documentation purposes.
         requirements_file (str):
-            Path the requirements file with the required Python dependencies.
+            Path of the requirements file with the required Python dependencies.
         requirements (List[str]):
             List the Python dependencies that the model depends on. The requirements should
             be provided in the
