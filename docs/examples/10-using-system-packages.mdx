@@ -27,7 +27,7 @@ package, tesseract-ocr, which needs to be included in the model serving environm
 
 # Setting up the model.py
 
-For this model, we use the HuggingFace transformers library, and the the document-question-answering task.
+For this model, we use the HuggingFace transformers library, and the document-question-answering task.
 
 ```python model/model.py
 from transformers import pipeline
@@ -44,10 +44,7 @@ class Model:
         )
 
     def predict(self, model_input):
-        return self._model(
-            model_input["url"],
-            model_input["prompt"]
-        )
+        return self._model(model_input["url"], model_input["prompt"])
 ```
 
 # Setting up the config.yaml file
@@ -111,10 +108,7 @@ class Model:
         )
 
     def predict(self, model_input):
-        return self._model(
-            model_input["url"],
-            model_input["prompt"]
-        )
+        return self._model(model_input["url"], model_input["prompt"])
 ```
 ```yaml config.yaml
 environment_variables: {}

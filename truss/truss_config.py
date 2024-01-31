@@ -377,11 +377,13 @@ class TrussConfig:
             ```
         model_name (str):
             The model's name, for documentation purposes.
+        requirements_file (str):
+            Path of the requirements file with the required Python dependencies.
         requirements (List[str]):
             List the Python dependencies that the model depends on. The requirements should
             be provided in the
             [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/),
-            but as a yaml list.
+            but as a yaml list. These requirements are installed after the ones from `requirements_file`.
             We strongly recommend pinning versions in your requirements.
             ```yaml
             requirements:
@@ -440,6 +442,7 @@ class TrussConfig:
     # Python types for what the model expects as input
     input_type: str = DEFAULT_MODEL_INPUT_TYPE
     model_metadata: Dict[str, Any] = field(default_factory=dict)
+    requirements_file: Optional[str] = None
     requirements: List[str] = field(default_factory=list)
     system_packages: List[str] = field(default_factory=list)
     environment_variables: Dict[str, str] = field(default_factory=dict)
@@ -485,6 +488,7 @@ class TrussConfig:
             data_dir=d.get("data_dir", DEFAULT_DATA_DIRECTORY),
             input_type=d.get("input_type", DEFAULT_MODEL_INPUT_TYPE),
             model_metadata=d.get("model_metadata", {}),
+            requirements_file=d.get("requirements_file", None),
             requirements=d.get("requirements", []),
             system_packages=d.get("system_packages", []),
             environment_variables=d.get("environment_variables", {}),

@@ -63,7 +63,7 @@ def error_handling(f: Callable[..., object]):
         except click.UsageError as e:
             raise e  # You can re-raise the exception or handle it different
         except Exception as e:
-            click.echo(e)
+            click.secho(f"ERROR: {e}", fg="red")
 
     return wrapper
 
@@ -243,7 +243,7 @@ def _extract_and_validate_model_identifier(
 ) -> ModelIdentifier:
     if published and (model_id or model_version_id):
         raise click.UsageError(
-            "Cannot use --published with --model or --model-version."
+            "Cannot use --published with --model or --model-deployment."
         )
 
     model_identifier: ModelIdentifier
@@ -415,6 +415,18 @@ def predict(
     ),
 )
 @click.option(
+    "--preserve-previous-production-deployment",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Preserve the previous production deployment's autoscaling setting. When not specified, "
+        "the previous production deployment will be updated to allow it to scale to zero. "
+        "Can only be use in combination with --promote option"
+    ),
+)
+@click.option(
     "--trusted",
     type=bool,
     is_flag=True,
@@ -439,6 +451,7 @@ def push(
     publish: bool = False,
     trusted: bool = False,
     promote: bool = False,
+    preserve_previous_production_deployment: bool = False,
     deployment_name: Optional[str] = None,
 ) -> None:
     """
@@ -470,6 +483,7 @@ def push(
         publish=publish,
         trusted=trusted,
         promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
     )  # type: ignore
 
