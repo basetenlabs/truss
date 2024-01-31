@@ -23,10 +23,16 @@ we build a Truss that streams the output of the Falcon-7B model.
 In this example, we use the HuggingFace transformers library to build a text generation model.
 
 ```python model/model.py
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig, TextIteratorStreamer
-from typing import Dict
 from threading import Thread
+from typing import Dict
+
+import torch
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    GenerationConfig,
+    TextIteratorStreamer,
+)
 
 ```
 We use the instruct version of the Falcon-7B model, and have some defaults
@@ -63,6 +69,7 @@ class Model:
             trust_remote_code=True,
             device_map="auto",
         )
+
 ```
 # Define the predict function
 
@@ -79,11 +86,7 @@ invocation.
     def predict(self, request: Dict) -> Dict:
         prompt = request.pop("prompt")
         inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            max_length=512,
-            truncation=True,
-            padding=True
+            prompt, return_tensors="pt", max_length=512, truncation=True, padding=True
         )
         input_ids = inputs["input_ids"].to("cuda")
 
@@ -112,7 +115,7 @@ that we created previously.
                 "output_scores": True,
                 "pad_token_id": self.tokenizer.eos_token_id,
                 "max_new_tokens": DEFAULT_MAX_NEW_TOKENS,
-                "streamer": streamer
+                "streamer": streamer,
             }
 
 ```
@@ -120,10 +123,7 @@ Spawn a thread to run the generation, so that it does not block the main
 thread.
 
 ```python model/model.py
-            thread = Thread(
-                target=self.model.generate,
-                kwargs=generation_kwargs
-            )
+            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
             thread.start()
 
 ```
@@ -175,10 +175,16 @@ resources:
 
 <RequestExample>
 ```python model/model.py
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig, TextIteratorStreamer
-from typing import Dict
 from threading import Thread
+from typing import Dict
+
+import torch
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    GenerationConfig,
+    TextIteratorStreamer,
+)
 
 CHECKPOINT = "tiiuae/falcon-7b-instruct"
 DEFAULT_MAX_NEW_TOKENS = 150
@@ -199,14 +205,11 @@ class Model:
             trust_remote_code=True,
             device_map="auto",
         )
+
     def predict(self, request: Dict) -> Dict:
         prompt = request.pop("prompt")
         inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            max_length=512,
-            truncation=True,
-            padding=True
+            prompt, return_tensors="pt", max_length=512, truncation=True, padding=True
         )
         input_ids = inputs["input_ids"].to("cuda")
 
@@ -225,13 +228,10 @@ class Model:
                 "output_scores": True,
                 "pad_token_id": self.tokenizer.eos_token_id,
                 "max_new_tokens": DEFAULT_MAX_NEW_TOKENS,
-                "streamer": streamer
+                "streamer": streamer,
             }
 
-            thread = Thread(
-                target=self.model.generate,
-                kwargs=generation_kwargs
-            )
+            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
             thread.start()
 
             def inner():

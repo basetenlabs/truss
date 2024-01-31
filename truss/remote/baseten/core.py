@@ -7,6 +7,7 @@ from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
+from truss.util.path import load_trussignore_patterns
 
 logger = logging.getLogger(__name__)
 
@@ -112,12 +113,21 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     Returns:
         A file-like object containing the tar file
     """
+    truss_dir = truss_handle._spec.truss_dir
+    ignore_patterns = []
+
+    # check for a truss_ignore file and read the ignore patterns if it exists
+    truss_ignore_file = truss_dir / ".truss_ignore"
+    if truss_ignore_file.exists():
+        ignore_patterns = load_trussignore_patterns(truss_ignore_file=truss_ignore_file)
+
     try:
-        truss_dir = truss_handle._spec.truss_dir
-        temp_file = create_tar_with_progress_bar(truss_dir)
+        temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
     except PermissionError:
-        # Windows bug with Tempfile causes PermissionErrors
-        temp_file = create_tar_with_progress_bar(truss_dir, delete=False)
+        # workaround for Windows bug with Tempfile that causes PermissionErrors
+        temp_file = create_tar_with_progress_bar(
+            truss_dir, ignore_patterns, delete=False
+        )
     temp_file.file.seek(0)
     return temp_file
 
@@ -150,6 +160,7 @@ def create_truss_service(
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
     promote: bool = False,
+    preserve_previous_prod_deployment: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
@@ -165,6 +176,7 @@ def create_truss_service(
         semver_bump: Semver bump type, defaults to "MINOR"
         is_trusted: Whether the model is trusted, defaults to False
         promote: Whether to promote the model after deploy, defaults to False
+        preserve_previous_prod_deployment: Wheter to scale old production deployment to zero
         deployment_name: Name to apply to the created deployment. Not applied to development model
 
     Returns:
@@ -202,6 +214,7 @@ def create_truss_service(
         client_version=f"truss=={truss.version()}",
         is_trusted=is_trusted,
         promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
         deployment_name=deployment_name,
     )
     model_version_id = model_version_json["id"]

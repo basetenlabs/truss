@@ -19,6 +19,7 @@ Set up imports for this model. In this example, we simply use the HuggingFace tr
 ```python model/model.py
 from transformers import pipeline
 
+
 ```
 Every Truss model must implement a `Model` class. This class must have:
  * an `__init__` function
@@ -38,7 +39,7 @@ involved in downloading the model and loading it into memory.
 For this Truss example, we define a HuggingFace pipeline, and choose
 the `text-classification` task, which uses BERT for text classification under the hood.
 
-Note that the the load function runs when the
+Note that the load function runs once when the model starts.
 
 ```python model/model.py
     def load(self):
@@ -129,6 +130,7 @@ $ truss predict -d '"Truss is awesome!"'
 <RequestExample>
 ```python model/model.py
 from transformers import pipeline
+
 
 class Model:
     def __init__(self, **kwargs):

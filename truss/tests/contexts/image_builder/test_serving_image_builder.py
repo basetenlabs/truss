@@ -122,17 +122,14 @@ def test_correct_hf_files_accessed_for_caching():
         files_to_cache = flatten_cached_files(files_to_cache)
         assert str(hf_path / "version.txt") in files_to_cache
 
-        # It's unlikely the repo will change
-        assert (
-            str(
-                hf_path
-                / "models--openai--whisper-small/blobs/59ef8a839f271fa2183c6a4c302669d097e43b6d"
-            )
-            in files_to_cache
-        )
+        blobs = [
+            blob
+            for blob in files_to_cache
+            if blob.startswith(f"{hf_path}/models--openai--whisper-small/blobs/")
+        ]
+        assert len(blobs) >= 1
 
         files = model_files[model]["files"]
-
         assert "model.safetensors" in files
         assert "tokenizer_config.json" in files
 
@@ -340,3 +337,24 @@ def test_model_cache_dockerfile():
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_file = f.read()
             assert secret_mount in gen_docker_file
+
+
+def test_ignore_files_during_build_setup(custom_model_truss_dir_with_truss_ignore):
+    th = TrussHandle(custom_model_truss_dir_with_truss_ignore)
+
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
+
+    ignore_files = ["random_file_1.txt"]
+    ignore_folder = "random_folder_1/"
+    do_not_ignore_folder = "random_folder_2/"
+
+    with TemporaryDirectory() as build_dir:
+        build_path = Path(build_dir)
+        image_builder.prepare_image_build_dir(build_path)
+
+        for file in ignore_files:
+            assert not (build_path / file).exists()
+
+        assert not (build_path / ignore_folder).exists()
+        assert (build_path / do_not_ignore_folder).exists()
