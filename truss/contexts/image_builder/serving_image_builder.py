@@ -15,6 +15,7 @@ from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
+    FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
@@ -659,6 +660,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
+            **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)

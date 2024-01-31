@@ -40,6 +40,15 @@ SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
 TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
+FILENAME_CONSTANTS_MAP = {
+    "config_requirements_filename": REQUIREMENTS_TXT_FILENAME,
+    "user_supplied_requirements_filename": USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
+    "base_server_requirements_filename": BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
+    "server_requirements_filename": SERVER_REQUIREMENTS_TXT_FILENAME,
+    "training_requirements_filename": TRAINING_REQUIREMENTS_TXT_FILENAME,
+    "system_packages_filename": SYSTEM_PACKAGES_TXT_FILENAME,
+}
+
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
 TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"

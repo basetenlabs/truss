@@ -383,7 +383,7 @@ class TrussConfig:
             List the Python dependencies that the model depends on. The requirements should
             be provided in the
             [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/),
-            but as a yaml list. These requirements are installed after the ones from `requirements_file`
+            but as a yaml list. These requirements are installed after the ones from `requirements_file`.
             We strongly recommend pinning versions in your requirements.
             ```yaml
             requirements:
