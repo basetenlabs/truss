@@ -52,9 +52,18 @@ model_metadata:
 
 This is also where display metdata can be stored
 
+### `requirements_file`
+Path the requirements file with the required Python dependencies.
+
+We strongly recommend pinning versions in your requirements.
+
+```yaml
+requirements_file: ./requirements.txt
+```
+
 ### `requirements`
 
-List the Python dependencies that the model depends on. The requirements should be provided in the [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/), but as a yaml list.
+List the Python dependencies that the model depends on. The requirements should be provided in the [pip requirements file format](https://pip.pypa.io/en/stable/reference/requirements-file-format/), but as a yaml list. These requirements are installed after the ones from `requirements_file`.
 
 We strongly recommend pinning versions in your requirements.
 

@@ -177,6 +177,25 @@ def test_concurrency_truss():
 
 
 @pytest.mark.integration
+def test_requirements_file_truss():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_requirements_file_truss"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        # The prediction imports torch which is specified in a requirements.txt and returns if GPU is available.
+        response = requests.post(full_url, json={})
+        assert response.status_code == 200
+        assert response.json() is False
+
+
+@pytest.mark.integration
 def test_async_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
