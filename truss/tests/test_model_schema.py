@@ -58,7 +58,7 @@ def test_truss_with_annotated_inputs_outputs():
 
         assert response.status_code == 400
         assert "error" in response.json()
-        assert "validation error" in response.json()["error"]
+        assert "Request Validation Error" in response.json()["error"]
 
         schema_response = requests.get(f"{truss_server_addr}/v1/models/model/schema")
 

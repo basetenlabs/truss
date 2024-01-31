@@ -6,13 +6,17 @@ from typing import (
     Awaitable,
     Generator,
     Optional,
-    Tuple,
     Union,
     get_args,
     get_origin,
 )
 
 from pydantic import BaseModel
+
+
+class OutputType(BaseModel):
+    type: Optional[type]
+    supports_streaming: bool
 
 
 class TrussSchema(BaseModel):
@@ -29,18 +33,30 @@ class TrussSchema(BaseModel):
         """
 
         input_type = _parse_input_type(input_parameters)
-        ouput_type = _parse_output_type(output_annotation)
+        output_type = _parse_output_type(output_annotation)
 
-        if not input_type or not ouput_type:
+        if not input_type or not output_type:
             return None
-
-        output_type, supports_streaming = ouput_type
 
         return cls(
             input_type=input_type,
-            output_type=output_type,
-            supports_streaming=supports_streaming,
+            output_type=output_type.type,
+            supports_streaming=output_type.supports_streaming,
         )
+
+
+#    def serialize(self) -> dict:
+#        """
+#        Serialize the TrussSchema to a dict. This can then be used for
+#        generating an OpenAPI spec for this Truss.
+#        """
+#        return {
+#            "input_schema": self.input_type.schema(),
+#            "output_schema": self.output_type.schema()
+#            if self.output_type is not None
+#            else None,
+#            "supports_streaming": self.supports_streaming,
+#        }
 
 
 def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
@@ -61,7 +77,7 @@ def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
     return input_type
 
 
-def _parse_output_type(output_annotation: Any) -> Optional[Tuple[Optional[type], bool]]:
+def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
     """
     Therea are 4 possible cases for output_annotation:
     1. Data object -- represented by a Pydantic BaseModel
@@ -74,22 +90,22 @@ def _parse_output_type(output_annotation: Any) -> Optional[Tuple[Optional[type],
     If the output_annotation does not match one of these cases, returns None
     """
     if isinstance(output_annotation, type) and issubclass(output_annotation, BaseModel):
-        return output_annotation, False
+        return OutputType(type=output_annotation, supports_streaming=False)
 
     if _is_generator_type(output_annotation):
-        return None, True
+        return OutputType(type=None, supports_streaming=True)
 
     if _is_awaitable_type(output_annotation):
         output_type = retrieve_base_class_from_awaitable(output_annotation)
         if not output_type:
             return None
-        return output_type, False
+        return OutputType(type=output_type, supports_streaming=False)
 
     if _is_union_type(output_annotation):
         output_type = retrieve_base_class_from_union(output_annotation)
         if not output_type:
             return None
-        return output_type, True
+        return OutputType(type=output_type, supports_streaming=True)
 
     return None
 

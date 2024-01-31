@@ -15,11 +15,14 @@ class ModelOutput(BaseModel):
 
 
 def test_truss_schema_pydantic_input_and_output():
-    def predict(request: ModelInput) -> ModelOutput:
-        return ModelOutput(output=request.input)
+    class Model:
+        def predict(self, request: ModelInput) -> ModelOutput:
+            return ModelOutput(output=request.input)
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -29,11 +32,14 @@ def test_truss_schema_pydantic_input_and_output():
 
 
 def test_truss_schema_non_pydantic_input():
-    def predict(request: str) -> ModelOutput:
-        return ModelOutput(output=request)
+    class Model:
+        def predict(self, request: str) -> ModelOutput:
+            return ModelOutput(output=request)
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -41,11 +47,14 @@ def test_truss_schema_non_pydantic_input():
 
 
 def test_truss_schema_non_pydantic_output():
-    def predict(request: ModelInput) -> str:
-        return request.input
+    class Model:
+        def predict(self, request: ModelInput) -> str:
+            return request.input
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -53,11 +62,14 @@ def test_truss_schema_non_pydantic_output():
 
 
 def test_truss_schema_async():
-    async def predict(request: ModelInput) -> Awaitable[ModelOutput]:
-        return ModelOutput(output=request.input)
+    class Model:
+        async def predict(self, request: ModelInput) -> Awaitable[ModelOutput]:
+            return ModelOutput(output=request.input)
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -67,11 +79,14 @@ def test_truss_schema_async():
 
 
 def test_truss_schema_streaming():
-    def predict(request: ModelInput) -> Generator[str, None, None]:
-        yield "hello"
+    class Model:
+        def predict(self, request: ModelInput) -> Generator[str, None, None]:
+            yield "hello"
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -81,11 +96,14 @@ def test_truss_schema_streaming():
 
 
 def test_truss_schema_streaming_async():
-    async def predict(request: ModelInput) -> AsyncGenerator[str, None]:
-        yield "hello"
+    class Model:
+        async def predict(self, request: ModelInput) -> AsyncGenerator[str, None]:
+            yield "hello"
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -95,14 +113,19 @@ def test_truss_schema_streaming_async():
 
 
 def test_truss_schema_union_sync():
-    def predict(request: ModelInput) -> Union[ModelOutput, Generator[str, None, None]]:
-        if request.stream:
-            return (yield "hello")
-        else:
-            return ModelOutput(output=request.input)
+    class Model:
+        def predict(
+            self, request: ModelInput
+        ) -> Union[ModelOutput, Generator[str, None, None]]:
+            if request.stream:
+                return (yield "hello")
+            else:
+                return ModelOutput(output=request.input)
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema.input_type == ModelInput
@@ -111,21 +134,25 @@ def test_truss_schema_union_sync():
 
 
 def test_truss_schema_union_async():
-    async def predict(
-        request: ModelInput,
-    ) -> Union[Awaitable[ModelOutput], AsyncGenerator[str, None]]:
-        if request.stream:
+    class Model:
+        async def predict(
+            self,
+            request: ModelInput,
+        ) -> Union[Awaitable[ModelOutput], AsyncGenerator[str, None]]:
+            if request.stream:
 
-            def inner():
-                for i in range(2):
-                    yield str(i)
+                def inner():
+                    for i in range(2):
+                        yield str(i)
 
-            return inner()
+                return inner()
 
-        return ModelOutput(output=request.input)
+            return ModelOutput(output=request.input)
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema.input_type == ModelInput
@@ -134,24 +161,31 @@ def test_truss_schema_union_async():
 
 
 def test_truss_schema_union_async_non_pydantic():
-    async def predict(
-        request: ModelInput,
-    ) -> Union[Awaitable[str], AsyncGenerator[str, None]]:
-        return "hello"
+    class Model:
+        async def predict(
+            self,
+            request: ModelInput,
+        ) -> Union[Awaitable[str], AsyncGenerator[str, None]]:
+            return "hello"
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema is None
 
 
 def test_truss_schema_union_non_pydantic():
-    def predict(request: ModelInput) -> Union[str, int]:
-        return "hello"
+    class Model:
+        def predict(self, request: ModelInput) -> Union[str, int]:
+            return "hello"
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 
@@ -159,11 +193,14 @@ def test_truss_schema_union_non_pydantic():
 
 
 def test_truss_schema_async_non_pydantic():
-    async def predict(request: str) -> Awaitable[str]:
-        return "hello"
+    class Model:
+        async def predict(self, request: str) -> Awaitable[str]:
+            return "hello"
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema is None
@@ -176,11 +213,15 @@ def test_truss_schema_union_three_arms():
     class ModelOutput3(BaseModel):
         output3: str
 
-    def predict(request: ModelInput) -> Union[ModelOutput, ModelOutput2, ModelOutput3]:
-        return ModelOutput(output=request.input)
+    class Model:
+        def predict(
+            self, request: ModelInput
+        ) -> Union[ModelOutput, ModelOutput2, ModelOutput3]:
+            return ModelOutput(output=request.input)
 
-    input_signature = inspect.signature(predict).parameters
-    output_signature = inspect.signature(predict).return_annotation
+    model = Model()
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
 

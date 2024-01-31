@@ -31,7 +31,7 @@ class ImageBuilder(ABC):
                 tags=tag or self.default_tag,
                 cache=cache,
                 network=network,
-                load=True,
+                load=True,  # We pass load=True so that `build` returns an `Image` object
             )
 
     @property
