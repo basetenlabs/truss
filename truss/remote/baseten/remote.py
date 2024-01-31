@@ -301,7 +301,7 @@ Ensure that there exists a running remote deployment before attempting to watch 
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
-                    logger.info(
+                    logger.warning(
                         f"Model {model_name} is not able to be patched, use `truss push` to deploy"
                     )
                 else:
