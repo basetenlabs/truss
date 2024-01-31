@@ -431,8 +431,8 @@ def test_prints_captured_in_log():
 
         # check that log line has other attributes and could be found
         assert relevant_line is not None, "Relevant log line not found."
-        assert "time" in relevant_line
-        assert "level" in relevant_line
+        assert "asctime" in relevant_line
+        assert "levelname" in relevant_line
 
 
 @pytest.mark.integration
