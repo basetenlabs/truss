@@ -7,7 +7,6 @@ import click
 import rich
 import yaml
 from requests import ReadTimeout
-from truss.cli.console import console
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
@@ -238,6 +237,8 @@ class BasetenRemote(TrussRemote):
         self,
         watch_path: Path,
     ):
+        from truss.cli.console import console
+
         try:
             truss_handle = TrussHandle(watch_path)
         except yaml.parser.ParserError:
