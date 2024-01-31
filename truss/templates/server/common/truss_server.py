@@ -174,13 +174,7 @@ class BasetenEndpoints:
             # If there is not a TrussSchema, we return a 404.
             raise HTTPException(status_code=404, detail="No schema found")
         else:
-            return {
-                "input_schema": model.truss_schema.input_type.schema(),
-                "output_schema": model.truss_schema.output_type.schema()
-                if model.truss_schema.output_type is not None
-                else None,
-                "supports_streaming": model.truss_schema.supports_streaming,
-            }
+            return model.truss_schema.serialize()
 
     @staticmethod
     def is_binary(request: Request):

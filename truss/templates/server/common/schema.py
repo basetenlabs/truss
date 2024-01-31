@@ -6,6 +6,7 @@ from typing import (
     Awaitable,
     Generator,
     Optional,
+    Type,
     Union,
     get_args,
     get_origin,
@@ -20,8 +21,8 @@ class OutputType(BaseModel):
 
 
 class TrussSchema(BaseModel):
-    input_type: type
-    output_type: Optional[type]
+    input_type: Type[BaseModel]
+    output_type: Optional[Type[BaseModel]]
     supports_streaming: bool
 
     @classmethod
@@ -44,19 +45,18 @@ class TrussSchema(BaseModel):
             supports_streaming=output_type.supports_streaming,
         )
 
-
-#    def serialize(self) -> dict:
-#        """
-#        Serialize the TrussSchema to a dict. This can then be used for
-#        generating an OpenAPI spec for this Truss.
-#        """
-#        return {
-#            "input_schema": self.input_type.schema(),
-#            "output_schema": self.output_type.schema()
-#            if self.output_type is not None
-#            else None,
-#            "supports_streaming": self.supports_streaming,
-#        }
+    def serialize(self) -> dict:
+        """
+        Serialize the TrussSchema to a dict. This can then be used for
+        generating an OpenAPI spec for this Truss.
+        """
+        return {
+            "input_schema": self.input_type.schema(),
+            "output_schema": self.output_type.schema()
+            if self.output_type is not None
+            else None,
+            "supports_streaming": self.supports_streaming,
+        }
 
 
 def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
