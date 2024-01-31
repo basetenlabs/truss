@@ -1,0 +1,33 @@
+bundled_packages_dir: packages
+data_dir: data
+description: null
+environment_variables: {}
+examples_filename: examples.yaml
+external_package_dirs: []
+input_type: Any
+live_reload: false
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: null
+model_type: custom
+python_version: py39
+requirements: []
+resources:
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
+secrets: {}
+spec_version: '2.0'
+system_packages: []
+train:
+  resources:
+    cpu: 500m
+    memory: 512Mi
+    use_gpu: false
+  training_class_filename: train.py
+  training_class_name: Train
+  training_module_dir: train
+  variables: {}

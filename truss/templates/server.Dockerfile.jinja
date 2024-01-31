@@ -21,8 +21,8 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./base_server_requirements.txt base_server_requirements.txt
-RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
+RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
 
     {%- if config.live_reload %}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
@@ -43,8 +43,8 @@ RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
 
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
-COPY ./server_requirements.txt server_requirements.txt
-RUN pip install -r server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+COPY ./{{server_requirements_filename}} {{server_requirements_filename}}
+RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 {{ super() }}
 {% endblock %}
@@ -75,9 +75,6 @@ COPY ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
-
-
-
 {% endblock %}
 
 {% block run %}

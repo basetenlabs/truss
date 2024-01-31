@@ -1,13 +1,12 @@
 import logging
 import re
 from pathlib import Path
-import time
 from typing import List, Optional, Tuple
 
 import click
+import rich
 import yaml
 from requests import ReadTimeout
-from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
@@ -31,6 +30,10 @@ from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote, TrussService
 from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
+from truss.util.path import is_ignored, load_trussignore_patterns
+from watchfiles import watch
+
+logger = logging.getLogger(__name__)
 
 
 class BasetenRemote(TrussRemote):
@@ -213,22 +216,28 @@ class BasetenRemote(TrussRemote):
                 "No development model found. Run `truss push` then try again."
             )
 
-        # TODO(helen): refactor this such that truss watch runs on the main thread.
-        TrussFilesSyncer(
-            Path(target_directory),
-            self,
-        ).start()
+        watch_path = Path(target_directory)
+        trussignore_patterns = load_trussignore_patterns()
 
-        # Since the `TrussFilesSyncer` runs a daemon thread, we run this infinite loop on the main
-        # thread to keep it alive. When this loop is interrupted by the user, then the whole process
-        # can shutdown gracefully.
-        while True:
-            time.sleep(100)
+        def watch_filter(_, path):
+            return not is_ignored(
+                Path(path),
+                trussignore_patterns,
+            )
+
+        # disable watchfiles logger
+        logging.getLogger("watchfiles.main").disabled = True
+
+        rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
+        self.patch(watch_path)
+
+        rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
+        for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
+            self.patch(watch_path)
 
     def patch(
         self,
         watch_path: Path,
-        logger: logging.Logger,
     ):
         try:
             truss_handle = TrussHandle(watch_path)
@@ -267,7 +276,7 @@ Ensure that there exists a running remote deployment before attempting to watch 
                 patch_request.prev_hash == patch_request.next_hash
                 or len(patch_request.patch_ops) == 0
             ):
-                logger.info("No changes observed, skipping deployment")
+                logger.info("No changes observed, skipping patching")
                 return
             try:
                 resp = self._api.patch_draft_truss(model_name, patch_request)
@@ -282,7 +291,7 @@ Ensure that there exists a running remote deployment before attempting to watch 
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
-                    logger.info(
+                    logger.warning(
                         f"Model {model_name} is not able to be patched, use `truss push` to deploy"
                     )
                 else:

@@ -27,8 +27,8 @@ RUN pip install mkl
 
 {% block install_system_requirements %}
     {%- if should_install_system_requirements %}
-COPY ./system_packages.txt system_packages.txt
-RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system_packages.txt) \
+COPY ./{{system_packages_filename}} {{system_packages_filename}}
+RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{system_packages_filename}}) \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
@@ -37,9 +37,13 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat system
 
 
 {% block install_requirements %}
+    {%- if should_install_user_requirements_file %}
+COPY ./{{user_supplied_requirements_filename}} {{user_supplied_requirements_filename}}
+RUN pip install -r {{user_supplied_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
+    {%- endif %}
     {%- if should_install_requirements %}
-COPY ./requirements.txt requirements.txt
-RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+COPY ./{{config_requirements_filename}} {{config_requirements_filename}}
+RUN pip install -r {{config_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 {% endblock %}
 

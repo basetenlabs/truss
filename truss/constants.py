@@ -34,10 +34,20 @@ SUPPORTED_PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
 SERVING_DIR: pathlib.Path = TEMPLATES_DIR
 
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
+USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME = "user_requirements.txt"
 BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
 TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
+
+FILENAME_CONSTANTS_MAP = {
+    "config_requirements_filename": REQUIREMENTS_TXT_FILENAME,
+    "user_supplied_requirements_filename": USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
+    "base_server_requirements_filename": BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
+    "server_requirements_filename": SERVER_REQUIREMENTS_TXT_FILENAME,
+    "training_requirements_filename": TRAINING_REQUIREMENTS_TXT_FILENAME,
+    "system_packages_filename": SYSTEM_PACKAGES_TXT_FILENAME,
+}
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
 TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
