@@ -237,41 +237,37 @@ class BasetenRemote(TrussRemote):
         self,
         watch_path: Path,
     ):
-        from truss.cli.console import console
+        from truss.cli.console import console, error_console
 
         try:
             truss_handle = TrussHandle(watch_path)
         except yaml.parser.ParserError:
-            console.print("Unable to parse config file", style="red")
+            error_console.print("Unable to parse config file")
             return
         except ValueError:
-            console.print(
-                f"Error when reading truss from directory {watch_path}", style="red"
-            )
+            error_console.print(f"Error when reading truss from directory {watch_path}")
             return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version(self._api, model_name)  # type: ignore
         if not dev_version:
-            console.print(
-                f"No development deployment found with model name: {model_name}",
-                style="red",
+            error_console.print(
+                f"No development deployment found with model name: {model_name}"
             )
             return
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
-            console.print(
+            error_console.print(
                 """Failed to inspect a running remote deployment to watch for changes.
 Ensure that there exists a running remote deployment before attempting to watch for changes
-            """,
-                style="red",
+            """
             )
             return
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
         except Exception:
-            console.print("Failed to calculate patch, bailing on patching", style="red")
+            error_console.print("Failed to calculate patch, bailing on patching")
             return
         if patch_request:
             if (
@@ -281,30 +277,27 @@ Ensure that there exists a running remote deployment before attempting to watch 
                 console.print("No changes observed, skipping patching")
                 return
             try:
-                console.print("Applying patch...")
-                resp = self._api.patch_draft_truss(model_name, patch_request)
+                with console.status("Applying patch..."):
+                    resp = self._api.patch_draft_truss(model_name, patch_request)
             except ReadTimeout:
-                console.print(
-                    "Read Timeout when attempting to connect to remote. Bailing on patching",
-                    style="red",
+                error_console.print(
+                    "Read Timeout when attempting to connect to remote. Bailing on patching"
                 )
                 return
             except Exception:
-                console.print(
-                    "Failed to patch draft deployment, bailing on patching", style="red"
+                error_console.print(
+                    "Failed to patch draft deployment, bailing on patching"
                 )
                 return
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
-                    console.print(
-                        f"Model {model_name} is not able to be patched, use `truss push` to deploy",
-                        style="red",
+                    error_console.print(
+                        f"Model {model_name} is not able to be patched, use `truss push` to deploy"
                     )
                 else:
-                    console.print(
-                        f"Failed to patch: `{resp['error']}`. Model left in original state",
-                        style="red",
+                    error_console.print(
+                        f"Failed to patch: `{resp['error']}`. Model left in original state"
                     )
             else:
                 console.print(
