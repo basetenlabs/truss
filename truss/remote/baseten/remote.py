@@ -8,6 +8,7 @@ import click
 import rich
 import yaml
 from requests import ReadTimeout
+from truss.cli.console import console
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
@@ -252,66 +253,75 @@ class BasetenRemote(TrussRemote):
         try:
             truss_handle = TrussHandle(watch_path)
         except yaml.parser.ParserError:
-            logger.error("Unable to parse config file")
+            console.print("Unable to parse config file", style="red")
             return
         except ValueError:
-            logger.error(
-                f"Error when reading truss from directory {watch_path}", exc_info=True
+            console.print(
+                f"Error when reading truss from directory {watch_path}", style="red"
             )
             return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version(self._api, model_name)  # type: ignore
         if not dev_version:
-            logger.error(
-                f"No development deployment found with model name: {model_name}"
+            console.print(
+                f"No development deployment found with model name: {model_name}",
+                style="red",
             )
             return
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
-            logger.error(
+            console.print(
                 """Failed to inspect a running remote deployment to watch for changes.
 Ensure that there exists a running remote deployment before attempting to watch for changes
-            """
+            """,
+                style="red",
             )
             return
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
         except Exception:
-            logger.error("Failed to calculate patch, bailing on patching")
+            console.print("Failed to calculate patch, bailing on patching", style="red")
             return
         if patch_request:
             if (
                 patch_request.prev_hash == patch_request.next_hash
                 or len(patch_request.patch_ops) == 0
             ):
-                logger.info("No changes observed, skipping patching")
+                console.print("No changes observed, skipping patching")
                 return
             try:
+                console.print("Applying patch...")
                 resp = self._api.patch_draft_truss(model_name, patch_request)
             except ReadTimeout:
-                logger.error(
-                    "Read Timeout when attempting to connect to remote. Bailing on patching"
+                console.print(
+                    "Read Timeout when attempting to connect to remote. Bailing on patching",
+                    style="red",
                 )
                 return
             except Exception:
-                logger.error("Failed to patch draft deployment, bailing on patching")
+                console.print(
+                    "Failed to patch draft deployment, bailing on patching", style="red"
+                )
                 return
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
-                    logger.warning(
-                        f"Model {model_name} is not able to be patched, use `truss push` to deploy"
+                    console.print(
+                        f"Model {model_name} is not able to be patched, use `truss push` to deploy",
+                        style="red",
                     )
                 else:
-                    logger.error(
-                        f"Failed to patch: `{resp['error']}`. Model left in original state"
+                    console.print(
+                        f"Failed to patch: `{resp['error']}`. Model left in original state",
+                        style="red",
                     )
             else:
-                logger.info(
+                console.print(
                     resp.get(
                         "success_message",
                         f"Model {model_name} patched successfully",
-                    )
+                    ),
+                    style="green",
                 )
