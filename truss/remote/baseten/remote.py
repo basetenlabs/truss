@@ -269,12 +269,8 @@ Ensure that there exists a running remote deployment before attempting to watch 
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
-        except Exception as e:
-            import traceback
-
+        except Exception:
             logger.error("Failed to calculate patch, bailing on patching")
-            print(e)
-            print(traceback.format_exc())
             return
         if patch_request:
             if (
