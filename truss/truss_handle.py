@@ -851,9 +851,7 @@ class TrussHandle:
         self._update_config(enable_live_reload_fn)
 
     @proxy_to_shadow_if_scattered
-    def calc_patch(
-        self, prev_truss_hash: str, truss_ignore_patterns: List[str]
-    ) -> Optional[PatchDetails]:
+    def calc_patch(self, prev_truss_hash: str) -> Optional[PatchDetails]:
         """Calculates patch of current truss from previous.
 
         Returns None if signature cannot be found locally for previous truss hash
@@ -865,7 +863,7 @@ class TrussHandle:
             return None
 
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
-        patch_ops = calc_truss_patch(self._truss_dir, prev_sign, truss_ignore_patterns)
+        patch_ops = calc_truss_patch(self._truss_dir, prev_sign)
         if patch_ops is None:
             return None
 

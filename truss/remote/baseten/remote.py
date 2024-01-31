@@ -217,7 +217,7 @@ class BasetenRemote(TrussRemote):
         async for _ in awatch(
             watch_path, watch_filter=watch_filter, raise_interrupt=False
         ):
-            self.patch(watch_path, truss_ignore_patterns)
+            self.patch(watch_path)
 
     def sync_truss_to_dev_version_by_name(
         self,
@@ -236,19 +236,18 @@ class BasetenRemote(TrussRemote):
         watch_path = Path(target_directory)
 
         rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        truss_ignore_patterns = load_trussignore_patterns()
-        self.patch(watch_path, truss_ignore_patterns)
+        self.patch(watch_path)
 
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
         rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
+        truss_ignore_patterns = load_trussignore_patterns()
         asyncio.run(self._watch(watch_path, truss_ignore_patterns))
 
     def patch(
         self,
         watch_path: Path,
-        truss_ignore_patterns: List[str],
     ):
         try:
             truss_handle = TrussHandle(watch_path)
@@ -278,13 +277,9 @@ Ensure that there exists a running remote deployment before attempting to watch 
             return
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
-            patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
-        except Exception as e:
-            import traceback
-
+            patch_request = truss_handle.calc_patch(truss_hash)
+        except Exception:
             logger.error("Failed to calculate patch, bailing on patching")
-            print(e)
-            print(traceback.format_exc())
             return
         if patch_request:
             if (
