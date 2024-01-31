@@ -214,14 +214,6 @@ def _calc_unignored_paths(
     root_relative_ignored_paths = set()
     if ignore_patterns is not None:
         for ignore_pattern in ignore_patterns:
-            try:
-                for path in root.glob(ignore_pattern):
-                    _ = str(path.relative_to(root))
-            except Exception:
-                print(
-                    f"Could not calculate relative paths for ignored pattern: {ignore_pattern}"
-                )
-                continue
             ignored_paths_for_pattern = set(
                 (str(path.relative_to(root)) for path in root.glob(ignore_pattern))
             )
