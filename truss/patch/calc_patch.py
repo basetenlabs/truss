@@ -211,15 +211,31 @@ def _calc_unignored_paths(
     root_relative_paths: Set[str],
     ignore_patterns: Optional[List[str]] = None,
 ) -> Set[str]:
-    root_relative_ignored_paths = set()
-    if ignore_patterns is not None:
-        for ignore_pattern in ignore_patterns:
-            ignored_paths_for_pattern = set(
-                (str(path.relative_to(root)) for path in root.glob(ignore_pattern))
-            )
-            root_relative_ignored_paths.update(ignored_paths_for_pattern)
+    import pathspec
 
-    return root_relative_paths - root_relative_ignored_paths
+    root_relative_ignored_paths = set()
+    # root_relative_ignored_paths = set()  # type: Set[str]
+    if ignore_patterns is not None:
+        ignore_spec = pathspec.PathSpec.from_lines(
+            pathspec.patterns.GitWildMatchPattern, ignore_patterns
+        )
+        matched_ignored_paths = ignore_spec.match_files(root_relative_paths)
+        # matched_ignored_paths = ignore_spec.match_files(
+        #     root_relative_paths
+        # )  # type: Iterator[str]
+        root_relative_ignored_paths = set(matched_ignored_paths)
+        # for ignore_pattern in ignore_patterns:
+        #     ignored_paths_for_pattern = set(
+        #         (str(path.relative_to(root)) for path in root.glob(ignore_pattern))
+        #     )
+        #     root_relative_ignored_paths.update(ignored_paths_for_pattern)
+        #     if ".mypy_cache" in ignore_pattern:
+        #         print(f"ignored paths for {ignore_pattern}: {ignored_paths_for_pattern}")
+        #         print(f"root.glob({ignore_pattern}): {list(root.glob(ignore_pattern))}")
+
+    # print(root_relative_ignored_paths)
+    # print(f"len(root_relative_ignored_paths): {len(root_relative_ignored_paths)}")
+    return root_relative_paths - root_relative_ignored_paths  # type: ignore
 
 
 def calc_config_patches(
