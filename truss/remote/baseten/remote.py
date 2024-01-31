@@ -286,7 +286,7 @@ Ensure that there exists a running remote deployment before attempting to watch 
                 patch_request.prev_hash == patch_request.next_hash
                 or len(patch_request.patch_ops) == 0
             ):
-                logger.info("No changes observed, skipping deployment")
+                logger.info("No changes observed, skipping patching")
                 return
             try:
                 resp = self._api.patch_draft_truss(model_name, patch_request)
