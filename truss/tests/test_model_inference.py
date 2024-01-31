@@ -789,3 +789,21 @@ def test_slow_truss():
         predict_call.join()
 
         _test_invocations(200)
+
+
+@pytest.mark.integration
+def test_truss_with_new_module_in_model():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "test_truss_with_new_module_in_model"
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        truss_server_addr = "http://localhost:8090"
+        predict_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        # A request for which response is not completely read
+        predict_response = requests.post(predict_url, json={})
+
+        assert predict_response.json() == {"predictions": 10}
