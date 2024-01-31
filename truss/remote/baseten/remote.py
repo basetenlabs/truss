@@ -34,8 +34,6 @@ from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
 
-logger = logging.getLogger(__name__)
-
 
 class BasetenRemote(TrussRemote):
     def __init__(self, remote_url: str, api_key: str, **kwargs):
