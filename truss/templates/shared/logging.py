@@ -38,10 +38,15 @@ class StreamToLogger:
         return getattr(self.stream, name)
 
     def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
+        self.logger.log(self.log_level, buf)
 
     def flush(self):
+        """
+        This is a no-op function. It only exists to prevent
+        AttributeError in case some part of the code attempts to call flush()
+        on instances of StreamToLogger. Thus, we define this method as a safety
+        measure.
+        """
         pass
 
 

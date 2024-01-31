@@ -421,12 +421,18 @@ def test_prints_captured_in_log():
         _ = requests.post(full_url, json={})
 
         loglines = container.logs().splitlines()
-        print(loglines)
-        assert any(
-            json.loads(line)["message"]
-            == "This is a message from the Truss: Hello World!"
-            for line in loglines
-        )
+
+        relevant_line = None
+        for line in loglines:
+            logline = json.loads(line)
+            if logline["message"] == "This is a message from the Truss: Hello World!":
+                relevant_line = logline
+                break
+
+        # check that log line has other attributes and could be found
+        assert relevant_line is not None, "Relevant log line not found."
+        assert "time" in relevant_line
+        assert "level" in relevant_line
 
 
 @pytest.mark.integration
