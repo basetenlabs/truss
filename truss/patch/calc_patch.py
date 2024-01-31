@@ -214,15 +214,11 @@ def _calc_unignored_paths(
     import pathspec
 
     root_relative_ignored_paths = set()
-    # root_relative_ignored_paths = set()  # type: Set[str]
     if ignore_patterns is not None:
         ignore_spec = pathspec.PathSpec.from_lines(
             pathspec.patterns.GitWildMatchPattern, ignore_patterns
         )
         matched_ignored_paths = ignore_spec.match_files(root_relative_paths)
-        # matched_ignored_paths = ignore_spec.match_files(
-        #     root_relative_paths
-        # )  # type: Iterator[str]
         root_relative_ignored_paths = set(matched_ignored_paths)
         # for ignore_pattern in ignore_patterns:
         #     ignored_paths_for_pattern = set(
