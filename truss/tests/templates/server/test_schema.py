@@ -129,7 +129,7 @@ def test_truss_schema_union_sync():
 
     schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema.input_type == ModelInput
-    assert schema.output_type is ModelOutput
+    assert schema.output_type == ModelOutput
     assert schema.supports_streaming
 
 

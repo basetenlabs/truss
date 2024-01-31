@@ -1,10 +1,11 @@
-import inspect
+from inspect import Signature
 from types import MappingProxyType
 from typing import (
     Any,
     AsyncGenerator,
     Awaitable,
     Generator,
+    List,
     Optional,
     Type,
     Union,
@@ -68,7 +69,7 @@ def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
     input_type = parameter_types[0].annotation
 
     if (
-        input_type == inspect.Signature.empty
+        input_type == Signature.empty
         or not isinstance(input_type, type)
         or not issubclass(input_type, BaseModel)
     ):
@@ -126,7 +127,9 @@ def _is_awaitable_type(annotation: Any) -> bool:
     return isinstance(base_type, type) and issubclass(base_type, Awaitable)
 
 
-def retrieve_base_class_from_awaitable(awaitable_annotation: type) -> Optional[type]:
+def retrieve_base_class_from_awaitable(
+    awaitable_annotation: type,
+) -> Optional[Type[BaseModel]]:
     """
     Returns the base class of an Awaitable type if it is of the form:
     Awaitable[PydanticBaseModel]
@@ -142,7 +145,7 @@ def retrieve_base_class_from_awaitable(awaitable_annotation: type) -> Optional[t
     return None
 
 
-def _extract_pydantic_base_models(union_args: tuple) -> list:
+def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     """
     Extracts any pydantic base model arguments from the arms of a Union type.
     The two cases are:
@@ -158,7 +161,7 @@ def _extract_pydantic_base_models(union_args: tuple) -> list:
     ]
 
 
-def retrieve_base_class_from_union(union_annotation: type) -> Optional[type]:
+def retrieve_base_class_from_union(union_annotation: type) -> Optional[Type[BaseModel]]:
     """
     Returns the base class of a Union type if it is of the form:
     Union[PydanticBaseModel, Generator] or in the case of async functions:
