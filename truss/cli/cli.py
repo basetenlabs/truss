@@ -10,6 +10,7 @@ from typing import Callable, Optional
 import rich
 import rich_click as click
 import truss
+from truss.cli.console import console
 from truss.cli.create import ask_name, select_server_backend
 from truss.remote.baseten.core import (
     ModelId,
@@ -43,8 +44,6 @@ click.rich_click.COMMAND_GROUPS = {
         },
     ]
 }
-
-console = rich.console.Console()
 
 
 def echo_output(f: Callable[..., object]):

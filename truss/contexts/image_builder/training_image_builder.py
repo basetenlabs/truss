@@ -3,6 +3,7 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 from truss.constants import (
+    FILENAME_CONSTANTS_MAP,
     REQUIREMENTS_TXT_FILENAME,
     SHARED_SERVING_AND_TRAINING_CODE_DIR,
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
@@ -117,6 +118,7 @@ class TrainingImageBuilder(ImageBuilder):
             bundled_packages_dir_exists=bundled_packages_dir_exists,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_requirements,
+            **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / TRAINING_DOCKERFILE_NAME
         with docker_file_path.open("w") as docker_file:

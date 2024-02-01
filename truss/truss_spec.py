@@ -144,6 +144,14 @@ class TrussSpec:
         return _join_lines(self._config.requirements)
 
     @property
+    def requirements_file(self) -> Optional[Path]:
+        return (
+            Path(self._config.requirements_file)
+            if self._config.requirements_file is not None
+            else None
+        )
+
+    @property
     def system_packages(self) -> List[str]:
         return self._config.system_packages
 
