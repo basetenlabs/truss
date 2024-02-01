@@ -217,23 +217,23 @@ class BasetenRemote(TrussRemote):
             )
 
         watch_path = Path(target_directory)
-        trussignore_patterns = load_trussignore_patterns()
+        truss_ignore_patterns = load_trussignore_patterns()
 
         def watch_filter(_, path):
             return not is_ignored(
                 Path(path),
-                trussignore_patterns,
+                truss_ignore_patterns,
             )
 
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
         rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self.patch(watch_path, trussignore_patterns)
+        self.patch(watch_path, truss_ignore_patterns)
 
         rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
-            self.patch(watch_path, trussignore_patterns)
+            self.patch(watch_path, truss_ignore_patterns)
 
     def patch(
         self,
