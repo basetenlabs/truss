@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
-import pathspec
 import yaml
 from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
@@ -28,6 +27,7 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import ExternalData, TrussConfig
 from truss.truss_spec import TrussSpec
+from truss.util.path import get_ignored_relative_paths
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
@@ -209,15 +209,10 @@ def calc_unignored_paths(
     root_relative_paths: Set[str],
     ignore_patterns: Optional[List[str]] = None,
 ) -> Set[str]:
-    root_relative_ignored_paths = set()
-    if ignore_patterns is not None:
-        ignore_spec = pathspec.PathSpec.from_lines(
-            pathspec.patterns.GitWildMatchPattern, ignore_patterns
-        )
-        matched_ignored_paths = ignore_spec.match_files(root_relative_paths)
-        root_relative_ignored_paths = set(matched_ignored_paths)
-
-    return root_relative_paths - root_relative_ignored_paths  # type: ignore
+    ignored_paths = set(
+        get_ignored_relative_paths(root_relative_paths, ignore_patterns)
+    )
+    return root_relative_paths - ignored_paths  # type: ignore
 
 
 def calc_config_patches(

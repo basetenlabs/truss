@@ -6,10 +6,9 @@ from contextlib import contextmanager
 from distutils.dir_util import remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 import pathspec
-from truss.patch.hash import str_hash_str
 
 # .truss_ignore is a fixed file in the Truss library that is used to specify files
 # that should be ignored when copying a directory tree such as .git directory.
@@ -86,11 +85,15 @@ def build_truss_target_directory(stub: str) -> Path:
     return target_directory_path
 
 
+# TODO(helen): functions in this file should not depend on truss.patch.
 def calc_shadow_truss_dirname(truss_path: Path) -> str:
+    from truss.patch.hash import str_hash_str
+
     resolved_path_str = str(truss_path.resolve())
     return str_hash_str(resolved_path_str)
 
 
+# TODO(helen): remove; unused
 def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
     """Builds a directory under ~/.truss/models."""
     suffix = calc_shadow_truss_dirname(truss_path)
@@ -151,3 +154,30 @@ def is_ignored(
         path = path.relative_to(base_dir)
 
     return ignore_spec.match_file(path)
+
+
+def get_ignored_relative_paths(
+    root_relative_paths: Iterable[Union[str, Path]],
+    ignore_patterns: Optional[List[str]] = None,
+) -> Iterator[Union[str, Path]]:
+    """Given an iterable of relative paths, returns an iterator of the relative paths that match ignore_patterns."""
+    if ignore_patterns is None:
+        return iter([])
+
+    ignore_spec = pathspec.PathSpec.from_lines(
+        pathspec.patterns.GitWildMatchPattern, ignore_patterns
+    )
+    return ignore_spec.match_files(root_relative_paths)
+
+
+def get_unignored_relative_paths_from_root(
+    root: Path,
+    ignore_patterns: Optional[List[str]] = None,
+) -> Set[Path]:
+    """Given a root directory, returns an iterator of the relative paths that do not match ignore_patterns."""
+    root_relative_paths = set(path.relative_to(root) for path in root.glob("**/*"))
+
+    ignored_paths = set(
+        get_ignored_relative_paths(root_relative_paths, ignore_patterns)
+    )
+    return root_relative_paths - ignored_paths  # type: ignore
