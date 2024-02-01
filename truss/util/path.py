@@ -85,23 +85,6 @@ def build_truss_target_directory(stub: str) -> Path:
     return target_directory_path
 
 
-# TODO(helen): functions in this file should not depend on truss.patch.
-def calc_shadow_truss_dirname(truss_path: Path) -> str:
-    from truss.patch.hash import str_hash_str
-
-    resolved_path_str = str(truss_path.resolve())
-    return str_hash_str(resolved_path_str)
-
-
-# TODO(helen): remove; unused
-def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
-    """Builds a directory under ~/.truss/models."""
-    suffix = calc_shadow_truss_dirname(truss_path)
-    target_directory_path = Path(Path.home(), ".truss", "models", f"{stub}-{suffix}")
-    target_directory_path.mkdir(parents=True, exist_ok=True)
-    return target_directory_path
-
-
 def load_trussignore_patterns(
     truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH,
 ) -> List[str]:
