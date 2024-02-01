@@ -156,3 +156,77 @@ def test_copy_tree_path_with_truss_ignore(custom_model_truss_dir_with_truss_igno
             assert not (dest_dir / ignored).exists()
 
         assert (dest_dir / "random_folder_2").exists()
+
+
+def test_get_ignored_relative_paths():
+    ignore_patterns = [
+        ".mypy_cache/",
+        "venv/",
+        "*.tmp",
+        ".git",
+        "data/*",
+    ]
+
+    root_relative_paths = {
+        ".mypy_cache/should_ignore.json",
+        "venv/bin/activate",
+        "ignored_file.tmp",
+        ".git",
+        ".git/HEAD",
+        "data/should_ignore.txt",
+        "data.txt" "config.yaml",
+        "model/model.py",
+    }
+
+    ignored_relative_paths = path.get_ignored_relative_paths(
+        root_relative_paths, ignore_patterns
+    )
+    assert set(ignored_relative_paths) == {
+        ".mypy_cache/should_ignore.json",
+        "venv/bin/activate",
+        "ignored_file.tmp",
+        ".git",
+        ".git/HEAD",
+        "data/should_ignore.txt",
+    }
+
+
+def test_get_ignored_relative_paths_from_root(custom_model_truss_dir_with_hidden_files):
+    ignore_patterns = [
+        "__pycache__",
+        ".DS_Store",
+        ".git",
+        "data/*",
+    ]
+
+    unignored_relative_paths = path.get_unignored_relative_paths_from_root(
+        custom_model_truss_dir_with_hidden_files, ignore_patterns
+    )
+    unignored_relative_path_strs = set(
+        (str(unignored_path) for unignored_path in unignored_relative_paths)
+    )
+    assert unignored_relative_path_strs == {
+        "model",
+        "model/model.py",
+        "model/__init__.py",
+        "data",
+        "config.yaml",
+        "packages",
+    }
+
+    all_relative_path_strs = set(
+        str(path.relative_to(custom_model_truss_dir_with_hidden_files))
+        for path in custom_model_truss_dir_with_hidden_files.glob("**/*")
+    )
+    ignored_relative_paths_strs = {
+        "__pycache__",
+        "__pycache__/test.cpython-38.pyc",
+        ".DS_Store",
+        ".git",
+        ".git/.test_file",
+        "data/test_file",
+    }
+    assert (
+        all_relative_path_strs
+        == ignored_relative_paths_strs | unignored_relative_path_strs
+    )
