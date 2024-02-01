@@ -28,7 +28,7 @@ def test_load_trussignore_patterns():
     assert isinstance(patterns, list)
     assert "__pycache__/" in patterns
     assert ".DS_Store" in patterns
-    assert ".git/" in patterns
+    assert ".git" in patterns
 
 
 def test_copy_tree_path_with_no_hidden_files(custom_model_truss_dir):

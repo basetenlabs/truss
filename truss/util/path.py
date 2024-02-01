@@ -1,4 +1,3 @@
-import fnmatch
 import os
 import random
 import string
@@ -9,6 +8,7 @@ from distutils.file_util import copy_file
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+import pathspec
 from truss.patch.hash import str_hash_str
 
 # .truss_ignore is a fixed file in the Truss library that is used to specify files
@@ -143,23 +143,11 @@ def is_ignored(
         bool: True if the path matches any of the ignore patterns (i.e., should be ignored),
             and False otherwise.
     """
-
-    original_path = path
+    ignore_spec = pathspec.PathSpec.from_lines(
+        pathspec.patterns.GitWildMatchPattern, patterns
+    )
 
     if base_dir:
         path = path.relative_to(base_dir)
 
-    while path:
-        for pattern in patterns:
-            if original_path.is_dir() and pattern.endswith("/"):
-                pattern = pattern.rstrip("/")
-                if fnmatch.fnmatch(path.name, pattern):
-                    return True
-            else:
-                if fnmatch.fnmatch(path.name, pattern):
-                    return True
-
-        path = path.parent if path.parent != path else None  # type: ignore
-        original_path = original_path.parent if original_path.parent != original_path else None  # type: ignore
-
-    return False
+    return ignore_spec.match_file(path)

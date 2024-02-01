@@ -158,7 +158,7 @@ cython_debug/
 #.idea/
 
 # Git
-.git/
+.git
 
 # temp files
 *.tmp
