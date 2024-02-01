@@ -33,8 +33,6 @@ from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
 
-logger = logging.getLogger(__name__)
-
 
 class BasetenRemote(TrussRemote):
     def __init__(self, remote_url: str, api_key: str, **kwargs):
@@ -240,27 +238,27 @@ class BasetenRemote(TrussRemote):
         watch_path: Path,
         truss_ignore_patterns: List[str],
     ):
+        from truss.cli.console import console, error_console
+
         try:
             truss_handle = TrussHandle(watch_path)
         except yaml.parser.ParserError:
-            logger.error("Unable to parse config file")
+            error_console.print("Unable to parse config file")
             return
         except ValueError:
-            logger.error(
-                f"Error when reading truss from directory {watch_path}", exc_info=True
-            )
+            error_console.print(f"Error when reading truss from directory {watch_path}")
             return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version(self._api, model_name)  # type: ignore
         if not dev_version:
-            logger.error(
+            error_console.print(
                 f"No development deployment found with model name: {model_name}"
             )
             return
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
-            logger.error(
+            error_console.print(
                 """Failed to inspect a running remote deployment to watch for changes.
 Ensure that there exists a running remote deployment before attempting to watch for changes
             """
@@ -270,39 +268,43 @@ Ensure that there exists a running remote deployment before attempting to watch 
         try:
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
         except Exception:
-            logger.error("Failed to calculate patch, bailing on patching")
+            error_console.print("Failed to calculate patch, bailing on patching")
             return
         if patch_request:
             if (
                 patch_request.prev_hash == patch_request.next_hash
                 or len(patch_request.patch_ops) == 0
             ):
-                logger.info("No changes observed, skipping patching")
+                console.print("No changes observed, skipping patching")
                 return
             try:
-                resp = self._api.patch_draft_truss(model_name, patch_request)
+                with console.status("Applying patch..."):
+                    resp = self._api.patch_draft_truss(model_name, patch_request)
             except ReadTimeout:
-                logger.error(
+                error_console.print(
                     "Read Timeout when attempting to connect to remote. Bailing on patching"
                 )
                 return
             except Exception:
-                logger.error("Failed to patch draft deployment, bailing on patching")
+                error_console.print(
+                    "Failed to patch draft deployment, bailing on patching"
+                )
                 return
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
-                    logger.warning(
+                    error_console.print(
                         f"Model {model_name} is not able to be patched, use `truss push` to deploy"
                     )
                 else:
-                    logger.error(
+                    error_console.print(
                         f"Failed to patch: `{resp['error']}`. Model left in original state"
                     )
             else:
-                logger.info(
+                console.print(
                     resp.get(
                         "success_message",
                         f"Model {model_name} patched successfully",
-                    )
+                    ),
+                    style="green",
                 )
