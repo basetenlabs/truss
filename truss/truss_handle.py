@@ -865,19 +865,16 @@ class TrussHandle:
             return None
 
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
-        patch_ops = calc_truss_patch(self._truss_dir, prev_sign, truss_ignore_patterns)
+        ignore_patterns = truss_ignore_patterns + self._spec.hash_ignore_patterns
+        patch_ops = calc_truss_patch(self._truss_dir, prev_sign, ignore_patterns)
         if patch_ops is None:
             return None
 
         return PatchDetails(
             prev_signature=prev_sign,
             prev_hash=prev_truss_hash,
-            next_hash=directory_content_hash(
-                self._truss_dir, self._spec.hash_ignore_patterns
-            ),
-            next_signature=calc_truss_signature(
-                self._truss_dir, self._spec.hash_ignore_patterns
-            ),
+            next_hash=directory_content_hash(self._truss_dir, ignore_patterns),
+            next_signature=calc_truss_signature(self._truss_dir, ignore_patterns),
             patch_ops=patch_ops,
         )
 
