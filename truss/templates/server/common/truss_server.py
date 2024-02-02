@@ -17,7 +17,7 @@ import shared.util as utils
 import uvicorn
 from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, ORJSONResponse, StreamingResponse
+from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from shared.logging import loguru_logger, setup_logging
@@ -256,19 +256,10 @@ class TrussServer:
             },
         )
 
-        async def dispatch(request, call_next):
+        async def intercept_request_id(request, call_next):
             request_id = request.headers.get("x-baseten-request-id", uuid.uuid4())
             with loguru_logger.contextualize(request_id=request_id):
-                try:
-                    return await call_next(request)
-
-                except Exception as ex:
-                    print(f"Request failed: {ex}")
-                    return JSONResponse(content={"success": False}, status_code=500)
-
-                finally:
-                    # sentinel log
-                    print("Request complete")
+                return await call_next(request)
 
         def exit_self():
             # Note that this kills the current process, the worker process, not
@@ -280,7 +271,7 @@ class TrussServer:
             on_stop=lambda: None,
             on_term=exit_self,
         )
-        app.add_middleware(BaseHTTPMiddleware, dispatch=dispatch)
+        app.add_middleware(BaseHTTPMiddleware, dispatch=intercept_request_id)
         app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app
 

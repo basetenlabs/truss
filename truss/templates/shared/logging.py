@@ -34,7 +34,11 @@ def patching(record):
 
 
 loguru_logger = loguru.logger
+
+# reset the logger
 loguru_logger.remove()
+
+# we want to add request ids via a patch (think of it a middleware)
 loguru_logger = loguru_logger.patch(patching)
 loguru_logger.add(sys.stdout, format="{extra[serialized]}")
 
@@ -49,8 +53,7 @@ class StreamToLogger(object):
         self.stream = stream
 
     def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.info(line.rstrip())
+        self.logger.info(buf)
 
     def isatty(self):
         return self.stream.isatty()
@@ -60,6 +63,7 @@ class StreamToLogger(object):
 
 
 sys.stdout = StreamToLogger("STDOUT", sys.__stdout__)  # type: ignore
+sys.stderr = StreamToLogger("STDOUT", sys.__stderr__)  # type: ignore
 
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
