@@ -455,6 +455,54 @@ def test_prints_captured_in_log():
 
 
 @pytest.mark.integration
+def test_multiple_request_ids_logged():
+    class Model:
+        def predict(self, request):
+            print("This is a message from the Truss: Hello World!")
+            return {}
+
+    # TODO: REMOVE LOGURU HERE!!!
+    config = """model_name: printing-truss\nrequirements: [loguru]
+    """
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
+        tr = TrussHandle(truss_dir)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        request_ids = ["req1", "req2", "req3"]
+        for req_id in request_ids:
+            _ = requests.post(
+                full_url, json={}, headers={"x-baseten-request-id": req_id}
+            )
+
+        loglines = container.logs().splitlines()
+
+        relevant_lines = []
+        for line in loglines:
+            logline = json.loads(line)
+            if logline["message"] == "This is a message from the Truss: Hello World!":
+                relevant_lines.append(logline)
+
+        # Checking that each request ID is unique & 'Hello World' message appeared 3 times
+        recorded_req_ids = [
+            line.get("request_id")
+            for line in relevant_lines
+            if line.get("request_id") in request_ids
+        ]
+        assert (
+            len(recorded_req_ids) == 3
+        ), "Expected 'Hello World' message to appear 3 times."
+        assert len(set(recorded_req_ids)) == 3, "All request IDs should be unique."
+
+
+@pytest.mark.integration
 def test_postprocess_with_streaming_predict():
     """
     Test a Truss that has streaming response from both predict and postprocess.

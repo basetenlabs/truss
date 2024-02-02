@@ -6,6 +6,7 @@ cython==3.0.5
 msgpack-numpy==0.4.8
 msgpack==1.0.2
 python-json-logger==2.0.2
+loguru==0.7.2
 pyyaml==6.0.0
 fastapi==0.104.1
 uvicorn==0.24.0
