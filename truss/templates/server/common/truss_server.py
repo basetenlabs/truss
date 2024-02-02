@@ -257,7 +257,7 @@ class TrussServer:
         )
 
         async def dispatch(request, call_next):
-            request_id = request.headers.get("request_id", uuid.uuid4())
+            request_id = request.headers.get("x-baseten-request-id", uuid.uuid4())
             with loguru_logger.contextualize(request_id=request_id):
                 try:
                     return await call_next(request)
