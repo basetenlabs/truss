@@ -1,7 +1,6 @@
 import asyncio
 import importlib
 import inspect
-import logging
 import os
 import sys
 import time
@@ -17,6 +16,8 @@ from anyio import Semaphore, to_thread
 from common.patches import apply_patches
 from common.retry import retry
 from fastapi import HTTPException
+from loguru import logger
+from shared.logging import patching
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -24,6 +25,8 @@ MODEL_BASENAME = "model"
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
 DEFAULT_PREDICT_CONCURRENCY = 1
+
+logger = logger.patch(patching)
 
 
 class DeferredSemaphoreManager:
@@ -73,7 +76,7 @@ class ModelWrapper:
 
     def __init__(self, config: Dict):
         self._config = config
-        self._logger = logging.getLogger()
+        self._logger = logger
         self.name = MODEL_BASENAME
         self.ready = False
         self._load_lock = Lock()
@@ -86,29 +89,30 @@ class ModelWrapper:
         self._background_tasks: Set[asyncio.Task] = set()
 
     def load(self) -> bool:
-        if self.ready:
-            return self.ready
-
-        # if we are already loading, block on aquiring the lock;
-        # this worker will return 503 while the worker with the lock is loading
-        with self._load_lock:
-            self._status = ModelWrapper.Status.LOADING
-
-            self._logger.info("Executing model.load()...")
-
-            try:
-                start_time = time.perf_counter()
-                self.try_load()
-                self.ready = True
-                self._status = ModelWrapper.Status.READY
-                self._logger.info(
-                    f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
-                )
-
+        with self._logger.contextualize(request_id="MODEL_LOAD"):
+            if self.ready:
                 return self.ready
-            except Exception:
-                self._logger.exception("Exception while loading model")
-                self._status = ModelWrapper.Status.FAILED
+
+            # if we are already loading, block on aquiring the lock;
+            # this worker will return 503 while the worker with the lock is loading
+            with self._load_lock:
+                self._status = ModelWrapper.Status.LOADING
+
+                self._logger.info("Executing model.load()...")
+
+                try:
+                    start_time = time.perf_counter()
+                    self.try_load()
+                    self.ready = True
+                    self._status = ModelWrapper.Status.READY
+                    self._logger.info(
+                        f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
+                    )
+
+                    return self.ready
+                except Exception:
+                    self._logger.exception("Exception while loading model")
+                    self._status = ModelWrapper.Status.FAILED
 
         return self.ready
 
@@ -158,7 +162,7 @@ class ModelWrapper:
             retry(
                 self._model.load,
                 NUM_LOAD_RETRIES,
-                self._logger.warn,
+                self._logger.warning,
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
@@ -262,7 +266,7 @@ class ModelWrapper:
             # Streaming cases
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
                 if hasattr(self._model, "postprocess"):
-                    logging.warning(
+                    logger.warning(
                         "Predict returned a streaming response, while a postprocess is defined."
                         "Note that in this case, the postprocess will run within the predict lock."
                     )
@@ -367,7 +371,7 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
 def _handle_exception():
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
-    logging.exception("Internal Server Error")
+    logger.exception("Internal Server Error")
     raise HTTPException(status_code=500, detail="Internal Server Error")
 
 

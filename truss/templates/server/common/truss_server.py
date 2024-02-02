@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 import time
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Union
@@ -16,10 +17,10 @@ import shared.util as utils
 import uvicorn
 from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import ORJSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
-from shared.logging import setup_logging
+from shared.logging import loguru_logger, setup_logging
 from shared.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
@@ -255,6 +256,20 @@ class TrussServer:
             },
         )
 
+        async def dispatch(request, call_next):
+            request_id = request.headers.get("request_id", uuid.uuid4())
+            with loguru_logger.contextualize(request_id=request_id):
+                try:
+                    return await call_next(request)
+
+                except Exception as ex:
+                    print(f"Request failed: {ex}")
+                    return JSONResponse(content={"success": False}, status_code=500)
+
+                finally:
+                    # sentinel log
+                    print("Request complete")
+
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
@@ -265,6 +280,7 @@ class TrussServer:
             on_stop=lambda: None,
             on_term=exit_self,
         )
+        app.add_middleware(BaseHTTPMiddleware, dispatch=dispatch)
         app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app
 
@@ -323,20 +339,23 @@ class TrussServer:
         cfg.setup_event_loop()
 
         async def serve():
-            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            serversocket.bind((cfg.host, cfg.port))
-            serversocket.listen(5)
+            with loguru_logger.contextualize(request_id="MODEL_STARTUP"):
+                serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                serversocket.bind((cfg.host, cfg.port))
+                serversocket.listen(5)
 
-            num_server_procs = self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
-            )
-            logging.info(f"starting {num_server_procs} uvicorn server processes")
-            servers: List[UvicornCustomServer] = []
-            for _ in range(num_server_procs):
-                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
-                server.start()
-                servers.append(server)
+                num_server_procs = self._config.get("runtime", {}).get(
+                    "num_workers", DEFAULT_NUM_SERVER_PROCESSES
+                )
+                loguru_logger.info(
+                    f"starting {num_server_procs} uvicorn server processes"
+                )
+                servers: List[UvicornCustomServer] = []
+                for _ in range(num_server_procs):
+                    server = UvicornCustomServer(config=cfg, sockets=[serversocket])
+                    server.start()
+                    servers.append(server)
 
             def stop_servers():
                 # Send stop signal, then wait for all to exit

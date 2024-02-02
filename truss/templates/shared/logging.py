@@ -1,15 +1,71 @@
+import json
 import logging
 import sys
+from datetime import datetime
 
+import loguru
 from pythonjsonlogger import jsonlogger
 
 LEVEL: int = logging.INFO
+
+
+def serialize(record):
+    dt = datetime.fromtimestamp(record["time"].timestamp())
+    formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+
+    if record["message"][0] == "{":
+        return record["message"]
+
+    subset = {
+        "asctime": formatted_time,
+        "message": record["message"],
+        "levelname": record["level"].name,
+        "request_id": str(record["extra"]["request_id"])
+        if "request_id" in record["extra"]
+        else None,
+    }
+
+    return json.dumps(subset)
+
+
+def patching(record):
+    # we should be able to label different types of logs here
+    record["extra"]["serialized"] = serialize(record)
+
+
+loguru_logger = loguru.logger
+loguru_logger.remove()
+loguru_logger = loguru_logger.patch(patching)
+loguru_logger.add(sys.stdout, format="{extra[serialized]}")
+
+
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+    """
+
+    def __init__(self, name, stream):
+        self.logger = loguru_logger
+        self.stream = stream
+
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.info(line.rstrip())
+
+    def isatty(self):
+        return self.stream.isatty()
+
+    def flush(self):
+        pass
+
+
+sys.stdout = StreamToLogger("STDOUT", sys.__stdout__)  # type: ignore
 
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
 JSON_LOG_HANDLER.setLevel(LEVEL)
 JSON_LOG_HANDLER.setFormatter(
-    jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(message)s")
+    jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(message)s %(request_id)s")
 )
 
 
@@ -22,41 +78,10 @@ class HealthCheckFilter(logging.Filter):
         )
 
 
-class StreamToLogger:
-    """
-    StreamToLogger redirects stdout and stderr to logger
-    """
-
-    def __init__(self, logger, log_level, stream):
-        self.logger = logger
-        self.log_level = log_level
-        self.stream = stream
-
-    def __getattr__(self, name):
-        # we need to pass `isatty` from the stream for uvicorn
-        # this is a more general, less hacky fix
-        return getattr(self.stream, name)
-
-    def write(self, buf):
-        self.logger.log(self.log_level, buf)
-
-    def flush(self):
-        """
-        This is a no-op function. It only exists to prevent
-        AttributeError in case some part of the code attempts to call flush()
-        on instances of StreamToLogger. Thus, we define this method as a safety
-        measure.
-        """
-        pass
-
-
 def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]
-
-    sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stdout__)  # type: ignore
-    sys.stderr = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stderr__)  # type: ignore
 
     for logger in loggers:
         logger.setLevel(LEVEL)
