@@ -171,9 +171,18 @@ class BasetenEndpoints:
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         if model.truss_schema is None:
+            print("DID NOT FIND MODEL SCHEMA")
             # If there is not a TrussSchema, we return a 404.
-            raise HTTPException(status_code=404, detail="No schema found")
+
+            if model.ready:
+                raise HTTPException(status_code=404, detail="No schema found")
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Schema not available, please try again later.",
+                )
         else:
+            print("FOUND MODEL SCHEMA")
             return model.truss_schema.serialize()
 
     @staticmethod

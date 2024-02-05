@@ -139,6 +139,7 @@ class ModelWrapper:
         model_module_name = str(
             Path(self._config["model_class_filename"]).with_suffix("")
         )
+
         module = importlib.import_module(
             f"{self._config['model_module_dir']}.{model_module_name}"
         )
