@@ -168,6 +168,24 @@ class BasetenEndpoints:
                 headers=response_headers,
             )
 
+    async def schema(self, model_name: str) -> Dict:
+        model: ModelWrapper = self._safe_lookup_model(model_name)
+
+        if model.truss_schema is None:
+            print("DID NOT FIND MODEL SCHEMA")
+            # If there is not a TrussSchema, we return a 404.
+
+            if model.ready:
+                raise HTTPException(status_code=404, detail="No schema found")
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Schema not available, please try again later.",
+                )
+        else:
+            print("FOUND MODEL SCHEMA")
+            return model.truss_schema.serialize()
+
     @staticmethod
     def is_binary(request: Request):
         return (
@@ -225,6 +243,12 @@ class TrussServer:
                 # readiness endpoint
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
+                ),
+                FastAPIRoute(
+                    r"/v1/models/{model_name}/schema",
+                    self._endpoints.schema,
+                    methods=["GET"],
+                    tags=["V1"],
                 ),
                 FastAPIRoute(
                     r"/v1/models/{model_name}:predict",
