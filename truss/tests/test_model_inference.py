@@ -14,23 +14,11 @@ import requests
 from requests.exceptions import RequestException
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.model_inference import map_to_supported_python_version
+from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
 
 logger = logging.getLogger(__name__)
-
-
-def _create_truss(truss_dir: Path, config_contents: str, model_contents: str):
-    truss_dir.mkdir(exist_ok=True)  # Ensure the 'truss' directory exists
-    truss_model_dir = truss_dir / "model"
-    truss_model_dir.mkdir(parents=True, exist_ok=True)
-
-    config_file = truss_dir / "config.yaml"
-    model_file = truss_model_dir / "model.py"
-    with open(config_file, "w", encoding="utf-8") as file:
-        file.write(config_contents)
-    with open(model_file, "w", encoding="utf-8") as file:
-        file.write(model_contents)
 
 
 def _log_contains_error(line: dict, error: str):
@@ -362,7 +350,7 @@ secrets:
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
+        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
 
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.set_secret("secret", "secret_value")
@@ -378,7 +366,7 @@ secrets:
         # Case where the secret is not specified in the config
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(
+        create_truss(
             truss_dir, config_with_no_secret, textwrap.dedent(inspect.getsource(Model))
         )
         tr = TrussHandle(truss_dir)
@@ -400,7 +388,7 @@ secrets:
         # Case where the secret is not mounted
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
+        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.remove_secret("secret")
         container = tr.docker_run(
@@ -429,7 +417,7 @@ def test_prints_captured_in_log():
         # Case where the secret is not specified in the config
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
+        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -480,7 +468,7 @@ def test_postprocess_with_streaming_predict():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model))
+        create_truss(truss_dir, config, textwrap.dedent(model))
 
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
@@ -518,7 +506,7 @@ def test_streaming_postprocess():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model))
+        create_truss(truss_dir, config, textwrap.dedent(model))
 
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
@@ -581,7 +569,7 @@ def test_postprocess():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model))
+        create_truss(truss_dir, config, textwrap.dedent(model))
 
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
@@ -625,7 +613,7 @@ def test_truss_with_errors():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model))
+        create_truss(truss_dir, config, textwrap.dedent(model))
 
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
@@ -654,7 +642,7 @@ def test_truss_with_errors():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model_preprocess_error))
+        create_truss(truss_dir, config, textwrap.dedent(model_preprocess_error))
 
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
@@ -682,7 +670,7 @@ def test_truss_with_errors():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model_postprocess_error))
+        create_truss(truss_dir, config, textwrap.dedent(model_postprocess_error))
 
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
@@ -706,7 +694,7 @@ def test_truss_with_errors():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(model_async))
+        create_truss(truss_dir, config, textwrap.dedent(model_async))
 
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
