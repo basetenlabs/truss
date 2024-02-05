@@ -1,6 +1,4 @@
 import logging
-import os
-import signal
 import subprocess
 import time
 from pathlib import Path
@@ -51,12 +49,9 @@ class InferenceServerProcessController:
 
     def stop(self):
         if self._inference_server_process is not None:
-            name = " ".join(self._inference_server_process_args)
 
-            for line in os.popen("ps ax | grep '" + name + "' | grep -v grep"):
-                pid = line.split()[0]
-                os.kill(int(pid), signal.SIGKILL)
-
+            self._inference_server_process.terminate()
+            self._inference_server_process.wait()
             # Introduce delay to avoid failing to grab the port
             time.sleep(3)
 

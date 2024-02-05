@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import click
+import rich
 import yaml
 from requests import ReadTimeout
-from truss.contexts.local_loader.truss_file_syncer import TrussFilesSyncer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
@@ -30,6 +30,8 @@ from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote, TrussService
 from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
+from truss.util.path import is_ignored, load_trussignore_patterns
+from watchfiles import watch
 
 
 class BasetenRemote(TrussRemote):
@@ -48,6 +50,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = True,
         trusted: bool = False,
         promote: bool = False,
+        preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
     ):
         if model_name.isspace():
@@ -67,6 +70,11 @@ class BasetenRemote(TrussRemote):
         if not publish and deployment_name:
             raise ValueError(
                 "Deployment name cannot be used for development deployment"
+            )
+
+        if not promote and preserve_previous_prod_deployment:
+            raise ValueError(
+                "preserve-previous-production-deployment can only be used with the '--promote' option"
             )
 
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
@@ -90,6 +98,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             is_trusted=trusted,
             promote=promote,
+            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
         )
 
@@ -157,7 +166,7 @@ class BasetenRemote(TrussRemote):
         else:
             # Model identifier is of invalid type.
             raise click.UsageError(
-                "You must either be inside of a Truss directory, or provide --model-version or --model options."
+                "You must either be inside of a Truss directory, or provide --model-deployment or --model options."
             )
 
         return service_url_path, model_id, model_version_id
@@ -204,43 +213,51 @@ class BasetenRemote(TrussRemote):
             raise click.UsageError(
                 "No development model found. Run `truss push` then try again."
             )
-        TrussFilesSyncer(
-            Path(target_directory),
-            self,
-        ).start()
 
-        # Since the `TrussFilesSyncer` runs a daemon thread, we run this infinite loop on the main
-        # thread to keep it alive. When this loop is interrupted by the user, then the whole process
-        # can shutdown gracefully.
-        while True:
-            pass
+        watch_path = Path(target_directory)
+        trussignore_patterns = load_trussignore_patterns()
+
+        def watch_filter(_, path):
+            return not is_ignored(
+                Path(path),
+                trussignore_patterns,
+            )
+
+        # disable watchfiles logger
+        logging.getLogger("watchfiles.main").disabled = True
+
+        rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
+        self.patch(watch_path)
+
+        rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
+        for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
+            self.patch(watch_path)
 
     def patch(
         self,
         watch_path: Path,
-        logger: logging.Logger,
     ):
+        from truss.cli.console import console, error_console
+
         try:
             truss_handle = TrussHandle(watch_path)
         except yaml.parser.ParserError:
-            logger.error("Unable to parse config file")
+            error_console.print("Unable to parse config file")
             return
         except ValueError:
-            logger.error(
-                f"Error when reading truss from directory {watch_path}", exc_info=True
-            )
+            error_console.print(f"Error when reading truss from directory {watch_path}")
             return
         model_name = truss_handle.spec.config.model_name
         dev_version = get_dev_version(self._api, model_name)  # type: ignore
         if not dev_version:
-            logger.error(
+            error_console.print(
                 f"No development deployment found with model name: {model_name}"
             )
             return
         truss_hash = dev_version.get("truss_hash", None)
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
-            logger.error(
+            error_console.print(
                 """Failed to inspect a running remote deployment to watch for changes.
 Ensure that there exists a running remote deployment before attempting to watch for changes
             """
@@ -250,39 +267,43 @@ Ensure that there exists a running remote deployment before attempting to watch 
         try:
             patch_request = truss_handle.calc_patch(truss_hash)
         except Exception:
-            logger.error("Failed to calculate patch, bailing on patching")
+            error_console.print("Failed to calculate patch, bailing on patching")
             return
         if patch_request:
             if (
                 patch_request.prev_hash == patch_request.next_hash
                 or len(patch_request.patch_ops) == 0
             ):
-                logger.info("No changes observed, skipping deployment")
+                console.print("No changes observed, skipping patching")
                 return
             try:
-                resp = self._api.patch_draft_truss(model_name, patch_request)
+                with console.status("Applying patch..."):
+                    resp = self._api.patch_draft_truss(model_name, patch_request)
             except ReadTimeout:
-                logger.error(
+                error_console.print(
                     "Read Timeout when attempting to connect to remote. Bailing on patching"
                 )
                 return
             except Exception:
-                logger.error("Failed to patch draft deployment, bailing on patching")
+                error_console.print(
+                    "Failed to patch draft deployment, bailing on patching"
+                )
                 return
             if not resp["succeeded"]:
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
-                    logger.info(
+                    error_console.print(
                         f"Model {model_name} is not able to be patched, use `truss push` to deploy"
                     )
                 else:
-                    logger.error(
+                    error_console.print(
                         f"Failed to patch: `{resp['error']}`. Model left in original state"
                     )
             else:
-                logger.info(
+                console.print(
                     resp.get(
                         "success_message",
                         f"Model {model_name} patched successfully",
-                    )
+                    ),
+                    style="green",
                 )

@@ -15,6 +15,7 @@ from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     CONTROL_SERVER_CODE_DIR,
+    FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
@@ -26,6 +27,7 @@ from truss.constants import (
     TEMPLATES_DIR,
     TRITON_SERVER_CODE_DIR,
     TRTLLM_TRUSS_DIR,
+    USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
@@ -594,6 +596,11 @@ class ServingImageBuilder(ImageBuilder):
             if spec.requirements
             else ""
         )
+        if spec.requirements_file is not None:
+            copy_into_build_dir(
+                truss_dir / spec.requirements_file,
+                USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
+            )
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
             user_provided_python_requirements
         )
@@ -641,6 +648,9 @@ class ServingImageBuilder(ImageBuilder):
         should_install_python_requirements = file_is_not_empty(
             build_dir / REQUIREMENTS_TXT_FILENAME
         )
+        should_install_user_requirements_file = file_is_not_empty(
+            build_dir / USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
+        )
 
         hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
         dockerfile_contents = dockerfile_template.render(
@@ -648,6 +658,7 @@ class ServingImageBuilder(ImageBuilder):
             base_image_name_and_tag=base_image_name_and_tag,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
+            should_install_user_requirements_file=should_install_user_requirements_file,
             config=config,
             python_version=python_version,
             live_reload=config.live_reload,
@@ -664,6 +675,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
+            **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
         docker_file_path.write_text(dockerfile_contents)
