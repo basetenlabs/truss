@@ -2,7 +2,7 @@ import os
 from itertools import count
 
 import build_engine_utils
-from client import TritonClient, TritonServer
+from triton_client import TritonClient, TritonServer
 from transformers import AutoTokenizer
 from schema import ModelInput, TrussBuildConfig
 from constants import GRPC_SERVICE_PORT, HTTP_SERVICE_PORT, HF_AUTH_KEY_CONSTANT, TOKENIZER_KEY_CONSTANT
