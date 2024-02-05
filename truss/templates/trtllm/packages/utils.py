@@ -4,15 +4,13 @@ from pathlib import Path
 import tritonclient.grpc as grpcclient
 from huggingface_hub import snapshot_download
 from tritonclient.utils import np_to_triton_dtype
+from constants import TENSORRT_LLM_MODEL_REPOSITORY_PATH, GRPC_SERVICE_PORT, HTTP_SERVICE_PORT
 
-GRPC_SERVICE_PORT = 8001
-HTTP_SERVICE_PORT = 8003
-
-
-def move_all_files(src: Path, dest: Path):
+def move_all_files(src: Path, dest: Path) -> None:
     """
     Moves all files from `src` to `dest` recursively.
     """
+    print(f"Moving from {src} to {dest}")
     for item in src.iterdir():
         dest_item = dest / item.name
         if item.is_dir():
@@ -22,21 +20,17 @@ def move_all_files(src: Path, dest: Path):
             item.rename(dest_item)
 
 
-def prepare_model_repository(data_dir: Path):
-    """
-    Moves all files from `data_dir` to the model repository directory.
-    """
+def prepare_model_repository(data_dir: Path) -> None:
     # Ensure the destination directory exists
-    dest_dir = Path("/packages/inflight_batcher_llm/tensorrt_llm/1")
+    dest_dir = TENSORRT_LLM_MODEL_REPOSITORY_PATH / "tensorrt_llm" / "1"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # Ensure empty version directory for `ensemble` model exists
-    ensemble_dir = Path("/packages/inflight_batcher_llm/ensemble/1")
+    ensemble_dir = TENSORRT_LLM_MODEL_REPOSITORY_PATH / "ensemble" / "1"
     ensemble_dir.mkdir(parents=True, exist_ok=True)
 
     # Move all files and directories from data_dir to dest_dir
     move_all_files(data_dir, dest_dir)
-
 
 def prepare_grpc_tensor(name, input):
     t = grpcclient.InferInput(name, input.shape, np_to_triton_dtype(input.dtype))
