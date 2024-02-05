@@ -13,10 +13,13 @@ from pathlib import Path
 from threading import Thread
 from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
+import pydantic
 from anyio import Semaphore, to_thread
 from common.patches import apply_patches
 from common.retry import retry
+from common.schema import TrussSchema
 from fastapi import HTTPException
+from pydantic import BaseModel
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -84,6 +87,7 @@ class ModelWrapper:
             )
         )
         self._background_tasks: Set[asyncio.Task] = set()
+        self.truss_schema: TrussSchema = None
 
     def load(self) -> bool:
         if self.ready:
@@ -135,6 +139,7 @@ class ModelWrapper:
         model_module_name = str(
             Path(self._config["model_class_filename"]).with_suffix("")
         )
+
         module = importlib.import_module(
             f"{self._config['model_module_dir']}.{model_module_name}"
         )
@@ -153,6 +158,8 @@ class ModelWrapper:
         )
         self._model = model_class(**model_init_params)
 
+        self.set_truss_schema()
+
         if hasattr(self._model, "load"):
             retry(
                 self._model.load,
@@ -161,6 +168,21 @@ class ModelWrapper:
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
+
+    def set_truss_schema(self):
+        parameters = (
+            inspect.signature(self._model.preprocess).parameters
+            if hasattr(self._model, "preprocess")
+            else inspect.signature(self._model.predict).parameters
+        )
+
+        outputs_annotation = (
+            inspect.signature(self._model.postprocess).return_annotation
+            if hasattr(self._model, "postprocess")
+            else inspect.signature(self._model.predict).return_annotation
+        )
+
+        self.truss_schema = TrussSchema.from_signature(parameters, outputs_annotation)
 
     async def preprocess(
         self,
@@ -253,6 +275,15 @@ class ModelWrapper:
             Generator: In case of streaming response
         """
 
+        if self.truss_schema is not None:
+            try:
+                body = self.truss_schema.input_type(**body)
+            except pydantic.ValidationError as e:
+                self._logger.info("Request Validation Error: %s", {str(e)})
+                raise HTTPException(
+                    status_code=400, detail="Request Validation Error"
+                ) from e
+
         payload = await self.preprocess(body, headers)
 
         async with deferred_semaphore(self._predict_semaphore) as semaphore_manager:
@@ -310,6 +341,10 @@ class ModelWrapper:
                 return _response_generator()
 
         processed_response = await self.postprocess(response)
+
+        if isinstance(processed_response, BaseModel):
+            # If we return a pydantic object, convert it back to a dict
+            processed_response = processed_response.dict()
         return processed_response
 
 
