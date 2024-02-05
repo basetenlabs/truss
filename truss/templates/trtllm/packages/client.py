@@ -116,12 +116,11 @@ class TritonClient:
         return self._grpc_client
 
     async def infer(self, model_input: ModelInput, model_name="ensemble") -> AsyncGenerator[str, None]:
-        
+        grpc_client_instance = self.start_grpc_stream() 
         inputs = model_input.to_tensors()
+
         async def input_generator():
             yield {"model_name": model_name, "inputs": inputs, "request_id": model_input.request_id}
-
-        grpc_client_instance = grpcclient.InferenceServerClient("localhost:8001", verbose=True)
         
         response_iterator = grpc_client_instance.stream_infer(
             inputs_iterator=input_generator(),
@@ -130,11 +129,11 @@ class TritonClient:
         try:
             async for response in response_iterator:
                 result, error = response
-                if error:
-                    print(error)
+                if result:
+                    result = result.as_numpy("text_output")
+                    yield result[0].decode("utf-8")
                 else:
-                    x = result.as_numpy("text_output")
-                    yield x
-                    
+                    yield json.dumps({"status": "error", "message": error.message()})
+
         except grpcclient.InferenceServerException as e:
             print(f"InferenceServerException: {e}")

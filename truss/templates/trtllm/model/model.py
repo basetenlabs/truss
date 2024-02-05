@@ -3,10 +3,9 @@ from itertools import count
 
 import build_engine_utils
 from client import TritonClient, TritonServer
-from constants import TENSORRT_LLM_MODEL_REPOSITORY_PATH
 from transformers import AutoTokenizer
 from schema import ModelInput, TrussBuildConfig
-from constants import GRPC_SERVICE_PORT, HTTP_SERVICE_PORT, HF_AUTH_KEY_CONSTANT
+from constants import GRPC_SERVICE_PORT, HTTP_SERVICE_PORT, HF_AUTH_KEY_CONSTANT, TOKENIZER_KEY_CONSTANT
 
 
 class Model:
@@ -58,7 +57,7 @@ class Model:
         env = {}
         if hf_access_token:
             env[HF_AUTH_KEY_CONSTANT] = hf_access_token
-        env["TRITON_TOKENIZER_REPOSITORY"] = build_config.tokenizer_repository
+        env[TOKENIZER_KEY_CONSTANT] = build_config.tokenizer_repository
 
         self.triton_server_manager.start(
             tensor_parallelism=build_config.tensor_parallel_count,
