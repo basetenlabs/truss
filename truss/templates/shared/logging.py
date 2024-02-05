@@ -48,7 +48,7 @@ class StreamToLogger(object):
     Fake file-like stream object that redirects writes to a logger instance.
     """
 
-    def __init__(self, name, stream):
+    def __init__(self, stream):
         self.logger = loguru_logger
         self.stream = stream
 
@@ -62,8 +62,8 @@ class StreamToLogger(object):
         pass
 
 
-sys.stdout = StreamToLogger("STDOUT", sys.__stdout__)  # type: ignore
-sys.stderr = StreamToLogger("STDOUT", sys.__stderr__)  # type: ignore
+sys.stdout = StreamToLogger(sys.__stdout__)  # type: ignore
+sys.stderr = StreamToLogger(sys.__stderr__)  # type: ignore
 
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 JSON_LOG_HANDLER.set_name("json_logger_handler")

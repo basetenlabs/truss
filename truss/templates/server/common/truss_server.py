@@ -256,8 +256,23 @@ class TrussServer:
             },
         )
 
+        class RequestIdFilter(logging.Filter):
+            """
+            Inject request_id into logs.
+            """
+
+            def __init__(self, request_id: str):
+                self.request_id = request_id
+
+            def filter(self, record):
+                record.request_id = self.request_id
+                return True
+
         async def intercept_request_id(request, call_next):
             request_id = request.headers.get("x-baseten-request-id", uuid.uuid4())
+            request_id_filter = RequestIdFilter(request_id)
+
+            logging.getLogger("uvicorn.access").addFilter(request_id_filter)
             with loguru_logger.contextualize(request_id=request_id):
                 return await call_next(request)
 
