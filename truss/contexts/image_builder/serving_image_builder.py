@@ -513,15 +513,16 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
-
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         if config.build.model_server is ModelServer.TRT_LLM:
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
             # Check to see if TP and GPU count are the same
-            if "tensor_parallelism" in config.model_metadata:
+            # TODO(Abu): Consolidate these config parameters so that we don't have to
+            # keep truss + template in sync if we change th einterface
+            if "tensor_parallel_count" in config.build.arguments:
                 if (
-                    config.model_metadata["tensor_parallelism"]
+                    config.build.arguments["tensor_parallel_count"]
                     != config.resources.accelerator.count
                 ):
                     raise ValueError(
