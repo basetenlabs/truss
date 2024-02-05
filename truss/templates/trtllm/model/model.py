@@ -36,7 +36,7 @@ class Model:
         # Build the engine if required
         # TODO(Abu): Move to pre-runtime
         if build_config.requires_build:
-            build_engine_utils.build_engine(
+            build_engine_utils.build_engine_from_config_args(
                 engine_build_args=build_config.engine_build_args,
                 dst=self._data_dir,
             )
