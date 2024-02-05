@@ -5,22 +5,23 @@ import time
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
-import numpy as np
 import tritonclient.grpc.aio as grpcclient
 import tritonclient.http as httpclient
-from utils import (
-    prepare_model_repository,
-    download_engine,
+from constants import (
+    ENTRYPOINT_MODEL_NAME,
+    GRPC_SERVICE_PORT,
+    TENSORRT_LLM_MODEL_REPOSITORY_PATH,
 )
-from constants import ENTRYPOINT_MODEL_NAME, TENSORRT_LLM_MODEL_REPOSITORY_PATH, GRPC_SERVICE_PORT, HTTP_SERVICE_PORT
 from schema import ModelInput
+from utils import download_engine, prepare_model_repository
+
 
 class TritonServer:
     def __init__(self, grpc_port: int = 8001, http_port: int = 8003):
         self.grpc_port = grpc_port
         self.http_port = http_port
         self._server_process = None
-    
+
     def create_model_repository(
         self,
         truss_data_dir: Path,
@@ -39,8 +40,9 @@ class TritonServer:
     def start(self, tensor_parallelism: int = 1, env: dict = {}) -> None:
         def build_server_start_command() -> list:
             """
-            Triton Inference Server has different startup commands depending on the tensor parallelism (TP) configuration.
-            This function starts the server with the appropriate command.
+            Triton Inference Server has different startup commands depending on the tensor
+            parallelism (TP) configuration. This function starts the server with the appropriate
+            command.
             """
             base_command = [
                 "tritonserver",
@@ -68,7 +70,7 @@ class TritonServer:
             return mpirun_command + [combined_mpi_commands]
 
         command = build_server_start_command()
-        self._server_process = subprocess.Popen(
+        self._server_process = subprocess.Popen(  # type: ignore
             command,
             env={**os.environ, **env},
         )
@@ -86,7 +88,9 @@ class TritonServer:
     @property
     def is_alive(self) -> bool:
         try:
-            http_client = httpclient.InferenceServerClient(url=f"localhost:{self.http_port}", verbose=False)
+            http_client = httpclient.InferenceServerClient(
+                url=f"localhost:{self.http_port}", verbose=False
+            )
             return http_client.is_server_live()
         except ConnectionRefusedError:
             return False
@@ -94,7 +98,9 @@ class TritonServer:
     @property
     def is_ready(self) -> bool:
         try:
-            http_client = httpclient.InferenceServerClient(url=f"localhost:{self.http_port}", verbose=False)
+            http_client = httpclient.InferenceServerClient(
+                url=f"localhost:{self.http_port}", verbose=False
+            )
             return http_client.is_model_ready(model_name=ENTRYPOINT_MODEL_NAME)
         except ConnectionRefusedError:
             return False
@@ -105,7 +111,6 @@ class TritonClient:
         self.grpc_service_port = grpc_service_port
         self._grpc_client = None
 
-    
     def start_grpc_stream(self) -> grpcclient.InferenceServerClient:
         if self._grpc_client:
             return self._grpc_client
@@ -115,17 +120,23 @@ class TritonClient:
         )
         return self._grpc_client
 
-    async def infer(self, model_input: ModelInput, model_name="ensemble") -> AsyncGenerator[str, None]:
-        grpc_client_instance = self.start_grpc_stream() 
+    async def infer(
+        self, model_input: ModelInput, model_name="ensemble"
+    ) -> AsyncGenerator[str, None]:
+        grpc_client_instance = self.start_grpc_stream()
         inputs = model_input.to_tensors()
 
         async def input_generator():
-            yield {"model_name": model_name, "inputs": inputs, "request_id": model_input.request_id}
-        
+            yield {
+                "model_name": model_name,
+                "inputs": inputs,
+                "request_id": model_input.request_id,
+            }
+
         response_iterator = grpc_client_instance.stream_infer(
             inputs_iterator=input_generator(),
         )
-        
+
         try:
             async for response in response_iterator:
                 result, error = response

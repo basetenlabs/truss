@@ -2,9 +2,14 @@ import socket
 from pathlib import Path
 
 import tritonclient.grpc as grpcclient
+from constants import (
+    GRPC_SERVICE_PORT,
+    HTTP_SERVICE_PORT,
+    TENSORRT_LLM_MODEL_REPOSITORY_PATH,
+)
 from huggingface_hub import snapshot_download
 from tritonclient.utils import np_to_triton_dtype
-from constants import TENSORRT_LLM_MODEL_REPOSITORY_PATH, GRPC_SERVICE_PORT, HTTP_SERVICE_PORT
+
 
 def move_all_files(src: Path, dest: Path) -> None:
     """
@@ -31,6 +36,7 @@ def prepare_model_repository(data_dir: Path) -> None:
 
     # Move all files and directories from data_dir to dest_dir
     move_all_files(data_dir, dest_dir)
+
 
 def prepare_grpc_tensor(name, input):
     t = grpcclient.InferInput(name, input.shape, np_to_triton_dtype(input.dtype))

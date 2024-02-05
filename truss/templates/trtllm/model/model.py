@@ -2,10 +2,15 @@ import os
 from itertools import count
 
 import build_engine_utils
-from triton_client import TritonClient, TritonServer
-from transformers import AutoTokenizer
+from constants import (
+    GRPC_SERVICE_PORT,
+    HF_AUTH_KEY_CONSTANT,
+    HTTP_SERVICE_PORT,
+    TOKENIZER_KEY_CONSTANT,
+)
 from schema import ModelInput, TrussBuildConfig
-from constants import GRPC_SERVICE_PORT, HTTP_SERVICE_PORT, HF_AUTH_KEY_CONSTANT, TOKENIZER_KEY_CONSTANT
+from transformers import AutoTokenizer
+from triton_client import TritonClient, TritonServer
 
 
 class Model:
@@ -27,7 +32,7 @@ class Model:
         hf_access_token = None
         if "hf_access_token" in self._secrets._base_secrets.keys():
             hf_access_token = self._secrets["hf_access_token"]
-        
+
         # Build the engine if required
         # TODO(Abu): Move to pre-runtime
         if build_config.requires_build:
@@ -41,10 +46,12 @@ class Model:
             grpc_port=GRPC_SERVICE_PORT,
             http_port=HTTP_SERVICE_PORT,
         )
-        
+
         self.triton_server_manager.create_model_repository(
             truss_data_dir=self._data_dir,
-            engine_repository_path=build_config.engine_repository if not build_config.requires_build else None,
+            engine_repository_path=build_config.engine_repository
+            if not build_config.requires_build
+            else None,
             huggingface_auth_token=hf_access_token,
         )
 
@@ -71,14 +78,14 @@ class Model:
         self.eos_token_id = self.tokenizer.eos_token_id
 
     async def predict(self, model_input):
-        model_input["request_id"] = str(os.getpid()) + str(next(self._request_id_counter))
+        model_input["request_id"] = str(os.getpid()) + str(
+            next(self._request_id_counter)
+        )
         model_input["eos_token_id"] = self.eos_token_id
-        
+
         self.triton_client.start_grpc_stream()
 
-        model_input = ModelInput(
-            **model_input
-        )
+        model_input = ModelInput(**model_input)
 
         result_iterator = self.triton_client.infer(model_input)
 
