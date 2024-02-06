@@ -285,9 +285,7 @@ class TrussServer:
 
             with loguru_logger.contextualize(request_id=request_id):
                 response = await call_next(request)
-                loguru_logger.info(
-                    f"POST /v1/models/model:predict {response.status_code}"
-                )
+                loguru_logger.info(f"POST /predict {response.status_code}")
                 return response
 
         def exit_self():
