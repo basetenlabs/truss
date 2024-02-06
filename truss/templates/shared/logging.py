@@ -105,3 +105,6 @@ def setup_logging() -> None:
         # some special handling for request logging
         if logger.name == "uvicorn.access":
             logger.addFilter(HealthCheckFilter())
+
+    # clear uvicorn access so we can overwrite
+    logging.getLogger("uvicorn.access").handlers = []
