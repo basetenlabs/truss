@@ -2,11 +2,18 @@ import json
 import logging
 import sys
 from datetime import datetime
+from enum import Enum
 
 import loguru
 from pythonjsonlogger import jsonlogger
 
 LEVEL: int = logging.INFO
+
+
+class Lifecycle(Enum):
+    LOAD = "MODEL_LOAD"
+    STARTUP = "MODEL_STARTUP"
+    REQUEST = "REQUEST"
 
 
 def serialize(record):
@@ -22,6 +29,9 @@ def serialize(record):
         "levelname": record["level"].name,
         "request_id": str(record["extra"]["request_id"])
         if "request_id" in record["extra"]
+        else None,
+        "lifecycle": record["extra"]["lifecycle"].value
+        if "lifecycle" in record["extra"]
         else None,
     }
 
@@ -106,5 +116,6 @@ def setup_logging() -> None:
         if logger.name == "uvicorn.access":
             logger.addFilter(HealthCheckFilter())
 
-    # clear uvicorn access so we can overwrite
+    # clear uvicorn loggers so we can overwrite
     logging.getLogger("uvicorn.access").handlers = []
+    logging.getLogger("uvicorn.error").handlers = []

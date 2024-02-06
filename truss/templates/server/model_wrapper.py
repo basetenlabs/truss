@@ -19,8 +19,8 @@ from common.retry import retry
 from common.schema import TrussSchema
 from fastapi import HTTPException
 from loguru import logger
-from shared.logging import patching
 from pydantic import BaseModel
+from shared.logging import Lifecycle, patching
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -93,7 +93,7 @@ class ModelWrapper:
         self.truss_schema: TrussSchema = None
 
     def load(self) -> bool:
-        with self._logger.contextualize(request_id="MODEL_LOAD"):
+        with self._logger.contextualize(lifecycle=Lifecycle.LOAD):
             if self.ready:
                 return self.ready
 

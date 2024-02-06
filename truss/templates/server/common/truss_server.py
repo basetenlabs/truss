@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
-from shared.logging import loguru_logger, setup_logging
+from shared.logging import Lifecycle, loguru_logger, setup_logging
 from shared.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
@@ -282,7 +282,9 @@ class TrussServer:
         async def intercept_request_id(request, call_next):
             request_id = request.headers.get("x-baseten-request-id", None)
 
-            with loguru_logger.contextualize(request_id=request_id):
+            with loguru_logger.contextualize(
+                request_id=request_id, lifecycle=Lifecycle.REQUEST
+            ):
                 response = await call_next(request)
                 loguru_logger.info(
                     f"{request.method} {request.url.path} {response.status_code}"
@@ -358,7 +360,7 @@ class TrussServer:
         cfg.setup_event_loop()
 
         async def serve():
-            with loguru_logger.contextualize(request_id="MODEL_STARTUP"):
+            with loguru_logger.contextualize(lifecycle=Lifecycle.STARTUP):
                 serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 serversocket.bind((cfg.host, cfg.port))
@@ -375,6 +377,7 @@ class TrussServer:
                     server = UvicornCustomServer(config=cfg, sockets=[serversocket])
                     server.start()
                     servers.append(server)
+                loguru_logger.info("Application startup complete.")
 
             def stop_servers():
                 # Send stop signal, then wait for all to exit
