@@ -6,6 +6,7 @@ import os
 import signal
 import socket
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Generator
@@ -281,20 +282,16 @@ class TrussServer:
         )
 
         class RequestIdFilter(logging.Filter):
-            """
-            Inject request_id into logs.
-            """
-
-            def __init__(self, request_id: str):
-                self.request_id = request_id
+            thread_local = threading.local()
 
             def filter(self, record):
-                record.request_id = self.request_id
+                record.request_id = getattr(self.thread_local, "request_id", "UNKNOWN")
                 return True
 
         async def intercept_request_id(request, call_next):
             request_id = request.headers.get("x-baseten-request-id", uuid.uuid4())
-            request_id_filter = RequestIdFilter(request_id)
+            request_id_filter = RequestIdFilter()
+            request_id_filter.thread_local.request_id = request_id
 
             logging.getLogger("uvicorn.access").addFilter(request_id_filter)
             with loguru_logger.contextualize(request_id=request_id):
