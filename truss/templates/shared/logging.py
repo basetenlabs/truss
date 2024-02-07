@@ -20,9 +20,6 @@ def serialize(record):
     dt = datetime.fromtimestamp(record["time"].timestamp())
     formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
 
-    if record["message"][0] == "{":
-        return record["message"]
-
     request_id = (
         str(record["extra"]["request_id"]) if "request_id" in record["extra"] else None
     )
@@ -62,10 +59,21 @@ class StreamToLogger(object):
 
     def __init__(self, stream):
         self.logger = loguru_logger
+        self.log_buffer = ""
         self.stream = stream
 
     def write(self, buf):
-        self.logger.info(buf)
+        # If we encounter a newline, then log with the buffer and a newline
+        if buf.endswith("\n"):
+            buf = buf[:-1]
+            self.log_buffer += buf
+
+            # log + clear buf
+            self.logger.info(self.log_buffer)
+            self.log_buffer = ""
+        else:
+            # If the buffer does not end in a newline, add it to the log buffer for later output
+            self.log_buffer += buf
 
     def isatty(self):
         return self.stream.isatty()
