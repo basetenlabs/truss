@@ -5,6 +5,7 @@ import logging
 import tempfile
 import textwrap
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
@@ -456,7 +457,7 @@ def test_multiple_request_ids_logged():
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
 
-        _create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
+        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -488,6 +489,61 @@ def test_multiple_request_ids_logged():
             len(recorded_req_ids) == 3
         ), "Expected 'Hello World' message to appear 3 times."
         assert len(set(recorded_req_ids)) == 3, "All request IDs should be unique."
+
+
+@pytest.mark.integration
+def test_concurrency_logging_truss():
+    # Tests that concurrency limits work correctly
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_concurrency_truss"
+
+        tr = TrussHandle(truss_dir)
+
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        # Each request takes 2 seconds, for this thread, we allow
+        # a concurrency of 2. This means the first two requests will
+        # succeed within the 2 seconds, and the third will fail, since
+        # it cannot start until the first two have completed.
+        def make_request():
+            requests.post(
+                full_url,
+                json={},
+                timeout=3,
+                headers={"x-baseten-request-id": str(uuid.uuid4())},
+            )
+
+        successful_thread_1 = PropagatingThread(target=make_request)
+        successful_thread_2 = PropagatingThread(target=make_request)
+        failed_thread = PropagatingThread(target=make_request)
+
+        successful_thread_1.start()
+        successful_thread_2.start()
+        # Ensure that the thread to fail starts a little after the others
+        time.sleep(0.2)
+        failed_thread.start()
+
+        successful_thread_1.join()
+        successful_thread_2.join()
+        with pytest.raises(requests.exceptions.ReadTimeout):
+            failed_thread.join()
+
+        loglines = container.logs().splitlines()
+        request_ids = set()
+        for line in loglines:
+            json_log = json.loads(line)
+            request_id = json_log["request_id"]
+            if request_id and json_log["message"] == "hello from concurrency truss":
+                request_ids.add(request_id)
+
+        assert len(request_ids) == 3
 
 
 @pytest.mark.integration

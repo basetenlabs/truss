@@ -286,9 +286,12 @@ class TrussServer:
                 request_id=request_id, lifecycle=Lifecycle.REQUEST
             ):
                 response = await call_next(request)
-                loguru_logger.info(
-                    f"{request.method} {request.url.path} {response.status_code}"
-                )
+
+                # don't log health checks
+                if request.method != "GET":
+                    loguru_logger.info(
+                        f"{request.method} {request.url.path} {response.status_code}"
+                    )
                 return response
 
         def exit_self():

@@ -23,16 +23,18 @@ def serialize(record):
     if record["message"][0] == "{":
         return record["message"]
 
+    request_id = (
+        str(record["extra"]["request_id"]) if "request_id" in record["extra"] else None
+    )
+    lifecycle = (
+        record["extra"]["lifecycle"].value if "lifecycle" in record["extra"] else None
+    )
     subset = {
         "asctime": formatted_time,
         "message": record["message"],
         "levelname": record["level"].name,
-        "request_id": str(record["extra"]["request_id"])
-        if "request_id" in record["extra"]
-        else None,
-        "lifecycle": record["extra"]["lifecycle"].value
-        if "lifecycle" in record["extra"]
-        else None,
+        "request_id": request_id,
+        "lifecycle": lifecycle,
     }
 
     return json.dumps(subset)
@@ -118,4 +120,5 @@ def setup_logging() -> None:
 
     # clear uvicorn loggers so we can overwrite
     logging.getLogger("uvicorn.access").handlers = []
+    logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
     logging.getLogger("uvicorn.error").handlers = []

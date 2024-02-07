@@ -16,5 +16,6 @@ class Model:
 
     def predict(self, model_input: Any) -> Dict[str, List]:
         # Invoke model on model_input and calculate predictions here.
+        print("hello from concurrency truss")
         time.sleep(2)
         return model_input
