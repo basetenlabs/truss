@@ -31,6 +31,7 @@ class StreamToLogger:
         self.logger = logger
         self.log_level = log_level
         self.stream = stream
+        self.log_buffer = ""
 
     def __getattr__(self, name):
         # we need to pass `isatty` from the stream for uvicorn
@@ -38,9 +39,18 @@ class StreamToLogger:
         return getattr(self.stream, name)
 
     def write(self, buf):
-        buf = buf.rstrip()  # Removes trailing spaces
-        if buf and not buf.isspace():  # Checks if the message is not just whitespace
-            self.logger.log(self.log_level, buf)
+        # If we encounter a newline, then log with the buffer and a newline
+        if buf.endswith("\n"):
+            buf = buf[:-1]
+            self.log_buffer += buf
+
+            # log + clear buf
+            self.logger.info(self.log_buffer)
+            self.log_buffer = ""
+        else:
+            # If the buffer does not end in a newline, add it to the log buffer for later output
+            # we're not going to end up here unless the user overrides print
+            self.log_buffer += buf
 
     def flush(self):
         """
