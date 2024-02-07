@@ -39,7 +39,7 @@ class StreamToLogger:
         return getattr(self.stream, name)
 
     def write(self, buf):
-        # If we encounter a newline, then log with the buffer and a newline
+        # If we encounter a newline, then log with the buffer
         if buf.endswith("\n"):
             buf = buf[:-1]
             self.log_buffer += buf
