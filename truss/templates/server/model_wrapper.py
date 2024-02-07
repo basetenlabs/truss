@@ -18,9 +18,8 @@ from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
 from fastapi import HTTPException
-from loguru import logger
 from pydantic import BaseModel
-from shared.logging import Lifecycle, patching
+from shared.logging import Lifecycle, loguru_logger
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
@@ -28,8 +27,6 @@ MODEL_BASENAME = "model"
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
 DEFAULT_PREDICT_CONCURRENCY = 1
-
-logger = logger.patch(patching)
 
 
 class DeferredSemaphoreManager:
@@ -79,7 +76,7 @@ class ModelWrapper:
 
     def __init__(self, config: Dict):
         self._config = config
-        self._logger = logger
+        self._logger = loguru_logger
         self.name = MODEL_BASENAME
         self.ready = False
         self._load_lock = Lock()
@@ -296,7 +293,7 @@ class ModelWrapper:
             # Streaming cases
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
                 if hasattr(self._model, "postprocess"):
-                    logger.warning(
+                    loguru_logger.warning(
                         "Predict returned a streaming response, while a postprocess is defined."
                         "Note that in this case, the postprocess will run within the predict lock."
                     )
@@ -405,7 +402,7 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
 def _handle_exception():
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
-    logger.exception("Internal Server Error")
+    loguru_logger.exception("Internal Server Error")
     raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
