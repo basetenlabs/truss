@@ -450,9 +450,7 @@ def test_multiple_request_ids_logged():
             print("This is a message from the Truss: Hello World!")
             return {}
 
-    # TODO: REMOVE LOGURU HERE!!!
-    config = """model_name: printing-truss\nrequirements: [loguru]
-    """
+    config = """model_name: printing-truss"""
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         truss_dir = Path(tmp_work_dir, "truss")
