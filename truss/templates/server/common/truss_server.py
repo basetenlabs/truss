@@ -182,7 +182,6 @@ class BasetenEndpoints:
                     detail="Schema not available, please try again later.",
                 )
         else:
-            print("FOUND MODEL SCHEMA")
             return model.truss_schema.serialize()
 
     @staticmethod
