@@ -38,7 +38,9 @@ class StreamToLogger:
         return getattr(self.stream, name)
 
     def write(self, buf):
-        self.logger.log(self.log_level, buf)
+        buf = buf.rstrip()  # Removes trailing spaces
+        if buf and not buf.isspace():  # Checks if the message is not just whitespace
+            self.logger.log(self.log_level, buf)
 
     def flush(self):
         """
