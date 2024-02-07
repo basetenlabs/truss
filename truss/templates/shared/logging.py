@@ -120,5 +120,4 @@ def setup_logging() -> None:
 
     # clear uvicorn loggers so we can overwrite
     logging.getLogger("uvicorn.access").handlers = []
-    logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
     logging.getLogger("uvicorn.error").handlers = []
