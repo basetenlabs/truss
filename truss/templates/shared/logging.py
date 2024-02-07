@@ -85,15 +85,6 @@ JSON_LOG_HANDLER.setFormatter(
 )
 
 
-class HealthCheckFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        # for any health check endpoints, lets skip logging
-        return (
-            record.getMessage().find("GET / ") == -1
-            and record.getMessage().find("GET /v1/models/model ") == -1
-        )
-
-
 def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
@@ -113,10 +104,6 @@ def setup_logging() -> None:
         if not setup:
             logger.handlers.clear()
             logger.addHandler(JSON_LOG_HANDLER)
-
-        # some special handling for request logging
-        if logger.name == "uvicorn.access":
-            logger.addFilter(HealthCheckFilter())
 
     # clear uvicorn loggers so we can overwrite
     logging.getLogger("uvicorn.access").handlers = []
