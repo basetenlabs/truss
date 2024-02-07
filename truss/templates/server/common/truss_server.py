@@ -288,7 +288,10 @@ class TrussServer:
                 response = await call_next(request)
 
                 # don't log health checks
-                if request.method != "GET":
+                is_health_check = request.method == "GET" and (
+                    request.url.path != "/" or request.url.path != "/v1/models/model"
+                )
+                if not is_health_check:
                     loguru_logger.info(
                         f"{request.method} {request.url.path} {response.status_code}"
                     )
