@@ -109,3 +109,5 @@ TRAINING_VARIABLES_FILENAME = "variables.yaml"
 HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
+
+TRTLLM_BASE_IMAGE = "baseten/trtllm-build-server:r23.12_baseten_v0.7.1_20240111"

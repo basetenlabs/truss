@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import tritonclient.grpc.aio as grpcclient
 import tritonclient
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -21,20 +22,21 @@ class ModelInput:
         stream: bool = True,
         eos_token_id: int = None,  # type: ignore
     ) -> None:
+        self.stream = stream
+        self.request_id = request_id
         self._prompt = prompt
         self._max_tokens = max_tokens
         self._beam_width = beam_width
         self._bad_words_list = [""] if bad_words_list is None else bad_words_list
         self._stop_words_list = [""] if stop_words_list is None else stop_words_list
         self._repetition_penalty = repetition_penalty
-        self._ignore_eos = ignore_eos
-        self._stream = stream
         self._eos_token_id = eos_token_id
+        self._ignore_eos = ignore_eos
 
     def _prepare_grpc_tensor(
         self, name: str, input_data: np.ndarray
-    ) -> tritonclient.grpc.InferInput:
-        tensor = tritonclient.grpc.InferInput(
+    ) -> grpcclient.InferInput:
+        tensor = grpcclient.InferInput(
             name,
             input_data.shape,
             tritonclient.utils.np_to_triton_dtype(input_data.dtype),
@@ -50,7 +52,7 @@ class ModelInput:
         output_len_data = np.ones_like(prompt_data, dtype=np.uint32) * self._max_tokens
         bad_words_data = np.array([self._bad_words_list], dtype=object)
         stop_words_data = np.array([self._stop_words_list], dtype=object)
-        stream_data = np.array([[self._stream]], dtype=bool)
+        stream_data = np.array([[self.stream]], dtype=bool)
         beam_width_data = np.array([[self._beam_width]], dtype=np.uint32)
         repetition_penalty_data = np.array(
             [[self._repetition_penalty]], dtype=np.float32
@@ -66,7 +68,7 @@ class ModelInput:
             self._prepare_grpc_tensor("repetition_penalty", repetition_penalty_data),
         ]
 
-        if not self.ignore_eos:
+        if not self._ignore_eos:
             end_id_data = np.array([[self._eos_token_id]], dtype=np.uint32)
             inputs.append(self._prepare_grpc_tensor("end_id", end_id_data))
 

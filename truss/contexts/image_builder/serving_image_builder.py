@@ -27,6 +27,7 @@ from truss.constants import (
     TEMPLATES_DIR,
     TRITON_SERVER_CODE_DIR,
     TRTLLM_TRUSS_DIR,
+    TRTLLM_BASE_IMAGE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
@@ -43,7 +44,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import Build, ModelRepo, ModelServer, TrussConfig
+from truss.truss_config import Build, ModelRepo, ModelServer, TrussConfig, BaseImage
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -530,6 +531,15 @@ class ServingImageBuilder(ImageBuilder):
                     raise ValueError(
                         "Tensor parallelism and GPU count must be the same for TRT-LLM"
                     )
+            
+            config.base_image = BaseImage(image=TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3")
+            base_trt_requirements = [
+                    "tritonclient[all]==2.42.0",
+                    "transformers==4.33.1",
+                    "jinja2==3.1.3"
+                ]
+            config.requirements.extend(base_trt_requirements)
+            
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
