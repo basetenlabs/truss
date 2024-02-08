@@ -116,7 +116,7 @@ class TritonClient:
             return self._grpc_client
 
         self._grpc_client = grpcclient.InferenceServerClient(
-            url=f"localhost:{self.grpc_service_port}", verbose=True
+            url=f"localhost:{self.grpc_service_port}", verbose=False
         )
         return self._grpc_client
 

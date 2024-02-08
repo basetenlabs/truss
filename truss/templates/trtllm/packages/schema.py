@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import tritonclient.grpc.aio as grpcclient
 import tritonclient
+import tritonclient.grpc.aio as grpcclient
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 

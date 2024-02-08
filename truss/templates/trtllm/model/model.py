@@ -25,10 +25,10 @@ class Model:
         self.uses_openai_api = None
 
     def load(self):
-        build_config = TrussBuildConfig(**self._config["build"]["arguments"]) 
-        self.uses_openai_api = (
-            "openai-compatible" in self._config.get("model_metadata", {}).get("tags", [])
-        )
+        build_config = TrussBuildConfig(**self._config["build"]["arguments"])
+        self.uses_openai_api = "openai-compatible" in self._config.get(
+            "model_metadata", {}
+        ).get("tags", [])
         hf_access_token = None
         if "hf_access_token" in self._secrets._base_secrets.keys():
             hf_access_token = self._secrets["hf_access_token"]
