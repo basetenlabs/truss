@@ -114,7 +114,7 @@ class ArgsConfig(BaseModel):
     parallel_build: Optional[bool] = None
 
     # to disable warning because `model_dir` starts with `model_` prefix
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=())  # type: ignore
 
     def as_command_arguments(self) -> list:
         non_bool_args = [
