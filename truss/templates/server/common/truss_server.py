@@ -37,6 +37,7 @@ DEFAULT_NUM_WORKERS = 1
 DEFAULT_NUM_SERVER_PROCESSES = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
+ACCESS_LOGGING_IGNORE_PATHS = ["/", "/v1/models/model"]
 
 
 async def parse_body(request: Request) -> bytes:
@@ -287,14 +288,18 @@ class TrussServer:
                 response = await call_next(request)
 
                 # don't log health checks
-                is_health_check = request.method == "GET" and (
-                    request.url.path != "/" or request.url.path != "/v1/models/model"
-                )
-                if not is_health_check:
+                if not request.state.is_health_check:
                     loguru_logger.info(
                         f"{request.method} {request.url.path} {response.status_code}"
                     )
                 return response
+
+        async def access_logging(request, call_next):
+            request.state.is_health_check = (
+                request.method == "GET"
+                and request.url.path in ACCESS_LOGGING_IGNORE_PATHS
+            )
+            return await call_next(request)
 
         def exit_self():
             # Note that this kills the current process, the worker process, not
@@ -306,6 +311,8 @@ class TrussServer:
             on_stop=lambda: None,
             on_term=exit_self,
         )
+
+        app.add_middleware(BaseHTTPMiddleware, dispatch=access_logging)
         app.add_middleware(BaseHTTPMiddleware, dispatch=intercept_request_id)
         app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app

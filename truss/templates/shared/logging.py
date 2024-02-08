@@ -38,7 +38,6 @@ def serialize(record):
 
 
 def patching(record):
-    # we should be able to label different types of logs here
     record["extra"]["serialized"] = serialize(record)
 
 
