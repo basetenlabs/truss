@@ -14,63 +14,61 @@ class ModelInput:
         request_id: int,
         max_tokens: int = 50,
         beam_width: int = 1,
-        bad_words_list: list = [""],
-        stop_words_list: list = [""],
+        bad_words_list: Optional[list] = None,
+        stop_words_list: Optional[list] = None,
         repetition_penalty: float = 1.0,
         ignore_eos: bool = False,
         stream: bool = True,
         eos_token_id: int = None,  # type: ignore
-    ):
-        self.prompt = prompt
-        self.request_id = request_id
-        self.max_tokens = max_tokens
-        self.beam_width = beam_width
-        self.bad_words_list = bad_words_list
-        self.stop_words_list = stop_words_list
-        self.repetition_penalty = repetition_penalty
-        self.ignore_eos = ignore_eos
-        self.stream = stream
-        self.eos_token_id = eos_token_id
+    ) -> None:
+        self._prompt = prompt
+        self._max_tokens = max_tokens
+        self._beam_width = beam_width
+        self._bad_words_list = [""] if bad_words_list is None else bad_words_list
+        self._stop_words_list = [""] if stop_words_list is None else stop_words_list
+        self._repetition_penalty = repetition_penalty
+        self._ignore_eos = ignore_eos
+        self._stream = stream
+        self._eos_token_id = eos_token_id
+
+    def _prepare_grpc_tensor(
+        self, name: str, input_data: np.ndarray
+    ) -> tritonclient.grpc.InferInput:
+        tensor = tritonclient.grpc.InferInput(
+            name,
+            input_data.shape,
+            tritonclient.utils.np_to_triton_dtype(input_data.dtype),
+        )
+        tensor.set_data_from_numpy(input_data)
+        return tensor
 
     def to_tensors(self):
-        def prepare_grpc_tensor(
-            name: str, input_data: np.ndarray
-        ) -> tritonclient.grpc.InferInput:
-            tensor = tritonclient.grpc.InferInput(
-                name,
-                input_data.shape,
-                tritonclient.utils.np_to_triton_dtype(input_data.dtype),
-            )
-            tensor.set_data_from_numpy(input_data)
-            return tensor
+        if self._eos_token_id is None and self._ignore_eos:
+            raise ValueError("eos_token_id is required when ignore_eos is True")
 
-        assert (
-            self.eos_token_id is not None or self.ignore_eos
-        ), "eos_token_id must be provided if ignore_eos is False"
-
-        prompt_data = np.array([[self.prompt]], dtype=object)
-        output_len_data = np.ones_like(prompt_data, dtype=np.uint32) * self.max_tokens
-        bad_words_data = np.array([self.bad_words_list], dtype=object)
-        stop_words_data = np.array([self.stop_words_list], dtype=object)
-        stream_data = np.array([[self.stream]], dtype=bool)
-        beam_width_data = np.array([[self.beam_width]], dtype=np.uint32)
+        prompt_data = np.array([[self._prompt]], dtype=object)
+        output_len_data = np.ones_like(prompt_data, dtype=np.uint32) * self._max_tokens
+        bad_words_data = np.array([self._bad_words_list], dtype=object)
+        stop_words_data = np.array([self._stop_words_list], dtype=object)
+        stream_data = np.array([[self._stream]], dtype=bool)
+        beam_width_data = np.array([[self._beam_width]], dtype=np.uint32)
         repetition_penalty_data = np.array(
-            [[self.repetition_penalty]], dtype=np.float32
+            [[self._repetition_penalty]], dtype=np.float32
         )
 
         inputs = [
-            prepare_grpc_tensor("text_input", prompt_data),
-            prepare_grpc_tensor("max_tokens", output_len_data),
-            prepare_grpc_tensor("bad_words", bad_words_data),
-            prepare_grpc_tensor("stop_words", stop_words_data),
-            prepare_grpc_tensor("stream", stream_data),
-            prepare_grpc_tensor("beam_width", beam_width_data),
-            prepare_grpc_tensor("repetition_penalty", repetition_penalty_data),
+            self._prepare_grpc_tensor("text_input", prompt_data),
+            self._prepare_grpc_tensor("max_tokens", output_len_data),
+            self._prepare_grpc_tensor("bad_words", bad_words_data),
+            self._prepare_grpc_tensor("stop_words", stop_words_data),
+            self._prepare_grpc_tensor("stream", stream_data),
+            self._prepare_grpc_tensor("beam_width", beam_width_data),
+            self._prepare_grpc_tensor("repetition_penalty", repetition_penalty_data),
         ]
 
         if not self.ignore_eos:
-            end_id_data = np.array([[self.eos_token_id]], dtype=np.uint32)
-            inputs.append(prepare_grpc_tensor("end_id", end_id_data))
+            end_id_data = np.array([[self._eos_token_id]], dtype=np.uint32)
+            inputs.append(self._prepare_grpc_tensor("end_id", end_id_data))
 
         return inputs
 
@@ -116,7 +114,7 @@ class ArgsConfig(BaseModel):
     # to disable warning because `model_dir` starts with `model_` prefix
     model_config = ConfigDict(protected_namespaces=())
 
-    def as_command_arguments(self):
+    def as_command_arguments(self) -> list:
         non_bool_args = [
             element
             for arg, value in self.dict().items()
@@ -148,20 +146,6 @@ class EngineBuildArgs(BaseModel, use_enum_values=True):
     quant: Optional[Quant] = None
     calibration: Optional[CalibrationConfig] = None
     engine_type: Optional[EngineType] = None
-
-    @classmethod
-    def from_config(cls, config: dict):
-        return cls(
-            repo=config["repo"],
-            args=ArgsConfig(**config["args"]),
-            quant=Quant(config["quant"]) if "quant" in config else None,
-            calibration=CalibrationConfig(**config["calibration"])
-            if "calibration" in config
-            else None,
-            engine_type=EngineType(config["engine_type"])
-            if "engine_type" in config
-            else None,
-        )
 
 
 class TrussBuildConfig(BaseModel):
@@ -200,7 +184,7 @@ class TrussBuildConfig(BaseModel):
     quant: Quant = Quant.NO_QUANT
     pipeline_parallel_count: int = 1
     tensor_parallel_count: int = 1
-    arguments: dict = {}
+    arguments: Optional[ArgsConfig] = None
     engine_repository: Optional[str] = None
     calibration: Optional[CalibrationConfig] = None
     engine_type: Optional[EngineType] = None
@@ -209,11 +193,11 @@ class TrussBuildConfig(BaseModel):
     @property
     def engine_build_args(self) -> EngineBuildArgs:
         if self._engine_build_args is None:
-            repo: str = self.tokenizer_repository
-            quant: Quant = self.quant
-            calibration: Optional[CalibrationConfig] = self.calibration
-            engine_type: Optional[EngineType] = self.engine_type
-            args: ArgsConfig = ArgsConfig(**self.arguments)
+            repo = self.tokenizer_repository
+            quant = self.quant
+            calibration = self.calibration
+            engine_type = self.engine_type
+            args = self.arguments or ArgsConfig()
             args.tp_size = self.tensor_parallel_count
             args.pp_size = self.pipeline_parallel_count
             self._engine_build_args = EngineBuildArgs(

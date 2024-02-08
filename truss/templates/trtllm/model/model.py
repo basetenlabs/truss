@@ -14,10 +14,10 @@ from triton_client import TritonClient, TritonServer
 
 
 class Model:
-    def __init__(self, **kwargs):
-        self._data_dir = kwargs["data_dir"]
-        self._config = kwargs["config"]
-        self._secrets = kwargs["secrets"]
+    def __init__(self, data_dir, config, secrets):
+        self._data_dir = data_dir
+        self._config = config
+        self._secrets = secrets
         self._request_id_counter = count(start=1)
         self.triton_client = None
         self.triton_server = None
@@ -33,7 +33,6 @@ class Model:
         if "hf_access_token" in self._secrets._base_secrets.keys():
             hf_access_token = self._secrets["hf_access_token"]
 
-        # Build the engine if required
         # TODO(Abu): Move to pre-runtime
         if build_config.requires_build:
             build_engine_utils.build_engine_from_config_args(
@@ -41,13 +40,12 @@ class Model:
                 dst=self._data_dir,
             )
 
-        # Instantiate TritonServerManager
-        self.triton_server_manager = TritonServer(
+        self.triton_server = TritonServer(
             grpc_port=GRPC_SERVICE_PORT,
             http_port=HTTP_SERVICE_PORT,
         )
 
-        self.triton_server_manager.create_model_repository(
+        self.triton_server.create_model_repository(
             truss_data_dir=self._data_dir,
             engine_repository_path=build_config.engine_repository
             if not build_config.requires_build
@@ -55,23 +53,20 @@ class Model:
             huggingface_auth_token=hf_access_token,
         )
 
-        # Instantiate TritonClient
-        self.triton_client = TritonClient(
-            grpc_service_port=GRPC_SERVICE_PORT,
-        )
-
-        # Start Triton Inference Server
         env = {}
         if hf_access_token:
             env[HF_AUTH_KEY_CONSTANT] = hf_access_token
         env[TOKENIZER_KEY_CONSTANT] = build_config.tokenizer_repository
 
-        self.triton_server_manager.start(
+        self.triton_server.start(
             tensor_parallelism=build_config.tensor_parallel_count,
             env=env,
         )
 
-        # Setup EOS token
+        self.triton_client = TritonClient(
+            grpc_service_port=GRPC_SERVICE_PORT,
+        )
+
         self.tokenizer = AutoTokenizer.from_pretrained(
             build_config.tokenizer_repository, token=hf_access_token
         )

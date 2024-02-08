@@ -7,14 +7,13 @@ def build_engine_from_config_args(
     engine_build_args: EngineBuildArgs,
     dst: Path,
 ):
-    import sys
-
-    sys.path.append("/app/baseten")
-
     import os
     import shutil
+    import sys
 
     # NOTE: These are provided by the underlying base image
+    # TODO(Abu): Remove this when we have a better way of handling this
+    sys.path.append("/app/baseten")
     from build_engine import Engine, build_engine
     from trtllm_utils import docker_tag_aware_file_cache
 
