@@ -30,6 +30,18 @@ def serialize(record):
         if "lifecycle" in record["extra"] and record["extra"]["lifecycle"] is not None
         else None
     )
+
+    # if someone is using logger instead of print, we need to handle that
+    try:
+        json_message = json.loads(record["message"])
+
+        # Check if 'asctime' key exists
+        if "asctime" in json_message:
+            record["message"] = json_message["message"]
+
+    except json.JSONDecodeError:
+        pass
+
     subset = {
         "asctime": formatted_time,
         "message": record["message"],
@@ -66,18 +78,9 @@ class StreamToLogger(object):
         self.stream = stream
 
     def write(self, buf):
-        # If we encounter a newline, then log with the buffer and a newline
-        if buf.endswith("\n"):
-            buf = buf[:-1]
-            self.log_buffer += buf
-
-            # log + clear buf
-            self.logger.info(self.log_buffer)
-            self.log_buffer = ""
-        else:
-            # If the buffer does not end in a newline, add it to the log buffer for later output
-            # we're not going to end up here unless the user overrides print
-            self.log_buffer += buf
+        to_log = buf.rstrip()
+        if len(to_log) > 0:
+            self.logger.info(to_log)
 
     def isatty(self):
         return self.stream.isatty()
