@@ -21,10 +21,14 @@ def serialize(record):
     formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
 
     request_id = (
-        str(record["extra"]["request_id"]) if "request_id" in record["extra"] else None
+        str(record["extra"]["request_id"])
+        if "request_id" in record["extra"] and record["extra"]["request_id"] is not None
+        else None
     )
     lifecycle = (
-        record["extra"]["lifecycle"].value if "lifecycle" in record["extra"] else None
+        record["extra"]["lifecycle"].value
+        if "lifecycle" in record["extra"] and record["extra"]["lifecycle"] is not None
+        else None
     )
     subset = {
         "asctime": formatted_time,
