@@ -14,6 +14,7 @@ from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
+    BASE_TRTLLM_REQUIREMENTS,
     CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
@@ -535,12 +536,7 @@ class ServingImageBuilder(ImageBuilder):
             config.base_image = BaseImage(
                 image=TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
             )
-            base_trt_requirements = [
-                "tritonclient[all]==2.42.0",
-                "transformers==4.33.1",
-                "jinja2==3.1.3",
-            ]
-            config.requirements.extend(base_trt_requirements)
+            config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
