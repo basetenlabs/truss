@@ -80,9 +80,7 @@ class StreamToLogger(object):
         self.stream = stream
 
     def write(self, buf):
-        to_log = buf.rstrip()
-        if len(to_log) > 0:
-            self.logger.info(to_log)
+        self.logger.info(buf.rstrip())
 
     # isatty is called on sys.stdout when printing to the terminal
     # it's important to make this method pass-through
