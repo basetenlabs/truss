@@ -16,6 +16,14 @@ class Lifecycle(Enum):
     REQUEST = "REQUEST"
 
 
+def parse_json_object(record_field):
+    try:
+        json_message = json.loads(record_field)
+        return json_message
+    except json.JSONDecodeError:
+        return None
+
+
 def serialize(record):
     dt = datetime.fromtimestamp(record["time"].timestamp())
     formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
@@ -32,15 +40,9 @@ def serialize(record):
     )
 
     # if someone is using logger instead of print, we need to handle that
-    try:
-        json_message = json.loads(record["message"])
-
-        # Check if 'asctime' key exists
-        if "asctime" in json_message:
-            record["message"] = json_message["message"]
-
-    except json.JSONDecodeError:
-        pass
+    json_message = parse_json_object(record["message"])
+    if json_message and "asctime" in json_message:
+        record["message"] = json_message["message"]
 
     subset = {
         "asctime": formatted_time,
@@ -82,6 +84,8 @@ class StreamToLogger(object):
         if len(to_log) > 0:
             self.logger.info(to_log)
 
+    # isatty is called on sys.stdout when printing to the terminal
+    # it's important to make this method pass-through
     def isatty(self):
         return self.stream.isatty()
 
