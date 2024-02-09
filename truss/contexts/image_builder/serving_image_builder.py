@@ -14,6 +14,7 @@ from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
+    BASE_TRTLLM_REQUIREMENTS,
     CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
@@ -26,6 +27,8 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRITON_SERVER_CODE_DIR,
+    TRTLLM_BASE_IMAGE,
+    TRTLLM_TRUSS_DIR,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
@@ -42,7 +45,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import Build, ModelRepo, ModelServer, TrussConfig
+from truss.truss_config import BaseImage, Build, ModelRepo, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -500,7 +503,6 @@ class ServingImageBuilder(ImageBuilder):
         elif config.build.model_server is ModelServer.TRITON:
             create_triton_build_dir(config, build_dir, truss_dir)
             return
-        # ModelServer.TrussServer and ModelServer.TRT_LLM use the default truss image builder
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
@@ -515,6 +517,26 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
+        if config.build.model_server is ModelServer.TRT_LLM:
+            copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+
+            # Check to see if TP and GPU count are the same
+            # TODO(Abu): Consolidate these config parameters so that we don't have to
+            # keep truss + template in sync if we change th einterface
+            if "tensor_parallel_count" in config.build.arguments:
+                if (
+                    config.build.arguments["tensor_parallel_count"]
+                    != config.resources.accelerator.count
+                ):
+                    raise ValueError(
+                        "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                    )
+
+            config.base_image = BaseImage(
+                image=TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
+            )
+            config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
