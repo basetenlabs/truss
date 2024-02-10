@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 import time
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Union
@@ -282,7 +283,7 @@ class TrussServer:
         )
 
         async def intercept_request_id(request, call_next):
-            request_id = request.headers.get("x-baseten-request-id", None)
+            request_id = request.headers.get("x-baseten-request-id", uuid.uuid4())
 
             with loguru_logger.contextualize(
                 request_id=request_id, lifecycle=Lifecycle.REQUEST
