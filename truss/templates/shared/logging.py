@@ -1,62 +1,111 @@
+import json
 import logging
 import sys
+from datetime import datetime
+from enum import Enum
 
+import loguru
 from pythonjsonlogger import jsonlogger
 
 LEVEL: int = logging.INFO
+
+
+class Lifecycle(Enum):
+    LOAD = "MODEL_LOAD"
+    STARTUP = "MODEL_STARTUP"
+    REQUEST = "REQUEST"
+
+
+def parse_json_object(record_field):
+    try:
+        json_message = json.loads(record_field)
+        return json_message
+    except json.JSONDecodeError:
+        return None
+
+
+def serialize(record):
+    dt = datetime.fromtimestamp(record["time"].timestamp())
+    formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+
+    request_id = (
+        str(record["extra"]["request_id"])
+        if "request_id" in record["extra"] and record["extra"]["request_id"] is not None
+        else None
+    )
+    lifecycle = (
+        record["extra"]["lifecycle"].value
+        if "lifecycle" in record["extra"] and record["extra"]["lifecycle"] is not None
+        else None
+    )
+
+    # if someone is using logger instead of print, we need to handle that
+    json_message = parse_json_object(record["message"])
+    if json_message and "asctime" in json_message:
+        record["message"] = json_message["message"]
+
+    subset = {
+        "asctime": formatted_time,
+        "message": record["message"],
+        "levelname": record["level"].name,
+        "request_id": request_id,
+        "lifecycle": lifecycle,
+    }
+
+    return json.dumps(subset)
+
+
+def patching(record):
+    record["extra"]["serialized"] = serialize(record)
+
+
+loguru_logger = loguru.logger
+
+# reset the logger
+loguru_logger.remove()
+
+# we want to add request ids via a patch (think of it a middleware)
+loguru_logger = loguru_logger.patch(patching)
+loguru_logger.add(sys.stdout, format="{extra[serialized]}")
+
+
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+    """
+
+    def __init__(self, stream):
+        self.logger = loguru_logger
+        self.log_buffer = ""
+        self.stream = stream
+
+    def write(self, buf):
+        self.logger.info(buf.rstrip())
+
+    # isatty is called on sys.stdout when printing to the terminal
+    # it's important to make this method pass-through
+    def isatty(self):
+        return self.stream.isatty()
+
+    def flush(self):
+        pass
+
+
+sys.stdout = StreamToLogger(sys.__stdout__)  # type: ignore
+sys.stderr = StreamToLogger(sys.__stderr__)  # type: ignore
 
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
 JSON_LOG_HANDLER.setLevel(LEVEL)
 JSON_LOG_HANDLER.setFormatter(
-    jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(message)s")
+    jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(message)s %(request_id)s")
 )
-
-
-class HealthCheckFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        # for any health check endpoints, lets skip logging
-        return (
-            record.getMessage().find("GET / ") == -1
-            and record.getMessage().find("GET /v1/models/model ") == -1
-        )
-
-
-class StreamToLogger:
-    """
-    StreamToLogger redirects stdout and stderr to logger
-    """
-
-    def __init__(self, logger, log_level, stream):
-        self.logger = logger
-        self.log_level = log_level
-        self.stream = stream
-
-    def __getattr__(self, name):
-        # we need to pass `isatty` from the stream for uvicorn
-        # this is a more general, less hacky fix
-        return getattr(self.stream, name)
-
-    def write(self, buf):
-        self.logger.log(self.log_level, buf)
-
-    def flush(self):
-        """
-        This is a no-op function. It only exists to prevent
-        AttributeError in case some part of the code attempts to call flush()
-        on instances of StreamToLogger. Thus, we define this method as a safety
-        measure.
-        """
-        pass
 
 
 def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]
-
-    sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stdout__)  # type: ignore
-    sys.stderr = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stderr__)  # type: ignore
 
     for logger in loggers:
         logger.setLevel(LEVEL)
@@ -73,6 +122,6 @@ def setup_logging() -> None:
             logger.handlers.clear()
             logger.addHandler(JSON_LOG_HANDLER)
 
-        # some special handling for request logging
-        if logger.name == "uvicorn.access":
-            logger.addFilter(HealthCheckFilter())
+    # clear uvicorn loggers so we can overwrite
+    logging.getLogger("uvicorn.access").handlers = []
+    logging.getLogger("uvicorn.error").handlers = []

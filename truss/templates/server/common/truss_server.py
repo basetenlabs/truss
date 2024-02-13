@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 import time
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Union
@@ -19,7 +20,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
-from shared.logging import setup_logging
+from shared.logging import Lifecycle, loguru_logger, setup_logging
 from shared.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
@@ -37,6 +38,9 @@ DEFAULT_NUM_WORKERS = 1
 DEFAULT_NUM_SERVER_PROCESSES = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
+
+# These are paths for healthchecks!
+ACCESS_LOGGING_IGNORE_PATHS = ["/", "/v1/models/model"]
 
 
 async def parse_body(request: Request) -> bytes:
@@ -278,6 +282,28 @@ class TrussServer:
             },
         )
 
+        async def intercept_request_id(request, call_next):
+            request_id = request.headers.get("x-baseten-request-id", uuid.uuid4())
+
+            with loguru_logger.contextualize(
+                request_id=request_id, lifecycle=Lifecycle.REQUEST
+            ):
+                response = await call_next(request)
+
+                # don't log health checks
+                if not request.state.is_health_check:
+                    loguru_logger.info(
+                        f"{request.method} {request.url.path} {response.status_code}"
+                    )
+                return response
+
+        async def access_logging(request, call_next):
+            request.state.is_health_check = (
+                request.method == "GET"
+                and request.url.path in ACCESS_LOGGING_IGNORE_PATHS
+            )
+            return await call_next(request)
+
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
@@ -288,6 +314,9 @@ class TrussServer:
             on_stop=lambda: None,
             on_term=exit_self,
         )
+
+        app.add_middleware(BaseHTTPMiddleware, dispatch=access_logging)
+        app.add_middleware(BaseHTTPMiddleware, dispatch=intercept_request_id)
         app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app
 
@@ -346,20 +375,24 @@ class TrussServer:
         cfg.setup_event_loop()
 
         async def serve():
-            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            serversocket.bind((cfg.host, cfg.port))
-            serversocket.listen(5)
+            with loguru_logger.contextualize(lifecycle=Lifecycle.STARTUP):
+                serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                serversocket.bind((cfg.host, cfg.port))
+                serversocket.listen(5)
 
-            num_server_procs = self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
-            )
-            logging.info(f"starting {num_server_procs} uvicorn server processes")
-            servers: List[UvicornCustomServer] = []
-            for _ in range(num_server_procs):
-                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
-                server.start()
-                servers.append(server)
+                num_server_procs = self._config.get("runtime", {}).get(
+                    "num_workers", DEFAULT_NUM_SERVER_PROCESSES
+                )
+                loguru_logger.info(
+                    f"starting {num_server_procs} uvicorn server processes"
+                )
+                servers: List[UvicornCustomServer] = []
+                for _ in range(num_server_procs):
+                    server = UvicornCustomServer(config=cfg, sockets=[serversocket])
+                    server.start()
+                    servers.append(server)
+                loguru_logger.info("Application startup complete.")
 
             def stop_servers():
                 # Send stop signal, then wait for all to exit
