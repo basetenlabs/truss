@@ -2312,21 +2312,24 @@ files = [
 
 [[package]]
 name = "python-on-whales"
-version = "0.46.0"
+version = "0.68.0"
 description = "A Docker client for Python, designed to be fun and intuitive!"
 optional = false
-python-versions = ">=3.7, <4"
+python-versions = "<4,>=3.8"
 files = [
-    {file = "python-on-whales-0.46.0.tar.gz", hash = "sha256:8d298323c0a2dc80f4eb21db4b6fade25ee35745bcc35a6a4a97268a6d128433"},
-    {file = "python_on_whales-0.46.0-py3-none-any.whl", hash = "sha256:5fad15b28a9a66abc0a6180228b385eb1cf2a35883713b26290344bb6926b89c"},
+    {file = "python-on-whales-0.68.0.tar.gz", hash = "sha256:b62924e6ee1b4618976b81093a578296ada4d4110664c064a8dbc9792a7144a9"},
+    {file = "python_on_whales-0.68.0-py3-none-any.whl", hash = "sha256:62c547976a3bef3ae9af2e2da131b303bd621ea3879a6231341c130673210f25"},
 ]
 
 [package.dependencies]
-pydantic = "*"
+pydantic = ">=1.9,<2.0.dev0 || >=2.1.dev0,<3"
 requests = "*"
 tqdm = "*"
 typer = ">=0.4.1"
 typing-extensions = "*"
+
+[package.extras]
+test = ["pytest"]
 
 [[package]]
 name = "pywin32"
@@ -3180,4 +3183,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "c29cd70d49c3c7addb5748948ce786895f31b66531b8367bd43bc39125af2b60"
+content-hash = "bdd72b5efa60f6845e42a66b6a92fb999bac6f4ef472dfb9bf743a21253a4b41"
