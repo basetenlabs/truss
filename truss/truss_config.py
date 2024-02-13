@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, model_validator
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
+from truss.trt_llm import TRTLLMConfiguration
 from truss.types import ModelFrameworkType
 from truss.util.data_structures import transform_optional
 from truss.validation import (
@@ -170,98 +170,6 @@ class ModelServer(Enum):
     VLLM = "VLLM"
     TRITON = "TRITON"
     TRT_LLM = "TRT_LLM"
-
-
-class TRTLLMModelArchitecture(Enum):
-    LLAMA: str = "llama"
-    MISTRAL: str = "mistral"
-
-
-class TRTLLMQuantizationType(Enum):
-    NO_QUANT: str = "no_quant"
-    WEIGHTS_ONLY: str = "weights_only"
-    WEIGHTS_KV_INT8: str = "weights_kv_int8"
-    SMOOTH_QUANT: str = "smooth_quant"
-
-
-class TRTLLMBuildConfiguration(BaseModel):
-    huggingface_ckpt_repository: str
-    base_model_architecture: TRTLLMModelArchitecture
-    max_input_len: int
-    max_output_len: int
-    max_batch_size: int
-    quantization_type: TRTLLMQuantizationType = TRTLLMQuantizationType.NO_QUANT
-    gather_all_token_logits: bool = False
-    multi_block_mode: bool = False
-    calibrate_kv_cache: bool = False
-
-    def from_dict(d):
-        return TRTLLMBuildConfiguration(
-            huggingface_ckpt_repository=d.get("huggingface_ckpt_repository"),
-            base_model_architecture=TRTLLMModelArchitecture(
-                d.get("base_model_architecture")
-            ),
-            max_input_len=d.get("max_input_len"),
-            max_output_len=d.get("max_output_len"),
-            max_batch_size=d.get("max_batch_size"),
-            quantization_type=TRTLLMQuantizationType(
-                d.get("quantization_type", "no_quant")
-            ),
-            gather_all_token_logits=d.get("gather_all_token_logits", False),
-            multi_block_mode=d.get("multi_block_mode", False),
-            calibrate_kv_cache=d.get("calibrate_kv_cache", False),
-        )
-
-
-class TRTLLM(BaseModel):
-    engine_repository: Optional[str]
-    tokenizer_repository: Optional[str]
-    tensor_parallel_count: Optional[int] = 1
-    pipeline_parallel_count: Optional[int] = 1
-    build_configuration: Optional[TRTLLMBuildConfiguration] = None
-
-    @model_validator(mode="after")
-    def check_minimum_required_configuration(self):
-        serve_engine_configuration = (
-            self.engine_repository is not None and self.tokenizer_repository is not None
-        )
-        build_engine_configuration = self.build_configuration is not None
-        if serve_engine_configuration and build_engine_configuration:
-            logger.warning(
-                "Both serve and build configurations are provided. Serve configuration will be used."
-            )
-        if (self.engine_repository is None) ^ (self.tokenizer_repository is None):
-            raise ValueError(
-                "Both engine_repository and tokenizer_repository must be provided"
-            )
-
-    @property
-    def requires_build(self):
-        if self.engine_repository is None:
-            return True
-        return False
-
-    def from_dict(d):
-        return TRTLLM(
-            engine_repository=d.get("engine_repository", None),
-            tokenizer_repository=d.get("tokenizer_repository", None),
-            tensor_parallel_count=d.get("tensor_parallel_count", 1),
-            pipeline_parallel_count=d.get("pipeline_parallel_count", 1),
-            build_configuration=TRTLLMBuildConfiguration(**d.get("build_configuration"))
-            if d.get("build_configuration")
-            else None,
-        )
-
-    def to_dict(self):
-        return {
-            "engine_repository": self.engine_repository,
-            "tokenizer_repository": self.tokenizer_repository,
-            "tensor_parallel_count": self.tensor_parallel_count,
-            "pipeline_parallel_count": self.pipeline_parallel_count,
-            "build_configuration": self.build_configuration.model_dump()
-            if self.build_configuration
-            else None,
-        }
 
 
 @dataclass
@@ -556,7 +464,7 @@ class TrussConfig:
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
-    trt_llm: Optional[TRTLLM] = None
+    trt_llm: Optional[TRTLLMConfiguration] = None
 
     @property
     def canonical_python_version(self) -> str:
@@ -609,7 +517,9 @@ class TrussConfig:
                 d.get("model_cache") or d.get("hf_cache") or [],
                 ModelCache.from_list,
             ),
-            trt_llm=transform_optional(d.get("trt_llm"), TRTLLM.from_dict),
+            trt_llm=transform_optional(
+                d.get("trt_llm"), lambda x: TRTLLMConfiguration(**x)
+            ),
         )
         config.validate()
         return config
@@ -700,9 +610,9 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
-            elif isinstance(field_curr_value, TRTLLM):
+            elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(
-                    field_curr_value, lambda data: data.to_dict()
+                    field_curr_value, lambda data: data.model_dump(mode="json")
                 )
             else:
                 d[field_name] = field_curr_value
