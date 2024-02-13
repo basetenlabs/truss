@@ -1,0 +1,100 @@
+---
+title: How to use external packages
+description: "A guide on configuring your truss to use external packages"
+---
+
+You might encounter a situation where you have to incorporate a third-party package into your truss. Truss has a few different mechanisms to support this.
+
+## Using the packages directory
+
+Each truss, when initialized, comes with a `packages` directory. Inside this directory, you can place any additional python packages that your would like to reference inside your truss.
+For example, your packages directory might look like this:
+
+```
+packages/
+    package_1/
+        subpackage/
+            script.py
+    package_2/
+        utils.py
+        another_script.py
+```
+
+You can import these packages inside your `model.py` like so:
+
+```python model.py
+from package_1.subpackage.script import run_script
+from package_2.utils import RandomClass
+
+class Model:
+    def __init__(self, **kwargs):
+        random_class = RandomClass()
+    
+    def load(self):
+        run_script()
+
+    ...
+    ...
+    ...
+```
+
+These packages get bundled with your truss at build time. Because of this, it's ideal to use this method when your packages are small.
+But what if you want to reference packages *outside* your truss?
+
+## Using the external packages directory
+
+Let's say you have the following setup:
+
+```
+stable-diffusion/
+    model/
+        model.py
+        __init__.py
+    config.yaml
+super_cool_awesome_plugin/
+    plugin1/
+        script.py
+    plugin2/
+        run.py
+```
+
+In this case the package you want to import, `super_cool_awesome_plugin`, is outside the truss. You could move the `super_cool_awesome_plugin` directory inside the `packages` directory if you wanted to, but there is another option.
+Inside the `config.yaml` you can specify the path to external packages by using the key `external_package_dirs`. Under this key, you can provide a list of external packages that you would like to use in your truss.
+Here is what that would look like for the example above:
+
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs:
+- ../super_cool_awesome_plugin/
+model_name: Stable Diffusion
+python_version: py39
+...
+...
+...
+```
+
+<Tip>
+### Configuring the external_package_dirs path
+
+The path of the external packages must be relative to the config.yaml file. 
+So `super_cool_awesome_plugin/` is parallel to `stable-diffusion/`, but it's one directory up from the config.yaml so we use `../super_cool_awesome_plugin`.
+
+</Tip>
+
+Here's how you can reference your packages inside `model.py`:
+
+```python model.py
+from super_cool_awesome_plugin.plugin1.script import cool_constant
+from super_cool_awesome_plugin.plugin2.run import AwesomeRunner
+
+class Model:
+    def __init__(self, **kwargs):
+        awesome_runner = AwesomeRunner()
+    
+    def load(self):
+        awesome_runner.run(cool_constant)
+
+    ...
+    ...
+    ...
+```
