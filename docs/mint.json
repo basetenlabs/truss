@@ -63,6 +63,7 @@
         "guides/secrets",
         "guides/base-images",
         "guides/data-directory",
+        "guides/external-packages",
         "guides/model-cache",
         "guides/concurrency",
         "guides/tgi"
