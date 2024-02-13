@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from truss.config.trt_llm import TRTLLMConfiguration
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
-from truss.trt_llm import TRTLLMConfiguration
 from truss.types import ModelFrameworkType
 from truss.util.data_structures import transform_optional
 from truss.validation import (
