@@ -29,7 +29,7 @@ from package_2.utils import RandomClass
 class Model:
     def __init__(self, **kwargs):
         random_class = RandomClass()
-    
+
     def load(self):
         run_script()
 
@@ -76,7 +76,7 @@ python_version: py39
 <Tip>
 ### Configuring the external_package_dirs path
 
-The path of the external packages must be relative to the config.yaml file. 
+The path of the external packages must be relative to the config.yaml file.
 So `super_cool_awesome_plugin/` is parallel to `stable-diffusion/`, but it's one directory up from the config.yaml so we use `../super_cool_awesome_plugin`.
 
 </Tip>
@@ -90,7 +90,7 @@ from super_cool_awesome_plugin.plugin2.run import AwesomeRunner
 class Model:
     def __init__(self, **kwargs):
         awesome_runner = AwesomeRunner()
-    
+
     def load(self):
         awesome_runner.run(cool_constant)
 
