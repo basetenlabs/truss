@@ -3,21 +3,32 @@ title: How to use external packages
 description: "A guide on configuring your truss to use external packages"
 ---
 
-You might encounter a situation where you have to incorporate a third-party package into your truss. Truss has a few different mechanisms to support this.
+You might encounter a situation where you have to incorporate your own modules or third-party package(not on PyPi) into your truss. Truss has a few different mechanisms to support this.
+
+1. Using the packages directory
+2. Using the external packages directory
+
+Let's look at using the packages directory first.
 
 ## Using the packages directory
 
-Each truss, when initialized, comes with a `packages` directory. Inside this directory, you can place any additional python packages that your would like to reference inside your truss.
+Each truss, when initialized, comes with a `packages` directory. This directory is at the same level as the `model` directory in the hierarchy. 
+Inside this directory, you can place any additional python packages that your would like to reference inside your truss.
 For example, your packages directory might look like this:
 
 ```
-packages/
-    package_1/
-        subpackage/
-            script.py
-    package_2/
-        utils.py
-        another_script.py
+stable-diffusion/
+    packages/
+        package_1/
+            subpackage/
+                script.py
+        package_2/
+            utils.py
+            another_script.py
+    model/
+        model.py
+        __init__.py
+    config.yaml
 ```
 
 You can import these packages inside your `model.py` like so:
@@ -39,7 +50,11 @@ class Model:
 ```
 
 These packages get bundled with your truss at build time. Because of this, it's ideal to use this method when your packages are small.
-But what if you want to reference packages *outside* your truss?
+
+But what if you have multiple trusses that want to reference the same package? This is where the `external_package_dirs` comes in handy.
+The `external_package_dirs` allows you to import packages that are *outside* your truss and hence allows multiple trusses to reference the same package.
+
+Let's look at an example.
 
 ## Using the external packages directory
 
@@ -99,4 +114,5 @@ class Model:
     ...
 ```
 
-Using these techniques, you can incorporate external packages inside your truss.
+Depending on the use-case either of these techniques can be used. If you have a one-off package that your truss needs, consider using the `packages` directory.
+On the other hand, if you have a common package that will get used by multiple trusses, `external_package_dirs` is the better option.
