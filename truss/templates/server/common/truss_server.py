@@ -91,7 +91,9 @@ class BasetenEndpoints:
 
     @staticmethod
     def check_healthy(model: ModelWrapper):
+        print("in check healthy")
         if model.load_failed():
+            print("model failed load; killing")
             INFERENCE_SERVER_FAILED_FILE.touch()
             os.kill(os.getpid(), signal.SIGKILL)
 

@@ -89,7 +89,8 @@ def test_model_load_failure_truss():
             def wrapper(*args, **kwargs):
                 try:
                     return func(*args, **kwargs)
-                except RequestException:
+                except RequestException as e:
+                    print(e)
                     return False
 
             return wrapper
