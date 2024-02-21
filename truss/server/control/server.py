@@ -7,20 +7,6 @@ from truss.server.control.application import create_app
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
-PYTHON_EXECUTABLE_LOOKUP_PATHS = [
-    "/usr/local/bin/python",
-    "/usr/local/bin/python3",
-    "/usr/bin/python",
-    "/usr/bin/python3",
-]
-
-
-def _identify_python_executable_path() -> str:
-    for path in PYTHON_EXECUTABLE_LOOKUP_PATHS:
-        if Path(path).exists():
-            return path
-
-    raise RuntimeError("Unable to find python, make sure it's installed.")
 
 
 class ControlServer:
@@ -73,7 +59,7 @@ class ControlServer:
 
 if __name__ == "__main__":
     control_server = ControlServer(
-        python_executable_path=_identify_python_executable_path(),
+        python_executable_path=os.environ.get("PYTHON_EXECUTABLE", default="python3"),
         inf_serv_home=os.environ.get("APP_HOME", default=str(Path.cwd())),
         control_server_port=CONTROL_SERVER_PORT,
         inference_server_port=INFERENCE_SERVER_PORT,
