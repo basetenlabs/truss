@@ -11,7 +11,7 @@ from tenacity import RetryError
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.server.control.helpers.types import Action, ModelCodePatch, Patch, PatchType
+from truss.server.control.patch.types import Action, ModelCodePatch, Patch, PatchType
 from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,

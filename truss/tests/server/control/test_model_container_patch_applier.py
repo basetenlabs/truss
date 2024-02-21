@@ -2,10 +2,10 @@ import os
 from unittest import mock
 
 import pytest
-from truss.server.control.helpers.truss_patch.model_container_patch_applier import (
+from truss.server.control.patch.model_container_patch_applier import (
     ModelContainerPatchApplier,
 )
-from truss.server.control.helpers.types import (
+from truss.server.control.patch.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,

@@ -2,16 +2,14 @@ import logging
 from pathlib import Path
 from typing import List
 
-from truss.server.control.helpers.errors import UnsupportedPatch
-from truss.server.control.helpers.truss_patch.model_code_patch_applier import (
-    apply_code_patch,
-)
-from truss.server.control.helpers.truss_patch.requirement_name_identifier import (
+from truss.server.control.errors import UnsupportedPatch
+from truss.server.control.patch.model_code_patch_applier import apply_code_patch
+from truss.server.control.patch.requirement_name_identifier import (
     identify_requirement_name,
     reqs_by_name,
 )
-from truss.server.control.helpers.truss_patch.system_packages import system_packages_set
-from truss.server.control.helpers.types import (
+from truss.server.control.patch.system_packages import system_packages_set
+from truss.server.control.patch.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,

@@ -3,11 +3,9 @@ import subprocess
 from pathlib import Path
 from typing import List
 
-from truss.server.control.helpers.errors import UnsupportedPatch
-from truss.server.control.helpers.truss_patch.model_code_patch_applier import (
-    apply_code_patch,
-)
-from truss.server.control.helpers.types import (
+from truss.server.control.errors import UnsupportedPatch
+from truss.server.control.patch.model_code_patch_applier import apply_code_patch
+from truss.server.control.patch.types import (
     Action,
     ModelCodePatch,
     Patch,

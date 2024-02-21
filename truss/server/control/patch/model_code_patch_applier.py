@@ -1,13 +1,14 @@
 import logging
 import os
 from pathlib import Path
+from typing import Union
 
-from truss.server.control.helpers.types import Action, ModelCodePatch
+from truss.server.control.patch.types import Action, ModelCodePatch, PackagePatch
 
 
 def apply_code_patch(
     relative_dir: Path,
-    patch: ModelCodePatch,
+    patch: Union[ModelCodePatch, PackagePatch],
     logger: logging.Logger,
 ):
     logger.debug(f"Applying code patch {patch.to_dict()}")
