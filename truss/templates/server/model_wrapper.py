@@ -275,6 +275,7 @@ class ModelWrapper:
             Generator: In case of streaming response
         """
 
+        # The streaming read timeout is the amount of time in between streamed chunks before a timeout is triggered
         streaming_read_timeout = self._config.get("runtime", {}).get(
             "streaming_read_timeout", STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS
         )
@@ -332,6 +333,7 @@ class ModelWrapper:
                 task.add_done_callback(lambda _: semaphore_release_function())
                 task.add_done_callback(self._background_tasks.discard)
 
+                # The gap between responses in a stream must be < streaming_read_timeout
                 async def _response_generator():
                     while True:
                         chunk = await asyncio.wait_for(
