@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Callable, Generator
 
 import pytest
 import requests
@@ -232,7 +233,7 @@ def pytorch_model_init_args():
 
 
 @pytest.fixture
-def custom_model_truss_dir(tmp_path) -> Path:
+def custom_model_truss_dir(tmp_path) -> Generator[Path]:
     yield _custom_model_from_code(
         tmp_path,
         "custom_truss",
@@ -604,7 +605,7 @@ def _custom_model_from_code(
     where_dir: Path,
     truss_name: str,
     model_code: str,
-    handle_ops: callable = None,
+    handle_ops: Callable = None,
 ) -> Path:
     dir_path = where_dir / truss_name
     handle = init(str(dir_path))

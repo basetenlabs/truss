@@ -609,7 +609,7 @@ def _apply_config_change_and_calc_patches(
     custom_model_truss_dir: Path,
     config_op: Callable[[TrussConfig], Any],
     config_pre_op: Optional[Callable[[TrussConfig], Any]] = None,
-) -> List[Patch]:
+) -> Optional[List[Patch]]:
     def modify_config(op):
         config_path = custom_model_truss_dir / "config.yaml"
         config = TrussConfig.from_yaml(config_path)

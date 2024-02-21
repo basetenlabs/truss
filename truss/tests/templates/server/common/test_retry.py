@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 from unittest.mock import Mock
 
 import pytest
@@ -20,7 +20,7 @@ class FailForCallCount:
         return self._call_count
 
 
-def fail_for_call_count(count: int) -> callable:
+def fail_for_call_count(count: int) -> Callable:
     call_count = 0
 
     def inner():

@@ -2,17 +2,12 @@ import logging
 import os
 from pathlib import Path
 
-# TODO(pankaj) In desparate need of refactoring into separate library
-try:
-    from truss.server.control.helpers.types import Action, Patch
-except ModuleNotFoundError as exc:
-    logging.debug(f"Importing helpers from truss core, caused by: {exc}")
-    from truss.server.control.helpers.types import Action, Patch
+from truss.server.control.helpers.types import Action, ModelCodePatch
 
 
 def apply_code_patch(
     relative_dir: Path,
-    patch: Patch,
+    patch: ModelCodePatch,
     logger: logging.Logger,
 ):
     logger.debug(f"Applying code patch {patch.to_dict()}")
