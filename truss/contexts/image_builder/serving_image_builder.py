@@ -14,7 +14,6 @@ from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_TRTLLM_REQUIREMENTS,
-    CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
@@ -52,9 +51,6 @@ from truss.util.path import (
     copy_tree_path,
     load_trussignore_patterns,
 )
-
-BUILD_SERVER_DIR_NAME = "server"
-BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
@@ -563,10 +559,6 @@ class ServingImageBuilder(ImageBuilder):
         model_files, cached_files = update_config_and_gather_files(
             config, truss_dir, build_dir
         )
-
-        # Copy control server code
-        if config.live_reload:
-            copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
 
         # TODO: we don't need this anymore since the package will just be installed manually in the docker build
         # If the user has provided python requirements,

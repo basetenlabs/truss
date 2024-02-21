@@ -1,6 +1,5 @@
 import os
 import pathlib
-from typing import Set
 
 TRUSS_PACKAGE_DIR = pathlib.Path(__file__).resolve().parent
 
@@ -17,7 +16,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
-SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
 TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
@@ -28,13 +26,9 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME
 )
-CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 
 SUPPORTED_PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
 
-
-# Alias for TEMPLATES_DIR
-SERVING_DIR: pathlib.Path = TEMPLATES_DIR
 
 REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME = "user_requirements.txt"
@@ -71,38 +65,6 @@ TRUSS_DIR = "truss_dir"
 TRUSS_HASH = "truss_hash"
 TRAINING_TRUSS_HASH = "training_truss_hash"
 TRAINING_LABEL = "training"
-
-HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
-
-# list from https://scikit-learn.org/stable/developers/advanced_installation.html
-SKLEARN_REQ_MODULE_NAMES: Set[str] = {
-    "numpy",
-    "scipy",
-    "joblib",
-    "scikit-learn",
-    "threadpoolctl",
-}
-
-XGBOOST_REQ_MODULE_NAMES: Set[str] = {"xgboost"}
-
-# list from https://www.tensorflow.org/install/pip
-# if problematic, lets look to https://www.tensorflow.org/install/source
-TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {
-    "tensorflow",
-}
-
-LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {
-    "lightgbm",
-}
-
-# list from https://pytorch.org/get-started/locally/
-PYTORCH_REQ_MODULE_NAMES: Set[str] = {
-    "torch",
-    "torchvision",
-    "torchaudio",
-}
-
-MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
 
 INFERENCE_SERVER_PORT = 8080
 

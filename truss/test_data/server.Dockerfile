@@ -10,6 +10,14 @@ RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 
+
+# Always install the truss package
+COPY ./truss/ /lib/truss_pkg/truss
+COPY ./pyproject.toml /lib/truss_pkg/
+COPY ./README.md /lib/truss_pkg/
+RUN pip install /lib/truss_pkg --no-cache-dir && rm -rf /root/.cache/pip
+
+
 # If user base image is supplied in config, apply build commands from truss base image
 ENV PYTHONUNBUFFERED True
 ENV DEBIAN_FRONTEND=noninteractive
@@ -40,5 +48,5 @@ COPY ./config.yaml /app/config.yaml
 COPY ./packages /packages
 
 ENV INFERENCE_SERVER_PORT 8080
-ENV SERVER_START_CMD="/usr/local/bin/python3 /app/inference_server.py"
-ENTRYPOINT ["/usr/local/bin/python3", "/app/inference_server.py"]
+ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " -m truss.server.inference_server"}}"
+ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "-m", "truss.server.inference_server"]
