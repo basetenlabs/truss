@@ -4,8 +4,8 @@ from typing import Dict, List
 
 import pytest
 from httpx import AsyncClient
-from truss.server.control.application import create_app  # noqa
-from truss.server.control.helpers.types import (  # noqa
+from truss.server.control.application import create_app
+from truss.server.control.helpers.types import (
     Action,
     ModelCodePatch,
     Patch,

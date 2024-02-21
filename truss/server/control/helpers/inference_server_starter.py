@@ -58,7 +58,7 @@ def inference_server_startup_flow(
                 if "is_current" in resp_body and resp_body["is_current"] is True:
                     logger.info("Hash is current, starting inference server")
                     inference_server_controller.start()
-            except Exception as exc:  # noqa
+            except Exception as exc:
                 logger.warning(f"Patch ping attempt failed with error {exc}")
                 raise exc
 

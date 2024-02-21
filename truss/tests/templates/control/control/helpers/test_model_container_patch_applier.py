@@ -1,26 +1,11 @@
 import os
-import sys
-from pathlib import Path
 from unittest import mock
 
 import pytest
-from truss.truss_config import TrussConfig
-
-# Needed to simulate the set up on the model docker container
-sys.path.append(
-    str(
-        Path(__file__).parent.parent.parent.parent.parent.parent
-        / "templates"
-        / "control"
-        / "control"
-    )
-)
-
-# Have to use imports in this form, otherwise isinstance checks fail on helper classes
-from truss.server.control.helpers.truss_patch.model_container_patch_applier import (  # noqa
+from truss.server.control.helpers.truss_patch.model_container_patch_applier import (
     ModelContainerPatchApplier,
 )
-from truss.server.control.helpers.types import (  # noqa
+from truss.server.control.helpers.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,
@@ -30,6 +15,7 @@ from truss.server.control.helpers.types import (  # noqa
     Patch,
     PatchType,
 )
+from truss.truss_config import TrussConfig
 
 
 @pytest.fixture

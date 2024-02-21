@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Dict
 
-from truss.server.common.truss_server import TrussServer  # noqa: E402
+from truss.server.common.truss_server import TrussServer
 from truss.server.shared.logging import setup_logging
 from truss.truss_config import TrussConfig
 
