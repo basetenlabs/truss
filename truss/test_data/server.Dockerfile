@@ -41,12 +41,11 @@ WORKDIR $APP_HOME
 
 # Copy data before code for better caching
 COPY ./data /app/data
-COPY ./server /app
 COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
 
 COPY ./packages /packages
 
 ENV INFERENCE_SERVER_PORT 8080
-ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " -m truss.server.inference_server"}}"
-ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "-m", "truss.server.inference_server"]
+ENV SERVER_START_CMD="/usr/local/bin/python3 -m truss.server.inference_server"
+ENTRYPOINT ["/usr/local/bin/python3", "-m", "truss.server.inference_server"]
