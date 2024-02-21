@@ -1,28 +1,9 @@
 import os
-import sys
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Dict, List
 
 import pytest
 from httpx import AsyncClient
-from truss.types import PatchRequest
-
-# Needed to simulate the set up on the model docker container
-sys.path.append(
-    str(
-        Path(__file__).parent.parent.parent.parent.parent
-        / "templates"
-        / "control"
-        / "control"
-    )
-)
-
-sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent / "templates"))
-sys.path.append(
-    str(Path(__file__).parent.parent.parent.parent.parent / "templates" / "shared")
-)
-
 from truss.server.control.application import create_app  # noqa
 from truss.server.control.helpers.types import (  # noqa
     Action,
@@ -31,6 +12,7 @@ from truss.server.control.helpers.types import (  # noqa
     PatchType,
     PythonRequirementPatch,
 )
+from truss.types import PatchRequest
 
 
 @pytest.fixture
