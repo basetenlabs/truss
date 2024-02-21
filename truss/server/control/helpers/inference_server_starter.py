@@ -3,8 +3,10 @@ from logging import Logger
 
 import requests
 from anyio import to_thread
-from helpers.inference_server_controller import InferenceServerController
 from tenacity import Retrying, stop_after_attempt, wait_exponential
+from truss.server.control.helpers.inference_server_controller import (
+    InferenceServerController,
+)
 
 
 def inference_server_startup_flow(

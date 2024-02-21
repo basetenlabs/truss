@@ -4,11 +4,11 @@ from typing import Any, Dict
 import httpx
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
-from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx import URL, ConnectError, RemoteProtocolError
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
+from truss.server.control.helpers.errors import ModelLoadFailed, ModelNotReady
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 

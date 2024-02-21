@@ -7,7 +7,7 @@ try:
     from helpers.types import Action, Patch
 except ModuleNotFoundError as exc:
     logging.debug(f"Importing helpers from truss core, caused by: {exc}")
-    from truss.templates.control.control.helpers.types import Action, Patch
+    from truss.server.control.helpers.types import Action, Patch
 
 
 def apply_code_patch(

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import uvicorn
-from application import create_app
+from truss.server.control.application import create_app
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
@@ -43,7 +43,8 @@ class ControlServer:
                 "inference_server_home": self._inf_serv_home,
                 "inference_server_process_args": [
                     self._python_executable_path,
-                    f"{self._inf_serv_home}/inference_server.py",
+                    "-m",
+                    "truss.server.inference_server",
                 ],
                 "control_server_host": "0.0.0.0",
                 "control_server_port": self._control_server_port,
@@ -73,7 +74,7 @@ class ControlServer:
 if __name__ == "__main__":
     control_server = ControlServer(
         python_executable_path=_identify_python_executable_path(),
-        inf_serv_home=os.environ["APP_HOME"],
+        inf_serv_home=os.environ.get("APP_HOME", default=str(Path.cwd())),
         control_server_port=CONTROL_SERVER_PORT,
         inference_server_port=INFERENCE_SERVER_PORT,
     )

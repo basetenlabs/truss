@@ -4,7 +4,7 @@ from typing import Any, Callable, List, Optional
 import yaml
 from truss.patch.calc_patch import calc_truss_patch
 from truss.patch.signature import calc_truss_signature
-from truss.templates.control.control.helpers.types import (
+from truss.server.control.helpers.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,

@@ -23,8 +23,8 @@ sys.path.append(
     str(Path(__file__).parent.parent.parent.parent.parent / "templates" / "shared")
 )
 
-from truss.templates.control.control.application import create_app  # noqa
-from truss.templates.control.control.helpers.types import (  # noqa
+from truss.server.control.application import create_app  # noqa
+from truss.server.control.helpers.types import (  # noqa
     Action,
     ModelCodePatch,
     Patch,

@@ -4,15 +4,19 @@ import threading
 import time
 from typing import Optional
 
-from helpers.errors import (
+from truss.server.control.helpers.errors import (
     InadmissiblePatch,
     PatchFailedRecoverable,
     PatchFailedUnrecoverable,
     UnsupportedPatch,
 )
-from helpers.inference_server_process_controller import InferenceServerProcessController
-from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
-from helpers.types import Patch, PatchType
+from truss.server.control.helpers.inference_server_process_controller import (
+    InferenceServerProcessController,
+)
+from truss.server.control.helpers.truss_patch.model_container_patch_applier import (
+    ModelContainerPatchApplier,
+)
+from truss.server.control.helpers.types import Patch, PatchType
 
 INFERENCE_SERVER_CHECK_INTERVAL_SECS = 10
 
