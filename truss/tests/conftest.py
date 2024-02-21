@@ -233,7 +233,7 @@ def pytorch_model_init_args():
 
 
 @pytest.fixture
-def custom_model_truss_dir(tmp_path) -> Generator[Path]:
+def custom_model_truss_dir(tmp_path) -> Generator[Path, None, None]:
     yield _custom_model_from_code(
         tmp_path,
         "custom_truss",
