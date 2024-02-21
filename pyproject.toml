@@ -8,6 +8,7 @@ authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
 repository = "https://github.com/basetenlabs/truss"
 keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learning"]
+packages = [{include = "truss", format = "wheel"}]
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"

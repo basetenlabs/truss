@@ -15,12 +15,12 @@ from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
 import pydantic
 from anyio import Semaphore, to_thread
-from common.patches import apply_patches
-from common.retry import retry
-from common.schema import TrussSchema
 from fastapi import HTTPException
 from pydantic import BaseModel
-from shared.secrets_resolver import SecretsResolver
+from truss.server.common.patches import apply_patches
+from truss.server.common.retry import retry
+from truss.server.common.schema import TrussSchema
+from truss.server.shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
 
@@ -87,7 +87,7 @@ class ModelWrapper:
             )
         )
         self._background_tasks: Set[asyncio.Task] = set()
-        self.truss_schema: TrussSchema = None
+        self.truss_schema: Optional[TrussSchema] = None
 
     def load(self) -> bool:
         if self.ready:

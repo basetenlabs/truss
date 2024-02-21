@@ -11,23 +11,25 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Union
 
-import common.errors as errors
-import shared.util as utils
+import truss.server.common.errors as errors
+import truss.server.shared.util as utils
 import uvicorn
-from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import ModelWrapper
-from shared.logging import setup_logging
-from shared.serialization import (
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import ClientDisconnect
+from starlette.responses import Response
+from truss.server.common.termination_handler_middleware import (
+    TerminationHandlerMiddleware,
+)
+from truss.server.model_wrapper import ModelWrapper
+from truss.server.shared.logging import setup_logging
+from truss.server.shared.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import ClientDisconnect
-from starlette.responses import Response
 
 # [IMPORTANT] A lot of things depend on this currently.
 # Please consider the following when increasing this:

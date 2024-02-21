@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import sys
+from collections.abc import Mapping
 from typing import Callable, Dict, List, TypeVar
 
 import psutil
@@ -83,5 +84,5 @@ Y = TypeVar("Y")
 Z = TypeVar("Z")
 
 
-def transform_keys(d: Dict[X, Z], fn: Callable[[X], Y]) -> Dict[Y, Z]:
+def transform_keys(d: Mapping[X, Z], fn: Callable[[X], Y]) -> Dict[Y, Z]:
     return {fn(key): value for key, value in d.items()}

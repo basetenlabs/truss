@@ -1,9 +1,10 @@
 import os
+from pathlib import Path
 from typing import Dict
 
-import yaml
-from common.truss_server import TrussServer  # noqa: E402
-from shared.logging import setup_logging
+from truss.server.common.truss_server import TrussServer  # noqa: E402
+from truss.server.shared.logging import setup_logging
+from truss.truss_config import TrussConfig
 
 CONFIG_FILE = "config.yaml"
 
@@ -16,8 +17,7 @@ class ConfiguredTrussServer:
 
     def __init__(self, config_path: str, port: int):
         self._port = port
-        with open(config_path, encoding="utf-8") as config_file:
-            self._config = yaml.safe_load(config_file)
+        self._config = TrussConfig.from_yaml(Path(config_path)).to_dict(verbose=True)
 
     def start(self):
         server = TrussServer(http_port=self._port, config=self._config)

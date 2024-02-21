@@ -2,6 +2,8 @@ import os
 import pathlib
 from typing import Set
 
+TRUSS_PACKAGE_DIR = pathlib.Path(__file__).resolve().parent
+
 SKLEARN = "sklearn"
 TENSORFLOW = "tensorflow"
 KERAS = "keras"
