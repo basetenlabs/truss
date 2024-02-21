@@ -12,12 +12,12 @@ import yaml
 
 
 @pytest.mark.integration
-def test_truss_server_termination(truss_container_fs):
+def test_truss_server_termination(tmp_truss_dir):
     port = 10123
 
     def start_truss_server(stdout_capture_file_path):
         sys.stdout = open(stdout_capture_file_path, "w")
-        app_path = truss_container_fs / "app"
+        app_path = tmp_truss_dir / "app"
         sys.path.append(str(app_path))
 
         from common.truss_server import TrussServer

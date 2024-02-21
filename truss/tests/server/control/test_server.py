@@ -21,9 +21,9 @@ def truss_original_hash():
 
 
 @pytest.fixture
-def app(truss_container_fs, truss_original_hash):
+def app(tmp_truss_dir, truss_original_hash):
     with _env_var({"HASH_TRUSS": truss_original_hash}):
-        inf_serv_home = truss_container_fs / "app"
+        inf_serv_home = tmp_truss_dir
         control_app = create_app(
             {
                 "inference_server_home": inf_serv_home,

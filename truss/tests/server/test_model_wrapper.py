@@ -9,8 +9,8 @@ import yaml
 
 
 @pytest.fixture
-def app_path(truss_container_fs: Path, helpers: Any):
-    truss_container_app_path = truss_container_fs / "app"
+def app_path(tmp_truss_dir: Path, helpers: Any):
+    truss_container_app_path = tmp_truss_dir
     model_file_content = """
 class Model:
     def __init__(self):

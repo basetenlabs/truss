@@ -19,12 +19,12 @@ from truss.truss_config import TrussConfig
 
 
 @pytest.fixture
-def patch_applier(truss_container_fs):
-    return ModelContainerPatchApplier(truss_container_fs / "app", mock.Mock())
+def patch_applier(tmp_truss_dir):
+    return ModelContainerPatchApplier(tmp_truss_dir, mock.Mock())
 
 
 def test_patch_applier_model_code_patch_add(
-    patch_applier: ModelContainerPatchApplier, truss_container_fs
+    patch_applier: ModelContainerPatchApplier, tmp_truss_dir
 ):
     patch = Patch(
         type=PatchType.MODEL_CODE,
@@ -35,11 +35,11 @@ def test_patch_applier_model_code_patch_add(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    assert (truss_container_fs / "app" / "model" / "dummy").exists()
+    assert (tmp_truss_dir / "model" / "dummy").exists()
 
 
 def test_patch_applier_model_code_patch_remove(
-    patch_applier: ModelContainerPatchApplier, truss_container_fs
+    patch_applier: ModelContainerPatchApplier, tmp_truss_dir
 ):
     patch = Patch(
         type=PatchType.MODEL_CODE,
@@ -48,13 +48,13 @@ def test_patch_applier_model_code_patch_remove(
             path="model.py",
         ),
     )
-    assert (truss_container_fs / "app" / "model" / "model.py").exists()
+    assert (tmp_truss_dir / "model" / "model.py").exists()
     patch_applier(patch, os.environ.copy())
-    assert not (truss_container_fs / "app" / "model" / "model.py").exists()
+    assert not (tmp_truss_dir / "model" / "model.py").exists()
 
 
 def test_patch_applier_model_code_patch_update(
-    patch_applier: ModelContainerPatchApplier, truss_container_fs
+    patch_applier: ModelContainerPatchApplier, tmp_truss_dir
 ):
     new_model_file_content = """
     class Model:
@@ -69,13 +69,11 @@ def test_patch_applier_model_code_patch_update(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    assert (
-        truss_container_fs / "app" / "model" / "model.py"
-    ).read_text() == new_model_file_content
+    assert (tmp_truss_dir / "model" / "model.py").read_text() == new_model_file_content
 
 
 def test_patch_applier_package_patch_add(
-    patch_applier: ModelContainerPatchApplier, truss_container_fs
+    patch_applier: ModelContainerPatchApplier, tmp_truss_dir
 ):
     patch = Patch(
         type=PatchType.PACKAGE,
@@ -86,12 +84,12 @@ def test_patch_applier_package_patch_add(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    assert (truss_container_fs / "packages" / "test_package" / "test.py").exists()
+    assert (tmp_truss_dir / "packages" / "test_package" / "test.py").exists()
 
 
 def test_patch_applier_package_patch_remove(
     patch_applier: ModelContainerPatchApplier,
-    truss_container_fs,
+    tmp_truss_dir,
 ):
     patch = Patch(
         type=PatchType.PACKAGE,
@@ -100,14 +98,14 @@ def test_patch_applier_package_patch_remove(
             path="test_package/test.py",
         ),
     )
-    assert (truss_container_fs / "packages" / "test_package" / "test.py").exists()
+    assert (tmp_truss_dir / "packages" / "test_package" / "test.py").exists()
     patch_applier(patch, os.environ.copy())
-    assert not (truss_container_fs / "packages" / "test_package" / "test.py").exists()
+    assert not (tmp_truss_dir / "packages" / "test_package" / "test.py").exists()
 
 
 def test_patch_applier_package_patch_update(
     patch_applier: ModelContainerPatchApplier,
-    truss_container_fs,
+    tmp_truss_dir,
 ):
     new_package_content = """X = 2"""
     patch = Patch(
@@ -120,12 +118,12 @@ def test_patch_applier_package_patch_update(
     )
     patch_applier(patch, os.environ.copy())
     assert (
-        truss_container_fs / "packages" / "test_package" / "test.py"
+        tmp_truss_dir / "packages" / "test_package" / "test.py"
     ).read_text() == new_package_content
 
 
 def test_patch_applier_config_patch_update(
-    patch_applier: ModelContainerPatchApplier, truss_container_fs
+    patch_applier: ModelContainerPatchApplier, tmp_truss_dir
 ):
     new_config_dict = {"model_name": "foobar"}
     patch = Patch(
@@ -136,7 +134,7 @@ def test_patch_applier_config_patch_update(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    new_config = TrussConfig.from_yaml(truss_container_fs / "app" / "config.yaml")
+    new_config = TrussConfig.from_yaml(tmp_truss_dir / "config.yaml")
     assert new_config.model_name == "foobar"
 
 
@@ -189,7 +187,7 @@ def test_patch_applier_env_var_patch_remove(
 
 def test_patch_applier_external_data_patch_add(
     patch_applier: ModelContainerPatchApplier,
-    truss_container_fs,
+    tmp_truss_dir,
 ):
     patch = Patch(
         type=PatchType.EXTERNAL_DATA,
@@ -202,4 +200,4 @@ def test_patch_applier_external_data_patch_add(
         ),
     )
     patch_applier(patch, os.environ.copy())
-    assert (truss_container_fs / "app" / "data" / "truss_icon").exists()
+    assert (tmp_truss_dir / "data" / "truss_icon").exists()

@@ -27,8 +27,8 @@ class ControlServerDetails:
 
 
 @pytest.fixture
-def control_server(truss_control_container_fs):
-    with _configured_control_server(truss_control_container_fs) as server:
+def control_server(tmp_truss_control_dir):
+    with _configured_control_server(tmp_truss_control_dir) as server:
         yield server
 
 
@@ -95,10 +95,10 @@ class Model:
 
 
 @pytest.mark.integration
-def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path):
+def test_truss_control_server_patch_ping_delays(tmp_truss_control_dir: Path):
     for _ in range(10):
         with _configured_control_server(
-            truss_control_container_fs,
+            tmp_truss_control_dir,
             with_patch_ping_flow=True,
         ) as control_server:
             # Account for patch ping delays
