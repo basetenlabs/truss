@@ -109,9 +109,7 @@ async def patch(request: Request) -> Dict[str, str]:
 
 @control_app.get("/control/truss_hash")
 async def truss_hash(request: Request) -> Dict[str, Any]:
-    request.app.state.logger.info(f"truss hash request received. request: {request}")
     t_hash = request.app.state.inference_server_controller.truss_hash()
-    request.app.state.logger.info("Returning truss hash")
     return {"result": t_hash}
 
 

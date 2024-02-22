@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from truss.config.trt_llm import TRTLLMConfiguration
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
@@ -462,8 +463,8 @@ class TrussConfig:
     spec_version: str = DEFAULT_SPEC_VERSION
     train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
-
     model_cache: ModelCache = field(default_factory=ModelCache)
+    trt_llm: Optional[TRTLLMConfiguration] = None
 
     @property
     def canonical_python_version(self) -> str:
@@ -515,6 +516,9 @@ class TrussConfig:
             model_cache=transform_optional(
                 d.get("model_cache") or d.get("hf_cache") or [],
                 ModelCache.from_list,
+            ),
+            trt_llm=transform_optional(
+                d.get("trt_llm"), lambda x: TRTLLMConfiguration(**x)
             ),
         )
         config.validate()
@@ -605,6 +609,10 @@ def obj_to_dict(obj, verbose: bool = False):
             elif isinstance(field_curr_value, ModelCache):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
+                )
+            elif isinstance(field_curr_value, TRTLLMConfiguration):
+                d["trt_llm"] = transform_optional(
+                    field_curr_value, lambda data: data.model_dump(mode="json")
                 )
             else:
                 d[field_name] = field_curr_value
