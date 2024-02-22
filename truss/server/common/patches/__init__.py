@@ -12,7 +12,7 @@ def apply_patches(enabled: bool, requirements: list):
     Apply patches to certain functions. The patches are contained in each patch module under 'patches' directory.
     If a patch cannot be applied, it logs the name of the function and the exception details.
     """
-    PATCHES_DIR = Path(__file__).parent / "patches"
+    PATCHES_DIR = Path(__file__).parent
     if not enabled:
         return
     for requirement in requirements:

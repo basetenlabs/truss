@@ -1,9 +1,12 @@
 import logging
+import os
 import sys
 
 from pythonjsonlogger import jsonlogger
 
 LEVEL: int = logging.INFO
+
+use_json_logs = os.environ.get("JSON_LOG", default=False)
 
 JSON_LOG_HANDLER = logging.StreamHandler(stream=sys.stdout)
 JSON_LOG_HANDLER.set_name("json_logger_handler")
@@ -63,15 +66,15 @@ def setup_logging() -> None:
         logger.propagate = False
 
         setup = False
+        if use_json_logs:
+            # let's not thrash the handlers unnecessarily
+            for handler in logger.handlers:
+                if handler.name == JSON_LOG_HANDLER.name:
+                    setup = True
 
-        # let's not thrash the handlers unnecessarily
-        for handler in logger.handlers:
-            if handler.name == JSON_LOG_HANDLER.name:
-                setup = True
-
-        if not setup:
-            logger.handlers.clear()
-            logger.addHandler(JSON_LOG_HANDLER)
+            if not setup:
+                logger.handlers.clear()
+                logger.addHandler(JSON_LOG_HANDLER)
 
         # some special handling for request logging
         if logger.name == "uvicorn.access":

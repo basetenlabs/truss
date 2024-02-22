@@ -2,6 +2,7 @@ ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}} as truss_server
 
 ENV PYTHON_EXECUTABLE {{ config.base_image.python_executable_path or 'python3' }}
+ENV JSON_LOG True
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
