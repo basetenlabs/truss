@@ -59,7 +59,7 @@ WORKDIR $APP_HOME
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY ./{{config.bundled_packages_dir}} /packages
+COPY ./{{config.bundled_packages_dir}} /app/packages
     {%- endif %}
 {% endblock %}
 

@@ -88,6 +88,7 @@ class ModelWrapper:
         )
         self._background_tasks: Set[asyncio.Task] = set()
         self.truss_schema: Optional[TrussSchema] = None
+        self.app_home: Path = Path(os.environ.get("APP_HOME", default=str(Path.cwd())))
 
     def load(self) -> bool:
         if self.ready:
@@ -133,7 +134,7 @@ class ModelWrapper:
         data_dir.mkdir(exist_ok=True)
 
         if "bundled_packages_dir" in self._config:
-            bundled_packages_path = Path("/packages")
+            bundled_packages_path = self.app_home / "packages"
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
         model_module_name = str(

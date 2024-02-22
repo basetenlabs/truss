@@ -33,9 +33,6 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./base_server_requirements.txt base_server_requirements.txt
-RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 
@@ -44,7 +41,7 @@ COPY ./data /app/data
 COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
 
-COPY ./packages /packages
+COPY ./packages /app/packages
 
 ENV INFERENCE_SERVER_PORT 8080
 ENV SERVER_START_CMD="/usr/local/bin/python3 -m truss.server.inference_server"

@@ -21,9 +21,6 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
-RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
-
     {%- if config.live_reload %}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
     || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
