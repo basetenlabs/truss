@@ -539,11 +539,6 @@ class ServingImageBuilder(ImageBuilder):
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
-        # Override config.yml
-        # TODO: this might not be needed anymore
-        with (build_dir / CONFIG_FILE).open("w") as config_file:
-            yaml.dump(config.to_dict(verbose=True), config_file)
-
         external_data_files: list = []
         data_dir = Path("/app/data/")
         if self._spec.external_data is not None:
@@ -560,12 +555,6 @@ class ServingImageBuilder(ImageBuilder):
             config, truss_dir, build_dir
         )
 
-        # TODO: we don't need this anymore since the package will just be installed manually in the docker build
-        # If the user has provided python requirements,
-        # append the truss server requirements, so that any conflicts
-        # are detected and cause a build failure. If there are no
-        # requirements provided, we just pass an empty string,
-        # as there's no need to install anything.
         user_provided_python_requirements = (
             spec.requirements_txt if spec.requirements else ""
         )
