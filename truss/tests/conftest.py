@@ -225,6 +225,11 @@ class Model:
 
 
 @pytest.fixture
+def temp_path(tmpdir):
+    yield Path(tmpdir)
+
+
+@pytest.fixture
 def pytorch_model_init_args():
     return {"arg1": 1, "arg2": 2, "kwarg1": 3, "kwarg2": 4}
 

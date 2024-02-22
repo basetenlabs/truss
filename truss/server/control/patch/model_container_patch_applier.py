@@ -36,7 +36,7 @@ class ModelContainerPatchApplier:
             self._inference_server_home / self._truss_config.model_module_dir
         )
         self._bundled_packages_dir = (
-            self._inference_server_home / ".." / self._truss_config.bundled_packages_dir
+            self._inference_server_home / self._truss_config.bundled_packages_dir
         ).resolve()
         self._data_dir = self._inference_server_home / self._truss_config.data_dir
         self._app_logger = app_logger
