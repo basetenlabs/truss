@@ -233,6 +233,27 @@ def test_async_streaming():
 
 
 @pytest.mark.integration
+def test_async_streaming_timeout():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_streaming_read_timeout"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        predict_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        # ChunkedEncodingError is raised when the chunk does not get processed due to streaming read timeout
+        with pytest.raises(requests.exceptions.ChunkedEncodingError):
+            response = requests.post(predict_url, json={}, stream=True)
+
+            for chunk in response.iter_content():
+                pass
+
+
+@pytest.mark.integration
 def test_streaming_with_error():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
