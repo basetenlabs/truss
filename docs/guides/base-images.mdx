@@ -7,6 +7,10 @@ description: "A guide to configuring a base image for your truss"
 Model serving enviroments will often be standardized as container images to avoid wrangling python, system, and other requirements needed to run your model on every deploy.
 Leverage your existing container artifacts by bringing your own base image to Truss.
 
+While the default image for the truss server in adequate for most use cases, there may come a time when you require a custom base image for your truss.
+For example, maybe the python packages required for you project are not compatible with the ones installed by default on Truss.
+In a situation like this, you can create your own base image based on the default truss image.
+
 ## Setting a base image in config.yaml
 
 To specify a base image to build a truss container image from in your `config.yaml` configure a `base_image`.
@@ -68,4 +72,55 @@ For example, to configure authentication for a repository in `us-west2` your `co
 ```yaml config.yaml
 secrets:
   DOCKER_REGISTRY_us-west2-docker.pkg.dev: null
+```
+
+If you don't have a base image but want to create one, the following section will guide you through that process.
+
+## Creating a custom base image
+
+While it's possible to create your own base image from scratch, it may be easier to use a truss server image as a starting point.
+
+All of the base images used by truss can be found by going to [docker hub](https://hub.docker.com/r/baseten/truss-server-base/tags).
+Each image tag is tied to a specific python version and may support a GPU. For example, the image with the tag `3.11-gpu-v0.7.16` is for Python 3.11 and has GPU support.
+On the other hand, image `3.9-v0.7.15` is for Python 3.9 and does not have GPU support. Based on your project requirements you can select the appropriate base image.
+
+Next, we can write our `Dockerfile`.
+
+```Dockerfile Dockerfile
+FROM baseten/truss-server-base:3.11-gpu-v0.7.16
+RUN pip uninstall cython -y
+RUN pip install cython==0.29.30
+```
+
+In the example dockerfile above, we use the `truss-server-base` as our base image. This base image comes with some python dependencies installed.
+If you want to override the versions of these default python dependencies you can simply uninstall the package and reinstall it using the `RUN pip install` command.
+You can even add you own files or directories to this Dockerfile if required. Once you have your Dockerfile set up, you can build, tag, and push the image to your own docker registry.
+
+
+## Build, tag, and push your custom base image
+
+<Tip>
+### Docker installation required
+
+For this portion, docker needs to be installed and running on your system. Additionally, you will need docker installed on your command line.
+
+</Tip>
+
+To build the image run the command:
+
+```sh
+docker build -t my-custom-base-image:0.1 .
+```
+
+You can replace `my-custom-base-image` with the name for your docker image.
+
+Next, to tag the image you can run the command:
+
+```sh
+docker tag my-custom-base-image:0.1 your-docker-username/my-custom-base-image:0.1
+```
+
+Lastly, to push the image to docker hub run the following command:
+```sh
+docker push your-docker-username/my-custom-base-image:0.1
 ```

@@ -17,6 +17,7 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
+TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
 TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
 TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME
@@ -108,3 +109,10 @@ TRAINING_VARIABLES_FILENAME = "variables.yaml"
 HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
+
+TRTLLM_BASE_IMAGE = "baseten/trtllm-build-server:r23.12_baseten_v0.7.1_20240111"
+BASE_TRTLLM_REQUIREMENTS = [
+    "tritonclient[all]==2.42.0",
+    "transformers==4.33.1",
+    "jinja2==3.1.3",
+]
