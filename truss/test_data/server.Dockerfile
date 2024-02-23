@@ -2,6 +2,7 @@ ARG PYVERSION=py39
 FROM baseten/truss-server-base:3.9-v0.4.3 as truss_server
 
 ENV PYTHON_EXECUTABLE /usr/local/bin/python3
+ENV JSON_LOG True
 
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
 RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)" \
