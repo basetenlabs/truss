@@ -15,6 +15,7 @@ from typing import Callable
 import psutil
 import pytest
 import requests
+from truss.server.control.server import ControlServer
 
 PATCH_PING_MAX_DELAY_SECS = 3
 
@@ -186,16 +187,10 @@ def _configured_control_server(
                 "PATCH_PING_URL_TRUSS"
             ] = f"http://localhost:{patch_ping_server_port}"
         sys.stdout = open(stdout_capture_file_path, "w")
-        app_path = truss_control_container_fs / "app"
-        sys.path.append(str(app_path))
-        control_path = truss_control_container_fs / "control" / "control"
-        sys.path.append(str(control_path))
-
-        from server import ControlServer
 
         control_server = ControlServer(
             python_executable_path=sys.executable,
-            inf_serv_home=str(app_path),
+            inf_serv_home=str(truss_control_container_fs),
             control_server_port=ctrl_port,
             inference_server_port=inf_port,
         )
