@@ -1,8 +1,7 @@
 import multiprocessing
 import os
 import sys
-from collections.abc import Mapping
-from typing import Callable, Dict, List, TypeVar
+from typing import Callable, Dict, List, Mapping, TypeVar
 
 import psutil
 
