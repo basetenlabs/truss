@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from truss.server.common.truss_server import TrussServer
 
 
 @pytest.mark.integration
@@ -17,12 +18,7 @@ def test_truss_server_termination(tmp_truss_dir):
 
     def start_truss_server(stdout_capture_file_path):
         sys.stdout = open(stdout_capture_file_path, "w")
-        app_path = tmp_truss_dir / "app"
-        sys.path.append(str(app_path))
-
-        from common.truss_server import TrussServer
-
-        config = yaml.safe_load((app_path / "config.yaml").read_text())
+        config = yaml.safe_load((tmp_truss_dir / "config.yaml").read_text())
         server = TrussServer(http_port=port, config=config)
         server.start()
 

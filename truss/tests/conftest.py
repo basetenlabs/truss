@@ -538,20 +538,26 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 
 
 @pytest.fixture
-def tmp_truss_dir(tmp_path):
+def tmp_truss_dir(tmp_path, monkeypatch):
     ROOT = Path(__file__).parent.parent.parent.resolve()
-    return _copy_truss_dir_to_tmp(ROOT / "truss" / "test_data" / "test_truss", tmp_path)
+    tmp_dir = _copy_truss_dir_to_tmp(
+        ROOT / "truss" / "test_data" / "test_truss", tmp_path
+    )
+    monkeypatch.setenv("APP_HOME", str(tmp_dir))
+    return tmp_dir
 
 
 @pytest.fixture
-def tmp_truss_control_dir(tmp_path):
+def tmp_truss_control_dir(tmp_path, monkeypatch):
     ROOT = Path(__file__).parent.parent.parent.resolve()
     test_truss_dir = ROOT / "truss" / "test_data" / "test_truss"
     control_truss_dir = tmp_path / "control_truss"
     shutil.copytree(str(test_truss_dir), str(control_truss_dir))
     with _modify_yaml(control_truss_dir / "config.yaml") as content:
         content["live_reload"] = True
-    return _copy_truss_dir_to_tmp(control_truss_dir, tmp_path)
+    tmp_dir = _copy_truss_dir_to_tmp(control_truss_dir, tmp_path)
+    monkeypatch.setenv("APP_HOME", str(tmp_dir))
+    return tmp_dir
 
 
 @pytest.fixture
