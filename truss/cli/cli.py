@@ -11,7 +11,7 @@ import rich
 import rich_click as click
 import truss
 from truss.cli.console import console
-from truss.cli.create import ask_name, select_server_backend
+from truss.cli.create import ask_name
 from truss.remote.baseten.core import (
     ModelId,
     ModelIdentifier,
@@ -21,7 +21,7 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.truss_config import ModelServer
+from truss.truss_config import Build, ModelServer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -113,7 +113,7 @@ def init(target_directory, backend) -> None:
             f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
         )
     tr_path = Path(target_directory)
-    build_config = select_server_backend(ModelServer[backend])
+    build_config = Build(model_server=ModelServer[backend])
     model_name = ask_name()
     truss.init(
         target_directory=target_directory,

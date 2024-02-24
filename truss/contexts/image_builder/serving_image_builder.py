@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
-import yaml
 from botocore import UNSIGNED
 from botocore.client import Config
 from google.cloud import storage
@@ -18,11 +17,8 @@ from truss.constants import (
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
-    SHARED_SERVING_AND_TRAINING_CODE_DIR,
-    SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRITON_SERVER_CODE_DIR,
     TRTLLM_BASE_IMAGE,
     TRTLLM_TRUSS_DIR,
     TRUSS_PACKAGE_DIR,
@@ -42,7 +38,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import BaseImage, Build, ModelRepo, ModelServer, TrussConfig
+from truss.truss_config import BaseImage, ModelServer, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -227,42 +223,6 @@ def get_credentials_to_cache(data_dir: Path) -> List[str]:
     return credentials_to_cache
 
 
-def create_triton_build_dir(config: TrussConfig, build_dir: Path, truss_dir: Path):
-    _spec = TrussSpec(truss_dir)
-    if not build_dir.exists():
-        build_dir.mkdir(parents=True)
-
-    # The triton server expects a specific directory structure. We create this directory structure
-    # in the build directory. The structure is:
-    #   build_dir
-    #   ├── model # Name of "model", used during invocation
-    #   │   └── 1 # Version of the model, used during invocation
-    #   │       └── truss # User-defined code
-    #   │           ├── config.yml
-    #   │           ├── model.py
-    #   │           ├── # other truss files
-    #   │       └── model.py # Triton server code
-    #   │       └── # other triton server files
-
-    model_repository_path = build_dir / "model"
-    user_truss_path = model_repository_path / "truss"  # type: ignore[operator]
-
-    copy_tree_path(TRITON_SERVER_CODE_DIR / "model", model_repository_path)
-    copy_tree_path(TRITON_SERVER_CODE_DIR / "root", build_dir)
-    copy_tree_path(truss_dir, user_truss_path)
-    copy_tree_path(
-        SHARED_SERVING_AND_TRAINING_CODE_DIR,
-        model_repository_path / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
-    )
-
-    # Override config.yml
-    with (model_repository_path / "truss" / CONFIG_FILE).open("w") as config_file:
-        yaml.dump(config.to_dict(verbose=True), config_file)
-
-    (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(_spec.requirements_txt)
-    (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(_spec.system_packages_txt)
-
-
 def split_path(path, prefix="gs://"):
     # Remove the 'gs://' prefix
     path = path.replace(prefix, "")
@@ -280,37 +240,6 @@ def split_path(path, prefix="gs://"):
 class CachedFile:
     source: str
     dst: str
-
-
-def update_model_key(config: TrussConfig) -> str:
-    server_name = config.build.model_server
-
-    if server_name == ModelServer.TGI:
-        return "model_id"
-    elif server_name == ModelServer.VLLM:
-        return "model"
-
-    raise ValueError(
-        f"Invalid server name (must be `TGI` or `VLLM`, not `{server_name}`)."
-    )
-
-
-def update_model_name(config: TrussConfig, model_key: str) -> str:
-    if model_key not in config.build.arguments:
-        # We should definitely just use the same key across both vLLM and TGI
-        raise KeyError(
-            "Key for model missing in config or incorrect key used. Use `model` for VLLM and `model_id` for TGI."
-        )
-    model_name = config.build.arguments[model_key]
-    if "gs://" in model_name or "s3://" in model_name:
-        # if we are pulling from a gs bucket, we want to alias it as a part of the cache
-        model_to_cache = ModelRepo(model_name)
-        config.model_cache.models.append(model_to_cache)
-
-        prefix_removed = model_name[4:]  # removes "gs://" or "s3://"
-
-        config.build.arguments[model_key] = f"/app/model_cache/{prefix_removed}"
-    return model_name
 
 
 def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
@@ -347,116 +276,7 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
 def update_config_and_gather_files(
     config: TrussConfig, truss_dir: Path, build_dir: Path
 ):
-    if config.build.model_server not in [ModelServer.TrussServer, ModelServer.TRT_LLM]:
-        model_key = update_model_key(config)
-        update_model_name(config, model_key)
     return get_files_to_cache(config, truss_dir, build_dir)
-
-
-def create_tgi_build_dir(
-    config: TrussConfig, build_dir: Path, truss_dir: Path, use_hf_secret: bool
-):
-    copy_tree_path(truss_dir, build_dir)
-
-    if not build_dir.exists():
-        build_dir.mkdir(parents=True)
-
-    model_files, cached_file_paths = update_config_and_gather_files(
-        config, truss_dir, build_dir
-    )
-
-    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
-    dockerfile_template = read_template_from_fs(
-        TEMPLATES_DIR, "tgi/tgi.Dockerfile.jinja"
-    )
-
-    data_dir = build_dir / "data"
-    dockerfile_content = dockerfile_template.render(
-        config=config,
-        hf_access_token=hf_access_token,
-        models=model_files,
-        model_cache=config.model_cache,
-        data_dir_exists=data_dir.exists(),
-        credentials_to_cache=get_credentials_to_cache(data_dir),
-        cached_files=cached_file_paths,
-        use_hf_secret=use_hf_secret,
-        hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
-    )
-    dockerfile_filepath = build_dir / "Dockerfile"
-    dockerfile_filepath.write_text(dockerfile_content)
-
-    build_args = config.build.arguments.copy()
-    endpoint = build_args.pop("endpoint", "generate_stream")
-
-    nginx_template = read_template_from_fs(TEMPLATES_DIR, "tgi/proxy.conf.jinja")
-    nginx_content = nginx_template.render(endpoint=endpoint)
-    nginx_filepath = build_dir / "proxy.conf"
-    nginx_filepath.write_text(nginx_content)
-
-    args = " ".join([f"--{k.replace('_', '-')}={v}" for k, v in build_args.items()])
-    supervisord_template = read_template_from_fs(
-        TEMPLATES_DIR, "tgi/supervisord.conf.jinja"
-    )
-    supervisord_contents = supervisord_template.render(extra_args=args)
-    supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
-
-
-def create_vllm_build_dir(
-    config: TrussConfig, build_dir: Path, truss_dir: Path, use_hf_secret
-):
-    copy_tree_path(truss_dir, build_dir)
-
-    server_endpoint_config = {
-        "Completions": "/v1/completions",
-        "ChatCompletions": "/v1/chat/completions",
-    }
-    if not build_dir.exists():
-        build_dir.mkdir(parents=True)
-
-    build_config: Build = config.build
-    server_endpoint = server_endpoint_config[build_config.arguments.pop("endpoint")]
-
-    model_files, cached_file_paths = update_config_and_gather_files(
-        config, truss_dir, build_dir
-    )
-
-    hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
-    dockerfile_template = read_template_from_fs(
-        TEMPLATES_DIR, "vllm/vllm.Dockerfile.jinja"
-    )
-    nginx_template = read_template_from_fs(TEMPLATES_DIR, "vllm/proxy.conf.jinja")
-
-    data_dir = build_dir / "data"
-
-    dockerfile_content = dockerfile_template.render(
-        config=config,
-        hf_access_token=hf_access_token,
-        models=model_files,
-        should_install_server_requirements=True,
-        model_cache=config.model_cache,
-        data_dir_exists=data_dir.exists(),
-        credentials_to_cache=get_credentials_to_cache(data_dir),
-        cached_files=cached_file_paths,
-        use_hf_secret=use_hf_secret,
-        hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
-    )
-    dockerfile_filepath = build_dir / "Dockerfile"
-    dockerfile_filepath.write_text(dockerfile_content)
-
-    nginx_content = nginx_template.render(server_endpoint=server_endpoint)
-    nginx_filepath = build_dir / "proxy.conf"
-    nginx_filepath.write_text(nginx_content)
-
-    args = " ".join(
-        [f"--{k.replace('_', '-')}={v}" for k, v in build_config.arguments.items()]
-    )
-    supervisord_template = read_template_from_fs(
-        TEMPLATES_DIR, "vllm/supervisord.conf.jinja"
-    )
-    supervisord_contents = supervisord_template.render(extra_args=args)
-    supervisord_filepath = build_dir / "supervisord.conf"
-    supervisord_filepath.write_text(supervisord_contents)
 
 
 class ServingImageBuilderContext(TrussContext):
@@ -487,16 +307,6 @@ class ServingImageBuilder(ImageBuilder):
         if build_dir is None:
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
-
-        if config.build.model_server is ModelServer.TGI:
-            create_tgi_build_dir(config, build_dir, truss_dir, use_hf_secret)
-            return
-        elif config.build.model_server is ModelServer.VLLM:
-            create_vllm_build_dir(config, build_dir, truss_dir, use_hf_secret)
-            return
-        elif config.build.model_server is ModelServer.TRITON:
-            create_triton_build_dir(config, build_dir, truss_dir)
-            return
 
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
 

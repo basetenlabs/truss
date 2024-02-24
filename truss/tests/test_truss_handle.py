@@ -1,4 +1,3 @@
-import json
 import os
 import time
 from pathlib import Path
@@ -116,16 +115,6 @@ def test_build_serving_docker_image_from_user_base_image_live_reload(
         assert "It returned with code 1" in str(exc)
 
 
-@pytest.mark.skip(reason="Training Integration tests not supported")
-@pytest.mark.integration
-def test_build_training_docker_image_from_user_base_image(custom_model_truss_dir):
-    th = TrussHandle(custom_model_truss_dir)
-    th.set_base_image(
-        "baseten/truss-training-base:3.9-v0.4.3", "/usr/local/bin/python3"
-    )
-    th.build_training_docker_image()
-
-
 @pytest.mark.integration
 def test_docker_predict_custom_base_image(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
@@ -229,40 +218,6 @@ def test_docker_predict_model_with_external_packages(
     with ensure_kill_all():
         result = th.docker_predict([1, 2], tag=tag)
         assert result == [1, 1]
-
-
-@pytest.mark.skip(reason="Training Integration tests not supported")
-@pytest.mark.integration
-def test_docker_train(variables_to_artifacts_training_truss):
-    th = TrussHandle(variables_to_artifacts_training_truss)
-    th.add_training_variable("x", "y")
-    th.add_training_variable("a", "b")
-    tag = "test-docker-train-tag:0.0.1"
-    with ensure_kill_all():
-        input_vars = {"x": "z"}
-        th.docker_train(variables=input_vars, tag=tag)
-        vars_artifact = th.spec.data_dir / "variables.json"
-        with vars_artifact.open() as vars_file:
-            vars_from_artifact = json.load(vars_file)
-            assert vars_from_artifact == {
-                "x": "z",
-                "a": "b",
-            }
-
-
-def test_local_train(variables_to_artifacts_training_truss):
-    th = TrussHandle(variables_to_artifacts_training_truss)
-    th.add_training_variable("x", "y")
-    th.add_training_variable("a", "b")
-    input_vars = {"x": "z"}
-    th.local_train(variables=input_vars)
-    vars_artifact = th.spec.data_dir / "variables.json"
-    with vars_artifact.open() as vars_file:
-        vars_from_artifact = json.load(vars_file)
-        assert vars_from_artifact == {
-            "x": "z",
-            "a": "b",
-        }
 
 
 @pytest.mark.integration
