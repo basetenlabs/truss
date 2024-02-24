@@ -20,18 +20,22 @@ from truss.truss_handle import TrussHandle
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_LOG_ERROR = "Internal Server Error"
 
-def _log_contains_error(line: dict, error: str):
+
+def _log_contains_error(line: dict, error: str, message: str):
     return (
         line["levelname"] == "ERROR"
-        and line["message"] == "Internal Server Error"
+        and line["message"] == message
         and error in line["exc_info"]
     )
 
 
-def assert_logs_contain_error(logs: str, error: str):
+def assert_logs_contain_error(logs: str, error: str, message=DEFAULT_LOG_ERROR):
     loglines = logs.splitlines()
-    assert any(_log_contains_error(json.loads(line), error) for line in loglines)
+    assert any(
+        _log_contains_error(json.loads(line), error, message) for line in loglines
+    )
 
 
 class PropagatingThread(Thread):
@@ -241,7 +245,9 @@ def test_async_streaming_timeout():
 
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         predict_url = f"{truss_server_addr}/v1/models/model:predict"
 
@@ -251,6 +257,13 @@ def test_async_streaming_timeout():
 
             for chunk in response.iter_content():
                 pass
+
+        # Check to ensure the Timeout error is in the container logs
+        assert_logs_contain_error(
+            container.logs(),
+            error="raise exceptions.TimeoutError()",
+            message="Exception in ASGI application\n",
+        )
 
 
 @pytest.mark.integration
