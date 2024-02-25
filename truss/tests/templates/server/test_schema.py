@@ -61,6 +61,21 @@ def test_truss_schema_non_pydantic_output():
     assert schema is None
 
 
+def test_truss_schema_non_pydantic_generic_output():
+    class Model:
+        def predict(self, request: ModelInput) -> list[str]:
+            return ["foo", "bar"]
+
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
+
+    schema = TrussSchema.from_signature(input_signature, output_signature)
+
+    assert schema is None
+
+
 def test_truss_schema_async():
     class Model:
         async def predict(self, request: ModelInput) -> Awaitable[ModelOutput]:

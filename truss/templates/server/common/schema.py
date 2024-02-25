@@ -78,6 +78,16 @@ def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
     return input_type
 
 
+def annotation_is_pydantic_model(annotation: Any) -> bool:
+    # This try/except clause a workaround for the fact that issubclass()
+    # does not work with generic types (ie: list, dict),
+    # and returns a TypeError
+    try:
+        return isinstance(annotation, type) and issubclass(annotation, BaseModel)
+    except TypeError:
+        return False
+
+
 def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
     """
     Therea are 4 possible cases for output_annotation:
@@ -90,7 +100,7 @@ def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
 
     If the output_annotation does not match one of these cases, returns None
     """
-    if isinstance(output_annotation, type) and issubclass(output_annotation, BaseModel):
+    if annotation_is_pydantic_model(output_annotation):
         return OutputType(type=output_annotation, supports_streaming=False)
 
     if _is_generator_type(output_annotation):
