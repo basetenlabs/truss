@@ -1,4 +1,3 @@
-from inspect import Signature
 from types import MappingProxyType
 from typing import (
     Any,
@@ -68,14 +67,20 @@ def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
 
     input_type = parameter_types[0].annotation
 
-    if (
-        input_type == Signature.empty
-        or not isinstance(input_type, type)
-        or not issubclass(input_type, BaseModel)
-    ):
-        return None
+    if _annotation_is_pydantic_model(input_type):
+        return input_type
 
-    return input_type
+    return None
+
+
+def _annotation_is_pydantic_model(annotation: Any) -> bool:
+    # This try/except clause a workaround for the fact that issubclass()
+    # does not work with generic types (ie: list, dict),
+    # and raises a TypeError
+    try:
+        return issubclass(annotation, BaseModel)
+    except TypeError:
+        return False
 
 
 def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
@@ -90,7 +95,7 @@ def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
 
     If the output_annotation does not match one of these cases, returns None
     """
-    if isinstance(output_annotation, type) and issubclass(output_annotation, BaseModel):
+    if _annotation_is_pydantic_model(output_annotation):
         return OutputType(type=output_annotation, supports_streaming=False)
 
     if _is_generator_type(output_annotation):
