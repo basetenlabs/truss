@@ -14,6 +14,21 @@ class ModelOutput(BaseModel):
     output: str
 
 
+def test_truss_schema_pydantic_empty_annotations():
+    class Model:
+        def predict(self, request):
+            return "hello"
+
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
+
+    schema = TrussSchema.from_signature(input_signature, output_signature)
+
+    assert schema is None
+
+
 def test_truss_schema_pydantic_input_and_output():
     class Model:
         def predict(self, request: ModelInput) -> ModelOutput:
@@ -50,6 +65,36 @@ def test_truss_schema_non_pydantic_output():
     class Model:
         def predict(self, request: ModelInput) -> str:
             return request.input
+
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
+
+    schema = TrussSchema.from_signature(input_signature, output_signature)
+
+    assert schema is None
+
+
+def test_truss_schema_list_types():
+    class Model:
+        def predict(self, request: list[str]) -> list[str]:
+            return ["foo", "bar"]
+
+    model = Model()
+
+    input_signature = inspect.signature(model.predict).parameters
+    output_signature = inspect.signature(model.predict).return_annotation
+
+    schema = TrussSchema.from_signature(input_signature, output_signature)
+
+    assert schema is None
+
+
+def test_truss_schema_dict_types():
+    class Model:
+        def predict(self, request: dict[str, str]) -> dict[str, str]:
+            return {"foo": "bar"}
 
     model = Model()
 
