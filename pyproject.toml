@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.2"
+version = "0.9.2rc0"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -8,6 +8,7 @@ authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
 repository = "https://github.com/basetenlabs/truss"
 keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learning"]
+packages = [{include = "truss", format = "wheel"}]
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"
