@@ -60,7 +60,7 @@ class TrussModuleLoader:
     @staticmethod
     def import_truss_module(name):
         """
-        Custom import implementation for loading model or training module.
+        Custom import implementation for loading model module.
 
         Based on https://docs.python.org/3/library/importlib.html#approximating-importlib-import-module
         """
@@ -88,11 +88,10 @@ def truss_module_loaded(
     external_packages_dirs: Optional[List[str]] = None,
 ):
     """
-    Load a truss module: model or train.
+    Load a truss module: model.
     Args:
         truss_dir: Directory of truss
-        truss_class_module_fullname: Full name of model or train module,
-                                     e.g. 'model.model', 'train.train'
+        truss_class_module_fullname: Full name of model e.g. 'model.model'
         bundled_packages_dir_name: name of the bundled packages directory
                                    if None then bundled packages are not loaded.
         external_packages_dirs: List of names of the external packages directories

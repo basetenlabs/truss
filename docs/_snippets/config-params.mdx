@@ -299,31 +299,6 @@ Not required.
 ### `build`
 
 The `build` section is used to define options for custom servers.
-The two main model servers we support are `TGI` an `vLLM`. These are
-highly optimized servers that are built to support specific LLMs.
-
-See the following examples for how to use each of these:
-* [TGI](/examples/07-high-performance-tgi)
-* [vLLM](/examples/08-high-performance-vllm)
-
-Example configuration for TGI, running Falcon-7B:
-
-```yaml config.yaml
-build:
-  arguments:
-    endpoint: generate_stream
-    model_id: tiiuae/falcon-7b
-  model_server: TGI
-```
-
-#### `build.model_server`
-
-Either `VLLM` for vLLM, or `TGI` for TGI.
-
-#### `build.arguments`
-
-The arguments for the model server. This includes information such as which model you intend to load, and
-which endpoin from the server you'd like to use.
 
 ### `model_cache`
 

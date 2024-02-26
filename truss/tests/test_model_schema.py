@@ -93,9 +93,9 @@ class Model:
 
 @pytest.mark.integration
 def test_truss_with_annotated_inputs_outputs():
-    truss_root = Path(__file__).parent.parent.parent.resolve()
+    truss_root = Path(__file__).parent.parent.resolve()
 
-    truss_dir = truss_root / "examples" / "annotated_types"
+    truss_dir = truss_root / "test_data" / "annotated_types_truss"
 
     tr = TrussHandle(truss_dir)
 

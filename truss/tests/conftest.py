@@ -191,26 +191,6 @@ class Model:
         }
 """
 
-VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE = """
-import json
-
-
-class Train:
-    def __init__(
-       self,
-       config,
-       output_dir,
-       variables,
-    ):
-        self.output_dir = output_dir
-        self.variables = variables
-
-    def train(self):
-        with (self.output_dir / 'variables.json').open('w') as fp:
-            fp.write(json.dumps(self.variables))
-
-"""
-
 
 EXTERNAL_DATA_ACCESS = """
 class Model:
@@ -461,14 +441,6 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
         CUSTOM_MODEL_CODE_WITH_PRE_AND_POST_PROCESS
     )
     handle.update_examples([Example("example1", {"inputs": [[0]]})])
-    yield dir_path
-
-
-@pytest.fixture
-def variables_to_artifacts_training_truss(tmp_path):
-    dir_path = tmp_path / "training_truss"
-    handle = init(str(dir_path), trainable=True)
-    handle.spec.train_class_filepath.write_text(VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE)
     yield dir_path
 
 
