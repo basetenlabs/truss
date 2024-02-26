@@ -33,7 +33,32 @@ def test_truss_with_no_annotations():
         schema_response = requests.get(SCHEMA_URL)
         assert schema_response.status_code == 404
 
-        schema_response.json()["error"] == "No schema found"
+        assert schema_response.json()["error"] == "No schema found"
+
+
+@pytest.mark.integration
+def test_truss_with_non_pydantic_annotations():
+    truss_non_pydantic_annotations = """
+class Model:
+    def predict(self, request: str) -> list[str]:
+        return ["hello"]
+"""
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        create_truss(truss_dir, DEFAULT_CONFIG, truss_non_pydantic_annotations)
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        assert response.json() == ["hello"]
+
+        schema_response = requests.get(SCHEMA_URL)
+        assert schema_response.status_code == 404
+
+        assert schema_response.json()["error"] == "No schema found"
 
 
 @pytest.mark.integration

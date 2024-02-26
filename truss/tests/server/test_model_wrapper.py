@@ -68,3 +68,20 @@ def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
         # Allow load thread to execute
         time.sleep(1)
         assert model_wrapper.load_failed()
+
+
+@pytest.mark.integration
+async def test_model_wrapper_streaming_timeout(app_path):
+    if "model_wrapper" in sys.modules:
+        model_wrapper_module = sys.modules["model_wrapper"]
+        importlib.reload(model_wrapper_module)
+    else:
+        model_wrapper_module = importlib.import_module("model_wrapper")
+    model_wraper_class = getattr(model_wrapper_module, "ModelWrapper")
+
+    # Create an instance of ModelWrapper with streaming_read_timeout set to 5 seconds
+    config = yaml.safe_load((app_path / "config.yaml").read_text())
+    config["runtime"]["streaming_read_timeout"] = 5
+    model_wrapper = model_wraper_class(config)
+    model_wrapper.load()
+    assert model_wrapper._config.get("runtime").get("streaming_read_timeout") == 5
