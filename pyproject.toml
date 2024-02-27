@@ -7,8 +7,13 @@ readme = "README.md"
 authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 include = ["*.txt", "*.Dockerfile", "*.md"]
 repository = "https://github.com/basetenlabs/truss"
-keywords = ["MLOps", "AI", "Model Serving", "Model Deployment", "Machine Learning"]
-packages = [{include = "truss", format = "wheel"}]
+keywords = [
+    "MLOps",
+    "AI",
+    "Model Serving",
+    "Model Deployment",
+    "Machine Learning",
+]
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"
@@ -89,7 +94,7 @@ truss = 'truss.cli:truss_cli'
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
-httpx = {extras = ["cli"], version = "^0.24.1"}
+httpx = { extras = ["cli"], version = "^0.24.1" }
 requests-mock = "^1.11.0"
 flask = "^2.3.3"
 types-requests = "2.31.0.2"
@@ -103,5 +108,5 @@ profile = "black"
 src_paths = ["isort", "test"]
 
 [tool.mypy]
-python_version = 3.8
+python_version = "3.10"
 ignore_missing_imports = true

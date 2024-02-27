@@ -1,8 +1,9 @@
+import logging
 import random
 import string
 
 import pydantic
-from workflow import slay
+import slay
 
 ########################################################################################
 
@@ -165,6 +166,9 @@ class Workflow(slay.BaseProcessor):
 
 
 if __name__ == "__main__":
+    log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
+    date_format = "%m%d %H:%M:%S"
+    logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
 
     # Local test or dev execution - context manager makes sure local processors
     # are instantiated and injected.
@@ -173,6 +177,15 @@ if __name__ == "__main__":
         params = Parameters()
         result = wf.run(WorkflowInput(params=params))
         print(result)
+
+    with slay.run_local():
+        wf = Workflow(data_splitter=SplitData())
+        params = Parameters()
+        result = wf.run(WorkflowInput(params=params))
+        print(result)
+
+    # Gives a `UsageError`, because not in `run_local` context.
+    wf = Workflow()
 
     # A "marker" to designate which processors should be deployed as public remote
     # service points. Depenedency processors will also be deployed, but only as
