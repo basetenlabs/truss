@@ -93,10 +93,10 @@ flask = "^2.3.3"
 httpx = { extras = ["cli"], version = "^0.24.1" }
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
-requests-mock = ">=1.11.0"
-types-requests = ">=2.31.0.2"
-uvicorn = ">=0.24.0"
-uvloop = ">=0.17.0"
+httpx = { extras = ["cli"], version = "^0.24.1" }
+requests-mock = "^1.11.0"
+flask = "^2.3.3"
+types-requests = "2.31.0.2"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
@@ -107,5 +107,6 @@ profile = "black"
 src_paths = ["isort", "test"]
 
 [tool.mypy]
+python_version = "3.10"
 ignore_missing_imports = true
 python_version = "3.8"
