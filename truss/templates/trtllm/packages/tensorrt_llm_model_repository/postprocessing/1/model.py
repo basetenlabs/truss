@@ -57,7 +57,8 @@ class TritonPythonModel:
         """
         # Parse model configs
         model_config = json.loads(args["model_config"])
-        tokenizer_dir = os.environ["triton_tokenizer_repository"]
+        # NOTE: Keep this in sync with the truss model.py variable
+        tokenizer_dir = os.environ["TRITON_TOKENIZER_REPOSITORY"]
         tokenizer_type = model_config["parameters"]["tokenizer_type"]["string_value"]
 
         if tokenizer_type == "t5":
