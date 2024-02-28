@@ -61,7 +61,12 @@ from truss.server.shared.serialization import (
 from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails, PatchRequest
-from truss.util.path import copy_file_path, copy_tree_path, get_max_modified_time_of_dir
+from truss.util.path import (
+    copy_file_path,
+    copy_tree_path,
+    get_max_modified_time_of_dir,
+    load_trussignore_patterns,
+)
 from truss.validation import validate_secret_name
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -891,7 +896,8 @@ class TrussHandle:
             "Truss supports patching and a running "
             "container found: attempting to patch the container"
         )
-        patch_details = self.calc_patch(running_truss_hash)
+        truss_ignore_patterns = load_trussignore_patterns()
+        patch_details = self.calc_patch(running_truss_hash, truss_ignore_patterns)
         if patch_details is None:
             logger.info("Unable to calculate patch.")
             return None
