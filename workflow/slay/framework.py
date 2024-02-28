@@ -10,60 +10,32 @@ Open questions - safe translation from processors.py to this generated file.
     - What about class-processors that are not instantiated in `processors.py`?
 
 """
-
+import collections
 import contextlib
 import inspect
 import logging
+import os
+import shutil
+import sys
 from typing import (
     Any,
     Callable,
-    ClassVar,
-    Generic,
     Iterable,
     Mapping,
     MutableMapping,
-    Optional,
     Type,
-    TypeVar,
     get_origin,
     get_type_hints,
 )
 
 import pydantic
 
-UserConfigT = TypeVar("UserConfigT", pydantic.BaseModel, None)
+from . import code_gen, types
 
 CONFIG_ARG_NAME = "config"
 
 
-class APIDefinitonError(TypeError):
-    ...
-
-
-class MissingDependencyError(TypeError):
-    ...
-
-
-class CyclicDependencyError(TypeError):
-    ...
-
-
-class UsageError(RuntimeError):
-    ...
-
-
-class EndpointAPIDescriptor(pydantic.BaseModel):
-    name: str
-    input_type: Type[pydantic.BaseModel]
-    output_type: Type[pydantic.BaseModel]
-
-
-class ProcessorAPIDescriptor(pydantic.BaseModel):
-    # TODO: should class-types, names or full names be used to identify processors?
-    # name: str
-    processor_cls: Type["BaseProcessor"]
-    depdendencies: Mapping[str, Type["BaseProcessor"]]
-    endpoints: list[EndpointAPIDescriptor]
+# Checking of processor class definition ###############################################
 
 
 def is_function_or_method(obj):
@@ -88,48 +60,65 @@ def validate_method_names_and_get_endpoint_names(cls) -> set[str]:
         name for name in cls_callables - base_callables if not name.startswith("_")
     }
     if not added_public_callables:
-        raise APIDefinitonError(
+        raise types.APIDefinitonError(
             f"`{cls.__name__}` must implement at least one additional public method."
         )
     return added_public_callables
 
 
 def validate_base_classes(
-    cls: "Type[BaseProcessor]", endpoint_names: Iterable[str]
+    cls: Type[types.ABCProcessor], endpoint_names: Iterable[str]
 ) -> None:
     # What if multiple public methods are added?
     ...
 
 
 def validate_and_describe_endpoint(
-    cls: "Type[BaseProcessor]", endpoint_name: str
-) -> EndpointAPIDescriptor:
+    cls: Type[types.ABCProcessor], endpoint_name: str
+) -> types.EndpointAPIDescriptor:
     endpoint_method = getattr(cls, endpoint_name)  # This is the unbound method.
     signature = inspect.signature(endpoint_method)
     params = list(signature.parameters.values())
     assert params[0].name == "self"
-    if len(params) > 2:
-        raise APIDefinitonError()
+    # if len(params) > 2:
+    #     raise APIDefinitonError()
 
     type_hints = get_type_hints(endpoint_method)
+
+    # input_type = params[1].annotation
+    # if not issubclass(input_type, pydantic.BaseModel):
+    #     raise APIDefinitonError(
+    #         f"Endpoint method `{endpoint_name}` must have a pydantic model as input data type."
+    #     )
+
     if "return" not in type_hints or params[1].annotation not in type_hints.values():
-        raise APIDefinitonError(
+        raise types.APIDefinitonError(
             f"Endpoint method `{endpoint_name}` must have a return type annotation."
         )
-
-    input_type = params[1].annotation
-    if not issubclass(input_type, pydantic.BaseModel):
-        raise APIDefinitonError(
-            f"Endpoint method `{endpoint_name}` must have a pydantic model as input data type."
-        )
     output_type = type_hints["return"]
-    if not issubclass(output_type, pydantic.BaseModel):
-        raise APIDefinitonError(
-            f"Endpoint method `{endpoint_name}` must have a pydantic model as output data type."
-        )
 
-    return EndpointAPIDescriptor(
-        name=endpoint_name, input_type=input_type, output_type=output_type
+    # if not issubclass(output_type, pydantic.BaseModel):
+    #     raise APIDefinitonError(
+    #         f"Endpoint method `{endpoint_name}` must have a pydantic model as output data type."
+    #     )
+    # TODO: make sure output can be serialized.
+
+    if inspect.isasyncgenfunction(endpoint_method):
+        is_async = True
+        is_generator = True
+    elif inspect.iscoroutinefunction(endpoint_method):
+        is_async = True
+        is_generator = False
+    else:
+        is_async = False
+        is_generator = inspect.isgeneratorfunction(endpoint_method)
+
+    return types.EndpointAPIDescriptor(
+        name=endpoint_name,
+        input_types=[],
+        output_type=output_type,
+        is_async=is_async,
+        is_generator=is_generator,
     )
 
 
@@ -139,34 +128,52 @@ def get_class_type(var):
 
 
 def validate_init_signature_and_get_dependencies(
-    cls: "Type[BaseProcessor]",
-) -> Mapping[str, Type["BaseProcessor"]]:
+    cls: Type[types.ABCProcessor],
+) -> Mapping[str, Type[types.ABCProcessor]]:
     signature = inspect.signature(cls.__init__)
     params = list(signature.parameters.values())
     assert params[0].name == "self"
     if len(params) <= 1:
-        raise APIDefinitonError()
+        raise types.APIDefinitonError()
     if params[1].name != CONFIG_ARG_NAME:
-        raise APIDefinitonError(params)
+        raise types.APIDefinitonError(params)
     param_1_type = get_class_type(params[1].annotation)
 
-    if not issubclass(param_1_type, Config):
-        raise APIDefinitonError(params)
+    if not issubclass(param_1_type, types.Config):
+        raise types.APIDefinitonError(params)
 
     depdendencies = {}
     for param in params[2:]:
         # TODO: deal with subclasses, unions, optionals, check default value etc.
-        if not issubclass(param.annotation, BaseProcessor):
-            raise APIDefinitonError(param)
+        if not issubclass(param.annotation, types.ABCProcessor):
+            raise types.APIDefinitonError(param)
         if param.annotation in depdendencies:
-            raise APIDefinitonError(param)
+            raise types.APIDefinitonError(param)
         depdendencies[param.name] = param.annotation
     return depdendencies
 
 
-def validate_variable_access(cls: "Type[BaseProcessor]") -> None:
+def validate_variable_access(cls: Type[types.ABCProcessor]) -> None:
     # Access processors only via `provided` in `__init__`. No globals.
     ...
+
+
+def check_and_register_class(cls) -> None:
+    endpoint_names = validate_method_names_and_get_endpoint_names(cls)
+    validate_base_classes(cls, endpoint_names)
+    endpoint_descriptors = []
+    for name in endpoint_names:
+        endpoint_descriptors.append(validate_and_describe_endpoint(cls, name))
+    dependencies = validate_init_signature_and_get_dependencies(cls)
+    processor_descriptor = types.ProcessorAPIDescriptor(
+        processor_cls=cls,
+        depdendencies=dependencies,
+        endpoints=endpoint_descriptors,
+    )
+    _global_processor_registry.register_processor(processor_descriptor)
+
+
+########################################################################################
 
 
 class _BaseProvisionPlaceholder:
@@ -174,7 +181,7 @@ class _BaseProvisionPlaceholder:
 
 
 class ProcessorProvisionPlaceholder(_BaseProvisionPlaceholder):
-    def __init__(self, processor_cls: Type["BaseProcessor"]) -> None:
+    def __init__(self, processor_cls: Type[types.ABCProcessor]) -> None:
         self._processor_cls = processor_cls
 
 
@@ -183,45 +190,40 @@ class ConfigProvisionPlaceholder(_BaseProvisionPlaceholder):
 
 
 class ProcessorRegistry:
-    _processors: MutableMapping[Type["BaseProcessor"], ProcessorAPIDescriptor]
+    # Because dependencies are reuired to be present when registering a processor,
+    # this dict contains natively a topological sorting of the dependency graph.
+    _processors: collections.OrderedDict[
+        Type[types.ABCProcessor], types.ProcessorAPIDescriptor
+    ]
 
     def __init__(self) -> None:
-        self._processors = {}
+        self._processors = collections.OrderedDict()
 
-    def register_processor(self, processor_descriptor: ProcessorAPIDescriptor):
+    def register_processor(self, processor_descriptor: types.ProcessorAPIDescriptor):
         for dep in processor_descriptor.depdendencies.values():
             if dep not in self._processors:
-                raise MissingDependencyError(dep)
+                raise types.MissingDependencyError(dep)
 
         self._processors[processor_descriptor.processor_cls] = processor_descriptor
 
     @property
-    def processor_classes(self) -> list[ProcessorAPIDescriptor]:
+    def processor_descriptors(self) -> list[types.ProcessorAPIDescriptor]:
         return list(self._processors.values())
+
+    @property
+    def processor_classes(self) -> list[Type[types.ABCProcessor]]:
+        return list(self._processors.keys())
+
+    def get_dependencies(
+        self, processor: Type[types.ABCProcessor]
+    ) -> Iterable[Type[types.ABCProcessor]]:
+        return [desc for desc in self._processors[processor].depdendencies.values()]
 
 
 _global_processor_registry = ProcessorRegistry()
 
 
-# Public API ###########################################################################
-
-
-class Image(pydantic.BaseModel):
-    ...
-
-
-class Config(pydantic.BaseModel, Generic[UserConfigT]):
-    name: Optional[str] = None
-    image: Optional[Image] = None
-    user_config: Optional[UserConfigT] = None
-
-
-def provide_config() -> Any:
-    return ConfigProvisionPlaceholder()
-
-
-def provide(processor_cls: Type["BaseProcessor"]) -> Any:
-    return ProcessorProvisionPlaceholder(processor_cls)
+# Processor class runtime utils ########################################################
 
 
 def determine_arguments(func, **kwargs):
@@ -231,63 +233,33 @@ def determine_arguments(func, **kwargs):
     return bound_args.arguments
 
 
-class BaseProcessor(Generic[UserConfigT]):
-
-    default_config: ClassVar[Config]
-    _init_is_patched: ClassVar[bool] = False
-    _config: Config[UserConfigT]
-
-    def __init__(self, config: Config[UserConfigT] = provide_config()) -> None:
-        self._config = config
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        endpoint_names = validate_method_names_and_get_endpoint_names(cls)
-        validate_base_classes(cls, endpoint_names)
-        endpoint_descriptors = []
-        for name in endpoint_names:
-            endpoint_descriptors.append(validate_and_describe_endpoint(cls, name))
-        dependencies = validate_init_signature_and_get_dependencies(cls)
-        processor_descriptor = ProcessorAPIDescriptor(
-            processor_cls=cls,
-            depdendencies=dependencies,
-            endpoints=endpoint_descriptors,
-        )
-        _global_processor_registry.register_processor(processor_descriptor)
-
-        original_init = cls.__init__
-
-        def modified_init(self, *args, **kwargs):
-            final_args = determine_arguments(original_init, **kwargs)
-            for name, value in final_args.items():
-                if isinstance(value, _BaseProvisionPlaceholder):
-                    raise UsageError(
-                        f"When initializing class `{cls.__name__}`, for "
-                        f"default argument `{name}` a symbolic placeholder value "
-                        "was passed. It is required to instantiate and run the classes "
-                        f"in a `{run_local.__name__}` context or deploy them remotely."
-                    )
-
-            original_init(self, *args, **kwargs)
-
-        cls.__init__ = modified_init  # type: ignore[method-assign]
+def check_init_args(cls, kwargs) -> None:
+    final_args = determine_arguments(cls.__init__, **kwargs)
+    for name, value in final_args.items():
+        if isinstance(value, _BaseProvisionPlaceholder):
+            raise types.UsageError(
+                f"When initializing class `{cls.__name__}`, for "
+                f"default argument `{name}` a symbolic placeholder value "
+                "was passed. It is required to instantiate and run the classes "
+                f"in a `{run_local.__name__}` context or deploy them remotely."
+            )
 
 
 # Local Deployment #####################################################################
 
 
 def _create_modified_init(
-    processor_descriptor: ProcessorAPIDescriptor,
-    cls_to_instance: MutableMapping[Type[BaseProcessor], BaseProcessor],
+    processor_descriptor: types.ProcessorAPIDescriptor,
+    cls_to_instance: MutableMapping[Type[types.ABCProcessor], types.ABCProcessor],
 ):
     original_init = processor_descriptor.processor_cls.__init__
 
-    def modified_init(self: BaseProcessor, **kwargs) -> None:
+    def modified_init(self: types.ABCProcessor, **kwargs) -> None:
         print(f"Patched `__init__` of `{processor_descriptor.processor_cls}`.")
         if hasattr(processor_descriptor.processor_cls, "default_config"):
             config = processor_descriptor.processor_cls.default_config
         else:
-            config = Config()
+            config = types.Config()
 
         for arg_name, dep_cls in processor_descriptor.depdendencies.items():
             if arg_name in kwargs:
@@ -319,10 +291,10 @@ def _create_modified_init(
 
 @contextlib.contextmanager
 def run_local() -> Any:
-    type_to_instance: MutableMapping[Type[BaseProcessor], BaseProcessor] = {}
-    original_inits: MutableMapping[Type[BaseProcessor], Callable] = {}
+    type_to_instance: MutableMapping[Type[types.ABCProcessor], types.ABCProcessor] = {}
+    original_inits: MutableMapping[Type[types.ABCProcessor], Callable] = {}
 
-    for processor_descriptor in _global_processor_registry.processor_classes:
+    for processor_descriptor in _global_processor_registry.processor_descriptors:
         original_inits[
             processor_descriptor.processor_cls
         ] = processor_descriptor.processor_cls.__init__
@@ -338,5 +310,67 @@ def run_local() -> Any:
             processor_cls._init_is_patched = False
 
 
-def deploy_remotely(processors: Iterable[Type[BaseProcessor]]) -> None:
+# Remote Deployment ####################################################################
+"""
+Generate a remote processor
+* Create `./generated/processor_{name}/` directory.
+* Copy all from CWD.
+* Convert the processor class into a truss model:
+    * Inheri
+
+
+
+"""
+
+
+class RemoteServiceDescriptor(pydantic.BaseModel):
+    url: str
+
+
+class StubDescriptor(pydantic.BaseModel):
+    url: str
+
+
+def create_remote_service(
+    processor: Type[types.ABCProcessor], stubs: list[StubDescriptor]
+):
+    # TODO: better way of dealing with (abs) paths.
+    # TODO: tracking relative imports / deps of workflow file.
+    workflow_filepath = os.path.abspath(sys.argv[0])
+    workflow_dir = os.path.dirname(workflow_filepath)
+    processor_dir = os.path.join(
+        workflow_dir, "generated", f"processor_{processor.__name__}"
+    )
+    os.makedirs(processor_dir, exist_ok=True)
+    model_filepath = shutil.copy(
+        workflow_filepath, os.path.join(processor_dir, "model.py")
+    )
+
+    code_gen.edit_model_file(model_filepath)
+
+
+def create_stub(remote: RemoteServiceDescriptor) -> StubDescriptor:
     ...
+
+
+def deploy_remotely(processors: Iterable[Type[types.ABCProcessor]]) -> None:
+    needed_processors = set()
+
+    def add_needed_procssors(proc: Type[types.ABCProcessor]):
+        for dep in _global_processor_registry.get_dependencies(proc):
+            needed_processors.add(dep)
+            add_needed_procssors(dep)
+
+    for proc in processors:
+        add_needed_procssors(proc)
+
+    ordered_processors = [
+        cls
+        for cls in _global_processor_registry.processor_classes
+        if cls in needed_processors
+    ]
+    stubs = []
+    for processor in ordered_processors:
+        remote_service = create_remote_service(processor, stubs)
+        stub = create_stub(remote_service)
+        stubs.append(stub)

@@ -89,23 +89,23 @@ if __name__ == "__main__":
 
     # Local test or dev execution - context manager makes sure local processors
     # are instantiated and injected.
-    params = Parameters()
+    # with slay.run_local():
+    #     wf = Workflow()
+    #     params = Parameters()
+    #     result = wf.run(params=params)
+    #     print(result)
 
-    with slay.run_local():
-        wf = Workflow()
-        result = wf.run(params=params)
-        print(result)
+    # with slay.run_local():
+    #     wf = Workflow(data_splitter=SplitData())
+    #     params = Parameters()
+    #     result = wf.run(params=params)
+    #     print(result)
 
-    with slay.run_local():
-        wf = Workflow(data_splitter=SplitData())
-        result = wf.run(params=params)
-        print(result)
-
-    # Gives a `UsageError`, because not in `run_local` context.
-    try:
-        wf = Workflow()
-    except slay.UsageError as e:
-        print(e)
+    # # Gives a `UsageError`, because not in `run_local` context.
+    # try:
+    #     wf = Workflow()
+    # except slay.UsageError:
+    #     pass
 
     # A "marker" to designate which processors should be deployed as public remote
     # service points. Depenedency processors will also be deployed, but only as
