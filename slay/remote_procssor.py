@@ -1,9 +1,8 @@
 import pathlib
-from typing import Any
 
 from truss.server.shared import secrets_resolver
 
-from . import types
+from . import definitions
 
 
 class Model:
@@ -24,7 +23,7 @@ class Model:
 
     def _converted_config(self):
         # TODO
-        return types.Config()
+        return definitions.Config()
 
     # Generate something like this (sync|async variants):
     """

@@ -4,6 +4,7 @@ import string
 
 import pydantic
 import slay
+from user_package import shared_processor
 
 
 class Parameters(pydantic.BaseModel):
@@ -13,7 +14,6 @@ class Parameters(pydantic.BaseModel):
 
 
 class GenerateData(slay.BaseProcessor):
-
     default_config = slay.Config(name="MyDataGenerator")
 
     def gen_data(self, params: Parameters) -> str:
@@ -22,25 +22,12 @@ class GenerateData(slay.BaseProcessor):
         )
 
 
-class SplitData(slay.BaseProcessor):
-    def split(self, data: str, params: Parameters) -> list[str]:
-        num_partitions = params.num_partitions
-        part_length = len(data) // num_partitions
-        text_parts = [
-            data[i * part_length : (i + 1) * part_length]
-            + (data[num_partitions * part_length :] if i == num_partitions - 1 else "")
-            for i in range(num_partitions)
-        ]
-        return text_parts
-
-
 class TextReplicator(slay.BaseProcessor):
     def replicate(self, data: str, params: Parameters) -> str:
         return str(data * params.num_replications)
 
 
 class TextToNum(slay.BaseProcessor):
-
     _replicator: TextReplicator
 
     def __init__(
@@ -56,7 +43,6 @@ class TextToNum(slay.BaseProcessor):
         replicator_result = self._replicator.replicate(data, params)
         for char in replicator_result:
             number += ord(char)
-
         return number
 
 
@@ -65,7 +51,9 @@ class Workflow(slay.BaseProcessor):
         self,
         config: slay.Config = slay.provide_config(),
         data_generator: GenerateData = slay.provide(GenerateData),
-        data_splitter: SplitData = slay.provide(SplitData),
+        data_splitter: shared_processor.SplitData = slay.provide(
+            shared_processor.SplitData
+        ),
         text_to_num: TextToNum = slay.provide(TextToNum),
     ) -> None:
         super().__init__(config)
@@ -80,34 +68,3 @@ class Workflow(slay.BaseProcessor):
         for part in text_parts:
             value += self._text_to_num.to_num(part, params)
         return value
-
-
-if __name__ == "__main__":
-    log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
-    date_format = "%m%d %H:%M:%S"
-    logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
-
-    # Local test or dev execution - context manager makes sure local processors
-    # are instantiated and injected.
-    # with slay.run_local():
-    #     wf = Workflow()
-    #     params = Parameters()
-    #     result = wf.run(params=params)
-    #     print(result)
-
-    # with slay.run_local():
-    #     wf = Workflow(data_splitter=SplitData())
-    #     params = Parameters()
-    #     result = wf.run(params=params)
-    #     print(result)
-
-    # # Gives a `UsageError`, because not in `run_local` context.
-    # try:
-    #     wf = Workflow()
-    # except slay.UsageError:
-    #     pass
-
-    # A "marker" to designate which processors should be deployed as public remote
-    # service points. Depenedency processors will also be deployed, but only as
-    # "internal" services, not as a "public" sevice endpoint.
-    slay.deploy_remotely([Workflow])

@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
 
 import pydantic
 
-UserConfigT = TypeVar("UserConfigT", pydantic.BaseModel, None)
+UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
 
 class APIDefinitonError(TypeError):
@@ -25,20 +25,46 @@ class UsageError(Exception):
 class Image(pydantic.BaseModel):
     ...
 
+    def pip_requirements_txt(self, *args, **kwargs) -> "Image":
+        return self
+
+    def pip_install(self, *args, **kwargs) -> "Image":
+        return self
+
+    def cuda(self, *args, **kwargs) -> "Image":
+        return self
+
+
+class Resources(pydantic.BaseModel):
+    ...
+
+    def cpu(self, *args, **kwargs) -> "Resources":
+        return self
+
+    def gpu(self, *args, **kwargs) -> "Resources":
+        return self
+
 
 class Config(pydantic.BaseModel, Generic[UserConfigT]):
     name: Optional[str] = None
     image: Optional[Image] = None
-    user_config: Optional[UserConfigT] = None
+    resources: Optional[Resources] = None
+    user_config: UserConfigT = pydantic.Field(default=None)
 
 
-class ABCProcessor(abc.ABC, Generic[UserConfigT]):
+class ABCProcessor(Generic[UserConfigT], abc.ABC):
     default_config: ClassVar[Config]
     _init_is_patched: ClassVar[bool] = False
     _config: Config[UserConfigT]
 
+    @abc.abstractmethod
     def __init__(self, config: Config[UserConfigT]) -> None:
-        self._config = config
+        ...
+
+    @property
+    @abc.abstractmethod
+    def user_config(self) -> UserConfigT:
+        ...
 
 
 class EndpointAPIDescriptor(pydantic.BaseModel):

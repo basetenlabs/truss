@@ -4,6 +4,7 @@ import string
 
 import pydantic
 import slay
+from user_package import shared_processor
 
 
 class Parameters(pydantic.BaseModel):
@@ -19,18 +20,6 @@ class GenerateData(slay.BaseProcessor):
         return "".join(
             random.choices(string.ascii_letters + string.digits, k=params.length)
         )
-
-
-class SplitData(slay.BaseProcessor):
-    def split(self, data: str, params: Parameters) -> list[str]:
-        num_partitions = params.num_partitions
-        part_length = len(data) // num_partitions
-        text_parts = [
-            data[i * part_length : (i + 1) * part_length]
-            + (data[num_partitions * part_length :] if i == num_partitions - 1 else "")
-            for i in range(num_partitions)
-        ]
-        return text_parts
 
 
 class TextReplicator(slay.BaseProcessor):
@@ -62,7 +51,9 @@ class Workflow(slay.BaseProcessor):
         self,
         config: slay.Config = slay.provide_config(),
         data_generator: GenerateData = slay.provide(GenerateData),
-        data_splitter: SplitData = slay.provide(SplitData),
+        data_splitter: shared_processor.SplitData = slay.provide(
+            shared_processor.SplitData
+        ),
         text_to_num: TextToNum = slay.provide(TextToNum),
     ) -> None:
         super().__init__(config)
