@@ -13,7 +13,6 @@ class Parameters(pydantic.BaseModel):
 
 
 class GenerateData(slay.BaseProcessor):
-
     default_config = slay.Config(name="MyDataGenerator")
 
     def gen_data(self, params: Parameters) -> str:
@@ -40,7 +39,6 @@ class TextReplicator(slay.BaseProcessor):
 
 
 class TextToNum(slay.BaseProcessor):
-
     _replicator: TextReplicator
 
     def __init__(
@@ -56,7 +54,6 @@ class TextToNum(slay.BaseProcessor):
         replicator_result = self._replicator.replicate(data, params)
         for char in replicator_result:
             number += ord(char)
-
         return number
 
 
@@ -80,34 +77,3 @@ class Workflow(slay.BaseProcessor):
         for part in text_parts:
             value += self._text_to_num.to_num(part, params)
         return value
-
-
-if __name__ == "__main__":
-    log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
-    date_format = "%m%d %H:%M:%S"
-    logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
-
-    # Local test or dev execution - context manager makes sure local processors
-    # are instantiated and injected.
-    params = Parameters()
-
-    with slay.run_local():
-        wf = Workflow()
-        result = wf.run(params=params)
-        print(result)
-
-    with slay.run_local():
-        wf = Workflow(data_splitter=SplitData())
-        result = wf.run(params=params)
-        print(result)
-
-    # Gives a `UsageError`, because not in `run_local` context.
-    try:
-        wf = Workflow()
-    except slay.UsageError as e:
-        print(e)
-
-    # A "marker" to designate which processors should be deployed as public remote
-    # service points. Depenedency processors will also be deployed, but only as
-    # "internal" services, not as a "public" sevice endpoint.
-    slay.deploy_remotely([Workflow])
