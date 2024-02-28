@@ -13,7 +13,6 @@ from truss.truss_config import (
     ModelCache,
     ModelRepo,
     Resources,
-    Train,
     TrussConfig,
 )
 from truss.types import ModelFrameworkType
@@ -87,6 +86,7 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
         ("T4", AcceleratorSpec(Accelerator.T4, 1)),
         ("A10G:4", AcceleratorSpec(Accelerator.A10G, 4)),
         ("A100:8", AcceleratorSpec(Accelerator.A100, 8)),
+        ("H100", AcceleratorSpec(Accelerator.H100, 1)),
     ],
 )
 def test_acc_spec_from_str(input_str, expected_acc):
@@ -181,29 +181,6 @@ def test_model_framework(model_framework):
     else:
         new_config["model_framework"] = model_framework.value
         assert new_config == config.to_dict(verbose=False)
-
-
-def test_non_default_train():
-    config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        train=Train(resources=Resources(use_gpu=True, accelerator="A10G")),
-    )
-
-    updated_train = {
-        "resources": {
-            "accelerator": "A10G",
-            "cpu": "1",
-            "memory": "2Gi",
-            "use_gpu": True,
-        },
-        "variables": {},
-    }
-
-    new_config = generate_default_config()
-    new_config["train"] = updated_train
-
-    assert new_config == config.to_dict(verbose=False)
 
 
 def test_null_model_cache_key():

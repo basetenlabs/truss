@@ -6,17 +6,15 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Callable, Generator
 
 import pytest
 import requests
 import yaml
 from truss.build import init
-from truss.contexts.image_builder.serving_image_builder import (
-    ServingImageBuilderContext,
-)
-from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.types import Example
+from truss.util.path import copy_tree_path
 
 CUSTOM_MODEL_CODE = """
 class Model:
@@ -193,26 +191,6 @@ class Model:
         }
 """
 
-VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE = """
-import json
-
-
-class Train:
-    def __init__(
-       self,
-       config,
-       output_dir,
-       variables,
-    ):
-        self.output_dir = output_dir
-        self.variables = variables
-
-    def train(self):
-        with (self.output_dir / 'variables.json').open('w') as fp:
-            fp.write(json.dumps(self.variables))
-
-"""
-
 
 EXTERNAL_DATA_ACCESS = """
 class Model:
@@ -227,12 +205,17 @@ class Model:
 
 
 @pytest.fixture
+def temp_path(tmpdir):
+    yield Path(tmpdir)
+
+
+@pytest.fixture
 def pytorch_model_init_args():
     return {"arg1": 1, "arg2": 2, "kwarg1": 3, "kwarg2": 4}
 
 
 @pytest.fixture
-def custom_model_truss_dir(tmp_path) -> Path:
+def custom_model_truss_dir(tmp_path) -> Generator[Path, None, None]:
     yield _custom_model_from_code(
         tmp_path,
         "custom_truss",
@@ -462,14 +445,6 @@ def custom_model_truss_dir_with_pre_and_post(tmp_path):
 
 
 @pytest.fixture
-def variables_to_artifacts_training_truss(tmp_path):
-    dir_path = tmp_path / "training_truss"
-    handle = init(str(dir_path), trainable=True)
-    handle.spec.train_class_filepath.write_text(VARIABLES_TO_ARTIFACTS_TRAIN_CLASS_CODE)
-    yield dir_path
-
-
-@pytest.fixture
 def custom_model_truss_dir_with_bundled_packages(tmp_path):
     truss_dir_path: Path = tmp_path / "custom_model_truss_dir_with_bundled_packages"
     handle = init(str(truss_dir_path))
@@ -535,20 +510,26 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 
 
 @pytest.fixture
-def truss_container_fs(tmp_path):
+def tmp_truss_dir(tmp_path, monkeypatch):
     ROOT = Path(__file__).parent.parent.parent.resolve()
-    return _build_truss_fs(ROOT / "truss" / "test_data" / "test_truss", tmp_path)
+    tmp_dir = _copy_truss_dir_to_tmp(
+        ROOT / "truss" / "test_data" / "test_truss", tmp_path
+    )
+    monkeypatch.setenv("APP_HOME", str(tmp_dir))
+    return tmp_dir
 
 
 @pytest.fixture
-def truss_control_container_fs(tmp_path):
+def tmp_truss_control_dir(tmp_path, monkeypatch):
     ROOT = Path(__file__).parent.parent.parent.resolve()
     test_truss_dir = ROOT / "truss" / "test_data" / "test_truss"
     control_truss_dir = tmp_path / "control_truss"
     shutil.copytree(str(test_truss_dir), str(control_truss_dir))
     with _modify_yaml(control_truss_dir / "config.yaml") as content:
         content["live_reload"] = True
-    return _build_truss_fs(control_truss_dir, tmp_path)
+    tmp_dir = _copy_truss_dir_to_tmp(control_truss_dir, tmp_path)
+    monkeypatch.setenv("APP_HOME", str(tmp_dir))
+    return tmp_dir
 
 
 @pytest.fixture
@@ -604,7 +585,7 @@ def _custom_model_from_code(
     where_dir: Path,
     truss_name: str,
     model_code: str,
-    handle_ops: callable = None,
+    handle_ops: Callable = None,
 ) -> Path:
     dir_path = where_dir / truss_name
     handle = init(str(dir_path))
@@ -667,18 +648,9 @@ def helpers():
     return Helpers()
 
 
-def _build_truss_fs(truss_dir: Path, tmp_path: Path) -> Path:
-    truss_fs = tmp_path / "truss_fs"
-    truss_fs.mkdir()
-    truss_build_dir = tmp_path / "truss_fs_build"
-    truss_build_dir.mkdir()
-    image_builder = ServingImageBuilderContext.run(truss_dir)
-    image_builder.prepare_image_build_dir(truss_build_dir)
-    dockerfile_path = truss_build_dir / "Dockerfile"
-
-    docker_build_emulator = DockerBuildEmulator(dockerfile_path, truss_build_dir)
-    docker_build_emulator.run(truss_fs)
-    return truss_fs
+def _copy_truss_dir_to_tmp(truss_dir: Path, tmp_path: Path) -> Path:
+    copy_tree_path(truss_dir, tmp_path)
+    return tmp_path
 
 
 @contextlib.contextmanager

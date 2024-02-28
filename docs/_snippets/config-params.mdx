@@ -27,6 +27,91 @@ class Model:
   ...
 ```
 
+### `packages`
+(default: `packages/`)
+
+Folder in the Truss to put your custom packages.
+Inside the `packages` folder you can place your own code that you want to reference inside `model.py`. Here is an example:
+
+Imagine you have the project setup below:
+
+```
+stable-diffusion/
+    packages/
+        package_1/
+            subpackage/
+                script.py
+    model/
+        model.py
+        __init__.py
+    config.yaml
+```
+
+Inside the `model.py` the package can be imported like this:
+
+```python model/model.py
+from package_1.subpackage.script import run_script
+
+class Model:
+    def __init__(self, **kwargs):
+        pass
+
+    def load(self):
+        run_script()
+
+    ...
+    ...
+    ...
+```
+
+### `external_package_dirs`
+External package dirs enable a truss to access custom packages located outside of it. This is a convenient way to allow multiple trusses to access the same package.
+
+Here is an example project structure. Note that the external package, `super_cool_awesome_plugin/` is outside the truss.
+
+```
+stable-diffusion/
+    model/
+        model.py
+        __init__.py
+    config.yaml
+super_cool_awesome_plugin/
+    plugin1/
+        script.py
+    plugin2/
+        run.py
+```
+
+Inside the `stable-diffusion/config.yaml` the path to your external package needs to be specified. For the example above, the `config.yaml` would look like this:
+
+```yaml config.yaml
+environment_variables: {}
+external_package_dirs:
+- ../super_cool_awesome_plugin/
+model_name: Stable Diffusion
+python_version: py39
+...
+...
+...
+```
+
+Inside `stable-diffusion/model/model.py` the `super_cool_awesome_plugin/` package can be imported like so:
+
+```python model.py
+from super_cool_awesome_plugin.plugin1.script import cool_constant
+from super_cool_awesome_plugin.plugin2.run import AwesomeRunner
+
+class Model:
+    def __init__(self, **kwargs):
+        awesome_runner = AwesomeRunner()
+
+    def load(self):
+        awesome_runner.run(cool_constant)
+
+    ...
+    ...
+    ...
+```
 
 ### `environment_variables`
 
@@ -214,31 +299,6 @@ Not required.
 ### `build`
 
 The `build` section is used to define options for custom servers.
-The two main model servers we support are `TGI` an `vLLM`. These are
-highly optimized servers that are built to support specific LLMs.
-
-See the following examples for how to use each of these:
-* [TGI](/examples/07-high-performance-tgi)
-* [vLLM](/examples/08-high-performance-vllm)
-
-Example configuration for TGI, running Falcon-7B:
-
-```yaml config.yaml
-build:
-  arguments:
-    endpoint: generate_stream
-    model_id: tiiuae/falcon-7b
-  model_server: TGI
-```
-
-#### `build.model_server`
-
-Either `VLLM` for vLLM, or `TGI` for TGI.
-
-#### `build.arguments`
-
-The arguments for the model server. This includes information such as which model you intend to load, and
-which endpoin from the server you'd like to use.
 
 ### `model_cache`
 

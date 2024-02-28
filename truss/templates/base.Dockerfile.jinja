@@ -2,6 +2,7 @@ ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}} as truss_server
 
 ENV PYTHON_EXECUTABLE {{ config.base_image.python_executable_path or 'python3' }}
+ENV JSON_LOG True
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
@@ -12,15 +13,14 @@ RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 
+# Always install the truss package
+COPY ./truss/ /lib/truss_pkg/truss
+COPY ./pyproject.toml /lib/truss_pkg/
+COPY ./README.md /lib/truss_pkg/
+RUN pip install /lib/truss_pkg --no-cache-dir && rm -rf /root/.cache/pip
+
 {% block base_image_patch %}
 {% endblock %}
-
-{% if config.model_framework.value == 'huggingface_transformer' %}
-    {% if config.resources.use_gpu %}
-# HuggingFace pytorch gpu support needs mkl
-RUN pip install mkl
-    {% endif %}
-{% endif%}
 
 {% block post_base %}
 {% endblock %}
@@ -60,7 +60,7 @@ WORKDIR $APP_HOME
 
 {% block bundled_packages_copy %}
     {%- if bundled_packages_dir_exists %}
-COPY ./{{config.bundled_packages_dir}} /packages
+COPY ./{{config.bundled_packages_dir}} /app/packages
     {%- endif %}
 {% endblock %}
 

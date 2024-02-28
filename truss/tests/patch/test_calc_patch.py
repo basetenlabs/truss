@@ -4,7 +4,7 @@ from typing import Any, Callable, List, Optional
 import yaml
 from truss.patch.calc_patch import calc_truss_patch, calc_unignored_paths
 from truss.patch.signature import calc_truss_signature
-from truss.templates.control.control.helpers.types import (
+from truss.server.control.patch.types import (
     Action,
     ConfigPatch,
     EnvVarPatch,
@@ -631,7 +631,7 @@ def _apply_config_change_and_calc_patches(
     custom_model_truss_dir: Path,
     config_op: Callable[[TrussConfig], Any],
     config_pre_op: Optional[Callable[[TrussConfig], Any]] = None,
-) -> List[Patch]:
+) -> Optional[List[Patch]]:
     def modify_config(op):
         config_path = custom_model_truss_dir / "config.yaml"
         config = TrussConfig.from_yaml(config_path)
