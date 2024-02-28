@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from distutils.dir_util import remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
-from typing import Any, Iterable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 import pathspec
 
@@ -140,9 +140,9 @@ def is_ignored(
 
 
 def get_ignored_relative_paths(
-    root_relative_paths: Iterable[Union[str, os.PathLike[Any]]],
+    root_relative_paths: Iterable[Union[str, os.PathLike]],
     ignore_patterns: Optional[List[str]] = None,
-) -> Iterator[Union[str, os.PathLike[Any]]]:
+) -> Iterator[Union[str, os.PathLike]]:
     """Given an iterable of relative paths, returns an iterator of the relative paths that match ignore_patterns."""
     if ignore_patterns is None:
         return iter([])
