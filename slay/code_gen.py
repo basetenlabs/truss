@@ -1,14 +1,10 @@
 import ast
 import logging
-import pathlib
-from typing import Any
 
 import black
 import httpx
 import isort
-from truss.server.shared import secrets_resolver
-
-from . import utils
+from slay import utils
 
 
 def _remove_main(source_tree: ast.Module):
