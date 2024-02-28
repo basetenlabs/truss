@@ -136,9 +136,6 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
-
 # mypy
 .mypy_cache/
 .dmypy.json
@@ -161,7 +158,7 @@ cython_debug/
 #.idea/
 
 # Git
-.git/
+.git
 
 # temp files
 *.tmp

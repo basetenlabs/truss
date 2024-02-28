@@ -20,7 +20,7 @@ def test_directory_content_signature(tmp_path):
     }
 
 
-def test_directory_content_signature_no_data_dir(tmp_path):
+def test_directory_content_signature_ignore_patterns(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
     (root / "file1").touch()
@@ -29,7 +29,16 @@ def test_directory_content_signature_no_data_dir(tmp_path):
     data_dir.mkdir()
     (data_dir / "file3").touch()
 
-    content_sign = directory_content_signature(root=root, ignore_patterns=["data/*"])
+    git_dir = root / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").touch()
+    git_subdir = git_dir / "objects"
+    git_subdir.mkdir()
+    (git_subdir / "00").touch()
+
+    content_sign = directory_content_signature(
+        root=root, ignore_patterns=["data/*", ".git"]
+    )
 
     assert content_sign.keys() == {
         "data",

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional
 
 import yaml
-from truss.patch.calc_patch import calc_truss_patch
+from truss.patch.calc_patch import calc_truss_patch, calc_unignored_paths
 from truss.patch.signature import calc_truss_signature
 from truss.server.control.patch.types import (
     Action,
@@ -603,6 +603,28 @@ def test_calc_config_patches_remove_external_data(
             ),
         ),
     ]
+
+
+def test_calc_unignored_paths():
+    ignore_patterns = [
+        ".mypy_cache/",
+        "venv/",
+        "*.tmp",
+    ]
+
+    root_relative_paths = {
+        ".mypy_cache/should_ignore.json",
+        "venv/bin/activate",
+        "ignored_file.tmp",
+        "config.yaml",
+        "model/model.py",
+    }
+
+    unignored_paths = calc_unignored_paths(root_relative_paths, ignore_patterns)
+    assert unignored_paths == {
+        "config.yaml",
+        "model/model.py",
+    }
 
 
 def _apply_config_change_and_calc_patches(

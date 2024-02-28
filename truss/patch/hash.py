@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from blake3 import blake3
-from truss.patch.utils import path_matches_any_pattern
+from truss.util.path import get_unignored_relative_paths_from_root
 
 
 def directory_content_hash(
@@ -19,16 +19,13 @@ def directory_content_hash(
     underneath. The (root) Directory will have the same hash, even if renamed.
     """
     hasher = blake3()
-    paths = [
-        path
-        for path in root.glob("**/*")
-        if not path_matches_any_pattern(path.relative_to(root), ignore_patterns)
-    ]
-    paths.sort(key=lambda p: p.relative_to(root))
+    paths = list(get_unignored_relative_paths_from_root(root, ignore_patterns))
+    paths.sort()
     for path in paths:
-        hasher.update(str_hash(str(path.relative_to(root))))
-        if path.is_file():
-            hasher.update(file_content_hash(path))
+        hasher.update(str_hash(str(path)))
+        absolute_path = root / path
+        if absolute_path.is_file():
+            hasher.update(file_content_hash(absolute_path))
     return hasher.hexdigest()
 
 

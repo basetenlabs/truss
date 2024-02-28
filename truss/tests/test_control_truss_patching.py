@@ -13,8 +13,8 @@ from truss.tests.test_truss_handle import (
     verify_system_requirement_not_installed_on_container,
 )
 from truss.truss_config import ExternalDataItem
+from truss.truss_gatherer import calc_shadow_truss_dirname
 from truss.truss_handle import TrussHandle
-from truss.util.path import calc_shadow_truss_dirname
 
 
 def current_num_docker_images(th: TrussHandle) -> int:
