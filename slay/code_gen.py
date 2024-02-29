@@ -1,4 +1,5 @@
 import ast
+import functools
 import logging
 
 import black
@@ -38,16 +39,4 @@ def edit_model_file(file_path):
         )
     with open(file_path, "w", encoding="utf-8") as modified_file:
         modified_file.write(formatted_code)
-    isort.file(file_path)
-
-
-class BasetenProcessorStubAsync:
-    def __init__(self, api_key: str):
-        auth_header = {"Authorization": f"Api-Key {api_key}"}
-        # url = "https://model-yqvvl2rq.api.baseten.co/production/predict"
-        url = "placeholder"
-        self._client = httpx.AsyncClient(base_url=url, headers=auth_header)
-
-    async def _predict(self, json_paylod):
-        response = await self._client.post("/predict", json=json_paylod)
-        return response.json()
+    # isort.file(file_path)

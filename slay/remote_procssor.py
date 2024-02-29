@@ -2,7 +2,7 @@ import pathlib
 
 from truss.server.shared import secrets_resolver
 
-from . import definitions
+from slay import definitions
 
 
 class Model:
