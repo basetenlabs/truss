@@ -6,6 +6,7 @@ The simplest case is a plain chain:
 Preprocssing (CPU) --> ML model (GPU) --> Postprocessing (CPU)
 
 But any DAG-like structure can be realized:
+
     --> B --->
   /            \
 A               E --> G
@@ -33,6 +34,11 @@ IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
 class Parameters(pydantic.BaseModel):
     length: int = 100
     num_partitions: int = 4
+
+
+class WorkflowResult(pydantic.BaseModel):
+    number: int
+    params: Parameters
 
 
 class GenerateData(slay.ProcessorBase):
@@ -132,13 +138,13 @@ class Workflow(slay.ProcessorBase):
         self._data_splitter = splitter
         self._text_to_num = text_to_num
 
-    def run(self, params: Parameters) -> int:
+    def run(self, params: Parameters) -> WorkflowResult:
         data = self._data_generator.gen_data(params)
         text_parts = self._data_splitter.split(data, params.num_partitions)
         value = 0
         for part in text_parts:
             value += self._text_to_num.to_num(part, params)
-        return value
+        return WorkflowResult(number=value, params=params)
 
 
 if __name__ == "__main__":
@@ -148,7 +154,6 @@ if __name__ == "__main__":
 
     # Local test or dev execution - context manager makes sure local processors
     # are instantiated and injected.
-
     # with slay.run_local():
     #     wf = Workflow()
     #     params = Parameters()
@@ -175,4 +180,4 @@ if __name__ == "__main__":
     # A "marker" to designate which processors should be deployed as public remote
     # service points. Depenedency processors will also be deployed, but only as
     # "internal" services, not as a "public" sevice endpoint.
-    # slay.deploy_remotely([Workflow])
+    slay.deploy_remotely([Workflow])

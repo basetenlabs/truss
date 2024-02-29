@@ -13,6 +13,7 @@ Open questions - safe translation from processors.py to this generated file.
 
 import collections
 import contextlib
+import functools
 import inspect
 import logging
 import os
@@ -29,6 +30,7 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+import httpx
 
 import pydantic
 
@@ -344,6 +346,28 @@ Generate a remote processor
 
 """
 
+class BasetenStub:
+    def __init__(self, url: str, api_key: str):
+        self._auth_header = {"Authorization": f"Api-Key {api_key}"}
+        # E.g. "https://model-yqvvl2rq.api.baseten.co/production/predict"
+        self._url = url
+        
+    @functools.cached_property
+    def _client_sync(self):
+        return httpx.Client(base_url=self._url, headers=self._auth_header)
+    
+    @functools.cached_property
+    def _client_async(self):
+        return httpx.AsyncClient(base_url=self._url, headers=self._auth_header)
+
+    def predict_sync(self, json_paylod):
+        response = self._client_sync.post("/predict", json=json_paylod)
+        return response.json()
+
+    async def predict_async(self, json_paylod):
+        response = await self._client_async.post("/predict", json=json_paylod)
+        return response.json()
+
 
 class RemoteServiceDescriptor(pydantic.BaseModel):
     url: str
@@ -379,6 +403,7 @@ def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> Non
     needed_processors = set()
 
     def add_needed_procssors(proc: Type[definitions.ABCProcessor]):
+        needed_processors.add(proc)
         for dep in _global_processor_registry.get_dependencies(proc):
             needed_processors.add(dep)
             add_needed_procssors(dep)
