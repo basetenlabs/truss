@@ -15,7 +15,9 @@ with slay.run_local():
 # service points. Depenedency processors will also be deployed, but only as
 # "internal" services, not as a "public" sevice endpoint.
 slay.deploy_remotely([Workflow])
-########################################################################################
+
+
+# Mistral Model ########################################################################
 
 IMAGE_TRANSFORMERS_GPU = (
     slay.Image()
@@ -61,12 +63,13 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         return self._model(data, max_length=50)
 
 
-########################################################################################
+# Mistral integration ##################################################################
 
 mistral: MistralLLM = slay.provide(MistralLLM)
 
 
 self._mistral = mistral
+
 
 
 ########################################################################################
