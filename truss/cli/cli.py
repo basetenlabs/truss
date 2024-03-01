@@ -22,6 +22,7 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
+from truss.truss_handle import TrussHandle
 
 logging.basicConfig(level=logging.INFO)
 
@@ -166,8 +167,14 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
 @click.option(
     "--attach", is_flag=True, default=False, help="Flag for attaching the process"
 )
+@click.option(
+    "--cache/--no-cache",
+    is_flag=True,
+    default=True,
+    help="Flag for caching build or not",
+)
 @error_handling
-def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
+def run(target_directory: str, build_dir: Path, tag, port, attach, cache) -> None:
     """
     Runs the docker image for a Truss.
 
@@ -183,7 +190,9 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
         click.confirm(
             f"Container already exists at {urls}. Are you sure you want to continue?"
         )
-    tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
+    tr.docker_run(
+        build_dir=build_dir, tag=tag, local_port=port, detach=not attach, cache=cache
+    )
 
 
 @truss_cli.command()
@@ -446,7 +455,7 @@ def predict(
 def push(
     target_directory: str,
     remote: str,
-    model_name: str,
+    model_name: Optional[str],
     publish: bool = False,
     trusted: bool = False,
     promote: bool = False,
@@ -584,7 +593,7 @@ def cleanup() -> None:
     truss.build.cleanup()
 
 
-def _get_truss_from_directory(target_directory: Optional[str] = None):
+def _get_truss_from_directory(target_directory: Optional[str] = None) -> TrussHandle:
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
