@@ -311,10 +311,11 @@ class ServingImageBuilder(ImageBuilder):
         data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
         def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
-            copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+            # using default ignore patterns ignores the `build` dir in truss
+            copy_tree_or_file(from_path, build_dir / path_in_build_dir, ignore_files=False)  # type: ignore[operator]
 
         # Copy truss package from the context builder image to build dir
-        copy_into_build_dir(TRUSS_PACKAGE_DIR, "./truss")
+        copy_into_build_dir(TRUSS_PACKAGE_DIR, "truss/")
         copy_into_build_dir(
             TRUSS_PACKAGE_DIR.parent / "pyproject.toml", "./pyproject.toml"
         )
