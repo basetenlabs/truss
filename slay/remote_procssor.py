@@ -1,11 +1,10 @@
 import pathlib
 
+from slay import definitions
 from truss.server.shared import secrets_resolver
 
-from slay import definitions
 
-
-class Model:
+class BasetenModel:
     _config: dict
     _data_dir: pathlib.Path
     _secrets: secrets_resolver.Secrets

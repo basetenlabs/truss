@@ -7,7 +7,7 @@ class SplitText(slay.ProcessorBase):
 
     default_config = slay.Config(image=IMAGE_NUMPY)
 
-    def split(self, data: str, num_partitions: int) -> list[str]:
+    async def split(self, data: str, num_partitions: int) -> list[str]:
         import numpy as np
 
         parts = np.array_split(np.array(list(data)), 3)

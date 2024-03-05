@@ -27,14 +27,14 @@ from typing import (
     MutableMapping,
     Protocol,
     Type,
+    get_args,
     get_origin,
     get_type_hints,
 )
+
 import httpx
-
 import pydantic
-
-from . import code_gen, definitions
+from slay import code_gen, definitions
 
 CONFIG_ARG_NAME = "config"
 
@@ -84,28 +84,20 @@ def validate_and_describe_endpoint(
     signature = inspect.signature(endpoint_method)
     params = list(signature.parameters.values())
     assert params[0].name == "self"
-    # if len(params) > 2:
-    #     raise APIDefinitonError()
 
-    type_hints = get_type_hints(endpoint_method)
+    input_name_and_types = []
+    for param in params[1:]:  # Skip self argument.
+        assert param.annotation is not None
+        type_descriptor = definitions.TypeDescriptor(raw=param.annotation)
+        input_name_and_types.append((param.name, type_descriptor))
 
-    # input_type = params[1].annotation
-    # if not issubclass(input_type, pydantic.BaseModel):
-    #     raise APIDefinitonError(
-    #         f"Endpoint method `{endpoint_name}` must have a pydantic model as input data type."
-    #     )
-
-    if "return" not in type_hints or params[1].annotation not in type_hints.values():
-        raise definitions.APIDefinitonError(
-            f"Endpoint method `{endpoint_name}` must have a return type annotation."
+    if get_origin(signature.return_annotation) is tuple:
+        output_types = list(
+            definitions.TypeDescriptor(raw=arg)
+            for arg in get_args(signature.return_annotation)
         )
-    output_type = type_hints["return"]
-
-    # if not issubclass(output_type, pydantic.BaseModel):
-    #     raise APIDefinitonError(
-    #         f"Endpoint method `{endpoint_name}` must have a pydantic model as output data type."
-    #     )
-    # TODO: make sure output can be serialized.
+    else:
+        output_types = [definitions.TypeDescriptor(raw=signature.return_annotation)]
 
     if inspect.isasyncgenfunction(endpoint_method):
         is_async = True
@@ -119,8 +111,8 @@ def validate_and_describe_endpoint(
 
     return definitions.EndpointAPIDescriptor(
         name=endpoint_name,
-        input_types=[],
-        output_type=output_type,
+        input_name_and_tyes=input_name_and_types,
+        output_types=output_types,
         is_async=is_async,
         is_generator=is_generator,
     )
@@ -182,7 +174,9 @@ def check_and_register_class(cls) -> None:
         processor_cls=cls,
         depdendencies=dependencies,
         endpoints=endpoint_descriptors,
+        src_file=os.path.abspath(inspect.getfile(cls)),
     )
+    logging.debug(f"{processor_descriptor}\n")
     _global_processor_registry.register_processor(processor_descriptor)
 
 
@@ -229,14 +223,22 @@ class ProcessorRegistry:
     def processor_descriptors(self) -> list[definitions.ProcessorAPIDescriptor]:
         return list(self._processors.values())
 
-    @property
-    def processor_classes(self) -> list[Type[definitions.ABCProcessor]]:
-        return list(self._processors.keys())
+    # @property
+    # def processor_descriptors(self) -> list[definitions.ProcessorAPIDescriptor]:
+    #     return list(self._processors.values())
+
+    def get_descriptor(
+        self, processor_cls: Type[definitions.ABCProcessor]
+    ) -> definitions.ProcessorAPIDescriptor:
+        return self._processors[processor_cls]
 
     def get_dependencies(
-        self, processor: Type[definitions.ABCProcessor]
-    ) -> Iterable[Type[definitions.ABCProcessor]]:
-        return [desc for desc in self._processors[processor].depdendencies.values()]
+        self, processor: definitions.ProcessorAPIDescriptor
+    ) -> Iterable[definitions.ProcessorAPIDescriptor]:
+        return [
+            self._processors[desc]
+            for desc in self._processors[processor.processor_cls].depdendencies.values()
+        ]
 
 
 _global_processor_registry = ProcessorRegistry()
@@ -335,38 +337,6 @@ def run_local() -> Any:
 
 
 # Remote Deployment ####################################################################
-"""
-Generate a remote processor
-* Create `./generated/processor_{name}/` directory.
-* Copy all from CWD.
-* Convert the processor class into a truss model:
-    * Inheri
-
-
-
-"""
-
-class BasetenStub:
-    def __init__(self, url: str, api_key: str):
-        self._auth_header = {"Authorization": f"Api-Key {api_key}"}
-        # E.g. "https://model-yqvvl2rq.api.baseten.co/production/predict"
-        self._url = url
-        
-    @functools.cached_property
-    def _client_sync(self):
-        return httpx.Client(base_url=self._url, headers=self._auth_header)
-    
-    @functools.cached_property
-    def _client_async(self):
-        return httpx.AsyncClient(base_url=self._url, headers=self._auth_header)
-
-    def predict_sync(self, json_paylod):
-        response = self._client_sync.post("/predict", json=json_paylod)
-        return response.json()
-
-    async def predict_async(self, json_paylod):
-        response = await self._client_async.post("/predict", json=json_paylod)
-        return response.json()
 
 
 class RemoteServiceDescriptor(pydantic.BaseModel):
@@ -377,47 +347,53 @@ class StubDescriptor(pydantic.BaseModel):
     url: str
 
 
-def create_remote_service(
-    processor: Type[definitions.ABCProcessor], stubs: list[StubDescriptor]
-):
-    # TODO: better way of dealing with (abs) paths.
-    # TODO: tracking relative imports / deps of workflow file.
+def _create_processor_dir(processor_desrciptor):
     workflow_filepath = os.path.abspath(sys.argv[0])
     workflow_dir = os.path.dirname(workflow_filepath)
+    processor_name = processor_desrciptor.processor_cls.__name__
     processor_dir = os.path.join(
-        workflow_dir, ".slay_gen", f"processor_{processor.__name__}"
+        workflow_dir, ".slay_gen", f"processor_{processor_name}"
     )
     os.makedirs(processor_dir, exist_ok=True)
+    return processor_dir
+
+
+def create_remote_service(
+    processor_desrciptor: definitions.ProcessorAPIDescriptor,
+    # stubs: list[StubDescriptor],
+):
+    processor_dir = _create_processor_dir(processor_desrciptor)
     model_filepath = shutil.copy(
-        workflow_filepath, os.path.join(processor_dir, "model.py")
+        processor_desrciptor.src_file, os.path.join(processor_dir, "model.py")
     )
-
-    code_gen.edit_model_file(model_filepath)
-
-
-def create_stub(remote: RemoteServiceDescriptor) -> StubDescriptor:
-    ...
+    code_gen.modify_source_file(
+        model_filepath, processor_desrciptor.processor_cls.__name__
+    )
+    return model_filepath
 
 
 def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> None:
-    needed_processors = set()
+    needed_processors: set[definitions.ProcessorAPIDescriptor] = set()
 
-    def add_needed_procssors(proc: Type[definitions.ABCProcessor]):
+    def add_needed_procssors(proc: definitions.ProcessorAPIDescriptor):
         needed_processors.add(proc)
         for dep in _global_processor_registry.get_dependencies(proc):
             needed_processors.add(dep)
             add_needed_procssors(dep)
 
-    for proc in processors:
+    for proc_cls in processors:
+        proc = _global_processor_registry.get_descriptor(proc_cls)
         add_needed_procssors(proc)
 
     ordered_processors = [
         cls
-        for cls in _global_processor_registry.processor_classes
+        for cls in _global_processor_registry.processor_descriptors
         if cls in needed_processors
     ]
-    stubs = []
-    for processor in ordered_processors:
-        remote_service = create_remote_service(processor, stubs)
-        stub = create_stub(remote_service)
-        stubs.append(stub)
+
+    for processor_descriptor in ordered_processors:
+        processor_dir = _create_processor_dir(processor_descriptor)
+        code_gen.generate_stubs_for_deps(
+            os.path.join(processor_dir, "dependencies.py"),
+            _global_processor_registry.get_dependencies(processor_descriptor),
+        )

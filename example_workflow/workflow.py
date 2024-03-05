@@ -1,24 +1,10 @@
-r"""
-A workflow combines multiple remote operations to produce a final result.
-
-The simplest case is a plain chain:
-
-Preprocssing (CPU) --> ML model (GPU) --> Postprocessing (CPU)
-
-But any DAG-like structure can be realized:
-
-    --> B --->
-  /            \
-A               E --> G
-  \            /       \
-    --> C --> D         --> I
-              \           /
-                F -----> H
-
-Remote operations are conceptually the same as truss models hosted on Baseten.
-"""
-
 import logging
+
+log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
+date_format = "%m%d %H:%M:%S"
+logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
+
+
 import random
 import string
 import subprocess
@@ -138,20 +124,16 @@ class Workflow(slay.ProcessorBase):
         self._data_splitter = splitter
         self._text_to_num = text_to_num
 
-    def run(self, params: Parameters) -> WorkflowResult:
+    async def run(self, params: Parameters) -> tuple[WorkflowResult, int]:
         data = self._data_generator.gen_data(params)
-        text_parts = self._data_splitter.split(data, params.num_partitions)
+        text_parts = await self._data_splitter.split(data, params.num_partitions)
         value = 0
         for part in text_parts:
             value += self._text_to_num.to_num(part, params)
-        return WorkflowResult(number=value, params=params)
+        return WorkflowResult(number=value, params=params), value
 
 
 if __name__ == "__main__":
-    log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
-    date_format = "%m%d %H:%M:%S"
-    logging.basicConfig(level=logging.INFO, format=log_format, datefmt=date_format)
-
     # Local test or dev execution - context manager makes sure local processors
     # are instantiated and injected.
     # with slay.run_local():
@@ -160,22 +142,22 @@ if __name__ == "__main__":
     #     result = wf.run(params=params)
     #     print(result)
 
-    class FakeMistralLLM(slay.ProcessorBase):
-        def llm_gen(self, data: str) -> str:
-            return data.upper()
+    # class FakeMistralLLM(slay.ProcessorBase):
+    #     def llm_gen(self, data: str) -> str:
+    #         return data.upper()
 
-    with slay.run_local():
-        text_to_num = TextToNum(mistral=FakeMistralLLM())
-        wf = Workflow(text_to_num=text_to_num)
-        params = Parameters()
-        result = wf.run(params=params)
-        print(result)
+    # with slay.run_local():
+    #     text_to_num = TextToNum(mistral=FakeMistralLLM())
+    #     wf = Workflow(text_to_num=text_to_num)
+    #     params = Parameters()
+    #     result = wf.run(params=params)
+    #     print(result)
 
-    # Gives a `UsageError`, because not in `run_local` context.
-    try:
-        wf = Workflow()
-    except slay.UsageError as e:
-        print(e)
+    # # Gives a `UsageError`, because not in `run_local` context.
+    # try:
+    #     wf = Workflow()
+    # except slay.UsageError as e:
+    #     print(e)
 
     # A "marker" to designate which processors should be deployed as public remote
     # service points. Depenedency processors will also be deployed, but only as

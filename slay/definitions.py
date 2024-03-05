@@ -67,15 +67,29 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
         ...
 
 
+class TypeDescriptor(pydantic.BaseModel):
+    raw: Any
+
+    def as_str(self) -> str:
+        if isinstance(self.raw, type):
+            return self.raw.__name__
+        else:
+            return str(self.raw)
+
+
 class EndpointAPIDescriptor(pydantic.BaseModel):
     name: str
-    input_types: list[Type]  # Type[pydantic.BaseModel]
-    output_type: Any  # GenericAlias | Type  # Type[pydantic.BaseModel]
+    input_name_and_tyes: list[tuple[str, TypeDescriptor]]
+    output_types: list[TypeDescriptor]
     is_async: bool
     is_generator: bool
 
 
 class ProcessorAPIDescriptor(pydantic.BaseModel):
     processor_cls: Type[ABCProcessor]
+    src_file: str
     depdendencies: Mapping[str, Type[ABCProcessor]]
-    endpoints: list[EndpointAPIDescriptor]
+    endpoints: list[EndpointAPIDescriptor]  # Initially just one.
+
+    def __hash__(self) -> int:
+        return hash(self.processor_cls)
