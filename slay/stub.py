@@ -1,6 +1,9 @@
+import abc
 import functools
+from typing import Type, TypeVar
 
 import httpx
+from slay import definitions
 
 
 class BasetenSession:
@@ -25,5 +28,14 @@ class BasetenSession:
         return response.json()
 
 
-class StubBase:
-    ...
+class StubBase(abc.ABC):
+    @abc.abstractmethod
+    def __init__(self, url: str, api_key: str) -> None:
+        ...
+
+
+StubT = TypeVar("StubT", bound=StubBase)
+
+
+def stub_factory(stub_cls: Type[StubT], context: definitions.Context) -> StubT:
+    return stub_cls(context.get_baseten_api_key(), context.get_stub_url(stub_cls))

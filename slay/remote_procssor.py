@@ -16,14 +16,6 @@ class BasetenModel:
         self._data_dir = data_dir
         self._secrets = secrets
 
-    @property
-    def _baseten_api_key(self) -> str:
-        return self._secrets.get("baseten_api_key")
-
-    def _converted_config(self):
-        # TODO
-        return definitions.Config()
-
     # Generate something like this (sync|async variants):
     """
     def load(self) -> None:

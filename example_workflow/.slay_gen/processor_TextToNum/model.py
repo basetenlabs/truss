@@ -1,5 +1,9 @@
 import logging
 
+from slay import stub
+
+from . import dependencies
+
 log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
 date_format = "%m%d %H:%M:%S"
 logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
@@ -82,9 +86,11 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
 
 class MistralP(Protocol):
-    def __init__(self, context: slay.Context) -> None: ...
+    def __init__(self, context: slay.Context) -> None:
+        ...
 
-    def llm_gen(self, data: str) -> str: ...
+    def llm_gen(self, data: str) -> str:
+        ...
 
 
 class TextToNum(slay.ProcessorBase):
@@ -93,8 +99,8 @@ class TextToNum(slay.ProcessorBase):
     def __init__(
         self,
         context: slay.Context = slay.provide_context(),
-        mistral: MistralP = slay.provide(MistralLLM),
     ) -> None:
+        mistral = stub.stub_factory(dependencies.MistralLLM, context)
         super().__init__(context)
         self._mistral = mistral
 

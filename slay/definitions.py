@@ -1,9 +1,12 @@
 import abc
-from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
+from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar, final
 
 import pydantic
+from truss.server.shared import secrets_resolver
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
+
+BASTEN_APY_KEY_NAME = "baseten_api_key"
 
 
 class APIDefinitonError(TypeError):
@@ -52,13 +55,39 @@ class Config(pydantic.BaseModel, Generic[UserConfigT]):
     user_config: UserConfigT = pydantic.Field(default=None)
 
 
+class Context(pydantic.BaseModel, Generic[UserConfigT]):
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    name: str
+    user_config: UserConfigT = pydantic.Field(default=None)
+    stub_cls_to_url: dict[str, str] = {}
+    secrets: Optional[secrets_resolver.Secrets] = None
+
+    def get_stub_url(self, stub_cls: Type) -> str:
+        stub_cls_name = stub_cls.__name__
+        if stub_cls_name not in self.stub_cls_to_url:
+            raise MissingDependencyError(f"{stub_cls_name}")
+        return self.stub_cls_to_url[stub_cls_name]
+
+    def get_baseten_api_key(self) -> str:
+        if not self.secrets:
+            raise ValueError(f"Secrets not provided")
+        if BASTEN_APY_KEY_NAME not in self.secrets:
+            raise MissingDependencyError(f"{BASTEN_APY_KEY_NAME}")
+
+        maybe_key = self.secrets.get(BASTEN_APY_KEY_NAME)
+        if not maybe_key:
+            raise MissingDependencyError(f"{BASTEN_APY_KEY_NAME}")
+        return maybe_key
+
+
 class ABCProcessor(Generic[UserConfigT], abc.ABC):
     default_config: ClassVar[Config]
     _init_is_patched: ClassVar[bool] = False
-    _config: Config[UserConfigT]
+    _context: Context[UserConfigT]
 
     @abc.abstractmethod
-    def __init__(self, config: Config[UserConfigT]) -> None:
+    def __init__(self, context: Context[UserConfigT]) -> None:
         ...
 
     @property

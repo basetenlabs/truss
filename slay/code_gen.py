@@ -16,6 +16,15 @@ def _indent(text: str) -> str:
     return textwrap.indent(text, INDENT)
 
 
+def _format_python_file(file_path):
+    with utils.log_level(logging.INFO):
+        black.format_file_in_place(
+            pathlib.Path(file_path), fast=False, mode=black.FileMode()
+        )
+    with utils.no_print():
+        isort.file(file_path)
+
+
 # Stub Gen #############################################################################
 
 
@@ -166,7 +175,7 @@ class InitRewriter(libcst.CSTTransformer):
         )
 
     def _modify_init_method(self, method: libcst.FunctionDef) -> libcst.FunctionDef:
-        keep_params_names = ["self", "config"]  # TODO: introduce constants.
+        keep_params_names = ["self", "context"]  # TODO: introduce constants.
         if method.name.value == "__init__":
             # Drop other params - assumes that we have verified that all arguments
             # are processors.
@@ -183,7 +192,9 @@ class InitRewriter(libcst.CSTTransformer):
             new_params = method.params.with_changes(params=keep_params)
 
             processor_assignments = [
-                libcst.parse_statement(f"{name} = {stub_cls_ref}(config)")
+                libcst.parse_statement(
+                    f"{name} = stub.stub_factory({stub_cls_ref}, context)"
+                )
                 for name, stub_cls_ref in self._replacements.items()
             ]
 
@@ -209,24 +220,18 @@ def rewrite_processor_inits(
         InitRewriter(processor_desrciptor.processor_cls.__name__, replacements)
     )
 
-    new_import = libcst.parse_statement(f"from . import dependencies")
+    new_imports = [
+        libcst.parse_statement(f"from . import dependencies"),
+        libcst.parse_statement(f"from slay import stub"),
+    ]
 
     modified_tree = modified_tree.with_changes(
-        body=[new_import] + list(modified_tree.body)
+        body=new_imports + list(modified_tree.body)
     )
     return modified_tree
 
 
 ########################################################################################
-
-
-def _format_python_file(file_path):
-    with utils.log_level(logging.INFO):
-        black.format_file_in_place(
-            pathlib.Path(file_path), fast=False, mode=black.FileMode()
-        )
-    with utils.no_print():
-        isort.file(file_path)
 
 
 def modify_source_file(

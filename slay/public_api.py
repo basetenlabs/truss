@@ -1,10 +1,10 @@
-from typing import Any, Iterable, Type
+from typing import Any, Iterable, Type, final
 
 from slay import definitions, framework
 
 
-def provide_config() -> Any:
-    return framework.ConfigProvisionPlaceholder()
+def provide_context() -> Any:
+    return framework.ContextProvisionPlaceholder()
 
 
 def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
@@ -26,14 +26,14 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
         cls.__init__ = modified_init  # type: ignore[method-assign]
 
     def __init__(
-        self, config: definitions.Config[definitions.UserConfigT] = provide_config()
+        self, context: definitions.Context[definitions.UserConfigT] = provide_context()
     ) -> None:
-        config.user_config
-        self._config = config
+        self._context = context
 
+    @final
     @property
     def user_config(self) -> definitions.UserConfigT:
-        return self._config.user_config
+        return self._context.user_config
 
 
 def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> None:

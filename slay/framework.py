@@ -36,7 +36,7 @@ import httpx
 import pydantic
 from slay import code_gen, definitions
 
-CONFIG_ARG_NAME = "config"
+CONTEXT_ARG_NAME = "context"
 
 
 # Checking of processor class definition ###############################################
@@ -131,11 +131,11 @@ def validate_init_signature_and_get_dependencies(
     assert params[0].name == "self"
     if len(params) <= 1:
         raise definitions.APIDefinitonError()
-    if params[1].name != CONFIG_ARG_NAME:
+    if params[1].name != CONTEXT_ARG_NAME:
         raise definitions.APIDefinitonError(params)
     param_1_type = get_class_type(params[1].annotation)
 
-    if not issubclass(param_1_type, definitions.Config):
+    if not issubclass(param_1_type, definitions.Context):
         raise definitions.APIDefinitonError(params)
 
     depdendencies = {}
@@ -195,7 +195,7 @@ class ProcessorProvisionPlaceholder(_BaseProvisionPlaceholder):
         return f"{self.__class__.__name__}({self._processor_cls.__name__})"
 
 
-class ConfigProvisionPlaceholder(_BaseProvisionPlaceholder):
+class ContextProvisionPlaceholder(_BaseProvisionPlaceholder):
     def __str__(self) -> str:
         return f"{self.__class__.__name__}"
 
@@ -270,7 +270,7 @@ def check_init_args(cls, original_init, kwargs) -> None:
 # Local Deployment #####################################################################
 
 
-def _create_modified_init(
+def _create_modified_init_for_local(
     processor_descriptor: definitions.ProcessorAPIDescriptor,
     cls_to_instance: MutableMapping[
         Type[definitions.ABCProcessor], definitions.ABCProcessor
@@ -281,9 +281,10 @@ def _create_modified_init(
     def modified_init(self: definitions.ABCProcessor, **kwargs) -> None:
         logging.debug(f"Patched `__init__` of `{processor_descriptor.processor_cls}`.")
         if hasattr(processor_descriptor.processor_cls, "default_config"):
-            config = processor_descriptor.processor_cls.default_config
+            defaults = processor_descriptor.processor_cls.default_config
+            context = definitions.Context(name=defaults.name or self.__class__.__name__)
         else:
-            config = definitions.Config()
+            context = definitions.Context(name=self.__class__.__name__)
 
         for arg_name, dep_cls in processor_descriptor.depdendencies.items():
             if arg_name in kwargs:
@@ -308,7 +309,7 @@ def _create_modified_init(
 
             kwargs[arg_name] = instance
 
-        original_init(self, config=config, **kwargs)
+        original_init(self, context=context, **kwargs)
 
     return modified_init
 
@@ -324,7 +325,9 @@ def run_local() -> Any:
         original_inits[
             processor_descriptor.processor_cls
         ] = processor_descriptor.processor_cls.__init__
-        patched_init = _create_modified_init(processor_descriptor, type_to_instance)
+        patched_init = _create_modified_init_for_local(
+            processor_descriptor, type_to_instance
+        )
         processor_descriptor.processor_cls.__init__ = patched_init  # type: ignore[method-assign]
         processor_descriptor.processor_cls._init_is_patched = True
     try:
