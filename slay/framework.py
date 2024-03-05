@@ -347,10 +347,10 @@ class StubDescriptor(pydantic.BaseModel):
     url: str
 
 
-def _create_processor_dir(processor_desrciptor):
+def _create_processor_dir(processor_descriptor):
     workflow_filepath = os.path.abspath(sys.argv[0])
     workflow_dir = os.path.dirname(workflow_filepath)
-    processor_name = processor_desrciptor.processor_cls.__name__
+    processor_name = processor_descriptor.processor_cls.__name__
     processor_dir = os.path.join(
         workflow_dir, ".slay_gen", f"processor_{processor_name}"
     )
@@ -359,16 +359,14 @@ def _create_processor_dir(processor_desrciptor):
 
 
 def create_remote_service(
-    processor_desrciptor: definitions.ProcessorAPIDescriptor,
+    processor_descriptor: definitions.ProcessorAPIDescriptor,
     # stubs: list[StubDescriptor],
 ):
-    processor_dir = _create_processor_dir(processor_desrciptor)
+    processor_dir = _create_processor_dir(processor_descriptor)
     model_filepath = shutil.copy(
-        processor_desrciptor.src_file, os.path.join(processor_dir, "model.py")
+        processor_descriptor.src_file, os.path.join(processor_dir, "model.py")
     )
-    code_gen.modify_source_file(
-        model_filepath, processor_desrciptor.processor_cls.__name__
-    )
+    code_gen.modify_source_file(model_filepath, processor_descriptor)
     return model_filepath
 
 
@@ -397,3 +395,4 @@ def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> Non
             os.path.join(processor_dir, "dependencies.py"),
             _global_processor_registry.get_dependencies(processor_descriptor),
         )
+        create_remote_service(processor_descriptor)

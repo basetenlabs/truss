@@ -113,33 +113,38 @@ new_instantiations = {
 
 
 class InitRewriter(cst.CSTTransformer):
+    def __init__(self, replacements):
+        super().__init__()
+        self._replacements = replacements
+
     def leave_FunctionDef(
         self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
     ) -> cst.FunctionDef:
-        keep_params = ["self", "config"]
+        keep_params_names = ["self", "config"]  # TODO: introduce constants.
         if updated_node.name.value == "__init__":
-            new_params = updated_node.params.with_changes(
-                params=[
-                    param
-                    for param in updated_node.params.params
-                    if param.name.value in keep_params
-                ]
-            )
+            # Drop other params - assumes that we have verified that all arguments
+            # are processors.
+            keep_params = []
+            for param in updated_node.params.params:
+                if param.name.value in keep_params:
+                    keep_params.append(param)
+                else:
+                    if param.name.value not in self._replacements:
+                        raise ValueError()
+
+            new_params = updated_node.params.with_changes(params=[keep_params])
+
+            processor_assignments = [
+                cst.parse_statement(f"{name} = {stub_cls_ref}(config)")
+                for name, stub_cls_ref in self._replacements.items()
+            ]
 
             # Create new statements for the method body
             new_body = updated_node.body.with_changes(
-                body=[
-                    cst.parse_statement("data_generator = stubs.GenerateData(config)"),
-                    cst.parse_statement("data_splitter = stubs.SplitText(config)"),
-                    cst.parse_statement("text_to_num = stubs.TextToNum(config)"),
-                    *updated_node.body.body,
-                ]
+                body=processor_assignments + list(updated_node.body.body)
             )
 
-            return updated_node.with_changes(
-                params=new_params,
-                body=new_body,
-            )
+            return updated_node.with_changes(params=new_params, body=new_body)
         return updated_node
 
 
