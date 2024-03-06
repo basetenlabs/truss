@@ -6,6 +6,6 @@ class MistralLLM(stub.StubBase):
         self._remote = stub.BasetenSession(url, api_key)
 
     def llm_gen(self, data: str) -> str:
-        json_args = [data]
+        json_args = {"data": data}
         json_result = self._remote.predict_sync(json_args)
         return json_result

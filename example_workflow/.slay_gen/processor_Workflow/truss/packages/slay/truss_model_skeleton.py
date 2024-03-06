@@ -12,7 +12,7 @@ class Model:
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
         truss_metadata = definitions.TrussMetadata.model_validate(
-            config["slay_metadata"]
+            config["model_metadata"]["slay_metadata"]
         )
         self._context = definitions.Context(
             user_config=truss_metadata.user_config,
@@ -21,12 +21,8 @@ class Model:
         )
 
     # def load(self):
-    #     ...
-    #     # Generate:
-    #     # self._processor = {ProcssorCls}(self._context)
+    #     self._processor = {ProcssorCls}(self._context)
 
-    # # Sync async.
+    # Sync async.
     # def predict(self, payload):
-    #     ...
-    #     # Generate:
-    #     # return self._processor.{method_name}(payload)
+    #     return self._processor.{method_name}(payload)

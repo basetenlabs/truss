@@ -25,7 +25,7 @@ class Model:
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
         truss_metadata = definitions.TrussMetadata.model_validate(
-            config["slay_metadata"]
+            config["model_metadata"]["slay_metadata"]
         )
         self._context = definitions.Context(
             user_config=truss_metadata.user_config,
@@ -34,7 +34,10 @@ class Model:
         )
 
     def load(self) -> None:
-        self._processor = SplitText(self._context)
+        self._processor = SplitText(context=self._context)
 
     async def predict(self, payload):
-        return self._processor.split(payload)
+        result = await self._processor.split(
+            data=payload["data"], num_partitions=payload["num_partitions"]
+        )
+        return result

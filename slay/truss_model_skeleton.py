@@ -12,7 +12,7 @@ class Model:
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
         truss_metadata = definitions.TrussMetadata.model_validate(
-            config["slay_metadata"]
+            config["model_metadata"]["slay_metadata"]
         )
         self._context = definitions.Context(
             user_config=truss_metadata.user_config,

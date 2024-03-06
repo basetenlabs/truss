@@ -7,7 +7,6 @@ model_metadata:
   slay_metadata:
     stub_cls_to_url:
       GenerateData: http://app.baseten.co/models/GenerateData/predict
-      MistralLLM: http://app.baseten.co/models/MistralLLM/predict
       SplitText: http://app.baseten.co/models/SplitText/predict
       TextToNum: http://app.baseten.co/models/TextToNum/predict
     user_config: null

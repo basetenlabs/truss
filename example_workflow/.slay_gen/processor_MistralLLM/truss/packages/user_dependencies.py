@@ -1,16 +1,18 @@
 import logging
-import random
-import string
-from typing import Protocol
-
-import model
-import pydantic
-import slay
-from user_package import shared_processor
 
 log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
 date_format = "%m%d %H:%M:%S"
 logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
+
+
+import random
+import string
+import subprocess
+from typing import Protocol
+
+import pydantic
+import slay
+from user_package import shared_processor
 
 IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
 
@@ -47,6 +49,39 @@ class MistraLLMConfig(pydantic.BaseModel):
     hf_model_name: str
 
 
+class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
+
+    default_config = slay.Config(
+        image=IMAGE_TRANSFORMERS_GPU,
+        resources=slay.Resources().cpu(12).gpu("A100"),
+        user_config=MistraLLMConfig(hf_model_name="EleutherAI/mistral-6.7B"),
+    )
+    # default_config = slay.Config(config_path="mistral_config.yaml")
+
+    def __init__(
+        self,
+        context: slay.Context = slay.provide_context(),
+    ) -> None:
+        super().__init__(context)
+        try:
+            subprocess.check_output(["nvidia-smi"], text=True)
+        except:
+            raise RuntimeError(
+                f"Cannot run `{self.__class__}`, because host has no CUDA."
+            )
+        import transformers
+
+        model_name = self.user_config.hf_model_name
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
+        self._model = transformers.pipeline(
+            "text-generation", model=model, tokenizer=tokenizer
+        )
+
+    def llm_gen(self, data: str) -> str:
+        return self._model(data, max_length=50)
+
+
 class MistralP(Protocol):
     def __init__(self, context: slay.Context) -> None:
         ...
@@ -61,7 +96,7 @@ class TextToNum(slay.ProcessorBase):
     def __init__(
         self,
         context: slay.Context = slay.provide_context(),
-        mistral: MistralP = slay.provide(model.MistralLLM),
+        mistral: MistralP = slay.provide(MistralLLM),
     ) -> None:
         super().__init__(context)
         self._mistral = mistral

@@ -1,15 +1,18 @@
 import logging
-import subprocess
-from typing import Protocol
-
-import model
-import pydantic
-import slay
-from user_package import shared_processor
 
 log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
 date_format = "%m%d %H:%M:%S"
 logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
+
+
+import random
+import string
+import subprocess
+from typing import Protocol
+
+import pydantic
+import slay
+from user_package import shared_processor
 
 IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
 
@@ -22,6 +25,16 @@ class Parameters(pydantic.BaseModel):
 class WorkflowResult(pydantic.BaseModel):
     number: int
     params: Parameters
+
+
+class GenerateData(slay.ProcessorBase):
+
+    default_config = slay.Config(image=IMAGE_COMMON)
+
+    def gen_data(self, params: Parameters) -> str:
+        return "".join(
+            random.choices(string.ascii_letters + string.digits, k=params.length)
+        )
 
 
 IMAGE_TRANSFORMERS_GPU = (
@@ -103,7 +116,7 @@ class Workflow(slay.ProcessorBase):
     def __init__(
         self,
         context: slay.Context = slay.provide_context(),
-        data_generator: model.GenerateData = slay.provide(model.GenerateData),
+        data_generator: GenerateData = slay.provide(GenerateData),
         splitter: shared_processor.SplitText = slay.provide(shared_processor.SplitText),
         text_to_num: TextToNum = slay.provide(TextToNum),
     ) -> None:

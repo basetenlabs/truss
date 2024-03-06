@@ -48,7 +48,7 @@ class Model:
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
         truss_metadata = definitions.TrussMetadata.model_validate(
-            config["slay_metadata"]
+            config["model_metadata"]["slay_metadata"]
         )
         self._context = definitions.Context(
             user_config=truss_metadata.user_config,
@@ -57,7 +57,8 @@ class Model:
         )
 
     def load(self) -> None:
-        self._processor = MistralLLM(self._context)
+        self._processor = MistralLLM(context=self._context)
 
     def predict(self, payload):
-        return self._processor.llm_gen(payload)
+        result = self._processor.llm_gen(data=payload["data"])
+        return result

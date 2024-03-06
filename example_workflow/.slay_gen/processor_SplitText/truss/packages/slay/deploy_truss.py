@@ -88,10 +88,10 @@ class BasetenClient:
             tr, model_name=model_name, trusted=True, publish=True
         )
         model_service = definitions.BasetenRemoteDescriptor(
-            model_id=service.model_id,
-            model_version_id=service.model_version_id,
-            model_name=model_name,
-            predict_url=predict_url(self._baseten_env, service.model_id),
+            b10_model_id=service.model_id,
+            b10_model_version_id=service.model_version_id,
+            b10_model_name=model_name,
+            b10_predict_url=predict_url(self._baseten_env, service.model_id),
         )
         # self._wait_for_model_to_be_ready(model_service.model_version_id)
         return model_service

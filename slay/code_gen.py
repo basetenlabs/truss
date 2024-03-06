@@ -25,11 +25,18 @@ def _indent(text: str) -> str:
 
 def _format_python_file(file_path):
     with utils.log_level(logging.INFO):
+        print(f"formating {file_path}")
         black.format_file_in_place(
             pathlib.Path(file_path), fast=False, mode=black.FileMode()
         )
     with utils.no_print():
         isort.file(file_path)
+
+
+def _read_source(file_path):
+    with open(file_path, "r", encoding="utf-8") as source_file:
+        source_code = source_file.read()
+    return source_code
 
 
 # Stub Gen #############################################################################
@@ -71,14 +78,14 @@ def endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor):
 
     json_arg_parts = (
         (
-            f"{arg_name}.model_dump_json()"
-            if issubclass(arg_type.raw, pydantic.BaseModel)
-            else arg_name
+            f"'{arg_name}': {arg_name}.model_dump()"
+            if arg_type.is_pydantic
+            else f"'{arg_name}': {arg_name}"
         )
         for arg_name, arg_type in endpoint.input_name_and_tyes
     )
 
-    json_args = f"[{', '.join(json_arg_parts)}]"
+    json_args = f"{{{', '.join(json_arg_parts)}}}"
     remote_call = (
         "await self._remote.predict_async(json_args)"
         if endpoint.is_async
@@ -91,7 +98,7 @@ def endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor):
         ret_parts = ", ".join(
             (
                 f"{output_type.as_str()}.model_validate(json_result[{i}])"
-                if issubclass(output_type.raw, pydantic.BaseModel)
+                if output_type.is_pydantic
                 else f"json_result[{i}]"
             )
             for i, output_type in enumerate(endpoint.output_types)
@@ -222,7 +229,10 @@ def rewrite_processor_inits(
     for name, proc_cls in processor_desrciptor.depdendencies.items():
         replacements[name] = f"user_stubs.{proc_cls.__name__}"
 
-    logging.info(f"Rewriting `{processor_desrciptor.cls_name}`.")
+    if not replacements:
+        return source_tree
+
+    logging.info(f"Adding stub inits to `{processor_desrciptor.cls_name}`.")
 
     modified_tree = source_tree.visit(
         InitRewriter(processor_desrciptor.cls_name, replacements)
@@ -259,6 +269,7 @@ def move_class_to_new_file(
     target_file_path,
     class_name,
 ):
+    logging.info(f"Moving`{class_name}` dedicated model file.")
     # TODO: all of this is totally unclear.
     project = rope_project.Project(project_root, ropefolder=None)
     source_module = project.get_resource(source_file_path)
@@ -309,8 +320,8 @@ class ChangeProcessorAnnotation(cst.CSTTransformer):
 
 
 def generate_baseten_model(processor_desrciptor: definitions.ProcessorAPIDescriptor):
-    with open(truss_model_skeleton.__file__, "r") as target_file:
-        remote_tree = libcst.parse_module(target_file.read())
+    logging.info(f"Generating Baseten model for `{processor_desrciptor.cls_name}`.")
+    remote_tree = libcst.parse_module(_read_source(truss_model_skeleton.__file__))
 
     new_imports = [
         node
@@ -331,17 +342,40 @@ def generate_baseten_model(processor_desrciptor: definitions.ProcessorAPIDescrip
     load_def = libcst.parse_statement(
         f"""
 def load(self) -> None:
-    self._processor = {processor_desrciptor.cls_name}(self._context)
+    self._processor = {processor_desrciptor.cls_name}(context=self._context)
 """
     )
 
     endpoint_descriptor = utils.expect_one(processor_desrciptor.endpoints)
     def_str = "async def" if endpoint_descriptor.is_async else "def"
+    # Convert json payload dict to processor args.
+    obj_arg_parts = ", ".join(
+        (
+            f"{arg_name}={arg_type.as_str()}.model_validate(payload['{arg_name}'])"
+            if arg_type.is_pydantic
+            else f"{arg_name}=payload['{arg_name}']"
+        )
+        for arg_name, arg_type in endpoint_descriptor.input_name_and_tyes
+    )
+
+    if len(endpoint_descriptor.output_types) == 1:
+        output_type = endpoint_descriptor.output_types[0]
+        result = "result.model_dump()" if output_type.is_pydantic else "result"
+    else:
+        result_parts = [
+            f"result[{i}].model_dump()" if t.is_pydantic else f"result[{i}]"
+            for i, t in enumerate(endpoint_descriptor.output_types)
+        ]
+        result = f"({', '.join(result_parts)})"
+
+    maybe_await = "await " if endpoint_descriptor.is_async else ""
 
     predict_def = libcst.parse_statement(
         f"""
 {def_str} predict(self, payload):
-    return self._processor.{endpoint_descriptor.name}(payload)
+    result = {maybe_await}self._processor.{endpoint_descriptor.name}({obj_arg_parts})
+    return  {result}
+
 """
     )
 
@@ -363,38 +397,36 @@ def edit_model_source(
     processor_desrciptor: definitions.ProcessorAPIDescriptor,
 ):
     wdir = os.path.dirname(file_path)
-
-    with open(file_path, "r", encoding="utf-8") as source_file:
-        source_code = source_file.read()
-
+    source_code = _read_source(file_path)
     source_tree = libcst.parse_module(source_code)
     source_tree = rewrite_processor_inits(source_tree, processor_desrciptor)
-
     modified_source_code = source_tree.code
 
     with open(file_path, "w", encoding="utf-8") as modified_file:
         modified_file.write(modified_source_code)
 
-    target_file_path = os.path.join(wdir, "model.py")
+    model_file_path = os.path.join(wdir, "model.py")
     move_class_to_new_file(
         wdir,
         os.path.basename(file_path),
-        os.path.basename(target_file_path),
+        os.path.basename(model_file_path),
         processor_desrciptor.cls_name,
     )
+    # Restore source file to pre move.
+    with open(file_path, "w", encoding="utf-8") as modified_file:
+        modified_file.write(modified_source_code)
 
-    with open(target_file_path, "r", encoding="utf-8") as target_file:
-        source_code = target_file.read()
+    model_source_code = _read_source(model_file_path)
 
-    source_tree = libcst.parse_module(source_code)
+    model_source_tree = libcst.parse_module(model_source_code)
     model_def, imports = generate_baseten_model(processor_desrciptor)
-    source_tree = source_tree.with_changes(
-        body=imports + list(source_tree.body) + [model_def]
+    model_source_tree = model_source_tree.with_changes(
+        body=imports + list(model_source_tree.body) + [model_def]
     )
-    with open(target_file_path, "w", encoding="utf-8") as modified_file:
-        modified_file.write(source_tree.code)
+    with open(model_file_path, "w", encoding="utf-8") as modified_file:
+        modified_file.write(model_source_tree.code)
 
-    _format_python_file(target_file_path)
+    _format_python_file(model_file_path)
 
 
 def make_truss_dir(

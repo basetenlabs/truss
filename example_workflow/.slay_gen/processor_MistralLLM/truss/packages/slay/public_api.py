@@ -18,12 +18,13 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
 
         original_init = cls.__init__
 
-        def modified_init(self, *args, **kwargs):
-            assert not args
+        def init_with_arg_check(self, *args, **kwargs):
+            if args:
+                raise definitions.UsageError("Only kwargs are allowed.")
             framework.check_init_args(cls, original_init, kwargs)
             original_init(self, *args, **kwargs)
 
-        cls.__init__ = modified_init  # type: ignore[method-assign]
+        cls.__init__ = init_with_arg_check  # type: ignore[method-assign]
 
     def __init__(
         self, context: definitions.Context[definitions.UserConfigT] = provide_context()

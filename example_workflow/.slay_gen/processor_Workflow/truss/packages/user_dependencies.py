@@ -1,16 +1,22 @@
 import logging
+
+from slay import stub
+
+from . import user_stubs
+
+log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
+date_format = "%m%d %H:%M:%S"
+logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
+
+
 import random
 import string
 import subprocess
 from typing import Protocol
 
-import model
 import pydantic
 import slay
-
-log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
-date_format = "%m%d %H:%M:%S"
-logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
+from user_package import shared_processor
 
 IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
 
@@ -108,6 +114,30 @@ class TextToNum(slay.ProcessorBase):
         return number
 
 
+class Workflow(slay.ProcessorBase):
+    default_config = slay.Config(image=IMAGE_COMMON)
+
+    def __init__(
+        self,
+        context: slay.Context = slay.provide_context(),
+    ) -> None:
+        data_generator = stub.stub_factory(user_stubs.GenerateData, context)
+        splitter = stub.stub_factory(user_stubs.SplitText, context)
+        text_to_num = stub.stub_factory(user_stubs.TextToNum, context)
+        super().__init__(context)
+        self._data_generator = data_generator
+        self._data_splitter = splitter
+        self._text_to_num = text_to_num
+
+    async def run(self, params: Parameters) -> tuple[WorkflowResult, int]:
+        data = self._data_generator.gen_data(params)
+        text_parts = await self._data_splitter.split(data, params.num_partitions)
+        value = 0
+        for part in text_parts:
+            value += self._text_to_num.to_num(part, params)
+        return WorkflowResult(number=value, params=params), value
+
+
 if __name__ == "__main__":
     import asyncio
 
@@ -125,7 +155,7 @@ if __name__ == "__main__":
 
     with slay.run_local():
         text_to_num = TextToNum(mistral=FakeMistralLLM())
-        wf = model.Workflow(text_to_num=text_to_num)
+        wf = Workflow(text_to_num=text_to_num)
         params = Parameters()
         result = asyncio.run(wf.run(params=params))
         print(result)
@@ -139,4 +169,4 @@ if __name__ == "__main__":
     # A "marker" to designate which processors should be deployed as public remote
     # service points. Depenedency processors will also be deployed, but only as
     # "internal" services, not as a "public" sevice endpoint.
-    slay.deploy_remotely([model.Workflow])
+    slay.deploy_remotely([Workflow])

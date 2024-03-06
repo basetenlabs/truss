@@ -279,7 +279,7 @@ def _create_modified_init_for_local(
 ):
     original_init = processor_descriptor.processor_cls.__init__
 
-    def modified_init(self: definitions.ABCProcessor, **kwargs) -> None:
+    def init_for_local(self: definitions.ABCProcessor, **kwargs) -> None:
         logging.debug(f"Patched `__init__` of `{processor_descriptor.processor_cls}`.")
         if hasattr(processor_descriptor.processor_cls, "default_config"):
             defaults = processor_descriptor.processor_cls.default_config
@@ -312,7 +312,7 @@ def _create_modified_init_for_local(
 
         original_init(self, context=context, **kwargs)
 
-    return modified_init
+    return init_for_local
 
 
 @contextlib.contextmanager
@@ -326,10 +326,10 @@ def run_local() -> Any:
         original_inits[
             processor_descriptor.processor_cls
         ] = processor_descriptor.processor_cls.__init__
-        patched_init = _create_modified_init_for_local(
+        init_for_local = _create_modified_init_for_local(
             processor_descriptor, type_to_instance
         )
-        processor_descriptor.processor_cls.__init__ = patched_init  # type: ignore[method-assign]
+        processor_descriptor.processor_cls.__init__ = init_for_local  # type: ignore[method-assign]
         processor_descriptor.processor_cls._init_is_patched = True
     try:
         yield
@@ -377,6 +377,12 @@ def create_remote_service(
     )
 
     code_gen.edit_model_source(processor_filepath, processor_descriptor)
+    # Only add needed stub URLs.
+    stub_cls_to_url = {
+        stub_cls.__name__: stub_cls_to_url[stub_cls.__name__]
+        for stub_cls in processor_descriptor.depdendencies.values()
+    }
+
     code_gen.make_truss_dir(
         pathlib.Path(processor_dir), processor_descriptor, stub_cls_to_url
     )
@@ -389,8 +395,8 @@ def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> Non
     workflow_filepath = os.path.abspath(sys.argv[0])
     workflow_root = os.path.dirname(workflow_filepath)
 
-    if os.path.exists(os.path.join(workflow_root, ".slay_gen")):
-        shutil.rmtree(os.path.join(workflow_root, ".slay_gen"))
+    # if os.path.exists(os.path.join(workflow_root, ".slay_gen")):
+    #     shutil.rmtree(os.path.join(workflow_root, ".slay_gen"))
 
     needed_processors: set[definitions.ProcessorAPIDescriptor] = set()
 

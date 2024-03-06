@@ -5,8 +5,7 @@ environment_variables: {}
 external_package_dirs: []
 model_metadata:
   slay_metadata:
-    stub_cls_to_url:
-      SplitText: http://app.baseten.co/models/SplitText/predict
+    stub_cls_to_url: {}
     user_config: null
 model_name: GenerateData
 python_version: '3.11'

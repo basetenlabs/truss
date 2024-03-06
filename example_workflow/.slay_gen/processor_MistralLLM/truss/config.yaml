@@ -5,9 +5,7 @@ environment_variables: {}
 external_package_dirs: []
 model_metadata:
   slay_metadata:
-    stub_cls_to_url:
-      GenerateData: http://app.baseten.co/models/GenerateData/predict
-      SplitText: http://app.baseten.co/models/SplitText/predict
+    stub_cls_to_url: {}
     user_config:
       hf_model_name: EleutherAI/mistral-6.7B
 model_name: MistralLLM

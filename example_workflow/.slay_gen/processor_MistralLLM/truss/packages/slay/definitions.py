@@ -58,10 +58,13 @@ class Config(pydantic.BaseModel, Generic[UserConfigT]):
 class Context(pydantic.BaseModel, Generic[UserConfigT]):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
-    # name: str
     user_config: UserConfigT = pydantic.Field(default=None)
     stub_cls_to_url: dict[str, str] = {}
-    secrets: Optional[secrets_resolver.Secrets] = None
+    # secrets: Optional[secrets_resolver.Secrets] = None
+    # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
+    # due to the templating, at runtime the object passed will be from
+    # `shared.secrets_resolver` and give pydantic validation error.
+    secrets: Optional[Any] = None
 
     def get_stub_url(self, stub_cls: Type) -> str:
         stub_cls_name = stub_cls.__name__
@@ -112,6 +115,10 @@ class TypeDescriptor(pydantic.BaseModel):
         else:
             return str(self.raw)
 
+    @property
+    def is_pydantic(self) -> bool:
+        return isinstance(self.raw, type) and issubclass(self.raw, pydantic.BaseModel)
+
 
 class EndpointAPIDescriptor(pydantic.BaseModel):
     name: str
@@ -136,7 +143,7 @@ class ProcessorAPIDescriptor(pydantic.BaseModel):
 
 
 class BasetenRemoteDescriptor(pydantic.BaseModel):
-    model_id: str
-    model_version_id: str
-    model_name: str
-    predict_url: str
+    b10_model_id: str
+    b10_model_version_id: str
+    b10_model_name: str
+    b10_predict_url: str

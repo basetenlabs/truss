@@ -1,17 +1,22 @@
 import logging
+
+from slay import stub
+
+from . import user_stubs
+
+log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
+date_format = "%m%d %H:%M:%S"
+logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
+
+
 import random
 import string
 import subprocess
 from typing import Protocol
 
-import model
 import pydantic
 import slay
 from user_package import shared_processor
-
-log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
-date_format = "%m%d %H:%M:%S"
-logging.basicConfig(level=logging.DEBUG, format=log_format, datefmt=date_format)
 
 IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
 
@@ -89,6 +94,26 @@ class MistralP(Protocol):
         ...
 
 
+class TextToNum(slay.ProcessorBase):
+    default_config = slay.Config(image=IMAGE_COMMON)
+
+    def __init__(
+        self,
+        context: slay.Context = slay.provide_context(),
+    ) -> None:
+        mistral = stub.stub_factory(user_stubs.MistralLLM, context)
+        super().__init__(context)
+        self._mistral = mistral
+
+    def to_num(self, data: str, params: Parameters) -> int:
+        number = 0
+        generated_text = self._mistral.llm_gen(data)
+        for char in generated_text:
+            number += ord(char)
+
+        return number
+
+
 class Workflow(slay.ProcessorBase):
     default_config = slay.Config(image=IMAGE_COMMON)
 
@@ -97,7 +122,7 @@ class Workflow(slay.ProcessorBase):
         context: slay.Context = slay.provide_context(),
         data_generator: GenerateData = slay.provide(GenerateData),
         splitter: shared_processor.SplitText = slay.provide(shared_processor.SplitText),
-        text_to_num: model.TextToNum = slay.provide(model.TextToNum),
+        text_to_num: TextToNum = slay.provide(TextToNum),
     ) -> None:
         super().__init__(context)
         self._data_generator = data_generator
@@ -129,7 +154,7 @@ if __name__ == "__main__":
             return data.upper()
 
     with slay.run_local():
-        text_to_num = model.TextToNum(mistral=FakeMistralLLM())
+        text_to_num = TextToNum(mistral=FakeMistralLLM())
         wf = Workflow(text_to_num=text_to_num)
         params = Parameters()
         result = asyncio.run(wf.run(params=params))
