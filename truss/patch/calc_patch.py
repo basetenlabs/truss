@@ -6,13 +6,9 @@ import yaml
 from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
-from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
-    reqs_by_name,
-)
-from truss.templates.control.control.helpers.truss_patch.system_packages import (
-    system_packages_set,
-)
-from truss.templates.control.control.helpers.types import (
+from truss.server.control.patch.requirement_name_identifier import reqs_by_name
+from truss.server.control.patch.system_packages import system_packages_set
+from truss.server.control.patch.types import (
     Action,
     ConfigPatch,
     DataPatch,
@@ -27,6 +23,7 @@ from truss.templates.control.control.helpers.types import (
 )
 from truss.truss_config import ExternalData, TrussConfig
 from truss.truss_spec import TrussSpec
+from truss.util.path import get_ignored_relative_paths
 
 logger: logging.Logger = logging.getLogger(__name__)
 PYCACHE_IGNORE_PATTERNS = [
@@ -178,12 +175,10 @@ def _calc_changed_paths(
     root_relative_new_paths = set(
         (str(path.relative_to(root)) for path in root.glob("**/*"))
     )
-    unignored_new_paths = _calc_unignored_paths(
-        root, root_relative_new_paths, ignore_patterns
-    )
+    unignored_new_paths = calc_unignored_paths(root_relative_new_paths, ignore_patterns)
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
-    unignored_prev_paths = _calc_unignored_paths(
-        root, previous_root_relative_paths, ignore_patterns
+    unignored_prev_paths = calc_unignored_paths(
+        previous_root_relative_paths, ignore_patterns
     )
 
     added_paths = unignored_new_paths - unignored_prev_paths
@@ -206,20 +201,14 @@ def _calc_changed_paths(
     }
 
 
-def _calc_unignored_paths(
-    root: Path,
+def calc_unignored_paths(
     root_relative_paths: Set[str],
     ignore_patterns: Optional[List[str]] = None,
 ) -> Set[str]:
-    root_relative_ignored_paths = set()
-    if ignore_patterns is not None:
-        for ignore_pattern in ignore_patterns:
-            ignored_paths_for_pattern = set(
-                (str(path.relative_to(root)) for path in root.glob(ignore_pattern))
-            )
-            root_relative_ignored_paths.update(ignored_paths_for_pattern)
-
-    return root_relative_paths - root_relative_ignored_paths
+    ignored_paths = set(
+        get_ignored_relative_paths(root_relative_paths, ignore_patterns)
+    )
+    return root_relative_paths - ignored_paths  # type: ignore
 
 
 def calc_config_patches(

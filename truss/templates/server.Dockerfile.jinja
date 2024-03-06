@@ -21,9 +21,6 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
-RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
-
     {%- if config.live_reload %}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
     || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
@@ -42,10 +39,6 @@ RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
 {% endblock %}
 
 {% block install_requirements %}
-    {%- if should_install_server_requirements %}
-COPY ./{{server_requirements_filename}} {{server_requirements_filename}}
-RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
-    {%- endif %}
 {{ super() }}
 {% endblock %}
 
@@ -67,14 +60,8 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
-COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 COPY ./config.yaml /app/config.yaml
-    {%- if config.live_reload %}
-COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-    {%- endif %}
 {% endblock %}
 
 {% block run %}
@@ -82,11 +69,12 @@ RUN python3 -m venv /control/.env \
 ENV HASH_TRUSS {{truss_hash}}
 ENV CONTROL_SERVER_PORT 8080
 ENV INFERENCE_SERVER_PORT 8090
-ENV SERVER_START_CMD="/control/.env/bin/python3 /control/control/server.py"
-ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
+ENV PYTHON_EXECUTABLE {{config.base_image.python_executable_path or "python3"}}
+ENV SERVER_START_CMD="{{config.base_image.python_executable_path or "python3"}} -m truss.server.control.server"
+ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "-m", "truss.server.control.server"]
     {%- else %}
 ENV INFERENCE_SERVER_PORT 8080
-ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/inference_server.py"}}"
-ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/inference_server.py"]
+ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " -m truss.server.inference_server"}}"
+ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "-m", "truss.server.inference_server"]
     {%- endif %}
 {% endblock %}

@@ -215,27 +215,28 @@ class BasetenRemote(TrussRemote):
             )
 
         watch_path = Path(target_directory)
-        trussignore_patterns = load_trussignore_patterns()
+        truss_ignore_patterns = load_trussignore_patterns()
 
         def watch_filter(_, path):
             return not is_ignored(
                 Path(path),
-                trussignore_patterns,
+                truss_ignore_patterns,
             )
 
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
         rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self.patch(watch_path)
+        self.patch(watch_path, truss_ignore_patterns)
 
         rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
-            self.patch(watch_path)
+            self.patch(watch_path, truss_ignore_patterns)
 
     def patch(
         self,
         watch_path: Path,
+        truss_ignore_patterns: List[str],
     ):
         from truss.cli.console import console, error_console
 
@@ -265,7 +266,7 @@ Ensure that there exists a running remote deployment before attempting to watch 
             return
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
-            patch_request = truss_handle.calc_patch(truss_hash)
+            patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
         except Exception:
             error_console.print("Failed to calculate patch, bailing on patching")
             return

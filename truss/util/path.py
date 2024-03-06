@@ -1,4 +1,3 @@
-import fnmatch
 import os
 import random
 import string
@@ -7,19 +6,24 @@ from contextlib import contextmanager
 from distutils.dir_util import remove_tree
 from distutils.file_util import copy_file
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
 
-from truss.patch.hash import str_hash_str
+import pathspec
 
 # .truss_ignore is a fixed file in the Truss library that is used to specify files
 # that should be ignored when copying a directory tree such as .git directory.
 FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 
-def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> None:
+def copy_tree_path(
+    src: Path, dest: Path, ignore_patterns: List[str] = [], ignore_files: bool = True
+) -> None:
     """Copy a directory tree, ignoring files specified in .truss_ignore."""
-    patterns = load_trussignore_patterns()
-    patterns.extend(ignore_patterns)
+    if ignore_files:
+        patterns = load_trussignore_patterns()
+        patterns.extend(ignore_patterns)
+    else:
+        patterns = []
 
     if not dest.exists():
         dest.mkdir(parents=True)
@@ -41,11 +45,13 @@ def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest), verbose=False)
 
 
-def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
+def copy_tree_or_file(
+    src: Path, dest: Path, ignore_files: bool = True
+) -> Union[List[str], Tuple[str, str]]:
     if src.is_file():
         return copy_file_path(src, dest)
 
-    return copy_tree_path(src, dest)  # type: ignore
+    return copy_tree_path(src, dest, ignore_files=ignore_files)  # type: ignore
 
 
 def remove_tree_path(target: Path) -> None:
@@ -83,19 +89,6 @@ def build_truss_target_directory(stub: str) -> Path:
         Path.home(), ".truss", "models", f"{stub}-{rand_suffix}"
     )
     target_directory_path.mkdir(parents=True)
-    return target_directory_path
-
-
-def calc_shadow_truss_dirname(truss_path: Path) -> str:
-    resolved_path_str = str(truss_path.resolve())
-    return str_hash_str(resolved_path_str)
-
-
-def build_truss_shadow_target_directory(stub: str, truss_path: Path) -> Path:
-    """Builds a directory under ~/.truss/models."""
-    suffix = calc_shadow_truss_dirname(truss_path)
-    target_directory_path = Path(Path.home(), ".truss", "models", f"{stub}-{suffix}")
-    target_directory_path.mkdir(parents=True, exist_ok=True)
     return target_directory_path
 
 
@@ -143,23 +136,38 @@ def is_ignored(
         bool: True if the path matches any of the ignore patterns (i.e., should be ignored),
             and False otherwise.
     """
-
-    original_path = path
+    ignore_spec = pathspec.PathSpec.from_lines(
+        pathspec.patterns.GitWildMatchPattern, patterns
+    )
 
     if base_dir:
         path = path.relative_to(base_dir)
 
-    while path:
-        for pattern in patterns:
-            if original_path.is_dir() and pattern.endswith("/"):
-                pattern = pattern.rstrip("/")
-                if fnmatch.fnmatch(path.name, pattern):
-                    return True
-            else:
-                if fnmatch.fnmatch(path.name, pattern):
-                    return True
+    return ignore_spec.match_file(path)
 
-        path = path.parent if path.parent != path else None  # type: ignore
-        original_path = original_path.parent if original_path.parent != original_path else None  # type: ignore
 
-    return False
+def get_ignored_relative_paths(
+    root_relative_paths: Iterable[Union[str, os.PathLike]],
+    ignore_patterns: Optional[List[str]] = None,
+) -> Iterator[Union[str, os.PathLike]]:
+    """Given an iterable of relative paths, returns an iterator of the relative paths that match ignore_patterns."""
+    if ignore_patterns is None:
+        return iter([])
+
+    ignore_spec = pathspec.PathSpec.from_lines(
+        pathspec.patterns.GitWildMatchPattern, ignore_patterns
+    )
+    return ignore_spec.match_files(root_relative_paths)
+
+
+def get_unignored_relative_paths_from_root(
+    root: Path,
+    ignore_patterns: Optional[List[str]] = None,
+) -> Set[Path]:
+    """Given a root directory, returns an iterator of the relative paths that do not match ignore_patterns."""
+    root_relative_paths = set(path.relative_to(root) for path in root.glob("**/*"))
+
+    ignored_paths = set(
+        get_ignored_relative_paths(root_relative_paths, ignore_patterns)
+    )
+    return root_relative_paths - ignored_paths  # type: ignore
