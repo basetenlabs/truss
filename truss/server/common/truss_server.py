@@ -173,7 +173,6 @@ class BasetenEndpoints:
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         if model.truss_schema is None:
-            print("DID NOT FIND MODEL SCHEMA")
             # If there is not a TrussSchema, we return a 404.
 
             if model.ready:
