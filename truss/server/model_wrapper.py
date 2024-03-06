@@ -287,8 +287,9 @@ class ModelWrapper:
             try:
                 body = self.truss_schema.input_type(**body)
             except pydantic.ValidationError as e:
+                self._logger.info("Request Validation Error")
                 raise HTTPException(
-                    status_code=400, detail=f"Request Validation Error: {str(e)}"
+                    status_code=400, detail=f"Request Validation Error, {str(e)}"
                 ) from e
 
         payload = await self.preprocess(body, headers)
