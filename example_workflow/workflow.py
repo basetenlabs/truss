@@ -56,6 +56,7 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         resources=slay.Resources().cpu(12).gpu("A100"),
         user_config=MistraLLMConfig(hf_model_name="EleutherAI/mistral-6.7B"),
     )
+    # default_config = slay.Config(config_path="mistral_config.yaml")
 
     def __init__(
         self,
@@ -82,9 +83,11 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
 
 class MistralP(Protocol):
-    def __init__(self, context: slay.Context) -> None: ...
+    def __init__(self, context: slay.Context) -> None:
+        ...
 
-    def llm_gen(self, data: str) -> str: ...
+    def llm_gen(self, data: str) -> str:
+        ...
 
 
 class TextToNum(slay.ProcessorBase):
@@ -132,6 +135,8 @@ class Workflow(slay.ProcessorBase):
 
 
 if __name__ == "__main__":
+    import asyncio
+
     # Local test or dev execution - context manager makes sure local processors
     # are instantiated and injected.
     # with slay.run_local():
@@ -140,16 +145,16 @@ if __name__ == "__main__":
     #     result = wf.run(params=params)
     #     print(result)
 
-    # class FakeMistralLLM(slay.ProcessorBase):
-    #     def llm_gen(self, data: str) -> str:
-    #         return data.upper()
+    class FakeMistralLLM(slay.ProcessorBase):
+        def llm_gen(self, data: str) -> str:
+            return data.upper()
 
-    # with slay.run_local():
-    #     text_to_num = TextToNum(mistral=FakeMistralLLM())
-    #     wf = Workflow(text_to_num=text_to_num)
-    #     params = Parameters()
-    #     result = wf.run(params=params)
-    #     print(result)
+    with slay.run_local():
+        text_to_num = TextToNum(mistral=FakeMistralLLM())
+        wf = Workflow(text_to_num=text_to_num)
+        params = Parameters()
+        result = asyncio.run(wf.run(params=params))
+        print(result)
 
     # # Gives a `UsageError`, because not in `run_local` context.
     # try:

@@ -1,0 +1,22 @@
+base_image:
+  image: python:3.11-slim
+  python_executable_path: ''
+environment_variables: {}
+external_package_dirs: []
+model_metadata:
+  slay_metadata:
+    stub_cls_to_url:
+      SplitText: http://app.baseten.co/models/SplitText/predict
+    user_config: null
+model_name: GenerateData
+python_version: '3.11'
+requirements: []
+requirements_file: requirements.txt
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets:
+  baseten_api_key: BASETEN_API_KEY
+system_packages: []

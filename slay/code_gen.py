@@ -8,11 +8,13 @@ from typing import Iterable
 import black
 import isort
 import libcst
+import libcst as cst
 import pydantic
 from rope.base import project as rope_project
 from rope.refactor import move as rope_move
 from rope.refactor import occurrences as rope_occurrences
-from slay import definitions, utils
+from slay import definitions, truss_model_skeleton, utils
+from truss import truss_config
 
 INDENT = " " * 4
 
@@ -55,7 +57,7 @@ def gen_protocol_src(processor: definitions.ProcessorAPIDescriptor):
     imports = ["from typing import Protocol"]
     src_parts = [
         f"""
-class {processor.processor_cls.__name__}P(Protocol):
+class {processor.cls_name}P(Protocol):
 """
     ]
     for endpoint in processor.endpoints:
@@ -110,7 +112,7 @@ def gen_stub_src(processor: definitions.ProcessorAPIDescriptor):
 
     src_parts = [
         f"""
-class {processor.processor_cls.__name__}(stub.StubBase):
+class {processor.cls_name}(stub.StubBase):
 
     def __init__(self, url: str, api_key: str) -> None:
         self._remote = stub.BasetenSession(url, api_key)
@@ -132,9 +134,9 @@ def generate_stubs_for_deps(
     imports = set()
     src_parts = []
     for dep in dependencies:
-        protocol_src, new_deps = gen_protocol_src(dep)
-        imports.update(new_deps)
-        src_parts.append(protocol_src)
+        # protocol_src, new_deps = gen_protocol_src(dep)
+        # imports.update(new_deps)
+        # src_parts.append(protocol_src)
         stub_src, new_deps = gen_stub_src(dep)
         imports.update(new_deps)
         src_parts.append(stub_src)
@@ -191,7 +193,8 @@ class InitRewriter(libcst.CSTTransformer):
                 else:
                     if param.name.value not in self._replacements:
                         raise ValueError(
-                            f"For argument `{param.name.value}` no processor was mappend. Available {list(self._replacements.keys())}"
+                            f"For argument `{param.name.value}` no processor was "
+                            f"mappend. Available {list(self._replacements.keys())}"
                         )
 
             new_params = method.params.with_changes(params=keep_params)
@@ -217,16 +220,16 @@ def rewrite_processor_inits(
 ):
     replacements = {}
     for name, proc_cls in processor_desrciptor.depdendencies.items():
-        replacements[name] = f"dependencies.{proc_cls.__name__}"
+        replacements[name] = f"user_stubs.{proc_cls.__name__}"
 
-    logging.info(f"Rewriting `{processor_desrciptor.processor_cls.__name__}`.")
+    logging.info(f"Rewriting `{processor_desrciptor.cls_name}`.")
 
     modified_tree = source_tree.visit(
-        InitRewriter(processor_desrciptor.processor_cls.__name__, replacements)
+        InitRewriter(processor_desrciptor.cls_name, replacements)
     )
 
     new_imports = [
-        libcst.parse_statement(f"from . import dependencies"),
+        libcst.parse_statement(f"from . import user_stubs"),
         libcst.parse_statement(f"from slay import stub"),
     ]
 
@@ -273,14 +276,89 @@ def move_class_to_new_file(
     move_refactoring = rope_move.create_move(project, source_module, offset)
 
     changes = move_refactoring.get_changes(dest=target_resource)
-    # TODO: move other needed stuff from source module.
+    # TODO: move other needed stuff from source module - so we can get rid of it?
     project.do(changes)
+
+
+class ChangeProcessorAnnotation(cst.CSTTransformer):
+    def __init__(self, new_annotaiton: str) -> None:
+        super().__init__()
+        self._new_annotaiton = new_annotaiton
+
+    def leave_SimpleStatementLine(
+        self,
+        original_node: cst.SimpleStatementLine,
+        updated_node: cst.SimpleStatementLine,
+    ) -> cst.SimpleStatementLine:
+        new_body = []
+        for statement in updated_node.body:
+            if (
+                isinstance(statement, cst.AnnAssign)
+                and isinstance(statement.target, cst.Name)
+                and statement.target.value == "_processor"
+            ):
+                new_annotation = cst.Annotation(
+                    annotation=cst.Name(value=self._new_annotaiton)
+                )
+                new_statement = statement.with_changes(annotation=new_annotation)
+                new_body.append(new_statement)
+            else:
+                new_body.append(statement)
+
+        return updated_node.with_changes(body=tuple(new_body))
+
+
+def generate_baseten_model(processor_desrciptor: definitions.ProcessorAPIDescriptor):
+    with open(truss_model_skeleton.__file__, "r") as target_file:
+        remote_tree = libcst.parse_module(target_file.read())
+
+    new_imports = [
+        node
+        for node in remote_tree.body
+        if isinstance(node, libcst.SimpleStatementLine)
+        and any(
+            isinstance(stmt, libcst.Import) or isinstance(stmt, libcst.ImportFrom)
+            for stmt in node.body
+        )
+    ]
+
+    class_definition = utils.expect_one(
+        node
+        for node in remote_tree.body
+        if isinstance(node, libcst.ClassDef) and node.name.value == "Model"
+    )
+
+    load_def = libcst.parse_statement(
+        f"""
+def load(self) -> None:
+    self._processor = {processor_desrciptor.cls_name}(self._context)
+"""
+    )
+
+    endpoint_descriptor = utils.expect_one(processor_desrciptor.endpoints)
+    def_str = "async def" if endpoint_descriptor.is_async else "def"
+
+    predict_def = libcst.parse_statement(
+        f"""
+{def_str} predict(self, payload):
+    return self._processor.{endpoint_descriptor.name}(payload)
+"""
+    )
+
+    new_block = libcst.IndentedBlock(
+        body=list(class_definition.body.body) + [load_def, predict_def]
+    )
+    class_definition = class_definition.with_changes(body=new_block)
+    class_definition = class_definition.visit(
+        ChangeProcessorAnnotation(processor_desrciptor.cls_name)
+    )
+    return class_definition, new_imports
 
 
 ########################################################################################
 
 
-def modify_source_file(
+def edit_model_source(
     file_path,
     processor_desrciptor: definitions.ProcessorAPIDescriptor,
 ):
@@ -291,6 +369,7 @@ def modify_source_file(
 
     source_tree = libcst.parse_module(source_code)
     source_tree = rewrite_processor_inits(source_tree, processor_desrciptor)
+
     modified_source_code = source_tree.code
 
     with open(file_path, "w", encoding="utf-8") as modified_file:
@@ -301,7 +380,76 @@ def modify_source_file(
         wdir,
         os.path.basename(file_path),
         os.path.basename(target_file_path),
-        processor_desrciptor.processor_cls.__name__,
+        processor_desrciptor.cls_name,
     )
 
-    _format_python_file(file_path)
+    with open(target_file_path, "r", encoding="utf-8") as target_file:
+        source_code = target_file.read()
+
+    source_tree = libcst.parse_module(source_code)
+    model_def, imports = generate_baseten_model(processor_desrciptor)
+    source_tree = source_tree.with_changes(
+        body=imports + list(source_tree.body) + [model_def]
+    )
+    with open(target_file_path, "w", encoding="utf-8") as modified_file:
+        modified_file.write(source_tree.code)
+
+    _format_python_file(target_file_path)
+
+
+def make_truss_dir(
+    processor_dir,
+    processor_desrciptor: definitions.ProcessorAPIDescriptor,
+    stub_cls_to_url,
+):
+    # TODO: Handle if model uses truss config instead of `defautl_config`.
+    # TODO: Handle file-based overrides when deploying.
+    default_config = processor_desrciptor.processor_cls.default_config
+    config = truss_config.TrussConfig()
+    config.model_name = default_config.name or processor_desrciptor.cls_name
+    config.resources.cpu = "1"
+    config.resources.use_gpu = False
+    config.secrets = {"baseten_api_key": "BASETEN_API_KEY"}
+    config.python_version = "3.11"
+    config.base_image = truss_config.BaseImage(image="python:3.11-slim")
+    config.requirements_file = "requirements.txt"
+
+    slay_config = definitions.TrussMetadata(
+        user_config=processor_desrciptor.processor_cls.default_config.user_config,
+        stub_cls_to_url=stub_cls_to_url,
+    )
+
+    config.model_metadata["slay_metadata"] = slay_config.model_dump()
+
+    truss_dir = processor_dir / "truss"
+    truss_dir.mkdir(exist_ok=True)
+
+    config.write_to_yaml_file(truss_dir / "config.yaml", verbose=False)
+
+    # Copy other sources.
+    shutil.copy(processor_dir / "requirements.txt", truss_dir)
+
+    model_dir = truss_dir / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(processor_dir / "model.py", model_dir)
+
+    pkg_dir = truss_dir / "packages"
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+    for module in processor_dir.glob("*.py"):
+        if module.name != "model.py":
+            shutil.copy(module, pkg_dir)
+
+    # This dependency should be handled automatically.
+    # Also: apparently packages need an `__init__`, or crash.
+    shutil.copytree(
+        "/home/marius-baseten/workbench/truss/example_workflow/user_package",
+        pkg_dir / "user_package",
+        dirs_exist_ok=True,
+    )
+
+    # This should be included in truss or a lib, not manually copied.
+    shutil.copytree(
+        "/home/marius-baseten/workbench/truss/slay",
+        pkg_dir / "slay",
+        dirs_exist_ok=True,
+    )

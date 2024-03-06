@@ -1,15 +1,7 @@
-from typing import Protocol
-
 from slay import stub
 
 
-class GenerateDataP(Protocol):
-
-    def gen_data(self, params: Parameters) -> str:
-        ...
-
 class GenerateData(stub.StubBase):
-
     def __init__(self, url: str, api_key: str) -> None:
         self._remote = stub.BasetenSession(url, api_key)
 
@@ -19,13 +11,7 @@ class GenerateData(stub.StubBase):
         return json_result
 
 
-class SplitTextP(Protocol):
-
-    async def split(self, data: str, num_partitions: int) -> list[str]:
-        ...
-
 class SplitText(stub.StubBase):
-
     def __init__(self, url: str, api_key: str) -> None:
         self._remote = stub.BasetenSession(url, api_key)
 
@@ -35,13 +21,7 @@ class SplitText(stub.StubBase):
         return json_result
 
 
-class TextToNumP(Protocol):
-
-    def to_num(self, data: str, params: Parameters) -> int:
-        ...
-
 class TextToNum(stub.StubBase):
-
     def __init__(self, url: str, api_key: str) -> None:
         self._remote = stub.BasetenSession(url, api_key)
 
@@ -49,4 +29,3 @@ class TextToNum(stub.StubBase):
         json_args = [data, params.model_dump_json()]
         json_result = self._remote.predict_sync(json_args)
         return json_result
-
