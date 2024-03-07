@@ -32,13 +32,13 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
-    huggingface_ckpt_repository: str
     base_model_architecture: TRTLLMModelArchitecture
     max_input_len: int
     max_output_len: int
     max_batch_size: int
-    max_beam_width: int = 1
+    max_beam_width: int
     max_prompt_embedding_table_size: int = 0
+    huggingface_ckpt_repository: Optional[str]
     gather_all_token_logits: bool = False
     strongly_typed: bool = False
     quantization_type: TRTLLMQuantizationType = TRTLLMQuantizationType.NO_QUANT
@@ -56,7 +56,7 @@ class TrussTRTLLMServingConfiguration(BaseModel):
     pipeline_parallel_count: int = 1
 
 
-class TRTLLMConfiguration(BaseModel):
+class TrussTRTLLMConfiguration(BaseModel):
     serve: Optional[TrussTRTLLMServingConfiguration] = None
     build: Optional[TrussTRTLLMBuildConfiguration] = None
 
