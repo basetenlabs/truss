@@ -159,7 +159,6 @@ class TrussHandle:
         patch_ping_url: Optional[str] = None,
         wait_for_server_ready: bool = True,
         network: Optional[str] = None,
-        cache: bool = True,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -186,7 +185,7 @@ class TrussHandle:
             container = container_if_patched
         else:
             image = self.build_serving_docker_image(
-                build_dir=build_dir, tag=tag, network=network, cache=cache
+                build_dir=build_dir, tag=tag, network=network
             )
             secrets_mount_dir_path = _prepare_secrets_mount_dir()
             publish_ports = [[local_port, INFERENCE_SERVER_PORT]]
@@ -855,7 +854,7 @@ class TrussHandle:
         network: Optional[str] = None,
     ):
         image = _docker_image_from_labels(labels=labels)
-        if cache and image is not None:
+        if image is not None:
             return image
 
         build_dir_path = Path(build_dir) if build_dir is not None else None

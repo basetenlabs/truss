@@ -15,15 +15,10 @@ import pathspec
 FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
 
 
-def copy_tree_path(
-    src: Path, dest: Path, ignore_patterns: List[str] = [], ignore_files: bool = True
-) -> None:
+def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> None:
     """Copy a directory tree, ignoring files specified in .truss_ignore."""
-    if ignore_files:
-        patterns = load_trussignore_patterns()
-        patterns.extend(ignore_patterns)
-    else:
-        patterns = []
+    patterns = load_trussignore_patterns()
+    patterns.extend(ignore_patterns)
 
     if not dest.exists():
         dest.mkdir(parents=True)
@@ -45,13 +40,11 @@ def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
     return copy_file(str(src), str(dest), verbose=False)
 
 
-def copy_tree_or_file(
-    src: Path, dest: Path, ignore_files: bool = True
-) -> Union[List[str], Tuple[str, str]]:
+def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
     if src.is_file():
         return copy_file_path(src, dest)
 
-    return copy_tree_path(src, dest, ignore_files=ignore_files)  # type: ignore
+    return copy_tree_path(src, dest)  # type: ignore
 
 
 def remove_tree_path(target: Path) -> None:
