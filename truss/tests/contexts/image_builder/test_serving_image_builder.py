@@ -19,8 +19,8 @@ BASE_DIR = Path(__file__).parent
 def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.set_base_image("baseten/truss-server-base:3.9-v0.4.3", "/usr/local/bin/python3")
-
-    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         image_builder.prepare_image_build_dir(tmp_path)
@@ -43,7 +43,8 @@ def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
 def test_requirements_setup_in_build_dir(custom_model_truss_dir):
     th = TrussHandle(custom_model_truss_dir)
     th.add_python_requirement("numpy")
-    image_builder = ServingImageBuilderContext.run(th.spec.truss_dir)
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
 
     with TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
@@ -51,8 +52,10 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
         with open(tmp_path / "requirements.txt", "r") as f:
             requirements_content = f.read()
 
-        # We are no longer adding the base requirements because the server is installed separately.
-        assert requirements_content == "numpy\n"
+        with open(f"{BASE_DIR}/../../../templates/server/requirements.txt", "r") as f:
+            base_requirements_content = f.read()
+
+        assert requirements_content == base_requirements_content + "numpy\n"
 
 
 def flatten_cached_files(local_cache_files):

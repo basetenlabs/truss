@@ -6,22 +6,28 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import boto3
+import yaml
 from botocore import UNSIGNED
 from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
+    BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
+    CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
     REQUIREMENTS_TXT_FILENAME,
+    SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
+    SERVER_REQUIREMENTS_TXT_FILENAME,
+    SHARED_SERVING_AND_TRAINING_CODE_DIR,
+    SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
     TRTLLM_TRUSS_DIR,
-    TRUSS_PACKAGE_DIR,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
@@ -47,6 +53,9 @@ from truss.util.path import (
     copy_tree_path,
     load_trussignore_patterns,
 )
+
+BUILD_SERVER_DIR_NAME = "server"
+BUILD_CONTROL_SERVER_DIR_NAME = "control"
 
 CONFIG_FILE = "config.yaml"
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
@@ -313,13 +322,6 @@ class ServingImageBuilder(ImageBuilder):
         def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
             copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-        # Copy truss package from the context builder image to build dir
-        copy_into_build_dir(TRUSS_PACKAGE_DIR, "./truss")
-        copy_into_build_dir(
-            TRUSS_PACKAGE_DIR.parent / "pyproject.toml", "./pyproject.toml"
-        )
-        copy_into_build_dir(TRUSS_PACKAGE_DIR.parent / "README.md", "./README.md")
-
         truss_ignore_patterns = []
         if (truss_dir / USER_TRUSS_IGNORE_FILE).exists():
             truss_ignore_patterns = load_trussignore_patterns(
@@ -349,6 +351,10 @@ class ServingImageBuilder(ImageBuilder):
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
+        # Override config.yml
+        with (build_dir / CONFIG_FILE).open("w") as config_file:
+            yaml.dump(config.to_dict(verbose=True), config_file)
+
         external_data_files: list = []
         data_dir = Path("/app/data/")
         if self._spec.external_data is not None:
@@ -365,8 +371,50 @@ class ServingImageBuilder(ImageBuilder):
             config, truss_dir, build_dir
         )
 
+        # Copy inference server code
+        copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
+        copy_into_build_dir(
+            SHARED_SERVING_AND_TRAINING_CODE_DIR,
+            BUILD_SERVER_DIR_NAME + "/" + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+        )
+
+        # Copy control server code
+        if config.live_reload:
+            copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
+            copy_into_build_dir(
+                SHARED_SERVING_AND_TRAINING_CODE_DIR,
+                BUILD_CONTROL_SERVER_DIR_NAME
+                + "/control/"
+                + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
+            )
+
+        # Copy base TrussServer requirements if supplied custom base image
+        base_truss_server_reqs_filepath = SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
+        if config.base_image:
+            copy_into_build_dir(
+                base_truss_server_reqs_filepath, BASE_SERVER_REQUIREMENTS_TXT_FILENAME
+            )
+
+        # Copy model framework specific requirements file
+        server_reqs_filepath = (
+            TEMPLATES_DIR / model_framework_name / REQUIREMENTS_TXT_FILENAME
+        )
+        should_install_server_requirements = file_is_not_empty(server_reqs_filepath)
+        if should_install_server_requirements:
+            copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
+
+        with open(base_truss_server_reqs_filepath, "r") as f:
+            base_server_requirements = f.read()
+
+        # If the user has provided python requirements,
+        # append the truss server requirements, so that any conflicts
+        # are detected and cause a build failure. If there are no
+        # requirements provided, we just pass an empty string,
+        # as there's no need to install anything.
         user_provided_python_requirements = (
-            spec.requirements_txt if spec.requirements else ""
+            base_server_requirements + spec.requirements_txt
+            if spec.requirements
+            else ""
         )
         if spec.requirements_file is not None:
             copy_into_build_dir(
@@ -380,6 +428,7 @@ class ServingImageBuilder(ImageBuilder):
 
         self._render_dockerfile(
             build_dir,
+            should_install_server_requirements,
             model_files,
             use_hf_secret,
             cached_files,
@@ -389,6 +438,7 @@ class ServingImageBuilder(ImageBuilder):
     def _render_dockerfile(
         self,
         build_dir: Path,
+        should_install_server_requirements: bool,
         model_files: Dict[str, Any],
         use_hf_secret: bool,
         cached_files: List[str],
@@ -424,6 +474,7 @@ class ServingImageBuilder(ImageBuilder):
 
         hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
         dockerfile_contents = dockerfile_template.render(
+            should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,

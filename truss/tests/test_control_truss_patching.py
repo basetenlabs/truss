@@ -1,6 +1,5 @@
 from dataclasses import replace
 from pathlib import Path
-from typing import Tuple
 
 import pytest
 from truss.constants import SUPPORTED_PYTHON_VERSIONS
@@ -24,7 +23,7 @@ def current_num_docker_images(th: TrussHandle) -> int:
 @pytest.fixture
 def control_model_handle_tag_tuple(
     custom_model_control,
-) -> Tuple[Path, TrussHandle, str]:
+) -> tuple[Path, TrussHandle, str]:
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     return (custom_model_control, th, tag)
