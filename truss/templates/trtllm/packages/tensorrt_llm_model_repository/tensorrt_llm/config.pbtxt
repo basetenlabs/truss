@@ -173,7 +173,7 @@ parameters: {
 parameters: {
   key: "gpt_model_path"
   value: {
-    string_value: "/app/packages/tensorrt_llm_model_repository/tensorrt_llm/1"
+    string_value: "/packages/tensorrt_llm_model_repository/tensorrt_llm/1"
   }
 }
 parameters: {

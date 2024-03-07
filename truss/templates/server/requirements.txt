@@ -1,0 +1,16 @@
+-i https://pypi.org/simple
+
+argparse==1.4.0
+aiocontextvars==0.2.2
+cython==3.0.5
+msgpack-numpy==0.4.8
+msgpack==1.0.2
+python-json-logger==2.0.2
+pyyaml==6.0.0
+fastapi==0.109.1
+uvicorn==0.24.0
+uvloop==0.17.0
+psutil==5.9.4
+joblib==1.2.0
+requests==2.31.0
+loguru==0.7.2

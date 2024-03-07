@@ -6,9 +6,13 @@ import yaml
 from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
 from truss.patch.types import TrussSignature
-from truss.server.control.patch.requirement_name_identifier import reqs_by_name
-from truss.server.control.patch.system_packages import system_packages_set
-from truss.server.control.patch.types import (
+from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
+    reqs_by_name,
+)
+from truss.templates.control.control.helpers.truss_patch.system_packages import (
+    system_packages_set,
+)
+from truss.templates.control.control.helpers.types import (
     Action,
     ConfigPatch,
     DataPatch,

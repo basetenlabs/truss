@@ -1,0 +1,9 @@
+dataclasses-json==0.5.7
+truss==0.9.1rc1
+fastapi==0.109.1
+uvicorn==0.24.0
+uvloop==0.19.0
+tenacity==8.1.0
+httpx==0.24.1
+python-json-logger==2.0.2
+loguru==0.7.2
