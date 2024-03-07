@@ -125,7 +125,7 @@ class Workflow(slay.ProcessorBase):
         self._data_splitter = splitter
         self._text_to_num = text_to_num
 
-    async def run(self, params: Parameters) -> tuple[WorkflowResult, int]:
+    async def run(self, params: Parameters, num: int) -> tuple[WorkflowResult, int]:
         data = self._data_generator.gen_data(params)
         text_parts = await self._data_splitter.split(data, params.num_partitions)
         value = 0

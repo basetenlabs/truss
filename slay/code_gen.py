@@ -9,7 +9,6 @@ import black
 import isort
 import libcst
 import libcst as cst
-import pydantic
 from rope.base import project as rope_project
 from rope.refactor import move as rope_move
 from rope.refactor import occurrences as rope_occurrences
