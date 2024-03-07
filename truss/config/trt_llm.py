@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class TRTLLMModelArchitecture(Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
+    DEEPSEEK: str = "deepseek"
 
 
 class TRTLLMQuantizationType(Enum):
@@ -26,7 +27,7 @@ class TRTLLMQuantizationType(Enum):
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
     multi_block_mode: bool = False
-    paged_kv_cache: bool = False
+    paged_kv_cache: bool = True
     use_fused_mlp: bool = False
 
 
