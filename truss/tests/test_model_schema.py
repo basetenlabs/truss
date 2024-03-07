@@ -115,7 +115,8 @@ def test_truss_with_annotated_inputs_outputs():
         assert "error" in response.json()
 
         assert (
-            "Request Validation Error: 1 validation error for ModelInput"
+            "Request Validation Error, 1 validation error for ModelInput"
+            "\nprompt\n  Field required [type=missing, input_value={'bad_key': 'value'}, input_type=dict]\n"
             in response.json()["error"]
         )
 
