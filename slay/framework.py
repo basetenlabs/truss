@@ -35,7 +35,7 @@ from typing import (
 
 import httpx
 import pydantic
-from slay import code_gen, definitions
+from slay import code_gen, definitions, dependency_analysis
 
 CONTEXT_ARG_NAME = "context"
 
@@ -195,6 +195,10 @@ class ProcessorProvisionPlaceholder(_BaseProvisionPlaceholder):
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self._cls_name})"
 
+    @property
+    def _cls_name(self) -> str:
+        return self._processor_cls.__name__
+
 
 class ContextProvisionPlaceholder(_BaseProvisionPlaceholder):
     def __str__(self) -> str:
@@ -343,14 +347,6 @@ def run_local() -> Any:
 # Remote Deployment ####################################################################
 
 
-class RemoteServiceDescriptor(pydantic.BaseModel):
-    url: str
-
-
-class StubDescriptor(pydantic.BaseModel):
-    url: str
-
-
 def _create_processor_dir(workflow_root, processor_descriptor):
     processor_name = processor_descriptor.cls_name
     processor_dir = os.path.join(
@@ -364,12 +360,15 @@ def _create_processor_dir(workflow_root, processor_descriptor):
     return processor_dir
 
 
-def create_remote_service(
+def _create_remote_service(
     workflow_root,
     processor_dir,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
     stub_cls_to_url,
 ):
+
+    analysis = dependency_analysis.analyze(processor_descriptor)
+
     # TODO: copy other local deps.
     processor_filepath = shutil.copy(
         processor_descriptor.src_file,
@@ -424,7 +423,7 @@ def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> Non
             os.path.join(processor_dir, "user_stubs.py"),
             _global_processor_registry.get_dependencies(processor_descriptor),
         )
-        url = create_remote_service(
+        url = _create_remote_service(
             workflow_root, processor_dir, processor_descriptor, stub_cls_to_url
         )
         stub_cls_to_url[processor_descriptor.cls_name] = url

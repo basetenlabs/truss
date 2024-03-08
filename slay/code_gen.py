@@ -450,7 +450,7 @@ def make_truss_dir(
         stub_cls_to_url=stub_cls_to_url,
     )
 
-    config.model_metadata["slay_metadata"] = slay_config.model_dump()
+    config.model_metadata["slay_metadata"] = slay_config.dict()
 
     truss_dir = processor_dir / "truss"
     truss_dir.mkdir(exist_ok=True)

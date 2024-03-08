@@ -2,7 +2,7 @@ import abc
 from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar, final
 
 import pydantic
-from truss.server.shared import secrets_resolver
+from truss.templates.shared import secrets_resolver
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
