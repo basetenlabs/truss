@@ -187,12 +187,13 @@ def test_requirements_file_truss():
         assert response.json() is False
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("pydantic_major_version", ["1", "2"])
-def test_requirements_pydantic_v1(pydantic_major_version):
+def test_requirements_pydantic(pydantic_major_version):
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
 
-        truss_dir = truss_root / "test_data" / "test_requirements_file_truss"
+        truss_dir = truss_root / "test_data" / f"test_pyantic_v{pydantic_major_version}"
 
         tr = TrussHandle(truss_dir)
 
@@ -200,11 +201,9 @@ def test_requirements_pydantic_v1(pydantic_major_version):
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
-        # The prediction imports torch which is specified in a requirements.txt and returns if GPU is available.
         response = requests.post(full_url, json={})
         assert response.status_code == 200
-        print(response.json())
-        # assert response.json() is False
+        assert response.json() == '{\n    "foo": "bla",\n    "bar": 123\n}'
 
 
 @pytest.mark.integration
