@@ -2,7 +2,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,8 +60,13 @@ class TRTLLMConfiguration(BaseModel):
     serve: Optional[TrussTRTLLMServingConfiguration] = None
     build: Optional[TrussTRTLLMBuildConfiguration] = None
 
-    @model_validator(mode="after")
-    def check_minimum_required_configuration(self):
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._validate_minimum_required_configuration()
+
+    # In pydantic v2 this would be `@model_validator(mode="after")` and
+    # the __init__ override can be removed.
+    def _validate_minimum_required_configuration(self):
         if not self.serve and not self.build:
             raise ValueError("Either serve or build configurations must be provided")
         if self.serve and self.build:
