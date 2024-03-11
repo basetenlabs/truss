@@ -45,7 +45,6 @@ uvloop = "^0.19.0"
 halo = "^0.0.31"
 pathspec = ">=0.9.0"
 
-
 [tool.poetry.group.builder.dependencies]
 python = ">=3.8,<3.12"
 packaging = ">=20.9"
@@ -65,6 +64,7 @@ huggingface_hub = ">=0.19.4"
 google-cloud-storage = "2.10.0"
 boto3 = "^1.26.157"
 loguru = ">=0.7.2"
+pathspec = ">=0.9.0"
 
 [tool.poetry.dev-dependencies]
 ipython = "^7.16"
