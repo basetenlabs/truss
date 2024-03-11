@@ -35,7 +35,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
-from truss.decorators import proxy_to_shadow_if_scattered
+from truss.decorators import in_progress_state_indicator, proxy_to_shadow_if_scattered
 from truss.docker import (
     Docker,
     DockerStates,
@@ -262,12 +262,14 @@ class TrussHandle:
         else:
             return self.server_predict(request)
 
+    @in_progress_state_indicator
     def server_predict(self, request: Dict):
         """Run the prediction flow locally."""
         model = LoadModelLocal.run(self._truss_dir)
         return _prediction_flow(model, request)
 
     @proxy_to_shadow_if_scattered
+    @in_progress_state_indicator
     def docker_predict(
         self,
         request: Dict,
