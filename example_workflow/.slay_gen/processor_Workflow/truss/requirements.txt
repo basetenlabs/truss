@@ -1,7 +1,6 @@
 git+https://github.com/basetenlabs/truss.git@marius-orchestration
 httpx
 libcst
-redbaron
 rope
 black
 isort

@@ -1,7 +1,7 @@
 import pathlib
 
 from slay import definitions
-from truss.server.shared import secrets_resolver
+from truss.templates.shared import secrets_resolver
 
 
 class Model:
@@ -11,7 +11,7 @@ class Model:
     def __init__(
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
-        truss_metadata = definitions.TrussMetadata.model_validate(
+        truss_metadata = definitions.TrussMetadata.parse_obj(
             config["model_metadata"]["slay_metadata"]
         )
         self._context = definitions.Context(

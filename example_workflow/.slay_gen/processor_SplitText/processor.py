@@ -2,15 +2,16 @@ import pathlib
 
 import slay
 from slay import definitions
-from truss.server.shared import secrets_resolver
-from user_dependencies import IMAGE_NUMPY
+from truss.templates.shared import secrets_resolver
+
+IMAGE_NUMPY = slay.Image().pip_install("numpy")
 
 
 class SplitText(slay.ProcessorBase):
 
     default_config = slay.Config(image=IMAGE_NUMPY)
 
-    async def split(self, data: str, num_partitions: int) -> list[str]:
+    async def run(self, data: str, num_partitions: int) -> list[str]:
         import numpy as np
 
         parts = np.array_split(np.array(list(data)), 3)
@@ -24,7 +25,7 @@ class Model:
     def __init__(
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
-        truss_metadata = definitions.TrussMetadata.model_validate(
+        truss_metadata = definitions.TrussMetadata.parse_obj(
             config["model_metadata"]["slay_metadata"]
         )
         self._context = definitions.Context(
@@ -37,7 +38,7 @@ class Model:
         self._processor = SplitText(context=self._context)
 
     async def predict(self, payload):
-        result = await self._processor.split(
+        result = await self._processor.run(
             data=payload["data"], num_partitions=payload["num_partitions"]
         )
         return result

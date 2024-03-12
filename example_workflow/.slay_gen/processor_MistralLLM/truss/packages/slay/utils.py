@@ -25,10 +25,6 @@ def no_print():
         yield
 
 
-def pydantic_pp(model: pydantic.BaseModel) -> str:
-    return json.dumps(model.model_dump(), indent=4)
-
-
 def expect_one(it: Iterable[T]) -> T:
     it = iter(it)
     try:

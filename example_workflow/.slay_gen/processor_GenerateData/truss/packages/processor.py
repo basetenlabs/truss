@@ -1,8 +1,8 @@
 import logging
+import pathlib
 
-from slay import stub
-
-from . import user_stubs
+from slay import definitions
+from truss.templates.shared import secrets_resolver
 
 log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
 date_format = "%m%d %H:%M:%S"
@@ -35,7 +35,7 @@ class GenerateData(slay.ProcessorBase):
 
     default_config = slay.Config(image=IMAGE_COMMON)
 
-    def gen_data(self, params: Parameters) -> str:
+    def run(self, params: Parameters) -> str:
         return "".join(
             random.choices(string.ascii_letters + string.digits, k=params.length)
         )
@@ -82,7 +82,7 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
             "text-generation", model=model, tokenizer=tokenizer
         )
 
-    def llm_gen(self, data: str) -> str:
+    def run(self, data: str) -> str:
         return self._model(data, max_length=50)
 
 
@@ -90,7 +90,7 @@ class MistralP(Protocol):
     def __init__(self, context: slay.Context) -> None:
         ...
 
-    def llm_gen(self, data: str) -> str:
+    def run(self, data: str) -> str:
         ...
 
 
@@ -100,14 +100,14 @@ class TextToNum(slay.ProcessorBase):
     def __init__(
         self,
         context: slay.Context = slay.provide_context(),
+        mistral: MistralP = slay.provide(MistralLLM),
     ) -> None:
-        mistral = stub.stub_factory(user_stubs.MistralLLM, context)
         super().__init__(context)
         self._mistral = mistral
 
-    def to_num(self, data: str, params: Parameters) -> int:
+    def run(self, data: str, params: Parameters) -> int:
         number = 0
-        generated_text = self._mistral.llm_gen(data)
+        generated_text = self._mistral.run(data)
         for char in generated_text:
             number += ord(char)
 
@@ -129,12 +129,12 @@ class Workflow(slay.ProcessorBase):
         self._data_splitter = splitter
         self._text_to_num = text_to_num
 
-    async def run(self, params: Parameters) -> tuple[WorkflowResult, int]:
-        data = self._data_generator.gen_data(params)
-        text_parts = await self._data_splitter.split(data, params.num_partitions)
+    async def run(self, params: Parameters, num: int) -> tuple[WorkflowResult, int]:
+        data = self._data_generator.run(params)
+        text_parts = await self._data_splitter.run(data, params.num_partitions)
         value = 0
         for part in text_parts:
-            value += self._text_to_num.to_num(part, params)
+            value += self._text_to_num.run(part, params)
         return WorkflowResult(number=value, params=params), value
 
 
@@ -150,14 +150,14 @@ if __name__ == "__main__":
     #     print(result)
 
     class FakeMistralLLM(slay.ProcessorBase):
-        def llm_gen(self, data: str) -> str:
+        def run(self, data: str) -> str:
             return data.upper()
 
     with slay.run_local():
         text_to_num = TextToNum(mistral=FakeMistralLLM())
         wf = Workflow(text_to_num=text_to_num)
         params = Parameters()
-        result = asyncio.run(wf.run(params=params))
+        result = asyncio.run(wf.run(params=params, num=123))
         print(result)
 
     # # Gives a `UsageError`, because not in `run_local` context.
@@ -170,3 +170,27 @@ if __name__ == "__main__":
     # service points. Depenedency processors will also be deployed, but only as
     # "internal" services, not as a "public" sevice endpoint.
     slay.deploy_remotely([Workflow])
+
+
+class Model:
+    _context: definitions.Context
+    _processor: GenerateData
+
+    def __init__(
+        self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
+    ) -> None:
+        truss_metadata = definitions.TrussMetadata.parse_obj(
+            config["model_metadata"]["slay_metadata"]
+        )
+        self._context = definitions.Context(
+            user_config=truss_metadata.user_config,
+            stub_cls_to_url=truss_metadata.stub_cls_to_url,
+            secrets=secrets,
+        )
+
+    def load(self) -> None:
+        self._processor = GenerateData(context=self._context)
+
+    def predict(self, payload):
+        result = self._processor.run(params=Parameters.parse_obj(payload["params"]))
+        return result

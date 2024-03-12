@@ -1,18 +1,21 @@
-from typing import Any, Iterable, Type, final
+from typing import Any, ContextManager, Iterable, Type, final
 
 from slay import definitions, framework
 
 
 def provide_context() -> Any:
+    """Sets a 'symbolic marker' for injecting a Context object at runtime."""
     return framework.ContextProvisionPlaceholder()
 
 
 def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
+    """Sets a 'symbolic marker' for injecting a stub or local processor at runtime."""
     return framework.ProcessorProvisionPlaceholder(processor_cls)
 
 
 class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
     def __init_subclass__(cls, **kwargs) -> None:
+        """"""
         super().__init_subclass__(**kwargs)
         framework.check_and_register_class(cls)
 
@@ -21,7 +24,7 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
         def init_with_arg_check(self, *args, **kwargs):
             if args:
                 raise definitions.UsageError("Only kwargs are allowed.")
-            framework.check_init_args(cls, original_init, kwargs)
+            framework.ensure_args_are_injected(cls, original_init, kwargs)
             original_init(self, *args, **kwargs)
 
         cls.__init__ = init_with_arg_check  # type: ignore[method-assign]
@@ -41,5 +44,5 @@ def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> Non
     return framework.deploy_remotely(processors)
 
 
-def run_local() -> Any:
+def run_local() -> ContextManager[None]:
     return framework.run_local()

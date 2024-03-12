@@ -2,12 +2,12 @@ import enum
 import logging
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 import truss
 from slay import definitions
-from truss.remote.remote_factory import RemoteFactory
-from truss.remote.truss_remote import RemoteConfig, TrussRemote
+from truss.remote import remote_factory, truss_remote
+from truss.remote.baseten import service as b10_service
 
 
 class BasetenEnv(enum.Enum):
@@ -76,7 +76,7 @@ class BasetenClient:
         self._baseten_url = baseten_url
         self._baseten_env = infer_env(baseten_url)
         self._baseten_api_key = baseten_api_key
-        self._remote_provider: TrussRemote = self._create_remote_provider()
+        self._remote_provider: truss_remote.TrussRemote = self._create_remote_provider()
 
     def ensure_deployed_truss(
         self, truss_root: Path, model_name: str
@@ -87,6 +87,10 @@ class BasetenClient:
         service = self._remote_provider.push(
             tr, model_name=model_name, trusted=True, publish=True
         )
+        if service is None:
+            raise ValueError()
+        service = cast(b10_service.BasetenService, service)
+
         model_service = definitions.BasetenRemoteDescriptor(
             b10_model_id=service.model_id,
             b10_model_version_id=service.model_version_id,
@@ -96,7 +100,9 @@ class BasetenClient:
         # self._wait_for_model_to_be_ready(model_service.model_version_id)
         return model_service
 
-    # def get_model(self, model_name: str) -> Optional[definitions.BasetenRemoteDescriptor]:
+    # def get_model(
+    #     self, model_name: str
+    # ) -> Optional[definitions.BasetenRemoteDescriptor]:
     #     query_string = f"""
     #     {{
     #     model_version(name: "{model_name}") {{
@@ -130,17 +136,17 @@ class BasetenClient:
     #         model_name=model_name,
     #     )
 
-    def _create_remote_provider(self):
-        remote_config = RemoteConfig(
-            name="baseten",
-            configs={
-                "remote_provider": "baseten",
-                "api_key": self._baseten_api_key,
-                "remote_url": self._baseten_url,
-            },
-        )
-        RemoteFactory.update_remote_config(remote_config)
-        return RemoteFactory.create(remote="baseten")
+    # def _create_remote_provider(self):
+    #     remote_config = truss_remote.RemoteConfig(
+    #         name="baseten",
+    #         configs={
+    #             "remote_provider": "baseten",
+    #             "api_key": self._baseten_api_key,
+    #             "remote_url": self._baseten_url,
+    #         },
+    #     )
+    #     remote_factory.RemoteFactory.update_remote_config(remote_config)
+    #     return remote_factory.RemoteFactory.create(remote="baseten")
 
     # def _wait_for_model_to_be_ready(self, model_version_id: str):
     #     logging.info(f"Waiting for model {model_version_id} to be ready")
@@ -182,10 +188,13 @@ class BasetenClient:
     #         )
     #         if not resp.ok:
     #             if not retries:
-    #                 logging.error(f"GraphQL endpoint failed with error: {resp.content}")  # type: ignore
+    #                 logging.error(f"GraphQL endpoint failed with error: {resp.content}")
     #                 resp.raise_for_status()
     #             else:
-    #                 logging.info(f"GraphQL endpoint failed with error: {resp.content}, retries are on, ignore")  # type: ignore
+    #                 logging.info(
+    #                     f"GraphQL endpoint failed with error: {resp.content}, "
+    #                     "retries are on, ignore"
+    #                 )
     #         else:
     #             resp_dict = resp.json()
     #             errors = resp_dict.get("errors")

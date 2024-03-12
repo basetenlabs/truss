@@ -101,6 +101,7 @@ types-requests = "2.31.0.2"
 astroid = "^3.1.0"
 libcst = "<1.2.0"
 rope = "^1.12.0"
+datamodel-code-generator = "^0.25.4"
 
 
 [build-system]

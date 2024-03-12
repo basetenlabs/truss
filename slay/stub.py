@@ -38,4 +38,6 @@ StubT = TypeVar("StubT", bound=StubBase)
 
 
 def stub_factory(stub_cls: Type[StubT], context: definitions.Context) -> StubT:
-    return stub_cls(context.get_baseten_api_key(), context.get_stub_url(stub_cls))
+    return stub_cls(
+        context.get_baseten_api_key(), context.get_stub_url(stub_cls.__name__)
+    )

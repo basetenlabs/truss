@@ -5,6 +5,8 @@ environment_variables: {}
 external_package_dirs: []
 model_metadata:
   slay_metadata:
+    model_config:
+      arbitrary_types_allowed: true
     stub_cls_to_url: {}
     user_config: null
 model_name: SplitText

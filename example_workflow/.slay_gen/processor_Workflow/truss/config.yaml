@@ -5,6 +5,8 @@ environment_variables: {}
 external_package_dirs: []
 model_metadata:
   slay_metadata:
+    model_config:
+      arbitrary_types_allowed: true
     stub_cls_to_url:
       GenerateData: http://app.baseten.co/models/GenerateData/predict
       SplitText: http://app.baseten.co/models/SplitText/predict
