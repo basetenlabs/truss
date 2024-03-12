@@ -332,6 +332,12 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         if config.build.model_server is ModelServer.TRT_LLM:
+            # Check if the truss_dir contains a model folder or a packages folder
+            if (truss_dir / "model").exists() or (truss_dir / "packages").exists():
+                raise ValueError(
+                    "TRT-LLM does not allow a model or packages folder in the truss directory"
+                )
+
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
             # Check to see if TP and GPU count are the same
