@@ -32,6 +32,7 @@ import numpy as np
 import triton_python_backend_utils as pb_utils
 from transformers import AutoTokenizer, LlamaTokenizer, T5Tokenizer
 
+# https://github.com/huggingface/tokenizers/blob/main/tokenizers/src/decoders/strip.rs#L8
 INVALID_UNICODE_CHAR = "�"
 
 
