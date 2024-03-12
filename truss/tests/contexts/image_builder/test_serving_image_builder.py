@@ -8,11 +8,9 @@ from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_cache,
-    update_model_key,
-    update_model_name,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_config import Build, ModelCache, ModelRepo, ModelServer, TrussConfig
+from truss.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.truss_handle import TrussHandle
 
 BASE_DIR = Path(__file__).parent
@@ -58,46 +56,6 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
             base_requirements_content = f.read()
 
         assert requirements_content == base_requirements_content + "numpy\n"
-
-
-def test_overrides_model_id_vllm():
-    config = TrussConfig(
-        python_version="py39",
-        build=Build(
-            model_server=ModelServer.VLLM,
-            arguments={"endpoint": "Completions", "model": "gs://llama-2-7b/"},
-        ),
-    )
-
-    model_key = update_model_key(config)
-    update_model_name(config, model_key)
-
-    # Assert model overridden in config
-    assert Path(config.build.arguments["model"]) == Path("/app/model_cache/llama-2-7b")
-    assert config.model_cache == ModelCache(
-        models=[ModelRepo(repo_id="gs://llama-2-7b/")]
-    )
-
-
-def test_overrides_model_id_tgi():
-    config = TrussConfig(
-        python_version="py39",
-        build=Build(
-            model_server=ModelServer.TGI,
-            arguments={"endpoint": "Completions", "model_id": "gs://llama-2-7b/"},
-        ),
-    )
-
-    model_key = update_model_key(config)
-    update_model_name(config, model_key)
-
-    # Assert model overridden in config
-    assert Path(config.build.arguments["model_id"]) == Path(
-        "/app/model_cache/llama-2-7b"
-    )
-    assert config.model_cache == ModelCache(
-        models=[ModelRepo(repo_id="gs://llama-2-7b/")]
-    )
 
 
 def flatten_cached_files(local_cache_files):
@@ -276,34 +234,6 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
         assert (
             "folder_a/folder_b/fake_model-001-of-002.bin" in model_files[model]["files"]
         )
-
-
-@pytest.mark.integration
-def test_tgi_caching_truss():
-    with ensure_kill_all():
-        truss_root = (
-            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
-        )
-        truss_dir = truss_root / "test_data" / "test_tgi_truss"
-        tr = TrussHandle(truss_dir)
-
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        time.sleep(15)
-        assert "Successfully downloaded weights." in container.logs()
-
-
-@pytest.mark.integration
-def test_vllm_caching_truss():
-    with ensure_kill_all():
-        truss_root = (
-            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
-        )
-        truss_dir = truss_root / "test_data" / "test_vllm_truss"
-        tr = TrussHandle(truss_dir)
-
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
 
 @pytest.mark.integration

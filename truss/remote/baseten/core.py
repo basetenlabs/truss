@@ -120,6 +120,8 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     truss_ignore_file = truss_dir / ".truss_ignore"
     if truss_ignore_file.exists():
         ignore_patterns = load_trussignore_patterns(truss_ignore_file=truss_ignore_file)
+    else:
+        ignore_patterns = load_trussignore_patterns()
 
     try:
         temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)

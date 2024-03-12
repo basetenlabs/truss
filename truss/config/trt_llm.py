@@ -2,7 +2,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class TRTLLMModelArchitecture(Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
+    DEEPSEEK: str = "deepseek"
 
 
 class TRTLLMQuantizationType(Enum):
@@ -26,18 +27,18 @@ class TRTLLMQuantizationType(Enum):
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
     multi_block_mode: bool = False
-    paged_kv_cache: bool = False
+    paged_kv_cache: bool = True
     use_fused_mlp: bool = False
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
-    huggingface_ckpt_repository: str
     base_model_architecture: TRTLLMModelArchitecture
     max_input_len: int
     max_output_len: int
     max_batch_size: int
-    max_beam_width: int = 1
+    max_beam_width: int
     max_prompt_embedding_table_size: int = 0
+    huggingface_ckpt_repository: Optional[str]
     gather_all_token_logits: bool = False
     strongly_typed: bool = False
     quantization_type: TRTLLMQuantizationType = TRTLLMQuantizationType.NO_QUANT
@@ -59,8 +60,13 @@ class TRTLLMConfiguration(BaseModel):
     serve: Optional[TrussTRTLLMServingConfiguration] = None
     build: Optional[TrussTRTLLMBuildConfiguration] = None
 
-    @model_validator(mode="after")
-    def check_minimum_required_configuration(self):
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._validate_minimum_required_configuration()
+
+    # In pydantic v2 this would be `@model_validator(mode="after")` and
+    # the __init__ override can be removed.
+    def _validate_minimum_required_configuration(self):
         if not self.serve and not self.build:
             raise ValueError("Either serve or build configurations must be provided")
         if self.serve and self.build:

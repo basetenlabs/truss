@@ -20,13 +20,14 @@ We use `asdf` to manage Python binaries and `poetry` to manage Python dependenci
 
 For development in a macOS environment, we use `brew` to manage system packages.
 
-```
+```bash
 # Install asdf (or use another method https://asdf-vm.com/)
 brew install asdf
 
 # Install `asdf` managed python and poetry
 asdf plugin add python
 asdf plugin add poetry
+asdf install
 
 # Install poetry dependencies
 poetry install
@@ -37,7 +38,7 @@ poetry run pre-commit install
 
 Then to run the entire test suite
 
-```
+```bash
 poetry run pytest truss/tests
 ```
 

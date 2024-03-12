@@ -93,9 +93,9 @@ class Model:
 
 @pytest.mark.integration
 def test_truss_with_annotated_inputs_outputs():
-    truss_root = Path(__file__).parent.parent.parent.resolve()
+    truss_root = Path(__file__).parent.parent.resolve()
 
-    truss_dir = truss_root / "examples" / "annotated_types"
+    truss_dir = truss_root / "test_data" / "annotated_types_truss"
 
     tr = TrussHandle(truss_dir)
 
@@ -113,7 +113,12 @@ def test_truss_with_annotated_inputs_outputs():
 
         assert response.status_code == 400
         assert "error" in response.json()
-        assert "Request Validation Error" in response.json()["error"]
+
+        assert (
+            "Request Validation Error, 1 validation error for ModelInput"
+            "\nprompt\n  Field required [type=missing, input_value={'bad_key': 'value'}, input_type=dict]\n"
+            in response.json()["error"]
+        )
 
         schema_response = requests.get(SCHEMA_URL)
 
