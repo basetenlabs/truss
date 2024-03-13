@@ -32,9 +32,6 @@ import numpy as np
 import triton_python_backend_utils as pb_utils
 from transformers import AutoTokenizer, LlamaTokenizer, T5Tokenizer
 
-# https://github.com/huggingface/tokenizers/blob/main/tokenizers/src/decoders/strip.rs#L8
-INVALID_UNICODE_CHAR = "�"
-
 
 class TritonPythonModel:
     """Your Python model must use the same class name. Every Python model
@@ -119,47 +116,23 @@ class TritonPythonModel:
                 .as_numpy()
                 .flatten()
             )
-
             if len(tokens_batch) == 0:
                 continue
 
             # Postprocess output data
-            prev_token = self._get_var(request_id, "prev_token")
-            token_buffer = self._get_var(request_id, "token_buffer")
-            token_buffer = token_buffer if token_buffer is not None else []
-            current_tokens = np.concatenate(
-                (np.array(token_buffer, dtype=int), tokens_batch), dtype=int
-            )
-            current_tokens_decoded = self.tokenizer.decode(current_tokens)
-
-            if len(current_tokens_decoded) == 0:
-                responses.append(pb_utils.InferenceResponse())
-                continue
-
-            if current_tokens_decoded[-1] == INVALID_UNICODE_CHAR:
-                # If the last token is invalid, we need to keep it in the buffer
-                # for the next request to see if this is a multi-token unicode
-                # character.
-                self._store_var(request_id, "token_buffer", current_tokens)
-                responses.append(pb_utils.InferenceResponse())
-                continue
-
+            prev_token = self._get_prev_token(request_id)
+            self._store_prev_token(request_id, tokens_batch[-1])
             if prev_token is None:
-                delta = current_tokens_decoded
+                delta = self.tokenizer.decode(tokens_batch)
             else:
                 # TODO(pankaj) Figure out how to make tokenizer.decode not
                 # ignore initial whitespace so we can avoid this hack.
                 # Get string with and without previous token and diff. This hack
                 # is needed because tokenizer.decode strips initial whitespace.
-                old_string = self.tokenizer.decode(prev_token)
-                with_prev_token = np.concatenate((prev_token, current_tokens))
+                old_string = self.tokenizer.decode([prev_token])
+                with_prev_token = np.concatenate(([prev_token], tokens_batch))
                 new_string = self.tokenizer.decode(with_prev_token)
                 delta = self._compute_delta(old_string, new_string)
-
-            # The previous token is the last character of the decoded sequence
-            # which includes the multi-token unicode character.
-            self._store_var(request_id, "prev_token", current_tokens)
-            self._store_var(request_id, "token_buffer", None)
 
             # Create output tensor
             output_tensor = pb_utils.Tensor(
@@ -175,19 +148,22 @@ class TritonPythonModel:
     def finalize(self):
         print("Cleaning up...")
 
-    def _store_var(self, request_id, var_name, var):
+    def _store_prev_token(self, request_id, token):
         if request_id in self.state_dict:
-            self.state_dict[request_id][var_name] = var
+            self.state_dict[request_id]["prev_token"] = token
+
+            # Move request ID to end of queue to prevent it from being evicted
             self.state_dict.move_to_end(request_id)
         else:
+            # Evict least recently used item if cache is full
             if len(self.state_dict) > self.cache_size:
                 self.state_dict.popitem(last=False)
-            self.state_dict[request_id] = {"prev_token": None, "token_buffer": None}
-            self.state_dict[request_id][var_name] = var
 
-    def _get_var(self, request_id, var_name):
+            self.state_dict[request_id] = {"prev_token": token}
+
+    def _get_prev_token(self, request_id):
         if request_id in self.state_dict:
-            return self.state_dict[request_id][var_name]
+            return self.state_dict[request_id]["prev_token"]
         return None
 
     def _compute_delta(self, prev_str, new_str):
