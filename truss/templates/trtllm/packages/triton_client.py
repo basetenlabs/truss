@@ -37,39 +37,25 @@ class TritonServer:
         prepare_model_repository(truss_data_dir)
         return
 
-    def start(self, tensor_parallelism: int = 1, env: dict = {}) -> None:
-        def build_server_start_command() -> list:
-            """
-            Triton Inference Server has different startup commands depending on the tensor
-            parallelism (TP) configuration. This function starts the server with the appropriate
-            command.
-            """
-            base_command = [
+    def start(self, world_size: int = 1, env: dict = {}) -> None:
+        mpirun_command = ["mpirun", "--allow-run-as-root"]
+        mpi_commands = []
+        for i in range(world_size):
+            mpi_command = [
+                "-n",
+                "1",
                 "tritonserver",
                 f"--model-repository={TENSORRT_LLM_MODEL_REPOSITORY_PATH}",
                 f"--grpc-port={str(self.grpc_port)}",
                 f"--http-port={str(self.http_port)}",
-                # "--log-verbose=1",
+                "--disable-auto-complete-config",
+                f"--backend-config=python,shm-region-prefix-name=prefix{i}_",
+                ":",
             ]
 
-            if tensor_parallelism == 1:
-                return base_command
+            mpi_commands.extend(mpi_command)
+        command = mpirun_command + mpi_commands
 
-            mpirun_command = ["mpirun", "--allow-run-as-root"]
-            mpi_commands = []
-            for i in range(tensor_parallelism):
-                mpi_command = [
-                    "-n=1",
-                    *base_command,
-                    "--disable-auto-complete-config",
-                    f"--backend-config=python,shm-region-prefix-name=prefix{str(i)}_",
-                ]
-                mpi_commands.append(" ".join(mpi_command))
-
-            combined_mpi_commands = " : ".join(mpi_commands)
-            return mpirun_command + [combined_mpi_commands]
-
-        command = build_server_start_command()
         self._server_process = subprocess.Popen(  # type: ignore
             command,
             env={**os.environ, **env},
@@ -80,7 +66,7 @@ class TritonServer:
 
     def stop(self):
         if self._server_process:
-            if self.is_server_ready:
+            if self.is_ready:
                 self._server_process.kill()
             self._server_process = None
         return

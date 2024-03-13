@@ -51,10 +51,14 @@ class Model:
             engine_repository_path = trtllm_config.serve.engine_repository
             tokenizer_repository = trtllm_config.serve.tokenizer_repository
             tensor_parallel_count = trtllm_config.serve.tensor_parallel_count
+            pipeline_parallel_count = trtllm_config.serve.pipeline_parallel_count
+            world_size = tensor_parallel_count * pipeline_parallel_count
         else:
             engine_repository_path = None
             tokenizer_repository = trtllm_config.build.huggingface_ckpt_repository
             tensor_parallel_count = trtllm_config.build.tensor_parallel_count
+            pipeline_parallel_count = trtllm_config.build.pipeline_parallel_count
+            world_size = tensor_parallel_count * pipeline_parallel_count
 
         self.triton_server.create_model_repository(
             truss_data_dir=self._data_dir,
@@ -68,7 +72,7 @@ class Model:
         env[TOKENIZER_KEY_CONSTANT] = tokenizer_repository
 
         self.triton_server.start(
-            tensor_parallelism=tensor_parallel_count,
+            world_size=world_size,
             env=env,
         )
 
