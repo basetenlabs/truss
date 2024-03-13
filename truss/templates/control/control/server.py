@@ -7,18 +7,11 @@ from application import create_app
 
 CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
-PYTHON_EXECUTABLE_LOOKUP_PATHS = [
-    "/usr/local/bin/python",
-    "/usr/local/bin/python3",
-    "/usr/bin/python",
-    "/usr/bin/python3",
-]
 
 
 def _identify_python_executable_path() -> str:
-    for path in PYTHON_EXECUTABLE_LOOKUP_PATHS:
-        if Path(path).exists():
-            return path
+    if "PYTHON_EXECUTABLE" in os.environ:
+        return os.environ["PYTHON_EXECUTABLE"]
 
     raise RuntimeError("Unable to find python, make sure it's installed.")
 
