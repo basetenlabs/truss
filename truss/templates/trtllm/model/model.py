@@ -44,6 +44,9 @@ class Model:
             grpc_port=GRPC_SERVICE_PORT,
             http_port=HTTP_SERVICE_PORT,
         )
+        self.triton_client = TritonClient(
+            grpc_service_port=GRPC_SERVICE_PORT,
+        )
 
         self.triton_server.create_model_repository(
             truss_data_dir=self._data_dir,
@@ -58,13 +61,12 @@ class Model:
             env[HF_AUTH_KEY_CONSTANT] = hf_access_token
         env[TOKENIZER_KEY_CONSTANT] = build_config.tokenizer_repository
 
-        self.triton_server.start(
-            tensor_parallelism=build_config.tensor_parallel_count,
-            env=env,
+        world_size = (
+            build_config.tensor_parallel_count * build_config.pipeline_parallel_count
         )
-
-        self.triton_client = TritonClient(
-            grpc_service_port=GRPC_SERVICE_PORT,
+        self.triton_server.start(
+            world_size=world_size,
+            env=env,
         )
 
         self.tokenizer = AutoTokenizer.from_pretrained(
