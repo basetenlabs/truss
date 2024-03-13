@@ -1,6 +1,5 @@
 import asyncio
 import os
-from pathlib import Path
 
 import uvicorn
 from application import create_app
