@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from truss.patch.hash import file_content_hash_str
-from truss.patch.utils import path_matches_any_pattern
+from truss.util.path import get_unignored_relative_paths_from_root
 
 
 def directory_content_signature(
@@ -17,16 +17,11 @@ def directory_content_signature(
 
     Hash of directories is marked None.
     """
-
-    paths = [
-        path
-        for path in root.glob("**/*")
-        if not path_matches_any_pattern(path.relative_to(root), ignore_patterns)
-    ]
-    paths.sort(key=lambda p: p.relative_to(root))
+    paths = list(get_unignored_relative_paths_from_root(root, ignore_patterns))
+    paths.sort()
 
     def path_hash(pth: Path):
         if pth.is_file():
             return file_content_hash_str(pth)
 
-    return {str(path.relative_to(root)): path_hash(path) for path in paths}
+    return {str(path): path_hash(root / path) for path in paths}

@@ -22,41 +22,10 @@ class HealthCheckFilter(logging.Filter):
         )
 
 
-class StreamToLogger:
-    """
-    StreamToLogger redirects stdout and stderr to logger
-    """
-
-    def __init__(self, logger, log_level, stream):
-        self.logger = logger
-        self.log_level = log_level
-        self.stream = stream
-
-    def __getattr__(self, name):
-        # we need to pass `isatty` from the stream for uvicorn
-        # this is a more general, less hacky fix
-        return getattr(self.stream, name)
-
-    def write(self, buf):
-        self.logger.log(self.log_level, buf)
-
-    def flush(self):
-        """
-        This is a no-op function. It only exists to prevent
-        AttributeError in case some part of the code attempts to call flush()
-        on instances of StreamToLogger. Thus, we define this method as a safety
-        measure.
-        """
-        pass
-
-
 def setup_logging() -> None:
     loggers = [logging.getLogger()] + [
         logging.getLogger(name) for name in logging.root.manager.loggerDict
     ]
-
-    sys.stdout = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stdout__)  # type: ignore
-    sys.stderr = StreamToLogger(logging.getLogger(), logging.INFO, sys.__stderr__)  # type: ignore
 
     for logger in loggers:
         logger.setLevel(LEVEL)

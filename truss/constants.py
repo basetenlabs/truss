@@ -18,10 +18,6 @@ TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
-TRAINING_JOB_WRAPPER_CODE_DIR_NAME = "training"
-TRAINING_JOB_WRAPPER_CODE_DIR: pathlib.Path = (
-    TEMPLATES_DIR / TRAINING_JOB_WRAPPER_CODE_DIR_NAME
-)
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME
@@ -38,7 +34,6 @@ REQUIREMENTS_TXT_FILENAME = "requirements.txt"
 USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME = "user_requirements.txt"
 BASE_SERVER_REQUIREMENTS_TXT_FILENAME = "base_server_requirements.txt"
 SERVER_REQUIREMENTS_TXT_FILENAME = "server_requirements.txt"
-TRAINING_REQUIREMENTS_TXT_FILENAME = "training_requirements.txt"
 SYSTEM_PACKAGES_TXT_FILENAME = "system_packages.txt"
 
 FILENAME_CONSTANTS_MAP = {
@@ -46,14 +41,11 @@ FILENAME_CONSTANTS_MAP = {
     "user_supplied_requirements_filename": USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
     "base_server_requirements_filename": BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     "server_requirements_filename": SERVER_REQUIREMENTS_TXT_FILENAME,
-    "training_requirements_filename": TRAINING_REQUIREMENTS_TXT_FILENAME,
     "system_packages_filename": SYSTEM_PACKAGES_TXT_FILENAME,
 }
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
-TRAINING_DOCKERFILE_TEMPLATE_NAME = "training.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
-TRAINING_DOCKERFILE_NAME = "Dockerfile"
 
 README_TEMPLATE_NAME = "README.md.jinja"
 MODEL_README_NAME = "README.md"
@@ -67,8 +59,6 @@ TRUSS_MODIFIED_TIME = "truss_modified_time"
 # Path of the Truss used to identify which Truss is being referred
 TRUSS_DIR = "truss_dir"
 TRUSS_HASH = "truss_hash"
-TRAINING_TRUSS_HASH = "training_truss_hash"
-TRAINING_LABEL = "training"
 
 HUGGINGFACE_TRANSFORMER_MODULE_NAME: Set[str] = set({})
 
@@ -103,8 +93,6 @@ PYTORCH_REQ_MODULE_NAMES: Set[str] = {
 MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
 
 INFERENCE_SERVER_PORT = 8080
-
-TRAINING_VARIABLES_FILENAME = "variables.yaml"
 
 HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 

@@ -1,7 +1,0 @@
-python_version: py39
-requirements: []
-resources:
-  cpu: 500m
-  memory: 512Mi
-  use_gpu: false
-system_packages: []

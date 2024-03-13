@@ -188,6 +188,25 @@ def test_requirements_file_truss():
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("pydantic_major_version", ["1", "2"])
+def test_requirements_pydantic(pydantic_major_version):
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / f"test_pyantic_v{pydantic_major_version}"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 200
+        assert response.json() == '{\n    "foo": "bla",\n    "bar": 123\n}'
+
+
+@pytest.mark.integration
 def test_async_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
@@ -436,44 +455,6 @@ secrets:
 
         assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
-
-
-@pytest.mark.integration
-def test_prints_captured_in_log():
-    class Model:
-        def predict(self, request):
-            print("This is a message from the Truss: Hello World!")
-            return {}
-
-    config = """model_name: printing-truss"""
-
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        # Case where the secret is not specified in the config
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
-        tr = TrussHandle(truss_dir)
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        truss_server_addr = "http://localhost:8090"
-        full_url = f"{truss_server_addr}/v1/models/model:predict"
-
-        _ = requests.post(full_url, json={})
-
-        loglines = container.logs().splitlines()
-
-        relevant_line = None
-        for line in loglines:
-            logline = json.loads(line)
-            if logline["message"] == "This is a message from the Truss: Hello World!":
-                relevant_line = logline
-                break
-
-        # check that log line has other attributes and could be found
-        assert relevant_line is not None, "Relevant log line not found."
-        assert "asctime" in relevant_line
-        assert "levelname" in relevant_line
 
 
 @pytest.mark.integration

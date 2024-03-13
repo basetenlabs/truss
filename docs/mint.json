@@ -65,8 +65,7 @@
         "guides/data-directory",
         "guides/external-packages",
         "guides/model-cache",
-        "guides/concurrency",
-        "guides/tgi"
+        "guides/concurrency"
       ]
     },
     {
@@ -77,8 +76,6 @@
         "examples/03-llm-with-streaming",
         "examples/04-image-generation",
         "examples/06-high-performance-cached-weights",
-        "examples/07-high-performance-tgi",
-        "examples/08-high-performance-vllm",
         "examples/09-private-huggingface",
         "examples/10-using-system-packages"
       ]

@@ -37,10 +37,6 @@ DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
 
-DEFAULT_TRAINING_CLASS_FILENAME = "train.py"
-DEFAULT_TRAINING_CLASS_NAME = "Train"
-DEFAULT_TRAINING_MODULE_DIR = "train"
-
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
 # Set up logging
@@ -173,9 +169,6 @@ class ModelServer(Enum):
     """
 
     TrussServer = "TrussServer"
-    TGI = "TGI"
-    VLLM = "VLLM"
-    TRITON = "TRITON"
     TRT_LLM = "TRT_LLM"
 
 
@@ -230,34 +223,6 @@ class Resources:
             "use_gpu": self.use_gpu,
             "accelerator": self.accelerator.to_str(),
         }
-
-
-@dataclass
-class Train:
-    training_class_filename: str = DEFAULT_TRAINING_CLASS_FILENAME
-    training_class_name: str = DEFAULT_TRAINING_CLASS_NAME
-    training_module_dir: str = DEFAULT_TRAINING_MODULE_DIR
-    variables: Dict = field(default_factory=dict)
-    resources: Resources = field(default_factory=Resources)
-
-    @staticmethod
-    def from_dict(d):
-        return Train(
-            training_class_filename=d.get(
-                "training_class_filename", DEFAULT_TRAINING_CLASS_FILENAME
-            ),
-            training_class_name=d.get(
-                "training_class_name", DEFAULT_TRAINING_CLASS_NAME
-            ),
-            training_module_dir=d.get(
-                "training_module_dir", DEFAULT_TRAINING_MODULE_DIR
-            ),
-            variables=d.get("variables", {}),
-            resources=Resources.from_dict(d.get("resources", {})),
-        )
-
-    def to_dict(self):
-        return obj_to_dict(self)
 
 
 @dataclass
@@ -468,7 +433,6 @@ class TrussConfig:
     apply_library_patches: bool = True
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
-    train: Train = field(default_factory=Train)
     base_image: Optional[BaseImage] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
@@ -515,7 +479,6 @@ class TrussConfig:
             external_package_dirs=d.get("external_package_dirs", []),
             live_reload=d.get("live_reload", False),
             apply_library_patches=d.get("apply_library_patches", True),
-            train=Train.from_dict(d.get("train", {})),
             external_data=transform_optional(
                 d.get("external_data"), ExternalData.from_list
             ),
@@ -559,7 +522,6 @@ class TrussConfig:
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {
-    Train: {"variables"},
     Resources: {"accelerator", "cpu", "memory", "use_gpu"},
     Runtime: {"predict_concurrency"},
     Build: {"model_server"},

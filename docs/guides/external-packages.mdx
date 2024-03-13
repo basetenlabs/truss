@@ -99,8 +99,8 @@ So `super_cool_awesome_plugin/` is parallel to `stable-diffusion/`, but it's one
 Here's how you can reference your packages inside `model.py`:
 
 ```python model.py
-from super_cool_awesome_plugin.plugin1.script import cool_constant
-from super_cool_awesome_plugin.plugin2.run import AwesomeRunner
+from plugin1.script import cool_constant
+from plugin2.run import AwesomeRunner
 
 class Model:
     def __init__(self, **kwargs):
