@@ -21,8 +21,6 @@ RUN apt update && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
-RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
 
     {%- if config.live_reload %}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
@@ -32,19 +30,20 @@ RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*; }
-# Create symlink for control server to start inference server process with correct python executable
-RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
-    && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
-RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
     {%- endif %}
+
+USER app
+COPY --chown=app:app ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
+RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /home/app/.cache/pip
+
 {% endif %}
 
 {% endblock %}
 
 {% block install_requirements %}
     {%- if should_install_server_requirements %}
-COPY ./{{server_requirements_filename}} {{server_requirements_filename}}
-RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
+COPY --chown=app:app ./{{server_requirements_filename}} {{server_requirements_filename}}
+RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /home/app/.cache/pip
     {%- endif %}
 {{ super() }}
 {% endblock %}
@@ -64,14 +63,14 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 
 # Copy data before code for better caching
 {%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
+COPY --chown=app:app ./{{config.data_dir}} /app/data
 {%- endif %}
 
-COPY ./server /app
-COPY ./{{ config.model_module_dir }} /app/model
-COPY ./config.yaml /app/config.yaml
+COPY --chown=app:app ./server /app
+COPY --chown=app:app ./{{ config.model_module_dir }} /app/model
+COPY --chown=app:app ./config.yaml /app/config.yaml
     {%- if config.live_reload %}
-COPY ./control /control
+COPY --chown=app:app ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}

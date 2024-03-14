@@ -47,6 +47,13 @@ class DockerBuildEmulator:
         for cmd in self._commands:
             if cmd.cmd not in ["ENV", "ENTRYPOINT", "COPY", "WORKDIR"]:
                 continue
+            skip = False
+            for c in cmd.value:
+                if "${PATH}" in c:
+                    skip = True
+                    break
+            if skip:
+                continue
             values = _resolve_values(cmd.value)
             if cmd.cmd == "ENV":
                 result.env[values[0]] = values[1]

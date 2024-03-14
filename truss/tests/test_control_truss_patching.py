@@ -8,8 +8,6 @@ from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
     verify_python_requirement_installed_on_container,
     verify_python_requirement_not_installed_on_container,
-    verify_system_package_installed_on_container,
-    verify_system_requirement_not_installed_on_container,
 )
 from truss.truss_config import ExternalDataItem
 from truss.truss_gatherer import calc_shadow_truss_dirname
@@ -133,7 +131,7 @@ def test_control_truss_unpatchable(
         for python_version in SUPPORTED_PYTHON_VERSIONS
     ],
 )
-def test_control_truss_python_sys_req_patch(
+def test_control_truss_python_req_patch(
     binary, python_version, control_model_handle_tag_tuple
 ):
     _, th, tag = control_model_handle_tag_tuple
@@ -145,14 +143,6 @@ def test_control_truss_python_sys_req_patch(
 
     def predict_with_python_requirement_removed(req):
         th.remove_python_requirement(req)
-        return th.docker_predict([1], tag=tag, binary=binary)
-
-    def predict_with_system_requirement_added(pkg):
-        th.add_system_package(pkg)
-        return th.docker_predict([1], tag=tag, binary=binary)
-
-    def predict_with_system_requirement_removed(pkg):
-        th.remove_system_package(pkg)
         return th.docker_predict([1], tag=tag, binary=binary)
 
     with ensure_kill_all():
@@ -169,15 +159,6 @@ def test_control_truss_python_sys_req_patch(
         predict_with_python_requirement_removed(python_req)
         assert current_num_docker_images(th) == orig_num_truss_images
         verify_python_requirement_not_installed_on_container(container, python_req)
-
-        system_pkg = "jq"
-        predict_with_system_requirement_added(system_pkg)
-        assert current_num_docker_images(th) == orig_num_truss_images
-        verify_system_package_installed_on_container(container, system_pkg)
-
-        predict_with_system_requirement_removed(system_pkg)
-        assert current_num_docker_images(th) == orig_num_truss_images
-        verify_system_requirement_not_installed_on_container(container, system_pkg)
 
 
 @pytest.mark.integration

@@ -10,7 +10,6 @@ from truss.templates.control.control.helpers.types import (
     Patch,
     PatchType,
     PythonRequirementPatch,
-    SystemPackagePatch,
 )
 from truss.truss_config import TrussConfig
 
@@ -57,29 +56,3 @@ def test_python_requirement_patch(custom_model_truss_dir: Path):
     assert TrussConfig.from_yaml(
         custom_model_truss_dir / "config.yaml"
     ).requirements == [req]
-
-
-def test_system_requirement_patch(custom_model_truss_dir: Path):
-    applier = TrussDirPatchApplier(custom_model_truss_dir, TEST_LOGGER)
-    config = yaml.safe_load((custom_model_truss_dir / "config.yaml").read_text())
-    config["system_packages"] = ["curl"]
-    applier(
-        [
-            Patch(
-                type=PatchType.CONFIG,
-                body=ConfigPatch(
-                    action=Action.UPDATE, config=config, path="config.yaml"
-                ),
-            ),
-            Patch(
-                type=PatchType.SYSTEM_PACKAGE,
-                body=SystemPackagePatch(
-                    action=Action.ADD,
-                    package="curl",
-                ),
-            ),
-        ]
-    )
-    assert TrussConfig.from_yaml(
-        custom_model_truss_dir / "config.yaml"
-    ).system_packages == ["curl"]

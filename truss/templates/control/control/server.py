@@ -40,6 +40,7 @@ class ControlServer:
                 "control_server_host": "0.0.0.0",
                 "control_server_port": self._control_server_port,
                 "inference_server_port": self._inference_server_port,
+                "inference_server_pip_path": f"{self._python_executable_path} -m pip",
             }
         )
 

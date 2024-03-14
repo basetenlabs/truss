@@ -66,12 +66,10 @@ def create_app(base_config: Dict):
         base_url=f"http://localhost:{app_state.inference_server_port}", limits=limits
     )
 
-    pip_path = getattr(app_state, "pip_path", None)
-
     patch_applier = ModelContainerPatchApplier(
         Path(app_state.inference_server_home),
         app_logger,
-        pip_path,
+        app_state.inference_server_pip_path,
     )
 
     oversee_inference_server = getattr(app_state, "oversee_inference_server", True)

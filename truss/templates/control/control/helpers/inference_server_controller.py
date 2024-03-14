@@ -150,7 +150,6 @@ def _patch_sort_key_fn(patch: Patch) -> int:
     # full deploy.
 
     PATCH_ORDER = [
-        PatchType.SYSTEM_PACKAGE,
         PatchType.PYTHON_REQUIREMENT,
         PatchType.PACKAGE,
         PatchType.ENVIRONMENT_VARIABLE,

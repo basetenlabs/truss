@@ -133,7 +133,7 @@ class ModelWrapper:
         data_dir.mkdir(exist_ok=True)
 
         if "bundled_packages_dir" in self._config:
-            bundled_packages_path = Path("/packages")
+            bundled_packages_path = Path("/app/packages")
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
         model_module_name = str(
