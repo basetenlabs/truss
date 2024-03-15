@@ -1,7 +1,6 @@
 import os
 from itertools import count
 
-import build_engine_utils
 from builder.types import TrussTRTLLMConfiguration
 from constants import (
     GRPC_SERVICE_PORT,
@@ -34,14 +33,6 @@ class Model:
         if "hf_access_token" in self._secrets._base_secrets.keys():
             hf_access_token = self._secrets["hf_access_token"]
 
-        # TODO(Abu): Move to pre-runtime
-        if trtllm_config.requires_build:
-            build_engine_utils.build_engine_from_config_args(
-                truss_trtllm_configuration=trtllm_config,
-                checkpoint_dir_path=None,
-                dst=self._data_dir,
-            )
-
         self.triton_server = TritonServer(
             grpc_port=GRPC_SERVICE_PORT,
             http_port=HTTP_SERVICE_PORT,
@@ -54,7 +45,9 @@ class Model:
             pipeline_parallel_count = trtllm_config.serve.pipeline_parallel_count
             world_size = tensor_parallel_count * pipeline_parallel_count
         else:
-            engine_repository_path = None
+            # If this engine required a build, it happened in the pre-deploy stage
+            # and the engine lives inside the data directory
+            engine_repository_path = self._data_dir
             tokenizer_repository = trtllm_config.build.huggingface_ckpt_repository
             tensor_parallel_count = trtllm_config.build.tensor_parallel_count
             pipeline_parallel_count = trtllm_config.build.pipeline_parallel_count

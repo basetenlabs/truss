@@ -103,4 +103,5 @@ BASE_TRTLLM_REQUIREMENTS = [
     "tritonclient[all]==2.42.0",
     "transformers==4.33.1",
     "jinja2==3.1.3",
+    "truss",
 ]
