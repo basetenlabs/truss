@@ -65,7 +65,7 @@ class BasetenClient:
     ) -> definitions.BasetenRemoteDescriptor:
         tr = truss.load(str(truss_root))
 
-        logging.info(f"Deploying model `{model_name}`.")
+        logging.info(f"Creating new deployment for model `{model_name}`.")
         service = self._remote_provider.push(
             tr, model_name=model_name, trusted=True, publish=True
         )

@@ -1,0 +1,26 @@
+base_image:
+  image: python:3.11-slim
+  python_executable_path: ''
+environment_variables: {}
+external_package_dirs: []
+model_metadata:
+  slay_metadata:
+    model_config:
+      arbitrary_types_allowed: true
+    stub_cls_to_url:
+      GenerateData: https://model-7qklm083.api.baseten.co/production/predict
+      SplitText: https://model-4w5dxnr3.api.baseten.co/production/predict
+      TextToNum: https://model-8w6p4x2q.api.baseten.co/production/predict
+    user_config: null
+model_name: Workflow
+python_version: '3.11'
+requirements: []
+requirements_file: requirements.txt
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets:
+  baseten_api_key: BASETEN_API_KEY
+system_packages: []
