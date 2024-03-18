@@ -51,6 +51,7 @@ class Accelerator(Enum):
     V100 = "V100"
     A100 = "A100"
     H100 = "H100"
+    H100_40GB = "H100_40GB"
 
 
 @dataclass
