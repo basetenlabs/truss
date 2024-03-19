@@ -8,7 +8,7 @@ model_metadata:
     model_config:
       arbitrary_types_allowed: true
     stub_cls_to_url:
-      MistralLLM: https://model-6wgveo6w.api.baseten.co/production/predict
+      MistralLLM: https://model-8w6p4egq.api.baseten.co/production
     user_config: null
 model_name: TextToNum
 python_version: '3.11'

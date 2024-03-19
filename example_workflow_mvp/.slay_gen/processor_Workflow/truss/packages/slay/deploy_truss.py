@@ -34,17 +34,17 @@ def _infer_env(baseten_url: str) -> _BasetenEnv:
     return _BasetenEnv.PROD
 
 
-def _predict_url(baseten_env: _BasetenEnv, model_id: str) -> str:
+def _model_url(baseten_env: _BasetenEnv, model_id: str) -> str:
     if baseten_env == _BasetenEnv.LOCAL:
-        return f"http://localhost:8000/models/{model_id}/predict"
+        return f"http://localhost:8000/models/{model_id}"
 
     if baseten_env == _BasetenEnv.STAGING:
-        return f"https://app.staging.baseten.co/models/{model_id}/predict"
+        return f"https://app.staging.baseten.co/models/{model_id}"
 
     if baseten_env == _BasetenEnv.DEV:
-        return f"https://app.dev.baseten.co/models/{model_id}/predict"
+        return f"https://app.dev.baseten.co/models/{model_id}"
 
-    return f"https://model-{model_id}.api.baseten.co/production/predict"
+    return f"https://model-{model_id}.api.baseten.co/production"
 
 
 class _ConditionStatus(enum.Enum):
@@ -65,9 +65,9 @@ class BasetenClient:
     ) -> definitions.BasetenRemoteDescriptor:
         tr = truss.load(str(truss_root))
 
-        logging.info(f"Deploying for model `{model_name}`.")
+        logging.info(f"Deploying model `{model_name}`.")
         service = self._remote_provider.push(
-            tr, model_name=model_name, trusted=True, publish=True
+            tr, model_name=model_name, trusted=True, publish=False
         )
         if service is None:
             raise ValueError()
@@ -77,7 +77,7 @@ class BasetenClient:
             b10_model_id=service.model_id,
             b10_model_version_id=service.model_version_id,
             b10_model_name=model_name,
-            b10_predict_url=_predict_url(self._baseten_env, service.model_id),
+            b10_model_url=_model_url(self._baseten_env, service.model_id),
         )
         return model_service
 
@@ -113,7 +113,7 @@ class BasetenClient:
         return definitions.BasetenRemoteDescriptor(
             b10_model_id=model_id,
             b10_model_version_id=model_version_id,
-            b10_predict_url=_predict_url(self._baseten_env, model_id),
+            b10_model_url=_model_url(self._baseten_env, model_id),
             b10_model_name=model_name,
         )
 

@@ -55,23 +55,24 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         context: slay.Context = slay.provide_context(),
     ) -> None:
         super().__init__(context)
-        try:
-            subprocess.check_output(["nvidia-smi"], text=True)
-        except:
-            raise RuntimeError(
-                f"Cannot run `{self.__class__}`, because host has no CUDA."
-            )
-        import transformers
+        # try:
+        #     subprocess.check_output(["nvidia-smi"], text=True)
+        # except:
+        #     raise RuntimeError(
+        #         f"Cannot run `{self.__class__}`, because host has no CUDA."
+        #     )
+        # import transformers
 
-        model_name = self.user_config.hf_model_name
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
-        model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
-        self._model = transformers.pipeline(
-            "text-generation", model=model, tokenizer=tokenizer
-        )
+        # model_name = self.user_config.hf_model_name
+        # tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        # model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
+        # self._model = transformers.pipeline(
+        #     "text-generation", model=model, tokenizer=tokenizer
+        # )
 
     def run(self, data: str) -> str:
-        return self._model(data, max_length=50)
+        return data.upper()
+        # return self._model(data, max_length=50)
 
 
 class MistralP(Protocol):
@@ -127,31 +128,6 @@ class Workflow(slay.ProcessorBase):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Local test or dev execution - context manager makes sure local processors
-    # are instantiated and injected.
-    # with slay.run_local():
-    #     wf = Workflow()
-    #     params = Parameters()
-    #     result = wf.run(params=params)
-    #     print(result)
-    # class FakeMistralLLM(slay.ProcessorBase):
-    #     def run(self, data: str) -> str:
-    #         return data.upper()
-    # with slay.run_local():
-    #     text_to_num = TextToNum(mistral=FakeMistralLLM())
-    #     wf = Workflow(text_to_num=text_to_num)
-    #     result = asyncio.run(wf.run(length=80, num_partitions=5))
-    #     print(result)
-    # # Gives a `UsageError`, because not in `run_local` context.
-    # try:
-    #     wf = Workflow()
-    # except slay.UsageError as e:
-    #     print(e)
-    # A "marker" to designate which processors should be deployed as public remote
-    # service points. Depenedency processors will also be deployed, but only as
-    # "internal" services, not as a "public" sevice endpoint.
     slay.deploy_remotely([Workflow])
 
 

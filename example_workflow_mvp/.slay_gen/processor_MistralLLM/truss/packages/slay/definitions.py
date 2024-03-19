@@ -162,4 +162,4 @@ class BasetenRemoteDescriptor(pydantic.BaseModel):
     b10_model_id: str
     b10_model_version_id: str
     b10_model_name: str
-    b10_predict_url: str
+    b10_model_url: str

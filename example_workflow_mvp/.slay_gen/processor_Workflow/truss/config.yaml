@@ -8,9 +8,9 @@ model_metadata:
     model_config:
       arbitrary_types_allowed: true
     stub_cls_to_url:
-      GenerateData: https://model-7qklm083.api.baseten.co/production/predict
-      SplitText: https://model-4w5dxnr3.api.baseten.co/production/predict
-      TextToNum: https://model-8w6p4x2q.api.baseten.co/production/predict
+      GenerateData: https://model-6wgveg4w.api.baseten.co/production
+      SplitText: https://model-vq0p1673.api.baseten.co/production
+      TextToNum: https://model-4w52o9vw.api.baseten.co/production
     user_config: null
 model_name: Workflow
 python_version: '3.11'

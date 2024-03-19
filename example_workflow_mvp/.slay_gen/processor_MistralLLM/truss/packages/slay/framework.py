@@ -484,6 +484,4 @@ def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> Non
             processor_descriptor,
             stub_cls_to_url,
         )
-        stub_cls_to_url[
-            processor_descriptor.cls_name
-        ] = remote_descriptor.b10_predict_url
+        stub_cls_to_url[processor_descriptor.cls_name] = remote_descriptor.b10_model_url
