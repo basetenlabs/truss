@@ -1,4 +1,4 @@
-from typing import Any, ContextManager, Iterable, Type, final
+from typing import Any, ContextManager, Type, final
 
 from slay import definitions, framework
 
@@ -15,7 +15,6 @@ def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
 
 class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
     def __init_subclass__(cls, **kwargs) -> None:
-        """"""
         super().__init_subclass__(**kwargs)
         framework.check_and_register_class(cls)
 
@@ -40,8 +39,10 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
         return self._context.user_config
 
 
-def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> None:
-    return framework.deploy_remotely(processors)
+def deploy_remotely(
+    entrypoint: Type[definitions.ABCProcessor],
+) -> definitions.BasetenRemoteDescriptor:
+    return framework.deploy_remotely(entrypoint)
 
 
 def run_local() -> ContextManager[None]:

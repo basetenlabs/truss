@@ -8,7 +8,6 @@
 
 import random
 import string
-import subprocess
 from typing import Protocol
 
 import pydantic
@@ -18,24 +17,12 @@ from user_package import shared_processor
 IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
 
 
-class Parameters(pydantic.BaseModel):
-    length: int = 100
-    num_partitions: int = 4
-
-
-class WorkflowResult(pydantic.BaseModel):
-    number: int
-    params: Parameters
-
-
 class GenerateData(slay.ProcessorBase):
 
     default_config = slay.Config(image=IMAGE_COMMON)
 
-    def run(self, params: Parameters) -> str:
-        return "".join(
-            random.choices(string.ascii_letters + string.digits, k=params.length)
-        )
+    def run(self, length: int) -> str:
+        return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
 IMAGE_TRANSFORMERS_GPU = (
@@ -64,23 +51,25 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         context: slay.Context = slay.provide_context(),
     ) -> None:
         super().__init__(context)
-        try:
-            subprocess.check_output(["nvidia-smi"], text=True)
-        except Exception:
-            raise RuntimeError(
-                f"Cannot run `{self.__class__}`, because host has no CUDA."
-            )
-        import transformers
+        # import subprocess
+        # try:
+        #     subprocess.check_output(["nvidia-smi"], text=True)
+        # except:
+        #     raise RuntimeError(
+        #         f"Cannot run `{self.__class__}`, because host has no CUDA."
+        #     )
+        # import transformers
 
-        model_name = self.user_config.hf_model_name
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
-        model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
-        self._model = transformers.pipeline(
-            "text-generation", model=model, tokenizer=tokenizer
-        )
+        # model_name = self.user_config.hf_model_name
+        # tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        # model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
+        # self._model = transformers.pipeline(
+        #     "text-generation", model=model, tokenizer=tokenizer
+        # )
 
     def run(self, data: str) -> str:
-        return self._model(data, max_length=50)
+        return data.upper()
+        # return self._model(data, max_length=50)
 
 
 class MistralP(Protocol):
@@ -102,7 +91,7 @@ class TextToNum(slay.ProcessorBase):
         super().__init__(context)
         self._mistral = mistral
 
-    def run(self, data: str, params: Parameters) -> int:
+    def run(self, data: str) -> int:
         number = 0
         generated_text = self._mistral.run(data)
         for char in generated_text:
@@ -126,19 +115,20 @@ class Workflow(slay.ProcessorBase):
         self._data_splitter = splitter
         self._text_to_num = text_to_num
 
-    async def run(self, params: Parameters, num: int) -> tuple[WorkflowResult, int]:
-        data = self._data_generator.run(params)
-        text_parts = await self._data_splitter.run(data, params.num_partitions)
+    async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
+        data = self._data_generator.run(length)
+        text_parts, number = await self._data_splitter.run(data, num_partitions)
         value = 0
         for part in text_parts:
-            value += self._text_to_num.run(part, params)
-        return WorkflowResult(number=value, params=params), value
+            value += self._text_to_num.run(part)
+        return value, data, number
 
 
 if __name__ == "__main__":
-    import asyncio
+
     import logging
 
+    from slay import utils
     from slay.truss_compat import deploy
 
     root_logger = logging.getLogger()
@@ -149,36 +139,28 @@ if __name__ == "__main__":
     for handler in root_logger.handlers:
         handler.setFormatter(formatter)
 
-    # Local test or dev execution - context manager makes sure local processors
-    # are instantiated and injected.
+    # class FakeMistralLLM(slay.ProcessorBase):
+    #     def run(self, data: str) -> str:
+    #         return data.upper()
+    #
+    # import asyncio
     # with slay.run_local():
-    #     wf = Workflow()
-    #     params = Parameters()
-    #     result = wf.run(params=params)
+    #     text_to_num = TextToNum(mistral=FakeMistralLLM())
+    #     wf = Workflow(text_to_num=text_to_num)
+    #     result = asyncio.run(wf.run(length=123, num_partitions=123))
     #     print(result)
 
-    class FakeMistralLLM(slay.ProcessorBase):
-        def run(self, data: str) -> str:
-            return data.upper()
-
-    with slay.run_local():
-        text_to_num = TextToNum(mistral=FakeMistralLLM())
-        wf = Workflow(text_to_num=text_to_num)
-        params = Parameters()
-        result = asyncio.run(wf.run(params=params, num=123))
-        print(result)
-
-    # # Gives a `UsageError`, because not in `run_local` context.
-    # try:
-    #     wf = Workflow()
-    # except slay.UsageError as e:
-    #     print(e)
-
-    # A "marker" to designate which processors should be deployed as public remote
-    # service points. Depenedency processors will also be deployed, but only as
-    # "internal" services, not as a "public" sevice endpoint.
     remote = slay.deploy_remotely(Workflow)
 
-    response = deploy.call_workflow_dbg(remote, {"length": 1000, "num_partitions": 100})
+    remote = slay.definitions.BasetenRemoteDescriptor(
+        b10_model_id="7qk59gdq",
+        b10_model_version_id="woz52g3",
+        b10_model_name="Workflow",
+        b10_model_url="https://model-7qk59gdq.api.baseten.co/production",
+    )
+    with utils.log_level(logging.INFO):
+        response = deploy.call_workflow_dbg(
+            remote, {"length": 1000, "num_partitions": 100}
+        )
     print(response)
     print(response.json())

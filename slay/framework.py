@@ -13,6 +13,7 @@ from typing import (
     Iterable,
     Mapping,
     MutableMapping,
+    Optional,
     Protocol,
     Type,
     get_args,
@@ -20,22 +21,25 @@ from typing import (
 )
 
 import pydantic
-from slay import code_gen, definitions, deploy_truss, utils
+from slay import code_gen, definitions, utils
+from slay.truss_compat import deploy
 
-# Below values must correspond to `definitions.ABCProcessor`.
+# Below arg names must correspond to `definitions.ABCProcessor`.
 CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
-# Checking of processor class definition ###############################################
 
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
 
 
+# Checking of processor class definition ###############################################
+
+
 def _validate_io_type(anno) -> None:
     if anno in _SIMPLE_TYPES:
         return
     if isinstance(anno, types.GenericAlias):
-        if origin := get_origin(anno) not in _SIMPLE_CONTAINERS:
+        if get_origin(anno) not in _SIMPLE_CONTAINERS:
             raise definitions.APIDefinitonError(anno)
         args = get_args(anno)
         for arg in args:
@@ -223,7 +227,7 @@ class ContextProvisionPlaceholder(_BaseProvisionPlaceholder):
         return f"{self.__class__.__name__}"
 
 
-class ProcessorRegistry:
+class _ProcessorRegistry:
     # Because dependencies are required to be present when registering a processor,
     # this dict contains natively a topological sorting of the dependency graph.
     _processors: collections.OrderedDict[
@@ -278,7 +282,7 @@ class ProcessorRegistry:
         ]
 
 
-_global_processor_registry = ProcessorRegistry()
+_global_processor_registry = _ProcessorRegistry()
 
 
 # Processor class runtime utils ########################################################
@@ -292,7 +296,7 @@ def _determine_arguments(func: Callable, **kwargs):
     return bound_args.arguments
 
 
-def ensure_args_are_injected(cls, original_init, kwargs) -> None:
+def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
     final_args = _determine_arguments(original_init, **kwargs)
     for name, value in final_args.items():
         if isinstance(value, _BaseProvisionPlaceholder):
@@ -353,7 +357,7 @@ def _create_modified_init_for_local(
                     f"Create new instace for `{arg_name}` of type `{dep_cls.__name__}`."
                 )
                 assert dep_cls._init_is_patched
-                instance = dep_cls()
+                instance = dep_cls()  # type: ignore  # Here init args are patched.
                 cls_to_instance[dep_cls] = instance
 
             kwargs_mod[arg_name] = instance
@@ -391,49 +395,33 @@ def run_local() -> Any:
 # Remote Deployment ####################################################################
 
 
-def _create_processor_dir(workflow_root, processor_descriptor):
-    processor_name = processor_descriptor.cls_name
-    processor_dir = os.path.join(
-        workflow_root, ".slay_gen", f"processor_{processor_name}"
-    )
-    os.makedirs(processor_dir, exist_ok=True)
-    shutil.copy(
-        os.path.join(workflow_root, "requirements.txt"),
-        os.path.join(processor_dir, "requirements.txt"),
-    )
-    return processor_dir
-
-
 def _create_remote_service(
-    baseten_client: deploy_truss.BasetenClient,
-    workflow_root,
-    processor_dir,
+    baseten_client: deploy.BasetenClient,
+    processor_dir: pathlib.Path,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
-    stub_cls_to_url,
+    stub_cls_to_url: Mapping[str, str],
 ) -> definitions.BasetenRemoteDescriptor:
-    # analysis = dependency_analysis.analyze(processor_descriptor)
-
     # TODO: copy other local deps.
     processor_filepath = shutil.copy(
         processor_descriptor.src_path,
         os.path.join(processor_dir, f"{code_gen.PROCESSOR_MODULE}.py"),
     )
 
-    code_gen.generate_processor_source(processor_filepath, processor_descriptor)
+    code_gen.generate_processor_source(
+        pathlib.Path(processor_filepath), processor_descriptor
+    )
     # Only add needed stub URLs.
     stub_cls_to_url = {
         stub_cls.__name__: stub_cls_to_url[stub_cls.__name__]
         for stub_cls in processor_descriptor.depdendencies.values()
     }
 
-    truss_dir = code_gen.make_truss_dir(
+    # Convert to truss and deploy.
+    truss_dir = deploy.make_truss(
         pathlib.Path(processor_dir), processor_descriptor, stub_cls_to_url
     )
-    # TODO: set model name.
     with utils.log_level(logging.INFO):
-        remote_descriptor = baseten_client.deploy_truss(
-            truss_dir, processor_descriptor.cls_name
-        )
+        remote_descriptor = baseten_client.deploy_truss(truss_dir)
     logging.debug(remote_descriptor)
     return remote_descriptor
 
@@ -454,6 +442,7 @@ def _get_ordered_processor_descriptors(
         proc = _global_processor_registry.get_descriptor(proc_cls)
         add_needed_procssors(proc)
 
+    # Iterating over the registry ensures topological ordering.
     return [
         processor_descriptor
         for processor_descriptor in _global_processor_registry.processor_descriptors
@@ -461,27 +450,36 @@ def _get_ordered_processor_descriptors(
     ]
 
 
-def deploy_remotely(processors: Iterable[Type[definitions.ABCProcessor]]) -> None:
-    workflow_filepath = os.path.abspath(sys.argv[0])
-    workflow_root = os.path.dirname(workflow_filepath)
+def deploy_remotely(
+    entrypoint: Type[definitions.ABCProcessor],
+    baseten_url: str = "https://app.baseten.co",
+) -> definitions.BasetenRemoteDescriptor:
+    # TODO: more control e.g. publish vs. draft.
+    workflow_root = pathlib.Path(sys.argv[0]).absolute().parent
+    api_key = deploy.get_api_key_from_truss_config()
+    baseten_client = deploy.BasetenClient(baseten_url, api_key)
+    entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
 
-    api_key = deploy_truss.get_api_key_from_truss_config()
-
-    baseten_client = deploy_truss.BasetenClient("https://app.baseten.co", api_key)
-
-    ordered_descriptors = _get_ordered_processor_descriptors(processors)
-    stub_cls_to_url = {}
+    ordered_descriptors = _get_ordered_processor_descriptors([entrypoint])
+    stub_cls_to_url: dict[str, str] = {}
+    entrypoint_remote: Optional[definitions.BasetenRemoteDescriptor] = None
     for processor_descriptor in ordered_descriptors:
-        processor_dir = _create_processor_dir(workflow_root, processor_descriptor)
+        processor_dir = code_gen.create_processor_dir(
+            workflow_root, processor_descriptor
+        )
         code_gen.generate_stubs_for_deps(
             processor_dir,
             _global_processor_registry.get_dependencies(processor_descriptor),
         )
         remote_descriptor = _create_remote_service(
             baseten_client,
-            workflow_root,
             processor_dir,
             processor_descriptor,
             stub_cls_to_url,
         )
         stub_cls_to_url[processor_descriptor.cls_name] = remote_descriptor.b10_model_url
+        if processor_descriptor == entrypoint_descr:
+            entrypoint_remote = remote_descriptor
+
+    assert entrypoint_remote is not None
+    return entrypoint_remote

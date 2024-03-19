@@ -1,9 +1,8 @@
 import logging
-import os
 import pathlib
 import shutil
 import textwrap
-from typing import Iterable
+from typing import Any, Iterable
 
 import black
 import isort
@@ -13,11 +12,12 @@ import libcst as cst
 # from rope.base import project as rope_project
 # from rope.refactor import move as rope_move
 # from rope.refactor import occurrences as rope_occurrences
-from slay import definitions, truss_model_skeleton, utils
-from truss import truss_config
+from slay import definitions, utils
+from slay.truss_compat import model_skeleton
 
 INDENT = " " * 4
 
+GENERATED_CODE_DIR = ".slay_gen"
 STUB_MODULE = "user_stubs"
 PROCESSOR_MODULE = "processor"
 
@@ -26,20 +26,29 @@ def _indent(text: str) -> str:
     return textwrap.indent(text, INDENT)
 
 
-def _format_python_file(file_path):
+def _format_python_file(file_path: pathlib.Path):
     with utils.log_level(logging.INFO):
         print(f"formating {file_path}")
-        black.format_file_in_place(
-            pathlib.Path(file_path), fast=False, mode=black.FileMode()
-        )
+        black.format_file_in_place(file_path, fast=False, mode=black.FileMode())
     with utils.no_print():
         isort.file(file_path)
 
 
-def _read_source(file_path):
-    with open(file_path, "r", encoding="utf-8") as source_file:
-        source_code = source_file.read()
-    return source_code
+def create_processor_dir(
+    workflow_root: pathlib.Path,
+    processor_descriptor: definitions.ProcessorAPIDescriptor,
+) -> pathlib.Path:
+    processor_name = processor_descriptor.cls_name
+    file_name = f"processor_{processor_name}"
+    processor_dir = workflow_root / GENERATED_CODE_DIR / file_name
+    processor_dir.mkdir(exist_ok=True)
+
+    # TODO: this has to come from a different file / or in-code config.
+    shutil.copy(
+        workflow_root / "requirements.txt",
+        processor_dir / "requirements.txt",
+    )
+    return processor_dir
 
 
 # Stub Gen #############################################################################
@@ -148,7 +157,8 @@ class {processor.cls_name}(stub.StubBase):
 
 
 def generate_stubs_for_deps(
-    processor_dir, dependencies: Iterable[definitions.ProcessorAPIDescriptor]
+    processor_dir: pathlib.Path,
+    dependencies: Iterable[definitions.ProcessorAPIDescriptor],
 ):
     # TODO: user-defined I/O types are not imported / included correctly.
     imports = set()
@@ -164,8 +174,8 @@ def generate_stubs_for_deps(
     if not (imports or src_parts):
         return
 
-    out_file_path = os.path.join(processor_dir, f"{STUB_MODULE}.py")
-    with open(out_file_path, "w", encoding="utf-8") as fp:
+    out_file_path = processor_dir / f"{STUB_MODULE}.py"
+    with out_file_path.open("w") as fp:
         fp.writelines("\n".join(imports))
         fp.writelines(src_parts)
 
@@ -188,7 +198,7 @@ class _InitRewriter(libcst.CSTTransformer):
         if original_node.name.value != self._cls_name:
             return updated_node
 
-        new_methods = []
+        new_methods: list[Any] = []
         for method in updated_node.body.body:
             if (
                 isinstance(method, libcst.FunctionDef)
@@ -257,7 +267,7 @@ def _rewrite_processor_inits(
         # cannot import name 'user_stubs' from 'model' (unknown location)
         # libcst.parse_statement(f"from . import {STUB_MODULE}"),
         libcst.parse_statement(f"import {STUB_MODULE}"),
-        libcst.parse_statement(f"from slay import stub"),
+        libcst.parse_statement("from slay import stub"),
     ]
 
     modified_tree = modified_tree.with_changes(
@@ -318,7 +328,7 @@ class _ChangeProcessorAnnotation(cst.CSTTransformer):
         original_node: cst.SimpleStatementLine,
         updated_node: cst.SimpleStatementLine,
     ) -> cst.SimpleStatementLine:
-        new_body = []
+        new_body: list[Any] = []
         for statement in updated_node.body:
             if (
                 isinstance(statement, cst.AnnAssign)
@@ -338,7 +348,7 @@ class _ChangeProcessorAnnotation(cst.CSTTransformer):
 
 def _generate_baseten_model(processor_desrciptor: definitions.ProcessorAPIDescriptor):
     logging.info(f"Generating Baseten model for `{processor_desrciptor.cls_name}`.")
-    remote_tree = libcst.parse_module(_read_source(truss_model_skeleton.__file__))
+    remote_tree = libcst.parse_module(pathlib.Path(model_skeleton.__file__).read_text())
 
     new_imports = [
         node
@@ -395,11 +405,15 @@ def load(self) -> None:
 
 """
     )
-    new_block = libcst.IndentedBlock(
-        body=list(class_definition.body.body) + [load_def, predict_def]
-    )
+    new_body: list[libcst.BaseStatement] = list(  # type: ignore[assignment,misc]
+        class_definition.body.body
+    ) + [
+        load_def,
+        predict_def,
+    ]
+    new_block = libcst.IndentedBlock(body=new_body)
     class_definition = class_definition.with_changes(body=new_block)
-    class_definition = class_definition.visit(
+    class_definition = class_definition.visit(  # type: ignore[assignment]
         _ChangeProcessorAnnotation(processor_desrciptor.cls_name)
     )
     return class_definition, new_imports
@@ -409,81 +423,19 @@ def load(self) -> None:
 
 
 def generate_processor_source(
-    file_path,
+    file_path: pathlib.Path,
     processor_desrciptor: definitions.ProcessorAPIDescriptor,
 ):
-    source_code = _read_source(file_path)
-    source_tree = libcst.parse_module(source_code)
+    source_tree = libcst.parse_module(file_path.read_text())
     source_tree = _rewrite_processor_inits(source_tree, processor_desrciptor)
 
     # TODO: Processor isolation: either prune file or generate a new file.
     # At least remove main section.
 
     model_def, imports = _generate_baseten_model(processor_desrciptor)
-    source_tree = source_tree.with_changes(
-        body=imports + list(source_tree.body) + [model_def]
+    new_body: list[libcst.BaseStatement] = (  # type: ignore[assignment, misc]
+        imports + list(source_tree.body) + [model_def]
     )
-    with open(file_path, "w", encoding="utf-8") as modified_file:
-        modified_file.write(source_tree.code)
-
+    source_tree = source_tree.with_changes(body=new_body)
+    file_path.write_text(source_tree.code)
     _format_python_file(file_path)
-
-
-def make_truss_dir(
-    processor_dir: pathlib.Path,
-    processor_desrciptor: definitions.ProcessorAPIDescriptor,
-    stub_cls_to_url,
-) -> pathlib.Path:
-    # TODO: Handle if model uses truss config instead of `defautl_config`.
-    # TODO: Handle file-based overrides when deploying.
-    default_config = processor_desrciptor.processor_cls.default_config
-    config = truss_config.TrussConfig()
-    config.model_name = default_config.name or processor_desrciptor.cls_name
-    config.resources.cpu = "1"
-    config.resources.use_gpu = False
-    config.secrets = {f"{definitions.BASTEN_APY_SECRET_NAME}": "BASETEN_API_KEY"}
-    config.python_version = "3.11"
-    config.base_image = truss_config.BaseImage(image="python:3.11-slim")
-    config.requirements_file = "requirements.txt"
-
-    slay_config = definitions.TrussMetadata(
-        user_config=processor_desrciptor.processor_cls.default_config.user_config,
-        stub_cls_to_url=stub_cls_to_url,
-    )
-
-    config.model_metadata["slay_metadata"] = slay_config.dict()
-
-    truss_dir = processor_dir / "truss"
-    truss_dir.mkdir(exist_ok=True)
-
-    config.write_to_yaml_file(truss_dir / "config.yaml", verbose=False)
-
-    # Copy other sources.
-    shutil.copy(processor_dir / "requirements.txt", truss_dir)
-
-    model_dir = truss_dir / "model"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy(processor_dir / f"{PROCESSOR_MODULE}.py", model_dir / f"model.py")
-
-    pkg_dir = truss_dir / "packages"
-    pkg_dir.mkdir(parents=True, exist_ok=True)
-    for module in processor_dir.glob("*.py"):
-        if module.name != "model.py":
-            shutil.copy(module, pkg_dir)
-
-    # TODO This dependency should be handled automatically.
-    # Also: apparently packages need an `__init__`, or crash.
-    shutil.copytree(
-        "/home/marius-baseten/workbench/truss/example_workflow/user_package",
-        pkg_dir / "user_package",
-        dirs_exist_ok=True,
-    )
-
-    # TODO This should be included in truss or a lib, not manually copied.
-    shutil.copytree(
-        "/home/marius-baseten/workbench/truss/slay",
-        pkg_dir / "slay",
-        dirs_exist_ok=True,
-    )
-
-    return truss_dir

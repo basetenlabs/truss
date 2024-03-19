@@ -1,11 +1,9 @@
 import contextlib
+import enum
 import io
-import json
 import logging
+import time
 from typing import Callable, Iterable, TypeVar
-
-import pydantic
-from slay.deploy_truss import _ConditionStatus
 
 T = TypeVar("T")
 
@@ -34,23 +32,29 @@ def expect_one(it: Iterable[T]) -> T:
         raise ValueError("Empty")
 
     try:
-        other = next(it)
+        _ = next(it)
     except StopIteration:
         return element
 
     raise ValueError("Contains other.")
 
 
+class ConditionStatus(enum.Enum):
+    SUCCESS = enum.auto()
+    FAILURE = enum.auto()
+    NOT_DONE = enum.auto()
+
+
 def wait_for_condition(
-    condition: Callable[[], _ConditionStatus],
+    condition: Callable[[], ConditionStatus],
     retries: int = 10,
     sleep_between_retries_secs: int = 1,
 ) -> bool:
     for _ in range(retries):
         cond_status = condition()
-        if cond_status == _ConditionStatus.SUCCESS:
+        if cond_status == ConditionStatus.SUCCESS:
             return True
-        if cond_status == _ConditionStatus.FAILURE:
+        if cond_status == ConditionStatus.FAILURE:
             return False
         time.sleep(sleep_between_retries_secs)
     return False

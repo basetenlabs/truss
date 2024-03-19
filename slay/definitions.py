@@ -3,12 +3,11 @@ from types import GenericAlias
 from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
 
 import pydantic
-from truss.templates.shared import secrets_resolver
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
 BASTEN_APY_SECRET_NAME = "baseten_api_key"
-ENDPOINT_NAME = "run"  # Referring to processors method name exposed as endpoint.
+ENDPOINT_NAME = "run"  # Referring to processor method name exposed as endpoint.
 
 
 class APIDefinitonError(TypeError):
@@ -61,7 +60,7 @@ class Context(pydantic.BaseModel, Generic[UserConfigT]):
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    stub_cls_to_url: dict[str, str] = {}
+    stub_cls_to_url: Mapping[str, str] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
     # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
     # due to the templating, at runtime the object passed will be from
@@ -90,10 +89,11 @@ class Context(pydantic.BaseModel, Generic[UserConfigT]):
 class TrussMetadata(pydantic.BaseModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["slay_metadata"])."""
 
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+    class Config:
+        arbitrary_types_allowed = True
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    stub_cls_to_url: dict[str, str] = {}
+    stub_cls_to_url: Mapping[str, str] = {}
 
 
 class ABCProcessor(Generic[UserConfigT], abc.ABC):
@@ -163,3 +163,6 @@ class BasetenRemoteDescriptor(pydantic.BaseModel):
     b10_model_version_id: str
     b10_model_name: str
     b10_model_url: str
+
+
+PREDICT_ENDPOINT = "/predict"

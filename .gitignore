@@ -72,3 +72,6 @@ yarn.lock
 
 .eslintcache
 /.pytest_cache/
+
+# Slay workflow generated code.
+**/.slay_gen/**

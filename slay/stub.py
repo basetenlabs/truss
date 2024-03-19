@@ -5,8 +5,6 @@ from typing import Type, TypeVar
 import httpx
 from slay import definitions
 
-_PREDICT_ENDPOINT = "/predict"
-
 
 class BasetenSession:
     def __init__(self, url: str, api_key: str):
@@ -22,11 +20,15 @@ class BasetenSession:
         return httpx.AsyncClient(base_url=self._url, headers=self._auth_header)
 
     def predict_sync(self, json_paylod):
-        response = self._client_sync.post(_PREDICT_ENDPOINT, json=json_paylod)
+        response = self._client_sync.post(
+            definitions.PREDICT_ENDPOINT, json=json_paylod
+        )
         return response.json()
 
     async def predict_async(self, json_paylod):
-        response = await self._client_async.post(_PREDICT_ENDPOINT, json=json_paylod)
+        response = await self._client_async.post(
+            definitions.PREDICT_ENDPOINT, json=json_paylod
+        )
         return response.json()
 
 
