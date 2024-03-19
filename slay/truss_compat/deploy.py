@@ -28,7 +28,7 @@ def make_truss(
     config.model_name = default_config.name or processor_desrciptor.cls_name
     config.resources.cpu = "1"
     config.resources.use_gpu = False
-    config.secrets = {f"{definitions.BASTEN_APY_SECRET_NAME}": "BASETEN_API_KEY"}
+    config.secrets = {f"{definitions.BASTEN_APY_SECRET_NAME}": "***"}
     config.python_version = "3.11"
     config.base_image = truss_config.BaseImage(image="python:3.11-slim")
     config.requirements_file = "requirements.txt"

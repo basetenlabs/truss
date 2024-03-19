@@ -128,8 +128,8 @@ if __name__ == "__main__":
 
     import logging
 
-    from slay import utils
-    from slay.truss_compat import deploy
+    # from slay import utils
+    # from slay.truss_compat import deploy
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
@@ -150,17 +150,17 @@ if __name__ == "__main__":
     #     result = asyncio.run(wf.run(length=123, num_partitions=123))
     #     print(result)
 
-    remote = slay.deploy_remotely(Workflow)
+    remote = slay.deploy_remotely(Workflow, generate_only=True)
 
-    remote = slay.definitions.BasetenRemoteDescriptor(
-        b10_model_id="7qk59gdq",
-        b10_model_version_id="woz52g3",
-        b10_model_name="Workflow",
-        b10_model_url="https://model-7qk59gdq.api.baseten.co/production",
-    )
-    with utils.log_level(logging.INFO):
-        response = deploy.call_workflow_dbg(
-            remote, {"length": 1000, "num_partitions": 100}
-        )
-    print(response)
-    print(response.json())
+    # remote = slay.definitions.BasetenRemoteDescriptor(
+    #     b10_model_id="7qk59gdq",
+    #     b10_model_version_id="woz52g3",
+    #     b10_model_name="Workflow",
+    #     b10_model_url="https://model-7qk59gdq.api.baseten.co/production",
+    # )
+    # with utils.log_level(logging.INFO):
+    #     response = deploy.call_workflow_dbg(
+    #         remote, {"length": 1000, "num_partitions": 100}
+    #     )
+    # print(response)
+    # print(response.json())

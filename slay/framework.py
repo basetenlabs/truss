@@ -24,10 +24,6 @@ import pydantic
 from slay import code_gen, definitions, utils
 from slay.truss_compat import deploy
 
-# Below arg names must correspond to `definitions.ABCProcessor`.
-CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
-
-
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
 
@@ -73,7 +69,7 @@ def _validate_and_describe_endpoint(
 
     signature = inspect.signature(endpoint_method)
     params = list(signature.parameters.values())
-    if params[0].name != "self":
+    if params[0].name != definitions.SELF_ARG_NAME:
         raise definitions.APIDefinitonError(
             f"`{cls.__name__}.{definitions.ENDPOINT_NAME}` must be a method, i.e. "
             "with `self` argument."
@@ -129,16 +125,18 @@ def _validate_init_and_get_dependencies(
     signature = inspect.signature(cls.__init__)
     params = list(signature.parameters.values())
     # The following are assertions, just confiming that LSP is not violated.
-    assert params[0].name == "self", "Methods must have first argument `self`."
+    assert (
+        params[0].name == definitions.SELF_ARG_NAME
+    ), "Methods must have first argument `self`."
     assert len(params) >= 1, f"`{definitions.ABCProcessor}` has `context` argument."
     assert (
-        params[1].name == CONTEXT_ARG_NAME
-    ), f"`{definitions.ABCProcessor}` has `context` argument."
+        params[1].name == definitions.CONTEXT_ARG_NAME
+    ), f"`{definitions.ABCProcessor}` has `{definitions.CONTEXT_ARG_NAME}` argument."
 
     param_1_type = _get_generic_class_type(params[1].annotation)
     assert issubclass(param_1_type, definitions.Context), (
-        f"`{definitions.ABCProcessor}` has `context` argument of "
-        "type `{definitions.Context}`."
+        f"`{definitions.ABCProcessor}` has `{definitions.CONTEXT_ARG_NAME}` "
+        f"argument of type `{definitions.Context}`."
     )
     if not isinstance(params[1].default, ContextProvisionPlaceholder):
         raise definitions.APIDefinitonError(
@@ -332,9 +330,9 @@ def _create_modified_init_for_local(
     def init_for_local(self: definitions.ABCProcessor, **kwargs) -> None:
         logging.debug(f"Patched `__init__` of `{processor_descriptor.cls_name}`.")
         kwargs_mod = dict(kwargs)
-        if CONTEXT_ARG_NAME not in kwargs_mod:
+        if definitions.CONTEXT_ARG_NAME not in kwargs_mod:
             context = _create_local_context(processor_descriptor.processor_cls)
-            kwargs_mod[CONTEXT_ARG_NAME] = context
+            kwargs_mod[definitions.CONTEXT_ARG_NAME] = context
         else:
             logging.debug(
                 f"Use explicitly given context for `{self.__class__.__name__}`."
@@ -400,6 +398,7 @@ def _create_remote_service(
     processor_dir: pathlib.Path,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
     stub_cls_to_url: Mapping[str, str],
+    generate_only: bool,
 ) -> definitions.BasetenRemoteDescriptor:
     # TODO: copy other local deps.
     processor_filepath = shutil.copy(
@@ -420,8 +419,16 @@ def _create_remote_service(
     truss_dir = deploy.make_truss(
         pathlib.Path(processor_dir), processor_descriptor, stub_cls_to_url
     )
-    with utils.log_level(logging.INFO):
-        remote_descriptor = baseten_client.deploy_truss(truss_dir)
+    if generate_only:
+        remote_descriptor = definitions.BasetenRemoteDescriptor(
+            b10_model_id="dummy",
+            b10_model_name=processor_descriptor.cls_name,
+            b10_model_version_id="dymmy",
+            b10_model_url=f"https://{processor_descriptor.cls_name}.api.baseten.co/production",
+        )
+    else:
+        with utils.log_level(logging.INFO):
+            remote_descriptor = baseten_client.deploy_truss(truss_dir)
     logging.debug(remote_descriptor)
     return remote_descriptor
 
@@ -453,6 +460,7 @@ def _get_ordered_processor_descriptors(
 def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
     baseten_url: str = "https://app.baseten.co",
+    generate_only: bool = False,
 ) -> definitions.BasetenRemoteDescriptor:
     # TODO: more control e.g. publish vs. draft.
     workflow_root = pathlib.Path(sys.argv[0]).absolute().parent
@@ -476,6 +484,7 @@ def deploy_remotely(
             processor_dir,
             processor_descriptor,
             stub_cls_to_url,
+            generate_only,
         )
         stub_cls_to_url[processor_descriptor.cls_name] = remote_descriptor.b10_model_url
         if processor_descriptor == entrypoint_descr:

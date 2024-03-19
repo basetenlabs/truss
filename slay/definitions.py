@@ -8,6 +8,9 @@ UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
 BASTEN_APY_SECRET_NAME = "baseten_api_key"
 ENDPOINT_NAME = "run"  # Referring to processor method name exposed as endpoint.
+# Below arg names must correspond to `definitions.ABCProcessor`.
+CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
+SELF_ARG_NAME = "self"
 
 
 class APIDefinitonError(TypeError):

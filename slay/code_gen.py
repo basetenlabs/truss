@@ -1,13 +1,13 @@
+import ast
 import logging
 import pathlib
+import shlex
 import shutil
+import subprocess
 import textwrap
 from typing import Any, Iterable
 
-import black
-import isort
 import libcst
-import libcst as cst
 
 # from rope.base import project as rope_project
 # from rope.refactor import move as rope_move
@@ -26,12 +26,21 @@ def _indent(text: str) -> str:
     return textwrap.indent(text, INDENT)
 
 
-def _format_python_file(file_path: pathlib.Path):
-    with utils.log_level(logging.INFO):
-        print(f"formating {file_path}")
-        black.format_file_in_place(file_path, fast=False, mode=black.FileMode())
-    with utils.no_print():
-        isort.file(file_path)
+def _run_simple_subprocess(cmd: str) -> None:
+    process = subprocess.Popen(
+        shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    _, stderr = process.communicate()
+    if process.returncode != 0:
+        raise ChildProcessError(f"Error: {stderr.decode()}")
+
+
+def _format_python_file(file_path: pathlib.Path) -> None:
+    _run_simple_subprocess(
+        f"autoflake --in-place --remove-all-unused-imports {file_path}"
+    )
+    _run_simple_subprocess(f"black {file_path}")
+    _run_simple_subprocess(f"isort {file_path}")
 
 
 def create_processor_dir(
@@ -185,6 +194,31 @@ def generate_stubs_for_deps(
 # Remote Model Gen #####################################################################
 
 
+class _MainRemover(ast.NodeTransformer):
+    def visit_If(self, node):
+        """Robustly matches variations of `if __name__ == "__main__":`."""
+        if (
+            isinstance(node.test, ast.Compare)
+            and any(
+                isinstance(c, ast.Name) and c.id == "__name__"
+                for c in ast.walk(node.test.left)
+            )
+            and any(
+                isinstance(c, ast.Str) and c.s in ("__main__", "__main__")
+                for c in ast.walk(node.test)
+            )
+        ):
+            return None
+        return self.generic_visit(node)
+
+
+def _remove_main_section(source_code):
+    parsed_code = ast.parse(source_code)
+    transformer = _MainRemover()
+    transformed_ast = transformer.visit(parsed_code)
+    return ast.unparse(transformed_ast)
+
+
 class _InitRewriter(libcst.CSTTransformer):
     def __init__(self, cls_name: str, replacements):
         super().__init__()
@@ -213,7 +247,7 @@ class _InitRewriter(libcst.CSTTransformer):
         )
 
     def _modify_init_method(self, method: libcst.FunctionDef) -> libcst.FunctionDef:
-        keep_params_names = ["self", "context"]  # TODO: introduce constants.
+        keep_params_names = {definitions.SELF_ARG_NAME, definitions.CONTEXT_ARG_NAME}
         if method.name.value == "__init__":
             # Drop other params - assumes that we have verified that all arguments
             # are processors.
@@ -318,25 +352,25 @@ def _rewrite_processor_inits(
 #     project.do(changes)
 
 
-class _ChangeProcessorAnnotation(cst.CSTTransformer):
+class _ChangeProcessorAnnotation(libcst.CSTTransformer):
     def __init__(self, new_annotaiton: str) -> None:
         super().__init__()
         self._new_annotaiton = new_annotaiton
 
     def leave_SimpleStatementLine(
         self,
-        original_node: cst.SimpleStatementLine,
-        updated_node: cst.SimpleStatementLine,
-    ) -> cst.SimpleStatementLine:
+        original_node: libcst.SimpleStatementLine,
+        updated_node: libcst.SimpleStatementLine,
+    ) -> libcst.SimpleStatementLine:
         new_body: list[Any] = []
         for statement in updated_node.body:
             if (
-                isinstance(statement, cst.AnnAssign)
-                and isinstance(statement.target, cst.Name)
+                isinstance(statement, libcst.AnnAssign)
+                and isinstance(statement.target, libcst.Name)
                 and statement.target.value == "_processor"
             ):
-                new_annotation = cst.Annotation(
-                    annotation=cst.Name(value=self._new_annotaiton)
+                new_annotation = libcst.Annotation(
+                    annotation=libcst.Name(value=self._new_annotaiton)
                 )
                 new_statement = statement.with_changes(annotation=new_annotation)
                 new_body.append(new_statement)
@@ -426,7 +460,8 @@ def generate_processor_source(
     file_path: pathlib.Path,
     processor_desrciptor: definitions.ProcessorAPIDescriptor,
 ):
-    source_tree = libcst.parse_module(file_path.read_text())
+    sourc_code = _remove_main_section(file_path.read_text())
+    source_tree = libcst.parse_module(sourc_code)
     source_tree = _rewrite_processor_inits(source_tree, processor_desrciptor)
 
     # TODO: Processor isolation: either prune file or generate a new file.
