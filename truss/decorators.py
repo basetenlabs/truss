@@ -10,3 +10,17 @@ def proxy_to_shadow_if_scattered(func):
         return func(gathered_truss_handle, *args[1:], **kwargs)
 
     return wrapper
+
+
+def in_progress_state_indicator(func):
+    def wrapper(*args, **kwargs):
+        from halo import Halo
+
+        with Halo(
+            text=f"Preparing {str(func.__name__).split('_')[0]} context",
+            spinner="star",
+            color="green",
+        ):
+            return func(*args, **kwargs)
+
+    return wrapper
