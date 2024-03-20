@@ -5,7 +5,11 @@ from typing import Optional
 import numpy as np
 import tritonclient
 import tritonclient.grpc.aio as grpcclient
-from pydantic import BaseModel, ConfigDict, PrivateAttr
+
+try:
+    from pydantic.v1 import BaseModel, ConfigDict, PrivateAttr
+except ImportError:
+    from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 
 class ModelInput:
@@ -142,7 +146,10 @@ class CalibrationConfig(BaseModel):
             return Path(f"sq_{self.sq_alpha}")
 
 
-class EngineBuildArgs(BaseModel, use_enum_values=True):
+class EngineBuildArgs(BaseModel):
+    class Config:
+        use_enum_values = True
+
     repo: Optional[str] = None
     args: Optional[ArgsConfig] = None
     quant: Optional[Quant] = None

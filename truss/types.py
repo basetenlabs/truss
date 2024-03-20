@@ -2,7 +2,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List
 
-from pydantic import BaseModel
+try:
+    from pydantic.v1 import BaseModel
+except ImportError:
+    from pydantic import BaseModel
+
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import Patch
 

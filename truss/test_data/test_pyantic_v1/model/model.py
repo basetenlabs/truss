@@ -12,7 +12,10 @@ The main methods to implement here are:
 See https://truss.baseten.co/quickstart for more.
 """
 
-import pydantic
+try:
+    import pydantic.v1 as pydantic
+except ImportError:
+    import pydantic
 
 
 class DummyData(pydantic.BaseModel):

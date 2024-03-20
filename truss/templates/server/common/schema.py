@@ -12,7 +12,10 @@ from typing import (
     get_origin,
 )
 
-from pydantic import BaseModel
+try:
+    from pydantic.v1 import BaseModel
+except ImportError:
+    from pydantic import BaseModel
 
 
 class OutputType(BaseModel):

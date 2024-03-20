@@ -140,7 +140,7 @@ class GCSCache(RemoteCache):
 
 
 class S3Cache(RemoteCache):
-    def list_files(self, revision=None):
+    def list_files(self, revision=None) -> List[str]:
         s3_credentials_file = self.data_dir / S3_CREDENTIALS
 
         if s3_credentials_file.exists():

@@ -13,13 +13,22 @@ from pathlib import Path
 from threading import Thread
 from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
 
-import pydantic
+try:
+    import pydantic.v1 as pydantic
+except ImportError:
+    import pydantic
+
 from anyio import Semaphore, to_thread
 from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
 from fastapi import HTTPException
-from pydantic import BaseModel
+
+try:
+    from pydantic.v1 import BaseModel
+except ImportError:
+    from pydantic import BaseModel
+
 from shared.secrets_resolver import SecretsResolver
 
 MODEL_BASENAME = "model"
