@@ -12,9 +12,12 @@ from typing import Protocol
 
 import pydantic
 import slay
+from truss import truss_config
 from user_package import shared_processor
 
-IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
+IMAGE_COMMON = slay.Image().pip_requirements_file(
+    "/home/marius-baseten/workbench/truss/example_workflow_mvp/requirements.txt"
+)
 
 
 class GenerateData(slay.ProcessorBase):
@@ -27,9 +30,18 @@ class GenerateData(slay.ProcessorBase):
 
 IMAGE_TRANSFORMERS_GPU = (
     slay.Image()
-    .cuda("12.8")
-    .pip_requirements_txt("common_requirements.txt")
-    .pip_install("transformers")
+    .pip_requirements_file(
+        "/home/marius-baseten/workbench/truss/example_workflow_mvp/requirements.txt"
+    )
+    .pip_requirements(
+        ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
+    )
+)
+
+
+MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
+MISTRAL_CACHE = truss_config.ModelRepo(
+    repo_id=MISTRAL_HF_MODEL, allow_patterns=["*.json", "*.safetensors", ".model"]
 )
 
 
@@ -41,8 +53,9 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
     default_config = slay.Config(
         image=IMAGE_TRANSFORMERS_GPU,
-        resources=slay.Resources().cpu(12).gpu("A100"),
-        user_config=MistraLLMConfig(hf_model_name="EleutherAI/mistral-6.7B"),
+        compute=slay.Compute().cpu(2).gpu("A10G"),
+        assets=slay.Assets().cached([MISTRAL_CACHE]),
+        user_config=MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL),
     )
     # default_config = slay.Config(config_path="mistral_config.yaml")
 
@@ -58,18 +71,20 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         #     raise RuntimeError(
         #         f"Cannot run `{self.__class__}`, because host has no CUDA."
         #     )
-        # import transformers
+        import transformers
 
-        # model_name = self.user_config.hf_model_name
-        # tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
-        # model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
-        # self._model = transformers.pipeline(
-        #     "text-generation", model=model, tokenizer=tokenizer
-        # )
+        model_name = self.user_config.hf_model_name
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
+        self._model = transformers.pipeline(
+            "text-generation", model=model, tokenizer=tokenizer
+        )
 
     def run(self, data: str) -> str:
-        return data.upper()
-        # return self._model(data, max_length=50)
+        # return data.upper()
+        result = self._model(data, max_length=50)
+        print(result)
+        return result
 
 
 class MistralP(Protocol):
@@ -125,7 +140,6 @@ class Workflow(slay.ProcessorBase):
 
 
 if __name__ == "__main__":
-
     import logging
 
     # from slay import utils
@@ -142,7 +156,7 @@ if __name__ == "__main__":
     # class FakeMistralLLM(slay.ProcessorBase):
     #     def run(self, data: str) -> str:
     #         return data.upper()
-    #
+
     # import asyncio
     # with slay.run_local():
     #     text_to_num = TextToNum(mistral=FakeMistralLLM())
@@ -150,7 +164,7 @@ if __name__ == "__main__":
     #     result = asyncio.run(wf.run(length=123, num_partitions=123))
     #     print(result)
 
-    remote = slay.deploy_remotely(Workflow, generate_only=True)
+    remote = slay.deploy_remotely(Workflow, generate_only=False)
 
     # remote = slay.definitions.BasetenRemoteDescriptor(
     #     b10_model_id="7qk59gdq",

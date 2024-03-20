@@ -16,6 +16,63 @@ from truss.remote import remote_factory, truss_remote
 from truss.remote.baseten import service as b10_service
 
 
+def _make_truss_config(
+    slay_config: definitions.Config,
+    stub_cls_to_url: Mapping[str, str],
+    fallback_name: str,
+) -> truss_config.TrussConfig:
+    config = truss_config.TrussConfig()
+    config.model_name = slay_config.name or fallback_name
+    # Compute.
+    compute = slay_config.get_compute_spec()
+    config.resources.cpu = compute.cpu
+    config.resources.accelerator = truss_config.AcceleratorSpec.from_str(compute.gpu)
+    config.resources.use_gpu = bool(compute.gpu)
+
+    # Image.
+    image = slay_config.get_image_spec()
+    config.base_image = truss_config.BaseImage(image=image.base_image)
+    # config.python_version = image.python_version
+
+    pip_requirements = []
+    if image.pip_requirements_file:
+        pip_requirements.extend(
+            req
+            for req in pathlib.Path(image.pip_requirements_file)
+            .read_text()
+            .splitlines()
+            if not req.strip().startswith("#")
+        )
+    pip_requirements.extend(image.pip_requirements)
+    config.requirements = pip_requirements
+
+    # config.requirements = image.pip_requirements
+    # config.requirements_file = image.pip_requirements_file
+
+    config.system_packages = image.apt_requirements
+
+    # Assets.
+    assets = slay_config.get_asset_spec()
+    config.secrets = assets.secrets
+    if definitions.BASTEN_APY_SECRET_NAME not in config.secrets:
+        config.secrets[definitions.BASTEN_APY_SECRET_NAME] = "***"
+    else:
+        logging.info(
+            f"Workflows automatically add {definitions.BASTEN_APY_SECRET_NAME} "
+            "to secrets - no need to manually add it."
+        )
+    config.model_cache.models = assets.cached
+
+    # Metadata.
+    slay_metadata = definitions.TrussMetadata(
+        user_config=slay_config.user_config,
+        stub_cls_to_url=stub_cls_to_url,
+    )
+    config.model_metadata[definitions.TRUSS_CONFIG_SLAY_KEY] = slay_metadata.dict()
+
+    return config
+
+
 def make_truss(
     processor_dir: pathlib.Path,
     processor_desrciptor: definitions.ProcessorAPIDescriptor,
@@ -23,31 +80,17 @@ def make_truss(
 ) -> pathlib.Path:
     # TODO: Handle if model uses truss config instead of `defautl_config`.
     # TODO: Handle file-based overrides when deploying.
-    default_config = processor_desrciptor.processor_cls.default_config
-    config = truss_config.TrussConfig()
-    config.model_name = default_config.name or processor_desrciptor.cls_name
-    config.resources.cpu = "1"
-    config.resources.use_gpu = False
-    config.secrets = {f"{definitions.BASTEN_APY_SECRET_NAME}": "***"}
-    config.python_version = "3.11"
-    config.base_image = truss_config.BaseImage(image="python:3.11-slim")
-    config.requirements_file = "requirements.txt"
-
-    slay_config = definitions.TrussMetadata(
-        user_config=processor_desrciptor.processor_cls.default_config.user_config,
-        stub_cls_to_url=stub_cls_to_url,
+    config = _make_truss_config(
+        processor_desrciptor.processor_cls.default_config,
+        stub_cls_to_url,
+        fallback_name=processor_desrciptor.cls_name,
     )
-
-    config.model_metadata["slay_metadata"] = slay_config.dict()
 
     truss_dir = processor_dir / "truss"
     truss_dir.mkdir(exist_ok=True)
-
     config.write_to_yaml_file(truss_dir / "config.yaml", verbose=False)
 
     # Copy other sources.
-    shutil.copy(processor_dir / "requirements.txt", truss_dir)
-
     model_dir = truss_dir / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(

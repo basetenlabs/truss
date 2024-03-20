@@ -7,6 +7,8 @@ import pydantic
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
 BASTEN_APY_SECRET_NAME = "baseten_api_key"
+TRUSS_CONFIG_SLAY_KEY = "slay_metadata"
+
 ENDPOINT_NAME = "run"  # Referring to processor method name exposed as endpoint.
 # Below arg names must correspond to `definitions.ABCProcessor`.
 CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
@@ -25,42 +27,118 @@ class UsageError(Exception):
     """Raised when components are not used the expected way at runtime."""
 
 
-class Image(pydantic.BaseModel):
-    # TODO: this is a placeholder/dummy object.
+class ImageSpec(pydantic.BaseModel):
+    # python_version: str = "py311"
+    base_image: str = "python:3.11-slim"
+    pip_requirements_file: Optional[str] = None
+    pip_requirements: list[str] = []
+    apt_requirements: list[str] = []
+    # Unclear if needed:
+    # python_version
 
-    def pip_requirements_txt(self, *args, **kwargs) -> "Image":
+
+class Image:
+    _spec: ImageSpec
+
+    def __init__(self) -> None:
+        self._spec = ImageSpec()
+
+    def pip_requirements_file(self, file_path: str) -> "Image":
+        # TODO: deal with relative paths.
+        self._spec.pip_requirements_file = file_path
         return self
 
-    def pip_install(self, *args, **kwargs) -> "Image":
+    def pip_requirements(self, requirements: list[str]) -> "Image":
+        self._spec.pip_requirements = requirements
         return self
 
-    def cuda(self, *args, **kwargs) -> "Image":
+    def apt_requirements(self, requirements: list[str]) -> "Image":
+        self._spec.apt_requirements = requirements
         return self
 
+    def get_spec(self) -> ImageSpec:
+        return self._spec.copy(deep=True)
 
-class Resources(pydantic.BaseModel):
-    # TODO: this is a placeholder/dummy object.
 
-    def cpu(self, *args, **kwargs) -> "Resources":
+class ComputeSpec(pydantic.BaseModel):
+    cpu: str = "1"
+    memory: str = "2Gi"
+    gpu: Optional[str] = None
+
+
+class Compute:
+    _spec: ComputeSpec
+
+    def __init__(self) -> None:
+        self._spec = ComputeSpec()
+
+    def cpu(self, cpu: int) -> "Compute":
+        self._spec.cpu = str(cpu)
         return self
 
-    def gpu(self, *args, **kwargs) -> "Resources":
+    def memory(self, memory: str) -> "Compute":
+        self._spec.memory = memory
         return self
+
+    def gpu(self, kind: str, count: int = 1) -> "Compute":
+        self._spec.gpu = f"{kind}:{count}"
+        return self
+
+    def get_spec(self) -> ComputeSpec:
+        return self._spec.copy(deep=True)
+
+
+class AssetSpec(pydantic.BaseModel):
+    # TODO:
+    secrets: dict[str, str] = {}
+    cached: list[Any] = []
+
+
+class Assets:
+    _spec: AssetSpec
+
+    def __init__(self) -> None:
+        self._spec = AssetSpec()
+
+    def secret(self, key: str) -> "Assets":
+        self._spec.secrets[key] = "***"
+        return self
+
+    def cached(self, value: list[Any]) -> "Assets":
+        self._spec.cached = value
+        return self
+
+    def get_spec(self) -> AssetSpec:
+        return self._spec.copy(deep=True)
 
 
 class Config(pydantic.BaseModel, Generic[UserConfigT]):
     """Bundles config values needed to deploy a processor."""
 
+    class Config:
+        arbitrary_types_allowed = True
+
     name: Optional[str] = None
-    image: Optional[Image] = None
-    resources: Optional[Resources] = None
+    image: Image = Image()
+    compute: Compute = Compute()
+    assets: Assets = Assets()
     user_config: UserConfigT = pydantic.Field(default=None)
+
+    def get_image_spec(self) -> ImageSpec:
+        return self.image.get_spec()
+
+    def get_compute_spec(self) -> ComputeSpec:
+        return self.compute.get_spec()
+
+    def get_asset_spec(self) -> AssetSpec:
+        return self.assets.get_spec()
 
 
 class Context(pydantic.BaseModel, Generic[UserConfigT]):
     """Bundles config values needed to instantiate a processor in deployment."""
 
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+    class Config:
+        arbitrary_types_allowed = True
 
     user_config: UserConfigT = pydantic.Field(default=None)
     stub_cls_to_url: Mapping[str, str] = {}

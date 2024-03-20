@@ -1,6 +1,6 @@
 import slay
 
-IMAGE_NUMPY = slay.Image().pip_install("numpy")
+IMAGE_NUMPY = slay.Image().pip_requirements(["numpy"])
 
 
 class SplitText(slay.ProcessorBase):

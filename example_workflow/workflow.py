@@ -15,7 +15,7 @@ import pydantic
 import slay
 from user_package import shared_processor
 
-IMAGE_COMMON = slay.Image().pip_requirements_txt("common_requirements.txt")
+IMAGE_COMMON = slay.Image().pip_requirements_file("common_requirements.txt")
 
 
 class Parameters(pydantic.BaseModel):
@@ -40,9 +40,8 @@ class GenerateData(slay.ProcessorBase):
 
 IMAGE_TRANSFORMERS_GPU = (
     slay.Image()
-    .cuda("12.8")
-    .pip_requirements_txt("common_requirements.txt")
-    .pip_install("transformers")
+    # .cuda("12.8")
+    .pip_requirements_file("common_requirements.txt").pip_requirements(["transformers"])
 )
 
 
@@ -54,7 +53,7 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
     default_config = slay.Config(
         image=IMAGE_TRANSFORMERS_GPU,
-        resources=slay.Resources().cpu(12).gpu("A100"),
+        compute=slay.Compute().cpu(12).gpu("A100"),
         user_config=MistraLLMConfig(hf_model_name="EleutherAI/mistral-6.7B"),
     )
     # default_config = slay.Config(config_path="mistral_config.yaml")

@@ -12,7 +12,7 @@ class Model:
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
         truss_metadata: definitions.TrussMetadata = definitions.TrussMetadata.parse_obj(
-            config["model_metadata"]["slay_metadata"]
+            config["model_metadata"][definitions.TRUSS_CONFIG_SLAY_KEY]
         )
         self._context = definitions.Context(
             user_config=truss_metadata.user_config,

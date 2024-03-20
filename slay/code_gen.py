@@ -2,7 +2,6 @@ import ast
 import logging
 import pathlib
 import shlex
-import shutil
 import subprocess
 import textwrap
 from typing import Any, Iterable
@@ -50,13 +49,7 @@ def create_processor_dir(
     processor_name = processor_descriptor.cls_name
     file_name = f"processor_{processor_name}"
     processor_dir = workflow_root / GENERATED_CODE_DIR / file_name
-    processor_dir.mkdir(exist_ok=True)
-
-    # TODO: this has to come from a different file / or in-code config.
-    shutil.copy(
-        workflow_root / "requirements.txt",
-        processor_dir / "requirements.txt",
-    )
+    processor_dir.mkdir(exist_ok=True, parents=True)
     return processor_dir
 
 
@@ -290,7 +283,7 @@ def _rewrite_processor_inits(
     if not replacements:
         return source_tree
 
-    logging.info(f"Adding stub inits to `{processor_desrciptor.cls_name}`.")
+    logging.debug(f"Adding stub inits to `{processor_desrciptor.cls_name}`.")
 
     modified_tree = source_tree.visit(
         _InitRewriter(processor_desrciptor.cls_name, replacements)

@@ -1,4 +1,11 @@
-from .definitions import Config, Context, Image, Resources, UsageError  # noqa: F401
+from .definitions import (  # noqa: F401
+    Assets,
+    Compute,
+    Config,
+    Context,
+    Image,
+    UsageError,
+)
 from .public_api import ProcessorBase  # noqa: F401
 from .public_api import deploy_remotely  # noqa: F401
 from .public_api import provide  # noqa: F401
