@@ -17,6 +17,7 @@ from truss.remote.baseten import service as b10_service
 
 
 def _make_truss_config(
+    truss_dir: pathlib.Path,
     slay_config: definitions.Config,
     stub_cls_to_url: Mapping[str, str],
     fallback_name: str,
@@ -34,7 +35,7 @@ def _make_truss_config(
     config.base_image = truss_config.BaseImage(image=image.base_image)
     # config.python_version = image.python_version
 
-    pip_requirements = []
+    pip_requirements: list[str] = []
     if image.pip_requirements_file:
         pip_requirements.extend(
             req
@@ -44,11 +45,12 @@ def _make_truss_config(
             if not req.strip().startswith("#")
         )
     pip_requirements.extend(image.pip_requirements)
-    config.requirements = pip_requirements
-
-    # config.requirements = image.pip_requirements
-    # config.requirements_file = image.pip_requirements_file
-
+    # This will add server requirements which give version conflicts.
+    # config.requirements = pip_requirements
+    pip_requirements_file_path = truss_dir / "gen_requirements.txt"
+    pip_requirements_file_path.write_text("\n".join(pip_requirements))
+    # TODO: apparently absolute paths don't work with remote build (but work in local).
+    config.requirements_file = "gen_requirements.txt"  # str(pip_requirements_file_path)
     config.system_packages = image.apt_requirements
 
     # Assets.
@@ -80,14 +82,16 @@ def make_truss(
 ) -> pathlib.Path:
     # TODO: Handle if model uses truss config instead of `defautl_config`.
     # TODO: Handle file-based overrides when deploying.
+
+    truss_dir = processor_dir / "truss"
+    truss_dir.mkdir(exist_ok=True)
     config = _make_truss_config(
+        truss_dir,
         processor_desrciptor.processor_cls.default_config,
         stub_cls_to_url,
         fallback_name=processor_desrciptor.cls_name,
     )
 
-    truss_dir = processor_dir / "truss"
-    truss_dir.mkdir(exist_ok=True)
     config.write_to_yaml_file(truss_dir / "config.yaml", verbose=False)
 
     # Copy other sources.
