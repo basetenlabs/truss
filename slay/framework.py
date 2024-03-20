@@ -187,12 +187,15 @@ def _validate_variable_access(cls: Type[definitions.ABCProcessor]) -> None:
     ...
 
 
-def check_and_register_class(cls) -> None:
+def check_and_register_class(cls: Type[definitions.ABCProcessor]) -> None:
     processor_descriptor = definitions.ProcessorAPIDescriptor(
         processor_cls=cls,
         depdendencies=_validate_init_and_get_dependencies(cls),
         endpoint=_validate_and_describe_endpoint(cls),
         src_path=os.path.abspath(inspect.getfile(cls)),
+        user_config_type=definitions.TypeDescriptor(
+            raw=type(cls.default_config.user_config)
+        ),
     )
     logging.debug(f"Descriptor for {cls}:\n{processor_descriptor}\n")
     _validate_variable_access(cls)

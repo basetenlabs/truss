@@ -443,7 +443,15 @@ def load(self) -> None:
     class_definition = class_definition.visit(  # type: ignore[assignment]
         _ChangeProcessorAnnotation(processor_desrciptor.cls_name)
     )
-    return class_definition, new_imports
+
+    if issubclass(processor_desrciptor.user_config_type.raw, type(None)):
+        userconfig_pin = libcst.parse_statement("UserConfigT = None")
+    else:
+        userconfig_pin = libcst.parse_statement(
+            f"UserConfigT = {processor_desrciptor.user_config_type.as_src_str()}"
+        )
+
+    return class_definition, new_imports, userconfig_pin
 
 
 ########################################################################################
@@ -460,9 +468,9 @@ def generate_processor_source(
     # TODO: Processor isolation: either prune file or generate a new file.
     # At least remove main section.
 
-    model_def, imports = _generate_baseten_model(processor_desrciptor)
+    model_def, imports, userconfig_pin = _generate_baseten_model(processor_desrciptor)
     new_body: list[libcst.BaseStatement] = (  # type: ignore[assignment, misc]
-        imports + list(source_tree.body) + [model_def]
+        imports + list(source_tree.body) + [userconfig_pin, model_def]
     )
     source_tree = source_tree.with_changes(body=new_body)
     file_path.write_text(source_tree.code)

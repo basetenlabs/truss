@@ -142,11 +142,12 @@ class Workflow(slay.ProcessorBase):
 if __name__ == "__main__":
     import logging
 
-    # from slay import utils
+    from slay import utils
+
     # from slay.truss_compat import deploy
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
     log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
     date_format = "%m%d %H:%M:%S"
     formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
@@ -164,7 +165,8 @@ if __name__ == "__main__":
     #     result = asyncio.run(wf.run(length=123, num_partitions=123))
     #     print(result)
 
-    remote = slay.deploy_remotely(Workflow, generate_only=False)
+    with utils.log_level(logging.DEBUG):
+        remote = slay.deploy_remotely(Workflow, generate_only=False)
 
     # remote = slay.definitions.BasetenRemoteDescriptor(
     #     b10_model_id="7qk59gdq",

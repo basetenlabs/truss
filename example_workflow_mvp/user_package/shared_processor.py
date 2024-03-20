@@ -16,5 +16,5 @@ class SplitText(slay.ProcessorBase):
     async def run(self, data: str, num_partitions: int) -> tuple[list[str], int]:
         import numpy as np
 
-        parts = np.array_split(np.array(list(data)), 3)
+        parts = np.array_split(np.array(list(data)), num_partitions)
         return ["".join(part) for part in parts], 123

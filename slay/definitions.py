@@ -3,6 +3,7 @@ from types import GenericAlias
 from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
 
 import pydantic
+from pydantic import generics
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
@@ -112,7 +113,7 @@ class Assets:
         return self._spec.copy(deep=True)
 
 
-class Config(pydantic.BaseModel, Generic[UserConfigT]):
+class Config(generics.GenericModel, Generic[UserConfigT]):
     """Bundles config values needed to deploy a processor."""
 
     class Config:
@@ -134,7 +135,7 @@ class Config(pydantic.BaseModel, Generic[UserConfigT]):
         return self.assets.get_spec()
 
 
-class Context(pydantic.BaseModel, Generic[UserConfigT]):
+class Context(generics.GenericModel, Generic[UserConfigT]):
     """Bundles config values needed to instantiate a processor in deployment."""
 
     class Config:
@@ -167,7 +168,7 @@ class Context(pydantic.BaseModel, Generic[UserConfigT]):
         return api_key
 
 
-class TrussMetadata(pydantic.BaseModel, Generic[UserConfigT]):
+class TrussMetadata(generics.GenericModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["slay_metadata"])."""
 
     class Config:
@@ -230,6 +231,7 @@ class ProcessorAPIDescriptor(pydantic.BaseModel):
     src_path: str
     depdendencies: Mapping[str, Type[ABCProcessor]]
     endpoint: EndpointAPIDescriptor
+    user_config_type: TypeDescriptor
 
     def __hash__(self) -> int:
         return hash(self.processor_cls)
