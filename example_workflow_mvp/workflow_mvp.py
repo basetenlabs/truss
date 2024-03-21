@@ -64,26 +64,45 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         context: slay.Context = slay.provide_context(),
     ) -> None:
         super().__init__(context)
-        # import subprocess
-        # try:
-        #     subprocess.check_output(["nvidia-smi"], text=True)
-        # except:
-        #     raise RuntimeError(
-        #         f"Cannot run `{self.__class__}`, because host has no CUDA."
-        #     )
+        import torch
         import transformers
 
         model_name = self.user_config.hf_model_name
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
-        model = transformers.AutoModelForCausalLM.from_pretrained(model_name)
-        self._model = transformers.pipeline(
-            "text-generation", model=model, tokenizer=tokenizer
+
+        self._model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_name,
+            device_map="auto",
+            torch_dtype=torch.float16,
         )
 
+        self._generate_args = {
+            "max_new_tokens": 512,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "top_k": 50,
+            "repetition_penalty": 1.0,
+            "no_repeat_ngram_size": 0,
+            "use_cache": True,
+            "do_sample": True,
+            "eos_token_id": self._tokenizer.eos_token_id,
+            "pad_token_id": self._tokenizer.pad_token_id,
+        }
+
     def run(self, data: str) -> str:
-        # return data.upper()
-        result = self._model(data, max_length=50)
-        print(result)
+        import torch
+
+        formatted_prompt = f"[INST] {data} [/INST]"
+        input_ids = self._tokenizer(
+            formatted_prompt, return_tensors="pt"
+        ).input_ids.cuda()
+        with torch.no_grad():
+            output = self._model.generate(inputs=input_ids, **self._generate_args)
+            result = self._tokenizer.decode(output[0])
         return result
 
 
