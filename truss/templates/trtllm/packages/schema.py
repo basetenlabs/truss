@@ -142,7 +142,10 @@ class CalibrationConfig(BaseModel):
             return Path(f"sq_{self.sq_alpha}")
 
 
-class EngineBuildArgs(BaseModel, use_enum_values=True):
+class EngineBuildArgs(BaseModel):
+    class Config:
+        use_enum_values = True
+
     repo: Optional[str] = None
     args: Optional[ArgsConfig] = None
     quant: Optional[Quant] = None
