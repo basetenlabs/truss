@@ -403,27 +403,17 @@ class ServingImageBuilder(ImageBuilder):
         if should_install_server_requirements:
             copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
 
-        with open(base_truss_server_reqs_filepath, "r") as f:
-            base_server_requirements = f.read()
-
-        # If the user has provided python requirements,
-        # append the truss server requirements, so that any conflicts
-        # are detected and cause a build failure. If there are no
-        # requirements provided, we just pass an empty string,
-        # as there's no need to install anything.
-        user_provided_python_requirements = (
-            base_server_requirements + spec.requirements_txt
-            if spec.requirements
-            else ""
-        )
         if spec.requirements_file is not None:
             copy_into_build_dir(
                 truss_dir / spec.requirements_file,
                 USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
             )
-        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(
-            user_provided_python_requirements
-        )
+
+        # Do not append server requirements to user requirements.
+        # While adding them does cause build failures in case of
+        # conflicting requirements, it causes failures at times when it is not
+        # necessarily a problem.
+        (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(spec.requirements_txt)
         (build_dir / SYSTEM_PACKAGES_TXT_FILENAME).write_text(spec.system_packages_txt)
 
         self._render_dockerfile(
