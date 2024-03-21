@@ -12,20 +12,22 @@ from typing import (
     get_origin,
 )
 
+import pydantic as user_pydantic
+
 try:
-    from pydantic.v1 import BaseModel
+    import pydantic.v1 as pydantic_v1
 except ImportError:
-    from pydantic import BaseModel
+    import pydantic as pydantic_v1
 
 
-class OutputType(BaseModel):
+class OutputType(pydantic_v1.BaseModel):
     type: Optional[type]
     supports_streaming: bool
 
 
-class TrussSchema(BaseModel):
-    input_type: Type[BaseModel]
-    output_type: Optional[Type[BaseModel]]
+class TrussSchema(pydantic_v1.BaseModel):
+    input_type: Type[user_pydantic.BaseModel]
+    output_type: Optional[Type[user_pydantic.BaseModel]]
     supports_streaming: bool
 
     @classmethod
@@ -37,7 +39,9 @@ class TrussSchema(BaseModel):
         """
 
         input_type = _parse_input_type(input_parameters)
+        print("input_type: ", input_type)
         output_type = _parse_output_type(output_annotation)
+        print("output_type :", output_type)
 
         if not input_type or not output_type:
             return None
@@ -55,22 +59,25 @@ class TrussSchema(BaseModel):
         """
         return {
             "input_schema": self.input_type.schema(),
-            "output_schema": self.output_type.schema()
-            if self.output_type is not None
-            else None,
+            "output_schema": (
+                self.output_type.schema() if self.output_type is not None else None
+            ),
             "supports_streaming": self.supports_streaming,
         }
 
 
 def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
     parameter_types = list(input_parameters.values())
+    print("parameter_types: ", parameter_types)
 
     if len(parameter_types) > 1:
         return None
 
     input_type = parameter_types[0].annotation
+    print("input_type :", input_type)
 
     if _annotation_is_pydantic_model(input_type):
+        print("retuning type.")
         return input_type
 
     return None
@@ -80,8 +87,11 @@ def _annotation_is_pydantic_model(annotation: Any) -> bool:
     # This try/except clause a workaround for the fact that issubclass()
     # does not work with generic types (ie: list, dict),
     # and raises a TypeError
+    print("annotation: ", annotation)
     try:
-        return issubclass(annotation, BaseModel)
+        x = issubclass(annotation, user_pydantic.BaseModel)
+        print("bool: ", x)
+        return x
     except TypeError:
         return False
 
@@ -137,7 +147,7 @@ def _is_awaitable_type(annotation: Any) -> bool:
 
 def retrieve_base_class_from_awaitable(
     awaitable_annotation: type,
-) -> Optional[Type[BaseModel]]:
+) -> Optional[Type[user_pydantic.BaseModel]]:
     """
     Returns the base class of an Awaitable type if it is of the form:
     Awaitable[PydanticBaseModel]
@@ -147,13 +157,17 @@ def retrieve_base_class_from_awaitable(
     (awaitable_type,) = get_args(
         awaitable_annotation
     )  # Note that Awaitable has only one type argument
-    if isinstance(awaitable_type, type) and issubclass(awaitable_type, BaseModel):
+    if isinstance(awaitable_type, type) and issubclass(
+        awaitable_type, user_pydantic.BaseModel
+    ):
         return awaitable_type
 
     return None
 
 
-def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
+def _extract_pydantic_base_models(
+    union_args: tuple,
+) -> List[Type[user_pydantic.BaseModel]]:
     """
     Extracts any pydantic base model arguments from the arms of a Union type.
     The two cases are:
@@ -165,11 +179,13 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
         retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg
         for arg in union_args
         if _is_awaitable_type(arg)
-        or (isinstance(arg, type) and issubclass(arg, BaseModel))
+        or (isinstance(arg, type) and issubclass(arg, user_pydantic.BaseModel))
     ]
 
 
-def retrieve_base_class_from_union(union_annotation: type) -> Optional[Type[BaseModel]]:
+def retrieve_base_class_from_union(
+    union_annotation: type,
+) -> Optional[Type[user_pydantic.BaseModel]]:
     """
     Returns the base class of a Union type if it is of the form:
     Union[PydanticBaseModel, Generator] or in the case of async functions:
