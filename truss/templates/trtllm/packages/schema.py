@@ -5,7 +5,11 @@ from typing import Optional
 import numpy as np
 import tritonclient
 import tritonclient.grpc.aio as grpcclient
-from pydantic import BaseModel, ConfigDict, PrivateAttr
+
+try:
+    from pydantic.v1 import BaseModel, ConfigDict, PrivateAttr
+except ImportError:
+    from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 
 class ModelInput:

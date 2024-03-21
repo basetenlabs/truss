@@ -344,7 +344,7 @@ class TrussServer:
         # Call this so uvloop gets used
         cfg.setup_event_loop()
 
-        async def serve():
+        async def serve() -> None:
             serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             serversocket.bind((cfg.host, cfg.port))
