@@ -1,0 +1,13 @@
+review:
+  auto_review:
+    enabled: true
+    draft: false
+    ignore_title_keywords: []
+    ignore_labels: []
+    excluded_base_branches: []
+  pr_summary: true
+  file_summaries: true
+  github_action_repair: true
+  criticality_filter_level: medium
+  path_filters: []
+  path_instructions: []
