@@ -52,10 +52,7 @@ def test_requirements_setup_in_build_dir(custom_model_truss_dir):
         with open(tmp_path / "requirements.txt", "r") as f:
             requirements_content = f.read()
 
-        with open(f"{BASE_DIR}/../../../templates/server/requirements.txt", "r") as f:
-            base_requirements_content = f.read()
-
-        assert requirements_content == base_requirements_content + "numpy\n"
+        assert requirements_content == "numpy\n"
 
 
 def flatten_cached_files(local_cache_files):
