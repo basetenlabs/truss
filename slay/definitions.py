@@ -15,6 +15,8 @@ ENDPOINT_NAME = "run"  # Referring to processor method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
 SELF_ARG_NAME = "self"
 
+GENERATED_CODE_DIR = ".slay_generated"
+
 
 class APIDefinitonError(TypeError):
     """Raised when user-defined processors do not adhere to API constraints."""
@@ -29,13 +31,10 @@ class UsageError(Exception):
 
 
 class ImageSpec(pydantic.BaseModel):
-    # python_version: str = "py311"
     base_image: str = "python:3.11-slim"
     pip_requirements_file: Optional[str] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
-    # Unclear if needed:
-    # python_version
 
 
 class Image:
@@ -90,7 +89,6 @@ class Compute:
 
 
 class AssetSpec(pydantic.BaseModel):
-    # TODO:
     secrets: dict[str, str] = {}
     cached: list[Any] = []
 
@@ -249,3 +247,4 @@ class BasetenRemoteDescriptor(pydantic.BaseModel):
 
 
 PREDICT_ENDPOINT = "/predict"
+PROCESSOR_MODULE = "processor"

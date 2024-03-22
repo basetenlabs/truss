@@ -1,13 +1,9 @@
-from .definitions import (  # noqa: F401
-    Assets,
-    Compute,
-    Config,
-    Context,
-    Image,
-    UsageError,
+# flake8: noqa F401
+from slay.definitions import Assets, Compute, Config, Context, Image, UsageError
+from slay.public_api import (
+    ProcessorBase,
+    deploy_remotely,
+    provide,
+    provide_context,
+    run_local,
 )
-from .public_api import ProcessorBase  # noqa: F401
-from .public_api import deploy_remotely  # noqa: F401
-from .public_api import provide  # noqa: F401
-from .public_api import provide_context  # noqa: F401
-from .public_api import run_local  # noqa: F401

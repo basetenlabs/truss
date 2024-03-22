@@ -185,7 +185,9 @@ if __name__ == "__main__":
     #     print(result)
 
     with utils.log_level(logging.DEBUG):
-        remote = slay.deploy_remotely(Workflow, generate_only=False)
+        remote = slay.deploy_remotely(
+            Workflow, workflow_name="Test", generate_only=True
+        )
 
     # remote = slay.definitions.BasetenRemoteDescriptor(
     #     b10_model_id="7qk59gdq",

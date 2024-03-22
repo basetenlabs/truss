@@ -46,7 +46,9 @@ def _validate_io_type(anno) -> None:
         try:
             anno.schema()
         except Exception as e:
-            raise definitions.APIDefinitonError() from e
+            raise definitions.APIDefinitonError(
+                "Pydantic annotations must be cable to generate a schema. Please fix."
+            ) from e
         return
 
     raise definitions.APIDefinitonError(anno)
@@ -399,16 +401,17 @@ def run_local() -> Any:
 def _create_remote_service(
     baseten_client: deploy.BasetenClient,
     processor_dir: pathlib.Path,
+    workflow_root: pathlib.Path,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
     stub_cls_to_url: Mapping[str, str],
+    maybe_stub_file: Optional[pathlib.Path],
+    worfklow_name: str,
     generate_only: bool,
 ) -> definitions.BasetenRemoteDescriptor:
-    # TODO: copy other local deps.
     processor_filepath = shutil.copy(
         processor_descriptor.src_path,
-        os.path.join(processor_dir, f"{code_gen.PROCESSOR_MODULE}.py"),
+        os.path.join(processor_dir, f"{definitions.PROCESSOR_MODULE}.py"),
     )
-
     code_gen.generate_processor_source(
         pathlib.Path(processor_filepath), processor_descriptor
     )
@@ -419,13 +422,22 @@ def _create_remote_service(
     }
 
     # Convert to truss and deploy.
+    # TODO: resolve config from file or other override.
+    slay_config = processor_descriptor.processor_cls.default_config
+    processor_name = slay_config.name or processor_descriptor.cls_name
+    model_name = f"{worfklow_name}.{processor_name}"
     truss_dir = deploy.make_truss(
-        pathlib.Path(processor_dir), processor_descriptor, stub_cls_to_url
+        processor_dir,
+        workflow_root,
+        slay_config,
+        model_name,
+        stub_cls_to_url,
+        maybe_stub_file,
     )
     if generate_only:
         remote_descriptor = definitions.BasetenRemoteDescriptor(
             b10_model_id="dummy",
-            b10_model_name=processor_descriptor.cls_name,
+            b10_model_name=model_name,
             b10_model_version_id="dymmy",
             b10_model_url=f"https://{processor_descriptor.cls_name}.api.baseten.co/production",
         )
@@ -462,6 +474,7 @@ def _get_ordered_processor_descriptors(
 
 def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
+    worfklow_name: str,
     baseten_url: str = "https://app.baseten.co",
     generate_only: bool = False,
 ) -> definitions.BasetenRemoteDescriptor:
@@ -476,17 +489,20 @@ def deploy_remotely(
     entrypoint_remote: Optional[definitions.BasetenRemoteDescriptor] = None
     for processor_descriptor in ordered_descriptors:
         processor_dir = code_gen.create_processor_dir(
-            workflow_root, processor_descriptor
+            workflow_root, worfklow_name, processor_descriptor
         )
-        code_gen.generate_stubs_for_deps(
+        maybe_stub_file = code_gen.generate_stubs_for_deps(
             processor_dir,
             _global_processor_registry.get_dependencies(processor_descriptor),
         )
         remote_descriptor = _create_remote_service(
             baseten_client,
             processor_dir,
+            workflow_root,
             processor_descriptor,
             stub_cls_to_url,
+            maybe_stub_file,
+            worfklow_name,
             generate_only,
         )
         stub_cls_to_url[processor_descriptor.cls_name] = remote_descriptor.b10_model_url

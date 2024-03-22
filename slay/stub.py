@@ -6,30 +6,39 @@ import httpx
 from slay import definitions
 
 
+def _handle_respose(response: httpx.Response):
+    if response.is_server_error:
+        raise ValueError(response)
+    if response.is_client_error:
+        raise ValueError(response)
+    return response.json()
+
+
 class BasetenSession:
-    def __init__(self, url: str, api_key: str):
+    def __init__(self, url: str, api_key: str) -> None:
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._url = url
 
     @functools.cached_property
-    def _client_sync(self):
+    def _client_sync(self) -> httpx.Client:
         return httpx.Client(base_url=self._url, headers=self._auth_header)
 
     @functools.cached_property
-    def _client_async(self):
+    def _client_async(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self._url, headers=self._auth_header)
 
+    # TODO:
     def predict_sync(self, json_paylod):
-        response = self._client_sync.post(
-            definitions.PREDICT_ENDPOINT, json=json_paylod
+        return _handle_respose(
+            self._client_sync.post(definitions.PREDICT_ENDPOINT, json=json_paylod)
         )
-        return response.json()
 
     async def predict_async(self, json_paylod):
-        response = await self._client_async.post(
-            definitions.PREDICT_ENDPOINT, json=json_paylod
+        return _handle_respose(
+            await self._client_async.post(
+                definitions.PREDICT_ENDPOINT, json=json_paylod
+            )
         )
-        return response.json()
 
 
 class StubBase(abc.ABC):

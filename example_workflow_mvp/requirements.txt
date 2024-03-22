@@ -1,3 +1,4 @@
-git+https://github.com/basetenlabs/truss.git@marius-orchestration
+git+https://github.com/basetenlabs/truss.git
 httpx
 libcst
+pydantic

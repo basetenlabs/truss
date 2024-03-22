@@ -74,4 +74,4 @@ yarn.lock
 /.pytest_cache/
 
 # Slay workflow generated code.
-**/.slay_gen/**
+**/.slay_generated/**

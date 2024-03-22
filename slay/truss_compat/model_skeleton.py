@@ -4,10 +4,11 @@ import pydantic
 from slay import definitions
 from truss.templates.shared import secrets_resolver
 
+# Better: in 3.10 use `TypeAlias`.
 UserConfigT = pydantic.BaseModel
 
 
-class Model:
+class ProcessorModel:
     _context: definitions.Context[UserConfigT]
     _processor: definitions.ABCProcessor
 
@@ -26,9 +27,10 @@ class Model:
         )
 
     # Below illustrated code will be added by code generation.
+
     # def load(self):
     #     self._processor = {ProcssorCls}(self._context)
 
-    # Sync async.
+    # Sync or async.
     # def predict(self, payload):
     #     return self._processor.{method_name}(payload)

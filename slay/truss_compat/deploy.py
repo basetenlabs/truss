@@ -1,40 +1,60 @@
 import enum
 import logging
+import os
 import pathlib
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, Optional, cast
 
 import httpx
 import requests
+import slay
 import truss
-from slay import code_gen, definitions, utils
+from slay import definitions, utils
 from slay.utils import ConditionStatus
 from truss import truss_config
+from truss.contexts.image_builder import serving_image_builder
 from truss.remote import remote_factory, truss_remote
 from truss.remote.baseten import service as b10_service
+
+_REQUIREMENTS_FILENAME = "pip_requirements.txt"
+_MODEL_CLASS_FILENAME = "processor.py"
+_MODEL_CLASS_NAME = "ProcessorModel"
+_TRUSS_DIR = ".truss_gen"
+
+
+def _copy_python_source_files(root_dir: pathlib.Path, dest_dir: pathlib.Path) -> None:
+    def python_files_only(path, names):
+        return [
+            name
+            for name in names
+            if os.path.isfile(os.path.join(path, name))
+            and not name.endswith(".py")
+            or definitions.GENERATED_CODE_DIR in name
+        ]
+
+    shutil.copytree(root_dir, dest_dir, ignore=python_files_only, dirs_exist_ok=True)
 
 
 def _make_truss_config(
     truss_dir: pathlib.Path,
     slay_config: definitions.Config,
     stub_cls_to_url: Mapping[str, str],
-    fallback_name: str,
+    model_name: str,
 ) -> truss_config.TrussConfig:
     config = truss_config.TrussConfig()
-    config.model_name = slay_config.name or fallback_name
+    config.model_name = model_name
+    config.model_class_filename = _MODEL_CLASS_FILENAME
+    config.model_class_name = _MODEL_CLASS_NAME
     # Compute.
     compute = slay_config.get_compute_spec()
     config.resources.cpu = compute.cpu
     config.resources.accelerator = truss_config.AcceleratorSpec.from_str(compute.gpu)
     config.resources.use_gpu = bool(compute.gpu)
-
     # Image.
     image = slay_config.get_image_spec()
     config.base_image = truss_config.BaseImage(image=image.base_image)
-    # config.python_version = image.python_version
-
     pip_requirements: list[str] = []
     if image.pip_requirements_file:
         pip_requirements.extend(
@@ -45,14 +65,13 @@ def _make_truss_config(
             if not req.strip().startswith("#")
         )
     pip_requirements.extend(image.pip_requirements)
-    # This will add server requirements which give version conflicts.
+    # `pip_requirements` will add server requirements which give version conflicts.
     # config.requirements = pip_requirements
-    pip_requirements_file_path = truss_dir / "gen_requirements.txt"
+    pip_requirements_file_path = truss_dir / _REQUIREMENTS_FILENAME
     pip_requirements_file_path.write_text("\n".join(pip_requirements))
     # TODO: apparently absolute paths don't work with remote build (but work in local).
-    config.requirements_file = "gen_requirements.txt"  # str(pip_requirements_file_path)
+    config.requirements_file = _REQUIREMENTS_FILENAME  # str(pip_requirements_file_path)
     config.system_packages = image.apt_requirements
-
     # Assets.
     assets = slay_config.get_asset_spec()
     config.secrets = assets.secrets
@@ -64,64 +83,54 @@ def _make_truss_config(
             "to secrets - no need to manually add it."
         )
     config.model_cache.models = assets.cached
-
     # Metadata.
-    slay_metadata = definitions.TrussMetadata(
+    slay_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
         user_config=slay_config.user_config,
         stub_cls_to_url=stub_cls_to_url,
     )
     config.model_metadata[definitions.TRUSS_CONFIG_SLAY_KEY] = slay_metadata.dict()
-
     return config
 
 
 def make_truss(
     processor_dir: pathlib.Path,
-    processor_desrciptor: definitions.ProcessorAPIDescriptor,
+    workflow_root: pathlib.Path,
+    slay_config: definitions.Config,
+    model_name: str,
     stub_cls_to_url: Mapping[str, str],
+    maybe_stub_file: Optional[pathlib.Path],
 ) -> pathlib.Path:
-    # TODO: Handle if model uses truss config instead of `defautl_config`.
-    # TODO: Handle file-based overrides when deploying.
-
-    truss_dir = processor_dir / "truss"
+    truss_dir = processor_dir / _TRUSS_DIR
     truss_dir.mkdir(exist_ok=True)
-    config = _make_truss_config(
-        truss_dir,
-        processor_desrciptor.processor_cls.default_config,
-        stub_cls_to_url,
-        fallback_name=processor_desrciptor.cls_name,
-    )
+    config = _make_truss_config(truss_dir, slay_config, stub_cls_to_url, model_name)
 
-    config.write_to_yaml_file(truss_dir / "config.yaml", verbose=False)
+    config.write_to_yaml_file(
+        truss_dir / serving_image_builder.CONFIG_FILE, verbose=False
+    )
 
     # Copy other sources.
-    model_dir = truss_dir / "model"
+    model_dir = truss_dir / truss_config.DEFAULT_MODEL_MODULE_DIR
     model_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(
-        processor_dir / f"{code_gen.PROCESSOR_MODULE}.py", model_dir / "model.py"
+        processor_dir / f"{definitions.PROCESSOR_MODULE}.py",
+        model_dir / _MODEL_CLASS_FILENAME,
     )
 
-    pkg_dir = truss_dir / "packages"
+    pkg_dir = truss_dir / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR
     pkg_dir.mkdir(parents=True, exist_ok=True)
-    for module in processor_dir.glob("*.py"):
-        if module.name != "model.py":
-            shutil.copy(module, pkg_dir)
-
-    # TODO This dependency should be handled automatically.
+    if maybe_stub_file is not None:
+        shutil.copy(maybe_stub_file, pkg_dir)
+    # TODO This assume all imports are absolute w.r.t workflow root (or site-packages).
     # Also: apparently packages need an `__init__`, or crash.
-    shutil.copytree(
-        "/home/marius-baseten/workbench/truss/example_workflow/user_package",
-        pkg_dir / "user_package",
-        dirs_exist_ok=True,
-    )
+    _copy_python_source_files(workflow_root, pkg_dir / pkg_dir)
 
-    # TODO This should be included in truss or a lib, not manually copied.
+    # TODO Truss package contains this from `{ include = "slay", from = "." }`
+    # pyproject.toml. But for quick dev loop just copy from local.
     shutil.copytree(
-        "/home/marius-baseten/workbench/truss/slay",
+        os.path.dirname(slay.__file__),
         pkg_dir / "slay",
         dirs_exist_ok=True,
     )
-
     return truss_dir
 
 
@@ -199,10 +208,7 @@ class BasetenClient:
                 name
                 versions{{
                     id
-                    semver
                     current_deployment_status
-                    truss_hash
-                    truss_signature
                 }}
             }}
         }}

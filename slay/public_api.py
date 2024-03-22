@@ -41,9 +41,12 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
 
 def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
+    workflow_name: str,
     generate_only: bool = False,
 ) -> definitions.BasetenRemoteDescriptor:
-    return framework.deploy_remotely(entrypoint, generate_only=generate_only)
+    return framework.deploy_remotely(
+        entrypoint, workflow_name, generate_only=generate_only
+    )
 
 
 def run_local() -> ContextManager[None]:
