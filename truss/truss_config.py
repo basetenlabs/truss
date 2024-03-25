@@ -311,7 +311,7 @@ class DockerAuthSettings:
 
     auth_method: DockerAuthType
     secret_name: str
-    location: Optional[str] = ""
+    registry: Optional[str] = ""
 
     @staticmethod
     def from_dict(d: Dict[str, str]):
@@ -329,14 +329,14 @@ class DockerAuthSettings:
         return DockerAuthSettings(
             auth_method=DockerAuthType[auth_method],
             secret_name=secret_name,
-            location=d.get("location"),
+            registry=d.get("registry"),
         )
 
     def to_dict(self):
         return {
-            "auth_method": self.auth_method,
+            "auth_method": self.auth_method.value,
             "secret_name": self.secret_name,
-            "location": self.location,
+            "registry": self.registry,
         }
 
 
