@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -29,16 +30,23 @@ class TritonServer:
         huggingface_auth_token: Optional[str] = None,
     ) -> None:
         if engine_repository_path:
-            download_engine(
-                engine_repository=engine_repository_path,
-                fp=truss_data_dir,
-                auth_token=huggingface_auth_token,
-            )
+            if Path(engine_repository_path).is_dir():
+                if str(engine_repository_path) != str(truss_data_dir):
+                    shutil.copytree(
+                        engine_repository_path, truss_data_dir, dirs_exist_ok=True
+                    )
+            else:
+                # If engine_repository_path is not a local directory, download the engine
+                download_engine(
+                    engine_repository=engine_repository_path,
+                    fp=truss_data_dir,
+                    auth_token=huggingface_auth_token,
+                )
+
         prepare_model_repository(truss_data_dir)
         return
 
     def start(self, world_size: int = 1, env: dict = {}) -> None:
-
         mpirun_command = ["mpirun", "--allow-run-as-root"]
         mpi_commands = []
         for i in range(world_size):
