@@ -1,6 +1,7 @@
 import os
 from itertools import count
 
+import build_engine_utils
 from builder.types import TrussTRTLLMConfiguration
 from constants import (
     GRPC_SERVICE_PORT,
@@ -11,6 +12,10 @@ from constants import (
 from schema import ModelInput
 from transformers import AutoTokenizer
 from triton_client import TritonClient, TritonServer
+from utils import execute_command
+
+DEFAULT_MAX_TOKENS = 500
+DEFAULT_MAX_NEW_TOKENS = 500
 
 
 class Model:
@@ -25,6 +30,7 @@ class Model:
         self.uses_openai_api = None
 
     def load(self):
+        execute_command(["ldconfig"])
         trtllm_config = TrussTRTLLMConfiguration(**self._config.get("trt_llm", {}))
         self.uses_openai_api = "openai-compatible" in self._config.get(
             "model_metadata", {}
@@ -32,6 +38,17 @@ class Model:
         hf_access_token = None
         if "hf_access_token" in self._secrets._base_secrets.keys():
             hf_access_token = self._secrets["hf_access_token"]
+
+        # The underlying engine build call is idempotent, so we can call it in the load
+        # even if the engine is already built. The engine build call checks to see if
+        # there are .engine files in the destination directory and skips the build if
+        # they are present.
+        if trtllm_config.requires_build:
+            build_engine_utils.build_engine_from_config_args(
+                truss_trtllm_configuration=trtllm_config,
+                checkpoint_dir_path=None,
+                dst=self._data_dir,
+            )
 
         self.triton_server = TritonServer(
             grpc_port=GRPC_SERVICE_PORT,
@@ -43,15 +60,14 @@ class Model:
             tokenizer_repository = trtllm_config.serve.tokenizer_repository
             tensor_parallel_count = trtllm_config.serve.tensor_parallel_count
             pipeline_parallel_count = trtllm_config.serve.pipeline_parallel_count
-            world_size = tensor_parallel_count * pipeline_parallel_count
         else:
-            # If this engine required a build, it happened in the pre-deploy stage
-            # and the engine lives inside the data directory
+            # If this model required a build, the engine live inside the data_dir
             engine_repository_path = self._data_dir
             tokenizer_repository = trtllm_config.build.huggingface_ckpt_repository
             tensor_parallel_count = trtllm_config.build.tensor_parallel_count
             pipeline_parallel_count = trtllm_config.build.pipeline_parallel_count
-            world_size = tensor_parallel_count * pipeline_parallel_count
+
+        world_size = tensor_parallel_count * pipeline_parallel_count
 
         self.triton_server.create_model_repository(
             truss_data_dir=self._data_dir,
@@ -79,6 +95,12 @@ class Model:
         self.eos_token_id = self.tokenizer.eos_token_id
 
     async def predict(self, model_input):
+        if model_input.get("max_tokens") is None:
+            model_input["max_tokens"] = DEFAULT_MAX_TOKENS
+
+        if model_input.get("max_new_tokens") is None:
+            model_input["max_new_tokens"] = DEFAULT_MAX_NEW_TOKENS
+
         model_input["request_id"] = str(os.getpid()) + str(
             next(self._request_id_counter)
         )
