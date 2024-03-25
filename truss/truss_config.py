@@ -308,7 +308,7 @@ class DockerAuthType(Enum):
 
 @dataclass
 class DockerAuthSettings:
-    """ "
+    """
     Provides information about how to authenticate to the docker registry containing
     the custom base image.
     """
@@ -372,7 +372,9 @@ class BaseImage:
         return {
             "image": self.image,
             "python_executable_path": self.python_executable_path,
-            "docker_auth": self.docker_auth.to_dict(),
+            "docker_auth": transform_optional(
+                self.docker_auth, lambda docker_auth: docker_auth.to_dict()
+            ),
         }
 
 
