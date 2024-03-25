@@ -19,8 +19,8 @@ In practice, this reduces the cold start for large models to just a few seconds.
 ## Enabling Caching for a Model
 
 To enable caching, simply add `model_cache` to your `config.yml` with a valid `repo_id`. The `model_cache` has a few key configurations:
-- `repo_id` (required): The endpoint for your cloud bucket. Currently, we support Hugging Face and Google Cloud Storage.
-- `revision`: Points to your revision. This is only relevant if you are pulling By default, it refers to `main`.
+- `repo_id` (required): The endpoint for your cloud bucket. Currently, we support Hugging Face, Google Cloud Storage, and Amazon Web Services S3.
+- `revision`: Points to your revision. This is only relevant if you are pulling. By default, it refers to `main`.
 - `allow_patterns`: Only cache files that match specified patterns. Utilize Unix shell-style wildcards to denote these patterns.
 - `ignore_patterns`: Conversely, you can also denote file patterns to ignore, hence streamlining the caching process.
 
