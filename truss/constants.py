@@ -98,10 +98,9 @@ HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
-TRTLLM_BASE_IMAGE = "baseten/trtllm-build-server:r23.12_baseten_v0.9.0_20240305"
+TRTLLM_BASE_IMAGE = "baseten/trtllm-build-server:r23.12_baseten_v0.9.0_20240325_dev1"
 BASE_TRTLLM_REQUIREMENTS = [
     "tritonclient[all]==2.42.0",
     "transformers==4.33.1",
     "jinja2==3.1.3",
-    "truss",
 ]
