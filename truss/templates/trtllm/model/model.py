@@ -95,29 +95,22 @@ class Model:
         self.eos_token_id = self.tokenizer.eos_token_id
 
     async def predict(self, model_input):
-        if model_input.get("max_tokens") is None:
-            model_input["max_tokens"] = DEFAULT_MAX_TOKENS
+        if "messages" not in model_input and "prompt" not in model_input:
+            raise ValueError("Prompt or messages must be provided")
 
-        if model_input.get("max_new_tokens") is None:
-            model_input["max_new_tokens"] = DEFAULT_MAX_NEW_TOKENS
-
+        model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
+        model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
         model_input["request_id"] = str(os.getpid()) + str(
             next(self._request_id_counter)
         )
         model_input["eos_token_id"] = self.eos_token_id
-        messages = model_input.get("messages", [])
-        if "messages" in model_input:
-            del model_input["messages"]
-        prompt = model_input.get("prompt", None)
-        if not prompt and messages == []:
-            raise ValueError("Prompt or messages must be provided")
 
-        if self.uses_openai_api and not prompt:
-            prompt = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-            )
-            model_input["prompt"] = prompt
+        if "messages" in model_input:
+            messages = model_input.pop("messages")
+            if self.uses_openai_api and "prompt" not in model_input:
+                model_input["prompt"] = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False
+                )
 
         self.triton_client.start_grpc_stream()
         model_input = ModelInput(**model_input)
