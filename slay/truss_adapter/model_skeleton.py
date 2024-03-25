@@ -4,7 +4,7 @@ import pydantic
 from slay import definitions
 from truss.templates.shared import secrets_resolver
 
-# Better: in 3.10 use `TypeAlias`.
+# Better: in >=3.10 use `TypeAlias`.
 UserConfigT = pydantic.BaseModel
 
 

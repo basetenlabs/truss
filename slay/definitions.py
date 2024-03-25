@@ -16,6 +16,8 @@ CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
 SELF_ARG_NAME = "self"
 
 GENERATED_CODE_DIR = ".slay_generated"
+PREDICT_ENDPOINT = "/predict"
+PROCESSOR_MODULE = "processor"
 
 
 class APIDefinitonError(TypeError):
@@ -31,6 +33,7 @@ class UsageError(Exception):
 
 
 class ImageSpec(pydantic.BaseModel):
+    # TODO: this is not stable yet and might change or refer back to truss.
     base_image: str = "python:3.11-slim"
     pip_requirements_file: Optional[str] = None
     pip_requirements: list[str] = []
@@ -38,13 +41,15 @@ class ImageSpec(pydantic.BaseModel):
 
 
 class Image:
+    """Builder to create image spec."""
+
     _spec: ImageSpec
 
     def __init__(self) -> None:
         self._spec = ImageSpec()
 
     def pip_requirements_file(self, file_path: str) -> "Image":
-        # TODO: deal with relative paths.
+        # TODO: Make this work with relative paths.
         self._spec.pip_requirements_file = file_path
         return self
 
@@ -61,12 +66,15 @@ class Image:
 
 
 class ComputeSpec(pydantic.BaseModel):
+    # TODO: this is not stable yet and might change or refer back to truss.
     cpu: str = "1"
     memory: str = "2Gi"
     gpu: Optional[str] = None
 
 
 class Compute:
+    """Builder to create compute spec."""
+
     _spec: ComputeSpec
 
     def __init__(self) -> None:
@@ -89,11 +97,14 @@ class Compute:
 
 
 class AssetSpec(pydantic.BaseModel):
+    # TODO: this is not stable yet and might change or refer back to truss.
     secrets: dict[str, str] = {}
     cached: list[Any] = []
 
 
 class Assets:
+    """Builder to create asset spec."""
+
     _spec: AssetSpec
 
     def __init__(self) -> None:
@@ -185,8 +196,8 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
     def __init__(self, context: Context[UserConfigT]) -> None:
         ...
 
-    # Cannot add this abstract method to API, because overriding it with concrete
-    # arguments would give type error.s
+    # Cannot add this abstract method to API, because we want to allow arbitraty
+    # arg/kwarg names and specifying any function signature here would give type errors
     # @abc.abstractmethod
     # def predict(self, *args, **kwargs) -> Any: ...
 
@@ -198,6 +209,8 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
 
 class TypeDescriptor(pydantic.BaseModel):
     """For describing I/O types of processors."""
+
+    # TODO: Supporting pydantic types.
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
 
@@ -244,7 +257,3 @@ class BasetenRemoteDescriptor(pydantic.BaseModel):
     b10_model_version_id: str
     b10_model_name: str
     b10_model_url: str
-
-
-PREDICT_ENDPOINT = "/predict"
-PROCESSOR_MODULE = "processor"

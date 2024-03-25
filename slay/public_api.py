@@ -1,3 +1,10 @@
+"""
+TODO:
+  * Shim to call already hosted basteten model.
+  * Helper to create a `Processor` from a truss dir.
+"""
+
+
 from typing import Any, ContextManager, Type, final
 
 from slay import definitions, framework
@@ -10,6 +17,7 @@ def provide_context() -> Any:
 
 def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
     """Sets a 'symbolic marker' for injecting a stub or local processor at runtime."""
+    # TODO: consider adding retry or timeout configuraiton here.
     return framework.ProcessorProvisionPlaceholder(processor_cls)
 
 
@@ -50,4 +58,5 @@ def deploy_remotely(
 
 
 def run_local() -> ContextManager[None]:
+    """Context manager for using in-process instantiations of processor dependencies."""
     return framework.run_local()

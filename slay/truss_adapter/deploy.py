@@ -25,6 +25,8 @@ _TRUSS_DIR = ".truss_gen"
 
 
 def _copy_python_source_files(root_dir: pathlib.Path, dest_dir: pathlib.Path) -> None:
+    """Copy all python files under root recursively, but skips generated code."""
+
     def python_files_only(path, names):
         return [
             name
@@ -43,6 +45,7 @@ def _make_truss_config(
     stub_cls_to_url: Mapping[str, str],
     model_name: str,
 ) -> truss_config.TrussConfig:
+    """Generate a truss config for a processor."""
     config = truss_config.TrussConfig()
     config.model_name = model_name
     config.model_class_filename = _MODEL_CLASS_FILENAME
@@ -172,6 +175,9 @@ def _model_url(baseten_env: _BasetenEnv, model_id: str) -> str:
 
 
 class BasetenClient:
+    """Helper to deploy models on baseten and inquire their status."""
+
+    # TODO: use rest APIs where possible in stead of graphql_query.
     def __init__(self, baseten_url: str, baseten_api_key: str) -> None:
         self._baseten_url = baseten_url
         self._baseten_env = _infer_env(baseten_url)
@@ -305,6 +311,7 @@ def call_workflow_dbg(
     max_retries: int = 100,
     retry_wait_sec: int = 3,
 ) -> httpx.Response:
+    """For debugging only: tries calling a workflow."""
     api_key = get_api_key_from_truss_config()
     session = httpx.Client(
         base_url=remote.b10_model_url, headers={"Authorization": f"Api-Key {api_key}"}

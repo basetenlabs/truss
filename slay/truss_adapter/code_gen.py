@@ -4,7 +4,7 @@ from typing import Any
 
 import libcst
 from slay import definitions, utils
-from slay.truss_compat import model_skeleton
+from slay.truss_adapter import model_skeleton
 
 
 class _SpecifyProcessorTypeAnnotation(libcst.CSTTransformer):

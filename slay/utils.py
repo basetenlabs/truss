@@ -1,6 +1,5 @@
 import contextlib
 import enum
-import io
 import logging
 import time
 from typing import Callable, Iterable, TypeVar
@@ -10,6 +9,7 @@ T = TypeVar("T")
 
 @contextlib.contextmanager
 def log_level(level: int):
+    """Change loglevel for code in this context."""
     current_logging_level = logging.getLogger().getEffectiveLevel()
     logging.getLogger().setLevel(level)
     try:
@@ -18,25 +18,20 @@ def log_level(level: int):
         logging.getLogger().setLevel(current_logging_level)
 
 
-@contextlib.contextmanager
-def no_print():
-    with contextlib.redirect_stdout(io.StringIO()):
-        yield
-
-
 def expect_one(it: Iterable[T]) -> T:
+    """Assert that an iterable has exactly on element and return it."""
     it = iter(it)
     try:
         element = next(it)
     except StopIteration:
-        raise ValueError("Empty")
+        raise ValueError("Iterable is empty.")
 
     try:
         _ = next(it)
     except StopIteration:
         return element
 
-    raise ValueError("Contains other.")
+    raise ValueError("Iterable has more than one element.")
 
 
 class ConditionStatus(enum.Enum):

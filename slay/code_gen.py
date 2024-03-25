@@ -8,7 +8,7 @@ from typing import Any, Iterable, Optional
 
 import libcst
 from slay import definitions, utils
-from slay.truss_compat import code_gen
+from slay.truss_adapter import code_gen
 
 INDENT = " " * 4
 
@@ -20,6 +20,8 @@ def _indent(text: str) -> str:
 
 
 class _MainRemover(ast.NodeTransformer):
+    """Removes main-section from module AST."""
+
     def visit_If(self, node):
         """Robustly matches variations of `if __name__ == "__main__":`."""
         if (
@@ -38,6 +40,7 @@ class _MainRemover(ast.NodeTransformer):
 
 
 def _remove_main_section(source_code: str) -> str:
+    """Removes main-section from module source."""
     parsed_code = ast.parse(source_code)
     transformer = _MainRemover()
     transformed_ast = transformer.visit(parsed_code)
@@ -61,7 +64,7 @@ def _format_python_file(file_path: pathlib.Path) -> None:
     _run_simple_subprocess(f"isort {file_path}")
 
 
-def create_processor_dir(
+def make_processor_dir(
     workflow_root: pathlib.Path,
     workflow_name: str,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
@@ -85,9 +88,12 @@ def create_processor_dir(
 
 
 def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor):
+    """
+    E.g.: `async def run(self, data: str, num_partitions: int) -> tuple[list, int]:`
+    """
     if endpoint.is_generator:
         # TODO: implement generator.
-        raise NotImplementedError("Generator")
+        raise NotImplementedError("Generator.")
 
     def_str = "async def" if endpoint.is_async else "def"
     args = ", ".join(
@@ -104,6 +110,7 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor):
 
 
 def _gen_protocol_src(processor: definitions.ProcessorAPIDescriptor):
+    """Generates source code for a Protocol that matches the processor."""
     imports = ["from typing import Protocol"]
     src_parts = [
         f"""
@@ -116,6 +123,15 @@ class {processor.cls_name}P(Protocol):
 
 
 def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor):
+    """Generates source code for calling the stub and wrapping the I/O types.
+
+    E.g.:
+    ```
+    json_args = {"data": data, "num_partitions": num_partitions}
+    json_result = await self._remote.predict_async(json_args)
+    return (json_result[0], json_result[1])
+    ```
+    """
     if endpoint.is_generator:
         raise NotImplementedError("Generator")
 
@@ -161,6 +177,21 @@ return {ret}
 
 
 def _gen_stub_src(processor: definitions.ProcessorAPIDescriptor):
+    """Generates stub class source, e.g:
+
+    ```
+    from slay import stub
+
+    class SplitText(stub.StubBase):
+        def __init__(self, url: str, api_key: str) -> None:
+            self._remote = stub.BasetenSession(url, api_key)
+
+        async def run(self, data: str, num_partitions: int) -> tuple[list, int]:
+            json_args = {"data": data, "num_partitions": num_partitions}
+            json_result = await self._remote.predict_async(json_args)
+            return (json_result[0], json_result[1])
+    ```
+    """
     imports = ["from slay import stub"]
 
     src_parts = [
@@ -184,6 +215,7 @@ def generate_stubs_for_deps(
     processor_dir: pathlib.Path,
     dependencies: Iterable[definitions.ProcessorAPIDescriptor],
 ) -> Optional[pathlib.Path]:
+    """Generates a source file with stub classes."""
     # TODO: user-defined I/O types are not imported / included correctly.
     imports = set()
     src_parts = []
@@ -211,6 +243,8 @@ def generate_stubs_for_deps(
 
 
 class _InitRewriter(libcst.CSTTransformer):
+    """Removes processors from init args and instead initializes corresponding stubs."""
+
     def __init__(self, cls_name: str, replacements):
         super().__init__()
         self._cls_name = cls_name
@@ -274,6 +308,7 @@ class _InitRewriter(libcst.CSTTransformer):
 def _rewrite_processor_inits(
     source_tree: libcst.Module, processor_desrciptor: definitions.ProcessorAPIDescriptor
 ):
+    """Removes processors from init args and instead initializes corresponding stubs."""
     replacements = {}
     for name, proc_cls in processor_desrciptor.depdendencies.items():
         replacements[name] = f"{STUB_MODULE}.{proc_cls.__name__}"
@@ -305,6 +340,7 @@ def generate_processor_source(
     file_path: pathlib.Path,
     processor_desrciptor: definitions.ProcessorAPIDescriptor,
 ):
+    """Generates code that wraps a processor as a truss-compatible model."""
     sourc_code = _remove_main_section(file_path.read_text())
     source_tree = libcst.parse_module(sourc_code)
     source_tree = _rewrite_processor_inits(source_tree, processor_desrciptor)

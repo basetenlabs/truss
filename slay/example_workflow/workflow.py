@@ -16,7 +16,7 @@ from truss import truss_config
 from user_package import shared_processor
 
 IMAGE_COMMON = slay.Image().pip_requirements_file(
-    "/home/marius-baseten/workbench/truss/example_workflow_mvp/requirements.txt"
+    "/home/marius-baseten/workbench/truss/example_workflow/requirements.txt"
 )
 
 
@@ -31,7 +31,7 @@ class GenerateData(slay.ProcessorBase):
 IMAGE_TRANSFORMERS_GPU = (
     slay.Image()
     .pip_requirements_file(
-        "/home/marius-baseten/workbench/truss/example_workflow_mvp/requirements.txt"
+        "/home/marius-baseten/workbench/truss/example_workflow/requirements.txt"
     )
     .pip_requirements(
         ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
@@ -61,7 +61,7 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
     def __init__(
         self,
-        context: slay.Context = slay.provide_context(),
+        context: slay.Context[MistraLLMConfig] = slay.provide_context(),
     ) -> None:
         super().__init__(context)
         import torch

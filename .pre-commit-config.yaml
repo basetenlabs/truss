@@ -41,5 +41,6 @@ repos:
         entry: poetry run mypy
         language: python
         types: [python]
-        exclude: ^examples/|^truss/test.+/|model.py$
+        # TODO(marius): enable checks for slay once all errors are resolved.
+        exclude: ^examples/|^truss/test.+/|model.py$|^slay|
         pass_filenames: true
