@@ -31,9 +31,10 @@ class TritonServer:
     ) -> None:
         if engine_repository_path:
             if Path(engine_repository_path).is_dir():
-                shutil.copytree(
-                    engine_repository_path, truss_data_dir, dirs_exist_ok=True
-                )
+                if str(engine_repository_path) != str(truss_data_dir):
+                    shutil.copytree(
+                        engine_repository_path, truss_data_dir, dirs_exist_ok=True
+                    )
             else:
                 # If engine_repository_path is not a local directory, download the engine
                 download_engine(
