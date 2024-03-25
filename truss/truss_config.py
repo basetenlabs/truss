@@ -298,8 +298,12 @@ class ExternalData:
 
 
 class DockerAuthType(Enum):
-    GCS_SERVICE_ACCOUNT_JSON_BASE64 = "GCS_SERVICE_ACCOUNT_JSON_BASE64"
-    ACCESS_TOKEN = "ACCESS_TOKEN"
+    """
+    This enum will express all of the types of registry
+    authentication we support.
+    """
+
+    GCS_SERVICE_ACCOUNT_JSON = "GCS_SERVICE_ACCOUNT_JSON"
 
 
 @dataclass
@@ -323,7 +327,11 @@ class DockerAuthSettings:
             # as "gcs_service_account".
             auth_method = auth_method.upper()
 
-        if not secret_name or not auth_method or auth_method not in DockerAuthType:
+        if (
+            not secret_name
+            or not auth_method
+            or auth_method not in [auth_type.value for auth_type in DockerAuthType]
+        ):
             raise ValueError("Please provide a `secret_name`, and valid `auth_method`")
 
         return DockerAuthSettings(
@@ -364,6 +372,7 @@ class BaseImage:
         return {
             "image": self.image,
             "python_executable_path": self.python_executable_path,
+            "docker_auth": self.docker_auth.to_dict(),
         }
 
 
@@ -631,6 +640,14 @@ def obj_to_dict(obj, verbose: bool = False):
             elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(
                     field_curr_value, lambda data: data.dict()
+                )
+            elif isinstance(field_curr_value, BaseImage):
+                d["base_image"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
+            elif isinstance(field_curr_value, DockerAuthSettings):
+                d["docker_auth"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
                 )
             else:
                 d[field_name] = field_curr_value
