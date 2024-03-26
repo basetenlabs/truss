@@ -1,3 +1,7 @@
+{%- if model_cache %}
+{%- include "cache.Dockerfile.jinja" %}
+{%- endif %}
+
 {% extends "base.Dockerfile.jinja" %}
 
 {% block base_image_patch %}
@@ -47,9 +51,10 @@ RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /ro
 
 
 {% block app_copy %}
-    {%- if model_cache %}
-    {%- include "cache.Dockerfile.jinja" %}
-    {%- endif %}
+{%- if model_cache %}
+# Copy data before code for better caching
+    {%- include "copy_cache_files.Dockerfile.jinja"%}
+{%- endif %}
 
 {%- if external_data_files %}
 {% for url, dst in external_data_files %}
