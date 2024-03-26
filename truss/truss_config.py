@@ -297,25 +297,84 @@ class ExternalData:
         return [item.to_dict() for item in self.items]
 
 
+class DockerAuthType(Enum):
+    """
+    This enum will express all of the types of registry
+    authentication we support.
+    """
+
+    GCS_SERVICE_ACCOUNT_JSON = "GCS_SERVICE_ACCOUNT_JSON"
+
+
+@dataclass
+class DockerAuthSettings:
+    """
+    Provides information about how to authenticate to the docker registry containing
+    the custom base image.
+    """
+
+    auth_method: DockerAuthType
+    secret_name: str
+    registry: Optional[str] = ""
+
+    @staticmethod
+    def from_dict(d: Dict[str, str]):
+        auth_method = d.get("auth_method")
+        secret_name = d.get("secret_name")
+
+        if auth_method:
+            # Capitalize the auth method so that we support this field passed
+            # as "gcs_service_account".
+            auth_method = auth_method.upper()
+
+        if (
+            not secret_name
+            or not auth_method
+            or auth_method not in [auth_type.value for auth_type in DockerAuthType]
+        ):
+            raise ValueError("Please provide a `secret_name`, and valid `auth_method`")
+
+        return DockerAuthSettings(
+            auth_method=DockerAuthType[auth_method],
+            secret_name=secret_name,
+            registry=d.get("registry"),
+        )
+
+    def to_dict(self):
+        return {
+            "auth_method": self.auth_method.value,
+            "secret_name": self.secret_name,
+            "registry": self.registry,
+        }
+
+
 @dataclass
 class BaseImage:
     image: str = ""
     python_executable_path: str = ""
+    docker_auth: Optional[DockerAuthSettings] = None
 
     @staticmethod
     def from_dict(d):
         image = d.get("image", "")
         python_executable_path = d.get("python_executable_path", "")
+        docker_auth = d.get("docker_auth")
         validate_python_executable_path(python_executable_path)
         return BaseImage(
             image=image,
             python_executable_path=python_executable_path,
+            docker_auth=DockerAuthSettings.from_dict(docker_auth)
+            if docker_auth
+            else None,
         )
 
     def to_dict(self):
         return {
             "image": self.image,
             "python_executable_path": self.python_executable_path,
+            "docker_auth": transform_optional(
+                self.docker_auth, lambda docker_auth: docker_auth.to_dict()
+            ),
         }
 
 
@@ -583,6 +642,14 @@ def obj_to_dict(obj, verbose: bool = False):
             elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(
                     field_curr_value, lambda data: data.dict()
+                )
+            elif isinstance(field_curr_value, BaseImage):
+                d["base_image"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
+            elif isinstance(field_curr_value, DockerAuthSettings):
+                d["docker_auth"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
                 )
             else:
                 d[field_name] = field_curr_value
