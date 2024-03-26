@@ -1,4 +1,8 @@
+# TODO: this file contains too much implementaiton -> restructure.
 import abc
+import inspect
+import logging
+import os
 from types import GenericAlias
 from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
 
@@ -7,16 +11,16 @@ from pydantic import generics
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
-BASTEN_APY_SECRET_NAME = "baseten_api_key"
+BASTEN_API_SECRET_NAME = "baseten_api_key"
 TRUSS_CONFIG_SLAY_KEY = "slay_metadata"
 
-ENDPOINT_NAME = "run"  # Referring to processor method name exposed as endpoint.
+ENDPOINT_METHOD_NAME = "run"  # Referring to processor method name exposed as endpoint.
 # Below arg names must correspond to `definitions.ABCProcessor`.
 CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
 SELF_ARG_NAME = "self"
 
 GENERATED_CODE_DIR = ".slay_generated"
-PREDICT_ENDPOINT = "/predict"
+PREDICT_ENDPOINT_NAME = "/predict"
 PROCESSOR_MODULE = "processor"
 
 
@@ -32,10 +36,95 @@ class UsageError(Exception):
     """Raised when components are not used the expected way at runtime."""
 
 
+class AbsPath:
+    _abs_file_path: str
+    _creating_module: str
+    _original_path: str
+
+    def __init__(
+        self, abs_file_path: str, creating_module: str, original_path: str
+    ) -> None:
+        self._abs_file_path = abs_file_path
+        self._creating_module = creating_module
+        self._original_path = original_path
+
+    def raise_if_not_exists(self) -> None:
+        if not os.path.isfile(self._abs_file_path):
+            raise MissingDependencyError(
+                f"With the file path `{self._original_path}` an absolute path relative "
+                f"to the calling module `{self._creating_module}` was created, "
+                f"resulting `{self._abs_file_path}` - but no file was found."
+            )
+
+    @property
+    def abs_path(self) -> str:
+        return self._abs_file_path
+
+
+def make_abs_path_here(file_path: str) -> AbsPath:
+    """Helper to specify file paths relative to the *immediately calling* module.
+
+    E.g. in you have a project structure like this"
+
+    root/
+        workflow.py
+        common_requirements.text
+        sub_package/
+            processor.py
+            processor_requirements.txt
+
+    Not in `root/sub_package/processor.py` you can point to the requirements
+    file like this:
+
+    ```
+    shared = RelativePathToHere("../common_requirements.text")
+    specific = RelativePathToHere("processor_requirements.text")
+    ```
+
+    Caveat: this helper uses the directory of the immediately calling module as an
+    absolute reference point for resolving the file location.
+    Therefore you MUST NOT wrap the instantiation of `RelativePathToHere` into a
+    function (e.g. applying decorators) or use dynamic code execution.
+
+    Ok:
+    ```
+    def foo(path: AbsPath):
+        abs_path = path.abs_path
+
+
+    foo(make_abs_path_here("blabla"))
+    ```
+
+    Not Ok:
+    ```
+    def foo(path: str):
+        badbadbad = make_abs_path_here(path).abs_path
+
+    foo("blabla"))
+    ```
+    """
+    # TODO: the absolute path resoultion below uses the calling module as a
+    # reference point. This would not work if users wrap this call in a funciton
+    #  - we hope the naming makes clear that this should not be done.
+    caller_frame = inspect.stack()[1]
+    module_path = caller_frame.filename
+    if not os.path.isabs(file_path):
+        module_dir = os.path.dirname(os.path.abspath(module_path))
+        abs_file_path = os.path.normpath(os.path.join(module_dir, file_path))
+        logging.info(f"Inferring absolute path for `{file_path}` as `{abs_file_path}`.")
+    else:
+        abs_file_path = file_path
+
+    return AbsPath(abs_file_path, module_path, file_path)
+
+
 class ImageSpec(pydantic.BaseModel):
+    class Config:
+        arbitrary_types_allowed = True
+
     # TODO: this is not stable yet and might change or refer back to truss.
     base_image: str = "python:3.11-slim"
-    pip_requirements_file: Optional[str] = None
+    pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
 
@@ -48,8 +137,7 @@ class Image:
     def __init__(self) -> None:
         self._spec = ImageSpec()
 
-    def pip_requirements_file(self, file_path: str) -> "Image":
-        # TODO: Make this work with relative paths.
+    def pip_requirements_file(self, file_path: AbsPath) -> "Image":
         self._spec.pip_requirements_file = file_path
         return self
 
@@ -110,8 +198,8 @@ class Assets:
     def __init__(self) -> None:
         self._spec = AssetSpec()
 
-    def secret(self, key: str) -> "Assets":
-        self._spec.secrets[key] = "***"
+    def add_secret(self, key: str) -> "Assets":
+        self._spec.secrets[key] = "***"  # Actual value is provided in deployment.
         return self
 
     def cached(self, value: list[Any]) -> "Assets":
@@ -166,14 +254,14 @@ class Context(generics.GenericModel, Generic[UserConfigT]):
     def get_baseten_api_key(self) -> str:
         if not self.secrets:
             raise UsageError(f"Secrets not set in `{self.__class__.__name__}` object.")
-        if BASTEN_APY_SECRET_NAME not in self.secrets:
+        if BASTEN_API_SECRET_NAME not in self.secrets:
             raise MissingDependencyError(
                 "For using workflows, it is required to setup a an API key with name "
-                f"`{BASTEN_APY_SECRET_NAME}` on baseten to allow workflow processor to "
+                f"`{BASTEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
                 "call other processors."
             )
 
-        api_key = self.secrets[BASTEN_APY_SECRET_NAME]
+        api_key = self.secrets[BASTEN_API_SECRET_NAME]
         return api_key
 
 
@@ -230,7 +318,7 @@ class TypeDescriptor(pydantic.BaseModel):
 
 
 class EndpointAPIDescriptor(pydantic.BaseModel):
-    name: str = ENDPOINT_NAME
+    name: str = ENDPOINT_METHOD_NAME
     input_names_and_tyes: list[tuple[str, TypeDescriptor]]
     output_types: list[TypeDescriptor]
     is_async: bool

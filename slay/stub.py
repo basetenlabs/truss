@@ -35,13 +35,13 @@ class BasetenSession:
 
     def predict_sync(self, json_paylod):
         return _handle_respose(
-            self._client_sync.post(definitions.PREDICT_ENDPOINT, json=json_paylod)
+            self._client_sync.post(definitions.PREDICT_ENDPOINT_NAME, json=json_paylod)
         )
 
     async def predict_async(self, json_paylod):
         return _handle_respose(
             await self._client_async.post(
-                definitions.PREDICT_ENDPOINT, json=json_paylod
+                definitions.PREDICT_ENDPOINT_NAME, json=json_paylod
             )
         )
 

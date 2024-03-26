@@ -72,12 +72,12 @@ def _validate_endpoint_params(
 ) -> list[tuple[str, definitions.TypeDescriptor]]:
     if len(params) == 0:
         raise definitions.APIDefinitonError(
-            f"`{cls_name}.{definitions.ENDPOINT_NAME}` must be a method, i.e. "
+            f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             "with `self` argument."
         )
     if params[0].name != definitions.SELF_ARG_NAME:
         raise definitions.APIDefinitonError(
-            f"`{cls_name}.{definitions.ENDPOINT_NAME}` must be a method, i.e. "
+            f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             "with `self` argument."
         )
     input_name_and_types = []
@@ -104,22 +104,23 @@ def _validate_and_describe_endpoint(
     ```
 
     * The name must be `run`.
-    * It can be sync or sync or def.
-    * The number and names of parameters arbitrary, both args and kwargs are ok.
+    * It can be sync or async or def.
+    * The number and names of parameters are arbitrary, both positional and named
+      parameters are ok.
     * All parameters and the return value must have type annotations. See
       `_validate_io_type` for valid types.
     * Generators are allowed, too (but not yet supported).
     """
-    if not hasattr(cls, definitions.ENDPOINT_NAME):
+    if not hasattr(cls, definitions.ENDPOINT_METHOD_NAME):
         raise definitions.APIDefinitonError(
-            f"`{cls.__name__}` must have a {definitions.ENDPOINT_NAME}` method."
+            f"`{cls.__name__}` must have a {definitions.ENDPOINT_METHOD_NAME}` method."
         )
     endpoint_method = getattr(
-        cls, definitions.ENDPOINT_NAME
+        cls, definitions.ENDPOINT_METHOD_NAME
     )  # This is the unbound method.
     if not inspect.isfunction(endpoint_method):
         raise definitions.APIDefinitonError(
-            f"`{cls.__name__}.{definitions.ENDPOINT_NAME}` must be a method."
+            f"`{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}` must be a method."
         )
 
     signature = inspect.signature(endpoint_method)
@@ -163,7 +164,7 @@ def _get_generic_class_type(var):
     return origin if origin is not None else var
 
 
-def _validate_depenency_arg(param) -> Type[definitions.ABCProcessor]:
+def _validate_dependency_arg(param) -> Type[definitions.ABCProcessor]:
     # TODO: handle subclasses, unions, optionals, check default value etc.
     if not isinstance(param.default, ProcessorProvisionPlaceholder):
         raise definitions.APIDefinitonError(
@@ -173,7 +174,9 @@ def _validate_depenency_arg(param) -> Type[definitions.ABCProcessor]:
         )
     processor_cls = param.default.processor_cls
     if not (
-        issubclass(param.annotation, Protocol)
+        # TODO: `Protocol` is not a proper class and this might be version dependent.
+        # Find a better way to inspect this.
+        issubclass(param.annotation, Protocol)  # type: ignore[arg-type]
         or issubclass(processor_cls, param.annotation)
     ):
         definitions.APIDefinitonError(
@@ -231,7 +234,7 @@ class _ProcessorInitParams:
         used_classes = set()
         dependencies = {}
         for param in self._params[2:]:  # Skip self and context.
-            processor_cls = _validate_depenency_arg(param)
+            processor_cls = _validate_dependency_arg(param)
             if processor_cls in used_classes:
                 raise definitions.APIDefinitonError(
                     f"The same processor class cannot be used multiple times for "
@@ -585,7 +588,7 @@ def deploy_remotely(
     """
     # TODO: more control e.g. publish vs. draft.
     workflow_root = pathlib.Path(sys.argv[0]).absolute().parent
-    api_key = deploy.get_api_key_from_truss_config()
+    api_key = deploy.get_api_key_from_trussrc()
     baseten_client = deploy.BasetenClient(baseten_url, api_key)
     entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
 

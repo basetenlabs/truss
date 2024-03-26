@@ -2,9 +2,7 @@ import slay
 
 IMAGE_NUMPY = (
     slay.Image()
-    .pip_requirements_file(
-        "/home/marius-baseten/workbench/truss/example_workflow/requirements.txt"
-    )
+    .pip_requirements_file(slay.make_abs_path_here("../requirements.txt"))
     .pip_requirements(["numpy"])
 )
 

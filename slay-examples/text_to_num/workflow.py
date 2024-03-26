@@ -16,7 +16,7 @@ from truss import truss_config
 from user_package import shared_processor
 
 IMAGE_COMMON = slay.Image().pip_requirements_file(
-    "/home/marius-baseten/workbench/truss/example_workflow/requirements.txt"
+    slay.make_abs_path_here("requirements.txt")
 )
 
 
@@ -30,9 +30,7 @@ class GenerateData(slay.ProcessorBase):
 
 IMAGE_TRANSFORMERS_GPU = (
     slay.Image()
-    .pip_requirements_file(
-        "/home/marius-baseten/workbench/truss/example_workflow/requirements.txt"
-    )
+    .pip_requirements_file(slay.make_abs_path_here("requirements.txt"))
     .pip_requirements(
         ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
     )
@@ -186,7 +184,7 @@ if __name__ == "__main__":
 
     with utils.log_level(logging.DEBUG):
         remote = slay.deploy_remotely(
-            Workflow, workflow_name="Test", generate_only=True
+            Workflow, workflow_name="Test", generate_only=False
         )
 
     # remote = slay.definitions.BasetenRemoteDescriptor(

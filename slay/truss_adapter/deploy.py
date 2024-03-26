@@ -1,3 +1,4 @@
+import configparser
 import enum
 import logging
 import os
@@ -60,9 +61,10 @@ def _make_truss_config(
     config.base_image = truss_config.BaseImage(image=image.base_image)
     pip_requirements: list[str] = []
     if image.pip_requirements_file:
+        image.pip_requirements_file.raise_if_not_exists()
         pip_requirements.extend(
             req
-            for req in pathlib.Path(image.pip_requirements_file)
+            for req in pathlib.Path(image.pip_requirements_file.abs_path)
             .read_text()
             .splitlines()
             if not req.strip().startswith("#")
@@ -78,11 +80,11 @@ def _make_truss_config(
     # Assets.
     assets = slay_config.get_asset_spec()
     config.secrets = assets.secrets
-    if definitions.BASTEN_APY_SECRET_NAME not in config.secrets:
-        config.secrets[definitions.BASTEN_APY_SECRET_NAME] = "***"
+    if definitions.BASTEN_API_SECRET_NAME not in config.secrets:
+        config.secrets[definitions.BASTEN_API_SECRET_NAME] = "***"
     else:
         logging.info(
-            f"Workflows automatically add {definitions.BASTEN_APY_SECRET_NAME} "
+            f"Workflows automatically add {definitions.BASTEN_API_SECRET_NAME} "
             "to secrets - no need to manually add it."
         )
     config.model_cache.models = assets.cached
@@ -137,8 +139,13 @@ def make_truss(
     return truss_dir
 
 
-def get_api_key_from_truss_config() -> str:
-    return remote_factory.load_config().get("baseten", "api_key")
+def get_api_key_from_trussrc() -> str:
+    try:
+        return remote_factory.load_config().get("baseten", "api_key")
+    except configparser.Error as e:
+        raise definitions.MissingDependencyError(
+            "You must have a `trussrc` file with a baseten API key."
+        ) from e
 
 
 class _BasetenEnv(enum.Enum):
@@ -161,17 +168,19 @@ def _infer_env(baseten_url: str) -> _BasetenEnv:
     return _BasetenEnv.PROD
 
 
-def _model_url(baseten_env: _BasetenEnv, model_id: str) -> str:
+def _model_url(baseten_env: _BasetenEnv, model_id: str, production: bool) -> str:
+    # TODO: get URLs from REST API instead.
     if baseten_env == _BasetenEnv.LOCAL:
         return f"http://localhost:8000/models/{model_id}"
 
-    if baseten_env == _BasetenEnv.STAGING:
-        return f"https://app.staging.baseten.co/models/{model_id}"
+    model_env = "production" if production else "development"
 
-    if baseten_env == _BasetenEnv.DEV:
-        return f"https://app.dev.baseten.co/models/{model_id}"
+    if baseten_env in {_BasetenEnv.STAGING, _BasetenEnv.DEV}:
+        env_str = f".{str(baseten_env).lower()}"
+    else:
+        env_str = ""
 
-    return f"https://model-{model_id}.api.baseten.co/production"
+    return f"https://model-{model_id}.api{env_str}.baseten.co/{model_env}"
 
 
 class BasetenClient:
@@ -185,13 +194,16 @@ class BasetenClient:
         self._remote_provider: truss_remote.TrussRemote = self._create_remote_provider()
 
     def deploy_truss(self, truss_root: Path) -> definitions.BasetenRemoteDescriptor:
+        # TODO: add intentional control of pushing as dev or prod model.
         tr = truss.load(str(truss_root))
         model_name = tr.spec.config.model_name
         assert model_name is not None
 
         logging.info(f"Deploying model `{model_name}`.")
+        production = False
+        # Models must be trusted to use the API KEY secret.
         service = self._remote_provider.push(
-            tr, model_name=model_name, trusted=True, publish=False
+            tr, model_name=model_name, trusted=True, publish=production
         )
         if service is None:
             raise ValueError()
@@ -201,7 +213,7 @@ class BasetenClient:
             b10_model_id=service.model_id,
             b10_model_version_id=service.model_version_id,
             b10_model_name=model_name,
-            b10_model_url=_model_url(self._baseten_env, service.model_id),
+            b10_model_url=_model_url(self._baseten_env, service.model_id, production),
         )
         return model_service
 
@@ -232,7 +244,7 @@ class BasetenClient:
         return definitions.BasetenRemoteDescriptor(
             b10_model_id=model_id,
             b10_model_version_id=model_version_id,
-            b10_model_url=_model_url(self._baseten_env, model_id),
+            b10_model_url=_model_url(self._baseten_env, model_id, False),
             b10_model_name=model_name,
         )
 
@@ -312,13 +324,13 @@ def call_workflow_dbg(
     retry_wait_sec: int = 3,
 ) -> httpx.Response:
     """For debugging only: tries calling a workflow."""
-    api_key = get_api_key_from_truss_config()
+    api_key = get_api_key_from_trussrc()
     session = httpx.Client(
         base_url=remote.b10_model_url, headers={"Authorization": f"Api-Key {api_key}"}
     )
     for _ in range(max_retries):
         try:
-            response = session.post(definitions.PREDICT_ENDPOINT, json=payload)
+            response = session.post(definitions.PREDICT_ENDPOINT_NAME, json=payload)
             return response
         except Exception:
             time.sleep(retry_wait_sec)
