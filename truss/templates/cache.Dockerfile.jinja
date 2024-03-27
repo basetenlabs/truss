@@ -1,3 +1,5 @@
+FROM python:3.11-slim as cache_warmer
+
 RUN mkdir -p /app/model_cache
 WORKDIR /app
 
