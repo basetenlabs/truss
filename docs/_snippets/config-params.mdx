@@ -291,7 +291,8 @@ Note that here, `secret_name` references the secret that you added your service 
 ##### `base_image.docker_auth.secret_name`
 
 The Truss secret that stores the credential that you will be authenticating with.
-Ensure that this secret is added to the `secrets` section of your Truss, and that you .
+Ensure that this secret is added to the `secrets` section of your Truss, and that you deploy your model
+with the `--trusted` flag.
 
 ##### `base_image.docker_auth.registry`
 
