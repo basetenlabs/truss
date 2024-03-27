@@ -259,7 +259,45 @@ like this:
 base_image:
   image: nvcr.io/nvidia/nemo:23.03
   python_executable_path: /usr/bin/python
-  ```
+```
+
+
+#### `base_image.docker_auth`
+
+Docker registry authentication options, in the case that you want to use
+a base image hosted on a private registry.
+
+##### `base_image.docker_auth.auth_method`
+
+Enum, representing what authentication method you'd like to use to authenticate
+to the private registry. Currently supports:
+
+* GCP_SERVICE_ACCOUNT_JSON -- authenticate with a GCP service account. To use this, make sure you
+add your service account JSON blob as a Truss secret.
+
+You specify this in the `docker_auth` settings like so:
+
+```
+base_image:
+  ...
+  docker_auth:
+    auth_method: GCP_SERVICE_ACCOUNT_JSON
+    secret_name: gcp-service-account
+    registry: us-east4-docker.pkg.dev
+```
+
+Note that here, `secret_name` references the secret that you added your service account json to.
+
+##### `base_image.docker_auth.secret_name`
+
+The Truss secret that stores the credential that you will be authenticating with.
+Ensure that this secret is available to the Truss.
+
+##### `base_image.docker_auth.registry`
+
+The registry to authenticate to (ie: `us-east4-docker.pkg.dev`).
+
+
 ### `runtime`
 
 Runtime settings for your model instance.
