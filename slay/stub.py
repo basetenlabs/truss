@@ -1,12 +1,13 @@
 import abc
 import functools
-from typing import Type, TypeVar
+import logging
+from typing import Type, TypeVar, final
 
 import httpx
 from slay import definitions
 
 
-def _handle_respose(response: httpx.Response):
+def _handle_response(response: httpx.Response):
     # TODO: improve error handling, extract context from response and include in
     # re-raised exception. Consider re-raising same exception or if not a use a
     # generic "RPCError" exception class or similar.
@@ -21,35 +22,46 @@ class BasetenSession:
     """Helper to invoke predict method on baseten deployments."""
 
     # TODO: make timeout, retries etc. configurable.
-    def __init__(self, url: str, api_key: str) -> None:
+    def __init__(
+        self, service_descriptor: definitions.ServiceDescriptor, api_key: str
+    ) -> None:
+        logging.info(
+            f"Stub session for {service_descriptor.name} with predict URL `{service_descriptor.predict_url}`."
+        )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
-        self._url = url
+        self._service_descriptor = service_descriptor
 
     @functools.cached_property
     def _client_sync(self) -> httpx.Client:
-        return httpx.Client(base_url=self._url, headers=self._auth_header)
+        return httpx.Client(headers=self._auth_header)
 
     @functools.cached_property
     def _client_async(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self._url, headers=self._auth_header)
+        return httpx.AsyncClient(headers=self._auth_header)
 
-    def predict_sync(self, json_paylod):
-        return _handle_respose(
-            self._client_sync.post(definitions.PREDICT_ENDPOINT_NAME, json=json_paylod)
+    def predict_sync(self, json_payload):
+        return _handle_response(
+            self._client_sync.post(
+                self._service_descriptor.predict_url, json=json_payload
+            )
         )
 
-    async def predict_async(self, json_paylod):
-        return _handle_respose(
+    async def predict_async(self, json_payload):
+        return _handle_response(
             await self._client_async.post(
-                definitions.PREDICT_ENDPOINT_NAME, json=json_paylod
+                self._service_descriptor.predict_url, json=json_payload
             )
         )
 
 
 class StubBase(abc.ABC):
-    @abc.abstractmethod
-    def __init__(self, url: str, api_key: str) -> None:
-        ...
+    _remote: BasetenSession
+
+    @final
+    def __init__(
+        self, service_descriptor: definitions.ServiceDescriptor, api_key: str
+    ) -> None:
+        self._remote = BasetenSession(service_descriptor, api_key)
 
 
 StubT = TypeVar("StubT", bound=StubBase)
@@ -57,6 +69,6 @@ StubT = TypeVar("StubT", bound=StubBase)
 
 def stub_factory(stub_cls: Type[StubT], context: definitions.Context) -> StubT:
     return stub_cls(
-        url=context.get_stub_url(stub_cls.__name__),
+        service_descriptor=context.get_service_descriptor(stub_cls.__name__),
         api_key=context.get_baseten_api_key(),
     )

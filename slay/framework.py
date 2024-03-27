@@ -5,7 +5,6 @@ import logging
 import os
 import pathlib
 import shutil
-import sys
 import types
 from typing import (
     Any,
@@ -23,6 +22,7 @@ from typing import (
 import pydantic
 from slay import code_gen, definitions, utils
 from slay.truss_adapter import deploy
+from truss import truss_handle
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -33,23 +33,23 @@ _SIMPLE_CONTAINERS = {list, dict}
 
 def _validate_io_type(param: inspect.Parameter) -> None:
     """
-    For processor I/O (both data or parameters) we allow simple types
+    For processor I/O (both data or parameters), we allow simple types
     (int, str, float...) and `list` or `dict` containers of these.
-    Any deeper nested and structured data must be typed as a pydnatic model.
+    Any deeper nested and structured data must be typed as a pydantic model.
     """
     anno = param.annotation
     if anno in _SIMPLE_TYPES:
         return
     if isinstance(anno, types.GenericAlias):
         if get_origin(anno) not in _SIMPLE_CONTAINERS:
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 f"For generic types, only containers {_SIMPLE_CONTAINERS} are "
                 f"allowed, but got `{param}`."
             )
         args = get_args(anno)
         for arg in args:
             if arg not in _SIMPLE_TYPES:
-                raise definitions.APIDefinitonError(
+                raise definitions.APIDefinitionError(
                     f"For generic types, only arg types {_SIMPLE_TYPES} are "
                     f"allowed, but got `{param}`."
                 )
@@ -58,32 +58,32 @@ def _validate_io_type(param: inspect.Parameter) -> None:
         try:
             anno.schema()
         except Exception as e:
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 "Pydantic annotations must be able to generate a schema. "
                 f"Please fix `{param}`."
             ) from e
         return
 
-    raise definitions.APIDefinitonError(anno)
+    raise definitions.APIDefinitionError(anno)
 
 
 def _validate_endpoint_params(
     params: list[inspect.Parameter], cls_name: str
 ) -> list[tuple[str, definitions.TypeDescriptor]]:
     if len(params) == 0:
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             "with `self` argument."
         )
     if params[0].name != definitions.SELF_ARG_NAME:
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             "with `self` argument."
         )
     input_name_and_types = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 "Inputs of endpoints must have type annotations. "
                 f"For `{cls_name}` got:\n{param}"
             )
@@ -96,7 +96,7 @@ def _validate_endpoint_params(
 def _validate_and_describe_endpoint(
     cls: Type[definitions.ABCProcessor],
 ) -> definitions.EndpointAPIDescriptor:
-    """The "endpoint method" of a processor must have the follwing signature:
+    """The "endpoint method" of a processor must have the following signature:
 
     ```
     [async] def run(
@@ -112,14 +112,14 @@ def _validate_and_describe_endpoint(
     * Generators are allowed, too (but not yet supported).
     """
     if not hasattr(cls, definitions.ENDPOINT_METHOD_NAME):
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"`{cls.__name__}` must have a {definitions.ENDPOINT_METHOD_NAME}` method."
         )
     endpoint_method = getattr(
         cls, definitions.ENDPOINT_METHOD_NAME
     )  # This is the unbound method.
     if not inspect.isfunction(endpoint_method):
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"`{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}` must be a method."
         )
 
@@ -129,7 +129,7 @@ def _validate_and_describe_endpoint(
     )
 
     if signature.return_annotation == inspect.Parameter.empty:
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"Return values of endpoints must be type annotated. Got:\n{signature}"
         )
     if get_origin(signature.return_annotation) is tuple:
@@ -151,7 +151,7 @@ def _validate_and_describe_endpoint(
         is_generator = inspect.isgeneratorfunction(endpoint_method)
 
     return definitions.EndpointAPIDescriptor(
-        input_names_and_tyes=input_name_and_types,
+        input_names_and_types=input_name_and_types,
         output_types=output_types,
         is_async=is_async,
         is_generator=is_generator,
@@ -167,7 +167,7 @@ def _get_generic_class_type(var):
 def _validate_dependency_arg(param) -> Type[definitions.ABCProcessor]:
     # TODO: handle subclasses, unions, optionals, check default value etc.
     if not isinstance(param.default, ProcessorProvisionPlaceholder):
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"Any extra arguments of a processor's __init__ must have a default "
             f"value of type `{ProcessorProvisionPlaceholder}` (created with the "
             f"`provide` directive). Got `{param.default}` for `{param.name}`."
@@ -179,13 +179,13 @@ def _validate_dependency_arg(param) -> Type[definitions.ABCProcessor]:
         issubclass(param.annotation, Protocol)  # type: ignore[arg-type]
         or issubclass(processor_cls, param.annotation)
     ):
-        definitions.APIDefinitonError(
-            f"The type annotaiton for `{param.name}` must either be a `{Protocol}` "
+        definitions.APIDefinitionError(
+            f"The type annotation for `{param.name}` must either be a `{Protocol}` "
             "or a class/subclass of the processor type used as default value. "
             f"Got `{param.default}`."
         )
     if not issubclass(processor_cls, definitions.ABCProcessor):
-        raise definitions.APIDefinitonError(
+        raise definitions.APIDefinitionError(
             f"`{processor_cls}` must be a subclass of `{definitions.ABCProcessor}`."
         )
     return processor_cls
@@ -199,17 +199,17 @@ class _ProcessorInitParams:
 
     def _validate_self_arg(self) -> None:
         if len(self._params) == 0:
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 "Methods must have first argument `self`."
             )
 
         if self._params[0].name != definitions.SELF_ARG_NAME:
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 "Methods must have first argument `self`."
             )
 
     def _validate_context_arg(self) -> None:
-        context_exception = definitions.APIDefinitonError(
+        context_exception = definitions.APIDefinitionError(
             f"`{definitions.ABCProcessor}` must have "
             f"`{definitions.CONTEXT_ARG_NAME}` argument of type "
             f"`{definitions.Context}`."
@@ -224,7 +224,7 @@ class _ProcessorInitParams:
         if not issubclass(param_type, definitions.Context):
             raise context_exception
         if not isinstance(param.default, ContextProvisionPlaceholder):
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 f"The default value for the `context` argument of a processor's "
                 f"__init__ must be of type `{ContextProvisionPlaceholder}` (created "
                 f"with the `provide_context` directive). Got `{param.default}`."
@@ -236,7 +236,7 @@ class _ProcessorInitParams:
         for param in self._params[2:]:  # Skip self and context.
             processor_cls = _validate_dependency_arg(param)
             if processor_cls in used_classes:
-                raise definitions.APIDefinitonError(
+                raise definitions.APIDefinitionError(
                     f"The same processor class cannot be used multiple times for "
                     f"different arguments. Got previously used `{processor_cls}` "
                     f"for `{param.name}`."
@@ -249,7 +249,8 @@ class _ProcessorInitParams:
 def _validate_init_and_get_dependencies(
     cls: Type[definitions.ABCProcessor],
 ) -> Mapping[str, Type[definitions.ABCProcessor]]:
-    """The `__init__`-method of a processor must have the follwing signature:
+    """The `__init__`-method of a processor must have the following signature:
+
     ```
     def __init__(
         self,
@@ -258,15 +259,16 @@ def _validate_init_and_get_dependencies(
         [dep_1: dep_1_type = slay.provide(dep_1_proc_class),]
         ...
     ) -> None:
+    ```
 
-    * The context argument is required and must have a default construced with the
+    * The context argument is required and must have a default constructed with the
       `provide_context` directive. The type can be templated by a user defined config
       e.g. `slay.Context[UserConfig]`.
     * The names and number of other - "dependency" - arguments are arbitrary.
     * Default values for dependencies must be constructed with the `provide` directive
-      to make the dependency injeciton work. The argument to `provide` must be a
+      to make the dependency injection work. The argument to `provide` must be a
       processor class.
-    * The type annotation for depdencies can be a procssor class, but it can also be
+    * The type annotation for dependencies can be a processor class, but it can also be
       a `Protocol` with an equivalent `run` method (e.g. for getting correct type
       checks when providing fake processors for local testing.).
     """
@@ -287,7 +289,7 @@ def _validate_variable_access(cls: Type[definitions.ABCProcessor]) -> None:
 def check_and_register_class(cls: Type[definitions.ABCProcessor]) -> None:
     processor_descriptor = definitions.ProcessorAPIDescriptor(
         processor_cls=cls,
-        depdendencies=_validate_init_and_get_dependencies(cls),
+        dependencies=_validate_init_and_get_dependencies(cls),
         endpoint=_validate_and_describe_endpoint(cls),
         src_path=os.path.abspath(inspect.getfile(cls)),
         user_config_type=definitions.TypeDescriptor(
@@ -341,7 +343,7 @@ class _ProcessorRegistry:
     def register_processor(
         self, processor_descriptor: definitions.ProcessorAPIDescriptor
     ):
-        for dep in processor_descriptor.depdendencies.values():
+        for dep in processor_descriptor.dependencies.values():
             # To depend on a processor, the class must be defined (module initialized)
             # which entails that is has already been added to the registry.
             assert dep in self._processors, dep
@@ -351,9 +353,9 @@ class _ProcessorRegistry:
         if processor_descriptor.cls_name in self._name_to_cls:
             conflict = self._name_to_cls[processor_descriptor.cls_name]
             existing_source_path = self._processors[conflict].src_path
-            raise definitions.APIDefinitonError(
+            raise definitions.APIDefinitionError(
                 f"A processor with name `{processor_descriptor.cls_name}` was already "
-                f"defined, processors names must be uniuqe. The pre-existing name "
+                f"defined, processors names must be unique. The pre-existing name "
                 f"comes from:\n`{existing_source_path}`\nNew conflicting from\n "
                 f"{processor_descriptor.src_path}"
             )
@@ -377,7 +379,7 @@ class _ProcessorRegistry:
     ) -> Iterable[definitions.ProcessorAPIDescriptor]:
         return [
             self._processors[desc]
-            for desc in self._processors[processor.processor_cls].depdendencies.values()
+            for desc in self._processors[processor.processor_cls].dependencies.values()
         ]
 
 
@@ -388,7 +390,7 @@ _global_processor_registry = _ProcessorRegistry()
 
 
 def _determine_arguments(func: Callable, **kwargs):
-    """Merges proivded and default arguments to effective invocation arguments."""
+    """Merges provided and default arguments to effective invocation arguments."""
     sig = inspect.signature(func)
     bound_args = sig.bind_partial(**kwargs)
     bound_args.apply_defaults()
@@ -444,7 +446,7 @@ def _create_modified_init_for_local(
             logging.debug(
                 f"Use explicitly given context for `{self.__class__.__name__}`."
             )
-        for arg_name, dep_cls in processor_descriptor.depdendencies.items():
+        for arg_name, dep_cls in processor_descriptor.dependencies.items():
             if arg_name in kwargs_mod:
                 logging.debug(
                     f"Use explicitly given instance for `{arg_name}` of "
@@ -453,13 +455,13 @@ def _create_modified_init_for_local(
                 continue
             if dep_cls in cls_to_instance:
                 logging.debug(
-                    f"Use previously created instace for `{arg_name}` of type "
+                    f"Use previously created instance for `{arg_name}` of type "
                     f"`{dep_cls.__name__}`."
                 )
                 instance = cls_to_instance[dep_cls]
             else:
                 logging.debug(
-                    f"Create new instace for `{arg_name}` of type `{dep_cls.__name__}`."
+                    f"Create new instance for `{arg_name}` of type `{dep_cls.__name__}`."
                 )
                 assert dep_cls._init_is_patched
                 instance = dep_cls()  # type: ignore  # Here init args are patched.
@@ -474,7 +476,7 @@ def _create_modified_init_for_local(
 
 @contextlib.contextmanager
 def run_local() -> Any:
-    """Context to run processors with depenedency injection from local instances."""
+    """Context to run processors with dependency injection from local instances."""
     type_to_instance: MutableMapping[
         Type[definitions.ABCProcessor], definitions.ABCProcessor
     ] = {}
@@ -502,15 +504,13 @@ def run_local() -> Any:
 
 
 def _create_remote_service(
-    baseten_client: deploy.BasetenClient,
     processor_dir: pathlib.Path,
     workflow_root: pathlib.Path,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
-    stub_cls_to_url: Mapping[str, str],
+    stub_cls_to_service: Mapping[str, definitions.ServiceDescriptor],
     maybe_stub_file: Optional[pathlib.Path],
-    worfklow_name: str,
-    generate_only: bool,
-) -> definitions.BasetenRemoteDescriptor:
+    options: definitions.DeploymentOptions,
+) -> definitions.ServiceDescriptor:
     processor_filepath = shutil.copy(
         processor_descriptor.src_path,
         os.path.join(processor_dir, f"{definitions.PROCESSOR_MODULE}.py"),
@@ -519,35 +519,66 @@ def _create_remote_service(
         pathlib.Path(processor_filepath), processor_descriptor
     )
     # Only add needed stub URLs.
-    stub_cls_to_url = {
-        stub_cls.__name__: stub_cls_to_url[stub_cls.__name__]
-        for stub_cls in processor_descriptor.depdendencies.values()
+    stub_cls_to_service = {
+        stub_cls.__name__: stub_cls_to_service[stub_cls.__name__]
+        for stub_cls in processor_descriptor.dependencies.values()
     }
     # Convert to truss and deploy.
-    # TODO: support file-based config (and/or merge file and python-src configvalues).
+    # TODO: support file-based config (and/or merge file and python-src config values).
     slay_config = processor_descriptor.processor_cls.default_config
     processor_name = slay_config.name or processor_descriptor.cls_name
-    model_name = f"{worfklow_name}.{processor_name}"
+    model_name = f"{options.workflow_name}.{processor_name}"
     truss_dir = deploy.make_truss(
         processor_dir,
         workflow_root,
         slay_config,
         model_name,
-        stub_cls_to_url,
+        stub_cls_to_service,
         maybe_stub_file,
     )
-    if generate_only:
-        remote_descriptor = definitions.BasetenRemoteDescriptor(
-            b10_model_id="dummy",
-            b10_model_name=model_name,
-            b10_model_version_id="dymmy",
-            b10_model_url="https://dummy",
+
+    if options.only_generate_trusses:
+        service = definitions.ServiceDescriptor(
+            name=model_name, predict_url="https://dummy"
+        )
+
+    elif isinstance(options, definitions.DeploymentOptionsLocalDocker):
+        port = utils.get_free_port()
+        tr = truss_handle.TrussHandle(truss_dir)
+        _ = tr.docker_run(
+            local_port=port, detach=True, wait_for_server_ready=True, network="host"
+        )
+        service = definitions.ServiceDescriptor(
+            name=model_name,
+            predict_url=f"http://host.docker.internal:{port}/v1/models/model:predict",
+            # Localhost seems to only work *sometimes* with docker.
+            # predict_url=f"http://localhost:{port}/v1/models/model:predict",
+        )
+
+    elif isinstance(options, definitions.DeploymentOptionsBaseten):
+        with utils.log_level(logging.INFO):
+            baseten_client = deploy.BasetenClient(options.baseten_url, options.api_key)
+            baseten_service = baseten_client.deploy_truss(truss_dir, options.publish)
+        # Assuming baseten_url is like "https://app.baseten.co" or ""https://app.dev.baseten.co",
+        deploy_url = options.baseten_url.replace(
+            "https://", f"https://model-{baseten_service.model_id}."
+        )
+        deploy_url = deploy_url.replace("app", "api")
+        if baseten_service.is_draft:
+            # desired result like "https://model-{model_id}.api.baseten.co/development".
+            deploy_url = f"{deploy_url}/development"
+        else:
+            # desired result like "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
+            deploy_url = f"{deploy_url}/deployment/{baseten_service.model_version_id}"
+
+        service = definitions.ServiceDescriptor(
+            name=model_name, predict_url=f"{deploy_url}/predict"
         )
     else:
-        with utils.log_level(logging.INFO):
-            remote_descriptor = baseten_client.deploy_truss(truss_dir)
-    logging.debug(remote_descriptor)
-    return remote_descriptor
+        raise NotImplementedError(options)
+
+    logging.info(service)
+    return service
 
 
 def _get_ordered_processor_descriptors(
@@ -556,15 +587,14 @@ def _get_ordered_processor_descriptors(
     """Gather all processors needed and returns a topologically ordered list."""
     needed_processors: set[definitions.ProcessorAPIDescriptor] = set()
 
-    def add_needed_procssors(proc: definitions.ProcessorAPIDescriptor):
+    def add_needed_processors(proc: definitions.ProcessorAPIDescriptor):
         needed_processors.add(proc)
         for processor_descriptor in _global_processor_registry.get_dependencies(proc):
             needed_processors.add(processor_descriptor)
-            add_needed_procssors(processor_descriptor)
+            add_needed_processors(processor_descriptor)
 
     for proc_cls in processors:
-        proc = _global_processor_registry.get_descriptor(proc_cls)
-        add_needed_procssors(proc)
+        add_needed_processors(_global_processor_registry.get_descriptor(proc_cls))
 
     # Iterating over the registry ensures topological ordering.
     return [
@@ -576,46 +606,46 @@ def _get_ordered_processor_descriptors(
 
 def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
-    worfklow_name: str,
-    baseten_url: str = "https://app.baseten.co",
-    generate_only: bool = False,
-) -> definitions.BasetenRemoteDescriptor:
+    options: definitions.DeploymentOptions,
+    non_entrypoint_rood_dir: Optional[str] = None,
+) -> definitions.ServiceDescriptor:
     """
     * Gathers dependencies of `entrypoint.
     * Generates stubs.
     * Generates modifies processors to use these stubs.
     * Generates truss models and deploys them to baseten.
     """
+    # TODO: revisit how workflow root is inferred/specified, current might be brittle.
     # TODO: more control e.g. publish vs. draft.
-    workflow_root = pathlib.Path(sys.argv[0]).absolute().parent
-    api_key = deploy.get_api_key_from_trussrc()
-    baseten_client = deploy.BasetenClient(baseten_url, api_key)
-    entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
+    if non_entrypoint_rood_dir:
+        workflow_root = pathlib.Path(non_entrypoint_rood_dir).absolute()
+    else:
+        workflow_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
+    logging.info(f"Using workflow root dir `{workflow_root}`.")
 
+    entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
     ordered_descriptors = _get_ordered_processor_descriptors([entrypoint])
-    stub_cls_to_url: dict[str, str] = {}
-    entrypoint_remote: Optional[definitions.BasetenRemoteDescriptor] = None
+    stub_cls_to_service: dict[str, definitions.ServiceDescriptor] = {}
+    entrypoint_service: Optional[definitions.ServiceDescriptor] = None
     for processor_descriptor in ordered_descriptors:
         processor_dir = code_gen.make_processor_dir(
-            workflow_root, worfklow_name, processor_descriptor
+            workflow_root, options.workflow_name, processor_descriptor
         )
         maybe_stub_file = code_gen.generate_stubs_for_deps(
             processor_dir,
             _global_processor_registry.get_dependencies(processor_descriptor),
         )
-        remote_descriptor = _create_remote_service(
-            baseten_client,
+        service = _create_remote_service(
             processor_dir,
             workflow_root,
             processor_descriptor,
-            stub_cls_to_url,
+            stub_cls_to_service,
             maybe_stub_file,
-            worfklow_name,
-            generate_only,
+            options,
         )
-        stub_cls_to_url[processor_descriptor.cls_name] = remote_descriptor.b10_model_url
+        stub_cls_to_service[processor_descriptor.cls_name] = service
         if processor_descriptor == entrypoint_descr:
-            entrypoint_remote = remote_descriptor
+            entrypoint_service = service
 
-    assert entrypoint_remote is not None
-    return entrypoint_remote
+    assert entrypoint_service is not None
+    return entrypoint_service

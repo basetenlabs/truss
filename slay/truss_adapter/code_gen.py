@@ -8,9 +8,9 @@ from slay.truss_adapter import model_skeleton
 
 
 class _SpecifyProcessorTypeAnnotation(libcst.CSTTransformer):
-    def __init__(self, new_annotaiton: str) -> None:
+    def __init__(self, new_annotation: str) -> None:
         super().__init__()
-        self._new_annotaiton = new_annotaiton
+        self._new_annotation = new_annotation
 
     def leave_SimpleStatementLine(
         self,
@@ -25,7 +25,7 @@ class _SpecifyProcessorTypeAnnotation(libcst.CSTTransformer):
                 and statement.target.value == "_processor"
             ):
                 new_annotation = libcst.Annotation(
-                    annotation=libcst.Name(value=self._new_annotaiton)
+                    annotation=libcst.Name(value=self._new_annotation)
                 )
                 new_statement = statement.with_changes(annotation=new_annotation)
                 new_body.append(new_statement)
@@ -36,14 +36,14 @@ class _SpecifyProcessorTypeAnnotation(libcst.CSTTransformer):
 
 
 def generate_truss_model(
-    processor_desrciptor: definitions.ProcessorAPIDescriptor,
+    processor_descriptor: definitions.ProcessorAPIDescriptor,
 ) -> tuple[libcst.CSTNode, list[libcst.SimpleStatementLine], libcst.CSTNode]:
-    logging.info(f"Generating Baseten model for `{processor_desrciptor.cls_name}`.")
+    logging.info(f"Generating Baseten model for `{processor_descriptor.cls_name}`.")
     skeleton_tree = libcst.parse_module(
         pathlib.Path(model_skeleton.__file__).read_text()
     )
 
-    imports = [
+    imports: list[libcst.SimpleStatementLine] = [
         node
         for node in skeleton_tree.body
         if isinstance(node, libcst.SimpleStatementLine)
@@ -63,11 +63,13 @@ def generate_truss_model(
     load_def = libcst.parse_statement(
         f"""
 def load(self) -> None:
-    self._processor = {processor_desrciptor.cls_name}(context=self._context)
+    logging.info(f"Initializing processor `{processor_descriptor.cls_name}`.")
+    self._processor = {processor_descriptor.cls_name}(context=self._context)
 """
     )
+    imports.append(libcst.parse_statement("import logging"))  # type: ignore[arg-type]
 
-    endpoint_descriptor = processor_desrciptor.endpoint
+    endpoint_descriptor = processor_descriptor.endpoint
     def_str = "async def" if endpoint_descriptor.is_async else "def"
     # Convert json payload dict to processor args.
     obj_arg_parts = ", ".join(
@@ -76,7 +78,7 @@ def load(self) -> None:
             if arg_type.is_pydantic
             else f"{arg_name}=payload['{arg_name}']"
         )
-        for arg_name, arg_type in endpoint_descriptor.input_names_and_tyes
+        for arg_name, arg_type in endpoint_descriptor.input_names_and_types
     )
 
     if len(endpoint_descriptor.output_types) == 1:
@@ -108,14 +110,14 @@ def load(self) -> None:
     new_block = libcst.IndentedBlock(body=new_body)
     class_definition = class_definition.with_changes(body=new_block)
     class_definition = class_definition.visit(  # type: ignore[assignment]
-        _SpecifyProcessorTypeAnnotation(processor_desrciptor.cls_name)
+        _SpecifyProcessorTypeAnnotation(processor_descriptor.cls_name)
     )
 
-    if issubclass(processor_desrciptor.user_config_type.raw, type(None)):
+    if issubclass(processor_descriptor.user_config_type.raw, type(None)):
         userconfig_pin = libcst.parse_statement("UserConfigT = None")
     else:
         userconfig_pin = libcst.parse_statement(
-            f"UserConfigT = {processor_desrciptor.user_config_type.as_src_str()}"
+            f"UserConfigT = {processor_descriptor.user_config_type.as_src_str()}"
         )
 
     return class_definition, imports, userconfig_pin

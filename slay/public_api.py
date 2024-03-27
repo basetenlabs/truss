@@ -1,13 +1,12 @@
 """
 TODO:
-  * Shim to call already hosted basteten model.
+  * Shim to call already hosted baseten model.
   * Helper to create a `Processor` from a truss dir.
 """
 
-
 from typing import Any, ContextManager, Type, final
 
-from slay import definitions, framework
+from slay import definitions, framework, utils
 
 
 def provide_context() -> Any:
@@ -17,7 +16,7 @@ def provide_context() -> Any:
 
 def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
     """Sets a 'symbolic marker' for injecting a stub or local processor at runtime."""
-    # TODO: consider adding retry or timeout configuraiton here.
+    # TODO: consider adding retry or timeout config here.
     return framework.ProcessorProvisionPlaceholder(processor_cls)
 
 
@@ -50,11 +49,17 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
 def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
     workflow_name: str,
-    generate_only: bool = False,
-) -> definitions.BasetenRemoteDescriptor:
-    return framework.deploy_remotely(
-        entrypoint, workflow_name, generate_only=generate_only
+    publish: bool = True,
+    only_generate_trusses: bool = False,
+) -> definitions.ServiceDescriptor:
+    options = definitions.DeploymentOptionsBaseten(
+        workflow_name=workflow_name,
+        baseten_url="https://app.baseten.co",
+        api_key=utils.get_api_key_from_trussrc(),
+        publish=publish,
+        only_generate_trusses=only_generate_trusses,
     )
+    return framework.deploy_remotely(entrypoint, options)
 
 
 def run_local() -> ContextManager[None]:
