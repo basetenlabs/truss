@@ -303,7 +303,7 @@ class DockerAuthType(Enum):
     authentication we support.
     """
 
-    GCS_SERVICE_ACCOUNT_JSON = "GCS_SERVICE_ACCOUNT_JSON"
+    GCP_SERVICE_ACCOUNT_JSON = "GCP_SERVICE_ACCOUNT_JSON"
 
 
 @dataclass
