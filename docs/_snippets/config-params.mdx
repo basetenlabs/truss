@@ -272,12 +272,12 @@ a base image hosted on a private registry.
 Enum, representing what authentication method you'd like to use to authenticate
 to the private registry. Currently supports:
 
-* GCP_SERVICE_ACCOUNT_JSON -- authenticate with a GCP service account. To use this, make sure you
+* `GCP_SERVICE_ACCOUNT_JSON` - authenticate with a [GCP service account](https://cloud.google.com/iam/docs/service-account-overview). To use this, make sure you
 add your service account JSON blob as a Truss secret.
 
 You specify this in the `docker_auth` settings like so:
 
-```
+```yaml
 base_image:
   ...
   docker_auth:
@@ -291,7 +291,7 @@ Note that here, `secret_name` references the secret that you added your service 
 ##### `base_image.docker_auth.secret_name`
 
 The Truss secret that stores the credential that you will be authenticating with.
-Ensure that this secret is available to the Truss.
+Ensure that this secret is added to the `secrets` section of your Truss, and that you .
 
 ##### `base_image.docker_auth.registry`
 
