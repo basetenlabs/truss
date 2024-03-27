@@ -2,6 +2,7 @@ import concurrent
 import inspect
 import json
 import logging
+import sys
 import tempfile
 import textwrap
 import time
@@ -792,3 +793,33 @@ def test_slow_truss():
         predict_call.join()
 
         _test_invocations(200)
+
+
+@pytest.mark.integration
+def test_workflow():
+    with ensure_kill_all():
+        root = Path(__file__).parent.parent.parent.resolve()
+
+        workflow_root = root / "slay-examples" / "text_to_num"
+
+        sys.path.append(str(workflow_root))
+        from slay import framework
+        from workflow import Workflow
+
+        service_descr = framework.deploy_remotely(
+            Workflow, "integrationtest", baseten_url="", local_docker=True
+        )
+        print(service_descr)
+
+        url = service_descr.b10_model_url.replace("host.docker.internal", "localhost")
+        predict_url = f"{url}/predict"
+        print(predict_url)
+        response = requests.post(
+            predict_url, json={"length": 30, "num_partitions": 4}, stream=True
+        )
+        print(response)
+        print(response.content)
+        assert response.status_code == 200
+        assert response.json() == ["0 modified", "1 modified"]
+        time.sleep(3000)
+        sys.path.pop()

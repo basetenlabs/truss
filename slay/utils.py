@@ -1,6 +1,7 @@
 import contextlib
 import enum
 import logging
+import socket
 import time
 from typing import Callable, Iterable, TypeVar
 
@@ -53,3 +54,11 @@ def wait_for_condition(
             return False
         time.sleep(sleep_between_retries_secs)
     return False
+
+
+def get_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))  # Bind to a free port provided by the host.
+        s.listen(1)  # Not necessary but included for completeness.
+        port = s.getsockname()[1]  # Retrieve the port number assigned.
+        return port

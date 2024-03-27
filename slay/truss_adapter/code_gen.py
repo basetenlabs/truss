@@ -63,9 +63,11 @@ def generate_truss_model(
     load_def = libcst.parse_statement(
         f"""
 def load(self) -> None:
+    logging.info(f"Initializing processor `{processor_desrciptor.cls_name}`.")
     self._processor = {processor_desrciptor.cls_name}(context=self._context)
 """
     )
+    imports.append(libcst.parse_statement("import logging"))
 
     endpoint_descriptor = processor_desrciptor.endpoint
     def_str = "async def" if endpoint_descriptor.is_async else "def"

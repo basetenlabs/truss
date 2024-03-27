@@ -254,6 +254,12 @@ class TrussServer:
                     tags=["V1"],
                 ),
                 FastAPIRoute(
+                    r"/v1/{model_name}/predict",
+                    self._endpoints.predict,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
                     r"/v1/models/{model_name}:predict_binary",
                     self._endpoints.predict,
                     methods=["POST"],

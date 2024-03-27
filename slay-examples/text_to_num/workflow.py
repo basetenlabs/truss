@@ -12,7 +12,6 @@ from typing import Protocol
 
 import pydantic
 import slay
-from truss import truss_config
 from user_package import shared_processor
 
 IMAGE_COMMON = slay.Image().pip_requirements_file(
@@ -29,18 +28,17 @@ class GenerateData(slay.ProcessorBase):
 
 
 IMAGE_TRANSFORMERS_GPU = (
-    slay.Image()
-    .pip_requirements_file(slay.make_abs_path_here("requirements.txt"))
-    .pip_requirements(
-        ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
-    )
+    slay.Image().pip_requirements_file(slay.make_abs_path_here("requirements.txt"))
+    # .pip_requirements(
+    #     ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
+    # )
 )
 
 
 MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
-MISTRAL_CACHE = truss_config.ModelRepo(
-    repo_id=MISTRAL_HF_MODEL, allow_patterns=["*.json", "*.safetensors", ".model"]
-)
+# MISTRAL_CACHE = truss_config.ModelRepo(
+#     repo_id=MISTRAL_HF_MODEL, allow_patterns=["*.json", "*.safetensors", ".model"]
+# )
 
 
 class MistraLLMConfig(pydantic.BaseModel):
@@ -50,9 +48,10 @@ class MistraLLMConfig(pydantic.BaseModel):
 class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
     default_config = slay.Config(
-        image=IMAGE_TRANSFORMERS_GPU,
-        compute=slay.Compute().cpu(2).gpu("A10G"),
-        assets=slay.Assets().cached([MISTRAL_CACHE]),
+        image=IMAGE_COMMON,
+        # image=IMAGE_TRANSFORMERS_GPU,
+        # compute=slay.Compute().cpu(2).gpu("A10G"),
+        # assets=slay.Assets().cached([MISTRAL_CACHE]),
         user_config=MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL),
     )
     # default_config = slay.Config(config_path="mistral_config.yaml")
@@ -62,46 +61,47 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
         context: slay.Context[MistraLLMConfig] = slay.provide_context(),
     ) -> None:
         super().__init__(context)
-        import torch
-        import transformers
+        # import torch
+        # import transformers
 
-        model_name = self.user_config.hf_model_name
+        # model_name = self.user_config.hf_model_name
 
-        self._model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
-        )
-        self._tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_name,
-            device_map="auto",
-            torch_dtype=torch.float16,
-        )
+        # self._model = transformers.AutoModelForCausalLM.from_pretrained(
+        #     model_name,
+        #     torch_dtype=torch.float16,
+        #     device_map="auto",
+        # )
+        # self._tokenizer = transformers.AutoTokenizer.from_pretrained(
+        #     model_name,
+        #     device_map="auto",
+        #     torch_dtype=torch.float16,
+        # )
 
-        self._generate_args = {
-            "max_new_tokens": 512,
-            "temperature": 1.0,
-            "top_p": 0.95,
-            "top_k": 50,
-            "repetition_penalty": 1.0,
-            "no_repeat_ngram_size": 0,
-            "use_cache": True,
-            "do_sample": True,
-            "eos_token_id": self._tokenizer.eos_token_id,
-            "pad_token_id": self._tokenizer.pad_token_id,
-        }
+        # self._generate_args = {
+        #     "max_new_tokens": 512,
+        #     "temperature": 1.0,
+        #     "top_p": 0.95,
+        #     "top_k": 50,
+        #     "repetition_penalty": 1.0,
+        #     "no_repeat_ngram_size": 0,
+        #     "use_cache": True,
+        #     "do_sample": True,
+        #     "eos_token_id": self._tokenizer.eos_token_id,
+        #     "pad_token_id": self._tokenizer.pad_token_id,
+        # }
 
     def run(self, data: str) -> str:
-        import torch
+        return data.upper()
+        # import torch
 
-        formatted_prompt = f"[INST] {data} [/INST]"
-        input_ids = self._tokenizer(
-            formatted_prompt, return_tensors="pt"
-        ).input_ids.cuda()
-        with torch.no_grad():
-            output = self._model.generate(inputs=input_ids, **self._generate_args)
-            result = self._tokenizer.decode(output[0])
-        return result
+        # formatted_prompt = f"[INST] {data} [/INST]"
+        # input_ids = self._tokenizer(
+        #     formatted_prompt, return_tensors="pt"
+        # ).input_ids.cuda()
+        # with torch.no_grad():
+        #     output = self._model.generate(inputs=input_ids, **self._generate_args)
+        #     result = self._tokenizer.decode(output[0])
+        # return result
 
 
 class MistralP(Protocol):

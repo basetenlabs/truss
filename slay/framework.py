@@ -5,7 +5,6 @@ import logging
 import os
 import pathlib
 import shutil
-import sys
 import types
 from typing import (
     Any,
@@ -23,6 +22,7 @@ from typing import (
 import pydantic
 from slay import code_gen, definitions, utils
 from slay.truss_adapter import deploy
+from truss import truss_handle
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -510,6 +510,7 @@ def _create_remote_service(
     maybe_stub_file: Optional[pathlib.Path],
     worfklow_name: str,
     generate_only: bool,
+    local_docker: bool,
 ) -> definitions.BasetenRemoteDescriptor:
     processor_filepath = shutil.copy(
         processor_descriptor.src_path,
@@ -542,6 +543,20 @@ def _create_remote_service(
             b10_model_name=model_name,
             b10_model_version_id="dymmy",
             b10_model_url="https://dummy",
+        )
+    elif local_docker:
+        port = utils.get_free_port()
+        tr = truss_handle.TrussHandle(truss_dir)
+        _ = tr.docker_run(
+            local_port=port, detach=True, wait_for_server_ready=True, network="host"
+        )
+        # url = f"http://localhost:{port}/v1/model"
+        url = f"http://host.docker.internal:{port}/v1/model"
+        remote_descriptor = definitions.BasetenRemoteDescriptor(
+            b10_model_id="dummy",
+            b10_model_name=model_name,
+            b10_model_version_id="dummy",
+            b10_model_url=url,
         )
     else:
         with utils.log_level(logging.INFO):
@@ -579,6 +594,8 @@ def deploy_remotely(
     worfklow_name: str,
     baseten_url: str = "https://app.baseten.co",
     generate_only: bool = False,
+    local_docker: bool = False,
+    non_entrypoint_rood_dir: Optional[str] = None,
 ) -> definitions.BasetenRemoteDescriptor:
     """
     * Gathers dependencies of `entrypoint.
@@ -586,6 +603,7 @@ def deploy_remotely(
     * Generates modifies processors to use these stubs.
     * Generates truss models and deploys them to baseten.
     """
+    # TODO: revisit how workflow root is inferred/specified, current might be brittle.
     # TODO: more control e.g. publish vs. draft.
     workflow_root = pathlib.Path(sys.argv[0]).absolute().parent
     api_key = deploy.get_api_key_from_trussrc()
@@ -612,6 +630,7 @@ def deploy_remotely(
             maybe_stub_file,
             worfklow_name,
             generate_only,
+            local_docker,
         )
         stub_cls_to_url[processor_descriptor.cls_name] = remote_descriptor.b10_model_url
         if processor_descriptor == entrypoint_descr:

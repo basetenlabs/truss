@@ -1,5 +1,6 @@
 import abc
 import functools
+import logging
 from typing import Type, TypeVar
 
 import httpx
@@ -24,6 +25,10 @@ class BasetenSession:
     def __init__(self, url: str, api_key: str) -> None:
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._url = url
+        logging.debug(
+            "Initializing stub with predict URL "
+            f"`{url}{definitions.PREDICT_ENDPOINT_NAME}`."
+        )
 
     @functools.cached_property
     def _client_sync(self) -> httpx.Client:
