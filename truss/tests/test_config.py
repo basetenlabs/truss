@@ -118,7 +118,7 @@ def test_acc_spec_from_str(input_str, expected_acc):
                 "image": "custom_base_image",
                 "python_executable_path": "/path/python",
                 "docker_auth": {
-                    "auth_method": "GCS_SERVICE_ACCOUNT_JSON",
+                    "auth_method": "GCP_SERVICE_ACCOUNT_JSON",
                     "secret_name": "some-secret-name",
                     "registry": "some-docker-registry",
                 },
@@ -127,7 +127,7 @@ def test_acc_spec_from_str(input_str, expected_acc):
                 image="custom_base_image",
                 python_executable_path="/path/python",
                 docker_auth=DockerAuthSettings(
-                    auth_method=DockerAuthType.GCS_SERVICE_ACCOUNT_JSON,
+                    auth_method=DockerAuthType.GCP_SERVICE_ACCOUNT_JSON,
                     secret_name="some-secret-name",
                     registry="some-docker-registry",
                 ),
@@ -136,7 +136,7 @@ def test_acc_spec_from_str(input_str, expected_acc):
                 "image": "custom_base_image",
                 "python_executable_path": "/path/python",
                 "docker_auth": {
-                    "auth_method": "GCS_SERVICE_ACCOUNT_JSON",
+                    "auth_method": "GCP_SERVICE_ACCOUNT_JSON",
                     "secret_name": "some-secret-name",
                     "registry": "some-docker-registry",
                 },
