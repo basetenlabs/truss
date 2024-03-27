@@ -253,8 +253,11 @@ class TrussServer:
                     methods=["POST"],
                     tags=["V1"],
                 ),
+                # For integration tests hitting directly the docker container
+                # an endpoint with same sufficx `/predict` as baseten APIs.
+                # Should not be used otherwise.
                 FastAPIRoute(
-                    r"/v1/{model_name}/predict",
+                    r"/v1/models/{model_name}/predict",
                     self._endpoints.predict,
                     methods=["POST"],
                     tags=["V1"],

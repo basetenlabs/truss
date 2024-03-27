@@ -173,6 +173,7 @@ def _model_url(baseten_env: _BasetenEnv, model_id: str, production: bool) -> str
     if baseten_env == _BasetenEnv.LOCAL:
         return f"http://localhost:8000/models/{model_id}"
 
+    # TODO: change to model version ID
     model_env = "production" if production else "development"
 
     if baseten_env in {_BasetenEnv.STAGING, _BasetenEnv.DEV}:

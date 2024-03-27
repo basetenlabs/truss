@@ -550,8 +550,7 @@ def _create_remote_service(
         _ = tr.docker_run(
             local_port=port, detach=True, wait_for_server_ready=True, network="host"
         )
-        # url = f"http://localhost:{port}/v1/model"
-        url = f"http://host.docker.internal:{port}/v1/model"
+        url = f"http://host.docker.internal:{port}/v1/models/model"
         remote_descriptor = definitions.BasetenRemoteDescriptor(
             b10_model_id="dummy",
             b10_model_name=model_name,
@@ -605,7 +604,11 @@ def deploy_remotely(
     """
     # TODO: revisit how workflow root is inferred/specified, current might be brittle.
     # TODO: more control e.g. publish vs. draft.
-    workflow_root = pathlib.Path(sys.argv[0]).absolute().parent
+    if non_entrypoint_rood_dir:
+        workflow_root = pathlib.Path(non_entrypoint_rood_dir).absolute()
+    else:
+        workflow_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
+    logging.info(f"Using workflow root dir `{workflow_root}`.")
     api_key = deploy.get_api_key_from_trussrc()
     baseten_client = deploy.BasetenClient(baseten_url, api_key)
     entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
