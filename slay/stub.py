@@ -1,9 +1,11 @@
 import abc
 import functools
-from typing import Type, TypeVar
+from typing import Type, TypeVar, final
 
 import httpx
 from slay import definitions
+
+DEFAULT_TIMEOUT_SEC = 300
 
 
 def _handle_respose(response: httpx.Response):
@@ -11,9 +13,9 @@ def _handle_respose(response: httpx.Response):
     # re-raised exception. Consider re-raising same exception or if not a use a
     # generic "RPCError" exception class or similar.
     if response.is_server_error:
-        raise ValueError(response)
+        raise ValueError(f"{response}:\n{response.content.decode('utf-8')}")
     if response.is_client_error:
-        raise ValueError(response)
+        raise ValueError(f"{response}:\n{response.content.decode('utf-8')}")
     return response.json()
 
 
@@ -27,11 +29,15 @@ class BasetenSession:
 
     @functools.cached_property
     def _client_sync(self) -> httpx.Client:
-        return httpx.Client(base_url=self._url, headers=self._auth_header)
+        return httpx.Client(
+            base_url=self._url, headers=self._auth_header, timeout=DEFAULT_TIMEOUT_SEC
+        )
 
     @functools.cached_property
     def _client_async(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self._url, headers=self._auth_header)
+        return httpx.AsyncClient(
+            base_url=self._url, headers=self._auth_header, timeout=DEFAULT_TIMEOUT_SEC
+        )
 
     def predict_sync(self, json_paylod):
         return _handle_respose(
@@ -47,9 +53,11 @@ class BasetenSession:
 
 
 class StubBase(abc.ABC):
-    @abc.abstractmethod
+    _remote: BasetenSession
+
+    @final
     def __init__(self, url: str, api_key: str) -> None:
-        ...
+        self._remote = BasetenSession(url, api_key)
 
 
 StubT = TypeVar("StubT", bound=StubBase)

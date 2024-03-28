@@ -252,13 +252,14 @@ class Context(generics.GenericModel, Generic[UserConfigT]):
         return self.stub_cls_to_url[stub_cls_name]
 
     def get_baseten_api_key(self) -> str:
-        if not self.secrets:
+        if self.secrets is None:
             raise UsageError(f"Secrets not set in `{self.__class__.__name__}` object.")
         if BASTEN_API_SECRET_NAME not in self.secrets:
             raise MissingDependencyError(
-                "For using workflows, it is required to setup a an API key with name "
-                f"`{BASTEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
-                "call other processors."
+                "For using workflows, it is required to create a secret contining an "
+                f" API key with name `{BASTEN_API_SECRET_NAME}` on baseten to allow "
+                "workflow processor to call other processors. For local execution, "
+                "secrets can be provided to `run_local`."
             )
 
         api_key = self.secrets[BASTEN_API_SECRET_NAME]

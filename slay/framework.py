@@ -413,11 +413,11 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
 
 
 def _create_local_context(
-    processor_cls: Type[definitions.ABCProcessor],
+    processor_cls: Type[definitions.ABCProcessor], secrets: Mapping[str, str]
 ) -> definitions.Context:
     if hasattr(processor_cls, "default_config"):
         defaults = processor_cls.default_config
-        return definitions.Context(user_config=defaults.user_config)
+        return definitions.Context(user_config=defaults.user_config, secrets=secrets)
     return definitions.Context()
 
 
@@ -426,6 +426,7 @@ def _create_modified_init_for_local(
     cls_to_instance: MutableMapping[
         Type[definitions.ABCProcessor], definitions.ABCProcessor
     ],
+    secrets: Mapping[str, str],
 ):
     """Replaces the default argument values with local processor instantiations.
 
@@ -438,7 +439,7 @@ def _create_modified_init_for_local(
         logging.debug(f"Patched `__init__` of `{processor_descriptor.cls_name}`.")
         kwargs_mod = dict(kwargs)
         if definitions.CONTEXT_ARG_NAME not in kwargs_mod:
-            context = _create_local_context(processor_descriptor.processor_cls)
+            context = _create_local_context(processor_descriptor.processor_cls, secrets)
             kwargs_mod[definitions.CONTEXT_ARG_NAME] = context
         else:
             logging.debug(
@@ -473,7 +474,7 @@ def _create_modified_init_for_local(
 
 
 @contextlib.contextmanager
-def run_local() -> Any:
+def run_local(secrets: Optional[Mapping[str, str]] = None) -> Any:
     """Context to run processors with depenedency injection from local instances."""
     type_to_instance: MutableMapping[
         Type[definitions.ABCProcessor], definitions.ABCProcessor
@@ -485,7 +486,7 @@ def run_local() -> Any:
             processor_descriptor.processor_cls
         ] = processor_descriptor.processor_cls.__init__
         init_for_local = _create_modified_init_for_local(
-            processor_descriptor, type_to_instance
+            processor_descriptor, type_to_instance, secrets or {}
         )
         processor_descriptor.processor_cls.__init__ = init_for_local  # type: ignore[method-assign]
         processor_descriptor.processor_cls._init_is_patched = True

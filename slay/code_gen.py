@@ -194,14 +194,7 @@ def _gen_stub_src(processor: definitions.ProcessorAPIDescriptor):
     """
     imports = ["from slay import stub"]
 
-    src_parts = [
-        f"""
-class {processor.cls_name}(stub.StubBase):
-
-    def __init__(self, url: str, api_key: str) -> None:
-        self._remote = stub.BasetenSession(url, api_key)
-"""
-    ]
+    src_parts = [f"""class {processor.cls_name}(stub.StubBase):"""]
     body = _indent(_endpoint_body_src(processor.endpoint))
     src_parts.append(
         _indent(

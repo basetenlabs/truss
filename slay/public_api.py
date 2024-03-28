@@ -4,8 +4,7 @@ TODO:
   * Helper to create a `Processor` from a truss dir.
 """
 
-
-from typing import Any, ContextManager, Type, final
+from typing import Any, ContextManager, Mapping, Optional, Type, final
 
 from slay import definitions, framework
 
@@ -57,6 +56,6 @@ def deploy_remotely(
     )
 
 
-def run_local() -> ContextManager[None]:
+def run_local(secrets: Optional[Mapping[str, str]] = None) -> ContextManager[None]:
     """Context manager for using in-process instantiations of processor dependencies."""
-    return framework.run_local()
+    return framework.run_local(secrets)
