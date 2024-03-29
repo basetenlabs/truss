@@ -5,13 +5,14 @@ import logging
 import os
 import sys
 import time
+import traceback
 from collections.abc import Generator
 from contextlib import asynccontextmanager
 from enum import Enum
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
 
 import pydantic
 from anyio import Semaphore, to_thread
@@ -88,6 +89,9 @@ class ModelWrapper:
         )
         self._background_tasks: Set[asyncio.Task] = set()
         self.truss_schema: TrussSchema = None
+        self._return_structured_error = (
+            True  # config.get("return_structured_error", False)
+        )
 
     def load(self) -> bool:
         if self.ready:
@@ -193,10 +197,15 @@ class ModelWrapper:
             return payload
 
         if inspect.iscoroutinefunction(self._model.preprocess):
-            return await _intercept_exceptions_async(self._model.preprocess)(payload)
+            return await _intercept_exceptions_async(
+                self._model.preprocess, self._return_structured_error
+            )(payload)
         else:
             return await to_thread.run_sync(
-                _intercept_exceptions_sync(self._model.preprocess), payload
+                _intercept_exceptions_sync(
+                    self._model.preprocess, self._return_structured_error
+                ),
+                payload,
             )
 
     async def predict(
@@ -218,10 +227,15 @@ class ModelWrapper:
             return self._model.predict(payload)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(self._model.predict)(payload)
+            return await _intercept_exceptions_async(
+                self._model.predict, self._return_structured_error
+            )(payload)
 
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.predict), payload
+            _intercept_exceptions_sync(
+                self._model.predict, self._return_structured_error
+            ),
+            payload,
         )
 
     async def postprocess(
@@ -244,10 +258,15 @@ class ModelWrapper:
             return self._model.postprocess(response)
 
         if inspect.iscoroutinefunction(self._model.postprocess):
-            return await _intercept_exceptions_async(self._model.postprocess)(response)
+            return await _intercept_exceptions_async(
+                self._model.postprocess, self._return_structured_error
+            )(response)
 
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.postprocess), response
+            _intercept_exceptions_sync(
+                self._model.postprocess, self._return_structured_error
+            ),
+            response,
         )
 
     async def write_response_to_queue(
@@ -404,28 +423,73 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
     return int((time.perf_counter() - since_micro_seconds) * 1000)
 
 
-def _handle_exception():
+class StackFrame(pydantic.BaseModel):
+    filename: str
+    lineno: Optional[int]
+    name: str
+    line: Optional[str]
+
+    @classmethod
+    def from_frame_summary(cls, frame: traceback.FrameSummary):
+        return cls(
+            filename=frame.filename,
+            lineno=frame.lineno,
+            name=frame.name,
+            line=frame.line,
+        )
+
+
+class TrussError(pydantic.BaseModel):
+    exception_class_name: str
+    exception_module_name: Optional[str]
+    exception_message: str
+    user_stack_trace: List[StackFrame]
+
+
+def _handle_exception(exception: Exception, return_structured_error: bool):
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
     logging.exception("Internal Server Error")
-    raise HTTPException(status_code=500, detail="Internal Server Error")
+    detail: Union[str, Dict[str, Any]]
+    if return_structured_error:
+        error_stack = traceback.extract_tb(exception.__traceback__)
+        # Exclude wrapping layer `inner` from `_intercept_exceptions_sync|async`.
+        final_tb = [frame for frame in error_stack if frame.name not in {"inner"}]
+        if hasattr(exception, "__module__"):
+            exception_module_name = exception.__module__
+        else:
+            exception_module_name = None
+
+        error = TrussError(
+            exception_class_name=exception.__class__.__name__,
+            exception_module_name=exception_module_name,
+            exception_message=str(exception),
+            user_stack_trace=list(
+                [StackFrame.from_frame_summary(frame) for frame in final_tb]
+            ),
+        )
+        detail = error.dict()
+    else:
+        detail = "Internal Server Error"
+
+    raise HTTPException(status_code=500, detail=detail)
 
 
-def _intercept_exceptions_sync(func):
+def _intercept_exceptions_sync(func, return_structured_error: bool):
     def inner(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except Exception:
-            _handle_exception()
+        except Exception as e:
+            _handle_exception(e, return_structured_error)
 
     return inner
 
 
-def _intercept_exceptions_async(func):
+def _intercept_exceptions_async(func, return_structured_error: bool):
     async def inner(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
-        except Exception:
-            _handle_exception()
+        except Exception as e:
+            _handle_exception(e, return_structured_error)
 
     return inner
