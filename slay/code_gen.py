@@ -98,7 +98,7 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor):
     def_str = "async def" if endpoint.is_async else "def"
     args = ", ".join(
         f"{arg_name}: {arg_type.as_src_str()}"
-        for arg_name, arg_type in endpoint.input_names_and_tyes
+        for arg_name, arg_type in endpoint.input_names_and_types
     )
     if len(endpoint.output_types) == 1:
         output_type = f"{endpoint.output_types[0].as_src_str()}"
@@ -141,7 +141,7 @@ def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor):
             if arg_type.is_pydantic
             else f"'{arg_name}': {arg_name}"
         )
-        for arg_name, arg_type in endpoint.input_names_and_tyes
+        for arg_name, arg_type in endpoint.input_names_and_types
     )
 
     json_args = f"{{{', '.join(json_arg_parts)}}}"
@@ -194,14 +194,7 @@ def _gen_stub_src(processor: definitions.ProcessorAPIDescriptor):
     """
     imports = ["from slay import stub"]
 
-    src_parts = [
-        f"""
-class {processor.cls_name}(stub.StubBase):
-
-    def __init__(self, url: str, api_key: str) -> None:
-        self._remote = stub.BasetenSession(url, api_key)
-"""
-    ]
+    src_parts = [f"class {processor.cls_name}(stub.StubBase):"]
     body = _indent(_endpoint_body_src(processor.endpoint))
     src_parts.append(
         _indent(
@@ -232,7 +225,8 @@ def generate_stubs_for_deps(
 
     out_file_path = processor_dir / f"{STUB_MODULE}.py"
     with out_file_path.open("w") as fp:
-        fp.writelines("\n".join(imports))
+        fp.write("\n".join(imports))
+        fp.write("\n")
         fp.writelines(src_parts)
 
     _format_python_file(out_file_path)
@@ -284,7 +278,7 @@ class _InitRewriter(libcst.CSTTransformer):
                     if param.name.value not in self._replacements:
                         raise ValueError(
                             f"For argument `{param.name.value}` no processor was "
-                            f"mappend. Available {list(self._replacements.keys())}"
+                            f"mapped. Available {list(self._replacements.keys())}"
                         )
 
             new_params = method.params.with_changes(params=keep_params)
@@ -306,20 +300,20 @@ class _InitRewriter(libcst.CSTTransformer):
 
 
 def _rewrite_processor_inits(
-    source_tree: libcst.Module, processor_desrciptor: definitions.ProcessorAPIDescriptor
+    source_tree: libcst.Module, processor_descriptor: definitions.ProcessorAPIDescriptor
 ):
     """Removes processors from init args and instead initializes corresponding stubs."""
     replacements = {}
-    for name, proc_cls in processor_desrciptor.depdendencies.items():
+    for name, proc_cls in processor_descriptor.dependencies.items():
         replacements[name] = f"{STUB_MODULE}.{proc_cls.__name__}"
 
     if not replacements:
         return source_tree
 
-    logging.debug(f"Adding stub inits to `{processor_desrciptor.cls_name}`.")
+    logging.debug(f"Adding stub inits to `{processor_descriptor.cls_name}`.")
 
     modified_tree = source_tree.visit(
-        _InitRewriter(processor_desrciptor.cls_name, replacements)
+        _InitRewriter(processor_descriptor.cls_name, replacements)
     )
 
     new_imports = [
@@ -338,18 +332,18 @@ def _rewrite_processor_inits(
 
 def generate_processor_source(
     file_path: pathlib.Path,
-    processor_desrciptor: definitions.ProcessorAPIDescriptor,
+    processor_descriptor: definitions.ProcessorAPIDescriptor,
 ):
     """Generates code that wraps a processor as a truss-compatible model."""
-    sourc_code = _remove_main_section(file_path.read_text())
-    source_tree = libcst.parse_module(sourc_code)
-    source_tree = _rewrite_processor_inits(source_tree, processor_desrciptor)
+    source_code = _remove_main_section(file_path.read_text())
+    source_tree = libcst.parse_module(source_code)
+    source_tree = _rewrite_processor_inits(source_tree, processor_descriptor)
 
     # TODO: Processor isolation: either prune file or generate a new file.
     # At least remove main section.
 
     model_def, imports, userconfig_pin = code_gen.generate_truss_model(
-        processor_desrciptor
+        processor_descriptor
     )
     new_body: list[libcst.BaseStatement] = (
         imports + list(source_tree.body) + [userconfig_pin, model_def]  # type: ignore[assignment, misc, list-item]

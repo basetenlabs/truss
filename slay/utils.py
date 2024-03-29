@@ -1,8 +1,14 @@
+import configparser
 import contextlib
 import enum
 import logging
+import socket
 import time
-from typing import Callable, Iterable, TypeVar
+from typing import Any, Callable, Iterable, TypeVar
+
+import httpx
+from slay import definitions
+from truss.remote import remote_factory
 
 T = TypeVar("T")
 
@@ -53,3 +59,38 @@ def wait_for_condition(
             return False
         time.sleep(sleep_between_retries_secs)
     return False
+
+
+def get_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))  # Bind to a free port provided by the host.
+        s.listen(1)  # Not necessary but included for completeness.
+        port = s.getsockname()[1]  # Retrieve the port number assigned.
+        return port
+
+
+def get_api_key_from_trussrc() -> str:
+    try:
+        return remote_factory.load_config().get("baseten", "api_key")
+    except configparser.Error as e:
+        raise definitions.MissingDependencyError(
+            "You must have a `trussrc` file with a baseten API key."
+        ) from e
+
+
+def call_workflow_dbg(
+    service: definitions.ServiceDescriptor,
+    payload: Any,
+    max_retries: int = 100,
+    retry_wait_sec: int = 3,
+) -> httpx.Response:
+    """For debugging only: tries calling a workflow."""
+    api_key = get_api_key_from_trussrc()
+    session = httpx.Client(headers={"Authorization": f"Api-Key {api_key}"})
+    for _ in range(max_retries):
+        try:
+            response = session.post(service.predict_url, json=payload)
+            return response
+        except Exception:
+            time.sleep(retry_wait_sec)
+    raise

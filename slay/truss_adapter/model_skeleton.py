@@ -22,7 +22,7 @@ class ProcessorModel:
         )
         self._context = definitions.Context[UserConfigT](
             user_config=truss_metadata.user_config,
-            stub_cls_to_url=truss_metadata.stub_cls_to_url,
+            stub_cls_to_service=truss_metadata.stub_cls_to_service,
             secrets=secrets,
         )
 
