@@ -44,7 +44,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import BaseImage, ModelServer, TrussConfig
+from truss.truss_config import BaseImage, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -331,20 +331,20 @@ class ServingImageBuilder(ImageBuilder):
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
-        if config.build.model_server is ModelServer.TRT_LLM:
+
+        if config.trt_llm is not None:
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
-            # Check to see if TP and GPU count are the same
-            # TODO(Abu): Consolidate these config parameters so that we don't have to
-            # keep truss + template in sync if we change th einterface
-            if "tensor_parallel_count" in config.build.arguments:
-                if (
-                    config.build.arguments["tensor_parallel_count"]
-                    != config.resources.accelerator.count
-                ):
-                    raise ValueError(
-                        "Tensor parallelism and GPU count must be the same for TRT-LLM"
-                    )
+            tensor_parallel_count = (
+                config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]
+                if config.trt_llm.build is not None
+                else config.trt_llm.serve.tensor_parallel_count  # type: ignore[union-attr]
+            )
+
+            if tensor_parallel_count != config.resources.accelerator.count:
+                raise ValueError(
+                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                )
 
             config.base_image = BaseImage(
                 image=TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"

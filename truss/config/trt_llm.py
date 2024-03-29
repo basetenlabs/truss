@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 from typing import Optional
@@ -8,13 +9,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class TRTLLMModelArchitecture(Enum):
+class TRTLLMModelArchitecture(str, Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
     DEEPSEEK: str = "deepseek"
 
 
-class TRTLLMQuantizationType(Enum):
+class TRTLLMQuantizationType(str, Enum):
     NO_QUANT: str = "no_quant"
     WEIGHTS_ONLY_INT8: str = "weights_int8"
     WEIGHTS_KV_INT8: str = "weights_kv_int8"
@@ -47,6 +48,12 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
+
+    class Config:
+        json_encoders = {
+            TRTLLMModelArchitecture: lambda x: x.value,
+            TRTLLMQuantizationType: lambda x: x.value,
+        }
 
 
 class TrussTRTLLMServingConfiguration(BaseModel):
@@ -85,3 +92,8 @@ class TRTLLMConfiguration(BaseModel):
         if self.build is not None:
             return True
         return False
+
+    # TODO(Abu): Replace this with model_dump(json=True)
+    # when pydantic v2 is used here
+    def to_json_dict(self):
+        return json.loads(self.json())
