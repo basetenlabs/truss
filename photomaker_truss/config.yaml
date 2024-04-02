@@ -1,0 +1,38 @@
+python_version: 3.10
+dependencies:
+  - PyTorch>=2.0.0
+  - diffusers
+  - transformers
+  - numpy
+  - huggingface_hub
+gpu_requirements:
+  minimum_memory: 11GB
+  # Use torch.float16 as the fallback if bfloat16 is not supported
+  float_type: torch.float16 if not allow_bfloat16 else 'bfloat16'
+model_cache:
+  - repo_id: TencentARC/PhotoMaker
+    # Specify patterns of the files to cache, focusing on necessary weights and configurations
+    allow_patterns:
+      - "*.json"
+      - "*.pt"
+resources:
+  accelerator: A10G
+  cpu: '4'
+  memory: 24Gi
+  use_gpu: true
+  # Adjustment for torch.float16 usage
+  float_type: torch.float16
+secrets: {}
+system_packages:
+  - ffmpeg
+  - libsm6
+  - libxext6
+  - cuda-11-3
+  - cudnn8
+# Including essential environmental configuration details for supporting large model operations
+environment_variables:
+  TORCH_CUDA_ARCH_LIST: "8.0+PTX"
+  TORCH_EXTENSIONS_DIR: "/tmp/torch_extensions"
+  HF_HOME: "/cache/hugging_face"
+  TRANSFORMERS_CACHE: "/cache/transformers"
+  DIFFUSERS_CACHE: "/cache/diffusers"
