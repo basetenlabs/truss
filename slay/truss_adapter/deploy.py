@@ -75,7 +75,7 @@ def _make_truss_config(
     assets = slay_config.get_asset_spec()
     config.secrets = assets.secrets
     if definitions.BASETEN_API_SECRET_NAME not in config.secrets:
-        config.secrets[definitions.BASETEN_API_SECRET_NAME] = "***"
+        config.secrets[definitions.BASETEN_API_SECRET_NAME] = definitions.SECRET_DUMMY
     else:
         logging.info(
             f"Workflows automatically add {definitions.BASETEN_API_SECRET_NAME} "
