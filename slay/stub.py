@@ -4,18 +4,9 @@ import logging
 from typing import Type, TypeVar, final
 
 import httpx
-from slay import definitions
+from slay import definitions, utils
 
-
-def _handle_response(response: httpx.Response):
-    # TODO: improve error handling, extract context from response and include in
-    # re-raised exception. Consider re-raising same exception or if not a use a
-    # generic "RPCError" exception class or similar.
-    if response.is_server_error:
-        raise ValueError(response)
-    if response.is_client_error:
-        raise ValueError(response)
-    return response.json()
+DEFAULT_TIMEOUT_SEC = 600
 
 
 class BasetenSession:
@@ -26,28 +17,29 @@ class BasetenSession:
         self, service_descriptor: definitions.ServiceDescriptor, api_key: str
     ) -> None:
         logging.info(
-            f"Stub session for {service_descriptor.name} with predict URL `{service_descriptor.predict_url}`."
+            f"Stub session for {service_descriptor.name} with predict URL "
+            f"`{service_descriptor.predict_url}`."
         )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
 
     @functools.cached_property
     def _client_sync(self) -> httpx.Client:
-        return httpx.Client(headers=self._auth_header)
+        return httpx.Client(headers=self._auth_header, timeout=DEFAULT_TIMEOUT_SEC)
 
     @functools.cached_property
     def _client_async(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(headers=self._auth_header)
+        return httpx.AsyncClient(headers=self._auth_header, timeout=DEFAULT_TIMEOUT_SEC)
 
     def predict_sync(self, json_payload):
-        return _handle_response(
+        return utils.handle_response(
             self._client_sync.post(
                 self._service_descriptor.predict_url, json=json_payload
             )
         )
 
     async def predict_async(self, json_payload):
-        return _handle_response(
+        return utils.handle_response(
             await self._client_async.post(
                 self._service_descriptor.predict_url, json=json_payload
             )

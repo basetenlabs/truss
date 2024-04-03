@@ -43,7 +43,7 @@ def generate_truss_model(
         pathlib.Path(model_skeleton.__file__).read_text()
     )
 
-    imports: list[libcst.SimpleStatementLine] = [
+    imports: list[Any] = [
         node
         for node in skeleton_tree.body
         if isinstance(node, libcst.SimpleStatementLine)
@@ -52,6 +52,8 @@ def generate_truss_model(
             for stmt in node.body
         )
     ]
+    imports.append(libcst.parse_statement("import logging"))
+    imports.append(libcst.parse_statement("from slay import utils"))
 
     class_definition: libcst.ClassDef = utils.expect_one(
         node
@@ -67,7 +69,6 @@ def load(self) -> None:
     self._processor = {processor_descriptor.cls_name}(context=self._context)
 """
     )
-    imports.append(libcst.parse_statement("import logging"))  # type: ignore[arg-type]
 
     endpoint_descriptor = processor_descriptor.endpoint
     def_str = "async def" if endpoint_descriptor.is_async else "def"
@@ -96,14 +97,14 @@ def load(self) -> None:
     predict_def = libcst.parse_statement(
         f"""
 {def_str} predict(self, payload):
-    result = {maybe_await}self._processor.{endpoint_descriptor.name}({obj_arg_parts})
-    return  {result}
+    with utils.exception_to_http_error(
+        include_stack=True, processor_name="{processor_descriptor.cls_name}"):
+        result = {maybe_await}self._processor.{endpoint_descriptor.name}({obj_arg_parts})
+        return  {result}
 
 """
     )
-    new_body: list[libcst.BaseStatement] = list(  # type: ignore[assignment,misc]
-        class_definition.body.body
-    ) + [
+    new_body: list[Any] = list(class_definition.body.body) + [
         load_def,
         predict_def,
     ]
