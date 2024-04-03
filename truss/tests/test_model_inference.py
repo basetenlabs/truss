@@ -728,6 +728,44 @@ def test_truss_with_errors():
 
 
 @pytest.mark.integration
+def test_truss_with_user_errors():
+    """Test that user-code raised `fastapi.HTTPExceptions` are passed through as is."""
+    model = """
+    import fastapi
+
+    class Model:
+        def predict(self, request):
+            raise fastapi.HTTPException(status_code=500, detail="My custom message.")
+    """
+
+    config = "model_name: error-truss"
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 500
+        assert "error" in response.json()
+
+        assert_logs_contain_error(
+            container.logs(),
+            "HTTPException: 500: My custom message.",
+            "Model raised HTTPException",
+        )
+
+        assert "My custom message." in response.json()["error"]
+
+
+@pytest.mark.integration
 def test_slow_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
