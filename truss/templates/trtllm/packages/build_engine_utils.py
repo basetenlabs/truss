@@ -1,34 +1,24 @@
 from pathlib import Path
+from typing import Optional
 
-from schema import EngineBuildArgs
+from builder.types import TrussTRTLLMConfiguration
 
 
 def build_engine_from_config_args(
-    engine_build_args: EngineBuildArgs,
+    truss_trtllm_configuration: TrussTRTLLMConfiguration,
     dst: Path,
+    checkpoint_dir_path: Optional[Path] = None,
 ):
-    import os
-    import shutil
-    import sys
-
     # NOTE: These are provided by the underlying base image
     # TODO(Abu): Remove this when we have a better way of handling this
-    sys.path.append("/app/baseten")
-    from build_engine import Engine, build_engine
-    from trtllm_utils import docker_tag_aware_file_cache
+    from builder.main import build_engine
 
-    engine = Engine(**engine_build_args.model_dump())
-
-    with docker_tag_aware_file_cache("/root/.cache/trtllm"):
-        built_engine = build_engine(engine, download_remote=True)
-
-        if not os.path.exists(dst):
-            os.makedirs(dst)
-
-        for filename in os.listdir(str(built_engine)):
-            source_file = os.path.join(str(built_engine), filename)
-            destination_file = os.path.join(dst, filename)
-            if not os.path.exists(destination_file):
-                shutil.copy(source_file, destination_file)
-
-        return dst
+    build_engine(
+        engine_configuration=truss_trtllm_configuration,
+        engine_serialization_path=dst,
+        # If checkpoint_dir_path is provided, we'll look there for the
+        # weight files. If not, we will attempt to use the `huggingface_ckpt_repository`
+        # key in the `truss_trtllm_configuration` to download the weights.
+        checkpoint_dir_path=checkpoint_dir_path,
+    )
+    return dst

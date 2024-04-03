@@ -1,4 +1,4 @@
-# TODO: this file contains too much implementaiton -> restructure.
+# TODO: this file contains too much implementation -> restructure.
 import abc
 import inspect
 import logging
@@ -11,7 +11,7 @@ from pydantic import generics
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
-BASTEN_API_SECRET_NAME = "baseten_api_key"
+BASETEN_API_SECRET_NAME = "baseten_api_key"
 TRUSS_CONFIG_SLAY_KEY = "slay_metadata"
 
 ENDPOINT_METHOD_NAME = "run"  # Referring to processor method name exposed as endpoint.
@@ -24,7 +24,7 @@ PREDICT_ENDPOINT_NAME = "/predict"
 PROCESSOR_MODULE = "processor"
 
 
-class APIDefinitonError(TypeError):
+class APIDefinitionError(TypeError):
     """Raised when user-defined processors do not adhere to API constraints."""
 
 
@@ -64,7 +64,7 @@ class AbsPath:
 def make_abs_path_here(file_path: str) -> AbsPath:
     """Helper to specify file paths relative to the *immediately calling* module.
 
-    E.g. in you have a project structure like this"
+    E.g. in you have a project structure like this
 
     root/
         workflow.py
@@ -83,7 +83,7 @@ def make_abs_path_here(file_path: str) -> AbsPath:
 
     Caveat: this helper uses the directory of the immediately calling module as an
     absolute reference point for resolving the file location.
-    Therefore you MUST NOT wrap the instantiation of `RelativePathToHere` into a
+    Therefore, you MUST NOT wrap the instantiation of `RelativePathToHere` into a
     function (e.g. applying decorators) or use dynamic code execution.
 
     Ok:
@@ -103,9 +103,9 @@ def make_abs_path_here(file_path: str) -> AbsPath:
     foo("blabla"))
     ```
     """
-    # TODO: the absolute path resoultion below uses the calling module as a
-    # reference point. This would not work if users wrap this call in a funciton
-    #  - we hope the naming makes clear that this should not be done.
+    # TODO: the absolute path resolution below uses the calling module as a
+    #   reference point. This would not work if users wrap this call in a function
+    #   - we hope the naming makes clear that this should not be done.
     caller_frame = inspect.stack()[1]
     module_path = caller_frame.filename
     if not os.path.isabs(file_path):
@@ -232,6 +232,11 @@ class Config(generics.GenericModel, Generic[UserConfigT]):
         return self.assets.get_spec()
 
 
+class ServiceDescriptor(pydantic.BaseModel):
+    name: str
+    predict_url: str
+
+
 class Context(generics.GenericModel, Generic[UserConfigT]):
     """Bundles config values needed to instantiate a processor in deployment."""
 
@@ -239,29 +244,29 @@ class Context(generics.GenericModel, Generic[UserConfigT]):
         arbitrary_types_allowed = True
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    stub_cls_to_url: Mapping[str, str] = {}
+    stub_cls_to_service: Mapping[str, ServiceDescriptor] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
     # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
     # due to the templating, at runtime the object passed will be from
     # `shared.secrets_resolver` and give pydantic validation error.
     secrets: Optional[Any] = None
 
-    def get_stub_url(self, stub_cls_name: str) -> str:
-        if stub_cls_name not in self.stub_cls_to_url:
+    def get_service_descriptor(self, stub_cls_name: str) -> ServiceDescriptor:
+        if stub_cls_name not in self.stub_cls_to_service:
             raise MissingDependencyError(f"{stub_cls_name}")
-        return self.stub_cls_to_url[stub_cls_name]
+        return self.stub_cls_to_service[stub_cls_name]
 
     def get_baseten_api_key(self) -> str:
         if not self.secrets:
             raise UsageError(f"Secrets not set in `{self.__class__.__name__}` object.")
-        if BASTEN_API_SECRET_NAME not in self.secrets:
+        if BASETEN_API_SECRET_NAME not in self.secrets:
             raise MissingDependencyError(
                 "For using workflows, it is required to setup a an API key with name "
-                f"`{BASTEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
+                f"`{BASETEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
                 "call other processors."
             )
 
-        api_key = self.secrets[BASTEN_API_SECRET_NAME]
+        api_key = self.secrets[BASETEN_API_SECRET_NAME]
         return api_key
 
 
@@ -272,7 +277,7 @@ class TrussMetadata(generics.GenericModel, Generic[UserConfigT]):
         arbitrary_types_allowed = True
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    stub_cls_to_url: Mapping[str, str] = {}
+    stub_cls_to_service: Mapping[str, ServiceDescriptor] = {}
 
 
 class ABCProcessor(Generic[UserConfigT], abc.ABC):
@@ -284,7 +289,7 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
     def __init__(self, context: Context[UserConfigT]) -> None:
         ...
 
-    # Cannot add this abstract method to API, because we want to allow arbitraty
+    # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
     # @abc.abstractmethod
     # def predict(self, *args, **kwargs) -> Any: ...
@@ -319,7 +324,7 @@ class TypeDescriptor(pydantic.BaseModel):
 
 class EndpointAPIDescriptor(pydantic.BaseModel):
     name: str = ENDPOINT_METHOD_NAME
-    input_names_and_tyes: list[tuple[str, TypeDescriptor]]
+    input_names_and_types: list[tuple[str, TypeDescriptor]]
     output_types: list[TypeDescriptor]
     is_async: bool
     is_generator: bool
@@ -328,7 +333,7 @@ class EndpointAPIDescriptor(pydantic.BaseModel):
 class ProcessorAPIDescriptor(pydantic.BaseModel):
     processor_cls: Type[ABCProcessor]
     src_path: str
-    depdendencies: Mapping[str, Type[ABCProcessor]]
+    dependencies: Mapping[str, Type[ABCProcessor]]
     endpoint: EndpointAPIDescriptor
     user_config_type: TypeDescriptor
 
@@ -340,8 +345,16 @@ class ProcessorAPIDescriptor(pydantic.BaseModel):
         return self.processor_cls.__name__
 
 
-class BasetenRemoteDescriptor(pydantic.BaseModel):
-    b10_model_id: str
-    b10_model_version_id: str
-    b10_model_name: str
-    b10_model_url: str
+class DeploymentOptions(pydantic.BaseModel):
+    workflow_name: str
+    only_generate_trusses: bool = False
+
+
+class DeploymentOptionsBaseten(DeploymentOptions):
+    baseten_url: str
+    api_key: str
+    publish: bool
+
+
+class DeploymentOptionsLocalDocker(DeploymentOptions):
+    ...

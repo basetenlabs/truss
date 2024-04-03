@@ -1,11 +1,8 @@
-from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import tritonclient
 import tritonclient.grpc.aio as grpcclient
-from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 
 class ModelInput:
@@ -14,6 +11,10 @@ class ModelInput:
         prompt: str,
         request_id: int,
         max_tokens: int = 50,
+        max_new_tokens: int = 50,
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+        top_k: int = 50,
         beam_width: int = 1,
         bad_words_list: Optional[list] = None,
         stop_words_list: Optional[list] = None,
@@ -32,6 +33,12 @@ class ModelInput:
         self._repetition_penalty = repetition_penalty
         self._eos_token_id = eos_token_id
         self._ignore_eos = ignore_eos
+        # These variables are passed by OAI proxy but are unused
+        # TODO(Abu): Add support for these
+        self._max_new_tokens = max_new_tokens
+        self._temperature = temperature
+        self._top_p = top_p
+        self._top_k = top_k
 
     def _prepare_grpc_tensor(
         self, name: str, input_data: np.ndarray
@@ -75,145 +82,74 @@ class ModelInput:
         return inputs
 
 
-class Quant(Enum):
-    NO_QUANT = "no_quant"
-    WEIGHTS_ONLY = "weights_only"
-    WEIGHTS_KV_INT8 = "weights_kv_int8"
-    SMOOTH_QUANT = "smooth_quant"
+# The following are duplicated from the underlying base image.
+# We list them as a comment for posterity:
+#
+# class TRTLLMModelArchitecture(Enum):
+#     LLAMA: str = "llama"
+#     MISTRAL: str = "mistral"
+#     DEEPSEEK: str = "deepseek"
 
 
-class EngineType(Enum):
-    LLAMA = "llama"
-    MISTRAL = "mistral"
+# class TRTLLMQuantizationType(Enum):
+#     NO_QUANT: str = "no_quant"
+#     WEIGHTS_ONLY_INT8: str = "weights_int8"
+#     WEIGHTS_KV_INT8: str = "weights_kv_int8"
+#     WEIGHTS_ONLY_INT4: str = "weights_int4"
+#     WEIGHTS_KV_INT4: str = "weights_kv_int4"
+#     SMOOTH_QUANT: str = "smooth_quant"
+#     FP8: str = "fp8"
+#     FP8_KV: str = "fp8_kv"
 
+# class TrussTRTLLMPluginConfiguration(BaseModel):
+#     multi_block_mode: bool = False
+#     paged_kv_cache: bool = True
+#     use_fused_mlp: bool = False
 
-class ArgsConfig(BaseModel):
-    max_input_len: Optional[int] = None
-    max_output_len: Optional[int] = None
-    max_batch_size: Optional[int] = None
-    tp_size: Optional[int] = None
-    pp_size: Optional[int] = None
-    world_size: Optional[int] = None
-    gather_all_token_logits: Optional[bool] = None
-    multi_block_mode: Optional[bool] = None
-    remove_input_padding: Optional[bool] = None
-    use_gpt_attention_plugin: Optional[str] = None
-    paged_kv_cache: Optional[bool] = None
-    use_inflight_batching: Optional[bool] = None
-    enable_context_fmha: Optional[bool] = None
-    use_gemm_plugin: Optional[str] = None
-    use_weight_only: Optional[bool] = None
-    output_dir: Optional[str] = None
-    model_dir: Optional[str] = None
-    ft_model_dir: Optional[str] = None
-    dtype: Optional[str] = None
-    int8_kv_cache: Optional[bool] = None
-    use_smooth_quant: Optional[bool] = None
-    per_token: Optional[bool] = None
-    per_channel: Optional[bool] = None
-    parallel_build: Optional[bool] = None
+# class TrussTRTLLMBuildConfiguration(BaseModel):
+#     base_model_architecture: TRTLLMModelArchitecture
+#     max_input_len: int
+#     max_output_len: int
+#     max_batch_size: int
+#     max_beam_width: int
+#     max_prompt_embedding_table_size: int = 0
+#     huggingface_ckpt_repository: Optional[str]
+#     gather_all_token_logits: bool = False
+#     strongly_typed: bool = False
+#     quantization_type: TRTLLMQuantizationType = TRTLLMQuantizationType.NO_QUANT
+#     tensor_parallel_count: int = 1
+#     pipeline_parallel_count: int = 1
+#     plugin_configuration: TrussTRTLLMPluginConfiguration = TrussTRTLLMPluginConfiguration()
 
-    # to disable warning because `model_dir` starts with `model_` prefix
-    model_config = ConfigDict(protected_namespaces=())  # type: ignore
+# class TrussTRTLLMServingConfiguration(BaseModel):
+#     engine_repository: str
+#     tokenizer_repository: str
+#     tensor_parallel_count: int = 1
+#     pipeline_parallel_count: int = 1
 
-    def as_command_arguments(self) -> list:
-        non_bool_args = [
-            element
-            for arg, value in self.dict().items()
-            for element in [f"--{arg}", str(value)]
-            if value is not None and not isinstance(value, bool)
-        ]
-        bool_args = [
-            f"--{arg}"
-            for arg, value in self.dict().items()
-            if isinstance(value, bool) and value
-        ]
-        return non_bool_args + bool_args
+# class TrussTRTLLMConfiguration(BaseModel):
+#     serve: Optional[TrussTRTLLMServingConfiguration] = None
+#     build: Optional[TrussTRTLLMBuildConfiguration] = None
 
+#     @model_validator(mode="after")
+#     def check_minimum_required_configuration(self):
+#         if not self.serve and not self.build:
+#             raise ValueError(
+#                 "Either serve or build configurations must be provided"
+#             )
+#         if self.serve and self.build:
+#             raise ValueError(
+#                 "Both serve and build configurations cannot be provided"
+#             )
+#         if self.serve is not None:
+#             if (self.serve.engine_repository is None) ^ (self.serve.tokenizer_repository is None):
+#                 raise ValueError(
+#                     "Both engine_repository and tokenizer_repository must be provided"
+#                 )
+#         return self
 
-class CalibrationConfig(BaseModel):
-    kv_cache: Optional[bool] = None  # either to calibrate kv cache
-    sq_alpha: Optional[float] = None
-
-    def cache_path(self) -> Path:
-        if self.kv_cache is not None:
-            return Path("kv_cache")
-        else:
-            return Path(f"sq_{self.sq_alpha}")
-
-
-class EngineBuildArgs(BaseModel):
-    class Config:
-        use_enum_values = True
-
-    repo: Optional[str] = None
-    args: Optional[ArgsConfig] = None
-    quant: Optional[Quant] = None
-    calibration: Optional[CalibrationConfig] = None
-    engine_type: Optional[EngineType] = None
-
-
-class TrussBuildConfig(BaseModel):
-    """
-    This is a spec for what the config.yaml looks like to take advantage of TRT-LLM + TRT-LLM builds. We structure the
-    configuration with the below top-level keys.
-
-    Example (for building an engine)
-    ```
-    build:
-        model_server: TRT_LLM
-        arguments:
-            tokenizer_repository: "mistralai/mistral-v2-instruct"
-            arguments:
-                max_input_len: 1024
-                max_output_len: 1024
-                max_batch_size: 64
-            quant: "weights_kv_int8"
-            tensor_parallel_count: 2
-            pipeline_parallel_count: 1
-    ```
-
-    Example (for using an existing engine)
-    ```
-    build:
-        model_server: TRT_LLM
-        arguments:
-            engine_repository: "baseten/mistral-v2-32k"
-            tensor_parallel_count: 2
-            pipeline_parallel_count: 1
-    ```
-
-    """
-
-    tokenizer_repository: str
-    quant: Quant = Quant.NO_QUANT
-    pipeline_parallel_count: int = 1
-    tensor_parallel_count: int = 1
-    arguments: Optional[ArgsConfig] = None
-    engine_repository: Optional[str] = None
-    calibration: Optional[CalibrationConfig] = None
-    engine_type: Optional[EngineType] = None
-    _engine_build_args: Optional[EngineBuildArgs] = PrivateAttr(default=None)
-
-    @property
-    def engine_build_args(self) -> EngineBuildArgs:
-        if self._engine_build_args is None:
-            repo = self.tokenizer_repository
-            quant = self.quant
-            calibration = self.calibration
-            engine_type = self.engine_type
-            args = self.arguments or ArgsConfig()
-            args.tp_size = self.tensor_parallel_count
-            args.pp_size = self.pipeline_parallel_count
-            self._engine_build_args = EngineBuildArgs(
-                repo=repo,
-                quant=quant,
-                calibration=calibration,
-                engine_type=engine_type,
-                args=args,
-            )
-        return self._engine_build_args
-
-    @property
-    def requires_build(self):
-        return self.engine_repository is None
+#     @property
+#     def requires_build(self):
+#         if self.build is not None:
+#             return True
+#         return False
