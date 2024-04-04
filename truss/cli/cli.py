@@ -560,11 +560,14 @@ it will become the next production deployment of your model."""
                         return
 
                     if deployment_status not in DEPLOYING_STATUSES:
-                        console.print("Deployment succeeded.", style="bold green")
+                        console.print(
+                            f"Deployment failed with status {deployment_status}.",
+                            style="red",
+                        )
                         sys.exit(1)
 
             except RemoteNetworkError:
-                status.update("[bold red]Deployment failed -- could not reach remote.")
+                status.update("[bold red]Deployment failed: Could not reach remote.")
                 sys.exit(1)
 
 
