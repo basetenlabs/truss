@@ -1,8 +1,13 @@
+import time
 from typing import Dict, Optional
 
+import requests
+from tenacity import retry, stop_after_delay, wait_fixed
+from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.truss_remote import TrussService
 from truss.truss_handle import TrussHandle
+from truss.util.errors import RemoteNetworkError
 
 DEFAULT_STREAM_ENCODING = "utf-8"
 
@@ -15,12 +20,14 @@ class BasetenService(TrussService):
         is_draft: bool,
         api_key: str,
         service_url: str,
+        api: BasetenApi,
         truss_handle: Optional[TrussHandle] = None,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
         self._auth_service = AuthService(api_key=api_key)
+        self._api = api
         self._truss_handle = truss_handle
 
     def is_live(self) -> bool:
@@ -80,3 +87,19 @@ class BasetenService(TrussService):
 
     def logs_url(self, base_url: str) -> str:
         return f"{base_url}/models/{self._model_id}/logs/{self._model_version_id}"
+
+    @retry(stop=stop_after_delay(60), wait=wait_fixed(1))
+    def _fetch_deployment(self):
+        return self._api.get_deployment(self._model_id, self._model_version_id)
+
+    def poll_deployment_status(self):
+        """
+        Wait for the service to be deployed.
+        """
+        while True:
+            time.sleep(1)
+            try:
+                deployment = self._fetch_deployment()
+                yield deployment["status"]
+            except requests.exceptions.RequestException:
+                raise RemoteNetworkError("Could not reach backend.")

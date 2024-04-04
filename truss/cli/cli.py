@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import time
 from functools import wraps
 from pathlib import Path
 from typing import Callable, Optional
@@ -13,6 +14,8 @@ import truss
 from truss.cli.console import console
 from truss.cli.create import ask_name
 from truss.remote.baseten.core import (
+    ACTIVE_STATUS,
+    DEPLOYING_STATUSES,
     ModelId,
     ModelIdentifier,
     ModelName,
@@ -22,6 +25,7 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
+from truss.util.errors import RemoteNetworkError
 
 logging.basicConfig(level=logging.INFO)
 
@@ -442,7 +446,22 @@ def predict(
         "used in combination with --publish or --promote."
     ),
 )
-@error_handling
+@click.option(
+    "--wait",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Wait for the deployment to complete before returning.",
+)
+@click.option(
+    "--timeout-seconds",
+    type=int,
+    required=False,
+    help="Maximum time to wait for deployment to complete in seconds. "
+    "Without specifying, the command will not complete until the deployment is complete.",
+)
+# @error_handling
 def push(
     target_directory: str,
     remote: str,
@@ -452,6 +471,8 @@ def push(
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
     deployment_name: Optional[str] = None,
+    wait: bool = False,
+    timeout_seconds: Optional[int] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -491,7 +512,7 @@ def push(
     if service.is_draft:
         draft_model_text = """
 |---------------------------------------------------------------------------------------|
-| Your model has been deployed as a development model. Development models allow you to  |
+| Your model is deploying as a development model. Development models allow you to  |
 | iterate quickly during the deployment process.                                        |
 |                                                                                       |
 | When you are ready to publish your deployed model as a new deployment,                |
@@ -518,6 +539,33 @@ it will become the next production deployment of your model."""
 
     logs_url = remote_provider.get_remote_logs_url(service)  # type: ignore[attr-defined]
     rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    if wait:
+        start_time = time.time()
+        with console.status("[bold green]Deploying...") as status:
+            try:
+                # Poll for the deployment status until we have reached
+                # either ACTIVE, or a non-deploying status (in which case the deployment has failed).
+                for deployment_status in service.poll_deployment_status():
+                    if (
+                        timeout_seconds is not None
+                        and time.time() - start_time > timeout_seconds
+                    ):
+                        status.update("[bold red]Deployment timed out.")
+                        sys.exit(1)
+
+                    status.update(f"[bold green]{deployment_status}")
+
+                    if deployment_status == ACTIVE_STATUS:
+                        console.print("Deployment succeeded.", style="bold green")
+                        return
+
+                    if deployment_status not in DEPLOYING_STATUSES:
+                        console.print("Deployment succeeded.", style="bold green")
+                        sys.exit(1)
+
+            except RemoteNetworkError:
+                status.update("[bold red]Deployment failed -- could not reach remote.")
+                sys.exit(1)
 
 
 @truss_cli.command()

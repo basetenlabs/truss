@@ -33,12 +33,26 @@ from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
 
+API_URL_MAPPING = {
+    "https://app.baseten.co": "https://api.baseten.co",
+    "https://app.staging.baseten.co": "https://api.staging.baseten.co",
+    "https://app.dev.baseten.co": "https://api.staging.baseten.co",
+    # For local development, this is how we map URLs
+    "http://localhost:8000": "http://api.localhost:8000",
+}
+
 
 class BasetenRemote(TrussRemote):
     def __init__(self, remote_url: str, api_key: str, **kwargs):
         super().__init__(remote_url, **kwargs)
         self._auth_service = AuthService(api_key=api_key)
-        self._api = BasetenApi(f"{self._remote_url}/graphql/", self._auth_service)
+        self._api = BasetenApi(
+            f"{self._remote_url}/graphql/",
+            # Ensure we strip off trailing '/' to denormalize
+            # URLs.
+            API_URL_MAPPING[self._remote_url.strip("/")],
+            self._auth_service,
+        )
 
     def authenticate(self):
         return self._auth_service.validate()
@@ -109,6 +123,7 @@ class BasetenRemote(TrussRemote):
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
+            api=self._api,
         )
 
     @staticmethod
@@ -192,6 +207,7 @@ class BasetenRemote(TrussRemote):
             is_draft=not published,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}{service_url_path}",
+            api=self._api,
         )
 
     def get_remote_logs_url(

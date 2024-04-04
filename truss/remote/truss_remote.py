@@ -149,6 +149,13 @@ class TrussService(ABC):
         """
         pass
 
+    @abstractmethod
+    def poll_deployment_status(self):
+        """
+        Poll for a deployment status.
+        """
+        pass
+
 
 class TrussRemote(ABC):
     """
