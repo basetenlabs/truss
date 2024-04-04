@@ -11,6 +11,8 @@ RUN apt-get update \
     && apt-get install -y build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/library-scripts/
 
+# both build-essential and rustup are needed to build some python
+# packages on arm64 while amd64 versions are pre-built
 RUN curl -sSL https://install.python-poetry.org | python - \
     && curl https://sh.rustup.rs -o rustup && sh ./rustup -y && rm -fr rustup
 ENV PATH="/root/.local/bin:/root/.cargo/bin:${PATH}"
@@ -24,4 +26,4 @@ COPY ./README.md ./README.md
 RUN poetry config virtualenvs.in-project true \
     && poetry install --only builder \
     && rm -fr /root/.cargo /root/.bashrc \
-    && apt autoremove build-essential -y 
+    && apt autoremove build-essential -y
