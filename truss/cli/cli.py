@@ -553,7 +553,9 @@ it will become the next production deployment of your model."""
                         status.update("[bold red]Deployment timed out.")
                         sys.exit(1)
 
-                    status.update(f"[bold green]{deployment_status}")
+                    status.update(
+                        f"[bold green]Deploying...Current Status: {deployment_status}"
+                    )
 
                     if deployment_status == ACTIVE_STATUS:
                         console.print("Deployment succeeded.", style="bold green")
