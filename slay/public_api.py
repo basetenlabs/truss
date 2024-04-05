@@ -1,8 +1,3 @@
-"""
-TODO:
-  * Shim to call already hosted baseten model.
-  * Helper to create a `Processor` from a truss dir.
-"""
 from typing import Any, ContextManager, Mapping, Optional, Type, final
 
 from slay import definitions, framework, utils
@@ -15,11 +10,14 @@ def provide_context() -> Any:
 
 def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
     """Sets a 'symbolic marker' for injecting a stub or local processor at runtime."""
-    # TODO: consider adding retry or timeout config here.
+    # TODO: extend with RPC customization, e.g. timeouts, retries etc.
     return framework.ProcessorProvisionPlaceholder(processor_cls)
 
 
 class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
+
+    default_config = definitions.Config()
+
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         framework.check_and_register_class(cls)

@@ -1,3 +1,4 @@
+datamodel-code-generator
 git+https://github.com/basetenlabs/truss.git
 httpx
 libcst

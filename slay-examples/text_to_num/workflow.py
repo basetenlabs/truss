@@ -149,9 +149,16 @@ class Workflow(slay.ProcessorBase):
 
     async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
         data = self._data_generator.run(length)
-        text_parts, number = await self._data_splitter.run(data, num_partitions)
+        text_parts, number = await self._data_splitter.run(
+            shared_processor.SplitTextInput(
+                data=data,
+                num_partitions=num_partitions,
+                mode=shared_processor.Modes.MODE_1,
+            ),
+            extra_arg=123,
+        )
         value = 0
-        for part in text_parts:
+        for part in text_parts.parts:
             value += self._text_to_num.run(part)
         return value, data, number
 
@@ -160,8 +167,6 @@ if __name__ == "__main__":
     import logging
 
     from slay import utils
-
-    # from slay.truss_compat import deploy
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -174,28 +179,20 @@ if __name__ == "__main__":
     # class FakeMistralLLM(slay.ProcessorBase):
     #     def run(self, data: str) -> str:
     #         return data.upper()
-
+    #
     # import asyncio
+    #
     # with slay.run_local():
     #     text_to_num = TextToNum(mistral=FakeMistralLLM())
     #     wf = Workflow(text_to_num=text_to_num)
-    #     result = asyncio.run(wf.run(length=123, num_partitions=123))
-    #     print(result)
+    #     tmp = asyncio.run(wf.run(length=123, num_partitions=123))
+    #     print(tmp)
 
     with utils.log_level(logging.DEBUG):
         remote = slay.deploy_remotely(
-            Workflow, workflow_name="Test", only_generate_trusses=False
+            Workflow, workflow_name="Test", only_generate_trusses=True, publish=False
         )
 
-    # remote = slay.definitions.BasetenRemoteDescriptor(
-    #     b10_model_id="7qk59gdq",
-    #     b10_model_version_id="woz52g3",
-    #     b10_model_name="Workflow",
-    #     b10_model_url="https://model-7qk59gdq.api.baseten.co/production",
-    # )
-    # with utils.log_level(logging.INFO):
-    #     response = deploy.call_workflow_dbg(
-    #         remote, {"length": 1000, "num_partitions": 100}
-    #     )
+    # response = utils.call_workflow_dbg(remote, {"length": 1000, "num_partitions": 100})
     # print(response)
     # print(response.json())

@@ -1,22 +1,27 @@
 import ast
+import json
 import logging
 import pathlib
 import shlex
 import subprocess
 import textwrap
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Mapping, Optional, cast
 
+import datamodel_code_generator
 import libcst
+from datamodel_code_generator import model as generator_models
+from datamodel_code_generator.parser import jsonschema as jsonschema_parser
 from slay import definitions, utils
 from slay.truss_adapter import code_gen
 
 INDENT = " " * 4
 
 STUB_MODULE = "remote_stubs"
+_DEFS_KEY = "$defs"
 
 
-def _indent(text: str) -> str:
-    return textwrap.indent(text, INDENT)
+def _indent(text: str, num: int = 1) -> str:
+    return textwrap.indent(text, INDENT * num)
 
 
 class _MainRemover(ast.NodeTransformer):
@@ -80,12 +85,6 @@ def make_processor_dir(
 
 # Stub Gen #############################################################################
 
-# TODO: I/O types:
-# * Generate models from pydantic JSON schema.
-# * Handle if multiple stubs use same pydantic models -> deduplicate or suffix.
-# * Use a serialization / deserialization helper instead of directly generating this
-#   code.
-
 
 def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor):
     """
@@ -106,51 +105,55 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor):
         output_type = (
             f"tuple[{', '.join(t.as_src_str() for t in endpoint.output_types)}]"
         )
-    return f"""{def_str} {endpoint.name}(self, {args}) -> {output_type}:"""
+    return f"{def_str} {endpoint.name}(self, {args}) -> {output_type}:"
 
 
-def _gen_protocol_src(processor: definitions.ProcessorAPIDescriptor):
+def _gen_protocol_src(
+    processor: definitions.ProcessorAPIDescriptor,
+) -> tuple[str, list[str]]:
     """Generates source code for a Protocol that matches the processor."""
     imports = ["from typing import Protocol"]
     src_parts = [
-        f"""
-class {processor.cls_name}P(Protocol):
-"""
+        f"class {processor.cls_name}P(Protocol):",
+        _indent(f"{_endpoint_signature_src(processor.endpoint)})"),
+        _indent("...", 2),
     ]
-    signature = _endpoint_signature_src(processor.endpoint)
-    src_parts.append(_indent(f"{signature}\n{INDENT}...\n"))
     return "\n".join(src_parts), imports
 
 
-def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor):
+def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor) -> str:
     """Generates source code for calling the stub and wrapping the I/O types.
 
     E.g.:
     ```
-    json_args = {"data": data, "num_partitions": num_partitions}
+    json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
     json_result = await self._remote.predict_async(json_args)
-    return (json_result[0], json_result[1])
+    return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
     ```
     """
     if endpoint.is_generator:
         raise NotImplementedError("Generator")
 
+    parts = []
+    # Pack arg list as json dictionary.
     json_arg_parts = (
         (
-            f"'{arg_name}': {arg_name}.json()"
+            f"'{arg_name}': {arg_name}.dict()"
             if arg_type.is_pydantic
             else f"'{arg_name}': {arg_name}"
         )
         for arg_name, arg_type in endpoint.input_names_and_types
     )
-
     json_args = f"{{{', '.join(json_arg_parts)}}}"
+    parts.append(f"json_args = {json_args}")
+    # Invoke remote.
     remote_call = (
         "await self._remote.predict_async(json_args)"
         if endpoint.is_async
         else "self._remote.predict_sync(json_args)"
     )
-
+    parts.append(f"json_result = {remote_call}")
+    # Unpack response and parse as pydantic models if needed.
     if len(endpoint.output_types) == 1:
         output_type = utils.expect_one(endpoint.output_types)
         if output_type.is_pydantic:
@@ -166,17 +169,15 @@ def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor):
             )
             for i, output_type in enumerate(endpoint.output_types)
         )
-        ret = f"({ret_parts})"
+        ret = f"{ret_parts}"
+    parts.append(f"return {ret}")
 
-    body = f"""
-json_args = {json_args}
-json_result = {remote_call}
-return {ret}
-"""
-    return body
+    return "\n".join(parts)
 
 
-def _gen_stub_src(processor: definitions.ProcessorAPIDescriptor):
+def _gen_stub_src(
+    processor: definitions.ProcessorAPIDescriptor,
+) -> tuple[str, list[str]]:
     """Generates stub class source, e.g:
 
     ```
@@ -186,22 +187,110 @@ def _gen_stub_src(processor: definitions.ProcessorAPIDescriptor):
         def __init__(self, url: str, api_key: str) -> None:
             self._remote = stub.BasetenSession(url, api_key)
 
-        async def run(self, data: str, num_partitions: int) -> tuple[list, int]:
-            json_args = {"data": data, "num_partitions": num_partitions}
+        async def run(self, data: str, num_partitions: int) -> tuple[SplitTextOutput, int]:
+            json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
             json_result = await self._remote.predict_async(json_args)
-            return (json_result[0], json_result[1])
+            return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
     ```
     """
     imports = ["from slay import stub"]
 
-    src_parts = [f"class {processor.cls_name}(stub.StubBase):"]
-    body = _indent(_endpoint_body_src(processor.endpoint))
-    src_parts.append(
-        _indent(
-            f"{_endpoint_signature_src(processor.endpoint)}{body}\n",
-        )
-    )
+    src_parts = [
+        f"class {processor.cls_name}(stub.StubBase):",
+        _indent(_endpoint_signature_src(processor.endpoint)),
+        _indent(_endpoint_body_src(processor.endpoint), 2),
+        "\n\n",
+    ]
     return "\n".join(src_parts), imports
+
+
+def _remove_root_model_and_separate_imports(pydantic_src: str) -> tuple[str, list[str]]:
+    """To process source code generated by `datamodel_code_generator`."""
+    tree = ast.parse(pydantic_src)
+    imports = []
+    other_src = []
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imports.append(ast.unparse(node))
+        elif isinstance(node, ast.ClassDef) and node.name == "Model":
+            continue
+        else:
+            other_src.append(node)
+
+    return f"{ast.unparse(ast.Module(body=other_src, type_ignores=[]))}\n\n", imports
+
+
+def _export_pydantic_schemas(
+    dependencies: Iterable[definitions.ProcessorAPIDescriptor],
+) -> Mapping[str, Any]:
+    name_to_schema: dict[str, Any] = {}
+
+    def safe_add_schema(type_descr: definitions.TypeDescriptor):
+        if not type_descr.is_pydantic:
+            return
+
+        name = type_descr.raw.__name__
+        schema = type_descr.raw.schema()
+        if existing_schema := name_to_schema.get(name):
+            if existing_schema != schema:
+                raise NotImplementedError(
+                    f"Two pydantic models with same name `{name}."
+                )
+        else:
+            # Move definitions needed by the current type to top level.
+            if _DEFS_KEY in schema:
+                for def_name, def_schema in schema[_DEFS_KEY].items():
+                    if existing_def_schema := name_to_schema.get(def_name):
+                        if existing_def_schema != def_schema:
+                            raise NotImplementedError(
+                                f"Two pydantic models with same name `{def_name}."
+                            )
+                    else:
+                        name_to_schema[def_name] = def_schema
+                schema.pop(_DEFS_KEY)
+
+            name_to_schema[name] = schema
+
+    for dep in dependencies:
+        for _, input_type in dep.endpoint.input_names_and_types:
+            safe_add_schema(input_type)
+        for output_type in dep.endpoint.output_types:
+            safe_add_schema(output_type)
+    return name_to_schema
+
+
+def _gen_pydantic_models(
+    dependencies: Iterable[definitions.ProcessorAPIDescriptor],
+) -> tuple[str, list[str]]:
+    name_to_schema = _export_pydantic_schemas(dependencies)
+
+    if not name_to_schema:
+        return "", []
+
+    combined_schema = {_DEFS_KEY: name_to_schema}
+    # TODO: parameterize pydantic and python version properly.
+    py_version = datamodel_code_generator.PythonVersion.PY_39
+    data_model_types = generator_models.get_data_model_types(
+        data_model_type=datamodel_code_generator.DataModelType.PydanticBaseModel,
+        target_python_version=py_version,
+    )
+    with utils.log_level(logging.INFO):
+        parser = jsonschema_parser.JsonSchemaParser(
+            json.dumps(combined_schema),
+            data_model_type=data_model_types.data_model,
+            data_model_root_type=data_model_types.root_model,
+            data_model_field_type=data_model_types.field_model,
+            data_type_manager_type=data_model_types.data_type_manager,
+            target_python_version=py_version,
+            capitalise_enum_members=True,
+            use_subclass_enum=True,
+            strict_nullable=True,
+            apply_default_values_for_required_fields=True,
+            use_default_kwarg=True,
+            use_standard_collections=True,
+        )
+        pydantic_module_src: str = cast(str, parser.parse())
+    return _remove_root_model_and_separate_imports(pydantic_module_src)
 
 
 def generate_stubs_for_deps(
@@ -209,9 +298,14 @@ def generate_stubs_for_deps(
     dependencies: Iterable[definitions.ProcessorAPIDescriptor],
 ) -> Optional[pathlib.Path]:
     """Generates a source file with stub classes."""
-    # TODO: user-defined I/O types are not imported / included correctly.
     imports = set()
     src_parts = []
+
+    pydantic_src, pydantic_imports = _gen_pydantic_models(dependencies)
+    if pydantic_src:
+        src_parts.append(pydantic_src)
+        imports.update(pydantic_imports)
+
     for dep in dependencies:
         # protocol_src, new_deps = gen_protocol_src(dep)
         # imports.update(new_deps)
@@ -310,8 +404,6 @@ def _rewrite_processor_inits(
     if not replacements:
         return source_tree
 
-    logging.debug(f"Adding stub inits to `{processor_descriptor.cls_name}`.")
-
     modified_tree = source_tree.visit(
         _InitRewriter(processor_descriptor.cls_name, replacements)
     )
@@ -340,14 +432,12 @@ def generate_processor_source(
     source_tree = _rewrite_processor_inits(source_tree, processor_descriptor)
 
     # TODO: Processor isolation: either prune file or generate a new file.
-    # At least remove main section.
+    #   At least remove main section.
 
     model_def, imports, userconfig_pin = code_gen.generate_truss_model(
         processor_descriptor
     )
-    new_body: list[libcst.BaseStatement] = (
-        imports + list(source_tree.body) + [userconfig_pin, model_def]  # type: ignore[assignment, misc, list-item]
-    )
+    new_body: list[Any] = imports + list(source_tree.body) + [userconfig_pin, model_def]
     source_tree = source_tree.with_changes(body=new_body)
     file_path.write_text(source_tree.code)
     _format_python_file(file_path)

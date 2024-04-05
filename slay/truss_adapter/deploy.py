@@ -158,7 +158,7 @@ class BasetenClient:
         truss_handle = truss.load(str(truss_root))
         model_name = truss_handle.spec.config.model_name
         assert model_name is not None
-        logging.info(f"Deploying model `{model_name}` (publish={publish}).")
+        logging.info(f"Deploying Truss model `{model_name}` (publish={publish}).")
         # Models must be trusted to use the API KEY secret.
         service = self._remote_provider.push(
             truss_handle, model_name=model_name, trusted=True, publish=publish
