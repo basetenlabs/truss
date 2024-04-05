@@ -6,6 +6,7 @@ from truss.remote.baseten.remote import BasetenRemote
 from truss.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
+_TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
 
 
 def test_get_service_by_version_id():
@@ -21,7 +22,7 @@ def test_get_service_by_version_id():
 
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_version_response,
         )
         service = remote.get_service(model_identifier=ModelVersionId("version_id"))
@@ -35,7 +36,7 @@ def test_get_service_by_version_id_no_version():
     model_version_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_version_response,
         )
         with pytest.raises(click.UsageError):
@@ -62,7 +63,7 @@ def test_get_service_by_model_name():
 
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
 
@@ -99,7 +100,7 @@ def test_get_service_by_model_name_no_dev_version():
 
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
 
@@ -136,7 +137,7 @@ def test_get_service_by_model_name_no_prod_version():
 
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
 
@@ -168,7 +169,7 @@ def test_get_service_by_model_id():
 
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
 
@@ -182,7 +183,7 @@ def test_get_service_by_model_id_no_model():
     model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
         with pytest.raises(click.UsageError):
@@ -204,7 +205,7 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
     }
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
@@ -231,7 +232,7 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
     }
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
@@ -258,7 +259,7 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
     }
     with requests_mock.Mocker() as m:
         m.post(
-            remote._api._api_url,
+            _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)

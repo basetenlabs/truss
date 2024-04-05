@@ -30,6 +30,10 @@ class TestTrussService(TrussService):
     def logs_url(self, base_url: str) -> str:
         return f"{base_url}/logs"
 
+    def poll_deployment_status():
+        for status in ["DEPLOYING", "ACTIVE"]:
+            yield status
+
 
 def mock_successful_response():
     response = Response()

@@ -41,6 +41,10 @@ API_URL_MAPPING = {
     "http://localhost:8000": "http://api.localhost:8000",
 }
 
+# If a non-standard domain is used with the baseten remote, default to
+# using the production api routes
+DEFAULT_API_DOMAIN = "https://api.baseten.co"
+
 
 class BasetenRemote(TrussRemote):
     def __init__(self, remote_url: str, api_key: str, **kwargs):
@@ -50,7 +54,7 @@ class BasetenRemote(TrussRemote):
             f"{self._remote_url}/graphql/",
             # Ensure we strip off trailing '/' to denormalize
             # URLs.
-            API_URL_MAPPING[self._remote_url.strip("/")],
+            API_URL_MAPPING.get(self._remote_url.strip("/"), DEFAULT_API_DOMAIN),
             self._auth_service,
         )
 
