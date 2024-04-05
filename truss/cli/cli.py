@@ -550,7 +550,7 @@ it will become the next production deployment of your model."""
                         timeout_seconds is not None
                         and time.time() - start_time > timeout_seconds
                     ):
-                        status.update("[bold red]Deployment timed out.")
+                        console.print("Deployment timed out.", style="red")
                         sys.exit(1)
 
                     status.update(
@@ -569,7 +569,7 @@ it will become the next production deployment of your model."""
                         sys.exit(1)
 
             except RemoteNetworkError:
-                status.update("[bold red]Deployment failed: Could not reach remote.")
+                console.print("Deployment failed: Could not reach remote.", style="red")
                 sys.exit(1)
 
 
