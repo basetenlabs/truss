@@ -88,7 +88,7 @@ class BasetenService(TrussService):
     def logs_url(self, base_url: str) -> str:
         return f"{base_url}/models/{self._model_id}/logs/{self._model_version_id}"
 
-    @retry(stop=stop_after_delay(60), wait=wait_fixed(1))
+    @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
     def _fetch_deployment(self):
         return self._api.get_deployment(self._model_id, self._model_version_id)
 
