@@ -7,6 +7,7 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 
 
+@pytest.fixture
 def mock_auth_service():
     auth_service = mock.Mock()
     auth_token = mock.Mock(headers=lambda: {"Authorization": "Api-Key token"})
@@ -52,45 +53,37 @@ def mock_create_model_response():
     return response
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
-@mock.patch("requests.post", return_value=mock_successful_response())
-def test_post_graphql_query_success(mock_post, mock_auth_service):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
+@pytest.fixture
+def baseten_api(mock_auth_service):
+    return BasetenApi(
+        "https://test.com/graphql", "https://api.test.com", mock_auth_service
+    )
 
+
+@mock.patch("requests.post", return_value=mock_successful_response())
+def test_post_graphql_query_success(mock_post, baseten_api):
     response_data = {"data": {"status": "success"}}
 
-    result = api._post_graphql_query("sample_query_string")
+    result = baseten_api._post_graphql_query("sample_query_string")
 
     assert result == response_data
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_graphql_error_response())
-def test_post_graphql_query_error(mock_post, mock_auth_service):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
-
+def test_post_graphql_query_error(mock_post, baseten_api):
     with pytest.raises(ApiError):
-        api._post_graphql_query("sample_query_string")
+        baseten_api._post_graphql_query("sample_query_string")
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_unsuccessful_response())
-def test_post_requests_error(mock_post, mock_auth_service):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
+def test_post_requests_error(mock_post, baseten_api):
     with pytest.raises(requests.exceptions.HTTPError):
-        api._post_graphql_query("sample_query_string")
+        baseten_api._post_graphql_query("sample_query_string")
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
-def test_create_model_version_from_truss(mock_post, mock_auth_service):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
-
-    api.create_model_version_from_truss(
+def test_create_model_version_from_truss(mock_post, baseten_api):
+    baseten_api.create_model_version_from_truss(
         "model_id",
         "s3key",
         "config_str",
@@ -114,15 +107,11 @@ def test_create_model_version_from_truss(mock_post, mock_auth_service):
     assert 'name: "deployment_name"' in gql_mutation
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
 def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_specified(
-    mock_post, mock_auth_service
+    mock_post, baseten_api
 ):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
-
-    api.create_model_version_from_truss(
+    baseten_api.create_model_version_from_truss(
         "model_id",
         "s3key",
         "config_str",
@@ -146,15 +135,11 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert "name: " not in gql_mutation
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
 def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep_previous_prod_settings(
-    mock_post, mock_auth_service
+    mock_post, baseten_api
 ):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
-
-    api.create_model_version_from_truss(
+    baseten_api.create_model_version_from_truss(
         "model_id",
         "s3key",
         "config_str",
@@ -178,13 +163,9 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert "name: " not in gql_mutation
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_create_model_response())
-def test_create_model_from_truss(mock_post, mock_auth_service):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
-
-    api.create_model_from_truss(
+def test_create_model_from_truss(mock_post, baseten_api):
+    baseten_api.create_model_from_truss(
         "model_name",
         "s3key",
         "config_str",
@@ -204,15 +185,11 @@ def test_create_model_from_truss(mock_post, mock_auth_service):
     assert 'version_name: "deployment_name"' in gql_mutation
 
 
-@mock.patch("truss.remote.baseten.auth.AuthService")
 @mock.patch("requests.post", return_value=mock_create_model_response())
 def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
-    mock_post, mock_auth_service
+    mock_post, baseten_api
 ):
-    api_url = "https://test.com/api"
-    api = BasetenApi(api_url, mock_auth_service)
-
-    api.create_model_from_truss(
+    baseten_api.create_model_from_truss(
         "model_name",
         "s3key",
         "config_str",
