@@ -1,5 +1,11 @@
 # Builds baseten/truss-context-builder, a light-weight image that can be used
 # for creating docker build context out of a Truss.
+# In order to use this Dockerfile, the poetry.lock file needs to be generated if pyproject.toml or build step changed
+####
+# docker run -it -v `pwd`/truss:/truss -v `pwd`/pyproject.toml:/pyproject.toml -v `pwd`/README.md:/README.md -v `pwd`/lock:/lock python:3.9-slim bash
+# follow the steps to install packages in the container
+# If everything succeeded, run poetry lock to generate the lock, copy it to lock
+# exit container, copy content of lock to poetry.lock then try the build below
 # Build that image as:
 # docker buildx build . -f context_builder.Dockerfile --platform=linux/amd64,linux/arm64 -t baseten/truss-context-builder
 FROM python:3.9-slim
