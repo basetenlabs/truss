@@ -223,6 +223,15 @@ def _remove_root_model_and_separate_imports(pydantic_src: str) -> tuple[str, lis
 def _export_pydantic_schemas(
     dependencies: Iterable[definitions.ProcessorAPIDescriptor],
 ) -> Mapping[str, Any]:
+    """Creates a dict with all pydantic schemas used as input or output types by the
+    dependencies.
+
+    If a schema itself depends on another class (e.g. an enum definition), these
+    dependent schemas are also added to the dict.
+
+    It is enforced that pydantic models across the code base have different names,
+    to avoid conflicts; automatic disambiguation is not yet implemented.
+    """
     name_to_schema: dict[str, Any] = {}
 
     def safe_add_schema(type_descr: definitions.TypeDescriptor):
