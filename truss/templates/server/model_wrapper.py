@@ -11,7 +11,18 @@ from enum import Enum
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, AsyncGenerator, Dict, Optional, Set, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Coroutine,
+    Dict,
+    NoReturn,
+    Optional,
+    Set,
+    TypeVar,
+    Union,
+)
 
 import pydantic
 from anyio import Semaphore, to_thread
@@ -21,6 +32,7 @@ from common.schema import TrussSchema
 from fastapi import HTTPException
 from pydantic import BaseModel
 from shared.secrets_resolver import SecretsResolver
+from typing_extensions import ParamSpec
 
 MODEL_BASENAME = "model"
 
@@ -404,28 +416,38 @@ def _elapsed_ms(since_micro_seconds: float) -> int:
     return int((time.perf_counter() - since_micro_seconds) * 1000)
 
 
-def _handle_exception():
+def _handle_exception(exception: Exception) -> NoReturn:
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
-    logging.exception("Internal Server Error")
-    raise HTTPException(status_code=500, detail="Internal Server Error")
+    if isinstance(exception, HTTPException):
+        logging.exception("Model raised HTTPException")
+        raise exception
+    else:
+        logging.exception("Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-def _intercept_exceptions_sync(func):
-    def inner(*args, **kwargs):
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _intercept_exceptions_sync(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         try:
             return func(*args, **kwargs)
-        except Exception:
-            _handle_exception()
+        except Exception as e:
+            _handle_exception(e)
 
     return inner
 
 
-def _intercept_exceptions_async(func):
-    async def inner(*args, **kwargs):
+def _intercept_exceptions_async(
+    func: Callable[_P, Coroutine[Any, Any, _R]]
+) -> Callable[_P, Coroutine[Any, Any, _R]]:
+    async def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         try:
             return await func(*args, **kwargs)
-        except Exception:
-            _handle_exception()
+        except Exception as e:
+            _handle_exception(e)
 
     return inner

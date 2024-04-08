@@ -51,8 +51,11 @@ def test_workflow():
         assert response.status_code == 200
         assert response.json() == [6280, "erodfderodfderodfderodfderodfd", 123]
 
+        # Test with errors.
         response = requests.post(
             predict_url, json={"length": 300, "num_partitions": 3}, stream=True
         )
         print(response)
+        error = definitions.RemoteErrorDetail.parse_obj(response.json()["error"])
+        print(error.format())
         assert response.status_code == 500

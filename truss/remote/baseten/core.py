@@ -12,6 +12,10 @@ from truss.util.path import load_trussignore_patterns
 logger = logging.getLogger(__name__)
 
 
+DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
+ACTIVE_STATUS = "ACTIVE"
+
+
 class ModelIdentifier:
     value: str
 

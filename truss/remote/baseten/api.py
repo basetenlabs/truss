@@ -15,22 +15,26 @@ class BasetenApi:
     A client for the Baseten API.
 
     Args:
-        api_url: The URL of the Baseten API.
+        graphql_api_url: The URL of the Baseten GraphQL API.
+        rest_api_url: The URL of the Baseten REST API.
         auth_service: An AuthService instance.
     """
 
     class GraphQLErrorCodes(Enum):
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
-    def __init__(self, api_url: str, auth_service: AuthService):
-        self._api_url = api_url
+    def __init__(
+        self, graphql_api_url: str, rest_api_url: str, auth_service: AuthService
+    ):
+        self._graphql_api_url = graphql_api_url
+        self._rest_api_url = rest_api_url
         self._auth_service = auth_service
         self._auth_token = self._auth_service.authenticate()
 
     def _post_graphql_query(self, query_string: str) -> dict:
         headers = self._auth_token.header()
         resp = requests.post(
-            self._api_url,
+            self._graphql_api_url,
             data={"query": query_string},
             headers=headers,
             timeout=120,
@@ -249,3 +253,15 @@ class BasetenApi:
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]["patch_draft_truss"]
+
+    def get_deployment(self, model_id: str, deployment_id: str) -> str:
+        headers = self._auth_token.header()
+        resp = requests.get(
+            f"{self._rest_api_url}/v1/models/{model_id}/deployments/{deployment_id}",
+            headers=headers,
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        deployment = resp.json()
+        return deployment

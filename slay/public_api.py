@@ -3,8 +3,7 @@ TODO:
   * Shim to call already hosted baseten model.
   * Helper to create a `Processor` from a truss dir.
 """
-
-from typing import Any, ContextManager, Type, final
+from typing import Any, ContextManager, Mapping, Optional, Type, final
 
 from slay import definitions, framework, utils
 
@@ -62,6 +61,6 @@ def deploy_remotely(
     return framework.deploy_remotely(entrypoint, options)
 
 
-def run_local() -> ContextManager[None]:
+def run_local(secrets: Optional[Mapping[str, str]] = None) -> ContextManager[None]:
     """Context manager for using in-process instantiations of processor dependencies."""
-    return framework.run_local()
+    return framework.run_local(secrets)

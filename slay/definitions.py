@@ -3,6 +3,7 @@ import abc
 import inspect
 import logging
 import os
+import traceback
 from types import GenericAlias
 from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
 
@@ -11,7 +12,8 @@ from pydantic import generics
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
-BASETEN_API_SECRET_NAME = "baseten_api_key"
+BASETEN_API_SECRET_NAME = "baseten_workflow_api_key"
+SECRET_DUMMY = "***"
 TRUSS_CONFIG_SLAY_KEY = "slay_metadata"
 
 ENDPOINT_METHOD_NAME = "run"  # Referring to processor method name exposed as endpoint.
@@ -199,7 +201,8 @@ class Assets:
         self._spec = AssetSpec()
 
     def add_secret(self, key: str) -> "Assets":
-        self._spec.secrets[key] = "***"  # Actual value is provided in deployment.
+        # Actual value is provided in deployment.
+        self._spec.secrets[key] = SECRET_DUMMY
         return self
 
     def cached(self, value: list[Any]) -> "Assets":
@@ -257,16 +260,22 @@ class Context(generics.GenericModel, Generic[UserConfigT]):
         return self.stub_cls_to_service[stub_cls_name]
 
     def get_baseten_api_key(self) -> str:
-        if not self.secrets:
+        if self.secrets is None:
             raise UsageError(f"Secrets not set in `{self.__class__.__name__}` object.")
+        error_msg = (
+            "For using workflows, it is required to setup a an API key with name "
+            f"`{BASETEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
+            "call other processors. For local execution, secrets can be provided "
+            "to `run_local`."
+        )
         if BASETEN_API_SECRET_NAME not in self.secrets:
-            raise MissingDependencyError(
-                "For using workflows, it is required to setup a an API key with name "
-                f"`{BASETEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
-                "call other processors."
-            )
+            raise MissingDependencyError(error_msg)
 
         api_key = self.secrets[BASETEN_API_SECRET_NAME]
+        if api_key == SECRET_DUMMY:
+            raise MissingDependencyError(
+                f"{error_msg}. Retrieved dummy value of `{api_key}`."
+            )
         return api_key
 
 
@@ -357,4 +366,60 @@ class DeploymentOptionsBaseten(DeploymentOptions):
 
 
 class DeploymentOptionsLocalDocker(DeploymentOptions):
+    # Local docker-to-docker requests don't need auth, but we need to set a
+    # value different from `SECRET_DUMMY` to not trigger the check that the secret
+    # is unset. Additionally, if local docker containers make calls to models deployed
+    # on baseten, a real API key must be provided (i.e. the default must be overridden).
+    baseten_workflow_api_key: str = "docker_dummy_key"
+
+
+class StackFrame(pydantic.BaseModel):
+    filename: str
+    lineno: Optional[int]
+    name: str
+    line: Optional[str]
+
+    @classmethod
+    def from_frame_summary(cls, frame: traceback.FrameSummary):
+        return cls(
+            filename=frame.filename,
+            lineno=frame.lineno,
+            name=frame.name,
+            line=frame.line,
+        )
+
+    def to_frame_summary(self) -> traceback.FrameSummary:
+        return traceback.FrameSummary(
+            filename=self.filename, lineno=self.lineno, name=self.name, line=self.line
+        )
+
+
+class RemoteErrorDetail(pydantic.BaseModel):
+    remote_name: str
+    exception_class_name: str
+    exception_module_name: Optional[str]
+    exception_message: str
+    user_stack_trace: list[StackFrame]
+
+    def to_stack_summary(self) -> traceback.StackSummary:
+        return traceback.StackSummary.from_list(
+            frame.to_frame_summary() for frame in self.user_stack_trace
+        )
+
+    def format(self) -> str:
+        stack = "".join(traceback.format_list(self.to_stack_summary()))
+        exc_info = (
+            f"\n(Exception class defined in `{self.exception_module_name}`.)"
+            if self.exception_module_name
+            else ""
+        )
+        error = (
+            f"{RemoteErrorDetail.__name__} in `{self.remote_name}`\n"
+            f"Traceback (most recent call last):\n"
+            f"{stack}{self.exception_class_name}: {self.exception_message}{exc_info}"
+        )
+        return error
+
+
+class GenericRemoteException(Exception):
     ...
