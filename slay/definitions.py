@@ -1,6 +1,5 @@
 # TODO: this file contains too much implementation -> restructure.
 import abc
-import inspect
 import logging
 import os
 import traceback
@@ -60,64 +59,12 @@ class AbsPath:
 
     @property
     def abs_path(self) -> str:
+        if self._abs_file_path != self._original_path:
+            logging.info(
+                f"Using abs path `{self._abs_file_path}` for path specified as "
+                f"`{self._original_path}` (in `{self._creating_module}`)."
+            )
         return self._abs_file_path
-
-
-def make_abs_path_here(file_path: str) -> AbsPath:
-    """Helper to specify file paths relative to the *immediately calling* module.
-
-    E.g. in you have a project structure like this
-
-    root/
-        workflow.py
-        common_requirements.text
-        sub_package/
-            processor.py
-            processor_requirements.txt
-
-    Not in `root/sub_package/processor.py` you can point to the requirements
-    file like this:
-
-    ```
-    shared = RelativePathToHere("../common_requirements.text")
-    specific = RelativePathToHere("processor_requirements.text")
-    ```
-
-    Caveat: this helper uses the directory of the immediately calling module as an
-    absolute reference point for resolving the file location.
-    Therefore, you MUST NOT wrap the instantiation of `RelativePathToHere` into a
-    function (e.g. applying decorators) or use dynamic code execution.
-
-    Ok:
-    ```
-    def foo(path: AbsPath):
-        abs_path = path.abs_path
-
-
-    foo(make_abs_path_here("blabla"))
-    ```
-
-    Not Ok:
-    ```
-    def foo(path: str):
-        badbadbad = make_abs_path_here(path).abs_path
-
-    foo("blabla"))
-    ```
-    """
-    # TODO: the absolute path resolution below uses the calling module as a
-    #   reference point. This would not work if users wrap this call in a function
-    #   - we hope the naming makes clear that this should not be done.
-    caller_frame = inspect.stack()[1]
-    module_path = caller_frame.filename
-    if not os.path.isabs(file_path):
-        module_dir = os.path.dirname(os.path.abspath(module_path))
-        abs_file_path = os.path.normpath(os.path.join(module_dir, file_path))
-        logging.info(f"Inferring absolute path for `{file_path}` as `{abs_file_path}`.")
-    else:
-        abs_file_path = file_path
-
-    return AbsPath(abs_file_path, module_path, file_path)
 
 
 class ImageSpec(pydantic.BaseModel):
@@ -250,8 +197,8 @@ class Context(generics.GenericModel, Generic[UserConfigT]):
     stub_cls_to_service: Mapping[str, ServiceDescriptor] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
     # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
-    # due to the templating, at runtime the object passed will be from
-    # `shared.secrets_resolver` and give pydantic validation error.
+    #   due to the templating, at runtime the object passed will be from
+    #   `shared.secrets_resolver` and give pydantic validation error.
     secrets: Optional[Any] = None
 
     def get_service_descriptor(self, stub_cls_name: str) -> ServiceDescriptor:
@@ -311,8 +258,6 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
 
 class TypeDescriptor(pydantic.BaseModel):
     """For describing I/O types of processors."""
-
-    # TODO: Supporting pydantic types.
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
 

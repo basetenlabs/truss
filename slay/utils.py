@@ -2,7 +2,9 @@ import builtins
 import configparser
 import contextlib
 import enum
+import inspect
 import logging
+import os
 import socket
 import sys
 import textwrap
@@ -17,6 +19,62 @@ from slay import definitions
 from truss.remote import remote_factory
 
 T = TypeVar("T")
+
+
+def make_abs_path_here(file_path: str) -> definitions.AbsPath:
+    """Helper to specify file paths relative to the *immediately calling* module.
+
+    E.g. in you have a project structure like this
+
+    root/
+        workflow.py
+        common_requirements.text
+        sub_package/
+            processor.py
+            processor_requirements.txt
+
+    Not in `root/sub_package/processor.py` you can point to the requirements
+    file like this:
+
+    ```
+    shared = RelativePathToHere("../common_requirements.text")
+    specific = RelativePathToHere("processor_requirements.text")
+    ```
+
+    Caveat: this helper uses the directory of the immediately calling module as an
+    absolute reference point for resolving the file location.
+    Therefore, you MUST NOT wrap the instantiation of `RelativePathToHere` into a
+    function (e.g. applying decorators) or use dynamic code execution.
+
+    Ok:
+    ```
+    def foo(path: AbsPath):
+        abs_path = path.abs_path
+
+
+    foo(make_abs_path_here("blabla"))
+    ```
+
+    Not Ok:
+    ```
+    def foo(path: str):
+        badbadbad = make_abs_path_here(path).abs_path
+
+    foo("blabla"))
+    ```
+    """
+    # TODO: the absolute path resolution below uses the calling module as a
+    #   reference point. This would not work if users wrap this call in a function
+    #   - we hope the naming makes clear that this should not be done.
+    caller_frame = inspect.stack()[1]
+    module_path = caller_frame.filename
+    if not os.path.isabs(file_path):
+        module_dir = os.path.dirname(os.path.abspath(module_path))
+        abs_file_path = os.path.normpath(os.path.join(module_dir, file_path))
+    else:
+        abs_file_path = file_path
+
+    return definitions.AbsPath(abs_file_path, module_path, file_path)
 
 
 @contextlib.contextmanager
@@ -132,7 +190,7 @@ def _handle_exception(
         exception_message=str(exception),
         user_stack_trace=stack,
     )
-    raise fastapi.HTTPException(status_code=500, detail=error.dict())
+    raise fastapi.HTTPException(status_code=500, detail=error.dict()) from exception
 
 
 @contextlib.contextmanager
@@ -227,7 +285,7 @@ def handle_response(response: httpx.Response) -> Any:
         try:
             error = definitions.RemoteErrorDetail.parse_obj(error_json)
         except pydantic.ValidationError as e:
-            raise ValueError(f"Could not parse error: {error_json}") from e
+            raise ValueError(f"Could not parse error value: {repr(error_json)}") from e
 
         exception_cls = _resolve_exception_class(error)
         msg = (

@@ -12,13 +12,12 @@ DEFAULT_TIMEOUT_SEC = 600
 class BasetenSession:
     """Helper to invoke predict method on baseten deployments."""
 
-    # TODO: make timeout, retries etc. configurable.
     def __init__(
         self, service_descriptor: definitions.ServiceDescriptor, api_key: str
     ) -> None:
         logging.info(
-            f"Stub session for {service_descriptor.name} with predict URL "
-            f"`{service_descriptor.predict_url}`."
+            f"Creating stub for `{service_descriptor.name}` with predict URL:\n"
+            f"\t`{service_descriptor.predict_url}`"
         )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor

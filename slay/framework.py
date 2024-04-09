@@ -55,6 +55,14 @@ def _validate_io_type(param: inspect.Parameter) -> None:
                 )
         return
     if issubclass(anno, pydantic.BaseModel):
+        # TODO: generating models for the stubs only covers the schema-capabilities
+        #   but not any methods that clients might add to their pydantic models.
+        #   We should enforce that no user-defined methods (or class vars or properties)
+        #   are present, since this might lead to broken behavior.
+        # TODO: for enums we rely on the convention that they are string enums and
+        #  the member names are the capitalized member values (or better the values are
+        #  capitalized themselves too). This constraint should be enforced / checked.
+        #  We could also require using a custom StrEnum-like enum base class.
         try:
             anno.schema()
         except Exception as e:
@@ -309,7 +317,6 @@ class _BaseProvisionPlaceholder:
 
 
 class ProcessorProvisionPlaceholder(_BaseProvisionPlaceholder):
-    # TODO: extend with RPC customization, e.g. timeouts, retries etc.
     processor_cls: Type[definitions.ABCProcessor]
 
     def __init__(self, processor_cls: Type[definitions.ABCProcessor]) -> None:
@@ -581,7 +588,7 @@ def _create_remote_service(
     else:
         raise NotImplementedError(options)
 
-    logging.info(service)
+    logging.info(f"Deployed service: {service}.")
     return service
 
 
@@ -620,12 +627,11 @@ def deploy_remotely(
     * Generates truss models and deploys them to baseten.
     """
     # TODO: revisit how workflow root is inferred/specified, current might be brittle.
-    # TODO: more control e.g. publish vs. draft.
     if non_entrypoint_rood_dir:
         workflow_root = pathlib.Path(non_entrypoint_rood_dir).absolute()
     else:
         workflow_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
-    logging.info(f"Using workflow root dir `{workflow_root}`.")
+    logging.info(f"Using project root for workflow: `{workflow_root}`.")
 
     entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
     ordered_descriptors = _get_ordered_processor_descriptors([entrypoint])

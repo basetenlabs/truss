@@ -73,8 +73,15 @@ class Workflow(slay.ProcessorBase):
 
     async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
         data = self._data_generator.run(length)
-        text_parts, number = await self._data_splitter.run(data, num_partitions)
+        text_parts, number = await self._data_splitter.run(
+            shared_processor.SplitTextInput(
+                data=data,
+                num_partitions=num_partitions,
+                mode=shared_processor.Modes.MODE_1,
+            ),
+            extra_arg=123,
+        )
         value = 0
-        for part in text_parts:
+        for part in text_parts.parts:
             value += self._text_to_num.run(part)
         return value, data, number
