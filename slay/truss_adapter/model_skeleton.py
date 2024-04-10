@@ -8,8 +8,8 @@ from truss.templates.shared import secrets_resolver
 UserConfigT = pydantic.BaseModel
 
 
-class ProcessorModel:
-    _context: definitions.Context[UserConfigT]
+class TrussProcessorModel:
+    _context: definitions.DeploymentContext[UserConfigT]
     _processor: definitions.ABCProcessor
 
     def __init__(
@@ -20,9 +20,9 @@ class ProcessorModel:
         ] = definitions.TrussMetadata[UserConfigT].parse_obj(
             config["model_metadata"][definitions.TRUSS_CONFIG_SLAY_KEY]
         )
-        self._context = definitions.Context[UserConfigT](
+        self._context = definitions.DeploymentContext[UserConfigT](
             user_config=truss_metadata.user_config,
-            stub_cls_to_service=truss_metadata.stub_cls_to_service,
+            processor_to_service=truss_metadata.processor_to_service,
             secrets=secrets,
         )
 

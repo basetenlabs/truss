@@ -4,14 +4,14 @@ import pydantic
 import slay
 from user_package import shared_processor
 
-IMAGE_COMMON = slay.Image().pip_requirements_file(
+IMAGE_COMMON = slay.DockerImage().pip_requirements_file(
     slay.make_abs_path_here("requirements.txt")
 )
 
 
 class GenerateData(slay.ProcessorBase):
 
-    default_config = slay.Config(image=IMAGE_COMMON)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def run(self, length: int) -> str:
         template = "erodfd"
@@ -25,10 +25,8 @@ class DummyUserConfig(pydantic.BaseModel):
 
 class TextReplicator(slay.ProcessorBase[DummyUserConfig]):
 
-    default_config = slay.Config(
-        image=IMAGE_COMMON,
-        user_config=DummyUserConfig(multiplier=2),
-    )
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+    default_user_config = DummyUserConfig(multiplier=2)
 
     def run(self, data: str) -> str:
         if len(data) > 30:
@@ -37,11 +35,11 @@ class TextReplicator(slay.ProcessorBase[DummyUserConfig]):
 
 
 class TextToNum(slay.ProcessorBase):
-    default_config = slay.Config(image=IMAGE_COMMON)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.Context = slay.provide_context(),
+        context: slay.DeploymentContext = slay.provide_context(),
         replicator: TextReplicator = slay.provide(TextReplicator),
     ) -> None:
         super().__init__(context)
@@ -57,11 +55,11 @@ class TextToNum(slay.ProcessorBase):
 
 
 class Workflow(slay.ProcessorBase):
-    default_config = slay.Config(image=IMAGE_COMMON)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.Context = slay.provide_context(),
+        context: slay.DeploymentContext = slay.provide_context(),
         data_generator: GenerateData = slay.provide(GenerateData),
         splitter: shared_processor.SplitText = slay.provide(shared_processor.SplitText),
         text_to_num: TextToNum = slay.provide(TextToNum),
