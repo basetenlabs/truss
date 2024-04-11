@@ -563,9 +563,19 @@ def _create_remote_service(
                 truss_dir, publish=options.publish, promote=options.promote
             )
             logs_url = baseten_client.get_logs_url(baseten_service)
-
+        # Assuming baseten_url is like "https://app.baseten.co" or ""https://app.dev.baseten.co",
+        deploy_url = options.baseten_url.replace(
+            "https://", f"https://model-{baseten_service.model_id}."
+        )
+        deploy_url = deploy_url.replace("app", "api")
+        if baseten_service.is_draft:
+            # desired result like "https://model-{model_id}.api.baseten.co/development".
+            deploy_url = f"{deploy_url}/development"
+        else:
+            # desired result like "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
+            deploy_url = f"{deploy_url}/deployment/{baseten_service.model_version_id}"
         service = definitions.ServiceDescriptor(
-            name=model_name, predict_url=baseten_service.invocation_url
+            name=model_name, predict_url=f"{deploy_url}/predict"
         )
         logging.info(f"🪵  View logs for your deployment at {logs_url}.")
     else:
