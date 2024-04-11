@@ -51,7 +51,8 @@ def _make_truss_config(
     compute = slay_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu)
     config.resources.accelerator = compute.gpu
-    config.resources.use_gpu = bool(compute.gpu)
+    config.resources.use_gpu = bool(compute.gpu.count)
+    # TODO: expose this setting directly.
     config.runtime.predict_concurrency = compute.cpu
     # Image.
     image = slay_config.get_docker_image_spec()
