@@ -15,21 +15,21 @@ import slay
 from truss import truss_config
 from user_package import shared_processor
 
-IMAGE_COMMON = slay.Image().pip_requirements_file(
+IMAGE_COMMON = slay.DockerImage().pip_requirements_file(
     slay.make_abs_path_here("requirements.txt")
 )
 
 
 class GenerateData(slay.ProcessorBase):
 
-    default_config = slay.Config(image=IMAGE_COMMON)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def run(self, length: int) -> str:
         return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
 IMAGE_TRANSFORMERS_GPU = (
-    slay.Image()
+    slay.DockerImage()
     .pip_requirements_file(slay.make_abs_path_here("requirements.txt"))
     .pip_requirements(
         ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
@@ -49,17 +49,16 @@ class MistraLLMConfig(pydantic.BaseModel):
 
 class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
-    default_config = slay.Config(
-        image=IMAGE_TRANSFORMERS_GPU,
+    remote_config = slay.RemoteConfig(
+        docker_image=IMAGE_TRANSFORMERS_GPU,
         compute=slay.Compute().cpu(2).gpu("A10G"),
         assets=slay.Assets().cached([MISTRAL_CACHE]),
-        user_config=MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL),
     )
-    # default_config = slay.Config(config_path="mistral_config.yaml")
+    default_user_config = MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL)
 
     def __init__(
         self,
-        context: slay.Context[MistraLLMConfig] = slay.provide_context(),
+        context: slay.DeploymentContext[MistraLLMConfig] = slay.provide_context(),
     ) -> None:
         super().__init__(context)
         import torch
@@ -105,7 +104,7 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
 
 class MistralP(Protocol):
-    def __init__(self, context: slay.Context) -> None:
+    def __init__(self, context: slay.DeploymentContext) -> None:
         ...
 
     def run(self, data: str) -> str:
@@ -113,11 +112,11 @@ class MistralP(Protocol):
 
 
 class TextToNum(slay.ProcessorBase):
-    default_config = slay.Config(image=IMAGE_COMMON)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.Context = slay.provide_context(),
+        context: slay.DeploymentContext = slay.provide_context(),
         mistral: MistralP = slay.provide(MistralLLM),
     ) -> None:
         super().__init__(context)
@@ -133,11 +132,11 @@ class TextToNum(slay.ProcessorBase):
 
 
 class Workflow(slay.ProcessorBase):
-    default_config = slay.Config(image=IMAGE_COMMON)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.Context = slay.provide_context(),
+        context: slay.DeploymentContext = slay.provide_context(),
         data_generator: GenerateData = slay.provide(GenerateData),
         splitter: shared_processor.SplitText = slay.provide(shared_processor.SplitText),
         text_to_num: TextToNum = slay.provide(TextToNum),

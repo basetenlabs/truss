@@ -5,7 +5,7 @@ import pydantic
 import slay
 
 IMAGE_NUMPY = (
-    slay.Image()
+    slay.DockerImage()
     .pip_requirements_file(slay.make_abs_path_here("../requirements.txt"))
     .pip_requirements(["numpy"])
 )
@@ -29,7 +29,7 @@ class SplitTextOutput(pydantic.BaseModel):
 
 class SplitText(slay.ProcessorBase):
 
-    default_config = slay.Config(image=IMAGE_NUMPY)
+    remote_config = slay.RemoteConfig(docker_image=IMAGE_NUMPY)
 
     async def run(
         self, inputs: SplitTextInput, extra_arg: int

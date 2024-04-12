@@ -1,7 +1,7 @@
 import abc
 import functools
 import logging
-from typing import Type, TypeVar, final
+from typing import Optional, Type, TypeVar, final
 
 import httpx
 from slay import definitions, utils
@@ -54,12 +54,27 @@ class StubBase(abc.ABC):
     ) -> None:
         self._remote = BasetenSession(service_descriptor, api_key)
 
+    @classmethod
+    def from_url(
+        cls,
+        predict_url: str,
+        context: definitions.DeploymentContext,
+        name: Optional[str] = None,
+    ):
+        name = name or cls.__name__
+        return cls(
+            definitions.ServiceDescriptor(name=name, predict_url=predict_url),
+            api_key=context.get_baseten_api_key(),
+        )
+
 
 StubT = TypeVar("StubT", bound=StubBase)
 
 
-def stub_factory(stub_cls: Type[StubT], context: definitions.Context) -> StubT:
+def factory(
+    stub_cls: Type[StubT], context: definitions.DeploymentContext, processor_name: str
+) -> StubT:
     return stub_cls(
-        service_descriptor=context.get_service_descriptor(stub_cls.__name__),
+        service_descriptor=context.get_service_descriptor(processor_name),
         api_key=context.get_baseten_api_key(),
     )

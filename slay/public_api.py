@@ -15,9 +15,6 @@ def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
 
 
 class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
-
-    default_config = definitions.Config()
-
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         framework.check_and_register_class(cls)
@@ -33,7 +30,10 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
         cls.__init__ = init_with_arg_check  # type: ignore[method-assign]
 
     def __init__(
-        self, context: definitions.Context[definitions.UserConfigT] = provide_context()
+        self,
+        context: definitions.DeploymentContext[
+            definitions.UserConfigT
+        ] = provide_context(),
     ) -> None:
         self._context = context
 
@@ -47,6 +47,7 @@ def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
     workflow_name: str,
     publish: bool = True,
+    promote: bool = True,
     only_generate_trusses: bool = False,
 ) -> definitions.ServiceDescriptor:
     options = definitions.DeploymentOptionsBaseten(
@@ -54,6 +55,7 @@ def deploy_remotely(
         baseten_url="https://app.baseten.co",
         api_key=utils.get_api_key_from_trussrc(),
         publish=publish,
+        promote=promote,
         only_generate_trusses=only_generate_trusses,
     )
     return framework.deploy_remotely(entrypoint, options)

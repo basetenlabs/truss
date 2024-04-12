@@ -1,7 +1,6 @@
 import builtins
 import configparser
 import contextlib
-import enum
 import inspect
 import logging
 import os
@@ -10,7 +9,7 @@ import sys
 import textwrap
 import time
 import traceback
-from typing import Any, Callable, Iterable, Iterator, NoReturn, Type, TypeVar
+from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar
 
 import fastapi
 import httpx
@@ -104,27 +103,6 @@ def expect_one(it: Iterable[T]) -> T:
     raise ValueError("Iterable has more than one element.")
 
 
-class ConditionStatus(enum.Enum):
-    SUCCESS = enum.auto()
-    FAILURE = enum.auto()
-    NOT_DONE = enum.auto()
-
-
-def wait_for_condition(
-    condition: Callable[[], ConditionStatus],
-    retries: int = 10,
-    sleep_between_retries_secs: int = 1,
-) -> bool:
-    for _ in range(retries):
-        cond_status = condition()
-        if cond_status == ConditionStatus.SUCCESS:
-            return True
-        if cond_status == ConditionStatus.FAILURE:
-            return False
-        time.sleep(sleep_between_retries_secs)
-    return False
-
-
 def get_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))  # Bind to a free port provided by the host.
@@ -185,7 +163,7 @@ def _handle_exception(
 
     error = definitions.RemoteErrorDetail(
         remote_name=processor_name,
-        exception_class_name=exception.__class__.__name__,
+        exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
         user_stack_trace=stack,
@@ -208,14 +186,14 @@ def _resolve_exception_class(
     falls back to `definitions.GenericRemoteError` if not found."""
     exception_cls = None
     if error.exception_module_name is None:
-        exception_cls = getattr(builtins, error.exception_class_name, None)
+        exception_cls = getattr(builtins, error.exception_cls_name, None)
     else:
         if mod := sys.modules.get(error.exception_module_name):
-            exception_cls = getattr(mod, error.exception_class_name, None)
+            exception_cls = getattr(mod, error.exception_cls_name, None)
 
     if exception_cls is None:
         logging.warning(
-            f"Could not resolve exception with name `{error.exception_class_name}` "
+            f"Could not resolve exception with name `{error.exception_cls_name}` "
             f"and module `{error.exception_module_name}` - fall back to "
             f"`{definitions.GenericRemoteException.__name__}`."
         )
@@ -300,3 +278,7 @@ def handle_response(response: httpx.Response) -> Any:
             status_code=response.status_code, detail=response.content
         )
     return response.json()
+
+
+def make_stub_name(processor_name: str) -> str:
+    return f"{processor_name}{definitions.STUB_CLS_SUFFIX}"

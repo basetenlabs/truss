@@ -38,6 +38,11 @@ def _validate_io_type(param: inspect.Parameter) -> None:
     Any deeper nested and structured data must be typed as a pydantic model.
     """
     anno = param.annotation
+    if isinstance(anno, str):
+        raise definitions.APIDefinitionError(
+            f"A string-valued type annotation was found: `{param}`. Use only actual "
+            "types and avoid 'from __future__ import annotations' (upgrade python)."
+        )
     if anno in _SIMPLE_TYPES:
         return
     if isinstance(anno, types.GenericAlias):
@@ -220,7 +225,7 @@ class _ProcessorInitParams:
         context_exception = definitions.APIDefinitionError(
             f"`{definitions.ABCProcessor}` must have "
             f"`{definitions.CONTEXT_ARG_NAME}` argument of type "
-            f"`{definitions.Context}`."
+            f"`{definitions.DeploymentContext}`."
         )
         if len(self._params) < 2:
             raise context_exception
@@ -229,7 +234,7 @@ class _ProcessorInitParams:
 
         param = self._params[1]
         param_type = _get_generic_class_type(param.annotation)
-        if not issubclass(param_type, definitions.Context):
+        if not issubclass(param_type, definitions.DeploymentContext):
             raise context_exception
         if not isinstance(param.default, ContextProvisionPlaceholder):
             raise definitions.APIDefinitionError(
@@ -300,9 +305,7 @@ def check_and_register_class(cls: Type[definitions.ABCProcessor]) -> None:
         dependencies=_validate_init_and_get_dependencies(cls),
         endpoint=_validate_and_describe_endpoint(cls),
         src_path=os.path.abspath(inspect.getfile(cls)),
-        user_config_type=definitions.TypeDescriptor(
-            raw=type(cls.default_config.user_config)
-        ),
+        user_config_type=definitions.TypeDescriptor(raw=type(cls.default_user_config)),
     )
     logging.debug(f"Descriptor for {cls}:\n{processor_descriptor}\n")
     _validate_variable_access(cls)
@@ -323,11 +326,7 @@ class ProcessorProvisionPlaceholder(_BaseProvisionPlaceholder):
         self.processor_cls = processor_cls
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}({self._cls_name})"
-
-    @property
-    def _cls_name(self) -> str:
-        return self.processor_cls.__name__
+        return f"{self.__class__.__name__}({self.processor_cls.__name__})"
 
 
 class ContextProvisionPlaceholder(_BaseProvisionPlaceholder):
@@ -357,11 +356,11 @@ class _ProcessorRegistry:
 
         # Because class are globally unique, to prevent re-use / overwriting of names,
         # We must check this in addition.
-        if processor_descriptor.cls_name in self._name_to_cls:
-            conflict = self._name_to_cls[processor_descriptor.cls_name]
+        if processor_descriptor.name in self._name_to_cls:
+            conflict = self._name_to_cls[processor_descriptor.name]
             existing_source_path = self._processors[conflict].src_path
             raise definitions.APIDefinitionError(
-                f"A processor with name `{processor_descriptor.cls_name}` was already "
+                f"A processor with name `{processor_descriptor.name}` was already "
                 f"defined, processors names must be unique. The pre-existing name "
                 f"comes from:\n`{existing_source_path}`\nNew conflicting from\n "
                 f"{processor_descriptor.src_path}"
@@ -369,7 +368,7 @@ class _ProcessorRegistry:
 
         self._processors[processor_descriptor.processor_cls] = processor_descriptor
         self._name_to_cls[
-            processor_descriptor.cls_name
+            processor_descriptor.name
         ] = processor_descriptor.processor_cls
 
     @property
@@ -423,11 +422,10 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
 
 def _create_local_context(
     processor_cls: Type[definitions.ABCProcessor], secrets: Mapping[str, str]
-) -> definitions.Context:
-    if hasattr(processor_cls, "default_config"):
-        defaults = processor_cls.default_config
-        return definitions.Context(user_config=defaults.user_config, secrets=secrets)
-    return definitions.Context()
+) -> definitions.DeploymentContext:
+    return definitions.DeploymentContext(
+        user_config=processor_cls.default_user_config, secrets=secrets
+    )
 
 
 def _create_modified_init_for_local(
@@ -445,7 +443,7 @@ def _create_modified_init_for_local(
     original_init = processor_descriptor.processor_cls.__init__
 
     def init_for_local(self: definitions.ABCProcessor, **kwargs) -> None:
-        logging.debug(f"Patched `__init__` of `{processor_descriptor.cls_name}`.")
+        logging.debug(f"Patched `__init__` of `{processor_descriptor.name}`.")
         kwargs_mod = dict(kwargs)
         if definitions.CONTEXT_ARG_NAME not in kwargs_mod:
             context = _create_local_context(processor_descriptor.processor_cls, secrets)
@@ -515,41 +513,34 @@ def _create_remote_service(
     processor_dir: pathlib.Path,
     workflow_root: pathlib.Path,
     processor_descriptor: definitions.ProcessorAPIDescriptor,
-    stub_cls_to_service: Mapping[str, definitions.ServiceDescriptor],
-    maybe_stub_file: Optional[pathlib.Path],
+    processor_to_service: Mapping[str, definitions.ServiceDescriptor],
+    maybe_stub_types_file: Optional[pathlib.Path],
     options: definitions.DeploymentOptions,
 ) -> definitions.ServiceDescriptor:
-    processor_filepath = shutil.copy(
-        processor_descriptor.src_path,
-        os.path.join(processor_dir, f"{definitions.PROCESSOR_MODULE}.py"),
-    )
-    code_gen.generate_processor_source(
-        pathlib.Path(processor_filepath), processor_descriptor
-    )
     # Filter only needed services.
-    stub_cls_to_service = {
-        stub_cls.__name__: stub_cls_to_service[stub_cls.__name__]
-        for stub_cls in processor_descriptor.dependencies.values()
+    processor_to_service = {
+        dep_proc.__name__: processor_to_service[dep_proc.__name__]
+        for dep_proc in processor_descriptor.dependencies.values()
     }
     # Convert to truss and deploy.
     # TODO: support file-based config (and/or merge file and python-src config values).
-    slay_config = processor_descriptor.processor_cls.default_config
-    processor_name = slay_config.name or processor_descriptor.cls_name
+    remote_config = processor_descriptor.processor_cls.remote_config
+    processor_name = remote_config.name or processor_descriptor.name
     model_name = f"{options.workflow_name}.{processor_name}"
     truss_dir = deploy.make_truss(
         processor_dir,
         workflow_root,
-        slay_config,
+        remote_config,
+        processor_descriptor.processor_cls.default_user_config,
         model_name,
-        stub_cls_to_service,
-        maybe_stub_file,
+        processor_to_service,
+        maybe_stub_types_file,
     )
 
     if options.only_generate_trusses:
         service = definitions.ServiceDescriptor(
             name=model_name, predict_url="https://dummy"
         )
-
     elif isinstance(options, definitions.DeploymentOptionsLocalDocker):
         port = utils.get_free_port()
         tr = truss_handle.TrussHandle(truss_dir)
@@ -565,11 +556,13 @@ def _create_remote_service(
             # Localhost seems to only work *sometimes* with docker.
             # predict_url=f"http://localhost:{port}/v1/models/model:predict",
         )
-
     elif isinstance(options, definitions.DeploymentOptionsBaseten):
         with utils.log_level(logging.INFO):
             baseten_client = deploy.BasetenClient(options.baseten_url, options.api_key)
-            baseten_service = baseten_client.deploy_truss(truss_dir, options.publish)
+            baseten_service = baseten_client.deploy_truss(
+                truss_dir, publish=options.publish, promote=options.promote
+            )
+            logs_url = baseten_client.get_logs_url(baseten_service)
         # Assuming baseten_url is like "https://app.baseten.co" or ""https://app.dev.baseten.co",
         deploy_url = options.baseten_url.replace(
             "https://", f"https://model-{baseten_service.model_id}."
@@ -581,10 +574,10 @@ def _create_remote_service(
         else:
             # desired result like "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
             deploy_url = f"{deploy_url}/deployment/{baseten_service.model_version_id}"
-
         service = definitions.ServiceDescriptor(
             name=model_name, predict_url=f"{deploy_url}/predict"
         )
+        logging.info(f"🪵  View logs for your deployment at {logs_url}.")
     else:
         raise NotImplementedError(options)
 
@@ -618,42 +611,52 @@ def _get_ordered_processor_descriptors(
 def deploy_remotely(
     entrypoint: Type[definitions.ABCProcessor],
     options: definitions.DeploymentOptions,
-    non_entrypoint_rood_dir: Optional[str] = None,
+    non_entrypoint_root_dir: Optional[str] = None,
 ) -> definitions.ServiceDescriptor:
     """
-    * Gathers dependencies of `entrypoint.
+    * Gathers dependencies of `entrypoint`.
     * Generates stubs.
-    * Generates modifies processors to use these stubs.
-    * Generates truss models and deploys them to baseten.
+    * Generates truss model code, including stub initialization.
+    * Deploys truss models to baseten.
     """
     # TODO: revisit how workflow root is inferred/specified, current might be brittle.
-    if non_entrypoint_rood_dir:
-        workflow_root = pathlib.Path(non_entrypoint_rood_dir).absolute()
+    if non_entrypoint_root_dir:
+        workflow_root = pathlib.Path(non_entrypoint_root_dir).absolute()
     else:
         workflow_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
     logging.info(f"Using project root for workflow: `{workflow_root}`.")
 
     entrypoint_descr = _global_processor_registry.get_descriptor(entrypoint)
     ordered_descriptors = _get_ordered_processor_descriptors([entrypoint])
-    stub_cls_to_service: dict[str, definitions.ServiceDescriptor] = {}
+    processor_to_service: dict[str, definitions.ServiceDescriptor] = {}
     entrypoint_service: Optional[definitions.ServiceDescriptor] = None
     for processor_descriptor in ordered_descriptors:
+        logging.info(f"Deploying `{processor_descriptor.name}`.")
+        deps = _global_processor_registry.get_dependencies(processor_descriptor)
         processor_dir = code_gen.make_processor_dir(
             workflow_root, options.workflow_name, processor_descriptor
         )
-        maybe_stub_file = code_gen.generate_stubs_for_deps(
-            processor_dir,
-            _global_processor_registry.get_dependencies(processor_descriptor),
+        processor_filepath = pathlib.Path(
+            shutil.copy(
+                processor_descriptor.src_path,
+                processor_dir / f"{definitions.PROCESSOR_MODULE}.py",
+            )
+        )
+        maybe_stub_types_file = code_gen.gen_pydantic_models(
+            processor_dir / f"{definitions.STUB_TYPE_MODULE}.py", deps
+        )
+        code_gen.generate_processor_source(
+            processor_filepath, processor_descriptor, deps, maybe_stub_types_file
         )
         service = _create_remote_service(
             processor_dir,
             workflow_root,
             processor_descriptor,
-            stub_cls_to_service,
-            maybe_stub_file,
+            processor_to_service,
+            maybe_stub_types_file,
             options,
         )
-        stub_cls_to_service[processor_descriptor.cls_name] = service
+        processor_to_service[processor_descriptor.name] = service
         if processor_descriptor == entrypoint_descr:
             entrypoint_service = service
 

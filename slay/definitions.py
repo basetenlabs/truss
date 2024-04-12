@@ -1,13 +1,15 @@
 # TODO: this file contains too much implementation -> restructure.
+
 import abc
 import logging
 import os
 import traceback
 from types import GenericAlias
-from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar
+from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar, Union
 
 import pydantic
 from pydantic import generics
+from truss import truss_config
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
@@ -23,6 +25,8 @@ SELF_ARG_NAME = "self"
 GENERATED_CODE_DIR = ".slay_generated"
 PREDICT_ENDPOINT_NAME = "/predict"
 PROCESSOR_MODULE = "processor"
+STUB_TYPE_MODULE = "stub_types"
+STUB_CLS_SUFFIX = "Stub"
 
 
 class APIDefinitionError(TypeError):
@@ -67,7 +71,7 @@ class AbsPath:
         return self._abs_file_path
 
 
-class ImageSpec(pydantic.BaseModel):
+class DockerImageSpec(pydantic.BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
@@ -78,39 +82,43 @@ class ImageSpec(pydantic.BaseModel):
     apt_requirements: list[str] = []
 
 
-class Image:
-    """Builder to create image spec."""
+class DockerImage:
+    """Builder to create ImageSpec."""
 
-    _spec: ImageSpec
+    _spec: DockerImageSpec
 
     def __init__(self) -> None:
-        self._spec = ImageSpec()
+        self._spec = DockerImageSpec()
 
-    def pip_requirements_file(self, file_path: AbsPath) -> "Image":
+    def base_image(self, base_image: str) -> "DockerImage":
+        self._spec.base_image = base_image
+        return self
+
+    def pip_requirements_file(self, file_path: AbsPath) -> "DockerImage":
         self._spec.pip_requirements_file = file_path
         return self
 
-    def pip_requirements(self, requirements: list[str]) -> "Image":
+    def pip_requirements(self, requirements: list[str]) -> "DockerImage":
         self._spec.pip_requirements = requirements
         return self
 
-    def apt_requirements(self, requirements: list[str]) -> "Image":
+    def apt_requirements(self, requirements: list[str]) -> "DockerImage":
         self._spec.apt_requirements = requirements
         return self
 
-    def get_spec(self) -> ImageSpec:
+    def get_spec(self) -> DockerImageSpec:
         return self._spec.copy(deep=True)
 
 
 class ComputeSpec(pydantic.BaseModel):
     # TODO: this is not stable yet and might change or refer back to truss.
-    cpu: str = "1"
+    cpu: int = 1
     memory: str = "2Gi"
-    gpu: Optional[str] = None
+    gpu: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
 
 
 class Compute:
-    """Builder to create compute spec."""
+    """Builder to create ComputeSpec."""
 
     _spec: ComputeSpec
 
@@ -118,15 +126,19 @@ class Compute:
         self._spec = ComputeSpec()
 
     def cpu(self, cpu: int) -> "Compute":
-        self._spec.cpu = str(cpu)
+        self._spec.cpu = cpu
         return self
 
     def memory(self, memory: str) -> "Compute":
         self._spec.memory = memory
         return self
 
-    def gpu(self, kind: str, count: int = 1) -> "Compute":
-        self._spec.gpu = f"{kind}:{count}"
+    def gpu(
+        self, kind: Union[str, truss_config.Accelerator], count: int = 1
+    ) -> "Compute":
+        self._spec.gpu = truss_config.AcceleratorSpec(
+            accelerator=truss_config.Accelerator(kind), count=count
+        )
         return self
 
     def get_spec(self) -> ComputeSpec:
@@ -160,20 +172,19 @@ class Assets:
         return self._spec.copy(deep=True)
 
 
-class Config(generics.GenericModel, Generic[UserConfigT]):
+class RemoteConfig(pydantic.BaseModel):
     """Bundles config values needed to deploy a processor."""
 
     class Config:
         arbitrary_types_allowed = True
 
-    name: Optional[str] = None
-    image: Image = Image()
+    docker_image: DockerImage
     compute: Compute = Compute()
     assets: Assets = Assets()
-    user_config: UserConfigT = pydantic.Field(default=None)
+    name: Optional[str] = None
 
-    def get_image_spec(self) -> ImageSpec:
-        return self.image.get_spec()
+    def get_docker_image_spec(self) -> DockerImageSpec:
+        return self.docker_image.get_spec()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -187,24 +198,24 @@ class ServiceDescriptor(pydantic.BaseModel):
     predict_url: str
 
 
-class Context(generics.GenericModel, Generic[UserConfigT]):
-    """Bundles config values needed to instantiate a processor in deployment."""
+class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
+    """Bundles config values and resources needed to instantiate processors."""
 
     class Config:
         arbitrary_types_allowed = True
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    stub_cls_to_service: Mapping[str, ServiceDescriptor] = {}
+    processor_to_service: Mapping[str, ServiceDescriptor] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
     # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
     #   due to the templating, at runtime the object passed will be from
     #   `shared.secrets_resolver` and give pydantic validation error.
     secrets: Optional[Any] = None
 
-    def get_service_descriptor(self, stub_cls_name: str) -> ServiceDescriptor:
-        if stub_cls_name not in self.stub_cls_to_service:
-            raise MissingDependencyError(f"{stub_cls_name}")
-        return self.stub_cls_to_service[stub_cls_name]
+    def get_service_descriptor(self, processor_name: str) -> ServiceDescriptor:
+        if processor_name not in self.processor_to_service:
+            raise MissingDependencyError(f"{processor_name}")
+        return self.processor_to_service[processor_name]
 
     def get_baseten_api_key(self) -> str:
         if self.secrets is None:
@@ -229,26 +240,25 @@ class Context(generics.GenericModel, Generic[UserConfigT]):
 class TrussMetadata(generics.GenericModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["slay_metadata"])."""
 
-    class Config:
-        arbitrary_types_allowed = True
-
     user_config: UserConfigT = pydantic.Field(default=None)
-    stub_cls_to_service: Mapping[str, ServiceDescriptor] = {}
+    processor_to_service: Mapping[str, ServiceDescriptor] = {}
 
 
 class ABCProcessor(Generic[UserConfigT], abc.ABC):
-    default_config: ClassVar[Config]
+    remote_config: ClassVar[RemoteConfig]
+    default_user_config: ClassVar[Optional[pydantic.BaseModel]] = None
     _init_is_patched: ClassVar[bool] = False
-    _context: Context[UserConfigT]
+
+    _context: DeploymentContext[UserConfigT]
 
     @abc.abstractmethod
-    def __init__(self, context: Context[UserConfigT]) -> None:
+    def __init__(self, context: DeploymentContext[UserConfigT]) -> None:
         ...
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
     # @abc.abstractmethod
-    # def predict(self, *args, **kwargs) -> Any: ...
+    # def run(self, *args, **kwargs) -> Any: ...
 
     @property
     @abc.abstractmethod
@@ -257,11 +267,22 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
 
 
 class TypeDescriptor(pydantic.BaseModel):
-    """For describing I/O types of processors."""
+    """For describing I/O types of processors.
+
+    Example:
+        repr(raw): <class 'user_package.shared_processor.SplitTextInput'>"
+        as_src_str(): 'SplitTextInput'
+
+    -> Source string, without further qualification, does not include any module path.
+    """
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
 
-    def as_src_str(self) -> str:
+    def as_src_str(self, qualify_pyadantic_types: Optional[str] = None) -> str:
+        # TODO: pydnatic types will soon be handled differntly.
+        if self.is_pydantic and qualify_pyadantic_types:
+            return f"{qualify_pyadantic_types}.{self.raw.__name__}"
+
         if isinstance(self.raw, type):
             return self.raw.__name__
         else:
@@ -295,7 +316,7 @@ class ProcessorAPIDescriptor(pydantic.BaseModel):
         return hash(self.processor_cls)
 
     @property
-    def cls_name(self) -> str:
+    def name(self) -> str:
         return self.processor_cls.__name__
 
 
@@ -308,6 +329,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
     baseten_url: str
     api_key: str
     publish: bool
+    promote: bool
 
 
 class DeploymentOptionsLocalDocker(DeploymentOptions):
@@ -341,7 +363,7 @@ class StackFrame(pydantic.BaseModel):
 
 class RemoteErrorDetail(pydantic.BaseModel):
     remote_name: str
-    exception_class_name: str
+    exception_cls_name: str
     exception_module_name: Optional[str]
     exception_message: str
     user_stack_trace: list[StackFrame]
@@ -361,7 +383,7 @@ class RemoteErrorDetail(pydantic.BaseModel):
         error = (
             f"{RemoteErrorDetail.__name__} in `{self.remote_name}`\n"
             f"Traceback (most recent call last):\n"
-            f"{stack}{self.exception_class_name}: {self.exception_message}{exc_info}"
+            f"{stack}{self.exception_cls_name}: {self.exception_message}{exc_info}"
         )
         return error
 

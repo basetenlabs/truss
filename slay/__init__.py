@@ -1,5 +1,12 @@
 # flake8: noqa F401
-from slay.definitions import Assets, Compute, Config, Context, Image, UsageError
+from slay.definitions import (
+    Assets,
+    Compute,
+    DeploymentContext,
+    DockerImage,
+    RemoteConfig,
+    UsageError,
+)
 from slay.public_api import (
     ProcessorBase,
     deploy_remotely,

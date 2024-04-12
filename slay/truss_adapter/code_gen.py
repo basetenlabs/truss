@@ -42,14 +42,27 @@ class _SpecifyProcessorTypeAnnotation(libcst.CSTTransformer):
         return updated_node.with_changes(body=tuple(new_body))
 
 
-def _gen_load_src(processor_name: str):
+def _gen_load_src(processor_descriptor: definitions.ProcessorAPIDescriptor):
     """Generates AST for the `load` method of the truss model."""
+    stub_inits = []
+    stub_args = []
+    for name, proc_cls in processor_descriptor.dependencies.items():
+        cls_name = utils.make_stub_name(proc_cls.__name__)
+        stub_inits.append(
+            f"{name} = stub.factory({cls_name}, self._context, '{proc_cls.__name__}')"
+        )
+        stub_args.append(f"{name}={name}")
+
+    if stub_args:
+        init_args = f"context=self._context, {', '.join(stub_args)}"
+    else:
+        init_args = "context=self._context"
+
     body = _indent(
         "\n".join(
-            [
-                f'logging.info(f"Loading processor `{processor_name}`.")',
-                f"self._processor = {processor_name}(context=self._context)",
-            ]
+            [f"logging.info(f'Loading processor `{processor_descriptor.name}`.')"]
+            + stub_inits
+            + [f"self._processor = {processor_descriptor.name}({init_args})"]
         )
     )
     return libcst.parse_statement("\n".join(["def load(self) -> None:", body]))
@@ -109,7 +122,7 @@ def _gen_predict_src(
 def generate_truss_model(
     processor_descriptor: definitions.ProcessorAPIDescriptor,
 ) -> tuple[libcst.CSTNode, list[libcst.SimpleStatementLine], libcst.CSTNode]:
-    logging.info(f"Generating Truss model for `{processor_descriptor.cls_name}`.")
+    logging.info(f"Generating Truss model for `{processor_descriptor.name}`.")
     skeleton_tree = libcst.parse_module(
         pathlib.Path(model_skeleton.__file__).read_text()
     )
@@ -129,21 +142,21 @@ def generate_truss_model(
         node
         for node in skeleton_tree.body
         if isinstance(node, libcst.ClassDef)
-        and node.name.value == model_skeleton.ProcessorModel.__name__
+        and node.name.value == model_skeleton.TrussProcessorModel.__name__
     )
 
-    load_def = _gen_load_src(processor_descriptor.cls_name)
+    load_def = _gen_load_src(processor_descriptor)
     predict_def = _gen_predict_src(
-        processor_descriptor.endpoint, processor_descriptor.cls_name
+        processor_descriptor.endpoint, processor_descriptor.name
     )
     new_body: list[Any] = list(class_definition.body.body) + [load_def, predict_def]
     new_block = libcst.IndentedBlock(body=new_body)
     class_definition = class_definition.with_changes(body=new_block)
     class_definition = class_definition.visit(  # type: ignore[assignment]
-        _SpecifyProcessorTypeAnnotation(processor_descriptor.cls_name)
+        _SpecifyProcessorTypeAnnotation(processor_descriptor.name)
     )
     if issubclass(processor_descriptor.user_config_type.raw, type(None)):
-        userconfig_pin = libcst.parse_statement("UserConfigT = None")
+        userconfig_pin = libcst.parse_statement("UserConfigT = type(None)")
     else:
         userconfig_pin = libcst.parse_statement(
             f"UserConfigT = {processor_descriptor.user_config_type.as_src_str()}"

@@ -23,8 +23,8 @@ class SplitTextOutput(pydantic.BaseModel):
 
 class SplitText(slay.ProcessorBase):
 
-    default_config = slay.Config(
-        image=slay.Image()
+    remote_config = slay.RemoteConfig(
+        docker_image=slay.DockerImage()
         .pip_requirements_file(slay.make_abs_path_here("../requirements.txt"))
         .pip_requirements(["numpy"])
     )
