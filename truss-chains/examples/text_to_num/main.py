@@ -11,26 +11,26 @@ import string
 from typing import Protocol
 
 import pydantic
-import slay
+import truss_chains as chains
 from truss import truss_config
-from user_package import shared_processor
+from user_package import shared_chainlet
 
-IMAGE_COMMON = slay.DockerImage().pip_requirements_file(
-    slay.make_abs_path_here("requirements.txt")
+IMAGE_COMMON = chains.DockerImage().pip_requirements_file(
+    chains.make_abs_path_here("requirements.txt")
 )
 
 
-class GenerateData(slay.ProcessorBase):
+class GenerateData(chains.ChainletBase):
 
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def run(self, length: int) -> str:
         return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
 IMAGE_TRANSFORMERS_GPU = (
-    slay.DockerImage()
-    .pip_requirements_file(slay.make_abs_path_here("requirements.txt"))
+    chains.DockerImage()
+    .pip_requirements_file(chains.make_abs_path_here("requirements.txt"))
     .pip_requirements(
         ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
     )
@@ -47,18 +47,18 @@ class MistraLLMConfig(pydantic.BaseModel):
     hf_model_name: str
 
 
-class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
+class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
 
-    remote_config = slay.RemoteConfig(
+    remote_config = chains.RemoteConfig(
         docker_image=IMAGE_TRANSFORMERS_GPU,
-        compute=slay.Compute().cpu(2).gpu("A10G"),
-        assets=slay.Assets().cached([MISTRAL_CACHE]),
+        compute=chains.Compute().cpu(2).gpu("A10G"),
+        assets=chains.Assets().cached([MISTRAL_CACHE]),
     )
     default_user_config = MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL)
 
     def __init__(
         self,
-        context: slay.DeploymentContext[MistraLLMConfig] = slay.provide_context(),
+        context: chains.DeploymentContext[MistraLLMConfig] = chains.provide_context(),
     ) -> None:
         super().__init__(context)
         import torch
@@ -104,20 +104,18 @@ class MistralLLM(slay.ProcessorBase[MistraLLMConfig]):
 
 
 class MistralP(Protocol):
-    def __init__(self, context: slay.DeploymentContext) -> None:
-        ...
+    def __init__(self, context: chains.DeploymentContext) -> None: ...
 
-    def run(self, data: str) -> str:
-        ...
+    def run(self, data: str) -> str: ...
 
 
-class TextToNum(slay.ProcessorBase):
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+class TextToNum(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.DeploymentContext = slay.provide_context(),
-        mistral: MistralP = slay.provide(MistralLLM),
+        context: chains.DeploymentContext = chains.provide_context(),
+        mistral: MistralP = chains.provide(MistralLLM),
     ) -> None:
         super().__init__(context)
         self._mistral = mistral
@@ -131,15 +129,15 @@ class TextToNum(slay.ProcessorBase):
         return number
 
 
-class Workflow(slay.ProcessorBase):
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+class Chain(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.DeploymentContext = slay.provide_context(),
-        data_generator: GenerateData = slay.provide(GenerateData),
-        splitter: shared_processor.SplitText = slay.provide(shared_processor.SplitText),
-        text_to_num: TextToNum = slay.provide(TextToNum),
+        context: chains.DeploymentContext = chains.provide_context(),
+        data_generator: GenerateData = chains.provide(GenerateData),
+        splitter: shared_chainlet.SplitText = chains.provide(shared_chainlet.SplitText),
+        text_to_num: TextToNum = chains.provide(TextToNum),
     ) -> None:
         super().__init__(context)
         self._data_generator = data_generator
@@ -149,10 +147,10 @@ class Workflow(slay.ProcessorBase):
     async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
         data = self._data_generator.run(length)
         text_parts, number = await self._data_splitter.run(
-            shared_processor.SplitTextInput(
+            shared_chainlet.SplitTextInput(
                 data=data,
                 num_partitions=num_partitions,
-                mode=shared_processor.Modes.MODE_1,
+                mode=shared_chainlet.Modes.MODE_1,
             ),
             extra_arg=123,
         )
@@ -165,7 +163,7 @@ class Workflow(slay.ProcessorBase):
 if __name__ == "__main__":
     import logging
 
-    from slay import utils
+    from truss_chains import utils
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -175,23 +173,19 @@ if __name__ == "__main__":
     for handler in root_logger.handlers:
         handler.setFormatter(formatter)
 
-    # class FakeMistralLLM(slay.ProcessorBase):
+    # class FakeMistralLLM(truss_chains.ChainletBase):
     #     def run(self, data: str) -> str:
     #         return data.upper()
     #
     # import asyncio
     #
-    # with slay.run_local():
+    # with truss_chains.run_local():
     #     text_to_num = TextToNum(mistral=FakeMistralLLM())
-    #     wf = Workflow(text_to_num=text_to_num)
+    #     wf = Chain(text_to_num=text_to_num)
     #     tmp = asyncio.run(wf.run(length=123, num_partitions=123))
     #     print(tmp)
 
     with utils.log_level(logging.DEBUG):
-        remote = slay.deploy_remotely(
-            Workflow, workflow_name="Test", only_generate_trusses=True, publish=False
+        remote = chains.deploy_remotely(
+            Chain, chain_name="Test", only_generate_trusses=True, publish=False
         )
-
-    # response = utils.call_workflow_dbg(remote, {"length": 1000, "num_partitions": 100})
-    # print(response)
-    # print(response.json())

@@ -1,7 +1,7 @@
 fail_fast: true
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.6.0
     hooks:
       - id: check-added-large-files
         args: ["--maxkb=500"]
@@ -14,7 +14,7 @@ repos:
       - id: check-symlinks
       - id: debug-statements
   - repo: https://github.com/psf/black
-    rev: 22.10.0
+    rev: 24.4.0
     hooks:
       - id: black
         # It is recommended to specify the latest version of Python
@@ -41,14 +41,14 @@ repos:
         entry: poetry run mypy
         language: python
         types: [python]
-        exclude: ^examples/|^truss/test.+/|model.py$|^slay.*
+        exclude: ^examples/|^truss/test.+/|model.py$|^truss-chains/.*
         pass_filenames: true
       - id: mypy
         name: mypy-local (3.9)
         entry: poetry run mypy
         language: python
         types: [python]
-        files: ^slay.*
+        files: ^truss-chains/.*
         args:
           - --python-version=3.9
         pass_filenames: true

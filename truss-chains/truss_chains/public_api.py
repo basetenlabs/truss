@@ -1,6 +1,6 @@
 from typing import Any, ContextManager, Mapping, Optional, Type, final
 
-from slay import definitions, framework, utils
+from truss_chains import definitions, deploy, framework
 
 
 def provide_context() -> Any:
@@ -8,13 +8,13 @@ def provide_context() -> Any:
     return framework.ContextProvisionPlaceholder()
 
 
-def provide(processor_cls: Type[definitions.ABCProcessor]) -> Any:
-    """Sets a 'symbolic marker' for injecting a stub or local processor at runtime."""
+def provide(chainlet_cls: Type[definitions.ABCChainlet]) -> Any:
+    """Sets a 'symbolic marker' for injecting a stub or local Chainlet at runtime."""
     # TODO: extend with RPC customization, e.g. timeouts, retries etc.
-    return framework.ProcessorProvisionPlaceholder(processor_cls)
+    return framework.ChainletProvisionPlaceholder(chainlet_cls)
 
 
-class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
+class ChainletBase(definitions.ABCChainlet[definitions.UserConfigT]):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         framework.check_and_register_class(cls)
@@ -44,23 +44,21 @@ class ProcessorBase(definitions.ABCProcessor[definitions.UserConfigT]):
 
 
 def deploy_remotely(
-    entrypoint: Type[definitions.ABCProcessor],
-    workflow_name: str,
+    entrypoint: Type[definitions.ABCChainlet],
+    chain_name: str,
     publish: bool = True,
     promote: bool = True,
     only_generate_trusses: bool = False,
-) -> definitions.ServiceDescriptor:
-    options = definitions.DeploymentOptionsBaseten(
-        workflow_name=workflow_name,
-        baseten_url="https://app.baseten.co",
-        api_key=utils.get_api_key_from_trussrc(),
+) -> deploy.ChainService:
+    options = deploy.DeploymentOptionsBaseten.create(
+        chain_name=chain_name,
         publish=publish,
         promote=promote,
         only_generate_trusses=only_generate_trusses,
     )
-    return framework.deploy_remotely(entrypoint, options)
+    return deploy.deploy_remotely(entrypoint, options)
 
 
 def run_local(secrets: Optional[Mapping[str, str]] = None) -> ContextManager[None]:
-    """Context manager for using in-process instantiations of processor dependencies."""
+    """Context manager for using in-process instantiations of Chainlet dependencies."""
     return framework.run_local(secrets)

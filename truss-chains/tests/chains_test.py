@@ -1,11 +1,10 @@
 import json
-import sys
 from pathlib import Path
 
 import pytest
 import requests
-from slay import definitions, framework
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss_chains import definitions, deploy, framework
 
 DEFAULT_LOG_ERROR = "Internal Server Error"
 
@@ -26,26 +25,16 @@ def assert_logs_contain_error(logs: str, error: str, message=DEFAULT_LOG_ERROR):
 
 
 @pytest.mark.integration
-def test_workflow():
+def test_chain():
     with ensure_kill_all():
-        root = Path(__file__).parent.parent.resolve()
-        workflow_root = root / "test_data" / "workflow_text_to_num"
-
-        sys.path.append(str(workflow_root))
-        from workflow import Workflow
-
-        sys.path.pop()
-
-        options = definitions.DeploymentOptionsLocalDocker(
-            workflow_name="integration-test"
-        )
-        entrypoint_service = framework.deploy_remotely(Workflow, options)
-        predict_url = entrypoint_service.predict_url.replace(
-            "host.docker.internal", "localhost"
-        )
+        root = Path(__file__).parent.resolve()
+        chain_root = root / "itest_chain" / "itest_chain.py"
+        entrypoint = framework.import_target(chain_root, "ItestChain")
+        options = deploy.DeploymentOptionsLocalDocker(chain_name="integration-test")
+        service = deploy.deploy_remotely(entrypoint, options)
 
         response = requests.post(
-            predict_url, json={"length": 30, "num_partitions": 3}, stream=True
+            service.run_url, json={"length": 30, "num_partitions": 3}, stream=True
         )
         print(response.content)
         assert response.status_code == 200
@@ -53,7 +42,7 @@ def test_workflow():
 
         # Test with errors.
         response = requests.post(
-            predict_url, json={"length": 300, "num_partitions": 3}, stream=True
+            service.run_url, json={"length": 300, "num_partitions": 3}, stream=True
         )
         print(response)
         error = definitions.RemoteErrorDetail.parse_obj(response.json()["error"])

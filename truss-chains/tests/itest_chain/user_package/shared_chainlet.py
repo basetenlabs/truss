@@ -2,7 +2,7 @@ import enum
 from typing import Tuple
 
 import pydantic
-import slay
+import truss_chains as chains
 
 
 class Modes(str, enum.Enum):
@@ -21,11 +21,11 @@ class SplitTextOutput(pydantic.BaseModel):
     part_lens: list[int]
 
 
-class SplitText(slay.ProcessorBase):
+class SplitText(chains.ChainletBase):
 
-    remote_config = slay.RemoteConfig(
-        docker_image=slay.DockerImage()
-        .pip_requirements_file(slay.make_abs_path_here("../requirements.txt"))
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage()
+        .pip_requirements_file(chains.make_abs_path_here("../requirements.txt"))
         .pip_requirements(["numpy"])
     )
 

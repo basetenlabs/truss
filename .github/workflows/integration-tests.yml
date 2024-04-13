@@ -69,3 +69,15 @@ jobs:
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+
+  chain-integration-tests:
+    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
+    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss-chains/tests  -m 'integration'
