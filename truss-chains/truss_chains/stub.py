@@ -4,7 +4,7 @@ import logging
 from typing import Optional, Type, TypeVar, final
 
 import httpx
-from slay import definitions, utils
+from truss_chains import definitions, utils
 
 DEFAULT_TIMEOUT_SEC = 600
 
@@ -72,9 +72,9 @@ StubT = TypeVar("StubT", bound=StubBase)
 
 
 def factory(
-    stub_cls: Type[StubT], context: definitions.DeploymentContext, processor_name: str
+    stub_cls: Type[StubT], context: definitions.DeploymentContext, chainlet_name: str
 ) -> StubT:
     return stub_cls(
-        service_descriptor=context.get_service_descriptor(processor_name),
+        service_descriptor=context.get_service_descriptor(chainlet_name),
         api_key=context.get_baseten_api_key(),
     )

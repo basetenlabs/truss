@@ -14,6 +14,10 @@ RUN curl -sSL https://install.python-poetry.org | python -
 
 ENV PATH="/root/.local/bin:${PATH}"
 COPY ./truss ./truss
+# Chains source code is not actually needed (and deps from chains group won't be
+# installed when using `--only builder`). But nonetheless poetry fails the install
+# if this directory is not present/empty - so we copy it.
+COPY ./truss-chains ./truss-chains
 COPY ./pyproject.toml ./pyproject.toml
 COPY ./poetry.lock ./poetry.lock
 COPY ./README.md ./README.md

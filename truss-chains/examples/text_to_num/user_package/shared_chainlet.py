@@ -2,11 +2,11 @@ import enum
 from typing import Tuple
 
 import pydantic
-import slay
+import truss_chains as chains
 
 IMAGE_NUMPY = (
-    slay.DockerImage()
-    .pip_requirements_file(slay.make_abs_path_here("../requirements.txt"))
+    chains.DockerImage()
+    .pip_requirements_file(chains.make_abs_path_here("../requirements.txt"))
     .pip_requirements(["numpy"])
 )
 
@@ -27,9 +27,9 @@ class SplitTextOutput(pydantic.BaseModel):
     part_lens: list[int]
 
 
-class SplitText(slay.ProcessorBase):
+class SplitText(chains.ChainletBase):
 
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_NUMPY)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_NUMPY)
 
     async def run(
         self, inputs: SplitTextInput, extra_arg: int
