@@ -3,4 +3,42 @@ title: Welcome to Truss Chains
 description: "Learn what Truss Chains is"
 ---
 
-Content here
+With a a vanilla Truss, you can call a single model in an HTTP Request. However,
+many inference workloads are more complex -- where you might want to call multiple models
+in sequence, or call a model multiple times with different inputs. Truss Chains is a framework
+for expressing these more complex workloads.
+
+# Key Concepts
+
+**Processor**: The base unit in a Truss Chain. A Processor is a single unit of computation. Importantly, each processor can have
+its own resource requirements (GPU, CPU, memory, etc), and autoscaling settings. Note that a Processor can serve an ML model,
+but it can also be a simple function that transforms data and calls other Processors.
+
+<img src="/images/single-processor.png" />
+
+**Chain**: A chain is a grouping of processors. Each chain has an "Entrypoint" processor that is called by a client. From this
+entrypoint processor, it can call other processors, perform other computations, and eventually returns a result to the client.
+
+Here's an example of a chain that can take a large audio file, split it into smaller chunks, and transcribe each chunk in parallel to
+speed up the transcription process.
+
+<img src="/images/audio-transcription-workflow.png" />
+
+# Hello World
+
+While we dig into implementation details in other sections, here's what Hello World looks like in Truss Chains.
+
+```python
+import slay as workflows
+
+class HelloWorld(workflows.ProcessorBase):
+    remote_config = workflows.RemoteConfig(
+        docker_image=workflows.DockerImage()
+    )
+
+    def run(self, num_repetitions: int) -> str:
+        # Your user code goes here.
+        return "Hello World! " * num_repetitions
+```
+
+See [Getting Started](/chains/getting-started) for how to run this!

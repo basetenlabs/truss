@@ -3,10 +3,94 @@ title: Getting Started
 description: "Getting Started with Truss Chains"
 ---
 
+In this guide, you'll follow the steps to install Truss chains and create and run your
+first processosr.
+
 # Installation
 
-```
-pip install truss
+Truss chains is available in the latest version of Truss.
+
+```bash
+$ pip install truss --upgrade
 ```
 
 # Creating your first processor
+
+1. Create a new file for your chain (you can name it anything you want, but for this example we'll name it `hello.py`). You
+can also create this file anywhere.
+2. Add the following code to the file:
+
+```python
+import slay as workflows
+
+class HelloWorld(workflows.ProcessorBase):
+    remote_config = workflows.RemoteConfig(
+        docker_image=workflows.DockerImage()
+    )
+
+    def run(self, num_repetitions: int) -> str:
+        # Your user code goes here.
+        return "Hello World! " * num_repetitions
+```
+
+This creates a processor that takes an integer, and return the string "Hello World!" that many times.
+
+# Running it locally
+
+Truss Chains supports a local development mode that allows you to run and test your processors locally.
+To use this mode, add the following code to the end of your file:
+
+```python
+if __name__ == "__main__":
+    with workflows.run_local():
+        my_hello_world = HelloWorld()
+        result = my_hello_world.run(num_repetitions=3)
+
+    print(result)
+    # Hello World! Hello World! Hello World!
+```
+
+And simply run your Python file:
+
+```
+$ python hello.py
+```
+
+<Warning>
+Note that this uses whatever resources are on your local computer. If your processor requires a GPU,
+or Python dependencies that are not installed on your local machine, this local mode will not work.
+</Warning>
+
+# Deploying to Baseten
+
+To deploy your chain to a remote like Baseten, add the following code to the end of your file (instead
+of the local snippet):
+
+```python
+if __name__ == "__main__":
+    workflows.deploy_remotely(HelloWorld, workflow_name="Test")
+```
+
+And run it with:
+
+```
+$ python hello.py
+```
+
+This will output a block like this:
+
+```
+INFO:root:Deploying truss model to Baseten`Test.HelloWorld` (publish=False, promote=False).
+Compressing... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+Uploading... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+INFO:root:🪵  View logs for your deployment at 'https://app.baseten.co/models/lqzrnre3/logs/qe7knpw'.
+INFO:root:Deployed service: name='Test.HelloWorld' predict_url='https://model-lqzrnre3.api.baseten.co/deployment/qe7knpw/predict'.
+```
+
+After the deployment succeeds, you can invoke the chain by calling the `predict` endpoint (Grab the predict URL from the output above) with a POST request like this:
+
+```bash
+$ curl -X POST $PREDICT_URL \
+  -H "Authorization: Api-Key $BASETEN_API_KEY" \
+  -d '{"num_repetitions": 10}'
+# "Hello World! Hello World! Hello World! "

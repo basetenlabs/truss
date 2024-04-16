@@ -147,7 +147,6 @@
       "group": "Truss Chains",
       "pages": [
         "chains/intro",
-        "chains/key-concepts",
         "chains/getting-started",
         "chains/a-second-processor",
         "chains/adding-an-ml-model",

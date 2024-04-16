@@ -3,4 +3,77 @@ title: A Second Processor
 description: "How two processors can be used in a chain"
 ---
 
-Content here
+In the [previous section](chains/getting-started), we created a simple chain with a single processor.
+In this section, we'll add a second processor to the chain. The toy example we'll build builds on top of
+the previous Hello World example, and prints out "Hello World" with a random number of exclamation points at the end.
+
+The architecture for this chain is:
+
+<img src="/images/second-processor.png" />
+
+<Note>
+In practice, for a chain this simple, you wouldn't need to use two processors. However, this example is useful for demonstrating how to use multiple processors in a chain.
+</Note>
+
+# The code
+
+Here's the code for this second chain. Exactly like the first example, we put this all in a single Python file called `hello.py`.
+
+```python
+import slay as workflows
+
+
+class GenerateRandomNumber(workflows.ProcessorBase):
+    """
+    This is our new processor that simply generates a random number from
+    1 to 10.
+    """
+    remote_config = workflows.RemoteConfig(
+        docker_image=workflows.DockerImage()
+    )
+
+    def run(self, num_repetitions: int) -> str:
+        import random
+
+        # Generate a random number between 1 and 10
+        return random.randint(1, 10)
+
+class HelloWorld(workflows.ProcessorBase):
+    """
+    This processor calls our new GenerateRandomNumber processor to get a
+    new random number, and then prints out "Hello World" with that many
+    exclamation marks.
+    """
+
+    remote_config = workflows.RemoteConfig(
+        docker_image=workflows.DockerImage()
+    )
+
+
+    def __init__(
+        self,
+        context: workflows.DeploymentContext = workflows.provide_context(),
+        # We reference downstream dependencies in the init function
+        generate_random_number: GenerateRandomNumber = workflows.provide(HelloWorld),
+    ):
+        self._generate_random_number = generate_random_number
+
+    def run(self) -> str:
+        random_number = self._generate_random_number()
+        return "Hello World" + "!" * random_number
+```
+
+<Note>
+We use Dependency Injection to reference processors from other processors. This feature is what
+enables both local and remote execution, as well as testing these processors in isolation.
+
+The `provides` function here creates an instance of the `GenerateRandomNumber` processor. In a local
+context, you get a literal instance of that class, while in a remote context, it is an object where
+the `run` method is executed on a remote server.
+
+Another huge plus here is that you get type-checking for these remote calls.
+</Note>
+
+In this simple example, each processor uses the same resources, and as a result, we don't _really_ benefit
+from using two processors. In the next section, we show an example of using an LLM in a chain, where the
+LLM requires use of a GPU.
