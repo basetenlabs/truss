@@ -144,7 +144,7 @@
       ]
     },
     {
-      "group": "Truss Chains",
+      "group": "Truss Chains (β)",
       "pages": [
         "chains/intro",
         "chains/getting-started",
@@ -169,7 +169,7 @@
       "url": "contribute"
     },
     {
-      "name": "Truss Chains",
+      "name": "Truss Chains (β)",
       "url": "chains"
     }
   ],
