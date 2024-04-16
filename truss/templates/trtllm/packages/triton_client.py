@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import subprocess
@@ -13,6 +12,7 @@ from constants import (
     GRPC_SERVICE_PORT,
     TENSORRT_LLM_MODEL_REPOSITORY_PATH,
 )
+from fastapi import HTTPException
 from schema import ModelInput
 from utils import download_engine, prepare_model_repository
 
@@ -139,7 +139,9 @@ class TritonClient:
                     result = result.as_numpy("text_output")
                     yield result[0].decode("utf-8")
                 else:
-                    yield json.dumps({"status": "error", "message": error.message()})
+                    raise HTTPException(
+                        status_code=error.status(), detail=error.message()
+                    )
 
         except grpcclient.InferenceServerException as e:
-            print(f"InferenceServerException: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
