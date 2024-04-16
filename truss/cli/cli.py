@@ -233,8 +233,7 @@ def watch(
         sys.exit(1)
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
-    logs_url = remote_provider.get_remote_logs_url(service)
-    rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    rich.print(f"🪵  View logs for your deployment at {service.logs_url}")
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
 
 
@@ -537,8 +536,7 @@ Please push with --trusted to grant access to secrets.
 it will become the next production deployment of your model."""
         console.print(promotion_text, style="green")
 
-    logs_url = remote_provider.get_remote_logs_url(service)  # type: ignore[attr-defined]
-    rich.print(f"🪵  View logs for your deployment at {logs_url}")
+    rich.print(f"🪵  View logs for your deployment at {service.logs_url}")
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:

@@ -8,29 +8,33 @@ TEST_SERVICE_URL = "http://test.com"
 
 
 class TestTrussService(TrussService):
-    def __init__(self, remote_url: str, is_draft: bool, **kwargs):
-        super().__init__(remote_url, is_draft, **kwargs)
-        self._remote_url = remote_url
+    def __init__(self, _service_url: str, is_draft: bool, **kwargs):
+        super().__init__(_service_url, is_draft, **kwargs)
 
     def authenticate(self):
-        return {"Authorization": "Test"}
+        return {}
 
-    def is_live(self):
-        response = self._send_request(self._remote_url, "GET")
+    def is_live(self) -> bool:
+        response = self._send_request(self._service_url, "GET")
         if response.status_code == 200:
             return True
         return False
 
-    def is_ready(self):
-        response = self._send_request(self._remote_url, "GET")
+    def is_ready(self) -> bool:
+        response = self._send_request(self._service_url, "GET")
         if response.status_code == 200:
             return True
         return False
 
-    def logs_url(self, base_url: str) -> str:
-        return f"{base_url}/logs"
+    @property
+    def logs_url(self) -> str:
+        raise NotImplementedError()
 
-    def poll_deployment_status():
+    @property
+    def predict_url(self) -> str:
+        return f"{self._service_url}/v1/models/model:predict"
+
+    def poll_deployment_status(self) -> str:
         for status in ["DEPLOYING", "ACTIVE"]:
             yield status
 

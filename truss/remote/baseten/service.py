@@ -1,5 +1,6 @@
 import time
-from typing import Dict, Optional
+import urllib.parse
+from typing import Any, Dict, Iterator, Optional
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
@@ -10,6 +11,14 @@ from truss.truss_handle import TrussHandle
 from truss.util.errors import RemoteNetworkError
 
 DEFAULT_STREAM_ENCODING = "utf-8"
+
+
+def _add_model_subdomain(rest_api_url: str, model_subdomain: str) -> str:
+    """E.g. `https://api.baseten.co` -> `https://{model_subdomain}.api.baseten.co`"""
+    parsed_url = urllib.parse.urlparse(rest_api_url)
+    new_netloc = f"{model_subdomain}.{parsed_url.netloc}"
+    model_url = parsed_url._replace(netloc=new_netloc)
+    return str(urllib.parse.urlunparse(model_url))
 
 
 class BasetenService(TrussService):
@@ -51,9 +60,9 @@ class BasetenService(TrussService):
     def predict(
         self,
         model_request_body: Dict,
-    ):
+    ) -> Any:
         response = self._send_request(
-            self.invocation_url, "POST", data=model_request_body, stream=True
+            self.predict_url, "POST", data=model_request_body, stream=True
         )
 
         if response.headers.get("transfer-encoding") == "chunked":
@@ -85,14 +94,33 @@ class BasetenService(TrussService):
     def authenticate(self) -> dict:
         return self._auth_service.authenticate().header()
 
-    def logs_url(self, base_url: str) -> str:
-        return f"{base_url}/models/{self._model_id}/logs/{self._model_version_id}"
+    @property
+    def logs_url(self) -> str:
+        return (
+            f"{self._api.remote_url}/models/{self._model_id}/"
+            f"logs/{self._model_version_id}"
+        )
+
+    @property
+    def predict_url(self) -> str:
+        """
+        Get the URL for the prediction endpoint.
+        """
+        # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
+        url = _add_model_subdomain(self._api.remote_url, f"/model-{self.model_id}")
+        if self.is_draft:
+            # "https://model-{model_id}.api.baseten.co/development".
+            url = f"{url}/development/predict"
+        else:
+            # "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
+            url = f"{url}/deployment/{self.model_version_id}/predict"
+        return url
 
     @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
-    def _fetch_deployment(self):
+    def _fetch_deployment(self) -> Any:
         return self._api.get_deployment(self._model_id, self._model_version_id)
 
-    def poll_deployment_status(self):
+    def poll_deployment_status(self) -> Iterator[str]:
         """
         Wait for the service to be deployed.
         """

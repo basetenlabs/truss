@@ -562,7 +562,6 @@ def _create_remote_service(
             baseten_service = baseten_client.deploy_truss(
                 truss_dir, publish=options.publish, promote=options.promote
             )
-            logs_url = baseten_client.get_logs_url(baseten_service)
         # Assuming baseten_url is like "https://app.baseten.co" or ""https://app.dev.baseten.co",
         deploy_url = options.baseten_url.replace(
             "https://", f"https://model-{baseten_service.model_id}."
@@ -577,7 +576,7 @@ def _create_remote_service(
         service = definitions.ServiceDescriptor(
             name=model_name, predict_url=f"{deploy_url}/predict"
         )
-        logging.info(f"🪵  View logs for your deployment at {logs_url}.")
+        logging.info(f"🪵  View logs for your deployment at {baseten_service.logs_url}.")
     else:
         raise NotImplementedError(options)
 

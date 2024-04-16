@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 
 import requests
 from truss.truss_handle import TrussHandle
@@ -23,7 +23,7 @@ class TrussService(ABC):
 
     """
 
-    def __init__(self, service_url: str, is_draft: bool, **kwargs):
+    def __init__(self, service_url: str, is_draft: bool, **kwargs) -> None:
         self._service_url = service_url
         self._is_draft = is_draft
 
@@ -34,7 +34,7 @@ class TrussService(ABC):
         headers: Optional[Dict] = None,
         data: Optional[Dict] = None,
         stream: Optional[bool] = False,
-    ):
+    ) -> Any:
         """
         Send a HTTP request.
 
@@ -75,7 +75,7 @@ class TrussService(ABC):
         return response
 
     @property
-    def is_draft(self):
+    def is_draft(self) -> bool:
         """
         Check if the service is in draft mode.
 
@@ -112,7 +112,7 @@ class TrussService(ABC):
         response = self._send_request(readiness_url, "GET", {})
         return response.status_code == 200
 
-    def predict(self, model_request_body: Dict):
+    def predict(self, model_request_body: Dict) -> Any:
         """
         Send a prediction request to the service.
 
@@ -122,11 +122,9 @@ class TrussService(ABC):
         Returns:
             A Response object resulting from the prediction request.
         """
-        invocation_url = f"{self._service_url}/v1/models/model:predict"
-        response = self._send_request(invocation_url, "POST", data=model_request_body)
-        return response
+        return self._send_request(self.predict_url, "POST", data=model_request_body)
 
-    def patch(self):
+    def patch(self) -> None:
         """
         Patch the service. TrussServices in draft mode can be patched.
         """
@@ -142,15 +140,24 @@ class TrussService(ABC):
         """
         return {}
 
+    @property
     @abstractmethod
-    def logs_url(self, base_url: str) -> str:
+    def logs_url(self) -> str:
         """
         Get the URL for the service logs.
         """
         pass
 
+    @property
     @abstractmethod
-    def poll_deployment_status(self):
+    def predict_url(self) -> str:
+        """
+        Get the URL for the prediction endpoint.
+        """
+        pass
+
+    @abstractmethod
+    def poll_deployment_status(self) -> Iterator[str]:
         """
         Poll for a deployment status.
         """
@@ -173,11 +180,11 @@ class TrussRemote(ABC):
 
     """
 
-    def __init__(self, remote_url: str, **kwargs):
+    def __init__(self, remote_url: str, **kwargs) -> None:
         self._remote_url = remote_url
 
     @abstractmethod
-    def push(self, truss_handle: TrussHandle, **kwargs):
+    def push(self, truss_handle: TrussHandle, **kwargs) -> TrussService:
         """
         Push a TrussHandle to the remote service.
 
@@ -192,21 +199,7 @@ class TrussRemote(ABC):
         pass
 
     @abstractmethod
-    def authenticate(self, **kwargs):
-        """
-        Authenticate the user to push to the remote service.
-
-        This method should be implemented in subclasses. It should check whether
-        the user has valid authentication credentials to push to the remote service.
-        If not, it should raise an exception.
-
-        Args:
-            **kwargs: Additional keyword arguments for the authentication operation.
-        """
-        pass
-
-    @abstractmethod
-    def get_service(self, **kwargs):
+    def get_service(self, **kwargs) -> TrussService:
         """
         Get a TrussService object for interacting with the remote service.
 
@@ -221,17 +214,9 @@ class TrussRemote(ABC):
         pass
 
     @abstractmethod
-    def get_remote_logs_url(self, service: TrussService) -> str:
-        """
-        Get the URL for the remote service logs.
-
-        Args:
-            service: The TrussService object for interacting with the remote service.
-        """
-        pass
-
-    @abstractmethod
-    def sync_truss_to_dev_version_by_name(self, model_name: str, target_directory: str):
+    def sync_truss_to_dev_version_by_name(
+        self, model_name: str, target_directory: str
+    ) -> None:
         """
         This method watches for changes to files in the `target_directory`,
         and syncs them to the development version of the model, identified
