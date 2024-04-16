@@ -425,7 +425,7 @@ def predict(
     help=(
         "Preserve the previous production deployment's autoscaling setting. When not specified, "
         "the previous production deployment will be updated to allow it to scale to zero. "
-        "Can only be use in combination with --promote option"
+        "Can only be use in combination with `--promote` option"
     ),
 )
 @click.option(
@@ -442,7 +442,7 @@ def predict(
     required=False,
     help=(
         "Name of the deployment created by the push. Can only be "
-        "used in combination with --publish or --promote."
+        "used in combination with `--publish` or `--promote`."
     ),
 )
 @click.option(
