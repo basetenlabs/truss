@@ -176,6 +176,3 @@ class BasetenClient:
         if service is None:
             raise ValueError()
         return cast(b10_service.BasetenService, service)
-
-    def get_logs_url(self, service: b10_service.BasetenService) -> str:
-        return self._remote_provider.get_remote_logs_url(service)

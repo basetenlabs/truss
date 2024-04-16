@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from truss.remote.baseten.auth import AuthService
@@ -8,6 +8,18 @@ from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
+
+API_URL_MAPPING = {
+    "https://app.baseten.co": "https://api.baseten.co",
+    "https://app.staging.baseten.co": "https://api.staging.baseten.co",
+    "https://app.dev.baseten.co": "https://api.staging.baseten.co",
+    # For local development, this is how we map URLs
+    "http://localhost:8000": "http://api.localhost:8000",
+}
+
+# If a non-standard domain is used with the baseten remote, default to
+# using the production api routes
+DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
 class BasetenApi:
@@ -23,13 +35,20 @@ class BasetenApi:
     class GraphQLErrorCodes(Enum):
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
-    def __init__(
-        self, graphql_api_url: str, rest_api_url: str, auth_service: AuthService
-    ):
+    def __init__(self, remote_url: str, auth_service: AuthService) -> None:
+        graphql_api_url = f"{remote_url}/graphql/"
+        # Ensure we strip off trailing '/' to denormalize URLs.
+        rest_api_url = API_URL_MAPPING.get(remote_url.strip("/"), DEFAULT_API_DOMAIN)
+
+        self._remote_url = remote_url
         self._graphql_api_url = graphql_api_url
         self._rest_api_url = rest_api_url
         self._auth_service = auth_service
         self._auth_token = self._auth_service.authenticate()
+
+    @property
+    def remote_url(self) -> str:
+        return self._remote_url
 
     def _post_graphql_query(self, query_string: str) -> dict:
         headers = self._auth_token.header()
@@ -254,7 +273,7 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["patch_draft_truss"]
 
-    def get_deployment(self, model_id: str, deployment_id: str) -> str:
+    def get_deployment(self, model_id: str, deployment_id: str) -> Any:
         headers = self._auth_token.header()
         resp = requests.get(
             f"{self._rest_api_url}/v1/models/{model_id}/deployments/{deployment_id}",

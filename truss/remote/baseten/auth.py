@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class ApiKey:
     value: str
 
-    def __init__(self, value: str):
+    def __init__(self, value: str) -> None:
         self.value = value
 
     def header(self):
@@ -18,12 +18,12 @@ class ApiKey:
 
 
 class AuthService:
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None) -> None:
         if not api_key:
             api_key = os.environ.get("BASETEN_API_KEY", None)
         self._api_key = api_key
 
-    def validate(self):
+    def validate(self) -> None:
         if not self._api_key:
             raise AuthorizationError("No API key provided.")
 
