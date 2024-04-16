@@ -131,7 +131,7 @@ class TextToNum(chains.ChainletBase):
         return number
 
 
-class Chain(chains.ChainletBase):
+class ExampleChain(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
@@ -163,31 +163,21 @@ class Chain(chains.ChainletBase):
 
 
 if __name__ == "__main__":
-    import logging
+    """
+    Deploy remotely as:
+    ```
+    truss chain deploy truss-chains/examples/text_to_num/main.py ExampleChain
+    ```
+    """
 
-    from truss_chains import utils
+    import asyncio
 
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    log_format = "%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s"
-    date_format = "%m%d %H:%M:%S"
-    formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
-    for handler in root_logger.handlers:
-        handler.setFormatter(formatter)
+    class FakeMistralLLM(chains.ChainletBase):
+        def run(self, data: str) -> str:
+            return data.upper()
 
-    # class FakeMistralLLM(truss_chains.ChainletBase):
-    #     def run(self, data: str) -> str:
-    #         return data.upper()
-    #
-    # import asyncio
-    #
-    # with truss_chains.run_local():
-    #     text_to_num = TextToNum(mistral=FakeMistralLLM())
-    #     wf = Chain(text_to_num=text_to_num)
-    #     tmp = asyncio.run(wf.run(length=123, num_partitions=123))
-    #     print(tmp)
-
-    with utils.log_level(logging.DEBUG):
-        remote = chains.deploy_remotely(
-            Chain, chain_name="Test", only_generate_trusses=True, publish=False
-        )
+    with chains.run_local():
+        text_to_num_chainlet = TextToNum(mistral=FakeMistralLLM())
+        wf = ExampleChain(text_to_num=text_to_num_chainlet)
+        tmp = asyncio.run(wf.run(length=123, num_partitions=123))
+        print(tmp)

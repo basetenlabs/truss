@@ -112,7 +112,7 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     Archive a TrussHandle into a tar file.
 
     Args:
-        b10_truss: TrussHandle to archive
+        truss_handle: TrussHandle to archive
 
     Returns:
         A file-like object containing the tar file

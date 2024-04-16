@@ -246,7 +246,7 @@ class DockerService(b10_service.TrussService):
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
-    def poll_deployment_status(self) -> Iterator[str]:
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         raise NotImplementedError()
 
 
@@ -307,7 +307,6 @@ def _deploy_service(
         service_descr = definitions.ServiceDescriptor(
             name=model_name, predict_url=service.predict_url
         )
-        logging.info(f"🪵  View logs for your deployment at {service.logs_url}.")
     else:
         raise NotImplementedError(options)
 
@@ -346,7 +345,8 @@ class ChainService:
     _entrypoint: str
     _services: MutableMapping[str, b10_service.TrussService]
 
-    def __init__(self, entrypoint: str) -> None:
+    def __init__(self, entrypoint: str, name: str) -> None:
+        self.name = name
         self._entrypoint = entrypoint
         self._services = collections.OrderedDict()  # Preserve order.
 
@@ -369,11 +369,12 @@ class ChainService:
     def run(self, json: Dict) -> Any:
         return self.get_entrypoint.predict(json)
 
-    def get_statuses(self) -> Mapping[str, str]:
-        return {
-            name: next(service.poll_deployment_status())
+    def get_info(self) -> list[tuple[str, str, str]]:
+        """Return list with elements (name, status, logs_url) for each chainlet."""
+        return list(
+            (name, next(service.poll_deployment_status(sleep_secs=0)), service.logs_url)
             for name, service in self._services.items()
-        }
+        )
 
 
 def deploy_remotely(
@@ -396,7 +397,8 @@ def deploy_remotely(
 
     chainlet_to_service: dict[str, definitions.ServiceDescriptor] = {}
     chain_service = ChainService(
-        framework.global_chainlet_registry.get_descriptor(entrypoint).name
+        framework.global_chainlet_registry.get_descriptor(entrypoint).name,
+        name=options.chain_name,
     )
     for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
         logging.info(f"Deploying `{chainlet_descriptor.name}`.")

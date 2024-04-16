@@ -1,3 +1,4 @@
+from typing import Iterator
 from unittest import mock
 
 import pytest
@@ -34,7 +35,7 @@ class TestTrussService(TrussService):
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
-    def poll_deployment_status(self) -> str:
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         for status in ["DEPLOYING", "ACTIVE"]:
             yield status
 
