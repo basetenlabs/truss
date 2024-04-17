@@ -148,7 +148,7 @@
       "pages": [
         "chains/intro",
         "chains/getting-started",
-        "chains/a-second-processor",
+        "chains/chaining-chainlets",
         "chains/deps-and-resources",
         "chains/tips-and-tricks",
         "chains/full-reference"
