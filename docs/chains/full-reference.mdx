@@ -5,19 +5,19 @@ description: "Truss Chains Reference"
 
 <Warning>This is a beta feature and subject to breaking changes.</Warning>
 
-# chains.ProcessorBase
+# chains.ChainletBase
 
-This is the base class from which all Processors inherit. The main class-level attributes that one
+This is the base class from which all Chainlets inherit. The main class-level attributes that one
 can define here are:
 
-* `remote_config` -- This is a `RemoteConfig` object that defines how the Processor should be deployed.
+* `remote_config` -- This is a `RemoteConfig` object that defines how the Chainlet should be deployed.
 * `default_user_config` -- This is an optional pydantic.BaseModel that defines the default user configuration
-for the Processor.
+for the Chainlet.
 
-You then define a `run` method on the Processor that contains the logic for the actual processor:
+You then define a `run` method on the Chainlet that contains the logic for the actual chainlet:
 
 ```python
-class HelloWorld(chains.ProcessorBase):
+class HelloWorld(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage()
     )
@@ -29,32 +29,32 @@ class HelloWorld(chains.ProcessorBase):
 # chains.deploy_remotely
 
 ```python
-chains.deploy_remotely(processor: Type[chains.ProcessorBase], workflow_name: str)
+chains.deploy_remotely(chainlet: Type[chains.ChainletBase], chain_name: str)
 ```
 
-The `deploy_remotely` function takes a processor and a user-defined `workflow_name` and deploys the processor
+The `deploy_remotely` function takes a chainlet and a user-defined `chain_name` and deploys the Chainlet
 to a remote (just Baseten for now).
 
 # chains.provide
 
 ```python
-chains.provide(processor: Type[chains.ProcessorBase])
+chains.provide(chainlet: Type[chains.ChainletBase])
 ```
 
-`chains.provide` is a key part of the chains Dependency Injection framework, and is used for processors
-to reference other processors in a chain.
+`chains.provide` is a key part of the chains Dependency Injection framework, and is used for chainlets
+to reference other chainlets in a chain.
 
 
 ```python
-class MyProcessor(chains.ProcessorBase):
+class MyChainlet(chains.chainletBase):
     def __init__(
         self,
-        other_processor: OtherProcessor = chains.provide(MyProcessor)
+        other_chainlet: OtherChainlet = chains.provide(OtherChainlet)
     ):
-        self._other_processor = other_processor
+        self._other_chainlet = other_chainlet
 
     def run(self):
-        return self._other_processor.run()
+        return self._other_chainlet.run()
 ```
 
 # chains.provide_context
@@ -68,8 +68,8 @@ as secrets.
 
 # chains.RemoteConfig
 
-The `chains.RemoteConfig` object is used to specify the configuration for the _remote deployment of a processor_.
-In other words, all of the options for how a processor should be deployed on a remote server (what docker image should be used,
+The `chains.RemoteConfig` object is used to specify the configuration for the _remote deployment of a chainlet_.
+In other words, all of the options for how a chainlet should be deployed on a remote server (what docker image should be used,
 what dependencies need to be installed, what compute is needed, etc.)
 
 **Signature:**
@@ -83,15 +83,15 @@ chains.RemoteConfig(
 )
 ```
 
-You can use this by assigning an instance to the `remote_config` attribute of a Processor:
+You can use this by assigning an instance to the `remote_config` attribute of a Chainlet:
 
 ```python
-class MyProcessor(chains.BaseProcessor):
+class MyChainlet(chains.Basechainlet):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(),
         compute=...,
         assets=...,
-        name="my-processor"
+        name="my-chainlet"
     )
     ...
 ```
@@ -103,12 +103,12 @@ class MyProcessor(chains.BaseProcessor):
 
 # chains.DeploymentContext
 
-This is an object that is provided to Processors via `chains.provide_context()`. It contains information
+This is an object that is provided to Chainlets via `chains.provide_context()`. It contains information
 about the current deployment context.
 
 ## chains.DeploymentContext.secrets
 
-Returns a dictionary of secrets that are available to the Processor.
+Returns a dictionary of secrets that are available to the Chainlet.
 
 ```
 context.secrets # {'my_secret': 'my_secret_value'}
@@ -116,8 +116,8 @@ context.secrets # {'my_secret': 'my_secret_value'}
 
 # chains.DockerImage
 
-A builder object used to define the Docker image that a Processor should run in.
-Pass this builder object to the RemoteConfig object on the Processor like so:
+A builder object used to define the Docker image that a Chainlet should run in.
+Pass this builder object to the RemoteConfig object on the Chainlet like so:
 
 ```python
 chains.RemoteConfig(docker_image=chains.DockerImage())

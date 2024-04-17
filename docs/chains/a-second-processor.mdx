@@ -1,11 +1,11 @@
 ---
-title: Chaining Processors
-description: "How two processors can be used in a chain"
+title: Chaining Chainlets
+description: "How two chainlets can be combined in a chain"
 ---
 <Warning>This is a beta feature and subject to breaking changes.</Warning>
 
-In the [previous section](chains/getting-started), we created a simple chain with a single processor.
-In this section, we'll add a second processor to the chain. The toy example we'll build builds on top of
+In the [previous section](chains/getting-started), we created a simple chain with a single chainlet.
+In this section, we'll add a second chainlet to the chain. The toy example we'll build builds on top of
 the previous Hello World example, and prints out "Hello World" with a random number of exclamation points at the end.
 
 The architecture for this chain is:
@@ -13,7 +13,7 @@ The architecture for this chain is:
 <img src="/images/second-processor.png" />
 
 <Note>
-In practice, for a chain this simple, you wouldn't need to use two processors. However, this example is useful for demonstrating how to use multiple processors in a chain.
+In practice, for a chain this simple, you wouldn't need to use two chainlets. However, this example is useful for demonstrating how to use multiple chainlets in a chain.
 </Note>
 
 # The Code
@@ -24,9 +24,9 @@ Here's the code for this second chain. Exactly like the first example, we put th
 import slay as workflows
 
 
-class GenerateRandomNumber(workflows.ProcessorBase):
+class GenerateRandomNumber(workflows.ChainletBase):
     """
-    This is our new processor that simply generates a random number from
+    This is our new chainlet that simply generates a random number from
     1 to 10.
     """
     remote_config = workflows.RemoteConfig(
@@ -39,9 +39,9 @@ class GenerateRandomNumber(workflows.ProcessorBase):
         # Generate a random number between 1 and 10
         return random.randint(1, 10)
 
-class HelloWorld(workflows.ProcessorBase):
+class HelloWorld(workflows.ChainletBase):
     """
-    This processor calls our new GenerateRandomNumber processor to get a
+    This chainlet calls our new GenerateRandomNumber chainlet to get a
     new random number, and then prints out "Hello World" with that many
     exclamation marks.
     """
@@ -65,16 +65,16 @@ class HelloWorld(workflows.ProcessorBase):
 ```
 
 <Note>
-We use Dependency Injection to reference processors from other processors. This feature is what
-enables both local and remote execution, as well as testing these processors in isolation.
+We use Dependency Injection to reference chainlets from other chainlets. This feature is what
+enables both local and remote execution, as well as testing these chainlets in isolation.
 
-The `provides` function here creates an instance of the `GenerateRandomNumber` processor. In a local
+The `provides` function here creates an instance of the `GenerateRandomNumber` chainlet. In a local
 context, you get a literal instance of that class, while in a remote context, it is an object where
 the `run` method is executed on a remote server.
 
 Another huge plus here is that you get type-checking for these remote calls.
 </Note>
 
-In this simple example, each processor uses the same resources, and as a result, we don't _really_ benefit
-from using two processors. In the next section, we show an example of using an LLM in a chain, where the
+In this simple example, each chainlet uses the same resources, and as a result, we don't _really_ benefit
+from using two chainlets. In the next section, we show an example of using an LLM in a chain, where the
 LLM requires use of a GPU.

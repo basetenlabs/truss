@@ -6,7 +6,7 @@ description: "Getting Started with Truss Chains"
 <Warning>This is a beta feature and subject to breaking changes.</Warning>
 
 In this guide, you'll follow the steps to install Truss chains and create and run your
-first processosr.
+first Chain.
 
 # Installation
 
@@ -16,18 +16,18 @@ Truss chains is available in the latest version of Truss.
 $ pip install truss --upgrade
 ```
 
-# Creating your first processor
+# Creating your first chainlet
 
 1. Create a new file for your chain (you can name it anything you want, but for this example we'll name it `hello.py`). You
 can also create this file anywhere.
 2. Add the following code to the file:
 
 ```python
-import slay as workflows
+import truss_chains as chains
 
-class HelloWorld(workflows.ProcessorBase):
-    remote_config = workflows.RemoteConfig(
-        docker_image=workflows.DockerImage()
+class HelloWorld(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage()
     )
 
     def run(self, num_repetitions: int) -> str:
@@ -35,16 +35,16 @@ class HelloWorld(workflows.ProcessorBase):
         return "Hello World! " * num_repetitions
 ```
 
-This creates a processor that takes an integer, and return the string "Hello World!" that many times.
+This creates a chainlet that takes an integer, and return the string "Hello World!" that many times.
 
 # Running it locally
 
-Truss Chains supports a local development mode that allows you to run and test your processors locally.
+Truss Chains supports a local development mode that allows you to run and test your chainlets locally.
 To use this mode, add the following code to the end of your file:
 
 ```python
 if __name__ == "__main__":
-    with workflows.run_local():
+    with chains.run_local():
         my_hello_world = HelloWorld()
         result = my_hello_world.run(num_repetitions=3)
 
@@ -59,7 +59,7 @@ $ python hello.py
 ```
 
 <Warning>
-Note that this uses whatever resources are on your local computer. If your processor requires a GPU,
+Note that this uses whatever resources are on your local computer. If your chainlet requires a GPU,
 or Python dependencies that are not installed on your local machine, this local mode will not work.
 </Warning>
 
@@ -70,7 +70,7 @@ of the local snippet):
 
 ```python
 if __name__ == "__main__":
-    workflows.deploy_remotely(HelloWorld, workflow_name="Test")
+    chains.deploy_remotely(HelloWorld, chain_name="hello-world")
 ```
 
 And run it with:

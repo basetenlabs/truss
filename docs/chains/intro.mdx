@@ -12,9 +12,9 @@ for expressing these more complex workloads.
 
 # Key Concepts
 
-**Processor**: The base unit in a Truss Chain. A Processor is a single unit of computation. Importantly, each processor can have
-its own resource requirements (GPU, CPU, memory, etc), and autoscaling settings. Note that a Processor can serve an ML model,
-but it can also be a simple function that transforms data and calls other Processors.
+**Chainlet**: The base unit in a Truss Chain. A Chainlet is a single unit of computation. Importantly, each processor can have
+its own resource requirements (GPU, CPU, memory, etc), and autoscaling settings. Note that a Chainlet can serve an ML model,
+but it can also be a simple function that transforms data and calls other Chainlets.
 
 <img src="/images/single-processor.png" />
 
@@ -31,11 +31,11 @@ speed up the transcription process.
 While we dig into implementation details in other sections, here's what Hello World looks like in Truss Chains.
 
 ```python
-import slay as workflows
+import truss_chains as chains
 
-class HelloWorld(workflows.ProcessorBase):
-    remote_config = workflows.RemoteConfig(
-        docker_image=workflows.DockerImage()
+class HelloWorld(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage()
     )
 
     def run(self, num_repetitions: int) -> str:
