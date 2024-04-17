@@ -12,6 +12,13 @@ annotated-types==0.6.0
     # via pydantic
 anyio==4.3.0
     # via httpx
+    # via watchfiles
+argcomplete==3.3.0
+    # via datamodel-code-generator
+autoflake==2.2.0
+    # via truss
+black==24.4.0
+    # via datamodel-code-generator
 blake3==0.4.1
     # via truss
 blinker==1.7.0
@@ -23,13 +30,24 @@ certifi==2024.2.2
 charset-normalizer==3.3.2
     # via requests
 click==8.1.7
+    # via black
     # via flask
     # via httpx
+    # via rich-click
     # via uvicorn
+datamodel-code-generator==0.25.5
+    # via truss
+dnspython==2.6.1
+    # via email-validator
+email-validator==2.1.1
+    # via pydantic
 exceptiongroup==1.2.0
     # via anyio
     # via pytest
+flake8==7.0.0
 flask==2.3.3
+genson==1.2.2
+    # via datamodel-code-generator
 h11==0.14.0
     # via httpcore
     # via uvicorn
@@ -39,37 +57,66 @@ httpx==0.27.0
     # via truss
 idna==3.7
     # via anyio
+    # via email-validator
     # via httpx
     # via requests
+inflect==5.6.2
+    # via datamodel-code-generator
 iniconfig==2.0.0
     # via pytest
+inquirerpy==0.3.4
+    # via truss
+isort==5.13.2
+    # via datamodel-code-generator
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.3
+    # via datamodel-code-generator
     # via flask
+libcst==1.1.0
+    # via truss
 markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.5
     # via jinja2
     # via werkzeug
+mccabe==0.7.0
+    # via flake8
 mdurl==0.1.2
     # via markdown-it-py
 mypy==1.9.0
 mypy-extensions==1.0.0
+    # via black
     # via mypy
+    # via typing-inspect
 numpy==1.26.4
     # via truss
 packaging==24.0
+    # via black
+    # via datamodel-code-generator
     # via pytest
     # via truss
 pathspec==0.12.1
+    # via black
     # via truss
+pfzy==0.3.4
+    # via inquirerpy
+platformdirs==4.2.0
+    # via black
 pluggy==1.4.0
     # via pytest
+prompt-toolkit==3.0.43
+    # via inquirerpy
+pycodestyle==2.11.1
+    # via flake8
 pydantic==2.7.0
+    # via datamodel-code-generator
     # via truss
 pydantic-core==2.18.1
     # via pydantic
+pyflakes==3.2.0
+    # via autoflake
+    # via flake8
 pygments==2.17.2
     # via httpx
     # via rich
@@ -77,33 +124,51 @@ pytest==8.1.1
     # via pytest-split
 pytest-split==0.8.2
 pyyaml==6.0.1
+    # via datamodel-code-generator
+    # via libcst
     # via truss
 requests==2.31.0
     # via requests-mock
 requests-mock==1.12.1
 rich==13.7.1
     # via httpx
-single-source==0.3.0
+    # via rich-click
+    # via truss
+rich-click==1.7.4
     # via truss
 sniffio==1.3.1
     # via anyio
     # via httpx
 tenacity==8.2.3
     # via truss
+toml==0.10.2
+    # via datamodel-code-generator
 tomli==2.0.1
+    # via autoflake
+    # via black
     # via mypy
     # via pytest
 types-requests==2.31.0.20240406
 typing-extensions==4.11.0
     # via anyio
+    # via black
+    # via libcst
     # via mypy
     # via pydantic
     # via pydantic-core
+    # via rich-click
+    # via typing-inspect
     # via uvicorn
+typing-inspect==0.9.0
+    # via libcst
 urllib3==2.2.1
     # via requests
     # via types-requests
 uvicorn==0.29.0
 uvloop==0.19.0
+watchfiles==0.21.0
+    # via truss
+wcwidth==0.2.13
+    # via prompt-toolkit
 werkzeug==3.0.2
     # via flask

@@ -1,13 +1,16 @@
 [project]
 name = "truss"
-version = "0.9.9"
+dynamic = ["version"]
 description = "A seamless bridge from model development to model delivery"
 license = { text = "MIT" }
 authors = [
     { name = "Pankaj Gupta", email = "pankaj@baseten.co" },
     { name = "Phil Howes", email = "phil@baseten.co" },
 ]
+maintainers = [{ name = "Baseten Labs", email = "hi@baseten.co" }]
+# Required dependencies. Includes everything for CLI
 dependencies = [
+    # Core dependencies
     "blake3<1.0.0,>=0.3.3",
     "httpx<1.0.0,>=0.24.1",
     "numpy>=1.23.5",
@@ -15,8 +18,18 @@ dependencies = [
     "pathspec>=0.9.0",
     "pydantic>=1.10.0",
     "PyYAML>=6.0",
-    "single-source<1.0.0,>=0.3.0",
     "tenacity<9.0.0,>=8.0.1",
+
+    # CLI Dependencies
+    "inquirerpy<1.0.0,>=0.3.4",
+    "watchfiles<1.0.0,>=0.19.0",
+    "rich<14.0.0,>=13.4.2",
+    "rich-click<2.0.0,>=1.6.1",
+
+    # Chains dependencies. Runs in CLI
+    "datamodel-code-generator<1.0.0,>=0.25.4",
+    "libcst<1.2.0",
+    "autoflake<=2.2",
 ]
 readme = "README.md"
 keywords = [
@@ -35,20 +48,13 @@ server = [
     'cython>=3.0.5',
     "fastapi>=0.109.1",
     "python-json-logger>=2.0.2",
-    "msgpack-numpy==0.4.8",
-    "msgpack==1.0.2",
+    "msgpack-numpy>=0.4.8",
+    "msgpack>=1.0.2",
     "psutil>=5.9.4",
-    "requests==2.31.0",
-    "uvicorn==0.24.0",
-    "uvloop==0.17.0",
+    "requests>=2.31.0",
+    "uvicorn>=0.24.0",
+    "uvloop>=0.17.0",
 ]
-cli = [
-    "inquirerpy<1.0.0,>=0.3.4",
-    "watchfiles<1.0.0,>=0.19.0",
-
-    "rich<14.0.0,>=13.4.2",
-    "rich-click<2.0.0,>=1.6.1",
-    ]
 builder = [
     "blake3<1.0.0,>=0.3.3",
     "boto3<2.0.0,>=1.26.157",
@@ -67,21 +73,15 @@ builder = [
     "python-json-logger>=2.0.2",
     "PyYAML>=6.0",
     "requests>=2.31",
-    "single-source<1.0.0,>=0.3.0",
     "tenacity<9.0.0,>=8.0.1",
     "uvicorn<1.0.0,>=0.24.0",
     "python-on-whales<1.0.0,>=0.68.0",
 ]
-truss-chains = [
-    "datamodel-code-generator<1.0.0,>=0.25.4",
-    "libcst<1.2.0",
-    "autoflake<=2.2",
-]
 cache-warmer = [
-
     "boto3<2.0.0,>=1.26.157",
-    "google-cloud-storage==2.10.0",
+    "google-cloud-storage>=2.10.0",
     "huggingface-hub>=0.19.4",
+    "hf-transfer>=0.1.3",
 ]
 
 
@@ -95,11 +95,6 @@ repository = "https://github.com/basetenlabs/truss"
 [project.scripts]
 truss = "truss.cli:truss_cli"
 
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [tool.rye]
 managed = true
 dev-dependencies = [
@@ -111,14 +106,25 @@ dev-dependencies = [
     "types-requests>=2.31.0.2",
     "uvicorn>=0.24.0",
     "uvloop>=0.17.0",
+    "flake8>=7.0.0",
 ]
+
+## Package Build
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "truss/__init__.py"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
+only-packages = true
 packages = ["src/truss"]
 
+## Lint Tools
 [tool.isort]
 profile = "black"
 src_paths = ["isort", "test"]

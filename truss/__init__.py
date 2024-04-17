@@ -1,14 +1,7 @@
 # flake8: noqa F401
 
-from pathlib import Path
-
-from single_source import get_version
-
-__version__ = get_version(__name__, Path(__file__).parent.parent)
+__version__ = "0.9.99rc0"
 
 
 def version():
     return __version__
-
-
-from truss.build import from_directory, init, kill_all, load
