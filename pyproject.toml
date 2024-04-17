@@ -1,12 +1,24 @@
-[tool.poetry]
+[project]
 name = "truss"
 version = "0.9.9"
 description = "A seamless bridge from model development to model delivery"
-license = "MIT"
+license = { text = "MIT" }
+authors = [
+    { name = "Pankaj Gupta", email = "pankaj@baseten.co" },
+    { name = "Phil Howes", email = "phil@baseten.co" },
+]
+dependencies = [
+    "blake3<1.0.0,>=0.3.3",
+    "httpx<1.0.0,>=0.24.1",
+    "numpy>=1.23.5",
+    "packaging>=20.9",
+    "pathspec>=0.9.0",
+    "pydantic>=1.10.0",
+    "PyYAML>=6.0",
+    "single-source<1.0.0,>=0.3.0",
+    "tenacity<9.0.0,>=8.0.1",
+]
 readme = "README.md"
-authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
-include = ["*.txt", "*.Dockerfile", "*.md"]
-repository = "https://github.com/basetenlabs/truss"
 keywords = [
     "MLOps",
     "AI",
@@ -14,104 +26,98 @@ keywords = [
     "Model Deployment",
     "Machine Learning",
 ]
-packages = [
-    { include = "truss", from = "." },
-    { include = "truss_chains", from = "./truss-chains" }
+requires-python = "<3.12,>=3.8"
+
+[project.optional-dependencies]
+server = [
+    "aiocontextvars>=0.2.2",
+    "argparse>=1.4.0",
+    'cython>=3.0.5',
+    "fastapi>=0.109.1",
+    "python-json-logger>=2.0.2",
+    "msgpack-numpy==0.4.8",
+    "msgpack==1.0.2",
+    "psutil>=5.9.4",
+    "requests==2.31.0",
+    "uvicorn==0.24.0",
+    "uvloop==0.17.0",
+]
+cli = [
+    "inquirerpy<1.0.0,>=0.3.4",
+    "watchfiles<1.0.0,>=0.19.0",
+
+    "rich<14.0.0,>=13.4.2",
+    "rich-click<2.0.0,>=1.6.1",
+    ]
+builder = [
+    "blake3<1.0.0,>=0.3.3",
+    "boto3<2.0.0,>=1.26.157",
+    "click<9.0.0,>=8.0.3",
+    "fastapi>=0.109.1",
+    "Jinja2<4.0.0,>=3.1.2",
+    "google-cloud-storage==2.10.0",
+    "httpx<1.0.0,>=0.24.1",
+    "huggingface-hub>=0.19.4",
+    "Jinja2<4.0.0,>=3.1.2",
+    "loguru>=0.7.2",
+    "packaging>=20.9",
+    "pathspec>=0.9.0",
+    "psutil>=5.9.4",
+    "python<3.12,>=3.8",
+    "python-json-logger>=2.0.2",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+    "single-source<1.0.0,>=0.3.0",
+    "tenacity<9.0.0,>=8.0.1",
+    "uvicorn<1.0.0,>=0.24.0",
+    "python-on-whales<1.0.0,>=0.68.0",
+]
+truss-chains = [
+    "datamodel-code-generator<1.0.0,>=0.25.4",
+    "libcst<1.2.0",
+    "autoflake<=2.2",
+]
+cache-warmer = [
+
+    "boto3<2.0.0,>=1.26.157",
+    "google-cloud-storage==2.10.0",
+    "huggingface-hub>=0.19.4",
 ]
 
 
-[tool.poetry.urls]
-"Homepage" = "https://truss.baseten.co"
+[project.urls]
+Homepage = "https://truss.baseten.co"
 "Bug Reports" = "https://github.com/basetenlabs/truss/issues"
-"Documentation" = "https://truss.baseten.co"
-"Baseten" = "https://baseten.co"
+Documentation = "https://truss.baseten.co"
+Baseten = "https://baseten.co"
+repository = "https://github.com/basetenlabs/truss"
 
-[tool.poetry.dependencies]
-blake3 = "^0.3.3"
-boto3 = "^1.26.157"
-fastapi = ">=0.109.1"
-google-cloud-storage = "2.10.0"
-httpx = "^0.24.1"
-huggingface_hub = ">=0.19.4"
-inquirerpy = "^0.3.4"
-Jinja2 = "^3.1.2"
-loguru = ">=0.7.2"
-msgpack = ">=1.0.2"
-msgpack-numpy = ">=0.4.8"
-numpy = ">=1.23.5"
-packaging = ">=20.9"
-pathspec = ">=0.9.0"
-psutil = ">=5.9.4"
-pydantic = ">=1.10.0"
-python = ">=3.8,<3.12"
-python-json-logger = ">=2.0.2"
-python-on-whales = "^0.68.0"
-PyYAML = ">=6.0"
-rich = "^13.4.2"
-rich-click = "^1.6.1"
-single-source = "^0.3.0"
-tenacity = "^8.0.1"
-watchfiles = "^0.19.0"
+[project.scripts]
+truss = "truss.cli:truss_cli"
 
-[tool.poetry.group.builder.dependencies]
-blake3 = "^0.3.3"
-boto3 = "^1.26.157"
-click = "^8.0.3"
-fastapi = ">=0.109.1"
-google-cloud-storage = "2.10.0"
-httpx = "^0.24.1"
-huggingface_hub = ">=0.19.4"
-Jinja2 = "^3.1.2"
-loguru = ">=0.7.2"
-packaging = ">=20.9"
-pathspec = ">=0.9.0"
-psutil = ">=5.9.4"
-python = ">=3.8,<3.12"
-python-json-logger = ">=2.0.2"
-PyYAML = ">=6.0"
-requests = ">=2.31"
-single-source = "^0.3.0"
-tenacity = "^8.0.1"
-uvicorn = "^0.24.0"
-
-[tool.poetry.dev-dependencies]
-black = "^22.6.0"
-coverage = "^6.4.1"
-dockerfile = "^3.2.0"
-flake8 = "^4.0.1"
-ipdb = "^0.13.9"
-ipykernel = "^6.16.0"
-ipython = "^7.16"
-isort = "^5.10.1"
-nbconvert = "^7.2.1"
-pre-commit = "^2.18.1"
-pytest = "7.2.0"
-pytest-cov = "^3.0.0"
-types-PyYAML = "^6.0.12.12"
-types-setuptools = "^69.0.0.0"
-
-[tool.poetry.scripts]
-truss = 'truss.cli:truss_cli'
-
-[tool.poetry.group.dev.dependencies]
-flask = "^2.3.3"
-httpx = { extras = ["cli"], version = "^0.24.1" }
-mypy = "^1.0.0"
-pytest-split = "^0.8.1"
-requests-mock = ">=1.11.0"
-types-requests = ">=2.31.0.2"
-uvicorn = ">=0.24.0"
-uvloop = ">=0.17.0"
-
-
-[tool.poetry.group.truss-chains.dependencies]
-datamodel-code-generator = "^0.25.4"
-libcst = "<1.2.0"
-autoflake = "<=2.2"
 
 [build-system]
-build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core>=1.2.1"]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "flask<3.0.0,>=2.3.3",
+    "httpx[cli]<1.0.0,>=0.24.1",
+    "mypy<2.0.0,>=1.0.0",
+    "pytest-split<1.0.0,>=0.8.1",
+    "requests-mock>=1.11.0",
+    "types-requests>=2.31.0.2",
+    "uvicorn>=0.24.0",
+    "uvloop>=0.17.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/truss"]
 
 [tool.isort]
 profile = "black"
