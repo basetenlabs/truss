@@ -363,6 +363,7 @@ def deploy(
     if wait:
         num_services = len(statuses)
         success = False
+        num_failed = 0
         with rich.live.Live(table, console=console, refresh_per_second=4) as live:
             while True:
                 table, statuses = _create_chains_table(service)
@@ -372,14 +373,14 @@ def deploy(
                 if num_active == num_services:
                     success = True
                     break
-                elif num_services - num_active - num_deploying:
+                elif num_failed := num_services - num_active - num_deploying:
                     break
         # Print must be outside `Live` context.
         if success:
             console.print("Deployment succeeded.", style="bold green")
             console.print(f"You can run the chain with:\n{run_help_msg}")
         else:
-            console.print("Deployment failed.", style="red")
+            console.print(f"Deployment failed ({num_failed} failures).", style="red")
     else:
         console.print(table)
         console.print(
@@ -601,7 +602,7 @@ def predict(
     ),
 )
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
     type=bool,
     is_flag=True,
     required=False,
