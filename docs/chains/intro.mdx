@@ -1,34 +1,38 @@
 ---
 title: Welcome to Truss Chains (β)
-description: "Learn what Truss Chains is"
+description: "Learn what *Truss Chains* is"
 ---
 
 <Warning>This is a beta feature and subject to breaking changes.</Warning>
 
-With a a vanilla Truss, you can call a single model in an HTTP Request. However,
-many inference workloads are more complex -- where you might want to call multiple models
-in sequence, or call a model multiple times with different inputs. Truss Chains is a framework
-for expressing these more complex workloads.
+With a a vanilla Truss, you can call a single model in an HTTP Request. However, many inference workloads are
+more complex -- you might want to call multiple models in a sequence, or partition your input data into
+smaller chunks and call a model for each chunk. *Truss Chains* is a framework for implementing these complex workloads.
 
 # Key Concepts
 
-**Chainlet**: The base unit in a Truss Chain. A Chainlet is a single unit of computation. Importantly, each processor can have
-its own resource requirements (GPU, CPU, memory, etc), and autoscaling settings. Note that a Chainlet can serve an ML model,
-but it can also be a simple function that transforms data and calls other Chainlets.
+**Chainlet**: The basic building block in a Truss Chain: it performs a specific computation. For example running a
+large ML model, but it can also be a simple function that transforms data. The most interesting aspect
+is that a *chainlet() calls other *chainlets* . And each *chainlet* is intended to be deployed remotely, with
+potentially multiple replicas and can have its own environment (e.g. compute hardware, autoscaling, dependencies).
 
 <img src="/images/audio-transcription-chainlet.png" />
 
-**Chain**: A chain is a grouping of processors. Each chain has an "Entrypoint" processor that is called by a client. From this
-entrypoint processor, it can call other processors, perform other computations, and eventually returns a result to the client.
+**Chain**: A *chain* is composed of multiple chainlets that are linked to each other. Each *chain* has an
+"*entrypoint*" chainlet to which requests are made by the client. Internally, the different chainlets call each,
+thereby structuring and distributing the overall computation into smaller parts - and eventually the entrypoint
+chainlet returns the end-to-end result back to the client.
+You can imagine this like a "flow chart" or "computational graph".
 
-Here's an example of a chain that can take a large audio file, split it into smaller chunks, and transcribe each chunk in parallel to
-speed up the transcription process.
+Here's an example of a chain that takes a large audio file, splits it into smaller chunks, and transcribes each chunk
+*in parallel* to speed up the transcription process.
 
 <img src="/images/audio-transcription-chain.png" />
 
 # Hello World
 
-While we dig into implementation details in other sections, here's what Hello World looks like in Truss Chains.
+Chains are powerful and have more advanced features explained in following sections. For starters, here is
+a minimal "Hello World" example of Truss Chains.
 
 ```python
 import truss_chains as chains

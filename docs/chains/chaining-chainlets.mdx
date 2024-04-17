@@ -1,80 +1,79 @@
 ---
 title: Chaining Chainlets
-description: "How two chainlets can be combined in a chain"
+description: "How two *chainlets* can be combined in a *chain*"
 ---
 <Warning>This is a beta feature and subject to breaking changes.</Warning>
 
 In the [previous section](chains/getting-started), we created a simple chain with a single chainlet.
-In this section, we'll add a second chainlet to the chain. The toy example we'll build builds on top of
+In this section, we'll add a second chainlet to the chain. The toy example builds on top of
 the previous Hello World example, and prints out "Hello World" with a random number of exclamation points at the end.
 
-The architecture for this chain is:
+The computational graph for this chain looks like this:
 
 <img src="/images/second-chainlet.png" />
 
-<Note>
-In practice, for a chain this simple, you wouldn't need to use two chainlets. However, this example is useful for demonstrating how to use multiple chainlets in a chain.
-</Note>
+{/* <Note> */}
+{/* In practice, for a chain this simple, you wouldn't need to use two chainlets. However, this example is useful for demonstrating how to use multiple chainlets in a chain. */}
+{/* </Note> */}
 
 # The Code
 
 Here's the code for this second chain. Exactly like the first example, we put this all in a single Python file called `hello.py`.
 
 ```python
-import slay as workflows
+import truss_chains as chains
 
+common_image = chains.DockerImage().pip_requirements_file(
+    chains.make_abs_path_here("requirements.txt")
+)
 
-class GenerateRandomNumber(workflows.ChainletBase):
-    """
-    This is our new chainlet that simply generates a random number from
-    1 to 10.
-    """
-    remote_config = workflows.RemoteConfig(
-        docker_image=workflows.DockerImage()
-    )
+class GenerateRandomNumber(chains.ChainletBase):
+    """This chainlet generates a random number from 1 to `high_value`."""
 
-    def run(self, num_repetitions: int) -> str:
+    remote_config = chains.RemoteConfig(docker_image=common_image)
+
+    def run(self, high_value: int) -> int:
         import random
 
-        # Generate a random number between 1 and 10
-        return random.randint(1, 10)
+        return random.randint(1, high_value)
 
-class HelloWorld(workflows.ChainletBase):
+class HelloWorld(chains.ChainletBase):
+    """This chainlet calls the additional `GenerateRandomNumber` chainlet to get
+    a random number, and then returns "Hello World" with that many exclamation
+    marks added.
     """
-    This chainlet calls our new GenerateRandomNumber chainlet to get a
-    new random number, and then prints out "Hello World" with that many
-    exclamation marks.
-    """
-
-    remote_config = workflows.RemoteConfig(
-        docker_image=workflows.DockerImage()
-    )
-
+    remote_config = chains.RemoteConfig(docker_image=common_image)
 
     def __init__(
         self,
-        context: workflows.DeploymentContext = workflows.provide_context(),
-        # We reference downstream dependencies in the init function
-        generate_random_number: GenerateRandomNumber = workflows.provide(HelloWorld),
+        # All chainlets have a `context` argument to allow accessing
+        # resources such as secrets, config or data.
+        context: chains.DeploymentContext = chains.provide_context(),
+        # Dependency chainlets are added as special arguments to `__init__`.
+        # The `provide` directive make sure in both local and remote mode
+        # an appropriate instance is "injected".
+        generate_random_number: GenerateRandomNumber = chains.provide(
+            GenerateRandomNumber
+        ),
     ):
+        super().__init__(context)
         self._generate_random_number = generate_random_number
 
-    def run(self) -> str:
-        random_number = self._generate_random_number()
-        return "Hello World" + "!" * random_number
+    def run(self, high_value: int) -> str:
+        random_number = self._generate_random_number.run(high_value)
+        return "Hello World" + ("!" * random_number)
 ```
 
-<Note>
-We use Dependency Injection to reference chainlets from other chainlets. This feature is what
-enables both local and remote execution, as well as testing these chainlets in isolation.
-
+Some comments:
+* We use Dependency Injection to reference make other chainlets callable within the current chainlet.
+This enables both local and remote execution, as well as testing these chainlets in isolation.
 The `provides` function here creates an instance of the `GenerateRandomNumber` chainlet. In a local
 context, you get a literal instance of that class, while in a remote context, it is an object where
 the `run` method is executed on a remote server.
+* You have to follow the shown pattern adding these chainlets to the `__init__` arguments with type
+annotations and using `provide`, to make it work.
+* A plus is that you get type-checking and code-completion for these remote calls.
 
-Another huge plus here is that you get type-checking for these remote calls.
-</Note>
 
-In this simple example, each chainlet uses the same resources, and as a result, we don't _really_ benefit
-from using two chainlets. In the next section, we show an example of using an LLM in a chain, where the
-LLM requires use of a GPU.
+In this simple example, each chainlet uses the same resources, so we would not necessarily need two chainlets.
+In the [next section](chains/deps-and-resources), we show an example of using an LLM which requires a GPU and extra packages.
