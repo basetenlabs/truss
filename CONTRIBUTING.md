@@ -13,7 +13,7 @@ We use GitHub features for project management on Truss:
 To get started contributing to the library, all you have to do is clone this repository!
 
 ### Setup
-We use [`rye`](https://rye-up.com/) to manage Python environments, packaging (via [`hatchiling`](https://hatch.pypa.io/latest/)), and depdencies.
+We use [`rye`](https://rye-up.com/) to manage Python environments, dependencies and packaging (via [`hatchiling`](https://hatch.pypa.io/latest/)).
 
 For development:
 
