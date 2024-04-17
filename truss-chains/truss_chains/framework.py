@@ -538,7 +538,7 @@ def import_target(
 
     target_cls = getattr(module, target_name, None)
     if not target_cls:
-        raise AttributeError(f"`{module_name}` not found in `{module_path}`.")
+        raise AttributeError(f"`{target_name}` not found in `{module_path}`.")
     if not issubclass(target_cls, definitions.ABCChainlet):
         raise TypeError(f"{target_cls} is not a {definitions.ABCChainlet}")
 

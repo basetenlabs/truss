@@ -50,6 +50,10 @@ class BasetenApi:
     def remote_url(self) -> str:
         return self._remote_url
 
+    @property
+    def rest_api_url(self) -> str:
+        return self._rest_api_url
+
     def _post_graphql_query(self, query_string: str) -> dict:
         headers = self._auth_token.header()
         resp = requests.post(

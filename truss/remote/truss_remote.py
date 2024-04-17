@@ -10,7 +10,8 @@ class TrussService(ABC):
     """
     Define the abstract base class for a TrussService.
 
-    A TrussService interacts with a service at a given URL and can either be in draft or non-dreaf mode.
+    A TrussService interacts with a service at a given URL and can either be in
+    draft or non-draft mode.
 
     Attributes:
         _service_url: The URL of the service.
@@ -89,7 +90,8 @@ class TrussService(ABC):
         """
         Check if the service is live.
 
-        Sends a GET request to the root of the service and returns whether it is successful.
+        Sends a GET request to the root of the service and returns whether it
+        is successful.
 
         Returns:
             A boolean indicating if the service is live.
@@ -103,7 +105,8 @@ class TrussService(ABC):
         """
         Check if the service is ready.
 
-        Sends a GET request to the model path of the service and returns whether it is successful.
+        Sends a GET request to the model path of the service and returns whether it
+        is successful.
 
         Returns:
             A boolean indicating if the service is ready.
@@ -117,7 +120,8 @@ class TrussService(ABC):
         Send a prediction request to the service.
 
         Args:
-            model_request_body: A dictionary representing the body of the prediction request.
+            model_request_body: A dictionary representing the body of the
+            prediction request.
 
         Returns:
             A Response object resulting from the prediction request.
@@ -135,8 +139,9 @@ class TrussService(ABC):
         """
         Authenticate to the service.
 
-        This method should be implemented in subclasses and return a dictionary of headers
-        to include in requests to the service with authentication information.
+        This method should be implemented in subclasses and return a dictionary
+        of headers to include in requests to the service with authentication
+        information.
         """
         return {}
 
@@ -157,7 +162,7 @@ class TrussService(ABC):
         pass
 
     @abstractmethod
-    def poll_deployment_status(self) -> Iterator[str]:
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         """
         Poll for a deployment status.
         """
@@ -168,8 +173,8 @@ class TrussRemote(ABC):
     """
     Define the abstract base class for a remote Truss service.
 
-    A remote Truss service is a service that can push a TrussHandle to a remote location.
-    The `push` and `authenticate` methods should be implemented in subclasses.
+    A remote Truss service is a service that can push a TrussHandle to a remote
+    location. The `push` and `authenticate` methods should be implemented in subclasses.
 
     Attributes:
         _remote_url: The URL of the remote service.

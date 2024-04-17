@@ -107,7 +107,7 @@ class BasetenService(TrussService):
         Get the URL for the prediction endpoint.
         """
         # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
-        url = _add_model_subdomain(self._api.remote_url, f"/model-{self.model_id}")
+        url = _add_model_subdomain(self._api.rest_api_url, f"model-{self.model_id}")
         if self.is_draft:
             # "https://model-{model_id}.api.baseten.co/development".
             url = f"{url}/development/predict"
@@ -120,12 +120,12 @@ class BasetenService(TrussService):
     def _fetch_deployment(self) -> Any:
         return self._api.get_deployment(self._model_id, self._model_version_id)
 
-    def poll_deployment_status(self) -> Iterator[str]:
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         """
         Wait for the service to be deployed.
         """
         while True:
-            time.sleep(1)
+            time.sleep(sleep_secs)
             try:
                 deployment = self._fetch_deployment()
                 yield deployment["status"]

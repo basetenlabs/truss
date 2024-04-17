@@ -6,9 +6,12 @@ import sys
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, List, Optional, Tuple
 
 import rich
+import rich.live
+import rich.spinner
+import rich.table
 import rich_click as click
 import truss
 from truss.cli.console import console
@@ -26,9 +29,14 @@ from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
+from truss_chains import deploy as chains_deploy
+from truss_chains import framework
 
 logging.basicConfig(level=logging.INFO)
 
+rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
+rich.spinner.SPINNERS["active"] = {"interval": 500, "frames": ["💚 ", " 💚"]}
+rich.spinner.SPINNERS["failed"] = {"interval": 500, "frames": ["😤 ", " 😤"]}
 
 click.rich_click.COMMAND_GROUPS = {
     "truss": [
@@ -44,6 +52,13 @@ click.rich_click.COMMAND_GROUPS = {
             "commands": ["image", "container", "cleanup"],
             "table_styles": {  # type: ignore
                 "row_styles": ["yellow"],
+            },
+        },
+        {
+            "name": "Chain",
+            "commands": ["chain"],
+            "table_styles": {  # type: ignore
+                "row_styles": ["red"],
             },
         },
     ]
@@ -88,13 +103,16 @@ def truss_cli(ctx) -> None:
 @click.group()
 def container():
     """Subcommands for truss container"""
-    pass
 
 
 @click.group()
 def image():
     """Subcommands for truss image"""
-    pass
+
+
+@click.group()
+def chain():
+    """Subcommands for truss chain"""
 
 
 @truss_cli.command()
@@ -114,7 +132,8 @@ def init(target_directory, backend) -> None:
     """
     if os.path.isdir(target_directory):
         raise click.ClickException(
-            f'Error: Directory "{target_directory}" already exists and cannot be overwritten.'
+            f"Error: Directory `{target_directory}` already exists "
+            "and cannot be overwritten."
         )
     tr_path = Path(target_directory)
     build_config = Build(model_server=ModelServer[backend])
@@ -198,25 +217,16 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
-@click.option(
-    "--logs",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="Automatically open remote logs tab",
-)
 @error_handling
 def watch(
     target_directory: str,
     remote: str,
-    logs: bool,
 ) -> None:
     """
     Seamless remote development with truss
 
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
     """
-
     # TODO: ensure that provider support draft
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
@@ -235,6 +245,148 @@ def watch(
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
     rich.print(f"🪵  View logs for your deployment at {service.logs_url}")
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
+
+
+def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
+    """Creates a status table e.g.
+
+                                                     Deployments
+    ╭──────────────────────┬──────────────────────┬────────────────────────────╮
+    │ Status               │ Chainlet             │                   Logs URL │
+    ├──────────────────────┼──────────────────────┼────────────────────────────┤
+    │  👾 DEPLOYING        │ SplitText            │ https://app.baseten.co/... │
+    │  👾 DEPLOYING        │ GenerateData         │ https://app.baseten.co/... │
+    │  👾 DEPLOYING        │ MistralLLM           │ https://app.baseten.co/... │
+    │  👾 DEPLOYING        │ TextToNum            │ https://app.baseten.co/... │
+    │  👾 DEPLOYING        │ Chain                │ https://app.baseten.co/... │
+    ╰──────────────────────┴──────────────────────┴────────────────────────────╯
+    """
+    table = rich.table.Table(
+        show_header=True,
+        header_style="bold yellow",
+        title=f"⛓️   {service.name} - Chainlets  ⛓️",
+        box=rich.table.box.ROUNDED,
+        border_style="blue",
+    )
+    table.add_column("Status", style="dim", min_width=20)
+    table.add_column("Name", min_width=20)
+    table.add_column("Logs URL")
+    statuses = []
+    for name, status, logs_url in service.get_info():
+        if status == ACTIVE_STATUS:
+            spinner_name = "active"
+        elif status in DEPLOYING_STATUSES:
+            spinner_name = "deploying"
+        else:
+            spinner_name = "failed"
+        spinner = rich.spinner.Spinner(spinner_name, text=status)
+        table.add_row(spinner, name, logs_url)
+        statuses.append(status)
+    return table, statuses
+
+
+@chain.command()  # type: ignore
+@click.argument("source", type=Path, required=True)
+@click.argument("entrypoint", type=str, required=True)
+@click.option(
+    "--name",
+    type=str,
+    required=False,
+    help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
+)
+@click.option(
+    "--publish",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Create chainlets as published deployments.",
+)
+@click.option(
+    "--promote",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Replace production chainlets with newly deployed chainlets.",
+)
+@click.option(
+    "--wait",
+    type=bool,
+    default=True,
+    is_flag=True,
+    help="Wait until all chainlets are ready (or deployment failed).",
+)
+@click.option(
+    "--dryrun",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Produces only generated files, but doesn't deploy anything.",
+)
+@error_handling
+def deploy(
+    source: Path,
+    entrypoint: str,
+    name: Optional[str],
+    publish: bool,
+    promote: bool,
+    wait: bool,
+    dryrun: bool,
+) -> None:
+    """
+    Deploys a chain remotely.
+
+    SOURCE: Path to a python file that contains the entrypoint chainlet.
+
+    ENTRYPOINT: Class name of the entrypoint chainlet in source file.
+    """
+    chain_name = name or entrypoint
+    entrypoint_cls = framework.import_target(source, entrypoint)
+    options = chains_deploy.DeploymentOptionsBaseten.create(
+        chain_name=chain_name,
+        promote=promote,
+        publish=publish,
+        only_generate_trusses=dryrun,
+    )
+    service = chains_deploy.deploy_remotely(entrypoint_cls, options)
+
+    console.print("\n")
+    if dryrun:
+        return
+
+    run_help_msg = (
+        f"curl -X POST '{service.run_url}' \\\n"
+        '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
+        "    -d '<JSON_INPUT>'"
+    )
+
+    table, statuses = _create_chains_table(service)
+    if wait:
+        num_services = len(statuses)
+        success = False
+        num_failed = 0
+        with rich.live.Live(table, console=console, refresh_per_second=4) as live:
+            while True:
+                table, statuses = _create_chains_table(service)
+                live.update(table)
+                num_active = sum(s == ACTIVE_STATUS for s in statuses)
+                num_deploying = sum(s in DEPLOYING_STATUSES for s in statuses)
+                if num_active == num_services:
+                    success = True
+                    break
+                elif num_failed := num_services - num_active - num_deploying:
+                    break
+        # Print must be outside `Live` context.
+        if success:
+            console.print("Deployment succeeded.", style="bold green")
+            console.print(f"You can run the chain with:\n{run_help_msg}")
+        else:
+            console.print(f"Deployment failed ({num_failed} failures).", style="red")
+    else:
+        console.print(table)
+        console.print(
+            "Once all chainlets are deployed, "
+            f"you can run the chain with:\n\n{run_help_msg}"
+        )
 
 
 def _extract_and_validate_model_identifier(
@@ -309,7 +461,10 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     "--model-version",
     type=str,
     required=False,
-    help="[DEPRECATED] Use --model-deployment instead, this will be removed in future release. ID of model deployment",
+    help=(
+        "[DEPRECATED] Use --model-deployment instead, this will be  "
+        "removed in future release. ID of model deployment"
+    ),
 )
 @click.option(
     "--model-deployment",
@@ -350,7 +505,8 @@ def predict(
 
     if model_version:
         console.print(
-            "[DEPRECATED] --model-version is deprecated, use --model-deployment instead.",
+            "[DEPRECATED] --model-version is deprecated, "
+            "use --model-deployment instead.",
             style="yellow",
         )
         model_deployment = model_version
@@ -423,9 +579,9 @@ def predict(
     required=False,
     default=False,
     help=(
-        "Preserve the previous production deployment's autoscaling setting. When not specified, "
-        "the previous production deployment will be updated to allow it to scale to zero. "
-        "Can only be use in combination with `--promote` option"
+        "Preserve the previous production deployment's autoscaling setting. When "
+        "not specified, the previous production deployment will be updated to allow "
+        "it to scale to zero. Can only be use in combination with --promote option."
     ),
 )
 @click.option(
@@ -446,7 +602,7 @@ def predict(
     ),
 )
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
     type=bool,
     is_flag=True,
     required=False,
@@ -457,8 +613,10 @@ def predict(
     "--timeout-seconds",
     type=int,
     required=False,
-    help="Maximum time to wait for deployment to complete in seconds. "
-    "Without specifying, the command will not complete until the deployment is complete.",
+    help=(
+        "Maximum time to wait for deployment to complete in seconds. Without "
+        "specifying, the command will not complete until the deployment is complete."
+    ),
 )
 # @error_handling
 def push(
@@ -498,7 +656,7 @@ def push(
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
-        model_name,
+        model_name=model_name,
         publish=publish,
         trusted=trusted,
         promote=promote,
@@ -524,16 +682,20 @@ def push(
         click.echo(draft_model_text)
 
     # Log a warning if using secrets without --trusted.
-    # TODO(helen): this could be moved to a separate function that includes more config checks.
+    # TODO(helen): this could be moved to a separate function that includes more
+    #  config checks.
     if tr.spec.config.secrets and not trusted:
-        not_trusted_text = """Warning: your Truss has secrets but was not pushed with --trusted.
-Please push with --trusted to grant access to secrets.
-"""
+        not_trusted_text = (
+            "Warning: your Truss has secrets but was not pushed with --trusted."
+            "Please push with --trusted to grant access to secrets."
+        )
         console.print(not_trusted_text, style="red")
 
     if promote:
-        promotion_text = """Your Truss has been deployed as a production model. After it successfully deploys,
-it will become the next production deployment of your model."""
+        promotion_text = (
+            "Your Truss has been deployed as a production model. After it successfully "
+            "deploys, it will become the next production deployment of your model."
+        )
         console.print(promotion_text, style="green")
 
     rich.print(f"🪵  View logs for your deployment at {service.logs_url}")
@@ -541,8 +703,8 @@ it will become the next production deployment of your model."""
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
             try:
-                # Poll for the deployment status until we have reached
-                # either ACTIVE, or a non-deploying status (in which case the deployment has failed).
+                # Poll for the deployment status until we have reached. Either ACTIVE,
+                # or a non-deploying status (in which case the deployment has failed).
                 for deployment_status in service.poll_deployment_status():
                     if (
                         timeout_seconds is not None
@@ -618,7 +780,7 @@ def kill(target_directory: str) -> None:
 
 @container.command()  # type: ignore
 def kill_all() -> None:
-    "Kills all truss containers that are not manually persisted"
+    """Kills all truss containers that are not manually persisted."""
     truss.kill_all()
 
 
@@ -644,6 +806,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
 truss_cli.add_command(container)
 truss_cli.add_command(image)
+truss_cli.add_command(chain)
 
 if __name__ == "__main__":
     truss_cli()

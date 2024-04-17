@@ -119,7 +119,7 @@ def get_api_key_from_trussrc() -> str:
         ) from e
 
 
-# Error Propagation Utils. ##############################################################
+# Error Propagation Utils. #############################################################
 
 
 def _handle_exception(
