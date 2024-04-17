@@ -1,6 +1,10 @@
 [project]
 name = "truss"
+<<<<<<< HEAD
 dynamic = ["version"]
+=======
+version = "0.9.10rc2"
+>>>>>>> d4b854d (Bump to rc release & fix deps. (#904))
 description = "A seamless bridge from model development to model delivery"
 license = { text = "MIT" }
 authors = [
