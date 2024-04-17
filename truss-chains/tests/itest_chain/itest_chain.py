@@ -1,17 +1,17 @@
 import math
 
 import pydantic
-import slay
-from user_package import shared_processor
+import truss_chains as chains
+from user_package import shared_chainlet
 
-IMAGE_COMMON = slay.DockerImage().pip_requirements_file(
-    slay.make_abs_path_here("requirements.txt")
+IMAGE_COMMON = chains.DockerImage().pip_requirements_file(
+    chains.make_abs_path_here("requirements.txt")
 )
 
 
-class GenerateData(slay.ProcessorBase):
+class GenerateData(chains.ChainletBase):
 
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def run(self, length: int) -> str:
         template = "erodfd"
@@ -23,9 +23,9 @@ class DummyUserConfig(pydantic.BaseModel):
     multiplier: int
 
 
-class TextReplicator(slay.ProcessorBase[DummyUserConfig]):
+class TextReplicator(chains.ChainletBase[DummyUserConfig]):
 
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
     default_user_config = DummyUserConfig(multiplier=2)
 
     def run(self, data: str) -> str:
@@ -34,13 +34,13 @@ class TextReplicator(slay.ProcessorBase[DummyUserConfig]):
         return data * self.user_config.multiplier
 
 
-class TextToNum(slay.ProcessorBase):
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+class TextToNum(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.DeploymentContext = slay.provide_context(),
-        replicator: TextReplicator = slay.provide(TextReplicator),
+        context: chains.DeploymentContext = chains.provide_context(),
+        replicator: TextReplicator = chains.provide(TextReplicator),
     ) -> None:
         super().__init__(context)
         self._replicator = replicator
@@ -54,15 +54,15 @@ class TextToNum(slay.ProcessorBase):
         return number
 
 
-class Workflow(slay.ProcessorBase):
-    remote_config = slay.RemoteConfig(docker_image=IMAGE_COMMON)
+class ItestChain(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def __init__(
         self,
-        context: slay.DeploymentContext = slay.provide_context(),
-        data_generator: GenerateData = slay.provide(GenerateData),
-        splitter: shared_processor.SplitText = slay.provide(shared_processor.SplitText),
-        text_to_num: TextToNum = slay.provide(TextToNum),
+        context: chains.DeploymentContext = chains.provide_context(),
+        data_generator: GenerateData = chains.provide(GenerateData),
+        splitter: shared_chainlet.SplitText = chains.provide(shared_chainlet.SplitText),
+        text_to_num: TextToNum = chains.provide(TextToNum),
     ) -> None:
         super().__init__(context)
         self._data_generator = data_generator
@@ -72,10 +72,10 @@ class Workflow(slay.ProcessorBase):
     async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
         data = self._data_generator.run(length)
         text_parts, number = await self._data_splitter.run(
-            shared_processor.SplitTextInput(
+            shared_chainlet.SplitTextInput(
                 data=data,
                 num_partitions=num_partitions,
-                mode=shared_processor.Modes.MODE_1,
+                mode=shared_chainlet.Modes.MODE_1,
             ),
             extra_arg=123,
         )

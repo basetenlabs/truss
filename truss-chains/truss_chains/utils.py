@@ -7,15 +7,14 @@ import os
 import socket
 import sys
 import textwrap
-import time
 import traceback
 from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar
 
 import fastapi
 import httpx
 import pydantic
-from slay import definitions
 from truss.remote import remote_factory
+from truss_chains import definitions
 
 T = TypeVar("T")
 
@@ -26,18 +25,18 @@ def make_abs_path_here(file_path: str) -> definitions.AbsPath:
     E.g. in you have a project structure like this
 
     root/
-        workflow.py
+        chain.py
         common_requirements.text
         sub_package/
-            processor.py
-            processor_requirements.txt
+            Chainlet.py
+            chainlet_requirements.txt
 
-    Not in `root/sub_package/processor.py` you can point to the requirements
+    Not in `root/sub_package/Chainlet.py` you can point to the requirements
     file like this:
 
     ```
     shared = RelativePathToHere("../common_requirements.text")
-    specific = RelativePathToHere("processor_requirements.text")
+    specific = RelativePathToHere("chainlet_requirements.text")
     ```
 
     Caveat: this helper uses the directory of the immediately calling module as an
@@ -120,29 +119,11 @@ def get_api_key_from_trussrc() -> str:
         ) from e
 
 
-def call_workflow_dbg(
-    service: definitions.ServiceDescriptor,
-    payload: Any,
-    max_retries: int = 100,
-    retry_wait_sec: int = 3,
-) -> httpx.Response:
-    """For debugging only: tries calling a workflow."""
-    api_key = get_api_key_from_trussrc()
-    session = httpx.Client(headers={"Authorization": f"Api-Key {api_key}"})
-    for _ in range(max_retries):
-        try:
-            response = session.post(service.predict_url, json=payload)
-            return response
-        except Exception:
-            time.sleep(retry_wait_sec)
-    raise
-
-
-# Error Propagation Utils. ##############################################################
+# Error Propagation Utils. #############################################################
 
 
 def _handle_exception(
-    exception: Exception, include_stack: bool, processor_name: str
+    exception: Exception, include_stack: bool, chainlet_name: str
 ) -> NoReturn:
     """Raises `fastapi.HTTPException` with `RemoteErrorDetail` as detail."""
     if hasattr(exception, "__module__"):
@@ -162,7 +143,7 @@ def _handle_exception(
         stack = []
 
     error = definitions.RemoteErrorDetail(
-        remote_name=processor_name,
+        remote_name=chainlet_name,
         exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
@@ -172,11 +153,11 @@ def _handle_exception(
 
 
 @contextlib.contextmanager
-def exception_to_http_error(include_stack: bool, processor_name: str) -> Iterator[None]:
+def exception_to_http_error(include_stack: bool, chainlet_name: str) -> Iterator[None]:
     try:
         yield
     except Exception as e:
-        _handle_exception(e, include_stack, processor_name)
+        _handle_exception(e, include_stack, chainlet_name)
 
 
 def _resolve_exception_class(
@@ -210,38 +191,38 @@ def handle_response(response: httpx.Response) -> Any:
     `GenericRemoteException` if the exception class could not be resolved.
 
     Exception messages are chained to trace back to the root cause, i.e. the first
-    processor that raised an exception. E.g. the message might look like this:
+    Chainlet that raised an exception. E.g. the message might look like this:
 
     ```
-    RemoteProcessorError in "Workflow"
+    RemoteChainletError in "Chain"
     Traceback (most recent call last):
-      File "/app/model/processor.py", line 112, in predict
-        result = await self._processor.run(
-      File "/app/model/processor.py", line 79, in run
+      File "/app/model/Chainlet.py", line 112, in predict
+        result = await self._chainlet.run(
+      File "/app/model/Chainlet.py", line 79, in run
         value += self._text_to_num.run(part)
       File "/packages/remote_stubs.py", line 21, in run
         json_result = self._remote.predict_sync(json_args)
-      File "/packages/slay/stub.py", line 37, in predict_sync
+      File "/packages/truss_chains/stub.py", line 37, in predict_sync
         return utils.handle_response(
     ValueError: (showing remote errors, root message at the bottom)
     --> Preceding Remote Cause:
-        RemoteProcessorError in "TextToNum"
+        RemoteChainletError in "TextToNum"
         Traceback (most recent call last):
-          File "/app/model/processor.py", line 113, in predict
-            result = self._processor.run(data=payload["data"])
-          File "/app/model/processor.py", line 54, in run
+          File "/app/model/Chainlet.py", line 113, in predict
+            result = self._chainlet.run(data=payload["data"])
+          File "/app/model/Chainlet.py", line 54, in run
             generated_text = self._replicator.run(data)
           File "/packages/remote_stubs.py", line 7, in run
             json_result = self._remote.predict_sync(json_args)
-          File "/packages/slay/stub.py", line 37, in predict_sync
+          File "/packages/truss_chains/stub.py", line 37, in predict_sync
             return utils.handle_response(
         ValueError: (showing remote errors, root message at the bottom)
         --> Preceding Remote Cause:
-            RemoteProcessorError in "TextReplicator"
+            RemoteChainletError in "TextReplicator"
             Traceback (most recent call last):
-              File "/app/model/processor.py", line 112, in predict
-                result = self._processor.run(data=payload["data"])
-              File "/app/model/processor.py", line 36, in run
+              File "/app/model/Chainlet.py", line 112, in predict
+                result = self._chainlet.run(data=payload["data"])
+              File "/app/model/Chainlet.py", line 36, in run
                 raise ValueError(f"This input is too long: {len(data)}.")
             ValueError: This input is too long: 100.
 
@@ -280,5 +261,5 @@ def handle_response(response: httpx.Response) -> Any:
     return response.json()
 
 
-def make_stub_name(processor_name: str) -> str:
-    return f"{processor_name}{definitions.STUB_CLS_SUFFIX}"
+def make_stub_name(chainlet_name: str) -> str:
+    return f"{chainlet_name}{definitions.STUB_CLS_SUFFIX}"

@@ -27,39 +27,18 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
-from truss.remote.truss_remote import TrussRemote, TrussService
+from truss.remote.truss_remote import TrussRemote
 from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
-
-API_URL_MAPPING = {
-    "https://app.baseten.co": "https://api.baseten.co",
-    "https://app.staging.baseten.co": "https://api.staging.baseten.co",
-    "https://app.dev.baseten.co": "https://api.staging.baseten.co",
-    # For local development, this is how we map URLs
-    "http://localhost:8000": "http://api.localhost:8000",
-}
-
-# If a non-standard domain is used with the baseten remote, default to
-# using the production api routes
-DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
 class BasetenRemote(TrussRemote):
     def __init__(self, remote_url: str, api_key: str, **kwargs):
         super().__init__(remote_url, **kwargs)
         self._auth_service = AuthService(api_key=api_key)
-        self._api = BasetenApi(
-            f"{self._remote_url}/graphql/",
-            # Ensure we strip off trailing '/' to denormalize
-            # URLs.
-            API_URL_MAPPING.get(self._remote_url.strip("/"), DEFAULT_API_DOMAIN),
-            self._auth_service,
-        )
-
-    def authenticate(self):
-        return self._auth_service.validate()
+        self._api = BasetenApi(remote_url, self._auth_service)
 
     def push(  # type: ignore
         self,
@@ -70,7 +49,7 @@ class BasetenRemote(TrussRemote):
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
-    ):
+    ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
@@ -214,17 +193,11 @@ class BasetenRemote(TrussRemote):
             api=self._api,
         )
 
-    def get_remote_logs_url(
-        self,
-        service: TrussService,
-    ) -> str:
-        return service.logs_url(self._remote_url)
-
     def sync_truss_to_dev_version_by_name(
         self,
         model_name: str,
         target_directory: str,
-    ):
+    ) -> None:
         # verify that development deployment exists for given model name
         dev_version = get_dev_version(
             self._api, model_name
@@ -257,7 +230,7 @@ class BasetenRemote(TrussRemote):
         self,
         watch_path: Path,
         truss_ignore_patterns: List[str],
-    ):
+    ) -> None:
         from truss.cli.console import console, error_console
 
         try:

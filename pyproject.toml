@@ -14,6 +14,11 @@ keywords = [
     "Model Deployment",
     "Machine Learning",
 ]
+packages = [
+    { include = "truss", from = "." },
+    { include = "truss_chains", from = "./truss-chains" }
+]
+
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"
@@ -98,12 +103,11 @@ types-requests = ">=2.31.0.2"
 uvicorn = ">=0.24.0"
 uvloop = ">=0.17.0"
 
-[tool.poetry.group.slay.dependencies]
-astroid = "^3.1.0"
+
+[tool.poetry.group.truss-chains.dependencies]
 datamodel-code-generator = "^0.25.4"
 libcst = "<1.2.0"
 autoflake = "<=2.2"
-
 
 [build-system]
 build-backend = "poetry.core.masonry.api"

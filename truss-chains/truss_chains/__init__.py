@@ -1,5 +1,5 @@
 # flake8: noqa F401
-from slay.definitions import (
+from truss_chains.definitions import (
     Assets,
     Compute,
     DeploymentContext,
@@ -7,11 +7,11 @@ from slay.definitions import (
     RemoteConfig,
     UsageError,
 )
-from slay.public_api import (
-    ProcessorBase,
+from truss_chains.public_api import (
+    ChainletBase,
     deploy_remotely,
     provide,
     provide_context,
     run_local,
 )
-from slay.utils import make_abs_path_here
+from truss_chains.utils import make_abs_path_here

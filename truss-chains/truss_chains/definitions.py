@@ -13,24 +13,24 @@ from truss import truss_config
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
-BASETEN_API_SECRET_NAME = "baseten_workflow_api_key"
+BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
-TRUSS_CONFIG_SLAY_KEY = "slay_metadata"
+TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 
-ENDPOINT_METHOD_NAME = "run"  # Referring to processor method name exposed as endpoint.
-# Below arg names must correspond to `definitions.ABCProcessor`.
-CONTEXT_ARG_NAME = "context"  # Referring to processors `__init__` signature.
+ENDPOINT_METHOD_NAME = "run"  # Referring to Chainlet method name exposed as endpoint.
+# Below arg names must correspond to `definitions.ABCChainlet`.
+CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 
-GENERATED_CODE_DIR = ".slay_generated"
+GENERATED_CODE_DIR = ".chains_generated"
 PREDICT_ENDPOINT_NAME = "/predict"
-PROCESSOR_MODULE = "processor"
+chainlet_MODULE = "Chainlet"
 STUB_TYPE_MODULE = "stub_types"
 STUB_CLS_SUFFIX = "Stub"
 
 
 class APIDefinitionError(TypeError):
-    """Raised when user-defined processors do not adhere to API constraints."""
+    """Raised when user-defined Chainlets do not adhere to API constraints."""
 
 
 class MissingDependencyError(TypeError):
@@ -173,7 +173,7 @@ class Assets:
 
 
 class RemoteConfig(pydantic.BaseModel):
-    """Bundles config values needed to deploy a processor."""
+    """Bundles config values needed to deploy a Chainlet."""
 
     class Config:
         arbitrary_types_allowed = True
@@ -199,31 +199,31 @@ class ServiceDescriptor(pydantic.BaseModel):
 
 
 class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
-    """Bundles config values and resources needed to instantiate processors."""
+    """Bundles config values and resources needed to instantiate Chainlets."""
 
     class Config:
         arbitrary_types_allowed = True
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    processor_to_service: Mapping[str, ServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
     # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
     #   due to the templating, at runtime the object passed will be from
     #   `shared.secrets_resolver` and give pydantic validation error.
     secrets: Optional[Any] = None
 
-    def get_service_descriptor(self, processor_name: str) -> ServiceDescriptor:
-        if processor_name not in self.processor_to_service:
-            raise MissingDependencyError(f"{processor_name}")
-        return self.processor_to_service[processor_name]
+    def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
+        if chainlet_name not in self.chainlet_to_service:
+            raise MissingDependencyError(f"{chainlet_name}")
+        return self.chainlet_to_service[chainlet_name]
 
     def get_baseten_api_key(self) -> str:
         if self.secrets is None:
             raise UsageError(f"Secrets not set in `{self.__class__.__name__}` object.")
         error_msg = (
-            "For using workflows, it is required to setup a an API key with name "
-            f"`{BASETEN_API_SECRET_NAME}` on baseten to allow workflow processor to "
-            "call other processors. For local execution, secrets can be provided "
+            "For using chains, it is required to setup a an API key with name "
+            f"`{BASETEN_API_SECRET_NAME}` on baseten to allow chain Chainlet to "
+            "call other Chainlets. For local execution, secrets can be provided "
             "to `run_local`."
         )
         if BASETEN_API_SECRET_NAME not in self.secrets:
@@ -238,13 +238,13 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
 
 
 class TrussMetadata(generics.GenericModel, Generic[UserConfigT]):
-    """Plugin for the truss config (in config["model_metadata"]["slay_metadata"])."""
+    """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     user_config: UserConfigT = pydantic.Field(default=None)
-    processor_to_service: Mapping[str, ServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
 
 
-class ABCProcessor(Generic[UserConfigT], abc.ABC):
+class ABCChainlet(Generic[UserConfigT], abc.ABC):
     remote_config: ClassVar[RemoteConfig]
     default_user_config: ClassVar[Optional[pydantic.BaseModel]] = None
     _init_is_patched: ClassVar[bool] = False
@@ -267,10 +267,10 @@ class ABCProcessor(Generic[UserConfigT], abc.ABC):
 
 
 class TypeDescriptor(pydantic.BaseModel):
-    """For describing I/O types of processors.
+    """For describing I/O types of Chainlets.
 
     Example:
-        repr(raw): <class 'user_package.shared_processor.SplitTextInput'>"
+        repr(raw): <class 'user_package.shared_chainlet.SplitTextInput'>"
         as_src_str(): 'SplitTextInput'
 
     -> Source string, without further qualification, does not include any module path.
@@ -278,10 +278,10 @@ class TypeDescriptor(pydantic.BaseModel):
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
 
-    def as_src_str(self, qualify_pyadantic_types: Optional[str] = None) -> str:
-        # TODO: pydnatic types will soon be handled differntly.
-        if self.is_pydantic and qualify_pyadantic_types:
-            return f"{qualify_pyadantic_types}.{self.raw.__name__}"
+    def as_src_str(self, qualify_pydantic_types: Optional[str] = None) -> str:
+        # TODO: pydantic types will soon be handled differently.
+        if self.is_pydantic and qualify_pydantic_types:
+            return f"{qualify_pydantic_types}.{self.raw.__name__}"
 
         if isinstance(self.raw, type):
             return self.raw.__name__
@@ -305,39 +305,19 @@ class EndpointAPIDescriptor(pydantic.BaseModel):
     is_generator: bool
 
 
-class ProcessorAPIDescriptor(pydantic.BaseModel):
-    processor_cls: Type[ABCProcessor]
+class ChainletAPIDescriptor(pydantic.BaseModel):
+    chainlet_cls: Type[ABCChainlet]
     src_path: str
-    dependencies: Mapping[str, Type[ABCProcessor]]
+    dependencies: Mapping[str, Type[ABCChainlet]]
     endpoint: EndpointAPIDescriptor
     user_config_type: TypeDescriptor
 
     def __hash__(self) -> int:
-        return hash(self.processor_cls)
+        return hash(self.chainlet_cls)
 
     @property
     def name(self) -> str:
-        return self.processor_cls.__name__
-
-
-class DeploymentOptions(pydantic.BaseModel):
-    workflow_name: str
-    only_generate_trusses: bool = False
-
-
-class DeploymentOptionsBaseten(DeploymentOptions):
-    baseten_url: str
-    api_key: str
-    publish: bool
-    promote: bool
-
-
-class DeploymentOptionsLocalDocker(DeploymentOptions):
-    # Local docker-to-docker requests don't need auth, but we need to set a
-    # value different from `SECRET_DUMMY` to not trigger the check that the secret
-    # is unset. Additionally, if local docker containers make calls to models deployed
-    # on baseten, a real API key must be provided (i.e. the default must be overridden).
-    baseten_workflow_api_key: str = "docker_dummy_key"
+        return self.chainlet_cls.__name__
 
 
 class StackFrame(pydantic.BaseModel):
