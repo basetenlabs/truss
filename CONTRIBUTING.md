@@ -13,37 +13,34 @@ We use GitHub features for project management on Truss:
 To get started contributing to the library, all you have to do is clone this repository!
 
 ### Setup
+We use [`rye`](https://rye-up.com/) to manage Python environments, packaging (via [`hatchiling`](https://hatch.pypa.io/latest/)), and depdencies.
 
-**PLEASE NOTE:** the ML ecosystem in general is still not well supported on M1 Macs, and as such, we do not recommend or support local development on M1 for Truss. Truss is well-optimized for use with GitHub Codespaces and other container-based development environments.
-
-We use `asdf` to manage Python binaries and `poetry` to manage Python dependencies.
-
-For development in a macOS environment, we use `brew` to manage system packages.
+For development:
 
 ```bash
-# Install asdf (or use another method https://asdf-vm.com/)
-brew install asdf
+# Install rye: https://rye-up.com/guide/installation/#installing-rye
+curl -sSf https://rye-up.com/get | bash
 
-# Install `asdf` managed python and poetry
-asdf plugin add python
-asdf plugin add poetry
-asdf install
+# Add to shell
+echo 'source "$HOME/.rye/env"' >> ~/.bashrc
 
-# Install poetry dependencies
-poetry install
-
-# And finally precommit
-poetry run pre-commit install
+# Setup environment (includes python version and dependencies)
+rye sync
 ```
 
 Then to run the entire test suite
 
 ```bash
-poetry run pytest truss/tests
+rye run pytest truss/tests
+```
+### Build Wheel for release
+TODO: thils will automated in CI soon
+```bash
+rye build --wheel --pyproject ./pyproject.toml --clean --verbose
 ```
 
 ## Documentation
 
 To learn about Truss see the [official documentation](https://truss.baseten.co).
 
-Contributions to documentation are very welcome! Simply edit the appropriate markdown files in the `docs/` folder and make a pull request. For larger changes, tutorials, or any questions please contact [team@trussml.com](mailto:team@trussml.com).
+Contributions to documentation are very welcome! Simply edit the appropriate markdown files in the `docs/` folder and make a pull request. For larger changes, tutorials, or any questions please contact [hi@baseten.co](mailto:hi@baseten.co).

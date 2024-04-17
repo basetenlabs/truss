@@ -26,26 +26,26 @@ repos:
     hooks:
       - id: isort
         name: isort-local
-        entry: poetry run isort
+        entry: rye run isort
         language: system
         types: [python]
         pass_filenames: true
       - id: flake8
         name: flake8-local
-        entry: poetry run flake8
+        entry: rye run flake8
         language: system
         types: [python]
         pass_filenames: true
       - id: mypy
         name: mypy-local
-        entry: poetry run mypy
+        entry: rye run mypy
         language: python
         types: [python]
         exclude: ^examples/|^truss/test.+/|model.py$|^truss-chains/.*
         pass_filenames: true
       - id: mypy
         name: mypy-local (3.9)
-        entry: poetry run mypy
+        entry: rye run mypy
         language: python
         types: [python]
         files: ^truss-chains/.*
