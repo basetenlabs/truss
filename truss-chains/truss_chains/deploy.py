@@ -16,7 +16,6 @@ from typing import (
     cast,
 )
 
-import pydantic
 import truss
 import truss_chains as chains
 from truss import truss_config
@@ -63,13 +62,13 @@ def _make_truss_config(
     config.model_class_name = _MODEL_CLS_NAME
     # Compute.
     compute = chains_config.get_compute_spec()
-    config.resources.cpu = str(compute.cpu)
-    config.resources.accelerator = compute.gpu
-    config.resources.use_gpu = bool(compute.gpu.count)
+    config.resources.cpu = str(compute.cpu_count)
+    config.resources.accelerator = compute.accelerator
+    config.resources.use_gpu = bool(compute.accelerator.count)
     # TODO: expose this setting directly.
-    config.runtime.predict_concurrency = compute.cpu
+    config.runtime.predict_concurrency = compute.cpu_count
     # Image.
-    image = chains_config.get_docker_image_spec()
+    image = chains_config.docker_image
     config.base_image = truss_config.BaseImage(image=image.base_image)
     pip_requirements: list[str] = []
     if image.pip_requirements_file:
@@ -153,15 +152,12 @@ def make_truss(
 ########################################################################################
 
 
-class DeploymentOptions(pydantic.BaseModel):
+class DeploymentOptions(definitions.SafeModelNonSerializable):
     chain_name: str
     only_generate_trusses: bool = False
 
 
 class DeploymentOptionsBaseten(DeploymentOptions):
-    class Config:
-        arbitrary_types_allowed = True
-
     remote_provider: remote_factory.TrussRemote
     publish: bool
     promote: bool

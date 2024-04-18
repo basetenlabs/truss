@@ -24,9 +24,10 @@ class SplitTextOutput(pydantic.BaseModel):
 class SplitText(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
-        docker_image=chains.DockerImage()
-        .pip_requirements_file(chains.make_abs_path_here("../requirements.txt"))
-        .pip_requirements(["numpy"])
+        docker_image=chains.DockerImage(
+            pip_requirements_file=chains.make_abs_path_here("../requirements.txt"),
+            pip_requirements=["numpy"],
+        )
     )
 
     async def run(
