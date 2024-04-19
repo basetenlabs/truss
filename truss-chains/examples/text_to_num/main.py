@@ -15,8 +15,8 @@ import truss_chains as chains
 from truss import truss_config
 from user_package import shared_chainlet
 
-IMAGE_COMMON = chains.DockerImage().pip_requirements_file(
-    chains.make_abs_path_here("requirements.txt")
+IMAGE_COMMON = chains.DockerImage(
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt")
 )
 
 
@@ -28,12 +28,14 @@ class GenerateData(chains.ChainletBase):
         return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-IMAGE_TRANSFORMERS_GPU = (
-    chains.DockerImage()
-    .pip_requirements_file(chains.make_abs_path_here("requirements.txt"))
-    .pip_requirements(
-        ["transformers==4.38.1", "torch==2.0.1", "sentencepiece", "accelerate"]
-    )
+IMAGE_TRANSFORMERS_GPU = chains.DockerImage(
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+    pip_requirements=[
+        "transformers==4.38.1",
+        "torch==2.0.1",
+        "sentencepiece",
+        "accelerate",
+    ],
 )
 
 
@@ -51,8 +53,8 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
 
     remote_config = chains.RemoteConfig(
         docker_image=IMAGE_TRANSFORMERS_GPU,
-        compute=chains.Compute().cpu(2).gpu("A10G"),
-        assets=chains.Assets().cached([MISTRAL_CACHE]),
+        compute=chains.Compute(cpu_count=2, gpu="A10G"),
+        assets=chains.Assets(cached=[MISTRAL_CACHE]),
     )
     default_user_config = MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL)
 

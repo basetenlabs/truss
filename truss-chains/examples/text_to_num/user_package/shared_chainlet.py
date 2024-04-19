@@ -4,10 +4,9 @@ from typing import Tuple
 import pydantic
 import truss_chains as chains
 
-IMAGE_NUMPY = (
-    chains.DockerImage()
-    .pip_requirements_file(chains.make_abs_path_here("../requirements.txt"))
-    .pip_requirements(["numpy"])
+IMAGE_NUMPY = chains.DockerImage(
+    pip_requirements_file=chains.make_abs_path_here("../requirements.txt"),
+    pip_requirements=["numpy"],
 )
 
 

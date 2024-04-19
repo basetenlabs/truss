@@ -5,7 +5,17 @@ import logging
 import os
 import traceback
 from types import GenericAlias
-from typing import Any, ClassVar, Generic, Mapping, Optional, Type, TypeVar, Union
+from typing import (
+    Any,
+    ClassVar,
+    Generic,
+    Iterable,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import pydantic
 from pydantic import generics
@@ -21,12 +31,29 @@ ENDPOINT_METHOD_NAME = "run"  # Referring to Chainlet method name exposed as end
 # Below arg names must correspond to `definitions.ABCChainlet`.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
+REMOTE_CONFIG_NAME = "remote_config"
 
 GENERATED_CODE_DIR = ".chains_generated"
 PREDICT_ENDPOINT_NAME = "/predict"
 chainlet_MODULE = "Chainlet"
 STUB_TYPE_MODULE = "stub_types"
 STUB_CLS_SUFFIX = "Stub"
+
+
+class SafeModel(pydantic.BaseModel):
+    class Config:
+        arbitrary_types_allowed = False
+        validate_all = True
+        validate_assignment = True
+        extra = pydantic.Extra.forbid
+
+
+class SafeModelNonSerializable(pydantic.BaseModel):
+    class Config:
+        arbitrary_types_allowed = True
+        validate_all = True
+        validate_assignment = True
+        extra = pydantic.Extra.forbid
 
 
 class APIDefinitionError(TypeError):
@@ -71,10 +98,7 @@ class AbsPath:
         return self._abs_file_path
 
 
-class DockerImageSpec(pydantic.BaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-
+class DockerImage(SafeModelNonSerializable):
     # TODO: this is not stable yet and might change or refer back to truss.
     base_image: str = "python:3.11-slim"
     pip_requirements_file: Optional[AbsPath] = None
@@ -82,70 +106,44 @@ class DockerImageSpec(pydantic.BaseModel):
     apt_requirements: list[str] = []
 
 
-class DockerImage:
-    """Builder to create ImageSpec."""
-
-    _spec: DockerImageSpec
-
-    def __init__(self) -> None:
-        self._spec = DockerImageSpec()
-
-    def base_image(self, base_image: str) -> "DockerImage":
-        self._spec.base_image = base_image
-        return self
-
-    def pip_requirements_file(self, file_path: AbsPath) -> "DockerImage":
-        self._spec.pip_requirements_file = file_path
-        return self
-
-    def pip_requirements(self, requirements: list[str]) -> "DockerImage":
-        self._spec.pip_requirements = requirements
-        return self
-
-    def apt_requirements(self, requirements: list[str]) -> "DockerImage":
-        self._spec.apt_requirements = requirements
-        return self
-
-    def get_spec(self) -> DockerImageSpec:
-        return self._spec.copy(deep=True)
-
-
 class ComputeSpec(pydantic.BaseModel):
     # TODO: this is not stable yet and might change or refer back to truss.
-    cpu: int = 1
+    cpu_count: int = 1
     memory: str = "2Gi"
-    gpu: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
+    accelerator: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
 
 
 class Compute:
     """Builder to create ComputeSpec."""
 
+    # This extra layer around `ComputeSpec` is needed to parse the accelerator options.
+
     _spec: ComputeSpec
 
-    def __init__(self) -> None:
-        self._spec = ComputeSpec()
+    def __init__(
+        self,
+        cpu_count: int = 1,
+        memory: str = "2Gi",
+        gpu: Union[str, truss_config.Accelerator, None] = None,
+        gpu_count: int = 1,
+    ) -> None:
+        accelerator = truss_config.AcceleratorSpec()
+        if gpu:
+            accelerator.accelerator = truss_config.Accelerator(gpu)
+            accelerator.count = gpu_count
+            accelerator = truss_config.AcceleratorSpec(
+                accelerator=truss_config.Accelerator(gpu), count=gpu_count
+            )
 
-    def cpu(self, cpu: int) -> "Compute":
-        self._spec.cpu = cpu
-        return self
-
-    def memory(self, memory: str) -> "Compute":
-        self._spec.memory = memory
-        return self
-
-    def gpu(
-        self, kind: Union[str, truss_config.Accelerator], count: int = 1
-    ) -> "Compute":
-        self._spec.gpu = truss_config.AcceleratorSpec(
-            accelerator=truss_config.Accelerator(kind), count=count
+        self._spec = ComputeSpec(
+            cpu_count=cpu_count, memory=memory, accelerator=accelerator
         )
-        return self
 
     def get_spec(self) -> ComputeSpec:
         return self._spec.copy(deep=True)
 
 
-class AssetSpec(pydantic.BaseModel):
+class AssetSpec(SafeModel):
     # TODO: this is not stable yet and might change or refer back to truss.
     secrets: dict[str, str] = {}
     cached: list[Any] = []
@@ -154,37 +152,29 @@ class AssetSpec(pydantic.BaseModel):
 class Assets:
     """Builder to create asset spec."""
 
+    # This extra layer around `ComputeSpec` is needed to add secret_keys.
     _spec: AssetSpec
 
-    def __init__(self) -> None:
-        self._spec = AssetSpec()
-
-    def add_secret(self, key: str) -> "Assets":
-        # Actual value is provided in deployment.
-        self._spec.secrets[key] = SECRET_DUMMY
-        return self
-
-    def cached(self, value: list[Any]) -> "Assets":
-        self._spec.cached = value
-        return self
+    def __init__(
+        self,
+        cached: Iterable[Any] = (),
+        secret_keys: Iterable[str] = (),
+    ) -> None:
+        self._spec = AssetSpec(
+            cached=list(cached), secrets={k: SECRET_DUMMY for k in secret_keys}
+        )
 
     def get_spec(self) -> AssetSpec:
         return self._spec.copy(deep=True)
 
 
-class RemoteConfig(pydantic.BaseModel):
+class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a Chainlet."""
-
-    class Config:
-        arbitrary_types_allowed = True
 
     docker_image: DockerImage
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None
-
-    def get_docker_image_spec(self) -> DockerImageSpec:
-        return self.docker_image.get_spec()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -193,7 +183,7 @@ class RemoteConfig(pydantic.BaseModel):
         return self.assets.get_spec()
 
 
-class ServiceDescriptor(pydantic.BaseModel):
+class ServiceDescriptor(SafeModel):
     name: str
     predict_url: str
 
@@ -203,6 +193,9 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
 
     class Config:
         arbitrary_types_allowed = True
+        validate_all = True
+        validate_assignment = True
+        extra = pydantic.Extra.forbid
 
     user_config: UserConfigT = pydantic.Field(default=None)
     chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
@@ -266,7 +259,7 @@ class ABCChainlet(Generic[UserConfigT], abc.ABC):
         ...
 
 
-class TypeDescriptor(pydantic.BaseModel):
+class TypeDescriptor(SafeModelNonSerializable):
     """For describing I/O types of Chainlets.
 
     Example:
@@ -297,7 +290,7 @@ class TypeDescriptor(pydantic.BaseModel):
         )
 
 
-class EndpointAPIDescriptor(pydantic.BaseModel):
+class EndpointAPIDescriptor(SafeModelNonSerializable):
     name: str = ENDPOINT_METHOD_NAME
     input_names_and_types: list[tuple[str, TypeDescriptor]]
     output_types: list[TypeDescriptor]
@@ -305,7 +298,7 @@ class EndpointAPIDescriptor(pydantic.BaseModel):
     is_generator: bool
 
 
-class ChainletAPIDescriptor(pydantic.BaseModel):
+class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     dependencies: Mapping[str, Type[ABCChainlet]]
@@ -320,7 +313,7 @@ class ChainletAPIDescriptor(pydantic.BaseModel):
         return self.chainlet_cls.__name__
 
 
-class StackFrame(pydantic.BaseModel):
+class StackFrame(SafeModel):
     filename: str
     lineno: Optional[int]
     name: str
@@ -341,7 +334,7 @@ class StackFrame(pydantic.BaseModel):
         )
 
 
-class RemoteErrorDetail(pydantic.BaseModel):
+class RemoteErrorDetail(SafeModel):
     remote_name: str
     exception_cls_name: str
     exception_module_name: Optional[str]

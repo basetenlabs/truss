@@ -4,8 +4,8 @@ import pydantic
 import truss_chains as chains
 from user_package import shared_chainlet
 
-IMAGE_COMMON = chains.DockerImage().pip_requirements_file(
-    chains.make_abs_path_here("requirements.txt")
+IMAGE_COMMON = chains.DockerImage(
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt")
 )
 
 
