@@ -9,13 +9,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class TRTLLMModelArchitecture(str, Enum):
+class TrussTRTLLMModel(Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
     DEEPSEEK: str = "deepseek"
 
 
-class TRTLLMQuantizationType(str, Enum):
+class TrussTRTLLMQuantizationType(str, Enum):
     NO_QUANT: str = "no_quant"
     WEIGHTS_ONLY_INT8: str = "weights_int8"
     WEIGHTS_KV_INT8: str = "weights_kv_int8"
@@ -32,27 +32,42 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
     use_fused_mlp: bool = False
 
 
+class CheckpointSource(Enum):
+    HF: str = "HF"
+    GCS: str = "GCS"
+    LOCAL: str = "LOCAL"
+
+
+class CheckpointRepository(BaseModel):
+    source: CheckpointSource
+    repo: str
+
+
 class TrussTRTLLMBuildConfiguration(BaseModel):
-    base_model_architecture: TRTLLMModelArchitecture
+    base_model: TrussTRTLLMModel
     max_input_len: int
     max_output_len: int
     max_batch_size: int
     max_beam_width: int
     max_prompt_embedding_table_size: int = 0
-    huggingface_ckpt_repository: Optional[str]
+    checkpoint_repository: CheckpointRepository
     gather_all_token_logits: bool = False
     strongly_typed: bool = False
-    quantization_type: TRTLLMQuantizationType = TRTLLMQuantizationType.NO_QUANT
+    quantization_type: TrussTRTLLMQuantizationType = (
+        TrussTRTLLMQuantizationType.NO_QUANT
+    )
     tensor_parallel_count: int = 1
     pipeline_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
+    use_fused_mlp: bool = False
 
     class Config:
         json_encoders = {
-            TRTLLMModelArchitecture: lambda x: x.value,
-            TRTLLMQuantizationType: lambda x: x.value,
+            TrussTRTLLMModel: lambda x: x.value,
+            TrussTRTLLMQuantizationType: lambda x: x.value,
+            CheckpointSource: lambda x: x.value,
         }
 
 
