@@ -139,9 +139,8 @@ class TritonClient:
                     result = result.as_numpy("text_output")
                     yield result[0].decode("utf-8")
                 else:
-                    raise HTTPException(
-                        status_code=error.status(), detail=error.message()
-                    )
+                    status = 500 if not error.status() else error.status()
+                    raise HTTPException(status_code=status, detail=error.message())
 
         except grpcclient.InferenceServerException as e:
             raise HTTPException(status_code=500, detail=str(e))

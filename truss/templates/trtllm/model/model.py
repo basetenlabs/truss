@@ -9,6 +9,7 @@ from constants import (
     HTTP_SERVICE_PORT,
     TOKENIZER_KEY_CONSTANT,
 )
+from fastapi import HTTPException
 from schema import ModelInput
 from transformers import AutoTokenizer
 from triton_client import TritonClient, TritonServer
@@ -61,7 +62,7 @@ class Model:
             tensor_parallel_count = trtllm_config.serve.tensor_parallel_count
             pipeline_parallel_count = trtllm_config.serve.pipeline_parallel_count
         else:
-            # If this model required a build, the engine live inside the data_dir
+            # If this model required a build, the engine lives inside the data_dir
             engine_repository_path = self._data_dir
             tokenizer_repository = trtllm_config.build.huggingface_ckpt_repository
             tensor_parallel_count = trtllm_config.build.tensor_parallel_count
@@ -122,8 +123,14 @@ class Model:
 
         if model_input.stream:
             return generate()
-        else:
-            if self.uses_openai_api:
-                return "".join(generate())
-            else:
-                return {"text": "".join(generate())}
+
+        try:
+            response = ""
+            async for value in generate():
+                response += value
+        except HTTPException as e:
+            raise e
+
+        if self.uses_openai_api:
+            return response
+        return {"text": response}
