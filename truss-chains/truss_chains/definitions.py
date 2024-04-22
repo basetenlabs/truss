@@ -183,9 +183,15 @@ class RemoteConfig(SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
+class RPCOptions(SafeModel):
+    timeout_sec: int = 600
+    retries: int = 1
+
+
 class ServiceDescriptor(SafeModel):
     name: str
     predict_url: str
+    options: RPCOptions
 
 
 class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
@@ -298,10 +304,19 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
     is_generator: bool
 
 
+class DependencyDescriptor(SafeModelNonSerializable):
+    chainlet_cls: Type[ABCChainlet]
+    options: RPCOptions
+
+    @property
+    def name(self) -> str:
+        return self.chainlet_cls.__name__
+
+
 class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
-    dependencies: Mapping[str, Type[ABCChainlet]]
+    dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
     user_config_type: TypeDescriptor
 

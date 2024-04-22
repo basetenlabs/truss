@@ -61,7 +61,9 @@ class ItestChain(chains.ChainletBase):
         self,
         context: chains.DeploymentContext = chains.provide_context(),
         data_generator: GenerateData = chains.provide(GenerateData),
-        splitter: shared_chainlet.SplitText = chains.provide(shared_chainlet.SplitText),
+        splitter: shared_chainlet.SplitTextFailOnce = chains.provide(
+            shared_chainlet.SplitTextFailOnce, retries=2
+        ),
         text_to_num: TextToNum = chains.provide(TextToNum),
     ) -> None:
         super().__init__(context)

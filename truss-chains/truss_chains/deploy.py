@@ -250,15 +250,18 @@ def _deploy_service(
     chainlet_dir: pathlib.Path,
     chain_root: pathlib.Path,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+    chainlet_name_to_url: Mapping[str, str],
     maybe_stub_types_file: Optional[pathlib.Path],
     options: DeploymentOptions,
-) -> tuple[Optional[b10_service.TrussService], definitions.ServiceDescriptor]:
-    # Filter only needed services.
-    chainlet_to_service = {
-        dep_proc.__name__: chainlet_to_service[dep_proc.__name__]
-        for dep_proc in chainlet_descriptor.dependencies.values()
-    }
+) -> Optional[b10_service.TrussService]:
+    # Filter needed services and customize options.
+    dep_services = {}
+    for dep in chainlet_descriptor.dependencies.values():
+        dep_services[dep.name] = definitions.ServiceDescriptor(
+            name=dep.name,
+            predict_url=chainlet_name_to_url[dep.name],
+            options=dep.options,
+        )
     # Convert to truss and deploy.
     # TODO: support file-based config (and/or merge file and python-src config values).
     remote_config = chainlet_descriptor.chainlet_cls.remote_config
@@ -270,14 +273,11 @@ def _deploy_service(
         remote_config,
         chainlet_descriptor.chainlet_cls.default_user_config,
         model_name,
-        chainlet_to_service,
+        dep_services,
         maybe_stub_types_file,
     )
     service: Optional[b10_service.TrussService]
     if options.only_generate_trusses:
-        service_descr = definitions.ServiceDescriptor(
-            name=model_name, predict_url="https://dummy"
-        )
         service = None
     elif isinstance(options, DeploymentOptionsLocalDocker):
         port = utils.get_free_port()
@@ -285,55 +285,49 @@ def _deploy_service(
         truss_handle.add_secret(
             definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
         )
-        _ = truss_handle.docker_run(
-            local_port=port, detach=True, wait_for_server_ready=True, network="host"
+        truss_handle.docker_run(
+            local_port=port,
+            detach=True,
+            wait_for_server_ready=True,
+            network="host",
+            container_name_prefix=model_name,
         )
-
-        service_descr = definitions.ServiceDescriptor(
-            name=model_name,
-            # Localhost seems to only work *sometimes* with docker.
-            # predict_url=f"http://localhost:{port}/v1/models/model:predict",
-            predict_url=f"http://host.docker.internal:{port}/v1/models/model:predict",
-        )
-        service = DockerService(f"http://localhost:{port}", is_draft=True)
-
+        # http://localhost:{port} seems to only work *sometimes* with docker.
+        service = DockerService(f"http://host.docker.internal:{port}", is_draft=True)
     elif isinstance(options, DeploymentOptionsBaseten):
         with utils.log_level(logging.INFO):
             service = _deploy_to_baseten(truss_dir, options)
-        service_descr = definitions.ServiceDescriptor(
-            name=model_name, predict_url=service.predict_url
-        )
     else:
         raise NotImplementedError(options)
 
-    logging.info(f"Deployed service: {service_descr}.")
-    return service, service_descr
+    if service:
+        logging.info(f"Deployed service `{chainlet_name}` @ {service.predict_url}.")
+    return service
 
 
 def _get_ordered_dependencies(
-    Chainlets: Iterable[Type[definitions.ABCChainlet]],
+    chainlets: Iterable[Type[definitions.ABCChainlet]],
 ) -> Iterable[definitions.ChainletAPIDescriptor]:
     """Gather all Chainlets needed and returns a topologically ordered list."""
     needed_chainlets: set[definitions.ChainletAPIDescriptor] = set()
 
-    def add_needed_chainlets(proc: definitions.ChainletAPIDescriptor):
-        needed_chainlets.add(proc)
+    def add_needed_chainlets(chainlet: definitions.ChainletAPIDescriptor):
+        needed_chainlets.add(chainlet)
         for chainlet_descriptor in framework.global_chainlet_registry.get_dependencies(
-            proc
+            chainlet
         ):
             needed_chainlets.add(chainlet_descriptor)
             add_needed_chainlets(chainlet_descriptor)
 
-    for proc_cls in Chainlets:
+    for chainlet_cls in chainlets:
         add_needed_chainlets(
-            framework.global_chainlet_registry.get_descriptor(proc_cls)
+            framework.global_chainlet_registry.get_descriptor(chainlet_cls)
         )
-
     # Iterating over the registry ensures topological ordering.
     return [
-        chainlet_descriptor
-        for chainlet_descriptor in framework.global_chainlet_registry.chainlet_descriptors
-        if chainlet_descriptor in needed_chainlets
+        descr
+        for descr in framework.global_chainlet_registry.chainlet_descriptors
+        if descr in needed_chainlets
     ]
 
 
@@ -391,7 +385,7 @@ def deploy_remotely(
         chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
     logging.info(f"Using project root for chain: `{chain_root}`.")
 
-    chainlet_to_service: dict[str, definitions.ServiceDescriptor] = {}
+    chainlet_name_to_url: dict[str, str] = {}
     chain_service = ChainService(
         framework.global_chainlet_registry.get_descriptor(entrypoint).name,
         name=options.chain_name,
@@ -414,16 +408,18 @@ def deploy_remotely(
         code_gen.generate_chainlet_source(
             chainlet_filepath, chainlet_descriptor, deps, maybe_stub_types_file
         )
-        service, service_descr = _deploy_service(
+        service = _deploy_service(
             chainlet_dir,
             chain_root,
             chainlet_descriptor,
-            chainlet_to_service,
+            chainlet_name_to_url,
             maybe_stub_types_file,
             options,
         )
         if service:
             chain_service.add_service(chainlet_descriptor.name, service)
-        chainlet_to_service[chainlet_descriptor.name] = service_descr
+            chainlet_name_to_url[chainlet_descriptor.name] = service.predict_url
+        else:
+            chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
 
     return chain_service
