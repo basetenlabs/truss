@@ -183,15 +183,15 @@ Whether or not a GPU is required for this model.
 
 Which GPU you would like for your instance. Available Nvidia GPUs supported in Truss include:
 
-* T4
-* L4
-* A10G
-* V100
-* A100
-* H100
-* H100_40GB
+* `T4`
+* `L4`
+* `A10G`
+* `V100`
+* `A100`
+* `H100`
+* `H100_40GB` [See details](https://www.baseten.co/blog/using-fractional-h100-gpus-for-efficient-model-serving/)
 
-Note that if you need multiple GPUs to server your model, you can use the `:` operator to request multiple
+Note that if your model requires multiple GPUs (i.e. the weights don't fit in a single GPU), you can use the `:` operator to request multiple
 GPUs on your instance, eg:
 
 ```yaml
