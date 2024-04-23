@@ -1,5 +1,5 @@
 datamodel-code-generator
-git+https://github.com/basetenlabs/truss.git
+git+https://github.com/basetenlabs/truss.git@marius/retry
 httpx
 libcst
 pydantic
