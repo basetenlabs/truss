@@ -7,7 +7,15 @@ from truss_chains import utils
 
 vlog = logging.getLogger("vlog")
 vlog.handlers = []
-vlog.addHandler(logging.FileHandler("/tmp/rag-log.txt"))
+log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
+date_format = "%m%d %H:%M:%S"
+formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+handler = logging.FileHandler("/tmp/rag-log.txt")
+handler.setFormatter(formatter)
+vlog.addHandler(handler)
+
+
+_CORPUS_NAME = "test_collection"
 
 
 class QueryParams(pydantic.BaseModel):
@@ -18,7 +26,9 @@ def _make_system_prompt(document_contents: list[str]) -> str:
     parts = [
         "You are tasked with helping software engineers, analysts or non-techincal "
         "users of then ML model hosting platform *Baseten*. You are given the "
-        "following context-relevant information to use for your response:\n\n"
+        "following context-relevant resources to use for your response. "
+        "Do not assume best practices or URLs that are not explicitly mentioned in"
+        "these resources.\n\n"
     ]
     for i, content in enumerate(document_contents):
         parts.append(f"**RESOURCE {i}**:.\n\n{content}\n\n")
@@ -38,12 +48,7 @@ class ClaudeClient:
         self._client = anthropic.Anthropic(api_key=api_key)
 
     async def run(self, query: str, system_prompt: str) -> str:
-        messages = [
-            {"role": "user", "content": query},
-        ]
-        # vlog.info(
-        #     f"Querying Claude with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
-        # )
+        messages = [{"role": "user", "content": query}]
         vlog.info("Querying Claude.")
         message = self._client.messages.create(
             model="claude-3-opus-20240229",
@@ -54,17 +59,31 @@ class ClaudeClient:
         return message.content[0].text
 
 
-class Llama70B(chains.StubBase):
-    """Treat the whisper model like an external third party tool."""
+class OpenaiClient:
+    def __init__(self, api_key: str):
+        import openai
+
+        self._client = openai.Client(api_key=api_key)
 
     async def run(self, query: str, system_prompt: str) -> str:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": query},
         ]
-        # vlog.info(
-        #     f"Querying Llama with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
-        # )
+        vlog.info("Querying GPT4.")
+        completion = self._client.chat.completions.create(
+            model="gpt-4-turbo-2024-04-09",
+            messages=messages,
+        )
+        return completion.choices[0].message.content
+
+
+class Llama70B(chains.StubBase):
+    async def run(self, query: str, system_prompt: str) -> str:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query},
+        ]
         vlog.info("Querying Llama.")
         json_payload = {
             "messages": messages,
@@ -93,7 +112,7 @@ class VectorStore(chains.ChainletBase):
         path = os.path.join(context.data_dir, "chroma")
         settings = chromadb.Settings(is_persistent=True, anonymized_telemetry=False)
         self._chroma_client = chromadb.PersistentClient(path=path, settings=settings)
-        self._chroma_collection = self._chroma_client.get_collection("external_docs")
+        self._chroma_collection = self._chroma_client.get_collection(_CORPUS_NAME)
 
     async def run(self, query: str, params: QueryParams) -> list[str]:
         query_result = self._chroma_collection.query(
@@ -127,16 +146,15 @@ class RAG(chains.ChainletBase):
     def __init__(
         self,
         context: chains.DeploymentContext = chains.provide_context(),
-        vector_stor: VectorStore = chains.provide(VectorStore),
+        vector_store: VectorStore = chains.provide(VectorStore),
     ):
         super().__init__(context)
-        self._vector_store = vector_stor
+        self._vector_store = vector_store
         # self._llm = Llama70B.from_url(Llama70B_URL, context)
         self._llm = ClaudeClient(context.secrets["anthropic_api_key"])
+        # self._llm = OpenaiClient(context.secrets["openai_api_key"])
 
     async def run(self, query: str, params: QueryParams) -> str:
-        # TODO: ask LLM what is needed to answer query.
-
         # refining_query = (
         #     f"{query}.\n\nIn order to get help with this request, what kind "
         #     "of information would you need to research? At which documentation "
@@ -156,17 +174,25 @@ class RAG(chains.ChainletBase):
 if __name__ == "__main__":
     import asyncio
 
+    from rich.console import Console
+
+    console = Console()
+
     with chains.run_local(
         secrets={
             "baseten_chain_api_key": os.environ["BASETEN_API_KEY"],
             "anthropic_api_key": os.environ["ANTHROPIC_API_KEY"],
+            "openai_api_key": os.environ["OPENAI_API_KEY"],
         },
         data_dir=chains.make_abs_path_here("vector_data").abs_path,
     ):
         rag = RAG()
-        test_query = "How can I programmatically change auto-scaling settings?"
-        test_params = QueryParams(num_context_docs=3)
+        # test_query = "How can I programmatically change auto-scaling settings?"
+        # test_query = "What can you tell me about the `__init__` method?"
+        test_query = "How do I improve my coldstarts?"
+        # test_query = "What's the coolest feature of baseten?"
+        test_params = QueryParams(num_context_docs=5)
         result = asyncio.get_event_loop().run_until_complete(
             rag.run(test_query, test_params)
         )
-        print(result)
+        console.print(result)
