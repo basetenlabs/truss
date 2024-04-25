@@ -16,17 +16,17 @@ class QueryParams(pydantic.BaseModel):
 
 def _make_system_prompt(document_contents: list[str]) -> str:
     parts = [
-        "You are tasked with helping software engineers, users and other people "
-        "using a machine learning model hosting platform 'Baseten'.  Given the"
-        "following information:\n\n"
+        "You are tasked with helping software engineers, analysts or non-techincal "
+        "users of then ML model hosting platform *Baseten*. You are given the "
+        "following context-relevant information to use for your response:\n\n"
     ]
     for i, content in enumerate(document_contents):
-        parts.append(f"{i}.\n{content}\n\n")
+        parts.append(f"**RESOURCE {i}**:.\n\n{content}\n\n")
     parts.append(
-        "Give a useful actionable answer with examples to the "
-        "users request. Add references or links to documentation if possible."
+        "Provide an actionable response with examples. Add references or links to "
+        "documentation if possible."
         "If possible generate examples that are suitable for copy and paste and "
-        "can be run directly without need to add anything."
+        "can be run directly, i.e. self-contained without need to add anything."
     )
     return "\n".join(parts)
 
@@ -41,9 +41,10 @@ class ClaudeClient:
         messages = [
             {"role": "user", "content": query},
         ]
-        vlog.info(
-            f"Querying Claude with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
-        )
+        # vlog.info(
+        #     f"Querying Claude with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
+        # )
+        vlog.info("Querying Claude.")
         message = self._client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=1024,
@@ -61,9 +62,10 @@ class Llama70B(chains.StubBase):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": query},
         ]
-        vlog.info(
-            f"Querying Llama with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
-        )
+        # vlog.info(
+        #     f"Querying Llama with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
+        # )
+        vlog.info("Querying Llama.")
         json_payload = {
             "messages": messages,
             "stream": False,
@@ -71,7 +73,6 @@ class Llama70B(chains.StubBase):
             # "temperature": 0.9,
         }
         resp = await self._remote.predict_async(json_payload)
-        # TODO: strip special tokens?
         return resp
 
 
@@ -100,9 +101,12 @@ class VectorStore(chains.ChainletBase):
             n_results=params.num_context_docs,
             include=["documents"],
         )
-        n_documents = query_result["documents"]
-        assert n_documents is not None
-        documents = utils.expect_one(n_documents)
+        multi_documents = query_result["documents"]
+        assert multi_documents is not None
+        documents = utils.expect_one(multi_documents)
+        vlog.info(f"Retrieved Documents for Query\n{query}:")
+        for i, d in enumerate(documents):
+            vlog.info(f"{i}:\n{d}")
         return documents
 
 
@@ -139,12 +143,12 @@ class RAG(chains.ChainletBase):
         #     "pages and for which keywords would you search?"
         # )
         # enriched_query = await self._llm.run(refining_query, "")
-        # print(enriched_query)
+        # vlog.info(enriched_query)
         document_contents = await self._vector_store.run(query, params)
 
         system_prompt = _make_system_prompt(document_contents)
-        print(f"System Prompt:\n{system_prompt}")
-        print(f"Query: {query}")
+        vlog.info(f"System Prompt:\n{system_prompt}")
+        vlog.info(f"Query: {query}")
         answer = await self._llm.run(query, system_prompt)
         return answer
 
@@ -161,8 +165,8 @@ if __name__ == "__main__":
     ):
         rag = RAG()
         test_query = "How can I programmatically change auto-scaling settings?"
-        params = QueryParams(num_context_docs=3)
+        test_params = QueryParams(num_context_docs=3)
         result = asyncio.get_event_loop().run_until_complete(
-            rag.run(test_query, params)
+            rag.run(test_query, test_params)
         )
         print(result)
