@@ -104,6 +104,7 @@ class DockerImage(SafeModelNonSerializable):
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
+    data_dir: Optional[AbsPath] = None
 
 
 class ComputeSpec(pydantic.BaseModel):

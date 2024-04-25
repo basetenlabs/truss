@@ -17,7 +17,6 @@ from typing import (
 )
 
 import truss
-import truss_chains as chains
 from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss.remote import remote_cli, remote_factory
@@ -141,11 +140,18 @@ def make_truss(
 
     # TODO Truss package contains this from `{ include = "truss_chains", from = "." }`
     #   pyproject.toml. But for quick dev loop just copy from local.
-    shutil.copytree(
-        os.path.dirname(chains.__file__),
-        pkg_dir / "truss_chains",
-        dirs_exist_ok=True,
-    )
+    # shutil.copytree(
+    #     os.path.dirname(chains.__file__),
+    #     pkg_dir / "truss_chains",
+    #     dirs_exist_ok=True,
+    # )
+    # Data resources.
+    if chains_config.docker_image.data_dir:
+        data_dir = truss_dir / truss_config.DEFAULT_DATA_DIRECTORY
+        data_dir.mkdir(parents=True, exist_ok=True)
+        user_data_dir = chains_config.docker_image.data_dir.abs_path
+        shutil.copytree(user_data_dir, data_dir, dirs_exist_ok=True)
+
     return truss_dir
 
 

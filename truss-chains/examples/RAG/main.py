@@ -1,19 +1,14 @@
+import anthropic
 import chromadb
 import pydantic
 import truss_chains as chains
 from coverage.annotate import os
 from truss_chains import utils
 
-IMAGE_COMMON = chains.DockerImage(
+IMAGE_VECTORSTORE = chains.DockerImage(
     pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
     pip_requirements=["chromadb"],
-)
-
-
-_SYSTEM_PROMPT = (
-    "You are tasked with supporting engineers doing their work. "
-    "You will be given some context information form documentation "
-    "or chat history and have to give helpful answers to questions."
+    data_dir=chains.make_abs_path_here("vector_data/"),
 )
 
 
@@ -21,12 +16,42 @@ class QueryParams(pydantic.BaseModel):
     num_context_docs: int = 2
 
 
-class LLMShim(chains.StubBase):
+def _make_system_prompt(document_contents: list[str]) -> str:
+    parts = [
+        "You are tasked with helping software engineers, users and other people "
+        "using a machine learning model hosting platform 'Baseten'.  Given the"
+        "following information:\n\n"
+    ]
+    for i, content in enumerate(document_contents):
+        parts.append(f"{i}.\n{content}\n\n")
+    parts.append(
+        "Give a useful actionable answer with examples to the "
+        "users request. Add references or links to documentation if possible."
+    )
+    return "\n".join(parts)
+
+
+class ClaudeClient:
+    def __init__(self, api_key: str):
+        self._client = anthropic.Anthropic(api_key=api_key)
+
+    async def run(self, query: str, system_prompt: str) -> str:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query},
+        ]
+        message = self._client.messages.create(
+            model="claude-3-opus-20240229", max_tokens=1024, messages=messages
+        )
+        return message.content[0].text
+
+
+class Llama70B(chains.StubBase):
     """Treat the whisper model like an external third party tool."""
 
-    async def run(self, query: str) -> str:
+    async def run(self, query: str, system_prompt: str) -> str:
         messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": query},
         ]
         json_payload = {
@@ -35,14 +60,14 @@ class LLMShim(chains.StubBase):
             "max_new_tokens": 512,
             # "temperature": 0.9,
         }
-
         resp = await self._remote.predict_async(json_payload)
+        # TODO: strip special tokens?
         return resp
 
 
 class VectorStore(chains.ChainletBase):
 
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_VECTORSTORE)
 
     def __init__(self, context: chains.DeploymentContext = chains.provide_context()):
         super().__init__(context)
@@ -63,12 +88,16 @@ class VectorStore(chains.ChainletBase):
 
 
 # Llama 3 70B Instruct
-_LLM_URL = "https://model-4w57z7r3.api.baseten.co/production/predict"
+Llama70B_URL = "https://model-4w57z7r3.api.baseten.co/production/predict"
 
 
 class RAG(chains.ChainletBase):
 
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage(
+            pip_requirements_file=chains.make_abs_path_here("requirements.txt")
+        )
+    )
 
     def __init__(
         self,
@@ -77,25 +106,22 @@ class RAG(chains.ChainletBase):
     ):
         super().__init__(context)
         self._vector_store = vector_stor
-        self._llm = LLMShim.from_url(_LLM_URL, context)
-
-    def _contextualize_query(
-        self, query: str, document_contents: list[str], params: QueryParams
-    ) -> str:
-        parts = ["Given the following information:\n\n"]
-        for i, content in enumerate(document_contents):
-            parts.append(f"{i}.\n{content}\n\n")
-        parts.append(
-            f"Give a useful actionable answer with examples to the "
-            f"following message: {query}"
-        )
-        return "\n".join(parts)
+        self._llama70b = Llama70B.from_url(Llama70B_URL, context)
 
     async def run(self, query: str, params: QueryParams) -> list[str]:
         # TODO: ask LLM what is needed to answer query.
+
+        refining_query = (
+            f"{query}.\n\nIn order to get help with this request, what kind "
+            "of information would you need to research? At which documentation "
+            "pages and for which keywords would you search?"
+        )
+        enriched_query = await self._llama70b.run(refining_query)
+        print(enriched_query)
         document_contents = await self._vector_store.run(query, params)
-        new_query = self._contextualize_query(query, document_contents, params)
-        answer = await self._llm.run(new_query)
+
+        system_prompt = _make_system_prompt(document_contents)
+        answer = await self._llama70b.run(query, system_prompt)
         return answer
 
 
@@ -107,7 +133,9 @@ if __name__ == "__main__":
         data_dir="/tmp",
     ):
         rag = RAG()
-        query = "What's up?"
+        test_query = "What's up?"
         params = QueryParams(num_context_docs=3)
-        result = asyncio.get_event_loop().run_until_complete(rag.run(query, params))
+        result = asyncio.get_event_loop().run_until_complete(
+            rag.run(test_query, params)
+        )
         print(result)
