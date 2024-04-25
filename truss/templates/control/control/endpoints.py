@@ -89,6 +89,18 @@ async def proxy(request: Request):
     return response
 
 
+async def notebook_proxy(request: Request):
+    # Construct the URL to call on the Jupyter server
+    return {"success": True}
+
+    # Create an async client for sending the request
+
+
+control_app.add_route(
+    "/v1/notebook/{path:path}",
+    notebook_proxy,
+    ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH", "TRACE"],
+)
 control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
 
 
