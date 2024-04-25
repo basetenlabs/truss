@@ -59,6 +59,8 @@ def deploy_remotely(
     return deploy.deploy_remotely(entrypoint, options)
 
 
-def run_local(secrets: Optional[Mapping[str, str]] = None) -> ContextManager[None]:
+def run_local(
+    secrets: Optional[Mapping[str, str]] = None, data_dir: Optional[str] = None
+) -> ContextManager[None]:
     """Context manager for using in-process instantiations of Chainlet dependencies."""
-    return framework.run_local(secrets)
+    return framework.run_local(secrets, data_dir)

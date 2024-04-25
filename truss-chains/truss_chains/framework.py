@@ -515,10 +515,12 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
 
 
 def _create_local_context(
-    chainlet_cls: Type[definitions.ABCChainlet], secrets: Mapping[str, str]
+    chainlet_cls: Type[definitions.ABCChainlet],
+    secrets: Mapping[str, str],
+    data_dir: Optional[str],
 ) -> definitions.DeploymentContext:
     return definitions.DeploymentContext(
-        user_config=chainlet_cls.default_user_config, secrets=secrets
+        user_config=chainlet_cls.default_user_config, secrets=secrets, data_dir=data_dir
     )
 
 
@@ -528,6 +530,7 @@ def _create_modified_init_for_local(
         Type[definitions.ABCChainlet], definitions.ABCChainlet
     ],
     secrets: Mapping[str, str],
+    data_dir: Optional[str],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
@@ -545,7 +548,9 @@ def _create_modified_init_for_local(
         logging.debug(f"Patched `__init__` of `{chainlet_descriptor.name}`.")
         kwargs_mod = dict(kwargs)
         if definitions.CONTEXT_ARG_NAME not in kwargs_mod:
-            context = _create_local_context(chainlet_descriptor.chainlet_cls, secrets)
+            context = _create_local_context(
+                chainlet_descriptor.chainlet_cls, secrets, data_dir
+            )
             kwargs_mod[definitions.CONTEXT_ARG_NAME] = context
         else:
             logging.debug(
@@ -581,7 +586,9 @@ def _create_modified_init_for_local(
 
 
 @contextlib.contextmanager
-def run_local(secrets: Optional[Mapping[str, str]] = None) -> Any:
+def run_local(
+    secrets: Optional[Mapping[str, str]] = None, data_dir: Optional[str] = None
+) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
     type_to_instance: MutableMapping[
         Type[definitions.ABCChainlet], definitions.ABCChainlet
@@ -593,7 +600,7 @@ def run_local(secrets: Optional[Mapping[str, str]] = None) -> Any:
             chainlet_descriptor.chainlet_cls
         ] = chainlet_descriptor.chainlet_cls.__init__
         init_for_local = _create_modified_init_for_local(
-            chainlet_descriptor, type_to_instance, secrets or {}
+            chainlet_descriptor, type_to_instance, secrets or {}, data_dir
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True

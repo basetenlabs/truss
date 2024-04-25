@@ -24,6 +24,7 @@ class TrussChainletModel:
             user_config=truss_metadata.user_config,
             chainlet_to_service=truss_metadata.chainlet_to_service,
             secrets=secrets,
+            data_dir=data_dir,
         )
 
     # Below illustrated code will be added by code generation.
