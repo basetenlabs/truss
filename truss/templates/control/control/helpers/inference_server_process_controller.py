@@ -26,6 +26,7 @@ class JupyterServerProcessController:
                 "--allow-root",
                 "--NotebookApp.base_url='/v1/notebook/'",
                 "--ServerApp.allow_remote_access=True",
+                "--ServerApp.allow_origin=*",
             ]
         )
 
