@@ -27,6 +27,7 @@ def _make_system_prompt(document_contents: list[str]) -> str:
     parts.append(
         "Give a useful actionable answer with examples to the "
         "users request. Add references or links to documentation if possible."
+        "If possible generate examples that are suitable for copy and paste and can be run directly without need to add anything."
     )
     return "\n".join(parts)
 
@@ -37,11 +38,13 @@ class ClaudeClient:
 
     async def run(self, query: str, system_prompt: str) -> str:
         messages = [
-            {"role": "system", "content": system_prompt},
             {"role": "user", "content": query},
         ]
         message = self._client.messages.create(
-            model="claude-3-opus-20240229", max_tokens=1024, messages=messages
+            model="claude-3-opus-20240229",
+            max_tokens=1024,
+            messages=messages,
+            system=system_prompt,
         )
         return message.content[0].text
 
@@ -60,6 +63,7 @@ class Llama70B(chains.StubBase):
             "max_new_tokens": 512,
             # "temperature": 0.9,
         }
+        # print(messages[0])
         resp = await self._remote.predict_async(json_payload)
         # TODO: strip special tokens?
         return resp
@@ -71,9 +75,11 @@ class VectorStore(chains.ChainletBase):
 
     def __init__(self, context: chains.DeploymentContext = chains.provide_context()):
         super().__init__(context)
-        path = os.path.join(context.data_dir, "corpus")
+        path = os.path.join(context.data_dir, "chroma")
+        print(path)
+        settings = chromadb.Settings()
         self._chroma_client = chromadb.PersistentClient(path=path)
-        self._chroma_collection = self._chroma_client.get_collection("default")
+        self._chroma_collection = self._chroma_client.get_collection("test_collection")
 
     async def run(self, query: str, params: QueryParams) -> list[str]:
         query_result = self._chroma_collection.query(
@@ -106,22 +112,25 @@ class RAG(chains.ChainletBase):
     ):
         super().__init__(context)
         self._vector_store = vector_stor
-        self._llama70b = Llama70B.from_url(Llama70B_URL, context)
+        # self._llm = Llama70B.from_url(Llama70B_URL, context)
+        self._llm = ClaudeClient(context.secrets["anthropic_api_key"])
 
     async def run(self, query: str, params: QueryParams) -> list[str]:
         # TODO: ask LLM what is needed to answer query.
 
-        refining_query = (
-            f"{query}.\n\nIn order to get help with this request, what kind "
-            "of information would you need to research? At which documentation "
-            "pages and for which keywords would you search?"
-        )
-        enriched_query = await self._llama70b.run(refining_query)
-        print(enriched_query)
+        # refining_query = (
+        #     f"{query}.\n\nIn order to get help with this request, what kind "
+        #     "of information would you need to research? At which documentation "
+        #     "pages and for which keywords would you search?"
+        # )
+        # enriched_query = await self._llm.run(refining_query, "")
+        # print(enriched_query)
         document_contents = await self._vector_store.run(query, params)
 
         system_prompt = _make_system_prompt(document_contents)
-        answer = await self._llama70b.run(query, system_prompt)
+        print(f"System Prompt:\n{system_prompt}")
+        print(f"Query: {query}")
+        answer = await self._llm.run(query, system_prompt)
         return answer
 
 
@@ -129,11 +138,14 @@ if __name__ == "__main__":
     import asyncio
 
     with chains.run_local(
-        secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]},
-        data_dir="/tmp",
+        secrets={
+            "baseten_chain_api_key": os.environ["BASETEN_API_KEY"],
+            "anthropic_api_key": os.environ["ANTHROPIC_API_KEY"],
+        },
+        data_dir=chains.make_abs_path_here("vector_data").abs_path,
     ):
         rag = RAG()
-        test_query = "What's up?"
+        test_query = "How can I programmatically change auto-scaling settings?"
         params = QueryParams(num_context_docs=3)
         result = asyncio.get_event_loop().run_until_complete(
             rag.run(test_query, params)
