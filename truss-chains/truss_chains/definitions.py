@@ -3,6 +3,7 @@
 import abc
 import logging
 import os
+import pathlib
 import traceback
 from types import GenericAlias
 from typing import (
@@ -211,7 +212,7 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
     #   due to the templating, at runtime the object passed will be from
     #   `shared.secrets_resolver` and give pydantic validation error.
     secrets: Optional[Any] = None
-    data_dir: Optional[str] = None
+    data_dir: Optional[pathlib.Path] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:

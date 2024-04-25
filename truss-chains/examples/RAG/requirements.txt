@@ -1,1 +1,2 @@
 git+https://github.com/basetenlabs/truss.git@hackathon-rag
+anthropic
