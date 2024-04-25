@@ -24,6 +24,7 @@ class JupyterServerProcessController:
                 JUPYTER_PORT,
                 "--no-browser",
                 "--allow-root",
+                "--NotebookApp.base_url='/v1/notebook/'",
             ]
         )
 
