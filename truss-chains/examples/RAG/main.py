@@ -1,19 +1,17 @@
-import anthropic
-import chromadb
+import logging
+import os
+
 import pydantic
 import truss_chains as chains
-from coverage.annotate import os
 from truss_chains import utils
 
-IMAGE_VECTORSTORE = chains.DockerImage(
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
-    pip_requirements=["chromadb"],
-    data_dir=chains.make_abs_path_here("vector_data/"),
-)
+vlog = logging.getLogger("vlog")
+vlog.handlers = []
+vlog.addHandler(logging.FileHandler("/tmp/rag-log.txt"))
 
 
 class QueryParams(pydantic.BaseModel):
-    num_context_docs: int = 2
+    num_context_docs: int
 
 
 def _make_system_prompt(document_contents: list[str]) -> str:
@@ -27,19 +25,25 @@ def _make_system_prompt(document_contents: list[str]) -> str:
     parts.append(
         "Give a useful actionable answer with examples to the "
         "users request. Add references or links to documentation if possible."
-        "If possible generate examples that are suitable for copy and paste and can be run directly without need to add anything."
+        "If possible generate examples that are suitable for copy and paste and "
+        "can be run directly without need to add anything."
     )
     return "\n".join(parts)
 
 
 class ClaudeClient:
     def __init__(self, api_key: str):
+        import anthropic
+
         self._client = anthropic.Anthropic(api_key=api_key)
 
     async def run(self, query: str, system_prompt: str) -> str:
         messages = [
             {"role": "user", "content": query},
         ]
+        vlog.info(
+            f"Querying Claude with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
+        )
         message = self._client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=1024,
@@ -57,13 +61,15 @@ class Llama70B(chains.StubBase):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": query},
         ]
+        vlog.info(
+            f"Querying Llama with:\n\nSystem:\n{system_prompt}\n\nQuery:\n{query}"
+        )
         json_payload = {
             "messages": messages,
             "stream": False,
             "max_new_tokens": 512,
             # "temperature": 0.9,
         }
-        # print(messages[0])
         resp = await self._remote.predict_async(json_payload)
         # TODO: strip special tokens?
         return resp
@@ -71,14 +77,21 @@ class Llama70B(chains.StubBase):
 
 class VectorStore(chains.ChainletBase):
 
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_VECTORSTORE)
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage(
+            pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+            pip_requirements=["chromadb"],
+            data_dir=chains.make_abs_path_here("vector_data/"),
+        )
+    )
 
     def __init__(self, context: chains.DeploymentContext = chains.provide_context()):
         super().__init__(context)
+        import chromadb
+
         path = os.path.join(context.data_dir, "chroma")
-        print(path)
-        settings = chromadb.Settings()
-        self._chroma_client = chromadb.PersistentClient(path=path)
+        settings = chromadb.Settings(is_persistent=True, anonymized_telemetry=False)
+        self._chroma_client = chromadb.PersistentClient(path=path, settings=settings)
         self._chroma_collection = self._chroma_client.get_collection("test_collection")
 
     async def run(self, query: str, params: QueryParams) -> list[str]:
@@ -101,7 +114,8 @@ class RAG(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
-            pip_requirements_file=chains.make_abs_path_here("requirements.txt")
+            pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+            pip_requirements=["anthropic"],
         )
     )
 
@@ -115,7 +129,7 @@ class RAG(chains.ChainletBase):
         # self._llm = Llama70B.from_url(Llama70B_URL, context)
         self._llm = ClaudeClient(context.secrets["anthropic_api_key"])
 
-    async def run(self, query: str, params: QueryParams) -> list[str]:
+    async def run(self, query: str, params: QueryParams) -> str:
         # TODO: ask LLM what is needed to answer query.
 
         # refining_query = (
