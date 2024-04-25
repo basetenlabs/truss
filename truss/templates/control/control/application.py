@@ -10,7 +10,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from helpers.errors import ModelLoadFailed, PatchApplicatonError
 from helpers.inference_server_controller import InferenceServerController
-from helpers.inference_server_process_controller import InferenceServerProcessController
+from helpers.inference_server_process_controller import (
+    InferenceServerProcessController,
+    JupyterServerProcessController,
+)
 from helpers.inference_server_starter import async_inference_server_startup_flow
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
 from shared.logging import setup_logging
@@ -60,6 +63,8 @@ def create_app(base_config: Dict):
         app_state.inference_server_port,
         app_logger=app_logger,
     )
+
+    app_state.jupyter_server_process_controller = JupyterServerProcessController()
 
     limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
     app_state.proxy_client = httpx.AsyncClient(

@@ -10,6 +10,23 @@ INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser
 TERMINATION_TIMEOUT_SECS = 120.0
 TERMINATION_CHECK_INTERVAL_SECS = 0.5
 
+JUPYTER_PORT = "8888"
+
+
+class JupyterServerProcessController:
+    def __init__(self):
+        # Start the jupyter server
+        subprocess.Popen(
+            [
+                "/control/.env/bin/jupyter",
+                "notebook",
+                "--port",
+                JUPYTER_PORT,
+                "--no-browser",
+                "--allow-root",
+            ]
+        )
+
 
 class InferenceServerProcessController:
     _inference_server_process: Optional[subprocess.Popen] = None

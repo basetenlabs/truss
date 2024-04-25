@@ -49,6 +49,7 @@ RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /ro
 {{ super() }}
 {% endblock %}
 
+ENV PATH="${PATH}:/path/to/python/bin"
 
 {% block app_copy %}
 {%- if model_cache %}
@@ -79,11 +80,18 @@ RUN python3 -m venv /control/.env \
 
 {% block run %}
     {%- if config.live_reload %}
+
+RUN apt-get install nginx  -y
+RUN mkdir -p /etc/nginx
+RUN cp /app/nginx.conf /etc/nginx/nginx.conf
+
 ENV HASH_TRUSS {{truss_hash}}
-ENV CONTROL_SERVER_PORT 8080
+ENV CONTROL_SERVER_PORT 8070
 ENV INFERENCE_SERVER_PORT 8090
-ENV SERVER_START_CMD="/control/.env/bin/python3 /control/control/server.py"
-ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
+ENV SERVER_START_CMD="/app/run.sh"
+
+ENTRYPOINT ["/app/run.sh"]
+
     {%- else %}
 ENV INFERENCE_SERVER_PORT 8080
 ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/inference_server.py"}}"

@@ -4,7 +4,7 @@ import os
 import uvicorn
 from application import create_app
 
-CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8080"))
+CONTROL_SERVER_PORT = int(os.environ.get("CONTROL_SERVER_PORT", "8070"))
 INFERENCE_SERVER_PORT = int(os.environ.get("INFERENCE_SERVER_PORT", "8090"))
 
 
