@@ -92,7 +92,7 @@ class VectorStore(chains.ChainletBase):
         path = os.path.join(context.data_dir, "chroma")
         settings = chromadb.Settings(is_persistent=True, anonymized_telemetry=False)
         self._chroma_client = chromadb.PersistentClient(path=path, settings=settings)
-        self._chroma_collection = self._chroma_client.get_collection("test_collection")
+        self._chroma_collection = self._chroma_client.get_collection("external_docs")
 
     async def run(self, query: str, params: QueryParams) -> list[str]:
         query_result = self._chroma_collection.query(
@@ -116,7 +116,8 @@ class RAG(chains.ChainletBase):
         docker_image=chains.DockerImage(
             pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
             pip_requirements=["anthropic"],
-        )
+        ),
+        assets=chains.Assets(secret_keys=["anthropic_api_key"]),
     )
 
     def __init__(

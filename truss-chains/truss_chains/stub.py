@@ -103,6 +103,23 @@ class StubBase(abc.ABC):
             api_key=context.get_baseten_api_key(),
         )
 
+    @classmethod
+    def from_url_and_key(
+        cls,
+        predict_url: str,
+        api_key: str,
+        options: Optional[definitions.RPCOptions] = None,
+        name: Optional[str] = None,
+    ):
+        name = name or cls.__name__
+        options = options or definitions.RPCOptions()
+        return cls(
+            definitions.ServiceDescriptor(
+                name=name, predict_url=predict_url, options=options
+            ),
+            api_key=api_key,
+        )
+
 
 StubT = TypeVar("StubT", bound=StubBase)
 
