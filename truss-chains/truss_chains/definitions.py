@@ -1,8 +1,8 @@
 # TODO: this file contains too much implementation -> restructure.
-
 import abc
 import logging
 import os
+import pathlib
 import traceback
 from types import GenericAlias
 from typing import (
@@ -15,11 +15,14 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    cast,
 )
 
 import pydantic
 from pydantic import generics
 from truss import truss_config
+from truss.remote import baseten as baseten_remote
+from truss.remote import remote_cli, remote_factory
 
 UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
 
@@ -27,20 +30,19 @@ BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 
-ENDPOINT_METHOD_NAME = "run"  # Referring to Chainlet method name exposed as endpoint.
+GENERATED_CODE_DIR = ".chains_generated"
+PREDICT_ENDPOINT_NAME = "/predict"
+
 # Below arg names must correspond to `definitions.ABCChainlet`.
+ENDPOINT_METHOD_NAME = "run"  # Referring to Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
 
-GENERATED_CODE_DIR = ".chains_generated"
-PREDICT_ENDPOINT_NAME = "/predict"
-chainlet_MODULE = "Chainlet"
-STUB_TYPE_MODULE = "stub_types"
-STUB_CLS_SUFFIX = "Stub"
-
 
 class SafeModel(pydantic.BaseModel):
+    """Pydantic base model with reasonable config."""
+
     class Config:
         arbitrary_types_allowed = False
         validate_all = True
@@ -49,6 +51,8 @@ class SafeModel(pydantic.BaseModel):
 
 
 class SafeModelNonSerializable(pydantic.BaseModel):
+    """Pydantic base model with reasonable config - allowing arbitrary types."""
+
     class Config:
         arbitrary_types_allowed = True
         validate_all = True
@@ -80,8 +84,8 @@ class AbsPath:
         self._creating_module = creating_module
         self._original_path = original_path
 
-    def raise_if_not_exists(self) -> None:
-        if not os.path.isfile(self._abs_file_path):
+    def _raise_if_not_exists(self, abs_path: str) -> None:
+        if not os.path.isfile(abs_path):
             raise MissingDependencyError(
                 f"With the file path `{self._original_path}` an absolute path relative "
                 f"to the calling module `{self._creating_module}` was created, "
@@ -95,7 +99,9 @@ class AbsPath:
                 f"Using abs path `{self._abs_file_path}` for path specified as "
                 f"`{self._original_path}` (in `{self._creating_module}`)."
             )
-        return self._abs_file_path
+        abs_path = self._abs_file_path
+        self._raise_if_not_exists(abs_path)
+        return abs_path
 
 
 class DockerImage(SafeModelNonSerializable):
@@ -104,6 +110,7 @@ class DockerImage(SafeModelNonSerializable):
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
+    data_dir: Optional[AbsPath] = None
 
 
 class ComputeSpec(pydantic.BaseModel):
@@ -203,6 +210,7 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
         validate_assignment = True
         extra = pydantic.Extra.forbid
 
+    data_dir: pathlib.Path
     user_config: UserConfigT = pydantic.Field(default=None)
     chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
@@ -266,26 +274,9 @@ class ABCChainlet(Generic[UserConfigT], abc.ABC):
 
 
 class TypeDescriptor(SafeModelNonSerializable):
-    """For describing I/O types of Chainlets.
-
-    Example:
-        repr(raw): <class 'user_package.shared_chainlet.SplitTextInput'>"
-        as_src_str(): 'SplitTextInput'
-
-    -> Source string, without further qualification, does not include any module path.
-    """
+    """For describing I/O types of Chainlets."""
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
-
-    def as_src_str(self, qualify_pydantic_types: Optional[str] = None) -> str:
-        # TODO: pydantic types will soon be handled differently.
-        if self.is_pydantic and qualify_pydantic_types:
-            return f"{qualify_pydantic_types}.{self.raw.__name__}"
-
-        if isinstance(self.raw, type):
-            return self.raw.__name__
-        else:
-            return str(self.raw)
 
     @property
     def is_pydantic(self) -> bool:
@@ -378,3 +369,50 @@ class RemoteErrorDetail(SafeModel):
 
 class GenericRemoteException(Exception):
     ...
+
+
+########################################################################################
+
+
+class DeploymentOptions(SafeModelNonSerializable):
+    chain_name: str
+    only_generate_trusses: bool = False
+
+
+class DeploymentOptionsBaseten(DeploymentOptions):
+    remote_provider: baseten_remote.BasetenRemote
+    publish: bool
+    promote: bool
+
+    @classmethod
+    def create(
+        cls,
+        chain_name: str,
+        publish: bool,
+        promote: bool,
+        only_generate_trusses: bool,
+        remote: Optional[str] = None,
+    ) -> "DeploymentOptionsBaseten":
+        if not remote:
+            remote = remote_cli.inquire_remote_name(
+                remote_factory.RemoteFactory.get_available_config_names()
+            )
+        remote_provider = cast(
+            baseten_remote.BasetenRemote,
+            remote_factory.RemoteFactory.create(remote=remote),
+        )
+        return DeploymentOptionsBaseten(
+            remote_provider=remote_provider,
+            chain_name=chain_name,
+            publish=publish,
+            promote=promote,
+            only_generate_trusses=only_generate_trusses,
+        )
+
+
+class DeploymentOptionsLocalDocker(DeploymentOptions):
+    # Local docker-to-docker requests don't need auth, but we need to set a
+    # value different from `SECRET_DUMMY` to not trigger the check that the secret
+    # is unset. Additionally, if local docker containers make calls to models deployed
+    # on baseten, a real API key must be provided (i.e. the default must be overridden).
+    baseten_chain_api_key: str = "docker_dummy_key"

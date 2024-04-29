@@ -284,10 +284,6 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
     return response.json()
 
 
-def make_stub_name(chainlet_name: str) -> str:
-    return f"{chainlet_name}{definitions.STUB_CLS_SUFFIX}"
-
-
 class InjectedError(Exception):
     """Test error for debugging/dev."""
 

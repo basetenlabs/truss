@@ -15,7 +15,9 @@ def test_chain():
         root = Path(__file__).parent.resolve()
         chain_root = root / "itest_chain" / "itest_chain.py"
         entrypoint = framework.import_target(chain_root, "ItestChain")
-        options = deploy.DeploymentOptionsLocalDocker(chain_name="integration-test")
+        options = definitions.DeploymentOptionsLocalDocker(
+            chain_name="integration-test"
+        )
         service = deploy.deploy_remotely(entrypoint, options)
 
         url = service.run_url.replace("host.docker.internal", "localhost")

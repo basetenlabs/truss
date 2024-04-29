@@ -50,7 +50,7 @@ def deploy_remotely(
     promote: bool = True,
     only_generate_trusses: bool = False,
 ) -> deploy.ChainService:
-    options = deploy.DeploymentOptionsBaseten.create(
+    options = definitions.DeploymentOptionsBaseten.create(
         chain_name=chain_name,
         publish=publish,
         promote=promote,

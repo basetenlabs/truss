@@ -174,7 +174,7 @@ if __name__ == "__main__":
 
     import asyncio
 
-    class FakeMistralLLM(chains.ChainletBase):
+    class FakeMistralLLM:
         def run(self, data: str) -> str:
             return data.upper()
 
