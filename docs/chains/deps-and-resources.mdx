@@ -22,7 +22,169 @@ Architecture:
 
 <img src="/images/mistral-diagram.png" />
 
-# The Code
+
+# Changing Compute Resources
+
+The main difference between this chain and the previous one is that for this chain, we'll
+need a GPU to run the LLM model. In this example, we'll use Mistral for our LLM.
+
+Before we introduce the Mistral code, let's first define the resources required for this chain.
+
+```python
+
+import truss_chains as chains
+import pydantic
+from truss import truss_config
 
 
-See
+class MistraLLMConfig(pydantic.BaseModel):
+    hf_model_name: str
+
+class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
+    # The RemoteConfig object defines the resources required for this chainlet
+    remote_config = chains.RemoteConfig(
+        # The DockerImage object defines properties of the docker image.
+        # Here, we can define the pip and system dependencies required for the chainlet.
+        docker_image=chains.DockerImage(
+            pip_requirements=[
+                "git+https://github.com/basetenlabs/truss.git@9be68f563d735289128cd3c8853bdf62ec03cef3"
+                "transformers==4.38.1",
+                "torch==2.0.1",
+                "sentencepiece",
+                "accelerate",
+            ],
+        ),
+        # The Compute object defines the compute resources required for the chainlet.
+        # Here, we specify that we require an A10G GPU
+        compute=chains.Compute(cpu_count=2, gpu="A10G"),
+    )
+
+    def __init__(
+        self,
+        context: chains.DeploymentContext = chains.provide_context(),
+    ) -> None:
+        super().__init__(context)
+        ...
+
+
+    def run(self, data: str) -> str:
+        ...
+
+```
+
+# The Mistral Code
+
+Once we've defined the needed resources, we can now add the Mistral code to the chainlet.
+
+```python
+import truss_chains as chains
+from truss import truss_config
+import pydantic
+
+MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
+
+class MistraLLMConfig(pydantic.BaseModel):
+    hf_model_name: str
+
+class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage(
+            pip_requirements=[
+                "git+https://github.com/basetenlabs/truss.git@9be68f563d735289128cd3c8853bdf62ec03cef3",
+                "transformers==4.38.1",
+                "torch==2.0.1",
+                "sentencepiece",
+                "accelerate",
+            ],
+        ),
+        compute=chains.Compute(cpu_count=2, gpu="A10G"),
+        # This is one of the main things that we've added. This shows off using
+        # the Model Cache feature of Truss to cache the weights of the model at
+        # build time.
+        assets=chains.Assets(cached=[
+            truss_config.ModelRepo(
+                repo_id=MISTRAL_HF_MODEL, allow_patterns=["*.json", "*.safetensors", ".model"]
+            )
+        ]),
+    )
+    default_user_config = MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL)
+
+    def __init__(
+        self,
+        context: chains.DeploymentContext[MistraLLMConfig] = chains.provide_context(),
+    ) -> None:
+        super().__init__(context)
+        # Note that the code in the __init__ and run methods are 
+        import torch
+        import transformers
+
+        model_name = self.user_config.hf_model_name
+
+        self._model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_name,
+            device_map="auto",
+            torch_dtype=torch.float16,
+        )
+
+        self._generate_args = {
+            "max_new_tokens": 512,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "top_k": 50,
+            "repetition_penalty": 1.0,
+            "no_repeat_ngram_size": 0,
+            "use_cache": True,
+            "do_sample": True,
+            "eos_token_id": self._tokenizer.eos_token_id,
+            "pad_token_id": self._tokenizer.pad_token_id,
+        }
+
+    def run(self, prompt: str) -> str:
+        import torch
+
+        formatted_prompt = f"[INST] {data} [/INST]"
+        input_ids = self._tokenizer(
+            formatted_prompt, return_tensors="pt"
+        ).input_ids.cuda()
+        with torch.no_grad():
+            output = self._model.generate(inputs=input_ids, **self._generate_args)
+            result = self._tokenizer.decode(output[0])
+        return result
+```
+
+# Chaining it all together
+
+Once we have our LLM that can produce results, we can chain it with our Chainlet that generates poems.
+
+```python
+import truss_chains as chains
+
+class PoemGenerator(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage(
+            pip_requirements=["git+https://github.com/basetenlabs/truss.git@9be68f563d735289128cd3c8853bdf62ec03cef3"]
+        )
+    )
+
+    def __init__(
+        self,
+        context: chains.DeploymentContext = chains.provide_context(),
+        mistral_llm: MistralLLM = chains.provide(MistralLLM),
+    ) -> None:
+        super().__init__(context)
+        self._mistral_llm = mistral_llm
+    
+    def run(self, words: list[str]) -> list[str]:
+        results = []
+        for word in words:
+            poem = self._mistral_llm.run(word)
+            results.append(poem)
+        return results
+```
+
+See [full reference](/chains/full-reference) for more details on the full Chains API.

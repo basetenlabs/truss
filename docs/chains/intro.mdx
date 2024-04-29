@@ -37,6 +37,42 @@ Here's an example of a chain that takes a large audio file, splits it into small
 
 <img src="/images/audio-transcription-chain.png" />
 
+## Remote vs. Local
+
+Keep in my mind that Truss Chains is designed to run in a distributed environment, with each chainlet running
+with its own set of resources and autoscaling settings. To enable a smooth development experience, Truss Chains
+also supports a *local development mode* where you can run your chainlets on your local machine.
+
+To ensure that both of these modes, **you must reference other chainlets in a very particular way, using the
+Truss Chains Depedency Injection framework**. We will dig into the exact syntax later in the [Chaining Chainlets](/chains/chaining-chainlets) guide,
+but to give a little preview:
+
+
+```python
+import truss_chains as chains
+
+
+class OtherChain(chains.ChainletBase):
+    ...
+
+class MyChain(chains.ChainletBase):
+    def __init__(
+        self, 
+        context: chains.DeploymentContext = chains.provide_context(),
+        # Note that chains.provide(...) syntax is used to reference other chainlets.
+        # in this __init__ method.
+        other_chain: OtherChain = chains.provide(OtherChain)
+    ):
+        super().__init__()
+        self._other_chain = other_chain
+
+    def run(self, input: str) -> str:
+        ...
+        other_chain_result = self._other_chain.run(...)
+        ...
+
+```
+
 # Hello World
 
 Chains are powerful and have more advanced features explained in following sections. For starters, here is
@@ -56,3 +92,8 @@ class HelloWorld(chains.ChainletBase):
 ```
 
 See [Getting Started](/chains/getting-started) for how to run this!
+
+
+
+
+

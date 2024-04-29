@@ -21,7 +21,7 @@ This guide shows you how to install Truss chains, create your first chain and ru
 Truss chains is available in the a rc version of Truss.
 
 ```bash
-$ pip install truss==0.9.10rc2 --upgrade
+$ pip install truss==0.9.10rc3
 ```
 
 ## Baseten Setup
@@ -35,8 +35,6 @@ $ pip install truss==0.9.10rc2 --upgrade
 
 1. Create a chain project directory with a python file in it. You can chose a name and location, in this example we
 assume the file is named `hello.py`.
-1. Add file requirements file to the directory `echo "git+https://github.com/basetenlabs/truss.git" > requirements.txt`
-, you can a more requirements later.
 1. Add the following code to the file:
 
 ```python
@@ -44,8 +42,8 @@ import truss_chains as chains
 
 class HelloWorld(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
-        docker_image=chains.DockerImage().pip_requirements_file(
-            chains.make_abs_path_here("requirements.txt")
+        docker_image=chains.DockerImage(
+            pip_requirements=["git+https://github.com/basetenlabs/truss.git@9be68f563d735289128cd3c8853bdf62ec03cef3"]
         )
     )
 
