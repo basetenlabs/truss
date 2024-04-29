@@ -204,6 +204,21 @@ class TrussRemote(ABC):
         pass
 
     @abstractmethod
+    def plan(self, truss_handle: TrussHandle, **kwargs) -> Any:
+        """
+        Computes a plan showing what would happen if the specified TrussHandle is pushed
+        to the remote service
+
+        This method should be implemented in subclasses and return a list of changes
+
+        Args:
+            truss_handle: The TrussHandle to push to the remote service.
+            **kwargs: Additional keyword arguments for the plan operation.
+
+        """
+        pass
+
+    @abstractmethod
     def get_service(self, **kwargs) -> TrussService:
         """
         Get a TrussService object for interacting with the remote service.

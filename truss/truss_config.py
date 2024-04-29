@@ -227,6 +227,41 @@ class Resources:
 
 
 @dataclass
+class Autsocaling:
+    # TODO constants for default values
+    min_replica: int = 0
+    max_replica: int = 1
+    concurrency_target: int = 1
+    autoscaling_window_seconds: int = 60
+    scale_down_delay_seconds: int = 900
+
+    @staticmethod
+    def from_dict(d):
+        min_replica = d.get("min_replica", 0)
+        max_replica = d.get("max_replica", 1)
+        concurrency_target = d.get("concurrency_target", 1)
+        autoscaling_window_seconds = d.get("autoscaling_window_seconds", 60)
+        scale_down_delay_seconds = d.get("scale_down_delay_seconds", 900)
+
+        return Autsocaling(
+            min_replica=min_replica,
+            max_replica=max_replica,
+            concurrency_target=concurrency_target,
+            autoscaling_window_seconds=autoscaling_window_seconds,
+            scale_down_delay_seconds=scale_down_delay_seconds,
+        )
+
+    def to_dict(self):
+        return {
+            "min_replica": self.min_replica,
+            "max_replica": self.max_replica,
+            "concurrency_target": self.concurrency_target,
+            "autoscaling_window_seconds": self.autoscaling_window_seconds,
+            "scale_down_delay_seconds": self.scale_down_delay_seconds,
+        }
+
+
+@dataclass
 class ExternalDataItem:
     """A piece of remote data, to be made available to the Truss at serving time.
 
@@ -363,9 +398,9 @@ class BaseImage:
         return BaseImage(
             image=image,
             python_executable_path=python_executable_path,
-            docker_auth=DockerAuthSettings.from_dict(docker_auth)
-            if docker_auth
-            else None,
+            docker_auth=(
+                DockerAuthSettings.from_dict(docker_auth) if docker_auth else None
+            ),
         )
 
     def to_dict(self):
@@ -380,6 +415,7 @@ class BaseImage:
 
 @dataclass
 class TrussConfig:
+    # TODO add Autoscaling to the docstring
     """
     `config.yaml` controls Truss config
     Args:
@@ -481,6 +517,7 @@ class TrussConfig:
     system_packages: List[str] = field(default_factory=list)
     environment_variables: Dict[str, str] = field(default_factory=dict)
     resources: Resources = field(default_factory=Resources)
+    autoscaling: Autsocaling = field(default_factory=Autsocaling)
     runtime: Runtime = field(default_factory=Runtime)
     build: Build = field(default_factory=Build)
     python_version: str = DEFAULT_PYTHON_VERSION
@@ -526,6 +563,7 @@ class TrussConfig:
             system_packages=d.get("system_packages", []),
             environment_variables=d.get("environment_variables", {}),
             resources=Resources.from_dict(d.get("resources", {})),
+            autoscaling=Autsocaling.from_dict(d.get("autoscaling", {})),
             runtime=Runtime.from_dict(d.get("runtime", {})),
             build=Build.from_dict(d.get("build", {})),
             python_version=d.get("python_version", DEFAULT_PYTHON_VERSION),
@@ -629,6 +667,10 @@ def obj_to_dict(obj, verbose: bool = False):
                 d[field_name] = obj_to_dict(field_curr_value, verbose=verbose)
             elif isinstance(field_curr_value, AcceleratorSpec):
                 d[field_name] = field_curr_value.to_str()
+            elif isinstance(field_curr_value, Autsocaling):
+                d["autoscaling"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
             elif isinstance(field_curr_value, Enum):
                 d[field_name] = field_curr_value.value
             elif isinstance(field_curr_value, ExternalData):

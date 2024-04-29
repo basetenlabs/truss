@@ -28,7 +28,7 @@ from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
-from truss.truss_config import ModelServer
+from truss.truss_config import Autsocaling, ModelServer
 from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
@@ -39,6 +39,225 @@ class BasetenRemote(TrussRemote):
         super().__init__(remote_url, **kwargs)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
+
+    def plan(  # type: ignore
+        self,
+        truss_handle: TrussHandle,
+        model_name: str,
+        publish: bool = True,
+        trusted: bool = False,
+        promote: bool = False,
+        preserve_previous_prod_deployment: bool = False,
+        deployment_name: Optional[str] = None,
+    ) -> List:
+        # check if model exists, if not, return model and deployment change
+        is_draft = not publish and not promote
+        autoscaling_setting_from_config = truss_handle.spec.config.autoscaling
+        resources_from_config = truss_handle.spec.config.resources
+        changes = []
+        model_id = exists_model(self._api, model_name)
+        if not model_id:
+            deployment_name = deployment_name if deployment_name else ""
+            deployment_name = "Development" if is_draft else deployment_name
+            changes.append(
+                {
+                    "operation": "ADD",
+                    "resource": "Model",
+                    "name": model_name,
+                    "messages": ["model id will be known after push"],
+                }
+            )
+            autoscaling_dict = autoscaling_setting_from_config.to_dict()
+            if is_draft:
+                autoscaling_dict["min_replica"] = 0
+                autoscaling_dict["max_replica"] = 1
+
+            messages = []
+            messages.append("deployment id will be known after push")
+            if not deployment_name:
+                messages.append(
+                    "Deployment name will be generated automatically after push"
+                )
+            messages.append(f"    Resources: {resources_from_config.to_dict()}")
+            messages.append(f"    Autoscaling settings: {autoscaling_dict}")
+            changes.append(
+                {
+                    "operation": "ADD",
+                    "resource": "Deployment",
+                    "name": deployment_name,
+                    "messages": messages,
+                }
+            )
+        else:
+            # if model exists
+            model_versions = get_model_versions(self._api, ModelName(model_name))[1]
+            if is_draft:
+                draft_version = get_dev_version_from_versions(model_versions)
+                if draft_version:
+                    # draft model
+                    autoscaling_dict = autoscaling_setting_from_config.to_dict()
+                    if is_draft:
+                        autoscaling_dict["min_replica"] = 0
+                        autoscaling_dict["max_replica"] = 1
+
+                    messages = []
+                    messages.append(
+                        "Development deployment will be recreated. The image will be rebuilt, "
+                        "but deployemnt_id will stay the same"
+                    )
+                    messages.append(
+                        "The deployment will be unreachable while the update is being applied"
+                    )
+                    messages.append(f"    Resources: {resources_from_config.to_dict()}")
+                    messages.append(f"    Autoscaling settings: {autoscaling_dict}")
+                    changes.append(
+                        {
+                            "operation": "RECREATE",
+                            "resource": "Deployment",
+                            "name": "Development",
+                            "messages": messages,
+                        }
+                    )
+
+                    diff = self._compute_autoscaling_diff(
+                        autoscaling_setting_from_config, draft_version, True
+                    )
+                    if diff:
+                        changes.append(
+                            {
+                                "operation": "UPDATE",
+                                "resource": "Autoscaling setting",
+                                "name": "Development",
+                                "messages": diff,
+                            }
+                        )
+
+                else:
+                    changes.append(
+                        {
+                            "operation": "ADD",
+                            "resource": "Deployment",
+                            "name": "Development",
+                            "messages": ["deployment id will be known after push"],
+                        }
+                    )
+            else:
+                # published model
+                prod_version = get_prod_version_from_versions(model_versions)
+                if promote and prod_version:
+                    # new prod version, update in place
+                    changes.append(
+                        {
+                            "operation": "UPDATE",
+                            "resource": "Deployment",
+                            "name": "Production",
+                            "messages": [
+                                "Production deployment will be updated in place. A new deployment will be built",
+                                "The new deployment will be promoted with no downtime after successfully deploying",
+                            ],
+                        }
+                    )
+                    diff = self._compute_autoscaling_diff(
+                        autoscaling_setting_from_config, prod_version
+                    )
+                    if diff:
+                        changes.append(
+                            {
+                                "operation": "UPDATE",
+                                "resource": "Autoscaling setting",
+                                "name": "Production",
+                                "messages": diff,
+                            }
+                        )
+                    if not preserve_previous_prod_deployment:
+                        messages = []
+                        messages.append(
+                            f"Deployment {prod_version.get('name')} will no longer be the production deployment "
+                            "after promotion"
+                        )
+                        current_deployment: Optional[dict] = prod_version.get(
+                            "current_deployment"
+                        )
+                        messages.append(
+                            f"min_replica ~ current: {current_deployment['min_replica']}, new: 0"  # type: ignore
+                        )
+                        changes.append(
+                            {
+                                "operation": "UPDATE",
+                                "resource": "Autoscaling setting",
+                                "name": prod_version.get("name"),  # type: ignore
+                                "messages": messages,
+                            }
+                        )
+                elif publish and not promote and prod_version:
+                    autoscaling_dict = autoscaling_setting_from_config.to_dict()
+                    messages = []
+                    messages.append("deployment id will be known after push")
+                    if not deployment_name:
+                        messages.append(
+                            "Deployment name will be generated automatically after push"
+                        )
+                    messages.append(f"    Resources: {resources_from_config.to_dict()}")
+                    messages.append(f"    Autoscaling settings: {autoscaling_dict}")
+                    changes.append(
+                        {
+                            "operation": "ADD",
+                            "resource": "Deployment",
+                            "name": deployment_name,  # type: ignore
+                            "messages": messages,
+                        }
+                    )
+                else:
+                    autoscaling_dict = autoscaling_setting_from_config.to_dict()
+                    messages = []
+                    if not deployment_name:
+                        messages.append(
+                            "The deployment will be promoted to production after successfully. A deployment name "
+                            "will be generated automatically after push."
+                        )
+                    else:
+                        messages.append(
+                            f"{deployment_name} will be promoted to production after successfully"
+                        )
+                    messages.append(f"    Resources: {resources_from_config.to_dict()}")
+                    messages.append(f"    Autoscaling settings: {autoscaling_dict}")
+                    changes.append(
+                        {
+                            "operation": "ADD",
+                            "resource": "Deployment",
+                            "name": "Production",
+                            "messages": messages,
+                        }
+                    )
+
+        return changes
+
+    def _compute_autoscaling_diff(
+        self, autoscaling_setting_from_config, version, ignore_replicas=False
+    ):
+        deployed_autoscaling_conf = Autsocaling(
+            min_replica=version.get("current_deployment")["min_replica"],
+            max_replica=version.get("current_deployment")["max_replica"],
+            concurrency_target=version.get("current_deployment")["parallelism"],
+            autoscaling_window_seconds=version.get("current_deployment")[
+                "scaling_window_seconds"
+            ],
+            scale_down_delay_seconds=version.get("current_deployment")[
+                "idle_time_seconds"
+            ],
+        )
+        diff = []
+        for item in deployed_autoscaling_conf.to_dict().items():
+            if ignore_replicas and (
+                item[0] == "min_replica" or item[0] == "max_replica"
+            ):
+                continue
+            if autoscaling_setting_from_config.to_dict()[item[0]] != item[1]:
+                diff.append(
+                    f"{item[0]} ~ current: {item[1]}, new: {autoscaling_setting_from_config.to_dict()[item[0]]}",
+                )
+
+        return diff
 
     def push(  # type: ignore
         self,

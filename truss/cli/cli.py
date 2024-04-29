@@ -734,6 +734,134 @@ def push(
 
 
 @truss_cli.command()
+@click.argument("target_directory", required=False, default=os.getcwd())
+@click.option("--model-name", type=str, required=False, help="Name of the model")
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
+@click.option(
+    "--publish",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a published deployment. If no production "
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
+    ),
+)
+@click.option(
+    "--promote",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Push the truss as a published deployment. Even if a production "
+        "deployment exists, promote the truss to production "
+        "after deploy completes."
+    ),
+)
+@click.option(
+    "--preserve-previous-production-deployment",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help=(
+        "Preserve the previous production deployment's autoscaling setting. When "
+        "not specified, the previous production deployment will be updated to allow "
+        "it to scale to zero. Can only be use in combination with --promote option."
+    ),
+)
+@click.option(
+    "--deployment-name",
+    type=str,
+    required=False,
+    help=(
+        "Name of the deployment created by the push. Can only be "
+        "used in combination with `--publish` or `--promote`."
+    ),
+)
+# @error_handling
+def plan(
+    target_directory: str,
+    remote: str,
+    model_name: str,
+    publish: bool = False,
+    promote: bool = False,
+    preserve_previous_production_deployment: bool = False,
+    deployment_name: Optional[str] = None,
+) -> None:
+    """
+    Produce a plan showing what would happen if `truss push` was ran.
+
+    TARGET_DIRECTORY: A Truss directory. If none, use current directory.
+
+    """
+    from rich.text import Text
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider = RemoteFactory.create(remote=remote)
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+
+    model_name = model_name or tr.spec.config.model_name
+    if not model_name:
+        model_name = inquire_model_name()
+
+    initial_prompt = Text("Generating plan for model ")
+    initial_prompt.append(model_name, style="bold magenta")
+    initial_prompt.append("\n")
+    console.print(initial_prompt)
+
+    # TODO(Abu): This needs to be refactored to be more generic
+    changes = remote_provider.plan(
+        tr,
+        model_name=model_name,
+        publish=publish,
+        promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_production_deployment,
+        deployment_name=deployment_name,
+    )  # type: ignore
+
+    for change in changes:
+        if change["operation"] == "ADD":
+            console.print(
+                f'+ {change["resource"]} "{change["name"] or "unamed"}" will be created',
+                style="green",
+            )
+        if change["operation"] == "RECREATE":
+            console.print(
+                f'+/- {change["resource"]} "{change["name"] or "unamed"}" will be recreated',
+                style="orange3",
+            )
+        if change["operation"] == "UPDATE":
+            console.print(
+                f'~ {change["resource"]} "{change["name"] or "unamed"}" will be updated in place',
+                style="yellow",
+            )
+        for message in change["messages"]:
+            console.print(f"    {message}")
+
+    push_args = ""
+    for arg in sys.argv[2:]:
+        push_args = push_args + " " + arg
+
+    final_text = Text()
+    final_text.append("\nRun ")
+    final_text.append(f"truss push{push_args} ", style="magenta")
+    final_text.append("when ready to push the changes")
+    console.print(final_text)
+
+
+@truss_cli.command()
 def configure():
     # Read the original file content
     with open(USER_TRUSSRC_PATH, "r") as f:

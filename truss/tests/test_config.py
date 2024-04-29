@@ -9,6 +9,7 @@ from truss.truss_config import (
     DEFAULT_USE_GPU,
     Accelerator,
     AcceleratorSpec,
+    Autsocaling,
     BaseImage,
     DockerAuthSettings,
     DockerAuthType,
@@ -78,6 +79,28 @@ from truss.types import ModelFrameworkType
 def test_parse_resources(input_dict, expect_resources, output_dict):
     parsed_result = Resources.from_dict(input_dict)
     assert parsed_result == expect_resources
+    assert parsed_result.to_dict() == output_dict
+
+
+@pytest.mark.parametrize(
+    "input_dict, expect_autoscaling, output_dict",
+    [
+        (
+            {},
+            Autsocaling(),
+            {
+                "min_replica": 0,
+                "max_replica": 1,
+                "concurrency_target": 1,
+                "autoscaling_window_seconds": 60,
+                "scale_down_delay_seconds": 900,
+            },
+        ),
+    ],
+)
+def test_parse_autoscaling(input_dict, expect_autoscaling, output_dict):
+    parsed_result = Autsocaling.from_dict(input_dict)
+    assert parsed_result == expect_autoscaling
     assert parsed_result.to_dict() == output_dict
 
 

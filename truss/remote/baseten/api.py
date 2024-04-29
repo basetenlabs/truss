@@ -209,6 +209,14 @@ class BasetenApi:
                     semver
                     truss_hash
                     truss_signature
+                    current_deployment {{
+                        min_replica
+                        max_replica
+                        parallelism
+                        scaling_window_seconds
+                        idle_time_seconds
+                    }}
+                    name
                     is_draft
                     is_primary
                     current_model_deployment_status {{
@@ -232,6 +240,14 @@ class BasetenApi:
                     semver
                     truss_hash
                     truss_signature
+                    current_deployment {{
+                        min_replica
+                        max_replica
+                        parallelism
+                        scaling_window_seconds
+                        idle_time_seconds
+                    }}
+                    name
                     is_draft
                     current_model_deployment_status {{
                         status
