@@ -116,7 +116,7 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
         context: chains.DeploymentContext[MistraLLMConfig] = chains.provide_context(),
     ) -> None:
         super().__init__(context)
-        # Note that the code in the __init__ and run methods are 
+        # Note that the code in the __init__ and run methods are
         import torch
         import transformers
 
@@ -180,11 +180,11 @@ class PoemGenerator(chains.ChainletBase):
     ) -> None:
         super().__init__(context)
         self._mistral_llm = mistral_llm
-    
+
     def run(self, words: list[str]) -> list[str]:
         results = []
         for word in words:
-            poem = self._mistral_llm.run(word)
+            poem = self._mistral_llm.run(f"Generate a poem about: {word}")
             results.append(poem)
         return results
 ```
