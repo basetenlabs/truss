@@ -27,6 +27,9 @@ Give Truss access to secrets on remote host.
 <ParamField body="--deployment-name" type="TEXT">
 Name of the deployment created by the push. Can only be used in combination with `--publish` or `--promote`. Deployment name must only contain alphanumeric, '.', '-' or '_' characters.
 </ParamField>
+<ParamField body="--wait" type="BOOL">
+Whether to wait for deployment to complete before returning. If the deploy or build fails, will return with a non-zero exit code.
+</ParamField>
 <ParamField body="--help">
 Show help message and exit.
 </ParamField>
@@ -54,4 +57,8 @@ truss push --remote baseten --publish --trusted
 
 ```
 truss push --remote baseten --publish --deployment-name my-truss_1.0
+```
+
+```
+truss push --promote --wait
 ```
