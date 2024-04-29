@@ -21,7 +21,7 @@ class SplitTextOutput(pydantic.BaseModel):
     part_lens: list[int]
 
 
-class SplitText(chains.ChainletBase):
+class SplitTextFailOnce(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
@@ -30,10 +30,18 @@ class SplitText(chains.ChainletBase):
         )
     )
 
+    def __init__(self, context: chains.DeploymentContext = chains.provide_context()):
+        super().__init__(context)
+        self._count = 0
+
     async def run(
         self, inputs: SplitTextInput, extra_arg: int
     ) -> Tuple[SplitTextOutput, int]:
         import numpy as np
+
+        self._count += 1
+        if self._count == 1:
+            raise ValueError("Haha this is a fake error.")
 
         if inputs.mode == Modes.MODE_0:
             print(f"Using mode: `{inputs.mode}`")

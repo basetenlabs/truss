@@ -17,6 +17,7 @@ from truss_chains.definitions import (
     DeploymentContext,
     DockerImage,
     RemoteConfig,
+    RPCOptions,
     UsageError,
 )
 from truss_chains.public_api import (
@@ -26,4 +27,5 @@ from truss_chains.public_api import (
     provide_context,
     run_local,
 )
+from truss_chains.stub import StubBase
 from truss_chains.utils import make_abs_path_here

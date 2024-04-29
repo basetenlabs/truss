@@ -86,10 +86,10 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor):
     """Generates AST for the `load` method of the truss model."""
     stub_inits = []
     stub_args = []
-    for name, proc_cls in chainlet_descriptor.dependencies.items():
-        cls_name = utils.make_stub_name(proc_cls.__name__)
+    for name, dep in chainlet_descriptor.dependencies.items():
+        cls_name = utils.make_stub_name(dep.name)
         stub_inits.append(
-            f"{name} = stub.factory({cls_name}, self._context, '{proc_cls.__name__}')"
+            f"{name} = stub.factory({cls_name}, self._context, '{dep.name}')"
         )
         stub_args.append(f"{name}={name}")
 
@@ -291,7 +291,7 @@ def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor) -> str:
 
 
 def _gen_stub_src(
-    Chainlet: definitions.ChainletAPIDescriptor,
+    chainlet: definitions.ChainletAPIDescriptor,
     maybe_pydantic_types_file: Optional[pathlib.Path],
 ) -> tuple[str, list[str]]:
     """Generates stub class source, e.g:
@@ -314,9 +314,9 @@ def _gen_stub_src(
         imports.append(f"import {definitions.STUB_TYPE_MODULE}")
 
     src_parts = [
-        f"class {utils.make_stub_name(Chainlet.name)}(stub.StubBase):",
-        _indent(_endpoint_signature_src(Chainlet.endpoint)),
-        _indent(_endpoint_body_src(Chainlet.endpoint), 2),
+        f"class {utils.make_stub_name(chainlet.name)}(stub.StubBase):",
+        _indent(_endpoint_signature_src(chainlet.endpoint)),
+        _indent(_endpoint_body_src(chainlet.endpoint), 2),
         "\n\n",
     ]
     return "\n".join(src_parts), imports

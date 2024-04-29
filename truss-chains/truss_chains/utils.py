@@ -4,11 +4,12 @@ import contextlib
 import inspect
 import logging
 import os
+import random
 import socket
 import sys
 import textwrap
 import traceback
-from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar
+from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 
 import fastapi
 import httpx
@@ -73,6 +74,21 @@ def make_abs_path_here(file_path: str) -> definitions.AbsPath:
         abs_file_path = file_path
 
     return definitions.AbsPath(abs_file_path, module_path, file_path)
+
+
+def setup_dev_logging(level: Union[int, str] = logging.INFO) -> None:
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
+    date_format = "%m%d %H:%M:%S"
+    formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+    if root_logger.handlers:
+        for handler in root_logger.handlers:
+            handler.setFormatter(formatter)
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
 
 
 @contextlib.contextmanager
@@ -183,7 +199,7 @@ def _resolve_exception_class(
     return exception_cls
 
 
-def handle_response(response: httpx.Response) -> Any:
+def handle_response(response: httpx.Response, remote_name: str) -> Any:
     """For successful requests returns JSON, otherwise raises error.
 
     If the response error contains `RemoteErrorDetail`, it tries to re-raise
@@ -244,7 +260,14 @@ def handle_response(response: httpx.Response) -> Any:
         try:
             error = definitions.RemoteErrorDetail.parse_obj(error_json)
         except pydantic.ValidationError as e:
-            raise ValueError(f"Could not parse error value: {repr(error_json)}") from e
+            if isinstance(error_json, str):
+                msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
+                raise definitions.GenericRemoteException(msg) from None
+            raise ValueError(
+                "Could not parse error. Error details are expected to be either a "
+                "plain string (old truss models) or a serialized "
+                f"`definitions.RemoteErrorDetail.__name__`, got:\n{repr(error_json)}"
+            ) from e
 
         exception_cls = _resolve_exception_class(error)
         msg = (
@@ -263,3 +286,14 @@ def handle_response(response: httpx.Response) -> Any:
 
 def make_stub_name(chainlet_name: str) -> str:
     return f"{chainlet_name}{definitions.STUB_CLS_SUFFIX}"
+
+
+class InjectedError(Exception):
+    """Test error for debugging/dev."""
+
+
+def random_fail(probability: float, msg: str):
+    """Probabilistically raises `InjectedError` for debugging/dev."""
+    if random.random() < probability:
+        print(f"Random failure: {msg}")
+        raise InjectedError(msg)

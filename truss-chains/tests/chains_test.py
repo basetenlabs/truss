@@ -1,27 +1,12 @@
-import json
+import logging
 from pathlib import Path
 
 import pytest
 import requests
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss_chains import definitions, deploy, framework
+from truss_chains import definitions, deploy, framework, utils
 
-DEFAULT_LOG_ERROR = "Internal Server Error"
-
-
-def _log_contains_error(line: dict, error: str, message: str):
-    return (
-        line["levelname"] == "ERROR"
-        and line["message"] == message
-        and error in line["exc_info"]
-    )
-
-
-def assert_logs_contain_error(logs: str, error: str, message=DEFAULT_LOG_ERROR):
-    loglines = logs.splitlines()
-    assert any(
-        _log_contains_error(json.loads(line), error, message) for line in loglines
-    )
+utils.setup_dev_logging(logging.DEBUG)
 
 
 @pytest.mark.integration
@@ -33,8 +18,10 @@ def test_chain():
         options = deploy.DeploymentOptionsLocalDocker(chain_name="integration-test")
         service = deploy.deploy_remotely(entrypoint, options)
 
+        url = service.run_url.replace("host.docker.internal", "localhost")
+
         response = requests.post(
-            service.run_url, json={"length": 30, "num_partitions": 3}, stream=True
+            url, json={"length": 30, "num_partitions": 3}, stream=True
         )
         print(response.content)
         assert response.status_code == 200
@@ -42,9 +29,11 @@ def test_chain():
 
         # Test with errors.
         response = requests.post(
-            service.run_url, json={"length": 300, "num_partitions": 3}, stream=True
+            url, json={"length": 300, "num_partitions": 3}, stream=True
         )
         print(response)
         error = definitions.RemoteErrorDetail.parse_obj(response.json()["error"])
-        print(error.format())
+        error_str = error.format()
+        print(error_str)
+        assert "ValueError: This input is too long: 100." in error_str
         assert response.status_code == 500

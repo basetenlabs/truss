@@ -159,6 +159,7 @@ class TrussHandle:
         patch_ping_url: Optional[str] = None,
         wait_for_server_ready: bool = True,
         network: Optional[str] = None,
+        container_name_prefix: Optional[str] = None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -172,7 +173,10 @@ class TrussHandle:
             patch_ping_url:  Mostly for testing, if supplied then a live
                              reload capable truss queries for truss changes
                              by hitting this url.
-            wait_for_server_ready: If true, wait for server to pass readiness probe before returning.
+            wait_for_server_ready: If true, wait for server to pass readiness
+              probe before returning.
+            network: docker network name.
+            container_name_prefix: optional docker container name prefix.
 
         Returns:
             Container, which can be used to get information about the running,
@@ -198,6 +202,12 @@ class TrussHandle:
             if patch_ping_url is not None:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
 
+            if container_name_prefix:
+                suffix = str(uuid.uuid4()).split("-")[0]
+                name = f"{container_name_prefix}-{suffix}"
+            else:
+                name = None
+
             def _run_docker(gpus: Optional[str] = None):
                 return Docker.client().run(
                     image.id,
@@ -214,6 +224,7 @@ class TrussHandle:
                     gpus=gpus,
                     envs=envs,
                     add_hosts=[("host.docker.internal", "host-gateway")],
+                    name=name,
                 )
 
             try:

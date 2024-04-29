@@ -5,13 +5,13 @@ from truss_chains import definitions, deploy, framework
 
 def provide_context() -> Any:
     """Sets a 'symbolic marker' for injecting a Context object at runtime."""
-    return framework.ContextProvisionPlaceholder()
+    return framework.ContextProvisionMarker()
 
 
-def provide(chainlet_cls: Type[definitions.ABCChainlet]) -> Any:
+def provide(chainlet_cls: Type[definitions.ABCChainlet], retries: int = 1) -> Any:
     """Sets a 'symbolic marker' for injecting a stub or local Chainlet at runtime."""
-    # TODO: extend with RPC customization, e.g. timeouts, retries etc.
-    return framework.ChainletProvisionPlaceholder(chainlet_cls)
+    options = definitions.RPCOptions(retries=retries)
+    return framework.ChainletProvisionMarker(chainlet_cls, options)
 
 
 class ChainletBase(definitions.ABCChainlet[definitions.UserConfigT]):
