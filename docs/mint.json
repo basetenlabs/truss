@@ -142,17 +142,6 @@
       "pages": [
         "contribute/base-images"
       ]
-    },
-    {
-      "group": "Truss Chains (β)",
-      "pages": [
-        "chains/intro",
-        "chains/getting-started",
-        "chains/chaining-chainlets",
-        "chains/deps-and-resources",
-        "chains/tips-and-tricks",
-        "chains/full-reference"
-      ]
     }
   ],
   "tabs": [
@@ -167,10 +156,6 @@
     {
       "name": "Contributor guides",
       "url": "contribute"
-    },
-    {
-      "name": "Truss Chains (β)",
-      "url": "chains"
     }
   ],
   "topbarCtaButton": {
