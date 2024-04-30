@@ -55,9 +55,7 @@ def mock_create_model_response():
 
 @pytest.fixture
 def baseten_api(mock_auth_service):
-    return BasetenApi(
-        "https://test.com/graphql", "https://api.test.com", mock_auth_service
-    )
+    return BasetenApi("https://app.test.com", mock_auth_service)
 
 
 @mock.patch("requests.post", return_value=mock_successful_response())

@@ -73,5 +73,5 @@ yarn.lock
 .eslintcache
 /.pytest_cache/
 
-# Slay workflow generated code.
-**/.slay_generated/**
+# Truss-Chains generated code.
+**/.chains_generated/**

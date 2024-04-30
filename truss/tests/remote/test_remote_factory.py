@@ -2,7 +2,7 @@ from unittest import mock
 
 import pytest
 from truss.remote.remote_factory import RemoteFactory
-from truss.remote.truss_remote import RemoteConfig, TrussRemote, TrussService
+from truss.remote.truss_remote import RemoteConfig, TrussRemote
 
 SAMPLE_CONFIG = {"api_key": "test_key", "remote_url": "http://test.com"}
 
@@ -35,9 +35,6 @@ class TestRemote(TrussRemote):
 
     def push(self):
         return {"status": "success"}
-
-    def get_remote_logs_url(self, service: TrussService) -> str:
-        raise NotImplementedError
 
     def get_service(self, **kwargs):
         raise NotImplementedError

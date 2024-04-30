@@ -1,22 +1,94 @@
 import builtins
 import configparser
 import contextlib
-import enum
+import inspect
 import logging
+import os
+import random
 import socket
 import sys
 import textwrap
-import time
 import traceback
-from typing import Any, Callable, Iterable, Iterator, NoReturn, Type, TypeVar
+from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 
 import fastapi
 import httpx
 import pydantic
-from slay import definitions
 from truss.remote import remote_factory
+from truss_chains import definitions
 
 T = TypeVar("T")
+
+
+def make_abs_path_here(file_path: str) -> definitions.AbsPath:
+    """Helper to specify file paths relative to the *immediately calling* module.
+
+    E.g. in you have a project structure like this
+
+    root/
+        chain.py
+        common_requirements.text
+        sub_package/
+            Chainlet.py
+            chainlet_requirements.txt
+
+    Not in `root/sub_package/Chainlet.py` you can point to the requirements
+    file like this:
+
+    ```
+    shared = RelativePathToHere("../common_requirements.text")
+    specific = RelativePathToHere("chainlet_requirements.text")
+    ```
+
+    Caveat: this helper uses the directory of the immediately calling module as an
+    absolute reference point for resolving the file location.
+    Therefore, you MUST NOT wrap the instantiation of `RelativePathToHere` into a
+    function (e.g. applying decorators) or use dynamic code execution.
+
+    Ok:
+    ```
+    def foo(path: AbsPath):
+        abs_path = path.abs_path
+
+
+    foo(make_abs_path_here("blabla"))
+    ```
+
+    Not Ok:
+    ```
+    def foo(path: str):
+        badbadbad = make_abs_path_here(path).abs_path
+
+    foo("blabla"))
+    ```
+    """
+    # TODO: the absolute path resolution below uses the calling module as a
+    #   reference point. This would not work if users wrap this call in a function
+    #   - we hope the naming makes clear that this should not be done.
+    caller_frame = inspect.stack()[1]
+    module_path = caller_frame.filename
+    if not os.path.isabs(file_path):
+        module_dir = os.path.dirname(os.path.abspath(module_path))
+        abs_file_path = os.path.normpath(os.path.join(module_dir, file_path))
+    else:
+        abs_file_path = file_path
+
+    return definitions.AbsPath(abs_file_path, module_path, file_path)
+
+
+def setup_dev_logging(level: Union[int, str] = logging.INFO) -> None:
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
+    date_format = "%m%d %H:%M:%S"
+    formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+    if root_logger.handlers:
+        for handler in root_logger.handlers:
+            handler.setFormatter(formatter)
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
 
 
 @contextlib.contextmanager
@@ -46,27 +118,6 @@ def expect_one(it: Iterable[T]) -> T:
     raise ValueError("Iterable has more than one element.")
 
 
-class ConditionStatus(enum.Enum):
-    SUCCESS = enum.auto()
-    FAILURE = enum.auto()
-    NOT_DONE = enum.auto()
-
-
-def wait_for_condition(
-    condition: Callable[[], ConditionStatus],
-    retries: int = 10,
-    sleep_between_retries_secs: int = 1,
-) -> bool:
-    for _ in range(retries):
-        cond_status = condition()
-        if cond_status == ConditionStatus.SUCCESS:
-            return True
-        if cond_status == ConditionStatus.FAILURE:
-            return False
-        time.sleep(sleep_between_retries_secs)
-    return False
-
-
 def get_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))  # Bind to a free port provided by the host.
@@ -84,29 +135,11 @@ def get_api_key_from_trussrc() -> str:
         ) from e
 
 
-def call_workflow_dbg(
-    service: definitions.ServiceDescriptor,
-    payload: Any,
-    max_retries: int = 100,
-    retry_wait_sec: int = 3,
-) -> httpx.Response:
-    """For debugging only: tries calling a workflow."""
-    api_key = get_api_key_from_trussrc()
-    session = httpx.Client(headers={"Authorization": f"Api-Key {api_key}"})
-    for _ in range(max_retries):
-        try:
-            response = session.post(service.predict_url, json=payload)
-            return response
-        except Exception:
-            time.sleep(retry_wait_sec)
-    raise
-
-
-# Error Propagation Utils. ##############################################################
+# Error Propagation Utils. #############################################################
 
 
 def _handle_exception(
-    exception: Exception, include_stack: bool, processor_name: str
+    exception: Exception, include_stack: bool, chainlet_name: str
 ) -> NoReturn:
     """Raises `fastapi.HTTPException` with `RemoteErrorDetail` as detail."""
     if hasattr(exception, "__module__"):
@@ -126,21 +159,21 @@ def _handle_exception(
         stack = []
 
     error = definitions.RemoteErrorDetail(
-        remote_name=processor_name,
-        exception_class_name=exception.__class__.__name__,
+        remote_name=chainlet_name,
+        exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
         user_stack_trace=stack,
     )
-    raise fastapi.HTTPException(status_code=500, detail=error.dict())
+    raise fastapi.HTTPException(status_code=500, detail=error.dict()) from exception
 
 
 @contextlib.contextmanager
-def exception_to_http_error(include_stack: bool, processor_name: str) -> Iterator[None]:
+def exception_to_http_error(include_stack: bool, chainlet_name: str) -> Iterator[None]:
     try:
         yield
     except Exception as e:
-        _handle_exception(e, include_stack, processor_name)
+        _handle_exception(e, include_stack, chainlet_name)
 
 
 def _resolve_exception_class(
@@ -150,14 +183,14 @@ def _resolve_exception_class(
     falls back to `definitions.GenericRemoteError` if not found."""
     exception_cls = None
     if error.exception_module_name is None:
-        exception_cls = getattr(builtins, error.exception_class_name, None)
+        exception_cls = getattr(builtins, error.exception_cls_name, None)
     else:
         if mod := sys.modules.get(error.exception_module_name):
-            exception_cls = getattr(mod, error.exception_class_name, None)
+            exception_cls = getattr(mod, error.exception_cls_name, None)
 
     if exception_cls is None:
         logging.warning(
-            f"Could not resolve exception with name `{error.exception_class_name}` "
+            f"Could not resolve exception with name `{error.exception_cls_name}` "
             f"and module `{error.exception_module_name}` - fall back to "
             f"`{definitions.GenericRemoteException.__name__}`."
         )
@@ -166,7 +199,7 @@ def _resolve_exception_class(
     return exception_cls
 
 
-def handle_response(response: httpx.Response) -> Any:
+def handle_response(response: httpx.Response, remote_name: str) -> Any:
     """For successful requests returns JSON, otherwise raises error.
 
     If the response error contains `RemoteErrorDetail`, it tries to re-raise
@@ -174,38 +207,38 @@ def handle_response(response: httpx.Response) -> Any:
     `GenericRemoteException` if the exception class could not be resolved.
 
     Exception messages are chained to trace back to the root cause, i.e. the first
-    processor that raised an exception. E.g. the message might look like this:
+    Chainlet that raised an exception. E.g. the message might look like this:
 
     ```
-    RemoteProcessorError in "Workflow"
+    RemoteChainletError in "Chain"
     Traceback (most recent call last):
-      File "/app/model/processor.py", line 112, in predict
-        result = await self._processor.run(
-      File "/app/model/processor.py", line 79, in run
+      File "/app/model/Chainlet.py", line 112, in predict
+        result = await self._chainlet.run(
+      File "/app/model/Chainlet.py", line 79, in run
         value += self._text_to_num.run(part)
       File "/packages/remote_stubs.py", line 21, in run
         json_result = self._remote.predict_sync(json_args)
-      File "/packages/slay/stub.py", line 37, in predict_sync
+      File "/packages/truss_chains/stub.py", line 37, in predict_sync
         return utils.handle_response(
     ValueError: (showing remote errors, root message at the bottom)
     --> Preceding Remote Cause:
-        RemoteProcessorError in "TextToNum"
+        RemoteChainletError in "TextToNum"
         Traceback (most recent call last):
-          File "/app/model/processor.py", line 113, in predict
-            result = self._processor.run(data=payload["data"])
-          File "/app/model/processor.py", line 54, in run
+          File "/app/model/Chainlet.py", line 113, in predict
+            result = self._chainlet.run(data=payload["data"])
+          File "/app/model/Chainlet.py", line 54, in run
             generated_text = self._replicator.run(data)
           File "/packages/remote_stubs.py", line 7, in run
             json_result = self._remote.predict_sync(json_args)
-          File "/packages/slay/stub.py", line 37, in predict_sync
+          File "/packages/truss_chains/stub.py", line 37, in predict_sync
             return utils.handle_response(
         ValueError: (showing remote errors, root message at the bottom)
         --> Preceding Remote Cause:
-            RemoteProcessorError in "TextReplicator"
+            RemoteChainletError in "TextReplicator"
             Traceback (most recent call last):
-              File "/app/model/processor.py", line 112, in predict
-                result = self._processor.run(data=payload["data"])
-              File "/app/model/processor.py", line 36, in run
+              File "/app/model/Chainlet.py", line 112, in predict
+                result = self._chainlet.run(data=payload["data"])
+              File "/app/model/Chainlet.py", line 36, in run
                 raise ValueError(f"This input is too long: {len(data)}.")
             ValueError: This input is too long: 100.
 
@@ -227,7 +260,14 @@ def handle_response(response: httpx.Response) -> Any:
         try:
             error = definitions.RemoteErrorDetail.parse_obj(error_json)
         except pydantic.ValidationError as e:
-            raise ValueError(f"Could not parse error: {error_json}") from e
+            if isinstance(error_json, str):
+                msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
+                raise definitions.GenericRemoteException(msg) from None
+            raise ValueError(
+                "Could not parse error. Error details are expected to be either a "
+                "plain string (old truss models) or a serialized "
+                f"`definitions.RemoteErrorDetail.__name__`, got:\n{repr(error_json)}"
+            ) from e
 
         exception_cls = _resolve_exception_class(error)
         msg = (
@@ -242,3 +282,18 @@ def handle_response(response: httpx.Response) -> Any:
             status_code=response.status_code, detail=response.content
         )
     return response.json()
+
+
+def make_stub_name(chainlet_name: str) -> str:
+    return f"{chainlet_name}{definitions.STUB_CLS_SUFFIX}"
+
+
+class InjectedError(Exception):
+    """Test error for debugging/dev."""
+
+
+def random_fail(probability: float, msg: str):
+    """Probabilistically raises `InjectedError` for debugging/dev."""
+    if random.random() < probability:
+        print(f"Random failure: {msg}")
+        raise InjectedError(msg)

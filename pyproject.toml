@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.9"
+version = "0.9.10"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -14,6 +14,11 @@ keywords = [
     "Model Deployment",
     "Machine Learning",
 ]
+packages = [
+    { include = "truss", from = "." },
+    { include = "truss_chains", from = "./truss-chains" }
+]
+
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"
@@ -23,7 +28,7 @@ keywords = [
 
 [tool.poetry.dependencies]
 blake3 = "^0.3.3"
-boto3 = "^1.26.157"
+boto3 = "^1.34.85"
 fastapi = ">=0.109.1"
 google-cloud-storage = "2.10.0"
 httpx = "^0.24.1"
@@ -47,6 +52,9 @@ rich-click = "^1.6.1"
 single-source = "^0.3.0"
 tenacity = "^8.0.1"
 watchfiles = "^0.19.0"
+datamodel-code-generator = "^0.25.4"
+libcst = "<1.2.0"
+autoflake = "<=2.2"
 
 [tool.poetry.group.builder.dependencies]
 blake3 = "^0.3.3"
@@ -97,13 +105,6 @@ requests-mock = ">=1.11.0"
 types-requests = ">=2.31.0.2"
 uvicorn = ">=0.24.0"
 uvloop = ">=0.17.0"
-
-[tool.poetry.group.slay.dependencies]
-astroid = "^3.1.0"
-datamodel-code-generator = "^0.25.4"
-libcst = "<1.2.0"
-autoflake = "<=2.2"
-
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
