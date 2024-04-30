@@ -1,5 +1,5 @@
-import rich
+from rich.console import Console
 
-console = rich.console.Console()
+console = Console()
 
-error_console = rich.console.Console(stderr=True, style="bold red")
+error_console = Console(stderr=True, style="bold red")

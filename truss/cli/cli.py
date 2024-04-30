@@ -81,7 +81,7 @@ def error_handling(f: Callable[..., object]):
         except click.UsageError as e:
             raise e  # You can re-raise the exception or handle it different
         except Exception as e:
-            click.secho(f"ERROR: {e}", fg="red")
+            click.secho(f"ERROR ({type(e)}: {e}", fg="red")
 
     return wrapper
 
