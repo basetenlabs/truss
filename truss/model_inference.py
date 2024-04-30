@@ -27,7 +27,7 @@ def infer_python_version() -> str:
 def map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
 
-    Currently, it maps any versions greater than 3.9 to 3.9.
+    Currently, it maps any versions greater than 3.11 to 3.11.
 
     Args:
         python_version: in the form py[major_version][minor_version] e.g. py39,
@@ -36,7 +36,7 @@ def map_to_supported_python_version(python_version: str) -> str:
     python_major_version = int(python_version[2:3])
     python_minor_version = int(python_version[3:])
 
-    if python_major_version > 3:
+    if python_major_version != 3:
         raise NotImplementedError("Only python version 3 is supported")
 
     if python_minor_version > 11:
@@ -49,9 +49,9 @@ def map_to_supported_python_version(python_version: str) -> str:
     if python_minor_version < 8:
         logger.info(
             f"Mapping python version {python_major_version}.{python_minor_version}"
-            " to 3.8, the lowest version that Truss currently supports."
+            " to 3.9, the lowest version that Truss currently supports."
         )
-        return "py38"
+        return "py39"
 
     return python_version
 

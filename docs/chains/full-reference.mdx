@@ -137,7 +137,7 @@ chains.RemoteConfig(docker_image=chains.DockerImage())
 Specify the base image you'd like to use for the image build.
 
 ```python
-chains.DockerImage().base_image("python:3.8") # Use Python 3.8 from dockerhub as the base image
+chains.DockerImage().base_image("python:3.11-slim") # Use Python 3.11 from dockerhub as the base image
 ```
 
 ## chains.DockerImage.pip_requirements_file

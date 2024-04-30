@@ -403,7 +403,7 @@ def custom_model_truss_dir_with_hidden_files(tmp_path):
     _ = init(str(truss_dir_path))
     (truss_dir_path / "__pycache__").mkdir(parents=True, exist_ok=True)
     (truss_dir_path / ".git").mkdir(parents=True, exist_ok=True)
-    (truss_dir_path / "__pycache__" / "test.cpython-38.pyc").touch()
+    (truss_dir_path / "__pycache__" / "test.cpython-39.pyc").touch()
     (truss_dir_path / ".DS_Store").touch()
     (truss_dir_path / ".git" / ".test_file").touch()
     (truss_dir_path / "data" / "test_file").write_text("123456789")
