@@ -116,7 +116,9 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
         context: chains.DeploymentContext[MistraLLMConfig] = chains.provide_context(),
     ) -> None:
         super().__init__(context)
-        # Note that the code in the __init__ and run methods are
+        # `torch` and `transformers` are imported here, rather than the top-level, so that
+        # the other Chainlets we define in this file don't crash when torch & transformers
+        # are not available in their envs.
         import torch
         import transformers
 
@@ -187,6 +189,23 @@ class PoemGenerator(chains.ChainletBase):
             poem = self._mistral_llm.run(f"Generate a poem about: {word}")
             results.append(poem)
         return results
+
+
+if __name__ == "__main__":
+    """
+    To test this out locally, we can define a mock MistralLLM
+    Chainlet that has the same protocol as the MistralLLM Chainlet.
+
+    This way, we can run this chainlet locally without needing a GPU.
+    """
+    class FakeMistralLLM(chains.ChainletBase):
+        def run(self, data: str) -> str:
+            return "Fake mistral response"
+
+    with chains.run_local():
+        poem_generator = PoemGenerator(mistral_llm=FakeMistralLLM())
+        result = poem_generator.run(words=["bird", "plane", "superman"])
+        print(result)
 ```
 
 See [full reference](/chains/full-reference) for more details on the full Chains API.

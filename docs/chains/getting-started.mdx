@@ -43,7 +43,7 @@ import truss_chains as chains
 class HelloWorld(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
-            pip_requirements=["git+https://github.com/basetenlabs/truss.git@9be68f563d735289128cd3c8853bdf62ec03cef3"]
+            pip_requirements=["git+https://github.com/basetenlabs/truss.git"]
         )
     )
 
@@ -88,7 +88,7 @@ To deploy your chain to a remote like Baseten, run the following command
 truss chain deploy ./hello.py HelloWorld
 ```
 
-The last argument `HelloWorld` is the name of your chainlet, before that `./hello.py` should point to python file.
+The last argument `HelloWorld` is the chainlet class name, before that `./hello.py` should point to python file.
 
 
 

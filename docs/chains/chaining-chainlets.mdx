@@ -21,19 +21,16 @@ The computational graph for this chain looks like this:
 
 <img src="/images/second-chainlet.png" />
 
-{/* <Note> */}
-{/* In practice, for a chain this simple, you wouldn't need to use two chainlets. However, this example is useful for demonstrating how to use multiple chainlets in a chain. */}
-{/* </Note> */}
-
 # The Code
 
 Here's the code for this second chain. Exactly like the first example, we put this all in a single Python file called `hello.py`.
 
 ```python
+import random
 import truss_chains as chains
 
 common_image = chains.DockerImage(
-    pip_requirements=["git+https://github.com/basetenlabs/truss.git@9be68f563d735289128cd3c8853bdf62ec03cef3"]
+    pip_requirements=["git+https://github.com/basetenlabs/truss.git"]
 )
 
 class GenerateRandomNumber(chains.ChainletBase):
@@ -42,8 +39,6 @@ class GenerateRandomNumber(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=common_image)
 
     def run(self, high_value: int) -> int:
-        import random
-
         return random.randint(1, high_value)
 
 class HelloWorld(chains.ChainletBase):

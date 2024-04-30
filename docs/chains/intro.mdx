@@ -19,15 +19,15 @@ smaller chunks and call a model for each chunk. *Truss Chains* is a framework fo
 
 # Key Concepts
 
-**Chainlet**: The basic building block in a Truss Chain: it performs a specific computation. For example running a
+**Chainlet**: The basic building block in a Truss Chain: it performs a specific computation. For example, running a
 large ML model, but it can also be a simple function that transforms data. The most interesting aspect
-is that a *chainlet() calls other *chainlets* . And each *chainlet* is intended to be deployed remotely, with
-potentially multiple replicas and can have its own environment (e.g. compute hardware, autoscaling, dependencies).
+is that a *chainlet() calls other *chainlets* .  Each *chainlet* is intended to be deployed remotely, with
+potentially multiple replicas and its own environment (e.g. compute hardware, autoscaling, dependencies).
 
 <img src="/images/audio-transcription-chainlet.png" />
 
 **Chain**: A *chain* is composed of multiple chainlets that are linked to each other. Each *chain* has an
-"*entrypoint*" chainlet to which requests are made by the client. Internally, the different chainlets call each,
+"*entrypoint*" chainlet to which requests are made by the client. Internally, the different chainlets call each other,
 thereby structuring and distributing the overall computation into smaller parts - and eventually the entrypoint
 chainlet returns the end-to-end result back to the client.
 You can imagine this like a "flow chart" or "computational graph".
@@ -43,35 +43,7 @@ Keep in my mind that Truss Chains is designed to run in a distributed environmen
 with its own set of resources and autoscaling settings. To enable a smooth development experience, Truss Chains
 also supports a *local development mode* where you can run your chainlets on your local machine.
 
-To ensure that both of these modes, **you must reference other chainlets in a very particular way, using the
-Truss Chains Depedency Injection framework**. We will dig into the exact syntax later in the [Chaining Chainlets](/chains/chaining-chainlets) guide,
-but to give a little preview:
-
-
-```python
-import truss_chains as chains
-
-
-class OtherChain(chains.ChainletBase):
-    ...
-
-class MyChain(chains.ChainletBase):
-    def __init__(
-        self, 
-        context: chains.DeploymentContext = chains.provide_context(),
-        # Note that chains.provide(...) syntax is used to reference other chainlets.
-        # in this __init__ method.
-        other_chain: OtherChain = chains.provide(OtherChain)
-    ):
-        super().__init__()
-        self._other_chain = other_chain
-
-    def run(self, input: str) -> str:
-        ...
-        other_chain_result = self._other_chain.run(...)
-        ...
-
-```
+To facilitate the distributed execution, chainlets must be referenced and sub-classed in a particular way--more on this soon.
 
 # Hello World
 
@@ -92,8 +64,3 @@ class HelloWorld(chains.ChainletBase):
 ```
 
 See [Getting Started](/chains/getting-started) for how to run this!
-
-
-
-
-
