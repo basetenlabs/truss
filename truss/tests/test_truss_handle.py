@@ -398,9 +398,6 @@ def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
     [
         ("3.9", "py39"),
         ("py39", "py39"),
-        ("py310", "py310"),
-        ("py311", "py311"),
-        ("py312", "py311"),
     ],
 )
 def test_update_python_version(

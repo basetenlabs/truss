@@ -117,3 +117,9 @@ src_paths = ["isort", "test"]
 [tool.mypy]
 ignore_missing_imports = true
 python_version = "3.9"
+
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration (deselect with '-m \"not integration\"')."
+]
