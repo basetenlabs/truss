@@ -60,17 +60,20 @@ class TritonPythonModel:
         model_config = json.loads(args["model_config"])
         # NOTE: Keep this in sync with the truss model.py variable
         tokenizer_dir = os.environ["TRITON_TOKENIZER_REPOSITORY"]
+        hf_auth_token = os.environ.get("HUGGING_FACE_HUB_TOKEN", None)
         tokenizer_type = model_config["parameters"]["tokenizer_type"]["string_value"]
 
         if tokenizer_type == "t5":
-            self.tokenizer = T5Tokenizer(vocab_file=tokenizer_dir, padding_side="left")
+            self.tokenizer = T5Tokenizer(
+                vocab_file=tokenizer_dir, padding_side="left", token=hf_auth_token
+            )
         elif tokenizer_type == "auto":
             self.tokenizer = AutoTokenizer.from_pretrained(
-                tokenizer_dir, padding_side="left"
+                tokenizer_dir, padding_side="left", token=hf_auth_token
             )
         elif tokenizer_type == "llama":
             self.tokenizer = LlamaTokenizer.from_pretrained(
-                tokenizer_dir, legacy=False, padding_side="left"
+                tokenizer_dir, legacy=False, padding_side="left", token=hf_auth_token
             )
         else:
             raise AttributeError(f"Unexpected tokenizer type: {tokenizer_type}")
