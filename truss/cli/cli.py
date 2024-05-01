@@ -29,6 +29,7 @@ from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
+from truss_chains import definitions as chains_def
 from truss_chains import deploy as chains_deploy
 from truss_chains import framework
 
@@ -341,7 +342,7 @@ def deploy(
     """
     chain_name = name or entrypoint
     entrypoint_cls = framework.import_target(source, entrypoint)
-    options = chains_deploy.DeploymentOptionsBaseten.create(
+    options = chains_def.DeploymentOptionsBaseten.create(
         chain_name=chain_name,
         promote=promote,
         publish=publish,
