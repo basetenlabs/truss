@@ -58,7 +58,7 @@ class TritonPythonModel:
         model_config = json.loads(args["model_config"])
         # NOTE: Keep this in sync with the truss model.py variable
         tokenizer_dir = os.environ["TRITON_TOKENIZER_REPOSITORY"]
-        hf_auth_token = os.environ.get("HF_AUTH_TOKEN", None)
+        hf_auth_token = os.environ.get("HUGGING_FACE_HUB_TOKEN", None)
         tokenizer_type = model_config["parameters"]["tokenizer_type"]["string_value"]
         self.add_special_tokens = model_config["parameters"].get(
             "add_special_tokens", {"string_value": "false"}
