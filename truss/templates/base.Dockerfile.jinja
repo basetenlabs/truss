@@ -5,8 +5,8 @@ ENV PYTHON_EXECUTABLE {{ config.base_image.python_executable_path or 'python3' }
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=8 and sys.version_info.minor <=11 else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have 3.8 <= python <= 3.11"; exit 1; }
+RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 3 and sys.version_info.minor >=9 and sys.version_info.minor <=11 else sys.exit(1)" \
+    || { echo "ERROR: Supplied base image does not have 3.9 <= python <= 3.11"; exit 1; }
 {% endblock %}
 
 RUN pip install --upgrade pip --no-cache-dir \
