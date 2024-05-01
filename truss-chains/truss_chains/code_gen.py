@@ -1,18 +1,32 @@
 """
-New plan:
+Chains currently assumes that everything from the directory in which the entrypoint
+is defined (i.e. sibling files and nested dirs) could be imported/used. e.g.:
 
-* Collapse truss dir in generated code.
-* Move main file completely unchanged (not even needed to remove main).
-* Put it into truss-packages, keep its name, assert there are no name conflicts.
-* In truss model file, generate stubs and truss model.
-* Import deps from source code.
-* Check set of imports that it does not create collisions.
+```
+workspace/
+  entrypoint.py
+  helper.py
+  some_package/
+    utils.py
+    sub_package/
+      ...
+```
 
+These sources are copied into truss's `/packages` and can be imported on the remote.
+Using code *outside* of the workspace is not supported:
 
+```
+shared_lib/
+  common.py
+workspace/
+  entrypoint.py
+  ...
+```
 
-
-
+`shared_lib` can only be imported on the remote if its installed as a pip
+requirement (site-package), it will not be copied from the local host.
 """
+
 
 import logging
 import os
@@ -70,7 +84,7 @@ def _gen_import_and_ref(raw_type: Any) -> _Source:
         module_obj = sys.modules[raw_type.__module__]
         if not module_obj.__file__:
             raise definitions.APIDefinitionError(
-                f"File-based python code required. `{raw_type}` does not hava file."
+                f"File-based python code required. `{raw_type}` does not have a file."
             )
 
         file = os.path.basename(module_obj.__file__)
@@ -577,6 +591,8 @@ def gen_truss_chainlet(
     # Copy model file s.t. during debugging imports can are properly resolved.
     shutil.copy(
         chainlet_file,
-        chainlet_file.parent.parent / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR,
+        chainlet_file.parent.parent
+        / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR
+        / "_model_dbg.py",
     )
     return chainlet_dir
