@@ -1,4 +1,5 @@
-from typing import Any, ContextManager, Mapping, Optional, Type, final
+import pathlib
+from typing import Any, ContextManager, Mapping, Optional, Type, Union, final
 
 from truss_chains import definitions, deploy, framework
 
@@ -23,7 +24,7 @@ class ChainletBase(definitions.ABCChainlet[definitions.UserConfigT]):
 
         def init_with_arg_check(self, *args, **kwargs):
             if args:
-                raise definitions.UsageError("Only kwargs are allowed.")
+                raise definitions.ChainsRuntimeError("Only kwargs are allowed.")
             framework.ensure_args_are_injected(cls, original_init, kwargs)
             original_init(self, *args, **kwargs)
 
@@ -59,6 +60,10 @@ def deploy_remotely(
     return deploy.deploy_remotely(entrypoint, options)
 
 
-def run_local(secrets: Optional[Mapping[str, str]] = None) -> ContextManager[None]:
+def run_local(
+    secrets: Optional[Mapping[str, str]] = None,
+    data_dir: Optional[Union[pathlib.Path, str]] = None,
+) -> ContextManager[None]:
     """Context manager for using in-process instantiations of Chainlet dependencies."""
-    return framework.run_local(secrets)
+    data_dir = pathlib.Path(data_dir) if data_dir else None
+    return framework.run_local(secrets, data_dir)

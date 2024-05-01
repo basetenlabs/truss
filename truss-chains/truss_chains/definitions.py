@@ -60,7 +60,7 @@ class SafeModelNonSerializable(pydantic.BaseModel):
         extra = pydantic.Extra.forbid
 
 
-class APIDefinitionError(TypeError):
+class ChainsUsageError(TypeError):
     """Raised when user-defined Chainlets do not adhere to API constraints."""
 
 
@@ -68,7 +68,7 @@ class MissingDependencyError(TypeError):
     """Raised when a needed resource could not be found or is not defined."""
 
 
-class UsageError(Exception):
+class ChainsRuntimeError(Exception):
     """Raised when components are not used the expected way at runtime."""
 
 
@@ -210,7 +210,7 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
         validate_assignment = True
         extra = pydantic.Extra.forbid
 
-    data_dir: pathlib.Path
+    data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT = pydantic.Field(default=None)
     chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
     # secrets: Optional[secrets_resolver.Secrets] = None
@@ -226,7 +226,9 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
 
     def get_baseten_api_key(self) -> str:
         if self.secrets is None:
-            raise UsageError(f"Secrets not set in `{self.__class__.__name__}` object.")
+            raise ChainsRuntimeError(
+                f"Secrets not set in `{self.__class__.__name__}` object."
+            )
         error_msg = (
             "For using chains, it is required to setup a an API key with name "
             f"`{BASETEN_API_SECRET_NAME}` on baseten to allow chain Chainlet to "

@@ -13,12 +13,12 @@ del warnings
 # flake8: noqa F401
 from truss_chains.definitions import (
     Assets,
+    ChainsRuntimeError,
     Compute,
     DeploymentContext,
     DockerImage,
     RemoteConfig,
     RPCOptions,
-    UsageError,
 )
 from truss_chains.public_api import (
     ChainletBase,

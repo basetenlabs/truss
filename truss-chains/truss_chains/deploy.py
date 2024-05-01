@@ -183,6 +183,20 @@ def deploy_remotely(
         framework.global_chainlet_registry.get_descriptor(entrypoint).name,
         name=options.chain_name,
     )
+    if isinstance(options, definitions.DeploymentOptionsBaseten):
+        secrets_info = options.remote_provider.api.get_all_secrets()
+        secret_names = {sec["name"] for sec in secrets_info["secrets"]}
+        if definitions.BASETEN_API_SECRET_NAME not in secret_names:
+            logging.info(
+                "It seems you are using chains for the first time, since there "
+                f"is no `{definitions.BASETEN_API_SECRET_NAME}` secret on baseten. "
+                "Will create this secret automatically."
+            )
+            options.remote_provider.api.upsert_secret(
+                definitions.BASETEN_API_SECRET_NAME,
+                options.remote_provider.api.auth_token.value,
+            )
+
     for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
         logging.info(f"Deploying `{chainlet_descriptor.name}`.")
         deps = framework.global_chainlet_registry.get_dependencies(chainlet_descriptor)
