@@ -190,7 +190,7 @@ def deploy_remotely(
             logging.info(
                 "It seems you are using chains for the first time, since there "
                 f"is no `{definitions.BASETEN_API_SECRET_NAME}` secret on baseten. "
-                "Will create this secret automatically."
+                "Creating secret automatically."
             )
             options.remote_provider.api.upsert_secret(
                 definitions.BASETEN_API_SECRET_NAME,
