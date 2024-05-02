@@ -43,6 +43,7 @@ from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss_chains import definitions, model_skeleton, utils
 
+_TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
 _MODEL_FILENAME = "model.py"
 _MODEL_CLS_NAME = model_skeleton.TrussChainletModel.__name__
@@ -311,11 +312,10 @@ class _SpecifyChainletTypeAnnotation(libcst.CSTTransformer):
 def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates AST for the `load` method of the truss model."""
     imports = {"from truss_chains import stub", "import logging"}
-    stubs = []
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
-        stubs.append(f"{name} = stub.factory({dep.name}, self._context, '{dep.name}')")
-        stub_args.append(f"{name}={name}")
+        # `dep.name` is the class name, while `name` is the argument name.
+        stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
 
     if stub_args:
         init_args = f"context=self._context, {', '.join(stub_args)}"
@@ -327,7 +327,6 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
     body = _indent(
         "\n".join(
             [f"logging.info(f'Loading Chainlet `{chainlet_descriptor.name}`.')"]
-            + stubs
             + [f"self._chainlet = {user_chainlet_ref.src}({init_args})"]
         )
     )
@@ -480,6 +479,31 @@ def _copy_python_source_files(root_dir: pathlib.Path, dest_dir: pathlib.Path) ->
     shutil.copytree(root_dir, dest_dir, ignore=python_files_only, dirs_exist_ok=True)
 
 
+def _make_requirements(image: definitions.DockerImage) -> list[str]:
+    """Merges file- and list-based requirements and adds truss.git if not present."""
+    pip_requirements: set[str] = set()
+    if image.pip_requirements_file:
+        pip_requirements.update(
+            req
+            for req in pathlib.Path(image.pip_requirements_file.abs_path)
+            .read_text()
+            .splitlines()
+            if not req.strip().startswith("#")
+        )
+    pip_requirements.update(image.pip_requirements)
+
+    has_truss_pypy = any(req == "truss" for req in pip_requirements)
+    has_truss_git = any(_TRUSS_GIT in req for req in pip_requirements)
+
+    if not (has_truss_git or has_truss_pypy):
+        logging.info(
+            f"Truss not found in pip requirements, auto-adding: `{_TRUSS_GIT}`."
+        )
+        pip_requirements.add(_TRUSS_GIT)
+
+    return sorted(pip_requirements)
+
+
 def _make_truss_config(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
@@ -502,16 +526,8 @@ def _make_truss_config(
     # Image.
     image = chains_config.docker_image
     config.base_image = truss_config.BaseImage(image=image.base_image)
-    pip_requirements: list[str] = []
-    if image.pip_requirements_file:
-        pip_requirements.extend(
-            req
-            for req in pathlib.Path(image.pip_requirements_file.abs_path)
-            .read_text()
-            .splitlines()
-            if not req.strip().startswith("#")
-        )
-    pip_requirements.extend(image.pip_requirements)
+
+    pip_requirements = _make_requirements(image)
     # TODO: `pip_requirements` will add server requirements which give version
     #  conflicts. Check if that's still the case after relaxing versions.
     # config.requirements = pip_requirements

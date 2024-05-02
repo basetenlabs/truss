@@ -41,7 +41,8 @@ def test_chain():
         assert response.status_code == 500
 
 
-def test_chain_local():
+@pytest.mark.asyncio
+async def test_chain_local():
     root = Path(__file__).parent.resolve()
     chain_root = root / "itest_chain" / "itest_chain.py"
     with framework.import_target(chain_root, "ItestChain") as entrypoint:
@@ -50,5 +51,11 @@ def test_chain_local():
             entrypoint().run(length=20, num_partitions=5)
 
         with public_api.run_local():
-            result = entrypoint().run(length=20, num_partitions=5)
+            with pytest.raises(ValueError):
+                # First time `SplitTextFailOnce` raises an error and
+                # currently local mode does not have retries.
+                result = await entrypoint().run(length=20, num_partitions=5)
+
+            result = await entrypoint().run(length=20, num_partitions=5)
+            assert result == (4198, "erodfderodfderodfder", 123)
             print(result)

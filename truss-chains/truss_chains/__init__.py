@@ -23,6 +23,7 @@ from truss_chains.definitions import (
 from truss_chains.public_api import (
     ChainletBase,
     deploy_remotely,
+    entrypoint,
     provide,
     provide_context,
     run_local,

@@ -19,18 +19,23 @@ from typing import (
     Optional,
     Protocol,
     Type,
+    TypeVar,
     get_args,
     get_origin,
 )
 
 import pydantic
-from truss_chains import definitions
+from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
 
 _DOCS_URL_CHAINING = "https://docs.baseten.co/chains/chaining-chainlets"
 _DOCS_URL_LOCAL = "https://docs.baseten.co/chains/gettin-started"
+
+_ENTRYPOINT_ATTR_NAME = "_chains_entrypoint"
+
+ChainletT = TypeVar("ChainletT", bound=definitions.ABCChainlet)
 
 
 class _BaseProvisionMarker:
@@ -309,7 +314,6 @@ class _ChainletInitParams:
             and (param_type != inspect.Parameter.empty)
             and (not issubclass(param_type, definitions.DeploymentContext))
         ):
-            print(param_type)
             raise make_context_exception()
         if not isinstance(param.default, ContextProvisionMarker):
             raise definitions.ChainsUsageError(
@@ -595,6 +599,7 @@ def run_local(
     data_dir: Optional[pathlib.Path] = None,
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
+    # TODO: support retries in local mode.
     type_to_instance: MutableMapping[
         Type[definitions.ABCChainlet], definitions.ABCChainlet
     ] = {}
@@ -621,9 +626,29 @@ def run_local(
 ########################################################################################
 
 
+def entrypoint(cls: Type[ChainletT]) -> Type[ChainletT]:
+    """Decorator to tag a chainlet as an entrypoint."""
+    if not (isinstance(cls, type) and issubclass(cls, definitions.ABCChainlet)):
+        raise definitions.ChainsUsageError(
+            "Only chainlet classes can be marked as entrypoint."
+        )
+    setattr(cls, _ENTRYPOINT_ATTR_NAME, True)
+    return cls
+
+
+def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
+    return {
+        sym
+        for sym in symbols
+        if isinstance(sym, type)
+        and issubclass(sym, definitions.ABCChainlet)
+        and getattr(sym, _ENTRYPOINT_ATTR_NAME, False)
+    }
+
+
 @contextlib.contextmanager
 def import_target(
-    module_path: pathlib.Path, target_name: str
+    module_path: pathlib.Path, target_name: Optional[str]
 ) -> Iterator[Type[definitions.ABCChainlet]]:
     module_path = pathlib.Path(module_path).resolve()
     module_name = module_path.stem  # Use the file's name as the module name
@@ -652,15 +677,38 @@ def import_target(
     sys.path.insert(0, str(module_path.parent))
     try:
         spec.loader.exec_module(module)
-        target_cls = getattr(module, target_name, None)
-        if not target_cls:
-            raise AttributeError(
-                f"Target chainlet class `{target_name}` not found in `{module_path}`."
-            )
-        if not issubclass(target_cls, definitions.ABCChainlet):
-            raise TypeError(
-                f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
-            )
+
+        if target_name:
+            target_cls = getattr(module, target_name, None)
+            if not target_cls:
+                raise AttributeError(
+                    f"Target chainlet class `{target_name}` not found in `{module_path}`."
+                )
+            if not issubclass(target_cls, definitions.ABCChainlet):
+                raise TypeError(
+                    f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
+                )
+        else:
+            module_vars = (getattr(module, name) for name in dir(module))
+            entrypoints = _get_entrypoint_chainlets(module_vars)
+            if len(entrypoints) == 0:
+                raise ValueError(
+                    f"No `target_name` was specified and no chainlet in `{module_path}` "
+                    "was tagged with `@chains.entrypoint`. Tag one chainlet or provide "
+                    "the chainlet class name."
+                )
+            elif len(entrypoints) > 1:
+                raise ValueError(
+                    "`target_name` was not specified and multiple chainlets in "
+                    f"`{module_path}` were tagged with `@chains.entrypoint`. Tag one "
+                    "chainlet or provide the chainlet class name. Found chainlets: \n"
+                    f"{entrypoints}"
+                )
+            target_cls = utils.expect_one(entrypoints)
+            if not issubclass(target_cls, definitions.ABCChainlet):
+                raise TypeError(
+                    f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
+                )
 
         yield target_cls
 

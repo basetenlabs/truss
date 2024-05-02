@@ -50,7 +50,6 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
         # Here, we can define the pip and system dependencies required for the chainlet.
         docker_image=chains.DockerImage(
             pip_requirements=[
-                "git+https://github.com/basetenlabs/truss.git"
                 "transformers==4.38.1",
                 "torch==2.0.1",
                 "sentencepiece",
@@ -93,7 +92,6 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             pip_requirements=[
-                "git+https://github.com/basetenlabs/truss.git",
                 "transformers==4.38.1",
                 "torch==2.0.1",
                 "sentencepiece",
@@ -194,7 +192,7 @@ class PoemGenerator(chains.ChainletBase):
 
 ## Local Debugging
 
-Or Chain includes the `MistralLLM` Chainlet which requires heavy hardware and python dependencies. These
+Our Chain includes the `MistralLLM` Chainlet which requires heavy hardware and python dependencies. These
  requirements are fulfilled in the remote baseten deployment, but most likely not locally. The other Chainlet,
  `PoemGenerator`, contains simpler "coordination" logic and has les demanding requirements.
 

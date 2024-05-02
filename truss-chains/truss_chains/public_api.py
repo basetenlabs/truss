@@ -44,6 +44,10 @@ class ChainletBase(definitions.ABCChainlet[definitions.UserConfigT]):
         return self._context.user_config
 
 
+def entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]:
+    return framework.entrypoint(cls)
+
+
 def deploy_remotely(
     entrypoint: Type[definitions.ABCChainlet],
     chain_name: str,

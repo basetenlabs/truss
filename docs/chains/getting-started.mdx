@@ -37,11 +37,7 @@ assume the file is named `hello.py`.
 import truss_chains as chains
 
 class HelloWorld(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(
-        docker_image=chains.DockerImage(
-            pip_requirements=["git+https://github.com/basetenlabs/truss.git"]
-        )
-    )
+    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
 
     def run(self, num_repetitions: int) -> str:
         return "Hello World! " * num_repetitions
@@ -72,7 +68,7 @@ debugging and testing of your Chainlets. To use it, append a main section with t
 
 ```python
 if __name__ == "__main__":
-    with Chains.run_local():
+    with chains.run_local():
         my_hello_world = HelloWorld()
         result = my_hello_world.run(num_repetitions=3)
 

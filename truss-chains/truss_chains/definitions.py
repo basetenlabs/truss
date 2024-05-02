@@ -47,7 +47,7 @@ class SafeModel(pydantic.BaseModel):
         arbitrary_types_allowed = False
         validate_all = True
         validate_assignment = True
-        extra = pydantic.Extra.forbid
+        extra = "forbid"
 
 
 class SafeModelNonSerializable(pydantic.BaseModel):
@@ -57,7 +57,7 @@ class SafeModelNonSerializable(pydantic.BaseModel):
         arbitrary_types_allowed = True
         validate_all = True
         validate_assignment = True
-        extra = pydantic.Extra.forbid
+        extra = "forbid"
 
 
 class ChainsUsageError(TypeError):
@@ -208,7 +208,7 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
         arbitrary_types_allowed = True
         validate_all = True
         validate_assignment = True
-        extra = pydantic.Extra.forbid
+        extra = "forbid"
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT = pydantic.Field(default=None)
