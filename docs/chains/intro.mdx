@@ -13,37 +13,80 @@ description: "Learn what *Truss Chains* is"
 * [Dependencies & Resources](/chains/deps-and-resources)
 * [Reference](/chains/full-reference)
 
-With a a vanilla Truss, you can call a single model in an HTTP Request. However, many inference workloads are
-more complex -- you might want to call multiple models in a sequence, or partition your input data into
-smaller chunks and call a model for each chunk. *Truss Chains* is a framework for implementing these complex workloads.
+
+With a vanilla Truss, you can call a single model in an HTTP request. However, many inference workloads are
+more complex - you might want to call multiple models in a sequence, or partition your input data into
+smaller chunks and call a model for each chunk. *Truss Chains* is a framework for implementing these complex, modular
+workloads.
+
+
+<Accordion title="Note for Truss Model users.">
+  Chains is a fully re-designed SDK for writing ML models to be deployed on Baseten. It carries over some of the
+  features and concepts: all the good of Baseten (resource provisioning, autoscaling, fast cold starts and more) and
+  many of the config options from [Truss config](reference/config#yaml-syntax-help).
+  But it is not the same:
+  * Instead of creating a "truss directory" for a single monolithic model with a fixed structure of required files,
+  Chains encourages flexible and modular code organization. Specifically the development and interplay of
+  multiple "component models" (called *Chainlets*) in a coherent python code base benefitting from code completion
+  and type checking.
+  * The main focus - and new functionality - is to facilitate the definition of flexible multi-component workloads such
+  as multi-step pipelines or branching computational graphs.
+  * The Truss config YAML file has been replaced by inlining config in your code alongside with implementation.
+  A future feature in planning is to support file-based overrides of those config values.
+  * In the beta phase, not all Truss config options are integrated yet.
+  * In the beta phase, *Chainlets* are converted to Truss models and run as such on Baseten. This might be helpful
+  for technical understanding, but it should be seen as an implementation detail which might change in the future.
+  Conceptually they are not the same: `Chainlet != TrussModel`.
+
+</Accordion>
 
 # Key Concepts
 
-**Chainlet**: The basic building block in a Truss Chain: it performs a specific computation. For example, running a
-large ML model, but it can also be a simple function that transforms data. The most interesting aspect
-is that a *Chainlet* calls other *Chainlets* .  Each *Chainlet* is intended to be deployed remotely, with
-potentially multiple replicas and its own environment (e.g. compute hardware, autoscaling, dependencies).
+## Chainlet
+
+The basic building block in a Truss Chain: it performs a specific computation. For example, running a
+large ML model, but it can also be a simple function that transforms data. An useful feature is that a *Chainlet* can
+call other *Chainlets*.
+Each *Chainlet* is intended to be deployed remotely, with potentially multiple replicas and running in its own
+environment (e.g. with specific compute hardware, autoscaling and software dependencies).
 
 <img src="/images/audio-transcription-chainlet.png" />
 
-**Chain**: A *Chain* is composed of multiple Chainlets that are linked to each other. Each *Chain* has an
-"*entrypoint*" Chainlet to which requests are made by the client. Internally, the different Chainlets call each other,
-thereby structuring and distributing the overall computation into smaller parts - and eventually the entrypoint
-Chainlet returns the end-to-end result back to the client.
+## Chain
+
+A *Chain* is what you get if you connect multiple *Chainlets* to perform a meaningfully overarching task.
+Each *Chain* has an *entrypoint* Chainlet to which requests are made by the client.
+Internally, the different Chainlets call each other, thereby structuring and distributing the overall computation -
+and eventually the *entrypoint* returns the end-to-end result back to the client.
 You can imagine this like a "flow chart" or "computational graph".
 
 Here's an example of a Chain that takes a large audio file, splits it into smaller chunks, and transcribes each chunk
-*in parallel* to speed up the transcription process.
+ *in parallel* to speed up the transcription process - and then aggregates the results.
 
 <img src="/images/audio-transcription-chain.png" />
 
-## Remote vs. Local
+## Development Experience
 
-Keep in my mind that Truss Chains is designed to run in a distributed environment, with each Chainlet running
-with its own set of resources and autoscaling settings. To enable a smooth development experience, Truss Chains
-also supports a *local development mode* where you can run your Chainlets on your local machine.
+Truss Chains is designed to run in a distributed, replicated environment - as
+[baseten deployments](getting-started#remote-deployment-to-baseten) - but to enable a rapid development experience,
+Truss Chains additionally has a [local debugging mode](getting-started#local-debugging) which allows you to iterate
+more quickly.
 
-To facilitate the distributed execution, Chainlets must be referenced and sub-classed in a particular way--more on this soon.
+Even though Chains might sometimes *feel* like working with "normal, local" python code, there are some constraints
+and rules that must be followed to enable successful distributed, remote execution:
+
+<Info>
+* Chainlets cannot be naively instantiated. Follow the documentation guidelines, especially for
+[linking](/chains/chaining-chainlets) multiple Chainlets to a Chain (i.e. one Chainlet using another Chainlet).
+
+* Adhere to the [subclass contract](getting-started#comments) for Chainlets.
+
+* The Chains framework runs some validations <Tooltip tip="This means at python module initialization,
+i.e. before executing code.">as soon as a Chainlet
+subclasses is defined</Tooltip> and if problems are found, error messages with suggestions are shown. So by frequently
+running your file (even if it has no `__main__` section), you'll be notified early of potential issues.
+</Info>
+
 
 # Hello World
 
@@ -55,11 +98,9 @@ import truss_chains as chains
 
 class HelloWorld(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
-        docker_image=chains.DockerImage()
-    )
+        docker_image=chains.DockerImage())
 
     def run(self, num_repetitions: int) -> str:
-        # Your user code goes here.
         return "Hello World! " * num_repetitions
 ```
 
