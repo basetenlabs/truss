@@ -3,7 +3,7 @@ title: Reference
 description: "Truss Chains Reference"
 ---
 
-<Warning>This is a beta feature and subject to breaking changes.</Warning>
+<Warning>*Chains* is a beta feature and subject to breaking changes.</Warning>
 
 # Table of Contents
 
@@ -23,7 +23,7 @@ can define here are:
 * `default_user_config` -- This is an optional pydantic.BaseModel that defines the default user configuration
 for the Chainlet.
 
-You then define a `run` method on the Chainlet that contains the logic for the actual chainlet:
+You then define a `run` method on the Chainlet that contains the logic for the actual Chainlet:
 
 ```python
 class HelloWorld(chains.ChainletBase):
@@ -50,8 +50,8 @@ to a remote (just Baseten for now).
 chains.provide(chainlet: Type[chains.ChainletBase])
 ```
 
-`chains.provide` is a key part of the chains Dependency Injection framework, and is used for chainlets
-to reference other chainlets in a chain.
+`chains.provide` is a key part of the Chains Dependency Injection framework, and is used for Chainlets
+to reference other Chainlets in a Chain.
 
 
 ```python
@@ -77,8 +77,8 @@ as secrets.
 
 # chains.RemoteConfig
 
-The `chains.RemoteConfig` object is used to specify the configuration for the _remote deployment of a chainlet_.
-In other words, all of the options for how a chainlet should be deployed on a remote server (what docker image should be used,
+The `chains.RemoteConfig` object is used to specify the configuration for the _remote deployment of a Chainlet_.
+In other words, all of the options for how a Chainlet should be deployed on a remote server (what docker image should be used,
 what dependencies need to be installed, what compute is needed, etc.)
 
 **Signature:**

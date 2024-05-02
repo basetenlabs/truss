@@ -387,7 +387,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
 def _gen_truss_chainlet_model(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
 ) -> _Source:
-    logging.info(f"Generating Truss model for `{chainlet_descriptor.name}`.")
+    logging.info(f"Generating truss model for chainlet `{chainlet_descriptor.name}`.")
     skeleton_tree = libcst.parse_module(
         pathlib.Path(model_skeleton.__file__).read_text()
     )

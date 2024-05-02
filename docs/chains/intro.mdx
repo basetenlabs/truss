@@ -3,7 +3,7 @@ title: Welcome to Truss Chains (β)
 description: "Learn what *Truss Chains* is"
 ---
 
-<Warning>This is a beta feature and subject to breaking changes.</Warning>
+<Warning>*Chains* is a beta feature and subject to breaking changes.</Warning>
 
 # Table of Contents
 
@@ -21,29 +21,29 @@ smaller chunks and call a model for each chunk. *Truss Chains* is a framework fo
 
 **Chainlet**: The basic building block in a Truss Chain: it performs a specific computation. For example, running a
 large ML model, but it can also be a simple function that transforms data. The most interesting aspect
-is that a *chainlet() calls other *chainlets* .  Each *chainlet* is intended to be deployed remotely, with
+is that a *Chainlet* calls other *Chainlets* .  Each *Chainlet* is intended to be deployed remotely, with
 potentially multiple replicas and its own environment (e.g. compute hardware, autoscaling, dependencies).
 
 <img src="/images/audio-transcription-chainlet.png" />
 
-**Chain**: A *chain* is composed of multiple chainlets that are linked to each other. Each *chain* has an
-"*entrypoint*" chainlet to which requests are made by the client. Internally, the different chainlets call each other,
+**Chain**: A *Chain* is composed of multiple Chainlets that are linked to each other. Each *Chain* has an
+"*entrypoint*" Chainlet to which requests are made by the client. Internally, the different Chainlets call each other,
 thereby structuring and distributing the overall computation into smaller parts - and eventually the entrypoint
-chainlet returns the end-to-end result back to the client.
+Chainlet returns the end-to-end result back to the client.
 You can imagine this like a "flow chart" or "computational graph".
 
-Here's an example of a chain that takes a large audio file, splits it into smaller chunks, and transcribes each chunk
+Here's an example of a Chain that takes a large audio file, splits it into smaller chunks, and transcribes each chunk
 *in parallel* to speed up the transcription process.
 
 <img src="/images/audio-transcription-chain.png" />
 
 ## Remote vs. Local
 
-Keep in my mind that Truss Chains is designed to run in a distributed environment, with each chainlet running
+Keep in my mind that Truss Chains is designed to run in a distributed environment, with each Chainlet running
 with its own set of resources and autoscaling settings. To enable a smooth development experience, Truss Chains
-also supports a *local development mode* where you can run your chainlets on your local machine.
+also supports a *local development mode* where you can run your Chainlets on your local machine.
 
-To facilitate the distributed execution, chainlets must be referenced and sub-classed in a particular way--more on this soon.
+To facilitate the distributed execution, Chainlets must be referenced and sub-classed in a particular way--more on this soon.
 
 # Hello World
 

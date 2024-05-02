@@ -16,7 +16,7 @@ def _deploy_to_baseten(
     model_name = truss_handle.spec.config.model_name
     assert model_name is not None
     logging.info(
-        f"Deploying truss model to Baseten`{model_name}` "
+        f"Deploying chainlet `{model_name}` as truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
     )
     # Models must be trusted to use the API KEY secret.
@@ -70,6 +70,7 @@ def _deploy_service(
     if options.only_generate_trusses:
         service = None
     elif isinstance(options, definitions.DeploymentOptionsLocalDocker):
+        logging.info(f"Running in docker container `{chainlet_descriptor.name}` ")
         port = utils.get_free_port()
         truss_handle = truss.load(str(truss_dir))
         truss_handle.add_secret(
@@ -92,7 +93,7 @@ def _deploy_service(
 
     if service:
         logging.info(
-            f"Deployed service `{chainlet_descriptor.name}` @ {service.predict_url}."
+            f"Service created for `{chainlet_descriptor.name}` @ {service.predict_url}."
         )
     return service
 
@@ -165,12 +166,6 @@ def deploy_remotely(
     non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path("/tmp"),
 ) -> ChainService:
-    """
-    * Gathers dependencies of `entrypoint`.
-    * Generates stubs.
-    * Generates truss model code, including stub initialization.
-    * Deploys truss models to baseten.
-    """
     # TODO: revisit how chain root is inferred/specified, current might be brittle.
     if non_entrypoint_root_dir:
         chain_root = pathlib.Path(non_entrypoint_root_dir).absolute()
@@ -198,7 +193,6 @@ def deploy_remotely(
             )
 
     for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
-        logging.info(f"Deploying `{chainlet_descriptor.name}`.")
         deps = framework.global_chainlet_registry.get_dependencies(chainlet_descriptor)
         chainlet_dir = code_gen.gen_truss_chainlet(
             options,
