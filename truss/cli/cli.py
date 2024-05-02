@@ -341,14 +341,14 @@ def deploy(
     ENTRYPOINT: Class name of the entrypoint chainlet in source file.
     """
     chain_name = name or entrypoint
-    entrypoint_cls = framework.import_target(source, entrypoint)
-    options = chains_def.DeploymentOptionsBaseten.create(
-        chain_name=chain_name,
-        promote=promote,
-        publish=publish,
-        only_generate_trusses=dryrun,
-    )
-    service = chains_deploy.deploy_remotely(entrypoint_cls, options)
+    with framework.import_target(source, entrypoint) as entrypoint_cls:
+        options = chains_def.DeploymentOptionsBaseten.create(
+            chain_name=chain_name,
+            promote=promote,
+            publish=publish,
+            only_generate_trusses=dryrun,
+        )
+        service = chains_deploy.deploy_remotely(entrypoint_cls, options)
 
     console.print("\n")
     if dryrun:

@@ -1,5 +1,7 @@
+import ast
 import collections
 import contextlib
+import functools
 import importlib.util
 import inspect
 import logging
@@ -11,6 +13,7 @@ from typing import (
     Any,
     Callable,
     Iterable,
+    Iterator,
     Mapping,
     MutableMapping,
     Optional,
@@ -57,21 +60,35 @@ class ChainletProvisionMarker(_BaseProvisionMarker):
 
 # Checking of Chainlet class definition ###############################################
 
-# TODO: make this a code template to have type checking on it.
-_EXAMPLE_CHAINLET = """
-class Example(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=...)
 
-    def __init__(
-        self,
-        context: chains.DeploymentContext = chains.provide_context(),
-        data_generator: GenerateData = chains.provide(GenerateData),
-        splitter: shared_chainlet.SplitText = chains.provide(shared_chainlet.SplitText),
-    ) -> None:
-        super().__init__(context)
-        self._data_generator = data_generator
-        self._data_splitter = splitter
-"""
+@functools.cache
+def _example_chainlet_code() -> str:
+    # Note: this function requires all chains modules to be initialized, because
+    # in `example_chainlet` the full chainlet validation process is triggered.
+    # To avoid circular import dependencies, `_example_chainlet_code` should only be
+    # called on erroneous code branches (which will not be triggered if
+    # `example_chainlet` is free of errors).
+    try:
+        from truss_chains import example_chainlet
+    # If `example_chainlet` fails validation and `_example_chainlet_code` is
+    # called as a result of that, we have a circular import ("partially initialized
+    # module 'truss_chains.example_chainlet' ...").
+    except AttributeError:
+        logging.error("example_chainlet` is broken.", exc_info=True, stack_info=True)
+        return "<EXAMPLE CODE MISSING/BROKEN>"
+
+    example_name = example_chainlet.DummyExample.__name__
+    source = pathlib.Path(example_chainlet.__file__).read_text()
+    tree = ast.parse(source)
+    class_code = ""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == example_name:
+            # Extract the source code of the class definition
+            lines = source.splitlines()
+            class_code = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+            break
+
+    return class_code
 
 
 def _instantiation_error_msg(cls_name: str):
@@ -84,7 +101,7 @@ def _instantiation_error_msg(cls_name: str):
         f"context. See {_DOCS_URL_LOCAL}.\n"
         "3. Deploy the chain and call the remote endpoint.\n"
         "Example of correct `__init__` with dependencies:\n"
-        f"{_EXAMPLE_CHAINLET}"
+        f"{_example_chainlet_code()}"
     )
 
 
@@ -96,7 +113,7 @@ def _validate_io_type(param: inspect.Parameter) -> None:
     """
     anno = param.annotation
     if isinstance(anno, str):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"A string-valued type annotation was found: `{param}`. Use only actual "
             "types and avoid `from __future__ import annotations` (upgrade python)."
         )
@@ -104,37 +121,22 @@ def _validate_io_type(param: inspect.Parameter) -> None:
         return
     if isinstance(anno, types.GenericAlias):
         if get_origin(anno) not in _SIMPLE_CONTAINERS:
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 f"For generic types, only containers {_SIMPLE_CONTAINERS} are "
                 f"allowed, but got `{param}`."
             )
         args = get_args(anno)
         for arg in args:
             if arg not in _SIMPLE_TYPES:
-                raise definitions.APIDefinitionError(
+                raise definitions.ChainsUsageError(
                     f"For generic types, only the following item types {_SIMPLE_TYPES} "
                     f"are allowed, but got `{param}`."
                 )
         return
     if issubclass(anno, pydantic.BaseModel):
-        # TODO: generating models for the stubs only covers the schema-capabilities
-        #   but not any methods that clients might add to their pydantic models.
-        #   We should enforce that no user-defined methods (or class vars or properties)
-        #   are present, since this might lead to broken behavior.
-        # TODO: for enums we rely on the convention that they are string enums and
-        #  the member names are the capitalized member values (or better the values are
-        #  capitalized themselves too). This constraint should be enforced / checked.
-        #  We could also require using a custom StrEnum-like enum base class.
-        try:
-            anno.schema()
-        except Exception as e:
-            raise definitions.APIDefinitionError(
-                "Pydantic models used for I/O typs must be serializable and able to "
-                f"generate a schema. Please fix `{param}`."
-            ) from e
         return
 
-    raise definitions.APIDefinitionError(
+    raise definitions.ChainsUsageError(
         f"Unsupported I/O type `{param}`. Use simple types {_SIMPLE_TYPES}, "
         f"containers ({_SIMPLE_CONTAINERS}) of simple types or serializable pydantic "
         "models."
@@ -145,19 +147,19 @@ def _validate_endpoint_params(
     params: list[inspect.Parameter], cls_name: str
 ) -> list[tuple[str, definitions.TypeDescriptor]]:
     if len(params) == 0:
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             f"with `{definitions.SELF_ARG_NAME}` argument."
         )
     if params[0].name != definitions.SELF_ARG_NAME:
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             f"with `{definitions.SELF_ARG_NAME}` argument."
         )
     input_name_and_types = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 "Inputs of endpoints must have type annotations. For "
                 f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` parameter "
                 f"`{param.name}` has not type annotation."
@@ -187,13 +189,13 @@ def _validate_and_describe_endpoint(
     * Generators are allowed, too (but not yet supported).
     """
     if not hasattr(cls, definitions.ENDPOINT_METHOD_NAME):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"`{cls.__name__}` must have a {definitions.ENDPOINT_METHOD_NAME}` method."
         )
     # This is the unbound method.
     endpoint_method = getattr(cls, definitions.ENDPOINT_METHOD_NAME)
     if not inspect.isfunction(endpoint_method):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"`{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}` must be a method."
         )
     signature = inspect.signature(endpoint_method)
@@ -201,7 +203,7 @@ def _validate_and_describe_endpoint(
         list(signature.parameters.values()), cls.__name__
     )
     if signature.return_annotation == inspect.Parameter.empty:
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             "Return values of endpoints must be type annotated. Got:\n"
             f"{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}{signature} -> !MISSING!"
         )
@@ -240,12 +242,12 @@ def _get_generic_class_type(var):
 def _validate_dependency_arg(param) -> ChainletProvisionMarker:
     # TODO: handle subclasses, unions, optionals, check default value etc.
     if not isinstance(param.default, ChainletProvisionMarker):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"Any arguments of a chainlet's __init__ (besides `context`) must have"
             "dependency chainlets with default values from `chains.provide`-directive. "
             f"Got `{param}`.\n"
             f"Example of correct `__init__` with dependencies:\n"
-            f"{_EXAMPLE_CHAINLET}"
+            f"{_example_chainlet_code()}"
         )
     chainlet_cls = param.default.chainlet_cls
     if not (
@@ -254,13 +256,13 @@ def _validate_dependency_arg(param) -> ChainletProvisionMarker:
         issubclass(param.annotation, Protocol)  # type: ignore[arg-type]
         or issubclass(chainlet_cls, param.annotation)
     ):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"The type annotation for `{param.name}` must either be a `{Protocol}` "
             "or a class/subclass of the Chainlet type used as default value. "
             f"Got `{param.default}`."
         )
     if not issubclass(chainlet_cls, definitions.ABCChainlet):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"`{chainlet_cls}` must be a subclass of `{definitions.ABCChainlet}`."
         )
     return param.default  # The Marker.
@@ -274,28 +276,30 @@ class _ChainletInitParams:
 
     def _validate_self_arg(self) -> None:
         if len(self._params) == 0:
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 "Methods must have first argument `self`."
             )
 
         if self._params[0].name != definitions.SELF_ARG_NAME:
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 "Methods must have first argument `self`."
             )
 
     def _validate_context_arg(self) -> None:
-        context_exception = definitions.APIDefinitionError(
-            f"`{definitions.ABCChainlet}` must have "
-            f"`{definitions.CONTEXT_ARG_NAME}` argument of type "
-            f"`{definitions.DeploymentContext}`.\n"
-            f"Got: `{self._params}`.\n"
-            "Example of correct `__init__` with dependencies:\n"
-            f"{_EXAMPLE_CHAINLET}"
-        )
+        def make_context_exception():
+            return definitions.ChainsUsageError(
+                f"`{definitions.ABCChainlet}` must have "
+                f"`{definitions.CONTEXT_ARG_NAME}` argument of type "
+                f"`{definitions.DeploymentContext}`.\n"
+                f"Got: `{self._params}`.\n"
+                "Example of correct `__init__` with dependencies:\n"
+                f"{_example_chainlet_code()}"
+            )
+
         if len(self._params) < 2:
-            raise context_exception
+            raise make_context_exception()
         if self._params[1].name != definitions.CONTEXT_ARG_NAME:
-            raise context_exception
+            raise make_context_exception()
 
         param = self._params[1]
         param_type = _get_generic_class_type(param.annotation)
@@ -306,12 +310,12 @@ class _ChainletInitParams:
             and (not issubclass(param_type, definitions.DeploymentContext))
         ):
             print(param_type)
-            raise context_exception
+            raise make_context_exception()
         if not isinstance(param.default, ContextProvisionMarker):
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 f"Incorrect default value `{param.default}` for `context` argument. "
                 "Example of correct `__init__` with dependencies:\n"
-                f"{_EXAMPLE_CHAINLET}"
+                f"{_example_chainlet_code()}"
             )
 
     def validated_dependencies(self) -> Mapping[str, definitions.DependencyDescriptor]:
@@ -320,7 +324,7 @@ class _ChainletInitParams:
         for param in self._params[2:]:  # Skip self and context.
             marker = _validate_dependency_arg(param)
             if marker.chainlet_cls in used:
-                raise definitions.APIDefinitionError(
+                raise definitions.ChainsUsageError(
                     f"The same Chainlet class cannot be used multiple times for "
                     f"different arguments. Got previously used "
                     f"`{marker.chainlet_cls}` for `{param.name}`."
@@ -370,7 +374,7 @@ def _validate_chainlet_cls(cls: Type[definitions.ABCChainlet]) -> None:
     #   See other constraints listed in:
     # https://www.notion.so/ml-infra/WIP-Orchestration-a8cb4dad00dd488191be374b469ffd0a?pvs=4#7df299eb008f467a80f7ee3c0eccf0f0
     if not hasattr(cls, definitions.REMOTE_CONFIG_NAME):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"`{definitions.REMOTE_CONFIG_NAME} = {definitions.RemoteConfig.__name__}"
             f"(...)`. Missing for `{cls}`."
@@ -379,7 +383,7 @@ def _validate_chainlet_cls(cls: Type[definitions.ABCChainlet]) -> None:
         remote_config := getattr(cls, definitions.REMOTE_CONFIG_NAME),
         definitions.RemoteConfig,
     ):
-        raise definitions.APIDefinitionError(
+        raise definitions.ChainsUsageError(
             f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
             f"for `{cls}`."
@@ -418,13 +422,13 @@ class ChainletProvisionPlaceholder(_BaseProvisionPlaceholder):
     def __getattr__(self, item: str) -> Any:
         if item == definitions.ENDPOINT_METHOD_NAME:
             logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
-            raise definitions.UsageError(
+            raise definitions.ChainsRuntimeError(
                 f"It seems `chains.provide({self.chainlet_cls.__name__})` was used "
                 f"outside the `__init__` method of a chainlet. Dependency chainlets "
                 f"must be passed as init arguments.\n"
                 f"See {_DOCS_URL_CHAINING}.\n"
                 "Example of correct `__init__` with dependencies:\n"
-                f"{_EXAMPLE_CHAINLET}"
+                f"{_example_chainlet_code()}"
             )
 
 
@@ -456,7 +460,7 @@ class _ChainletRegistry:
         if chainlet_descriptor.name in self._name_to_cls:
             conflict = self._name_to_cls[chainlet_descriptor.name]
             existing_source_path = self._chainlets[conflict].src_path
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 f"A chainlet with name `{chainlet_descriptor.name}` was already "
                 f"defined, chainlet names must be globally unique.\n"
                 f"Pre-existing in: `{existing_source_path}`\n"
@@ -476,11 +480,11 @@ class _ChainletRegistry:
         return self._chainlets[chainlet_cls]
 
     def get_dependencies(
-        self, Chainlet: definitions.ChainletAPIDescriptor
+        self, chainlet: definitions.ChainletAPIDescriptor
     ) -> Iterable[definitions.ChainletAPIDescriptor]:
         return [
             self._chainlets[dep.chainlet_cls]
-            for dep in self._chainlets[Chainlet.chainlet_cls].dependencies.values()
+            for dep in self._chainlets[chainlet.chainlet_cls].dependencies.values()
         ]
 
 
@@ -508,17 +512,19 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
                 f"default argument `{name}` a symbolic placeholder value "
                 f"was passed (`{value}`)."
             )
-            raise definitions.UsageError(_instantiation_error_msg(cls.__name__))
+            raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.__name__))
 
 
 # Local Deployment #####################################################################
 
 
 def _create_local_context(
-    chainlet_cls: Type[definitions.ABCChainlet], secrets: Mapping[str, str]
+    chainlet_cls: Type[definitions.ABCChainlet],
+    secrets: Mapping[str, str],
+    data_dir: Optional[pathlib.Path],
 ) -> definitions.DeploymentContext:
     return definitions.DeploymentContext(
-        user_config=chainlet_cls.default_user_config, secrets=secrets
+        user_config=chainlet_cls.default_user_config, secrets=secrets, data_dir=data_dir
     )
 
 
@@ -528,6 +534,7 @@ def _create_modified_init_for_local(
         Type[definitions.ABCChainlet], definitions.ABCChainlet
     ],
     secrets: Mapping[str, str],
+    data_dir: Optional[pathlib.Path],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
@@ -545,7 +552,9 @@ def _create_modified_init_for_local(
         logging.debug(f"Patched `__init__` of `{chainlet_descriptor.name}`.")
         kwargs_mod = dict(kwargs)
         if definitions.CONTEXT_ARG_NAME not in kwargs_mod:
-            context = _create_local_context(chainlet_descriptor.chainlet_cls, secrets)
+            context = _create_local_context(
+                chainlet_descriptor.chainlet_cls, secrets, data_dir
+            )
             kwargs_mod[definitions.CONTEXT_ARG_NAME] = context
         else:
             logging.debug(
@@ -581,7 +590,10 @@ def _create_modified_init_for_local(
 
 
 @contextlib.contextmanager
-def run_local(secrets: Optional[Mapping[str, str]] = None) -> Any:
+def run_local(
+    secrets: Optional[Mapping[str, str]] = None,
+    data_dir: Optional[pathlib.Path] = None,
+) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
     type_to_instance: MutableMapping[
         Type[definitions.ABCChainlet], definitions.ABCChainlet
@@ -593,7 +605,7 @@ def run_local(secrets: Optional[Mapping[str, str]] = None) -> Any:
             chainlet_descriptor.chainlet_cls
         ] = chainlet_descriptor.chainlet_cls.__init__
         init_for_local = _create_modified_init_for_local(
-            chainlet_descriptor, type_to_instance, secrets or {}
+            chainlet_descriptor, type_to_instance, secrets or {}, data_dir
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True
@@ -609,9 +621,10 @@ def run_local(secrets: Optional[Mapping[str, str]] = None) -> Any:
 ########################################################################################
 
 
+@contextlib.contextmanager
 def import_target(
     module_path: pathlib.Path, target_name: str
-) -> Type[definitions.ABCChainlet]:
+) -> Iterator[Type[definitions.ABCChainlet]]:
     module_path = pathlib.Path(module_path).resolve()
     module_name = module_path.stem  # Use the file's name as the module name
 
@@ -628,24 +641,33 @@ def import_target(
     # depends on the modules bein properly registered in `sys.modules`, we have to
     # manually do this here (because importlib does not do it automatically). This
     # registration has to stay at least until the deployment command has finished.
-    # TODO: Might need a context manager to remote this after deploy.
+    if module_name in sys.modules:
+        raise ImportError(
+            f"{error_msg}. There is already a module in `sys.modules` "
+            f"with name {module_name}. Overwriting that value is unsafe. "
+            "Try renaming your file."
+        )
     sys.modules[module_name] = module
-    # Add path for making absolute import w.r.t to the source_module's dir.
+    # Add path for making absolute imports relative to the source_module's dir.
     sys.path.insert(0, str(module_path.parent))
     try:
         spec.loader.exec_module(module)
-    except Exception as e:
+        target_cls = getattr(module, target_name, None)
+        if not target_cls:
+            raise AttributeError(
+                f"Target chainlet class `{target_name}` not found in `{module_path}`."
+            )
+        if not issubclass(target_cls, definitions.ABCChainlet):
+            raise TypeError(
+                f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
+            )
+
+        yield target_cls
+
+    except Exception:
         del sys.modules[module_name]
-        raise e from e
-    finally:
-        sys.path.pop(0)
-
-    target_cls = getattr(module, target_name, None)
-    if not target_cls:
-        raise AttributeError(
-            f"Target chainlet `{target_name}` not found in `{module_path}`."
-        )
-    if not issubclass(target_cls, definitions.ABCChainlet):
-        raise TypeError(f"Target `{target_cls}` is not a {definitions.ABCChainlet}")
-
-    return target_cls
+        try:
+            sys.path.remove(str(module_path.parent))
+        except ValueError:  # In case the value was already removed for whatever reason.
+            pass
+        raise

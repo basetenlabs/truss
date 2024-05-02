@@ -83,7 +83,7 @@ def _gen_import_and_ref(raw_type: Any) -> _Source:
         # TODO: assuming that main is copied into package dir and can be imported.
         module_obj = sys.modules[raw_type.__module__]
         if not module_obj.__file__:
-            raise definitions.APIDefinitionError(
+            raise definitions.ChainsUsageError(
                 f"File-based python code required. `{raw_type}` does not have a file."
             )
 
@@ -451,10 +451,7 @@ def _gen_truss_chainlet_file(
     """Generates code that wraps a Chainlet as a truss-compatible model."""
     file_path = chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / _MODEL_FILENAME
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    # TODO: why does truss *need* an init file?
-    (chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / "__init__.py").write_text(
-        ""
-    )
+    (chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / "__init__.py").touch()
     imports = set()
     src_parts = []
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
@@ -575,7 +572,6 @@ def gen_truss_chainlet(
         f"{options.chain_name}.{chainlet_name}",
     )
     # TODO This assume all imports are absolute w.r.t chain root (or site-packages).
-    #   Also: apparently packages need an `__init__`, or crash.
     _copy_python_source_files(
         chain_root, chainlet_dir / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR
     )
