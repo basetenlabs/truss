@@ -4,11 +4,6 @@ from typing import Tuple
 import pydantic
 import truss_chains as chains
 
-IMAGE_NUMPY = chains.DockerImage(
-    pip_requirements_file=chains.make_abs_path_here("../requirements.txt"),
-    pip_requirements=["numpy"],
-)
-
 
 class Modes(str, enum.Enum):
     MODE_0 = "MODE_0"
@@ -28,7 +23,9 @@ class SplitTextOutput(pydantic.BaseModel):
 
 class SplitText(chains.ChainletBase):
 
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_NUMPY)
+    remote_config = chains.RemoteConfig(
+        docker_image=chains.DockerImage(pip_requirements=["numpy"])
+    )
 
     async def run(
         self, inputs: SplitTextInput, extra_arg: int
