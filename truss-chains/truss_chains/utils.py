@@ -1,5 +1,4 @@
 import builtins
-import configparser
 import contextlib
 import inspect
 import logging
@@ -14,7 +13,6 @@ from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 import fastapi
 import httpx
 import pydantic
-from truss.remote import remote_factory
 from truss_chains import definitions
 
 T = TypeVar("T")
@@ -124,15 +122,6 @@ def get_free_port() -> int:
         s.listen(1)  # Not necessary but included for completeness.
         port = s.getsockname()[1]  # Retrieve the port number assigned.
         return port
-
-
-def get_api_key_from_trussrc() -> str:
-    try:
-        return remote_factory.load_config().get("baseten", "api_key")
-    except configparser.Error as e:
-        raise definitions.MissingDependencyError(
-            "You must have a `trussrc` file with a baseten API key."
-        ) from e
 
 
 # Error Propagation Utils. #############################################################
@@ -282,10 +271,6 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
             status_code=response.status_code, detail=response.content
         )
     return response.json()
-
-
-def make_stub_name(chainlet_name: str) -> str:
-    return f"{chainlet_name}{definitions.STUB_CLS_SUFFIX}"
 
 
 class InjectedError(Exception):

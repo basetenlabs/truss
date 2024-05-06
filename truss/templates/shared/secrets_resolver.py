@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Dict, Optional
 
-SECRETS_DOC_LINK = "https://truss.baseten.co/docs/using-secrets"
+SECRETS_DOC_LINK = "https://truss.baseten.co/guides/secrets"
 
 
 class SecretNotFound(Exception):

@@ -501,8 +501,7 @@ class TrussConfig:
     def canonical_python_version(self) -> str:
         return {
             "py39": "3.9",
-            "py38": "3.8",
-            "py37": "3.7",
+            "py311": "3.11",
         }[self.python_version]
 
     @staticmethod

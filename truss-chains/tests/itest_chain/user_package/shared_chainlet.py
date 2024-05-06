@@ -1,24 +1,14 @@
-import enum
-from typing import Tuple
+from typing import List, Tuple  # Cover testing of antique type annotations.
 
 import pydantic
 import truss_chains as chains
 
-
-class Modes(str, enum.Enum):
-    MODE_0 = "MODE_0"
-    MODE_1 = "MODE_1"
-
-
-class SplitTextInput(pydantic.BaseModel):
-    data: str
-    num_partitions: int
-    mode: Modes
+from .nested_package import io_types  # Cover testing of relative import resolution.
 
 
 class SplitTextOutput(pydantic.BaseModel):
-    parts: list[str]
-    part_lens: list[int]
+    parts: List[str]
+    part_lens: List[int]
 
 
 class SplitTextFailOnce(chains.ChainletBase):
@@ -35,7 +25,7 @@ class SplitTextFailOnce(chains.ChainletBase):
         self._count = 0
 
     async def run(
-        self, inputs: SplitTextInput, extra_arg: int
+        self, inputs: io_types.SplitTextInput, extra_arg: int
     ) -> Tuple[SplitTextOutput, int]:
         import numpy as np
 
@@ -43,9 +33,9 @@ class SplitTextFailOnce(chains.ChainletBase):
         if self._count == 1:
             raise ValueError("Haha this is a fake error.")
 
-        if inputs.mode == Modes.MODE_0:
+        if inputs.mode == io_types.Modes.MODE_0:
             print(f"Using mode: `{inputs.mode}`")
-        elif inputs.mode == Modes.MODE_1:
+        elif inputs.mode == io_types.Modes.MODE_1:
             print(f"Using mode: `{inputs.mode}`")
         else:
             raise NotImplementedError(inputs.mode)

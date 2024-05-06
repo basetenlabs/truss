@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import requests
-from truss.remote.baseten.auth import AuthService
+from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
@@ -23,15 +23,6 @@ DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
 class BasetenApi:
-    """
-    A client for the Baseten API.
-
-    Args:
-        graphql_api_url: The URL of the Baseten GraphQL API.
-        rest_api_url: The URL of the Baseten REST API.
-        auth_service: An AuthService instance.
-    """
-
     class GraphQLErrorCodes(Enum):
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
@@ -54,6 +45,10 @@ class BasetenApi:
     def rest_api_url(self) -> str:
         return self._rest_api_url
 
+    @property
+    def auth_token(self) -> ApiKey:
+        return self._auth_token
+
     def _post_graphql_query(self, query_string: str) -> dict:
         headers = self._auth_token.header()
         resp = requests.post(
@@ -64,7 +59,7 @@ class BasetenApi:
         )
 
         if not resp.ok:
-            logger.error(f"GraphQL endpoint failed with error: {resp.content}")  # type: ignore
+            logger.error(f"GraphQL endpoint failed with error: {str(resp.content)}")
             resp.raise_for_status()
 
         resp_dict = resp.json()
@@ -288,3 +283,27 @@ class BasetenApi:
 
         deployment = resp.json()
         return deployment
+
+    def upsert_secret(self, name: str, value: str) -> Any:
+        headers = self._auth_token.header()
+        data = {"name": name, "value": value}
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/secrets", headers=headers, json=data
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        secret_info = resp.json()
+        return secret_info
+
+    def get_all_secrets(self) -> Any:
+        headers = self._auth_token.header()
+        resp = requests.get(
+            f"{self._rest_api_url}/v1/secrets",
+            headers=headers,
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        secrets_info = resp.json()
+        return secrets_info

@@ -40,6 +40,10 @@ class BasetenRemote(TrussRemote):
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
 
+    @property
+    def api(self) -> BasetenApi:
+        return self._api
+
     def push(  # type: ignore
         self,
         truss_handle: TrussHandle,
@@ -71,7 +75,8 @@ class BasetenRemote(TrussRemote):
 
         if not promote and preserve_previous_prod_deployment:
             raise ValueError(
-                "preserve-previous-production-deployment can only be used with the '--promote' option"
+                "preserve-previous-production-deployment can only be used "
+                "with the '--promote' option"
             )
 
         if deployment_name and not re.match(r"^[0-9a-zA-Z_\-\.]*$", deployment_name):
@@ -164,7 +169,8 @@ class BasetenRemote(TrussRemote):
         else:
             # Model identifier is of invalid type.
             raise click.UsageError(
-                "You must either be inside of a Truss directory, or provide --model-deployment or --model options."
+                "You must either be inside of a Truss directory, or provide "
+                "--model-deployment or --model options."
             )
 
         return service_url_path, model_id, model_version_id
@@ -252,9 +258,9 @@ class BasetenRemote(TrussRemote):
         truss_signature = dev_version.get("truss_signature", None)
         if not (truss_hash and truss_signature):
             error_console.print(
-                """Failed to inspect a running remote deployment to watch for changes.
-Ensure that there exists a running remote deployment before attempting to watch for changes
-            """
+                "Failed to inspect a running remote deployment to watch for changes. "
+                "Ensure that there exists a running remote deployment before "
+                "attempting to watch for changes"
             )
             return
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
@@ -275,7 +281,8 @@ Ensure that there exists a running remote deployment before attempting to watch 
                     resp = self._api.patch_draft_truss(model_name, patch_request)
             except ReadTimeout:
                 error_console.print(
-                    "Read Timeout when attempting to connect to remote. Bailing on patching"
+                    "Read Timeout when attempting to connect to remote. "
+                    "Bailing on patching"
                 )
                 return
             except Exception:
@@ -287,11 +294,13 @@ Ensure that there exists a running remote deployment before attempting to watch 
                 needs_full_deploy = resp.get("needs_full_deploy", None)
                 if needs_full_deploy:
                     error_console.print(
-                        f"Model {model_name} is not able to be patched, use `truss push` to deploy"
+                        f"Model {model_name} is not able to be patched, use "
+                        "`truss push` to deploy"
                     )
                 else:
                     error_console.print(
-                        f"Failed to patch: `{resp['error']}`. Model left in original state"
+                        f"Failed to patch: `{resp['error']}`. "
+                        "Model left in original state"
                     )
             else:
                 console.print(
