@@ -342,67 +342,31 @@ parameters: {
 parameters: {
   key: "enable_trt_overlap"
   value: {
-    string_value: "${enable_trt_overlap}"
+    string_value: "False"
   }
 }
 parameters: {
   key: "exclude_input_in_output"
   value: {
-    string_value: "${exclude_input_in_output}"
+    string_value: "False"
   }
 }
 parameters: {
   key: "enable_kv_cache_reuse"
   value: {
-    string_value: "${enable_kv_cache_reuse}"
+    string_value: "True"
   }
 }
 parameters: {
   key: "normalize_log_probs"
   value: {
-    string_value: "${normalize_log_probs}"
+    string_value: "True"
   }
 }
 parameters: {
   key: "enable_chunked_context"
   value: {
-    string_value: "${enable_chunked_context}"
-  }
-}
-parameters: {
-  key: "gpu_device_ids"
-  value: {
-    string_value: "${gpu_device_ids}"
-  }
-}
-parameters: {
-  key: "lora_cache_optimal_adapter_size"
-  value: {
-    string_value: "${lora_cache_optimal_adapter_size}"
-  }
-}
-parameters: {
-  key: "lora_cache_max_adapter_size"
-  value: {
-    string_value: "${lora_cache_max_adapter_size}"
-  }
-}
-parameters: {
-  key: "lora_cache_gpu_memory_fraction"
-  value: {
-    string_value: "${lora_cache_gpu_memory_fraction}"
-  }
-}
-parameters: {
-  key: "lora_cache_host_memory_bytes"
-  value: {
-    string_value: "${lora_cache_host_memory_bytes}"
-  }
-}
-parameters: {
-  key: "decoding_mode"
-  value: {
-    string_value: "${decoding_mode}"
+    string_value: "False"
   }
 }
 parameters: {
