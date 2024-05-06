@@ -56,11 +56,11 @@ class ModelInput:
             raise ValueError("eos_token_id is required when ignore_eos is True")
 
         prompt_data = np.array([[self._prompt]], dtype=object)
-        output_len_data = np.ones_like(prompt_data, dtype=np.uint32) * self._max_tokens
+        output_len_data = np.ones_like(prompt_data, dtype=np.int32) * self._max_tokens
         bad_words_data = np.array([self._bad_words_list], dtype=object)
         stop_words_data = np.array([self._stop_words_list], dtype=object)
         stream_data = np.array([[self.stream]], dtype=bool)
-        beam_width_data = np.array([[self._beam_width]], dtype=np.uint32)
+        beam_width_data = np.array([[self._beam_width]], dtype=np.int32)
         repetition_penalty_data = np.array(
             [[self._repetition_penalty]], dtype=np.float32
         )
@@ -76,7 +76,7 @@ class ModelInput:
         ]
 
         if not self._ignore_eos:
-            end_id_data = np.array([[self._eos_token_id]], dtype=np.uint32)
+            end_id_data = np.array([[self._eos_token_id]], dtype=np.int32)
             inputs.append(self._prepare_grpc_tensor("end_id", end_id_data))
 
         return inputs
