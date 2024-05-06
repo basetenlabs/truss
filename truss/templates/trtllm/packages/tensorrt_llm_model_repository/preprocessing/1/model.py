@@ -260,18 +260,14 @@ class TritonPythonModel:
             start_ids = [
                 np.array(
                     [self.tokenizer_bos_id]
-                    + self.tokenizer.encode(
-                        s[0].decode(), add_special_tokens=self.add_special_tokens
-                    )
+                    + self.tokenizer.encode(s[0].decode(), add_special_tokens=False)
                 ).astype(int)
                 for s in query
             ]
         else:
             start_ids = [
                 np.array(
-                    self.tokenizer.encode(
-                        s[0].decode(), add_special_tokens=self.add_special_tokens
-                    )
+                    self.tokenizer.encode(s[0].decode(), add_special_tokens=False)
                 ).astype(int)
                 for s in query
             ]

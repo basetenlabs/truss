@@ -226,7 +226,7 @@ class TritonPythonModel:
                 )
                 outputs.append(out_generation_logits)
 
-            inference_response = pb_utils.InferenceResponse(output_tensors=[outputs])
+            inference_response = pb_utils.InferenceResponse(output_tensors=outputs)
             responses.append(inference_response)
 
         return responses
