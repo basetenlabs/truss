@@ -36,7 +36,7 @@ class Model:
             hf_access_token = self._secrets["hf_access_token"]
 
         engine_repository_path = self._data_dir
-        tokenizer_repository = trtllm_config["build"]["huggingface_ckpt_repository"]
+        tokenizer_repository = trtllm_config["build"]["checkpoint_repository"]["repo"]
         tensor_parallel_count = trtllm_config["build"]["tensor_parallel_count"]
         pipeline_parallel_count = trtllm_config["build"]["pipeline_parallel_count"]
         world_size = tensor_parallel_count * pipeline_parallel_count
