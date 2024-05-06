@@ -52,14 +52,14 @@ class Model:
             env[HF_AUTH_KEY_CONSTANT] = hf_access_token
         env[TOKENIZER_KEY_CONSTANT] = tokenizer_repository
 
+        self.triton_server = TritonServer(
+            grpc_port=GRPC_SERVICE_PORT,
+            http_port=HTTP_SERVICE_PORT,
+        )
         self.triton_server.create_model_repository(
             truss_data_dir=self._data_dir,
             engine_repository_path=engine_repository_path,
             huggingface_auth_token=hf_access_token,
-        )
-        self.triton_server = TritonServer(
-            grpc_port=GRPC_SERVICE_PORT,
-            http_port=HTTP_SERVICE_PORT,
         )
         self.triton_server.start(
             world_size=world_size,
