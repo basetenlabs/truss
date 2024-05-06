@@ -116,7 +116,7 @@ class TritonClient:
         return self._grpc_client
 
     async def infer(
-        self, model_input: ModelInput, model_name="ensemble"
+        self, model_input: ModelInput, model_name=ENTRYPOINT_MODEL_NAME
     ) -> AsyncGenerator[str, None]:
         grpc_client_instance = self.start_grpc_stream()
         inputs = model_input.to_tensors()

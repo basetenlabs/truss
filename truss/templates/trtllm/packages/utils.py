@@ -1,4 +1,3 @@
-import subprocess
 from pathlib import Path
 
 from constants import TENSORRT_LLM_MODEL_REPOSITORY_PATH
@@ -42,16 +41,3 @@ def download_engine(engine_repository: str, fp: Path, auth_token=None):
         max_workers=4,
         **({"use_auth_token": auth_token} if auth_token is not None else {}),
     )
-
-
-def execute_command(command):
-    process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
-
-    for line in process.stdout:
-        print(line.strip())
-
-    return_code = process.wait()
-    if return_code != 0:
-        raise subprocess.CalledProcessError(return_code, command)

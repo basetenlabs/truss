@@ -351,6 +351,8 @@ class ServingImageBuilder(ImageBuilder):
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
+            config.model_metadata["tags"] = ["openai-compatible"]
+
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
