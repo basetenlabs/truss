@@ -77,7 +77,7 @@ class TritonPythonModel:
         )[0]
 
         # Parse model output configs and convert Triton types to numpy types
-        input_names = [
+        output_names = [
             "INPUT_ID",
             "REQUEST_INPUT_LEN",
             "BAD_WORDS_IDS",
@@ -85,7 +85,7 @@ class TritonPythonModel:
             "OUT_END_ID",
             "OUT_PAD_ID",
         ]
-        output_names = ["EMBEDDING_BIAS_WORDS", "EMBEDDING_BIAS_WEIGHTS"]
+        input_names = ["EMBEDDING_BIAS_WORDS", "EMBEDDING_BIAS_WEIGHTS"]
         for input_name in input_names:
             setattr(
                 self,

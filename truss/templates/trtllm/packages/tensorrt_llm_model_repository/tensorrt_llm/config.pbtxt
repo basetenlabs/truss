@@ -354,7 +354,7 @@ parameters: {
 parameters: {
   key: "enable_kv_cache_reuse"
   value: {
-    string_value: "True"
+    string_value: "False"
   }
 }
 parameters: {
