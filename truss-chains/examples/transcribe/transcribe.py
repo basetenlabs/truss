@@ -16,7 +16,9 @@ _IMAGE = docker_image = chains.DockerImage(
     apt_requirements=["ffmpeg"], pip_requirements=["pandas", "bcp47"]
 )
 
+# Whisper is deployed as a normal truss model from examples/library.
 _WHISPER_URL = "https://model-5woz91z3.api.baseten.co/production/predict"
+# This webhooks is a dummy for debugging / testing (see `Webhook` chainlet below).
 _WEBHOOK_URL = "https://model-4q99pkxq.api.baseten.co/development/predict"
 
 
@@ -159,11 +161,12 @@ class Transcribe(chains.ChainletBase):
             speedup=duration_secs / processing_time,
         )
 
+        # Type issue seems to be a mypy bug.
         external_result = data_types.TranscriptionExternal(
             media_url=job_descr.media_url,
             media_id=job_descr.media_id,
             job_uuid=job_descr.job_uuid,
-            status=data_types.JobStatus.SUCCEEDED,
+            status=data_types.JobStatus.SUCCEEDED,  # type: ignore[arg-type]
             text=[
                 data_types.TranscriptionSegmentExternal(
                     start=seg.segment_info.start_time_sec,
