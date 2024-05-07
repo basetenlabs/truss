@@ -79,7 +79,7 @@ class _Source(definitions.SafeModelNonSerializable):
 
 
 def _gen_import_and_ref(raw_type: Any) -> _Source:
-    """Returns e.g. ("from user_package import module", "module.OutputType")."""
+    """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     if raw_type.__module__ == "__main__":
         # TODO: assuming that main is copied into package dir and can be imported.
         module_obj = sys.modules[raw_type.__module__]
@@ -105,7 +105,7 @@ def _gen_import_and_ref(raw_type: Any) -> _Source:
 
 
 def _gen_type_import_and_ref(type_descr: definitions.TypeDescriptor) -> _Source:
-    """Returns e.g. ("from user_package import module", "module.OutputType")."""
+    """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     if type_descr.is_pydantic:
         return _gen_import_and_ref(type_descr.raw)
 
@@ -122,7 +122,7 @@ def _gen_type_import_and_ref(type_descr: definitions.TypeDescriptor) -> _Source:
 def _gen_chainlet_import_and_ref(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
 ) -> _Source:
-    """Returns e.g. ("from user_package import module", "module.OutputType")."""
+    """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     return _gen_import_and_ref(chainlet_descriptor.chainlet_cls)
 
 
