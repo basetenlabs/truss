@@ -1,5 +1,6 @@
 import os
 from itertools import count
+from typing import AsyncIterator
 
 import build_engine_utils
 from builder.types import TrussTRTLLMConfiguration
@@ -9,9 +10,10 @@ from constants import (
     HTTP_SERVICE_PORT,
     TOKENIZER_KEY_CONSTANT,
 )
+from fastapi import HTTPException
 from schema import ModelInput
 from transformers import AutoTokenizer
-from triton_client import TritonClient, TritonServer
+from triton_client import InferenceResult, TritonClient, TritonServer
 from utils import execute_command
 
 DEFAULT_MAX_TOKENS = 500
@@ -61,7 +63,7 @@ class Model:
             tensor_parallel_count = trtllm_config.serve.tensor_parallel_count
             pipeline_parallel_count = trtllm_config.serve.pipeline_parallel_count
         else:
-            # If this model required a build, the engine live inside the data_dir
+            # If this model required a build, the engine lives inside the data_dir
             engine_repository_path = self._data_dir
             tokenizer_repository = trtllm_config.build.huggingface_ckpt_repository
             tensor_parallel_count = trtllm_config.build.tensor_parallel_count
@@ -116,14 +118,19 @@ class Model:
         model_input = ModelInput(**model_input)
         result_iterator = self.triton_client.infer(model_input)
 
-        async def generate():
+        async def generate() -> AsyncIterator[InferenceResult]:
             async for result in result_iterator:
-                yield result
+                yield result.value
 
         if model_input.stream:
             return generate()
-        else:
-            if self.uses_openai_api:
-                return "".join(generate())
-            else:
-                return {"text": "".join(generate())}
+
+        response = ""
+        async for value in generate():
+            if value.status_code != 200:
+                raise HTTPException(status_code=value.status_code, detail=value.text)
+            response += value
+
+        if self.uses_openai_api:
+            return response
+        return {"text": response}

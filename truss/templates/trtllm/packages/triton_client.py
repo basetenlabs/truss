@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import subprocess
@@ -15,6 +14,12 @@ from constants import (
 )
 from schema import ModelInput
 from utils import download_engine, prepare_model_repository
+
+
+class InferenceResult:
+    def __init__(self, value: str, status_code: int = 200):
+        self.value = value
+        self.status_code = status_code
 
 
 class TritonServer:
@@ -117,7 +122,7 @@ class TritonClient:
 
     async def infer(
         self, model_input: ModelInput, model_name="ensemble"
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[InferenceResult, None]:
         grpc_client_instance = self.start_grpc_stream()
         inputs = model_input.to_tensors()
 
@@ -137,9 +142,9 @@ class TritonClient:
                 result, error = response
                 if result:
                     result = result.as_numpy("text_output")
-                    yield result[0].decode("utf-8")
+                    yield InferenceResult(result[0].decode("utf-8"))
                 else:
-                    yield json.dumps({"status": "error", "message": error.message()})
-
+                    status_code = 500 if not error.status() else error.status()
+                    yield InferenceResult(error.message(), status_code=status_code)
         except grpcclient.InferenceServerException as e:
-            print(f"InferenceServerException: {e}")
+            yield InferenceResult(str(e), status_code=500)
