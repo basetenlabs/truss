@@ -330,8 +330,8 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
-        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
 
+        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         if config.trt_llm is not None:
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 

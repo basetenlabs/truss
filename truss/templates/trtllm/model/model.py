@@ -10,6 +10,7 @@ from constants import (
 from schema import ModelInput
 from transformers import AutoTokenizer
 from triton_client import TritonClient, TritonServer
+from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 
 DEFAULT_MAX_TOKENS = 500
 DEFAULT_MAX_NEW_TOKENS = 500
@@ -36,9 +37,12 @@ class Model:
             hf_access_token = self._secrets["hf_access_token"]
 
         engine_repository_path = self._data_dir
-        tokenizer_repository = trtllm_config["build"]["checkpoint_repository"]["repo"]
-        tensor_parallel_count = trtllm_config["build"]["tensor_parallel_count"]
-        pipeline_parallel_count = trtllm_config["build"]["pipeline_parallel_count"]
+        truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
+            **trtllm_config.get("build")
+        )
+        tokenizer_repository = truss_trtllm_build_config.checkpoint_repositoryrepo
+        tensor_parallel_count = truss_trtllm_build_config.tensor_parallel_count
+        pipeline_parallel_count = truss_trtllm_build_config.pipeline_parallel_count
         world_size = tensor_parallel_count * pipeline_parallel_count
 
         self.tokenizer = AutoTokenizer.from_pretrained(
