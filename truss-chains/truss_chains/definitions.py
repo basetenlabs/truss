@@ -217,7 +217,7 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
     # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
     #   due to the templating, at runtime the object passed will be from
     #   `shared.secrets_resolver` and give pydantic validation error.
-    secrets: Optional[Any] = None
+    secrets: Any = None
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
