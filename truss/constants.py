@@ -101,7 +101,7 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 TRTLLM_BASE_IMAGE = "baseten/triton_trt_llm:v0.9.0"
 BASE_TRTLLM_REQUIREMENTS = [
     "tritonclient[all]==2.42.0",
-    "transformers==4.33.1",
+    "transformers==4.40.2",
     "jinja2==3.1.3",
-    "truss==0.9.10",
+    "git+https://github.com/basetenlabs/truss.git@jyi/update-trtllm-repo",
 ]
