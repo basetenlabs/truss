@@ -1,0 +1,26 @@
+description: Faster Whisper v3
+environment_variables: {}
+external_package_dirs: []
+model_cache:
+- repo_id: Systran/faster-whisper-large-v3
+model_metadata:
+  avatar_url: https://cdn.baseten.co/production/static/openai.png
+  cover_image_url: https://cdn.baseten.co/production/static/whisper.png
+  example_model_input:
+    url: https://cdn.baseten.co/docs/production/Gettysburg.mp3
+  model_id: large-v3
+  pretty_name: Whisper
+  tags:
+  - speech-recognition
+model_name: Faster Whisper v3
+python_version: py39
+requirements:
+- torch==2.1.0
+- faster-whisper==0.10.0
+resources:
+  accelerator: T4
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: true
+secrets: {}
+system_packages: []

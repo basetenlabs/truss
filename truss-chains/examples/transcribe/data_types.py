@@ -7,7 +7,7 @@ from truss_chains import utils
 
 class TranscribeParams(pydantic.BaseModel):
     wav_sampling_rate_hz: Literal[16000] = pydantic.Field(
-        ...,
+        16000,
         description=" This is a constant of Whisper and should not be changed.",
     )
     macro_chunk_size_sec: int = pydantic.Field(
@@ -26,11 +26,6 @@ class TranscribeParams(pydantic.BaseModel):
         1600,
         description="Number of samples to determine width of box smoothing "
         "filter. With sampling of 16 kHz, 1600 samples is 1/10 second.",
-    )
-    result_webhook_url: str = pydantic.Field(
-        ...,
-        description="Webhook that accepts requests with payload of form"
-        "{'transcription': <TranscriptionExternal.json>}.",
     )
 
 
@@ -90,27 +85,36 @@ class WavInfo(pydantic.BaseModel):
 
 
 class JobStatus(utils.StrEnum):
-    # `Self` is needed to make mypy happy - it seems like a FP on their side though.
+    # Do not change, taken from existing App.
+    QUEUED = enum.auto()
     SUCCEEDED = enum.auto()
     PERMAFAILED = enum.auto()
+    DEBUG_RESULT = enum.auto()
 
 
 class JobDescriptor(pydantic.BaseModel):
+    # Do not change, taken from existing App.
     media_url: str
     media_id: int
     job_uuid: str
+    status: Optional[JobStatus] = None
 
 
 class WorkletInput(pydantic.BaseModel):
-    class Config:
-        allow_population_by_field_name = True
+    # This typo `media_for_transciption` is for backwards compatibility.
+    # Also this would ideally be `list[JobDescriptor]` instead of string...
+    media_for_transciption: str
 
-    media_for_transcription: list[JobDescriptor] = pydantic.Field(
-        ..., alias="media_for_transciption"
-    )  # This typo is for backwards compatibility.
+
+class BatchOutput(pydantic.BaseModel):
+    # Do not change, taken from existing App.
+    success: bool
+    jobs: list[JobDescriptor]
+    error_message: Optional[str] = None
 
 
 class TranscriptionSegmentExternal(pydantic.BaseModel):
+    # Do not change, taken from existing App.
     start: float = pydantic.Field(..., description="In seconds.")
     end: float = pydantic.Field(..., description="In seconds.")
     text: str
@@ -123,6 +127,7 @@ class TranscriptionSegmentExternal(pydantic.BaseModel):
 
 
 class TranscriptionExternal(pydantic.BaseModel):
+    # Do not change, taken from existing App.
     media_url: str
     media_id: int  # Seems to be just 0 or 1.
     job_uuid: str
@@ -130,3 +135,33 @@ class TranscriptionExternal(pydantic.BaseModel):
     # TODO: this is not a great name.
     text: Optional[list[TranscriptionSegmentExternal]] = None
     failure_reason: Optional[str] = None
+
+    @classmethod
+    def from_job_descr(cls, job_descr: JobDescriptor, status: JobStatus):
+        return TranscriptionExternal(
+            media_url=job_descr.media_url,
+            media_id=job_descr.media_id,
+            job_uuid=job_descr.job_uuid,
+            status=status,
+        )
+
+
+class TranscribeInput(pydantic.BaseModel):
+    # Do not change, taken from existing App.
+    job_descr: JobDescriptor
+    params: TranscribeParams
+
+
+class RetryConfig(pydantic.BaseModel):
+    # Do not change, matches `async_predict` data-models..
+    max_attempts: int = 1
+    initial_delay_ms: int = 0
+    max_delay_ms: int = 5000
+
+
+class AsyncTranscriptionRequest(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(protected_namespaces=())
+    # Do not change, matches `async_predict` data-models.
+    model_input: TranscribeInput
+    webhook_endpoint: str
+    inference_retry_config: RetryConfig
