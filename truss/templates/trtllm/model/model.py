@@ -40,7 +40,7 @@ class Model:
         truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
             **trtllm_config.get("build")
         )
-        tokenizer_repository = truss_trtllm_build_config.checkpoint_repositoryrepo
+        tokenizer_repository = truss_trtllm_build_config.checkpoint_repository.repo
         tensor_parallel_count = truss_trtllm_build_config.tensor_parallel_count
         pipeline_parallel_count = truss_trtllm_build_config.pipeline_parallel_count
         world_size = tensor_parallel_count * pipeline_parallel_count
