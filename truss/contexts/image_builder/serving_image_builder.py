@@ -26,7 +26,7 @@ from truss.constants import (
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
-    TRTLLM_BASE_IMAGE,
+    TRTLLM_BASE_IMAGE_AND_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
@@ -347,7 +347,8 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
             config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
+                image=TRTLLM_BASE_IMAGE_AND_EXECUTABLE[0],
+                python_executable_path=TRTLLM_BASE_IMAGE_AND_EXECUTABLE[1],
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
