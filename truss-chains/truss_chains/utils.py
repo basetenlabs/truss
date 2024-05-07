@@ -290,13 +290,13 @@ def random_fail(probability: float, msg: str):
 
 class StrEnum(str, enum.Enum):
     """
-    Adapted from MIT-licensed https://github.com/irgeek/StrEnum/blob/master/strenum/__init__.py
+    Adapted from MIT-licensed
+    https://github.com/irgeek/StrEnum/blob/master/strenum/__init__.py
 
-
-
-    This is useful for Pydantic-based (de-)serialisation, as Pydantic takes the value of an enum member as the
-    value to be (de-)serialised, and not the name of the member. With this, we can have the member name and value
-    be the same by using ``enum.auto()``.
+    This is useful for Pydantic-based (de-)serialisation, as Pydantic takes the value
+    of an enum member as the value to be (de-)serialised, and not the name of the
+    member. With this, we can have the member name and value be the same by using
+    `enum.auto()`.
 
     StrEnum is a Python `enum.Enum` that inherits from `str`. The `auto()` behavior
     uses the member name and lowers it. This is useful for compatibility with pydantic.
@@ -322,7 +322,7 @@ class StrEnum(str, enum.Enum):
     def __str__(self) -> str:
         return str(self.value)
 
-    def _generate_next_value_(name, *_) -> str:  # type: ignore[override] # pylint: disable=no-self-argument
+    def _generate_next_value_(name, *_) -> str:  # type: ignore[override]
         if name.upper() != name:
             raise ValueError(f"Python enum members should be upper case. Got `{name}`.")
         return name

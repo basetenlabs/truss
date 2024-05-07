@@ -12,8 +12,8 @@ from typing import Protocol
 
 import pydantic
 import truss_chains as chains
+from sub_package import shared_chainlet
 from truss import truss_config
-from user_package import shared_chainlet
 
 
 class GenerateData(chains.ChainletBase):
