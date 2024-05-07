@@ -332,6 +332,8 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
+        # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
+        # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
