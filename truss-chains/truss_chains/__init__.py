@@ -18,6 +18,7 @@ from truss_chains.definitions import (
     DeploymentContext,
     DockerImage,
     RemoteConfig,
+    RemoteErrorDetail,
     RPCOptions,
 )
 from truss_chains.public_api import (
