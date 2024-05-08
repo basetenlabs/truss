@@ -11,6 +11,7 @@ from schema import ModelInput
 from transformers import AutoTokenizer
 from triton_client import TritonClient, TritonServer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
+from truss.constants import OPENAI_COMPATIBLE_TAG
 
 DEFAULT_MAX_TOKENS = 500
 DEFAULT_MAX_NEW_TOKENS = 500
@@ -29,7 +30,7 @@ class Model:
 
     def load(self):
         trtllm_config = self._config.get("trt_llm", {})
-        self.uses_openai_api = "openai-compatible" in self._config.get(
+        self.uses_openai_api = OPENAI_COMPATIBLE_TAG in self._config.get(
             "model_metadata", {}
         ).get("tags", [])
         hf_access_token = None
