@@ -1,4 +1,4 @@
-# Copyright 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright 2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -34,19 +34,45 @@ input [
         dims: [ -1 ]
     },
     {
+        name: "REQUEST_OUTPUT_LEN"
+        data_type: TYPE_INT32
+        dims: [ -1 ]
+    },
+    {
         name: "BAD_WORDS_DICT"
         data_type: TYPE_STRING
         dims: [ -1 ]
+        optional: true
     },
     {
         name: "STOP_WORDS_DICT"
         data_type: TYPE_STRING
         dims: [ -1 ]
+        optional: true
     },
     {
-        name: "REQUEST_OUTPUT_LEN"
-        data_type: TYPE_UINT32
+        name: "EMBEDDING_BIAS_WORDS"
+        data_type: TYPE_STRING
         dims: [ -1 ]
+        optional: true
+    },
+    {
+        name: "EMBEDDING_BIAS_WEIGHTS"
+        data_type: TYPE_FP32
+        dims: [ -1 ]
+        optional: true
+    },
+    {
+        name: "END_ID"
+        data_type: TYPE_INT32
+        dims: [ -1 ]
+        optional: true
+    },
+    {
+        name: "PAD_ID"
+        data_type: TYPE_INT32
+        dims: [ -1 ]
+        optional: true
     }
 ]
 output [
@@ -71,25 +97,26 @@ output [
         dims: [ 2, -1 ]
     },
     {
+        name: "EMBEDDING_BIAS"
+        data_type: TYPE_FP32
+        dims: [ -1 ]
+    },
+    {
         name: "REQUEST_OUTPUT_LEN"
-        data_type: TYPE_UINT32
+        data_type: TYPE_INT32
+        dims: [ -1 ]
+    },
+    {
+        name: "OUT_END_ID"
+        data_type: TYPE_INT32
+        dims: [ -1 ]
+    },
+    {
+        name: "OUT_PAD_ID"
+        data_type: TYPE_INT32
         dims: [ -1 ]
     }
 ]
-
-parameters {
-  key: "tokenizer_dir"
-  value: {
-    string_value: "NousResearch/Llama-2-7b-hf"
-  }
-}
-
-parameters {
-  key: "tokenizer_type"
-  value: {
-    string_value: "auto"
-  }
-}
 
 instance_group [
     {
