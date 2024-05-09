@@ -29,12 +29,15 @@ from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
+from truss_chains import definitions as chains_def
 from truss_chains import deploy as chains_deploy
 from truss_chains import framework
 
 logging.basicConfig(level=logging.INFO)
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
+rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
+rich.spinner.SPINNERS["loading"] = {"interval": 500, "frames": ["⏱️ ", " ⏱️"]}
 rich.spinner.SPINNERS["active"] = {"interval": 500, "frames": ["💚 ", " 💚"]}
 rich.spinner.SPINNERS["failed"] = {"interval": 500, "frames": ["😤 ", " 😤"]}
 
@@ -55,8 +58,8 @@ click.rich_click.COMMAND_GROUPS = {
             },
         },
         {
-            "name": "Chain",
-            "commands": ["chain"],
+            "name": "Chains",
+            "commands": ["chains"],
             "table_styles": {  # type: ignore
                 "row_styles": ["red"],
             },
@@ -111,8 +114,8 @@ def image():
 
 
 @click.group()
-def chain():
-    """Subcommands for truss chain"""
+def chains():
+    """Subcommands for truss chains"""
 
 
 @truss_cli.command()
@@ -272,22 +275,35 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     table.add_column("Name", min_width=20)
     table.add_column("Logs URL")
     statuses = []
-    for name, status, logs_url in service.get_info():
+    # After reversing, the first one is the entrypoint (per order in service).
+    for i, (name, status, logs_url) in enumerate(reversed(service.get_info())):
         if status == ACTIVE_STATUS:
             spinner_name = "active"
         elif status in DEPLOYING_STATUSES:
-            spinner_name = "deploying"
+            if status == "BUILDING":
+                spinner_name = "building"
+            elif status == "LOADING":
+                spinner_name = "loading"
+            else:
+                spinner_name = "deploying"
         else:
             spinner_name = "failed"
         spinner = rich.spinner.Spinner(spinner_name, text=status)
-        table.add_row(spinner, name, logs_url)
+        if i == 0:
+            display_name = f"{name} (entrypoint)"
+        else:
+            display_name = f"{name} (dep)"
+
+        table.add_row(spinner, display_name, logs_url)
+        if i == 0:  # Add section divider after entrypoint.
+            table.add_section()
         statuses.append(status)
     return table, statuses
 
 
-@chain.command()  # type: ignore
+@chains.command()  # type: ignore
 @click.argument("source", type=Path, required=True)
-@click.argument("entrypoint", type=str, required=True)
+@click.argument("entrypoint", type=str, required=False)
 @click.option(
     "--name",
     type=str,
@@ -325,7 +341,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 @error_handling
 def deploy(
     source: Path,
-    entrypoint: str,
+    entrypoint: Optional[str],
     name: Optional[str],
     publish: bool,
     promote: bool,
@@ -337,17 +353,18 @@ def deploy(
 
     SOURCE: Path to a python file that contains the entrypoint chainlet.
 
-    ENTRYPOINT: Class name of the entrypoint chainlet in source file.
+    ENTRYPOINT: Class name of the entrypoint chainlet in source file. May be omitted
+    if a chainlet definition in SOURCE is tagged with `@chains.entrypoint`.
     """
-    chain_name = name or entrypoint
-    entrypoint_cls = framework.import_target(source, entrypoint)
-    options = chains_deploy.DeploymentOptionsBaseten.create(
-        chain_name=chain_name,
-        promote=promote,
-        publish=publish,
-        only_generate_trusses=dryrun,
-    )
-    service = chains_deploy.deploy_remotely(entrypoint_cls, options)
+    with framework.import_target(source, entrypoint) as entrypoint_cls:
+        chain_name = name or entrypoint_cls.__name__
+        options = chains_def.DeploymentOptionsBaseten.create(
+            chain_name=chain_name,
+            promote=promote,
+            publish=publish,
+            only_generate_trusses=dryrun,
+        )
+        service = chains_deploy.deploy_remotely(entrypoint_cls, options)
 
     console.print("\n")
     if dryrun:
@@ -806,7 +823,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
 truss_cli.add_command(container)
 truss_cli.add_command(image)
-truss_cli.add_command(chain)
+truss_cli.add_command(chains)
 
 if __name__ == "__main__":
     truss_cli()

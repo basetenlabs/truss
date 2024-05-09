@@ -3,6 +3,7 @@ import math
 import pydantic
 import truss_chains as chains
 from user_package import shared_chainlet
+from user_package.nested_package import io_types
 
 IMAGE_COMMON = chains.DockerImage(
     pip_requirements_file=chains.make_abs_path_here("requirements.txt")
@@ -74,10 +75,10 @@ class ItestChain(chains.ChainletBase):
     async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
         data = self._data_generator.run(length)
         text_parts, number = await self._data_splitter.run(
-            shared_chainlet.SplitTextInput(
+            io_types.SplitTextInput(
                 data=data,
                 num_partitions=num_partitions,
-                mode=shared_chainlet.Modes.MODE_1,
+                mode=io_types.Modes.MODE_1,
             ),
             extra_arg=123,
         )

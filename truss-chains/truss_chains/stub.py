@@ -107,10 +107,9 @@ class StubBase(abc.ABC):
 StubT = TypeVar("StubT", bound=StubBase)
 
 
-def factory(
-    stub_cls: Type[StubT], context: definitions.DeploymentContext, chainlet_name: str
-) -> StubT:
+def factory(stub_cls: Type[StubT], context: definitions.DeploymentContext) -> StubT:
+    # Assumes the stub_cls-name and the name of the service in `context` match.
     return stub_cls(
-        service_descriptor=context.get_service_descriptor(chainlet_name),
+        service_descriptor=context.get_service_descriptor(stub_cls.__name__),
         api_key=context.get_baseten_api_key(),
     )

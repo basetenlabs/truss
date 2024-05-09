@@ -30,7 +30,7 @@ from collections import OrderedDict
 
 import numpy as np
 import triton_python_backend_utils as pb_utils
-from transformers import AutoTokenizer, LlamaTokenizer, T5Tokenizer
+from transformers import AutoTokenizer
 
 # https://github.com/huggingface/tokenizers/blob/main/tokenizers/src/decoders/strip.rs#L8
 INVALID_UNICODE_CHAR = "�"
@@ -60,20 +60,15 @@ class TritonPythonModel:
         model_config = json.loads(args["model_config"])
         # NOTE: Keep this in sync with the truss model.py variable
         tokenizer_dir = os.environ["TRITON_TOKENIZER_REPOSITORY"]
-        tokenizer_type = model_config["parameters"]["tokenizer_type"]["string_value"]
+        hf_auth_token = os.environ.get("HUGGING_FACE_HUB_TOKEN", None)
 
-        if tokenizer_type == "t5":
-            self.tokenizer = T5Tokenizer(vocab_file=tokenizer_dir, padding_side="left")
-        elif tokenizer_type == "auto":
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                tokenizer_dir, padding_side="left"
-            )
-        elif tokenizer_type == "llama":
-            self.tokenizer = LlamaTokenizer.from_pretrained(
-                tokenizer_dir, legacy=False, padding_side="left"
-            )
-        else:
-            raise AttributeError(f"Unexpected tokenizer type: {tokenizer_type}")
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_dir,
+            legacy=False,
+            padding_side="left",
+            trust_remote_code=True,
+            token=hf_auth_token,
+        )
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # Parse model output configs
@@ -165,9 +160,73 @@ class TritonPythonModel:
             output_tensor = pb_utils.Tensor(
                 "OUTPUT", np.array([delta]).astype(self.output_dtype)
             )
-            inference_response = pb_utils.InferenceResponse(
-                output_tensors=[output_tensor]
+
+            # Get cum log probs
+            cum_log_probs = pb_utils.get_input_tensor_by_name(request, "CUM_LOG_PROBS")
+
+            # Get sequence length
+            output_log_probs = pb_utils.get_input_tensor_by_name(
+                request, "OUTPUT_LOG_PROBS"
             )
+
+            # Get context logits
+            context_logits = pb_utils.get_input_tensor_by_name(
+                request, "CONTEXT_LOGITS"
+            )
+
+            # Get generation logits
+            generation_logits = pb_utils.get_input_tensor_by_name(
+                request, "GENERATION_LOGITS"
+            )
+
+            outputs = []
+            outputs.append(output_tensor)
+
+            if cum_log_probs:
+                out_cum_log_probs = pb_utils.Tensor(
+                    "OUT_CUM_LOG_PROBS", cum_log_probs.as_numpy()
+                )
+                outputs.append(out_cum_log_probs)
+            else:
+                out_cum_log_probs = pb_utils.Tensor(
+                    "OUT_CUM_LOG_PROBS", np.array([[0.0]], dtype=np.float32)
+                )
+                outputs.append(out_cum_log_probs)
+
+            if output_log_probs:
+                out_output_log_probs = pb_utils.Tensor(
+                    "OUT_OUTPUT_LOG_PROBS", output_log_probs.as_numpy()
+                )
+                outputs.append(out_output_log_probs)
+            else:
+                out_output_log_probs = pb_utils.Tensor(
+                    "OUT_OUTPUT_LOG_PROBS", np.array([[[0.0]]], dtype=np.float32)
+                )
+                outputs.append(out_output_log_probs)
+
+            if context_logits:
+                out_context_logits = pb_utils.Tensor(
+                    "OUT_CONTEXT_LOGITS", context_logits.as_numpy()
+                )
+                outputs.append(out_context_logits)
+            else:
+                out_context_logits = pb_utils.Tensor(
+                    "OUT_CONTEXT_LOGITS", np.array([[[0.0]]], dtype=np.float32)
+                )
+                outputs.append(out_context_logits)
+
+            if generation_logits:
+                out_generation_logits = pb_utils.Tensor(
+                    "OUT_GENERATION_LOGITS", generation_logits.as_numpy()
+                )
+                outputs.append(out_generation_logits)
+            else:
+                out_generation_logits = pb_utils.Tensor(
+                    "OUT_GENERATION_LOGITS", np.array([[[[0.0]]]], dtype=np.float32)
+                )
+                outputs.append(out_generation_logits)
+
+            inference_response = pb_utils.InferenceResponse(output_tensors=outputs)
             responses.append(inference_response)
 
         return responses

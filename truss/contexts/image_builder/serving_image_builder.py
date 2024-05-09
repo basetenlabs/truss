@@ -18,6 +18,7 @@ from truss.constants import (
     CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
+    OPENAI_COMPATIBLE_TAG,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -27,6 +28,7 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
+    TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
@@ -330,8 +332,10 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
-        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
 
+        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
+        # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
+        # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
             copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
@@ -347,9 +351,12 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
             config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE, python_executable_path="/usr/bin/python3"
+                image=TRTLLM_BASE_IMAGE,
+                python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
+
+            config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:

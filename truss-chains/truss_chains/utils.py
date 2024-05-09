@@ -1,6 +1,6 @@
 import builtins
-import configparser
 import contextlib
+import enum
 import inspect
 import logging
 import os
@@ -14,7 +14,6 @@ from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 import fastapi
 import httpx
 import pydantic
-from truss.remote import remote_factory
 from truss_chains import definitions
 
 T = TypeVar("T")
@@ -126,15 +125,6 @@ def get_free_port() -> int:
         return port
 
 
-def get_api_key_from_trussrc() -> str:
-    try:
-        return remote_factory.load_config().get("baseten", "api_key")
-    except configparser.Error as e:
-        raise definitions.MissingDependencyError(
-            "You must have a `trussrc` file with a baseten API key."
-        ) from e
-
-
 # Error Propagation Utils. #############################################################
 
 
@@ -244,7 +234,14 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
 
     ```
     """
-    if response.is_server_error:
+    # TODO: model not ready is falsely reported as client error.
+    #  current workaround is to treat all errors as server error.
+    # if response.is_client_error:
+    #     raise fastapi.HTTPException(
+    #         status_code=response.status_code, detail=response.content
+    #     )
+
+    if response.is_server_error or response.is_client_error:
         try:
             response_json = response.json()
         except Exception as e:
@@ -277,15 +274,7 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
         )
         raise exception_cls(msg)
 
-    if response.is_client_error:
-        raise fastapi.HTTPException(
-            status_code=response.status_code, detail=response.content
-        )
     return response.json()
-
-
-def make_stub_name(chainlet_name: str) -> str:
-    return f"{chainlet_name}{definitions.STUB_CLS_SUFFIX}"
 
 
 class InjectedError(Exception):
@@ -297,3 +286,43 @@ def random_fail(probability: float, msg: str):
     if random.random() < probability:
         print(f"Random failure: {msg}")
         raise InjectedError(msg)
+
+
+class StrEnum(str, enum.Enum):
+    """
+    Adapted from MIT-licensed
+    https://github.com/irgeek/StrEnum/blob/master/strenum/__init__.py
+
+    This is useful for Pydantic-based (de-)serialisation, as Pydantic takes the value
+    of an enum member as the value to be (de-)serialised, and not the name of the
+    member. With this, we can have the member name and value be the same by using
+    `enum.auto()`.
+
+    StrEnum is a Python `enum.Enum` that inherits from `str`. The `auto()` behavior
+    uses the member name and lowers it. This is useful for compatibility with pydantic.
+    Example usage:
+    ```
+    class Example(StrEnum):
+        SOME_VALUE = enum.auto()
+        ANOTHER_VALUE = enum.auto()
+        TEST = enum.auto()
+
+    assert Example.SOME_VALUE == "SOME_VALUE"
+    assert Example.ANOTHER_VALUE.value == "ANOTHER_VALUE"
+    assert Example.TEST.value == Example.TEST
+    assert Example.TEST == Example("TEST")
+    ```
+    """
+
+    def __new__(cls, value, *args, **kwargs):
+        if not isinstance(value, str):
+            raise TypeError(f"Values of StrEnums must be strings: Got `{repr(value)}`.")
+        return super().__new__(cls, value, *args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def _generate_next_value_(name, *_) -> str:  # type: ignore[override]
+        if name.upper() != name:
+            raise ValueError(f"Python enum members should be upper case. Got `{name}`.")
+        return name

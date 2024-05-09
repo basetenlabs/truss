@@ -12,31 +12,16 @@ from typing import Protocol
 
 import pydantic
 import truss_chains as chains
+from sub_package import shared_chainlet
 from truss import truss_config
-from user_package import shared_chainlet
-
-IMAGE_COMMON = chains.DockerImage(
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt")
-)
 
 
 class GenerateData(chains.ChainletBase):
 
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
 
     def run(self, length: int) -> str:
         return "".join(random.choices(string.ascii_letters + string.digits, k=length))
-
-
-IMAGE_TRANSFORMERS_GPU = chains.DockerImage(
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
-    pip_requirements=[
-        "transformers==4.38.1",
-        "torch==2.0.1",
-        "sentencepiece",
-        "accelerate",
-    ],
-)
 
 
 MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
@@ -52,7 +37,14 @@ class MistraLLMConfig(pydantic.BaseModel):
 class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
 
     remote_config = chains.RemoteConfig(
-        docker_image=IMAGE_TRANSFORMERS_GPU,
+        docker_image=chains.DockerImage(
+            pip_requirements=[
+                "transformers==4.38.1",
+                "torch==2.0.1",
+                "sentencepiece",
+                "accelerate",
+            ]
+        ),
         compute=chains.Compute(cpu_count=2, gpu="A10G"),
         assets=chains.Assets(cached=[MISTRAL_CACHE]),
     )
@@ -114,7 +106,7 @@ class MistralP(Protocol):
 
 
 class TextToNum(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
 
     def __init__(
         self,
@@ -133,8 +125,9 @@ class TextToNum(chains.ChainletBase):
         return number
 
 
+@chains.entrypoint
 class ExampleChain(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
 
     def __init__(
         self,
@@ -174,7 +167,7 @@ if __name__ == "__main__":
 
     import asyncio
 
-    class FakeMistralLLM(chains.ChainletBase):
+    class FakeMistralLLM:
         def run(self, data: str) -> str:
             return data.upper()
 
