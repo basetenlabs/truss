@@ -89,7 +89,7 @@ class BasetenService(TrussService):
             # will be a json with an `error` key.
             return parsed_response
 
-        return response.json()["model_output"]
+        return response.json()
 
     def authenticate(self) -> dict:
         return self._auth_service.authenticate().header()
