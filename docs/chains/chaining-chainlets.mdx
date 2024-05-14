@@ -9,6 +9,7 @@ description: "How two *Chainlets* can be combined in a *Chain*"
 * [Introduction](/chains/intro)
 * [Getting Started](/chains/getting-started)
 * [Chaining Chainlets](/chains/chaining-chainlets)
+* [Guide](/chains/guide)
 * [Dependencies & Resources](/chains/deps-and-resources)
 * [Reference](/chains/full-reference)
 
@@ -35,7 +36,7 @@ class GenerateRandomNumber(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
 
-    def run(self, high_value: int) -> int:
+    def run_remote(self, high_value: int) -> int:
         return random.randint(1, high_value)
 
 class HelloWorld(chains.ChainletBase):
@@ -49,19 +50,19 @@ class HelloWorld(chains.ChainletBase):
         self,
         # All chainlets have a `context` argument to allow accessing
         # resources such as secrets, config or data.
-        context: chains.DeploymentContext = chains.provide_context(),
+        context: chains.DeploymentContext = chains.depends_context(),
         # Dependency chainlets are added as special arguments to `__init__`.
         # The `provide` directive make sure in both local and remote mode
         # an appropriate instance is "injected".
-        generate_random_number: GenerateRandomNumber = chains.provide(
+        generate_random_number: GenerateRandomNumber = chains.depends(
             GenerateRandomNumber
         ),
     ):
         super().__init__(context)
         self._generate_random_number = generate_random_number
 
-    def run(self, high_value: int) -> str:
-        random_number = self._generate_random_number.run(high_value)
+    def run_remote(self, high_value: int) -> str:
+        random_number = self._generate_random_number.run_remote(high_value)
         return "Hello World" + ("!" * random_number)
 ```
 
@@ -84,7 +85,7 @@ Add a main section with test inputs and printing of results:
 if __name__ == "__main__":
     with chains.run_local():
         my_hello_world = HelloWorld()
-        result = my_hello_world.run(high_value=10)
+        result = my_hello_world.run_remote(high_value=10)
 
     print(result)
     # Hello World! Hello World! Hello World! Hello World!
@@ -93,8 +94,8 @@ if __name__ == "__main__":
 
 And run your Python file:
 
-```
-$ python hello.py
+```bash
+python hello.py
 ```
 
 ## Remote Deployment
@@ -102,7 +103,7 @@ $ python hello.py
 To deploy your Chain remotely to Baseten, run the following command:
 
 ```bash
-truss chain deploy ./hello.py HelloWorld
+truss chains deploy ./hello.py HelloWorld
 ```
 
 In this simple example, each Chainlet uses the same resources, so we would not necessarily need two Chainlets.

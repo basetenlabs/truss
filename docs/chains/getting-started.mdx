@@ -10,6 +10,7 @@ description: "Getting Started with *Truss Chains*"
 * [Introduction](/chains/intro)
 * [Getting Started](/chains/getting-started)
 * [Chaining Chainlets](/chains/chaining-chainlets)
+* [Guide](/chains/guide)
 * [Dependencies & Resources](/chains/deps-and-resources)
 * [Reference](/chains/full-reference)
 
@@ -18,20 +19,19 @@ This guide shows you how to install Truss Chains, create your first Chain and ru
 
 # Installation
 
-Truss Chains is available in the a rc version of Truss.
+Truss Chains is available in a rc version of Truss.
 
 ```bash
-$ pip install truss==0.9.11rc1
+pip install truss==0.9.11rc1
 ```
 
 For deploying Chains remotely to Baseten you need a [Baseten account](https://app.baseten.co/signup).
 
 
-# Creating your first *Chainlet*
+# Creating your first *Chain*
 
-1. Create a Chain project directory with a python file in it. You can chose a name and location, in this example we
+Create a Chain project directory with a python file in it. You can chose a name and location, in this example we
 assume the file is named `hello.py`.
-1. Add a Chainlet subclass to the file:
 
 ```python
 import truss_chains as chains
@@ -39,7 +39,7 @@ import truss_chains as chains
 class HelloWorld(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
 
-    def run(self, num_repetitions: int) -> str:
+    def run_remote(self, num_repetitions: int) -> str:
         return "Hello World! " * num_repetitions
 ```
 
@@ -70,7 +70,7 @@ debugging and testing of your Chainlets. To use it, append a main section with t
 if __name__ == "__main__":
     with chains.run_local():
         my_hello_world = HelloWorld()
-        result = my_hello_world.run(num_repetitions=3)
+        result = my_hello_world.run_remote(num_repetitions=3)
 
     print(result)
     # Hello World! Hello World! Hello World!
@@ -78,8 +78,8 @@ if __name__ == "__main__":
 
 And run your Python file:
 
-```
-$ python hello.py
+```bash
+python hello.py
 ```
 
 <Warning>
@@ -94,12 +94,12 @@ To deploy your Chain to in a remote hosting environment like [Baseten](https://w
 command:
 
 ```bash
-truss chain deploy ./hello.py HelloWorld
+truss chains deploy ./hello.py HelloWorld
 ```
 
 This Truss command has the following structure:
-`truss chain deploy [OPTIONS] SOURCE ENTRYPOINT` where `ENTRYPOINT` is the Chainlet class name in your python file.
-For more options run `truss chain deploy --help`.
+`truss chains deploy [OPTIONS] SOURCE ENTRYPOINT` where `ENTRYPOINT` is the Chainlet class name in your python file.
+For more options run `truss chains deploy --help`.
 
 The deploy command results in an output like this:
 
@@ -130,7 +130,7 @@ Wait for the status to turn to `ACTIVE` and test invoking your Chain: copy+paste
 and replace `JSON_INPUT`:
 
 ```bash
-$ curl -X POST $PREDICT_URL \
+curl -X POST $PREDICT_URL \
   -H "Authorization: Api-Key $BASETEN_API_KEY" \
   -d '{"num_repetitions": 10}'
 # "Hello World! Hello World! Hello World! "

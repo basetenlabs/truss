@@ -10,6 +10,7 @@ description: "Including a Chainlet Requiring a GPU"
 * [Introduction](/chains/intro)
 * [Getting Started](/chains/getting-started)
 * [Chaining Chainlets](/chains/chaining-chainlets)
+* [Guide](/chains/guide)
 * [Dependencies & Resources](/chains/deps-and-resources)
 * [Reference](/chains/full-reference)
 
@@ -63,13 +64,13 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.provide_context(),
+        context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
         super().__init__(context)
         ...
 
 
-    def run(self, data: str) -> str:
+    def run_remote(self, data: str) -> str:
         ...
 
 ```
@@ -112,7 +113,7 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
 
     def __init__(
         self,
-        context: chains.DeploymentContext[MistraLLMConfig] = chains.provide_context(),
+        context: chains.DeploymentContext[MistraLLMConfig] = chains.depends_context(),
     ) -> None:
         super().__init__(context)
         # `torch` and `transformers` are imported here, rather than the top-level, so that
@@ -147,7 +148,7 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
             "pad_token_id": self._tokenizer.pad_token_id,
         }
 
-    def run(self, prompt: str) -> str:
+    def run_remote(self, prompt: str) -> str:
         import torch
 
         formatted_prompt = f"[INST] {data} [/INST]"
@@ -176,16 +177,16 @@ class PoemGenerator(chains.ChainletBase):
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.provide_context(),
-        mistral_llm: MistralLLM = chains.provide(MistralLLM),
+        context: chains.DeploymentContext = chains.depends_context(),
+        mistral_llm: MistralLLM = chains.depends(MistralLLM),
     ) -> None:
         super().__init__(context)
         self._mistral_llm = mistral_llm
 
-    def run(self, words: list[str]) -> list[str]:
+    def run_remote(self, words: list[str]) -> list[str]:
         results = []
         for word in words:
-            poem = self._mistral_llm.run(f"Generate a poem about: {word}")
+            poem = self._mistral_llm.run_remote(f"Generate a poem about: {word}")
             results.append(poem)
         return results
 ```
@@ -194,7 +195,7 @@ class PoemGenerator(chains.ChainletBase):
 
 Our Chain includes the `MistralLLM` Chainlet which requires heavy hardware and python dependencies. These
  requirements are fulfilled in the remote baseten deployment, but most likely not locally. The other Chainlet,
- `PoemGenerator`, contains simpler "coordination" logic and has les demanding requirements.
+ `PoemGenerator`, contains simpler "coordination" logic and has less demanding requirements.
 
 We still encourage debugging and testing such "mixed" Chains locally (for a quicker dev loop). In that case,
 you can mock the parts that are infeasible to run locally and test all the other components - especially the
@@ -207,19 +208,19 @@ like so:
 ```python
 if __name__ == "__main__":
     class FakeMistralLLM:
-        def run(self, data: str) -> str:
+        def run_remote(self, data: str) -> str:
             return "Fake mistral response"
 
     with chains.run_local():
         poem_generator = PoemGenerator(mistral_llm=FakeMistralLLM())
-        result = poem_generator.run(words=["bird", "plane", "superman"])
+        result = poem_generator.run_remote(words=["bird", "plane", "superman"])
         print(result)
 ```
 
 And run your Python file:
 
-```
-$ python poems.py
+```bash
+python poems.py
 ```
 
 ## Remote Deployment
@@ -227,7 +228,7 @@ $ python poems.py
 To deploy your Chain remotely to Baseten, run the following command:
 
 ```bash
-truss chain deploy ./poems.py PoemGenerator
+truss chains deploy ./poems.py PoemGenerator
 ```
 
 

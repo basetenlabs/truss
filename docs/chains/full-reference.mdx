@@ -10,9 +10,9 @@ description: "Truss Chains Reference"
 * [Introduction](/chains/intro)
 * [Getting Started](/chains/getting-started)
 * [Chaining Chainlets](/chains/chaining-chainlets)
+* [Guide](/chains/guide)
 * [Dependencies & Resources](/chains/deps-and-resources)
 * [Reference](/chains/full-reference)
-
 
 # chains.ChainletBase
 
@@ -31,7 +31,7 @@ class HelloWorld(chains.ChainletBase):
         docker_image=chains.DockerImage()
     )
 
-    def run(self) -> str:
+    def run_remote(self) -> str:
         return "Hello World!"
 ```
 
@@ -47,7 +47,7 @@ to a remote (just Baseten for now).
 # chains.provide
 
 ```python
-chains.provide(chainlet: Type[chains.ChainletBase])
+chains.depends(chainlet: Type[chains.ChainletBase])
 ```
 
 `chains.provide` is a key part of the Chains Dependency Injection framework, and is used for Chainlets
@@ -58,18 +58,18 @@ to reference other Chainlets in a Chain.
 class MyChainlet(chains.chainletBase):
     def __init__(
         self,
-        other_chainlet: OtherChainlet = chains.provide(OtherChainlet)
+        other_chainlet: OtherChainlet = chains.depends(OtherChainlet)
     ):
         self._other_chainlet = other_chainlet
 
-    def run(self):
-        return self._other_chainlet.run()
+    def run_remote(self):
+        return self._other_chainlet.run_remote()
 ```
 
 # chains.provide_context
 
 ```python
-chains.provide_context()
+chains.depends_context()
 ```
 
 Returns a `DeploymentContext` object that contains information about the current deployment context, such
@@ -112,7 +112,7 @@ class MyChainlet(chains.Basechainlet):
 
 # chains.DeploymentContext
 
-This is an object that is provided to Chainlets via `chains.provide_context()`. It contains information
+This is an object that is provided to Chainlets via `chains.depends_context()`. It contains information
 about the current deployment context.
 
 ## chains.DeploymentContext.secrets
