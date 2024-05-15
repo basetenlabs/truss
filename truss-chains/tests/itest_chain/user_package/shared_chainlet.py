@@ -20,11 +20,10 @@ class SplitTextFailOnce(chains.ChainletBase):
         )
     )
 
-    def __init__(self, context: chains.DeploymentContext = chains.provide_context()):
-        super().__init__(context)
+    def __init__(self):
         self._count = 0
 
-    async def run(
+    async def run_remote(
         self, inputs: io_types.SplitTextInput, extra_arg: int
     ) -> Tuple[SplitTextOutput, int]:
         import numpy as np

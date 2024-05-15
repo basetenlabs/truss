@@ -240,7 +240,6 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
     #     raise fastapi.HTTPException(
     #         status_code=response.status_code, detail=response.content
     #     )
-
     if response.is_server_error or response.is_client_error:
         try:
             response_json = response.json()

@@ -37,7 +37,7 @@ class TrussChainletModel:
     #     with utils.exception_to_http_error(
     #         include_stack=True, chainlet_name="SplitText"
     #     ):
-    #         result = await self._chainlet.run(
+    #         result = await self._chainlet.run_remote(
     #             inputs=shared_chainlet.SplitTextInput.parse_obj(payload["inputs"]),
     #             extra_arg=payload["extra_arg"],
     #         )

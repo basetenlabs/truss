@@ -23,10 +23,10 @@ from truss_chains.definitions import (
 )
 from truss_chains.public_api import (
     ChainletBase,
+    depends,
+    depends_context,
     deploy_remotely,
     entrypoint,
-    provide,
-    provide_context,
     run_local,
 )
 from truss_chains.stub import StubBase

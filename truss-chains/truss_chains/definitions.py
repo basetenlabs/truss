@@ -10,12 +10,15 @@ from typing import (
     ClassVar,
     Generic,
     Iterable,
+    Literal,
     Mapping,
     Optional,
+    Protocol,
     Type,
     TypeVar,
     Union,
     cast,
+    runtime_checkable,
 )
 
 import pydantic
@@ -24,20 +27,35 @@ from truss import truss_config
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
 
-UserConfigT = TypeVar("UserConfigT", bound=Optional[pydantic.BaseModel])
+UserConfigT = TypeVar("UserConfigT", bound=Union[pydantic.BaseModel, None])
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 
 GENERATED_CODE_DIR = ".chains_generated"
-PREDICT_ENDPOINT_NAME = "/predict"
 
 # Below arg names must correspond to `definitions.ABCChainlet`.
-ENDPOINT_METHOD_NAME = "run"  # Referring to Chainlet method name exposed as endpoint.
+ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
+
+
+K = TypeVar("K", contravariant=True)
+V = TypeVar("V", covariant=True)
+
+
+@runtime_checkable
+class MappingNoIter(Protocol[K, V]):
+    def __getitem__(self, key: K) -> V:
+        ...
+
+    def __len__(self) -> int:
+        ...
+
+    def __contains__(self, key: K) -> bool:
+        ...
 
 
 class SafeModel(pydantic.BaseModel):
@@ -116,8 +134,13 @@ class DockerImage(SafeModelNonSerializable):
 class ComputeSpec(pydantic.BaseModel):
     # TODO: this is not stable yet and might change or refer back to truss.
     cpu_count: int = 1
+    predict_concurrency: int = 1
     memory: str = "2Gi"
     accelerator: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
+
+
+CpuCountT = Literal["cpu_count"]
+CPU_COUNT: CpuCountT = "cpu_count"
 
 
 class Compute:
@@ -133,6 +156,7 @@ class Compute:
         memory: str = "2Gi",
         gpu: Union[str, truss_config.Accelerator, None] = None,
         gpu_count: int = 1,
+        predict_concurrency: Union[int, CpuCountT] = 1,
     ) -> None:
         accelerator = truss_config.AcceleratorSpec()
         if gpu:
@@ -141,9 +165,17 @@ class Compute:
             accelerator = truss_config.AcceleratorSpec(
                 accelerator=truss_config.Accelerator(gpu), count=gpu_count
             )
+        if predict_concurrency == CPU_COUNT:
+            predict_concurrency_int = cpu_count
+        else:
+            assert isinstance(predict_concurrency, int)
+            predict_concurrency_int = predict_concurrency
 
         self._spec = ComputeSpec(
-            cpu_count=cpu_count, memory=memory, accelerator=accelerator
+            cpu_count=cpu_count,
+            memory=memory,
+            accelerator=accelerator,
+            predict_concurrency=predict_concurrency_int,
         )
 
     def get_spec(self) -> ComputeSpec:
@@ -211,13 +243,9 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
         extra = "forbid"
 
     data_dir: Optional[pathlib.Path] = None
-    user_config: UserConfigT = pydantic.Field(default=None)
+    user_config: UserConfigT
     chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
-    # secrets: Optional[secrets_resolver.Secrets] = None
-    # TODO: above type results in `truss.server.shared.secrets_resolver.Secrets`
-    #   due to the templating, at runtime the object passed will be from
-    #   `shared.secrets_resolver` and give pydantic validation error.
-    secrets: Any = None
+    secrets: MappingNoIter[str, str]
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
@@ -249,30 +277,24 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
 class TrussMetadata(generics.GenericModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
-    user_config: UserConfigT = pydantic.Field(default=None)
+    user_config: UserConfigT
     chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
 
 
-class ABCChainlet(Generic[UserConfigT], abc.ABC):
-    remote_config: ClassVar[RemoteConfig]
+class ABCChainlet(abc.ABC):
+    remote_config: ClassVar[RemoteConfig] = RemoteConfig(docker_image=DockerImage())
     default_user_config: ClassVar[Optional[pydantic.BaseModel]] = None
     _init_is_patched: ClassVar[bool] = False
 
-    _context: DeploymentContext[UserConfigT]
-
-    @abc.abstractmethod
-    def __init__(self, context: DeploymentContext[UserConfigT]) -> None:
-        ...
+    @classmethod
+    def has_custom_init(cls) -> bool:
+        return cls.__init__ is not object.__init__
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
     # @abc.abstractmethod
-    # def run(self, *args, **kwargs) -> Any: ...
-
-    @property
-    @abc.abstractmethod
-    def user_config(self) -> UserConfigT:
-        ...
+    # def run_remote(self, *args, **kwargs) -> Any:
+    #     ...
 
 
 class TypeDescriptor(SafeModelNonSerializable):
@@ -309,6 +331,7 @@ class DependencyDescriptor(SafeModelNonSerializable):
 class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
+    has_context: bool
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
     user_config_type: TypeDescriptor

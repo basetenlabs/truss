@@ -1,6 +1,7 @@
 import ast
 import collections
 import contextlib
+import contextvars
 import functools
 import importlib.util
 import inspect
@@ -42,12 +43,22 @@ class _BaseProvisionMarker:
     """A marker for object to be dependency injected by the framework."""
 
 
-class ContextProvisionMarker(_BaseProvisionMarker):
+class ContextDependencyMarker(_BaseProvisionMarker):
     def __str__(self) -> str:
         return f"{self.__class__.__name__}"
 
+    def __getattr__(self, item: str) -> Any:
+        logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
+        raise definitions.ChainsRuntimeError(
+            "It seems `chains.depends_context()` was used, but not as an argument "
+            "to the `__init__` method of a chainlet - This is not supported."
+            f"See {_DOCS_URL_CHAINING}.\n"
+            "Example of correct `__init__` with context:\n"
+            f"{_example_chainlet_code()}"
+        )
 
-class ChainletProvisionMarker(_BaseProvisionMarker):
+
+class ChainletDependencyMarker(_BaseProvisionMarker):
     chainlet_cls: Type[definitions.ABCChainlet]
     retries: int
 
@@ -61,6 +72,17 @@ class ChainletProvisionMarker(_BaseProvisionMarker):
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.chainlet_cls.__name__})"
+
+    def __getattr__(self, item: str) -> Any:
+        logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
+        raise definitions.ChainsRuntimeError(
+            f"It seems `chains.depends({self.chainlet_cls.__name__})` was used, but "
+            "not as an argument to the `__init__` method of a chainlet - This is not "
+            "supported. Dependency chainlets must be passed as init arguments.\n"
+            f"See {_DOCS_URL_CHAINING}.\n"
+            "Example of correct `__init__` with dependencies:\n"
+            f"{_example_chainlet_code()}"
+        )
 
 
 # Checking of Chainlet class definition ###############################################
@@ -92,7 +114,6 @@ def _example_chainlet_code() -> str:
             lines = source.splitlines()
             class_code = "\n".join(lines[node.lineno - 1 : node.end_lineno])
             break
-
     return class_code
 
 
@@ -181,7 +202,7 @@ def _validate_and_describe_endpoint(
     """The "endpoint method" of a Chainlet must have the following signature:
 
     ```
-    [async] def run(
+    [async] def run_remote(
         self, [param_0: anno_0, param_1: anno_1 = default_1, ...]) -> ret_anno:
     ```
 
@@ -244,88 +265,150 @@ def _get_generic_class_type(var):
     return origin if origin is not None else var
 
 
-def _validate_dependency_arg(param) -> ChainletProvisionMarker:
+def _validate_dependency_arg(param) -> ChainletDependencyMarker:
     # TODO: handle subclasses, unions, optionals, check default value etc.
-    if not isinstance(param.default, ChainletProvisionMarker):
+    if param.name == definitions.CONTEXT_ARG_NAME:
         raise definitions.ChainsUsageError(
-            f"Any arguments of a chainlet's __init__ (besides `context`) must have"
+            f"The init argument name `{definitions.CONTEXT_ARG_NAME}` is reserved for "
+            "the optional context argument, which must be trailing if used. Example "
+            "of correct `__init__` with context:\n"
+            f"{_example_chainlet_code()}"
+        )
+
+    if not isinstance(param.default, ChainletDependencyMarker):
+        raise definitions.ChainsUsageError(
+            f"Any arguments of a chainlet's __init__ (besides `context`) must have "
             "dependency chainlets with default values from `chains.provide`-directive. "
             f"Got `{param}`.\n"
             f"Example of correct `__init__` with dependencies:\n"
             f"{_example_chainlet_code()}"
         )
     chainlet_cls = param.default.chainlet_cls
+    if not issubclass(chainlet_cls, definitions.ABCChainlet):
+        raise definitions.ChainsUsageError(
+            f"`{chainlet_cls}` must be a subclass of `{definitions.ABCChainlet}`."
+        )
+    # Check type annotation.
+    # Also lenient with type annotation: since the RHS / default is asserted to be a
+    # chainlet class, proper type inference is possible even without annotation.
+    # TODO: `Protocol` is not a proper class and this might be version dependent.
+    # Find a better way to inspect this.
     if not (
-        # TODO: `Protocol` is not a proper class and this might be version dependent.
-        # Find a better way to inspect this.
-        issubclass(param.annotation, Protocol)  # type: ignore[arg-type]
+        param.annotation == inspect.Parameter.empty
+        or issubclass(param.annotation, Protocol)  # type: ignore[arg-type]
         or issubclass(chainlet_cls, param.annotation)
     ):
         raise definitions.ChainsUsageError(
             f"The type annotation for `{param.name}` must either be a `{Protocol}` "
             "or a class/subclass of the Chainlet type used as default value. "
-            f"Got `{param.default}`."
-        )
-    if not issubclass(chainlet_cls, definitions.ABCChainlet):
-        raise definitions.ChainsUsageError(
-            f"`{chainlet_cls}` must be a subclass of `{definitions.ABCChainlet}`."
+            f"Got `{param.annotation}`."
         )
     return param.default  # The Marker.
 
 
-class _ChainletInitParams:
-    def __init__(self, params: list[inspect.Parameter]) -> None:
-        self._params = params
-        self._validate_self_arg()
-        self._validate_context_arg()
+class _ChainletInitValidator:
+    """The `__init__`-method of a Chainlet must have the following signature:
 
-    def _validate_self_arg(self) -> None:
-        if len(self._params) == 0:
+    ```
+    def __init__(
+        self,
+        [dep_0: dep_0_type = truss_chains.provide(dep_0_class),]
+        [dep_1: dep_1_type = truss_chains.provide(dep_1_class),]
+        ...
+        [dep_N: dep_N_type = truss_chains.provide(dep_N_class),]
+        [context: truss_chains.Context[UserConfig] = truss_chains.provide_context()]
+    ) -> None:
+    ```
+    * The context argument is optionally trailing and must have a default constructed
+     with the  `provide_context` directive. The type can be templated by a user
+     defined config e.g. `truss_chains.Context[UserConfig]`.
+    * The names and number of chainlet "dependency" arguments are arbitrary.
+    * Default values for dependencies must be constructed with the `provide` directive
+      to make the dependency injection work. The argument to `provide` must be a
+      Chainlet class.
+    * The type annotation for dependencies can be a Chainlet class, but it can also be
+      a `Protocol` with an equivalent `run` method (e.g. for getting correct type
+      checks when providing fake Chainlets for local testing.). It may be omitted if
+      the type is clear from the RHS.
+    """
+
+    has_context: bool
+    validated_dependencies: Mapping[str, definitions.DependencyDescriptor]
+
+    def __init__(self, cls: Type[definitions.ABCChainlet]) -> None:
+        if not cls.has_custom_init():
+            self.has_context = False
+            self.validated_dependencies = {}
+            return
+        # Each validation pops of "processed" arguments from the list.
+        params = list(inspect.signature(cls.__init__).parameters.values())
+        params = self._validate_self_arg(list(params))
+        params, self.has_context = self._validate_context_arg(params)
+        self.validated_dependencies = self._validate_dependencies(params)
+
+    @staticmethod
+    def _validate_self_arg(params: list[inspect.Parameter]) -> list[inspect.Parameter]:
+        if len(params) == 0:
             raise definitions.ChainsUsageError(
-                "Methods must have first argument `self`."
+                "Methods must have first argument `self`, got no arguments."
             )
-
-        if self._params[0].name != definitions.SELF_ARG_NAME:
+        param = params.pop(0)
+        if param.name != definitions.SELF_ARG_NAME:
             raise definitions.ChainsUsageError(
-                "Methods must have first argument `self`."
+                f"Methods must have first argument `self`, got `{param.name}`."
             )
+        return params
 
-    def _validate_context_arg(self) -> None:
+    @staticmethod
+    def _validate_context_arg(
+        params: list[inspect.Parameter],
+    ) -> tuple[list[inspect.Parameter], bool]:
         def make_context_exception():
             return definitions.ChainsUsageError(
-                f"`{definitions.ABCChainlet}` must have "
-                f"`{definitions.CONTEXT_ARG_NAME}` argument of type "
-                f"`{definitions.DeploymentContext}`.\n"
-                f"Got: `{self._params}`.\n"
-                "Example of correct `__init__` with dependencies:\n"
+                f"If `{definitions.ABCChainlet}` uses context for initialization, it "
+                f"must have `{definitions.CONTEXT_ARG_NAME}` argument of type "
+                f"`{definitions.DeploymentContext}` as the last argument.\n"
+                f"Got arguments: `{params}`.\n"
+                "Example of correct `__init__` with context:\n"
                 f"{_example_chainlet_code()}"
             )
 
-        if len(self._params) < 2:
-            raise make_context_exception()
-        if self._params[1].name != definitions.CONTEXT_ARG_NAME:
+        if not params:
+            return params, False
+
+        has_context = params[-1].name == definitions.CONTEXT_ARG_NAME
+        has_context_marker = isinstance(params[-1].default, ContextDependencyMarker)
+        if has_context ^ has_context_marker:
             raise make_context_exception()
 
-        param = self._params[1]
+        if not has_context:
+            return params, has_context
+
+        param = params.pop(-1)
         param_type = _get_generic_class_type(param.annotation)
-        # We are lenient and allow omitting the type annotation for context...
+        # We are lenient and allow omitting the type annotation for context.
         if (
             (param_type is not None)
             and (param_type != inspect.Parameter.empty)
             and (not issubclass(param_type, definitions.DeploymentContext))
         ):
             raise make_context_exception()
-        if not isinstance(param.default, ContextProvisionMarker):
+        if not isinstance(param.default, ContextDependencyMarker):
             raise definitions.ChainsUsageError(
                 f"Incorrect default value `{param.default}` for `context` argument. "
                 "Example of correct `__init__` with dependencies:\n"
                 f"{_example_chainlet_code()}"
             )
 
-    def validated_dependencies(self) -> Mapping[str, definitions.DependencyDescriptor]:
+        return params, has_context
+
+    @staticmethod
+    def _validate_dependencies(
+        params,
+    ) -> Mapping[str, definitions.DependencyDescriptor]:
         used = set()
         dependencies = {}
-        for param in self._params[2:]:  # Skip self and context.
+        for param in params:
             marker = _validate_dependency_arg(param)
             if marker.chainlet_cls in used:
                 raise definitions.ChainsUsageError(
@@ -338,38 +421,6 @@ class _ChainletInitParams:
             )
             used.add(marker)
         return dependencies
-
-
-def _validate_init_and_get_dependencies(
-    cls: Type[definitions.ABCChainlet],
-) -> Mapping[str, definitions.DependencyDescriptor]:
-    """The `__init__`-method of a Chainlet must have the following signature:
-
-    ```
-    def __init__(
-        self,
-        context: truss_chains.Context = truss_chains.provide_context(),
-        [dep_0: dep_0_type = truss_chains.provide(dep_0_class),]
-        [dep_1: dep_1_type = truss_chains.provide(dep_1_class),]
-        ...
-    ) -> None:
-    ```
-
-    * The context argument is required and must have a default constructed with the
-      `provide_context` directive. The type can be templated by a user defined config
-      e.g. `truss_chains.Context[UserConfig]`.
-    * The names and number of other - "dependency" - arguments are arbitrary.
-    * Default values for dependencies must be constructed with the `provide` directive
-      to make the dependency injection work. The argument to `provide` must be a
-      Chainlet class.
-    * The type annotation for dependencies can be a Chainlet class, but it can also be
-      a `Protocol` with an equivalent `run` method (e.g. for getting correct type
-      checks when providing fake Chainlets for local testing.).
-    """
-    params = _ChainletInitParams(
-        list(inspect.signature(cls.__init__).parameters.values())
-    )
-    return params.validated_dependencies()
 
 
 def _validate_chainlet_cls(cls: Type[definitions.ABCChainlet]) -> None:
@@ -396,9 +447,12 @@ def _validate_chainlet_cls(cls: Type[definitions.ABCChainlet]) -> None:
 
 def check_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
     _validate_chainlet_cls(cls)
+
+    init_validator = _ChainletInitValidator(cls)
     chainlet_descriptor = definitions.ChainletAPIDescriptor(
         chainlet_cls=cls,
-        dependencies=_validate_init_and_get_dependencies(cls),
+        dependencies=init_validator.validated_dependencies,
+        has_context=init_validator.has_context,
         endpoint=_validate_and_describe_endpoint(cls),
         src_path=os.path.abspath(inspect.getfile(cls)),
         user_config_type=definitions.TypeDescriptor(raw=type(cls.default_user_config)),
@@ -410,44 +464,13 @@ def check_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
 # Dependency-Injection / Registry ######################################################
 
 
-class _BaseProvisionPlaceholder:
-    """A marker for object to be dependency injected by the framework."""
-
-
-class ChainletProvisionPlaceholder(_BaseProvisionPlaceholder):
-    chainlet_cls: Type[definitions.ABCChainlet]
-
-    def __init__(self, chainlet_cls: Type[definitions.ABCChainlet]) -> None:
-        self.chainlet_cls = chainlet_cls
-
-    def __str__(self) -> str:
-        return f"{self.__class__.__name__}({self.chainlet_cls.__name__})"
-
-    def __getattr__(self, item: str) -> Any:
-        if item == definitions.ENDPOINT_METHOD_NAME:
-            logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
-            raise definitions.ChainsRuntimeError(
-                f"It seems `chains.provide({self.chainlet_cls.__name__})` was used "
-                f"outside the `__init__` method of a chainlet. Dependency chainlets "
-                f"must be passed as init arguments.\n"
-                f"See {_DOCS_URL_CHAINING}.\n"
-                "Example of correct `__init__` with dependencies:\n"
-                f"{_example_chainlet_code()}"
-            )
-
-
-class ContextProvisionPlaceholder(_BaseProvisionPlaceholder):
-    def __str__(self) -> str:
-        return f"{self.__class__.__name__}"
-
-
 class _ChainletRegistry:
     # Because dependencies are required to be present when registering a Chainlet,
     # this dict contains natively a topological sorting of the dependency graph.
     _chainlets: collections.OrderedDict[
         Type[definitions.ABCChainlet], definitions.ChainletAPIDescriptor
     ]
-    _name_to_cls: MutableMapping[str, Type]
+    _name_to_cls: MutableMapping[str, Type[definitions.ABCChainlet]]
 
     def __init__(self) -> None:
         self._chainlets = collections.OrderedDict()
@@ -457,7 +480,9 @@ class _ChainletRegistry:
         for dep in chainlet_descriptor.dependencies.values():
             # To depend on a Chainlet, the class must be defined (module initialized)
             # which entails that is has already been added to the registry.
-            assert dep.chainlet_cls in self._chainlets, dep
+            if dep.chainlet_cls not in self._chainlets:
+                logging.error(f"Available chainlets: {list(self._chainlets.keys())}")
+                raise KeyError(dep.chainlet_cls)
 
         # Because class are globally unique, to prevent re-use / overwriting of names,
         # We must check this in addition.
@@ -510,26 +535,30 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
     """Asserts all marker markers are replaced by actual objects."""
     final_args = _determine_arguments(original_init, **kwargs)
     for name, value in final_args.items():
-        if isinstance(value, _BaseProvisionMarker):
+        if name == definitions.CONTEXT_ARG_NAME:
+            if not isinstance(value, definitions.DeploymentContext):
+                logging.error(
+                    f"When initializing Chainlet `{cls.__name__}`, for context "
+                    f"argument an incompatible value was passed, value: `{value}`."
+                )
+                raise definitions.ChainsRuntimeError(
+                    _instantiation_error_msg(cls.__name__)
+                )
+        # The argument is a dependency chainlet.
+        elif isinstance(value, _BaseProvisionMarker):
             logging.error(
-                f"When initializing class `{cls.__name__}`, for "
-                f"default argument `{name}` a symbolic placeholder value "
-                f"was passed (`{value}`)."
+                f"When initializing Chainlet `{cls.__name__}`, for dependency chainlet"
+                f"argument `{name}` an incompatible value was passed, value: `{value}`."
             )
             raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.__name__))
 
 
 # Local Deployment #####################################################################
 
-
-def _create_local_context(
-    chainlet_cls: Type[definitions.ABCChainlet],
-    secrets: Mapping[str, str],
-    data_dir: Optional[pathlib.Path],
-) -> definitions.DeploymentContext:
-    return definitions.DeploymentContext(
-        user_config=chainlet_cls.default_user_config, secrets=secrets, data_dir=data_dir
-    )
+# A variable to track the stack depth relative to `run_local` context manager.
+run_local_stack_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "run_local_stack_depth"
+)
 
 
 def _create_modified_init_for_local(
@@ -539,27 +568,51 @@ def _create_modified_init_for_local(
     ],
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
     If this patch is used, Chainlets can be functionally instantiated without
     any init args (because the patched defaults are sufficient).
     """
-    # TODO: can we somehow detect if a chainlet is instantiated inside another chainlet
-    #  (instead of init), e.g. users trying to instantiated a chainlet inside
-    #  `run` or `__init__`? Problem: if code is run with `run_local` context,
-    #  all chainlet classes are patched, so this will not raise an error - though
-    #  in the remote deployment it would trigger the actionable instantiation message.
+
+    def _verify_stack(stack: list[inspect.FrameInfo], levels_below_run_local: int):
+        for frame in stack[:levels_below_run_local]:
+            # This is a robust way to compare for function identity, since `wraps`
+            # actually changes the name.
+            if frame.frame.f_code != __init_local__.__code__:  # type: ignore[attr-defined]
+                assert frame.code_context is not None
+                logging.error(
+                    f"Chainlet init called outside {__init_local__.__name__}, "
+                    f'occurred in:\n File "{frame.filename}", line {frame.lineno}, in '
+                    f"{frame.function}\n  {frame.code_context[0].strip()}."
+                )
+                raise definitions.ChainsRuntimeError(
+                    _instantiation_error_msg(chainlet_descriptor.name)
+                )
+
     original_init = chainlet_descriptor.chainlet_cls.__init__
 
-    def init_for_local(self: definitions.ABCChainlet, **kwargs) -> None:
+    @functools.wraps(original_init)
+    def __init_local__(self: definitions.ABCChainlet, **kwargs) -> None:
         logging.debug(f"Patched `__init__` of `{chainlet_descriptor.name}`.")
+        stack_depth = run_local_stack_depth.get(None)
+        assert stack_depth is not None, "The patched init is only called in context."
+        stack = inspect.stack()
+        current_stack_depth = len(stack)
+        levels_below_run_local = current_stack_depth - stack_depth
+        _verify_stack(stack, levels_below_run_local)
         kwargs_mod = dict(kwargs)
-        if definitions.CONTEXT_ARG_NAME not in kwargs_mod:
-            context = _create_local_context(
-                chainlet_descriptor.chainlet_cls, secrets, data_dir
+        if (
+            chainlet_descriptor.has_context
+            and definitions.CONTEXT_ARG_NAME not in kwargs_mod
+        ):
+            kwargs_mod[definitions.CONTEXT_ARG_NAME] = definitions.DeploymentContext(
+                user_config=chainlet_descriptor.chainlet_cls.default_user_config,
+                secrets=secrets,
+                data_dir=data_dir,
+                chainlet_to_service=chainlet_to_service,
             )
-            kwargs_mod[definitions.CONTEXT_ARG_NAME] = context
         else:
             logging.debug(
                 f"Use explicitly given context for `{self.__class__.__name__}`."
@@ -580,23 +633,28 @@ def _create_modified_init_for_local(
                 instance = cls_to_instance[chainlet_cls]
             else:
                 logging.debug(
-                    f"Create new instance for `{arg_name}` of type `{dep.name}`."
+                    f"Create new instance for `{arg_name}` of type `{dep.name}`. "
+                    f"Calling patched __init__."
                 )
                 assert chainlet_cls._init_is_patched
+                # Dependency chainlets are instantiated here, using their __init__
+                # that is patched for local.
                 instance = chainlet_cls()  # type: ignore  # Here init args are patched.
                 cls_to_instance[chainlet_cls] = instance
 
             kwargs_mod[arg_name] = instance
 
+        logging.debug(f"Calling original __init__ of {chainlet_descriptor.name}.")
         original_init(self, **kwargs_mod)
 
-    return init_for_local
+    return __init_local__
 
 
 @contextlib.contextmanager
 def run_local(
     secrets: Optional[Mapping[str, str]] = None,
     data_dir: Optional[pathlib.Path] = None,
+    chainlet_to_service: Optional[Mapping[str, definitions.ServiceDescriptor]] = None,
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
     # TODO: support retries in local mode.
@@ -605,22 +663,33 @@ def run_local(
     ] = {}
     original_inits: MutableMapping[Type[definitions.ABCChainlet], Callable] = {}
 
+    # Capture the stack depth when entering the context manager
+    stack_depth = len(inspect.stack())
+    token = None
     for chainlet_descriptor in global_chainlet_registry.chainlet_descriptors:
         original_inits[
             chainlet_descriptor.chainlet_cls
         ] = chainlet_descriptor.chainlet_cls.__init__
         init_for_local = _create_modified_init_for_local(
-            chainlet_descriptor, type_to_instance, secrets or {}, data_dir
+            chainlet_descriptor,
+            type_to_instance,
+            secrets or {},
+            data_dir,
+            chainlet_to_service or {},
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True
     try:
+        # Subtract 2 levels: `run_local` (this) and `__enter__` (from @contextmanager).
+        token = run_local_stack_depth.set(stack_depth - 2)
         yield
     finally:
         # Restore original classes to unpatched state.
         for chainlet_cls, original_init in original_inits.items():
             chainlet_cls.__init__ = original_init  # type: ignore[method-assign]
             chainlet_cls._init_is_patched = False
+        if token is not None:
+            run_local_stack_depth.reset(token)
 
 
 ########################################################################################
@@ -672,6 +741,7 @@ def import_target(
             f"with name {module_name}. Overwriting that value is unsafe. "
             "Try renaming your file."
         )
+    modules_before = set(sys.modules.keys())
     sys.modules[module_name] = module
     # Add path for making absolute imports relative to the source_module's dir.
     sys.path.insert(0, str(module_path.parent))
@@ -712,10 +782,14 @@ def import_target(
 
         yield target_cls
 
-    except Exception:
-        del sys.modules[module_name]
+    finally:
+        modules_to_delete = set(sys.modules.keys()) - modules_before
+        logging.debug(
+            f"Deleting modules when exiting import context: {modules_to_delete}"
+        )
+        for mod in modules_to_delete:
+            del sys.modules[mod]
         try:
             sys.path.remove(str(module_path.parent))
         except ValueError:  # In case the value was already removed for whatever reason.
             pass
-        raise
