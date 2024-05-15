@@ -14,9 +14,8 @@ docs = parse(docstring)
 
 mdx = ""
 
-for param in docs["params"]:
+for param in docs.params:
     mdx += f'<ParamField body="{param.arg_name}" type="{param.type_name}">\n{param.description}\n</ParamField>\n'
 
-out = open("../docs/_snippets/config_params.mdx", "w")
-out.write(mdx)
-out.close()
+with open("../docs/snippets/config-params.mdx", "w") as out:
+    out.write(mdx)

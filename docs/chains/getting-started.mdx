@@ -1,25 +1,17 @@
 ---
 title: Getting Started
-description: "Getting Started with *Truss Chains*"
+description: "Build and deploy your first *Chain*"
 ---
 
 <Warning>*Chains* is a beta feature and subject to breaking changes.</Warning>
 
-# Table of Contents
+import TOC from '/snippets/chains/TOC.mdx';
 
-* [Introduction](/chains/intro)
-* [Getting Started](/chains/getting-started)
-* [Chaining Chainlets](/chains/chaining-chainlets)
-* [Guide](/chains/guide)
-* [Dependencies & Resources](/chains/deps-and-resources)
-* [Reference](/chains/full-reference)
+<TOC />
 
+# Prerequisites
 
-This guide shows you how to install Truss Chains, create your first Chain and run it.
-
-# Installation
-
-Truss Chains is available in a rc version of Truss.
+Install Chains in your python development environment
 
 ```bash
 pip install truss==0.9.11rc1
@@ -30,63 +22,56 @@ For deploying Chains remotely to Baseten you need a [Baseten account](https://ap
 
 # Creating your first *Chain*
 
+<Info>
+A *Chain* is the result of defining one or several *Chainlets* and linking them to each other by marking Chainlet
+dependencies and making function calls to other Chainlets.
+
+A Chainlet is the fundamental building block, it performs one computation step (e.g. model inference). Each will be
+deployed as a separate, scalable remote service.
+
+More details are in the [concepts section](/chains/concepts).
+</Info>
+
+
 Create a Chain project directory with a python file in it. You can chose a name and location, in this example we
 assume the file is named `hello.py`.
 
 ```python
+import random
 import truss_chains as chains
 
-class HelloWorld(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
+class RandInt(chains.ChainletBase):
+    def run_remote(self, max_value: int) -> int:
+        return random.randint(1, max_value)
 
-    def run_remote(self, num_repetitions: int) -> str:
+@chains.entrypoint
+class HelloWorld(chains.ChainletBase):
+    def __init__(self, rand_int=chains.depends(RandInt, retries=3)) -> None:
+        self._rand_int = rand_int
+
+    def run_remote(self, max_value: int) -> str:
+        num_repetitions = self._rand_int.run_remote(max_value)
         return "Hello World! " * num_repetitions
 ```
 
 This Chainlet takes an integer, and returns the string "Hello World!" repeated a variable number of times.
 
-## Comments
-* `run` contains your user-defined implementation and is the entrypoint to invoke a Chainlet. When
-[chaining](/chains/chaining-chainlets) Chainlets, other Chainlets use the `run` methods of their dependency
-Chainlets.
-* To support input and output serialization in distributed execution, `run` must be fully type-annotated and with
+## Explanations
+* `run_remote` contains your user-defined implementation and is the entrypoint to invoke a Chainlet. Other Chainlets
+may *only* use the `run_remote` method of their dependency Chainlets.
+* To support input and output serialization in remote execution, `run_remote` must be fully type-annotated with
 <Tooltip tip="E.g. `int`, `str`, `list[float]`">primitive python types</Tooltip> or
 <Tooltip tip="They have builtin JSON serialization.">[pydantic models](https://docs.pydantic.dev/latest/)</Tooltip>.
-* A chainlet must not have any other *public* methods or attributes, besides `run`. You can use private methods to
-structure you implementation.
-* `remote_config` is required for controlling remote deployment and left with default values here. In
-[advanced use cases](/chains/deps-and-resources) additional configuration, e.g. compute resources, is specified there.
-* Bear in mind that Chains are intended for *distributed, replicated, remote execution*, so using global variables,
+* A chainlet must not have any other *public* methods or attributes, besides `run_remote`. You can use private methods
+to structure you implementation. This is to allow the transformation of your local code to remote deployment.
+* Chainlets cannot be <Tooltip tip="I.e. creating instances like `chainlet = RandInt()` in arbitrary locations in your code.">naively</Tooltip>
+instantiated. The only correct usages are 1) via the `chains.depends()` directive as an `__init__`-argument as shown above
+for `RandInt` and 2) in the local [debugging mode](/chains/guide#local-debugging).
+* `@chains.entrypoint` is a simple marker to denote which Chainlet acts as the entrypoint to receive client requests.
+* Bear in mind that Chainlets are intended for *distributed, replicated, remote execution*, so using global variables,
 state and <Tooltip tip="E.g. changing classes and imported modules dynamically at runtime.">highly dynamic python
 features</Tooltip> should be avoided as they might not work as intended.
 
-
-# Local Debugging
-
-Truss Chains supports a [run local mode](chains/deps-and-resources#running-it-locally) intended for
-debugging and testing of your Chainlets. To use it, append a main section with test inputs to your file:
-
-```python
-if __name__ == "__main__":
-    with chains.run_local():
-        my_hello_world = HelloWorld()
-        result = my_hello_world.run_remote(num_repetitions=3)
-
-    print(result)
-    # Hello World! Hello World! Hello World!
-```
-
-And run your Python file:
-
-```bash
-python hello.py
-```
-
-<Warning>
-Note `run_local` uses whatever compute resources and dependencies available in your dev environment. If your Chainlet
-requires a specific GPU or Python dependencies that are not available, it will not work.
-For such cases refer to [mocking parts](chains/deps-and-resources#running-it-locally) of a Chain.
-</Warning>
 
 # Remote Deployment to Baseten
 
@@ -94,30 +79,24 @@ To deploy your Chain to in a remote hosting environment like [Baseten](https://w
 command:
 
 ```bash
-truss chains deploy ./hello.py HelloWorld
+truss chains deploy ./hello.py
 ```
 
 This Truss command has the following structure:
 `truss chains deploy [OPTIONS] SOURCE ENTRYPOINT` where `ENTRYPOINT` is the Chainlet class name in your python file.
-For more options run `truss chains deploy --help`.
+For more options run `truss chains deploy --help`. `ENTRYPOINT` can be omitted if `@chains.entrypoint` is used.
 
 The deploy command results in an output like this:
 
 ```
-INFO:root:Using project root for chain: `/home/marius-baseten/workbench/example`.
-INFO:root:Generating truss model for chainlet `HelloWorld`.
-INFO:root:Deploying chainlet `HelloWorld.HelloWorld` as truss model on Baseten (publish=False, promote=False).
-Compressing... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
-Uploading... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
-INFO:root:Service created for `HelloWorld.HelloWorld` @ 'https://model-...'.
-
-
               ⛓️   HelloWorld - Chainlets  ⛓️
-╭──────────────────────┬──────────────────────┬─────────────╮
-│ Status               │ Name                 │ Logs URL    │
-├──────────────────────┼──────────────────────┼─────────────┤
-│ 💚  ACTIVE           │ HelloWorld           │ https://... │
-╰──────────────────────┴──────────────────────┴─────────────╯
+╭──────────────────────┬─────────────────────────┬─────────────╮
+│ Status               │ Name                    │ Logs URL    │
+├──────────────────────┼─────────────────────────┼─────────────┤
+│ 💚  ACTIVE           │ HelloWorld (entrypoint) │ https://... │
+├──────────────────────┼─────────────────────────┼─────────────┤
+│ 💚  ACTIVE           │ RandInt (dep)           │ https://... │
+╰──────────────────────┴─────────────────────────┴─────────────╯
 Deployment succeeded.
 You can run the chain with:
 curl -X POST 'https://model<MODEL_ID>.api.baseten.co/development/predict' \
@@ -135,6 +114,3 @@ curl -X POST $PREDICT_URL \
   -d '{"num_repetitions": 10}'
 # "Hello World! Hello World! Hello World! "
 ```
-
-See the next section [Chaining Chainlets](/chains/chaining-chainlets) for how to deploy Chains with multiple
-Chainlets.
