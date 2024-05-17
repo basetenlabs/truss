@@ -131,7 +131,7 @@ def _gen_chainlet_import_and_ref(
 
 def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
     """
-    E.g.: `async def run(self, data: str, num_partitions: int) -> tuple[list, int]:`
+    E.g.: `async def run_remote(self, data: str, num_partitions: int) -> tuple[list, int]:`
     """
     if endpoint.is_generator:
         # TODO: implement generator.
@@ -229,7 +229,7 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
         def __init__(self, url: str, api_key: str) -> None:
             self._remote = stub.BasetenSession(url, api_key)
 
-        async def run(self, data: str, num_partitions: int) -> tuple[SplitTextOutput, int]:
+        async def run_remote(self, data: str, num_partitions: int) -> tuple[SplitTextOutput, int]:
             json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
             json_result = await self._remote.predict_async(json_args)
             return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
@@ -317,10 +317,13 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
         # `dep.name` is the class name, while `name` is the argument name.
         stub_args.append(f"{name}=stub.factory({dep.name}, self._context)")
 
-    if stub_args:
-        init_args = f"context=self._context, {', '.join(stub_args)}"
+    if chainlet_descriptor.has_context:
+        if stub_args:
+            init_args = f"{', '.join(stub_args)}, context=self._context"
+        else:
+            init_args = "context=self._context"
     else:
-        init_args = "context=self._context"
+        init_args = ", ".join(stub_args)
 
     user_chainlet_ref = _gen_chainlet_import_and_ref(chainlet_descriptor)
     imports.update(user_chainlet_ref.imports)
@@ -386,7 +389,6 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
 def _gen_truss_chainlet_model(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
 ) -> _Source:
-    logging.info(f"Generating truss model for chainlet `{chainlet_descriptor.name}`.")
     skeleton_tree = libcst.parse_module(
         pathlib.Path(model_skeleton.__file__).read_text()
     )
@@ -519,10 +521,11 @@ def _make_truss_config(
     # Compute.
     compute = chains_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)
+    config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
     config.resources.use_gpu = bool(compute.accelerator.count)
     # TODO: expose this setting directly.
-    config.runtime.predict_concurrency = compute.cpu_count
+    config.runtime.predict_concurrency = compute.predict_concurrency
     # Image.
     image = chains_config.docker_image
     config.base_image = truss_config.BaseImage(image=image.base_image)
@@ -567,6 +570,7 @@ def gen_truss_chainlet(
     gen_root: pathlib.Path,
 ) -> pathlib.Path:
     # TODO: support file-based config (and/or merge file and python-src config values).
+    logging.info(f"Generating truss chainlet model for `{chainlet_descriptor.name}`.")
     remote_config = chainlet_descriptor.chainlet_cls.remote_config
     chainlet_name = remote_config.name or chainlet_descriptor.name
     # Filter needed services and customize options.

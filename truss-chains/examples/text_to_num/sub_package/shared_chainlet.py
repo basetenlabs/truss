@@ -27,7 +27,7 @@ class SplitText(chains.ChainletBase):
         docker_image=chains.DockerImage(pip_requirements=["numpy"])
     )
 
-    async def run(
+    async def run_remote(
         self, inputs: SplitTextInput, extra_arg: int
     ) -> Tuple[SplitTextOutput, int]:
         import numpy as np

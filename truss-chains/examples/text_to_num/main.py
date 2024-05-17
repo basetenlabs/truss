@@ -17,10 +17,7 @@ from truss import truss_config
 
 
 class GenerateData(chains.ChainletBase):
-
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
-    def run(self, length: int) -> str:
+    def run_remote(self, length: int) -> str:
         return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
@@ -34,7 +31,7 @@ class MistraLLMConfig(pydantic.BaseModel):
     hf_model_name: str
 
 
-class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
+class MistralLLM(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
@@ -52,13 +49,12 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
 
     def __init__(
         self,
-        context: chains.DeploymentContext[MistraLLMConfig] = chains.provide_context(),
+        context: chains.DeploymentContext[MistraLLMConfig] = chains.depends_context(),
     ) -> None:
-        super().__init__(context)
         import torch
         import transformers
 
-        model_name = self.user_config.hf_model_name
+        model_name = context.user_config.hf_model_name
 
         self._model = transformers.AutoModelForCausalLM.from_pretrained(
             model_name,
@@ -84,7 +80,7 @@ class MistralLLM(chains.ChainletBase[MistraLLMConfig]):
             "pad_token_id": self._tokenizer.pad_token_id,
         }
 
-    def run(self, data: str) -> str:
+    def run_remote(self, data: str) -> str:
         import torch
 
         formatted_prompt = f"[INST] {data} [/INST]"
@@ -101,24 +97,17 @@ class MistralP(Protocol):
     def __init__(self, context: chains.DeploymentContext) -> None:
         ...
 
-    def run(self, data: str) -> str:
+    def run_remote(self, data: str) -> str:
         ...
 
 
 class TextToNum(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
-    def __init__(
-        self,
-        context: chains.DeploymentContext = chains.provide_context(),
-        mistral: MistralP = chains.provide(MistralLLM),
-    ) -> None:
-        super().__init__(context)
+    def __init__(self, mistral: MistralP = chains.depends(MistralLLM)) -> None:
         self._mistral = mistral
 
-    def run(self, data: str) -> int:
+    def run_remote(self, data: str) -> int:
         number = 0
-        generated_text = self._mistral.run(data)
+        generated_text = self._mistral.run_remote(data)
         for char in generated_text:
             number += ord(char)
 
@@ -127,23 +116,21 @@ class TextToNum(chains.ChainletBase):
 
 @chains.entrypoint
 class ExampleChain(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.provide_context(),
-        data_generator: GenerateData = chains.provide(GenerateData),
-        splitter: shared_chainlet.SplitText = chains.provide(shared_chainlet.SplitText),
-        text_to_num: TextToNum = chains.provide(TextToNum),
+        data_generator: GenerateData = chains.depends(GenerateData),
+        splitter: shared_chainlet.SplitText = chains.depends(shared_chainlet.SplitText),
+        text_to_num=chains.depends(TextToNum),
     ) -> None:
-        super().__init__(context)
         self._data_generator = data_generator
         self._data_splitter = splitter
         self._text_to_num = text_to_num
 
-    async def run(self, length: int, num_partitions: int) -> tuple[int, str, int]:
-        data = self._data_generator.run(length)
-        text_parts, number = await self._data_splitter.run(
+    async def run_remote(
+        self, length: int, num_partitions: int
+    ) -> tuple[int, str, int]:
+        data = self._data_generator.run_remote(length)
+        text_parts, number = await self._data_splitter.run_remote(
             shared_chainlet.SplitTextInput(
                 data=data,
                 num_partitions=num_partitions,
@@ -153,7 +140,7 @@ class ExampleChain(chains.ChainletBase):
         )
         value = 0
         for part in text_parts.parts:
-            value += self._text_to_num.run(part)
+            value += self._text_to_num.run_remote(part)
         return value, data, number
 
 
@@ -168,11 +155,11 @@ if __name__ == "__main__":
     import asyncio
 
     class FakeMistralLLM:
-        def run(self, data: str) -> str:
+        def run_remote(self, data: str) -> str:
             return data.upper()
 
     with chains.run_local():
         text_to_num_chainlet = TextToNum(mistral=FakeMistralLLM())
         wf = ExampleChain(text_to_num=text_to_num_chainlet)
-        tmp = asyncio.run(wf.run(length=123, num_partitions=123))
+        tmp = asyncio.run(wf.run_remote(length=123, num_partitions=123))
         print(tmp)

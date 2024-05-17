@@ -117,7 +117,7 @@ src_paths = ["isort", "test"]
 [tool.mypy]
 ignore_missing_imports = true
 python_version = "3.9"
-
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 markers = [
