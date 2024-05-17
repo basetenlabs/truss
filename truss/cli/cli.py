@@ -635,7 +635,7 @@ def predict(
         "specifying, the command will not complete until the deployment is complete."
     ),
 )
-# @error_handling
+@error_handling
 def push(
     target_directory: str,
     remote: str,
@@ -703,7 +703,7 @@ def push(
     #  config checks.
     if tr.spec.config.secrets and not trusted:
         not_trusted_text = (
-            "Warning: your Truss has secrets but was not pushed with --trusted."
+            "Warning: your Truss has secrets but was not pushed with --trusted. "
             "Please push with --trusted to grant access to secrets."
         )
         console.print(not_trusted_text, style="red")

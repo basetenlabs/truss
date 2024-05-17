@@ -315,29 +315,57 @@ def test_empty_config():
 
 
 def test_from_yaml():
-    yaml_path = Path("test.yaml")
     data = {"description": "this is a test"}
-    with yaml_path.open("w") as yaml_file:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
         yaml.safe_dump(data, yaml_file)
 
-    result = TrussConfig.from_yaml(yaml_path)
+        result = TrussConfig.from_yaml(yaml_path)
 
-    assert result.description == "this is a test"
-
-    yaml_path.unlink()
+        assert result.description == "this is a test"
 
 
 def test_from_yaml_empty():
-    yaml_path = Path("test.yaml")
     data = {}
-    with yaml_path.open("w") as yaml_file:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
         yaml.safe_dump(data, yaml_file)
 
-    result = TrussConfig.from_yaml(yaml_path)
+        result = TrussConfig.from_yaml(yaml_path)
 
-    # test some attributes (should be default)
-    assert result.description is None
-    assert result.spec_version == "2.0"
-    assert result.bundled_packages_dir == "packages"
+        # test some attributes (should be default)
+        assert result.description is None
+        assert result.spec_version == "2.0"
+        assert result.bundled_packages_dir == "packages"
 
-    yaml_path.unlink()
+
+def test_from_yaml_secrets_as_list():
+    data = {"description": "this is a test", "secrets": ["foo", "bar"]}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        with pytest.raises(ValueError):
+            TrussConfig.from_yaml(yaml_path)
+
+
+def test_from_yaml_python_version():
+    yaml_path = Path("test.yaml")
+    invalid_py_version_data = {
+        "description": "this is a test",
+        "python_version": "py38",
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(invalid_py_version_data, yaml_file)
+
+        with pytest.raises(ValueError):
+            TrussConfig.from_yaml(yaml_path)
+
+    valid_py_version_data = {"description": "this is a test", "python_version": "py39"}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(valid_py_version_data, yaml_file)
+
+        result = TrussConfig.from_yaml(yaml_path)
+        result.python_version == "py39"
