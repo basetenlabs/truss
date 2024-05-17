@@ -104,6 +104,6 @@ BASE_TRTLLM_REQUIREMENTS = [
     "tritonclient[all]==2.42.0",
     "transformers==4.40.2",
     "jinja2==3.1.3",
-    "truss==0.9.11",
+    "truss==0.9.12",
 ]
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
