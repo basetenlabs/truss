@@ -2,8 +2,6 @@ import truss_chains as chains
 
 
 class DummyGenerateData(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
     def run_remote(self) -> str:
         return "abc"
 
@@ -12,15 +10,11 @@ class DummyGenerateData(chains.ChainletBase):
 # module.
 class shared_chainlet:
     class DummySplitText(chains.ChainletBase):
-        remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
         def run_remote(self, data: str) -> list[str]:
             return [data[:2], data[2:]]
 
 
 class DummyExample(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
     def __init__(
         self,
         data_generator: DummyGenerateData = chains.depends(DummyGenerateData),

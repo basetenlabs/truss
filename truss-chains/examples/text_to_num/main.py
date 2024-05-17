@@ -17,9 +17,6 @@ from truss import truss_config
 
 
 class GenerateData(chains.ChainletBase):
-
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
     def run_remote(self, length: int) -> str:
         return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
@@ -105,8 +102,6 @@ class MistralP(Protocol):
 
 
 class TextToNum(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
     def __init__(self, mistral: MistralP = chains.depends(MistralLLM)) -> None:
         self._mistral = mistral
 
@@ -121,8 +116,6 @@ class TextToNum(chains.ChainletBase):
 
 @chains.entrypoint
 class ExampleChain(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=chains.DockerImage())
-
     def __init__(
         self,
         data_generator: GenerateData = chains.depends(GenerateData),

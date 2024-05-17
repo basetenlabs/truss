@@ -210,7 +210,7 @@ class Assets:
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a Chainlet."""
 
-    docker_image: DockerImage
+    docker_image: DockerImage = DockerImage()
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None
