@@ -29,7 +29,11 @@ def test_chain():
         )
         print(response.content)
         assert response.status_code == 200
-        assert response.json() == [6280, "erodfderodfderodfderodfderodfd", 123]
+        assert response.json()["result"] == [
+            6280,
+            "erodfderodfderodfderodfderodfd",
+            123,
+        ]
 
         # Test with errors.
         response = requests.post(

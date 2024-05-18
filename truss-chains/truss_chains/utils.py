@@ -234,13 +234,7 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
 
     ```
     """
-    # TODO: model not ready is falsely reported as client error.
-    #  current workaround is to treat all errors as server error.
-    # if response.is_client_error:
-    #     raise fastapi.HTTPException(
-    #         status_code=response.status_code, detail=response.content
-    #     )
-    if response.is_server_error or response.is_client_error:
+    if response.is_error:
         try:
             response_json = response.json()
         except Exception as e:
@@ -254,7 +248,7 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
         except KeyError as e:
             logging.error(f"response.json(): {response_json}")
             raise ValueError(
-                "Could not get error field from JSON from error response"
+                "Could not get `error` field from JSON from error response"
             ) from e
 
         try:

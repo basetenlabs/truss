@@ -46,6 +46,7 @@ from truss_chains import definitions, model_skeleton, utils
 _TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
 _MODEL_FILENAME = "model.py"
+_OUTPUT_FIELD_NAME = "output"
 _MODEL_CLS_NAME = model_skeleton.TrussChainletModel.__name__
 
 
@@ -76,6 +77,11 @@ def _format_python_file(file_path: pathlib.Path) -> None:
 class _Source(definitions.SafeModelNonSerializable):
     src: str
     imports: set[str] = set()
+
+
+def _update_src(new_source: _Source, src_parts: list[str], imports: set[str]) -> None:
+    src_parts.append(new_source.src)
+    imports.update(new_source.imports)
 
 
 def _gen_import_and_ref(raw_type: Any) -> _Source:
@@ -126,6 +132,47 @@ def _gen_chainlet_import_and_ref(
     return _gen_import_and_ref(chainlet_descriptor.chainlet_cls)
 
 
+# I/O used by Stubs and Truss models ###################################################
+
+
+def _get_input_model_name(chainlet_name: str) -> str:
+    return f"{chainlet_name}Input"
+
+
+def _get_output_model_name(chainlet_name: str) -> str:
+    return f"{chainlet_name}Output"
+
+
+def _gen_truss_input_pydantic(
+    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+) -> _Source:
+    imports = {"import pydantic"}
+    fields = []
+    for arg_name, arg_type in chainlet_descriptor.endpoint.input_names_and_types:
+        type_ref = _gen_type_import_and_ref(arg_type)
+        imports.update(type_ref.imports)
+        fields.append(f"{arg_name}: {type_ref.src}")
+
+    field_block = _indent("\n".join(fields))
+    model_name = _get_input_model_name(chainlet_descriptor.name)
+    src = f"class {model_name}(pydantic.BaseModel):\n{field_block}"
+    return _Source(src=src, imports=imports)
+
+
+def _gen_truss_output_pydantic(
+    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+) -> _Source:
+    imports = {"import pydantic"}
+    fields: list[str] = []
+    for i, output_type in enumerate(chainlet_descriptor.endpoint.output_types):
+        _update_src(_gen_type_import_and_ref(output_type), fields, imports)
+
+    model_name = _get_output_model_name(chainlet_descriptor.name)
+    field = f"{_OUTPUT_FIELD_NAME}: tuple[{','.join(fields)}]"
+    src = f"class {model_name}(pydantic.BaseModel):\n{_indent(field)}"
+    return _Source(src=src, imports=imports)
+
+
 # Stub Gen #############################################################################
 
 
@@ -144,11 +191,9 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Sou
         imports.update(arg_ref.imports)
         args.append(f"{arg_name}: {arg_ref.src}")
 
-    outputs = []
+    outputs: list[str] = []
     for output_type in endpoint.output_types:
-        out_ref = _gen_type_import_and_ref(output_type)
-        outputs.append(out_ref.src)
-        imports.update(out_ref.imports)
+        _update_src(_gen_type_import_and_ref(output_type), outputs, imports)
 
     if len(outputs) == 1:
         output = outputs[0]
@@ -162,7 +207,9 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Sou
     )
 
 
-def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
+def _endpoint_body_src(
+    endpoint: definitions.EndpointAPIDescriptor, chainlet_name: str
+) -> _Source:
     """Generates source code for calling the stub and wrapping the I/O types.
 
     E.g.:
@@ -175,47 +222,24 @@ def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
     if endpoint.is_generator:
         raise NotImplementedError("Generator")
 
-    imports = set()
-    parts = []
-    # Pack arg list as json dictionary.
-    json_args = []
-    for arg_name, arg_type in endpoint.input_names_and_types:
-        if arg_type.is_pydantic:
-            json_args.append(f"'{arg_name}': {arg_name}.dict()")
-        else:
-            json_args.append(f"'{arg_name}': {arg_name}")
-    parts.append(f"json_args = {{{', '.join(json_args)}}}")
+    imports: set[str] = set()
+    args = [f"{arg_name}={arg_name}" for arg_name, _ in endpoint.input_names_and_types]
+    inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)}).dict()"
 
     # Invoke remote.
     if endpoint.is_async:
-        remote_call = "await self._remote.predict_async(json_args)"
+        remote_call = f"await self._remote.predict_async({inputs})"
     else:
-        remote_call = "self._remote.predict_sync(json_args)"
+        remote_call = f"self._remote.predict_sync({inputs})"
 
-    parts.append(f"json_result = {remote_call}")
-
+    parts = [f"json_result = {remote_call}"]
     # Unpack response and parse as pydantic models if needed.
+    output_model_name = _get_output_model_name(chainlet_name)
+    parts.append(
+        f"return {output_model_name}.parse_obj(json_result).{_OUTPUT_FIELD_NAME}"
+    )
     if len(endpoint.output_types) == 1:
-        output_type = utils.expect_one(endpoint.output_types)
-        if output_type.is_pydantic:
-            out_ref = _gen_type_import_and_ref(output_type)
-            imports.update(out_ref.imports)
-            result = f"{out_ref.src}.parse_obj(json_result)"
-        else:
-            result = "json_result"
-    else:
-        outputs = []
-        for i, output_type in enumerate(endpoint.output_types):
-            if output_type.is_pydantic:
-                out_ref = _gen_type_import_and_ref(output_type)
-                outputs.append(f"{out_ref.src}.parse_obj(json_result[{i}])")
-                imports.update(out_ref.imports)
-            else:
-                outputs.append(f"json_result[{i}]")
-
-        result = ", ".join(outputs)
-
-    parts.append(f"return {result}")
+        parts[-1] = f"{parts[-1]}[0]"
     return _Source(src="\n".join(parts), imports=imports)
 
 
@@ -236,17 +260,24 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
     ```
     """
     imports = {"from truss_chains import stub"}
+    src_parts: list[str] = []
+    input_src = _gen_truss_input_pydantic(chainlet)
+    _update_src(input_src, src_parts, imports)
+    output_src = _gen_truss_output_pydantic(chainlet)
+    _update_src(output_src, src_parts, imports)
     signature = _endpoint_signature_src(chainlet.endpoint)
     imports.update(signature.imports)
-    body = _endpoint_body_src(chainlet.endpoint)
+    body = _endpoint_body_src(chainlet.endpoint, chainlet.name)
     imports.update(body.imports)
 
-    src_parts = [
-        f"class {chainlet.name}(stub.StubBase):",
-        _indent(signature.src),
-        _indent(body.src, 2),
-        "\n",
-    ]
+    src_parts.extend(
+        [
+            f"class {chainlet.name}(stub.StubBase):",
+            _indent(signature.src),
+            _indent(body.src, 2),
+            "\n",
+        ]
+    )
     return _Source(src="\n".join(src_parts), imports=imports)
 
 
@@ -254,12 +285,10 @@ def _gen_stub_src_for_deps(
     dependencies: Iterable[definitions.ChainletAPIDescriptor],
 ) -> Optional[_Source]:
     """Generates a source code and imports for stub classes."""
-    imports = set()
-    src_parts = []
+    imports: set[str] = set()
+    src_parts: list[str] = []
     for dep in dependencies:
-        stub_src = _gen_stub_src(dep)
-        imports.update(stub_src.imports)
-        src_parts.append(stub_src.src)
+        _update_src(_gen_stub_src(dep), src_parts, imports)
 
     if not (imports or src_parts):
         return None
@@ -343,10 +372,19 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         # TODO: implement generator.
         raise NotImplementedError("Generator.")
 
-    imports = set()
-    parts = []
+    imports: set[str] = set()
+    parts: list[str] = []
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
-    parts.append(f"{def_str} predict(self, payload):")
+    input_model_name = _get_input_model_name(chainlet_descriptor.name)
+    output_model_name = _get_output_model_name(chainlet_descriptor.name)
+    parts.append(
+        f"{def_str} predict(self, inputs: {input_model_name}) "
+        f"-> {output_model_name}:"
+    )
+
+    args = []
+    for arg_name, _ in chainlet_descriptor.endpoint.input_names_and_types:
+        args.append(f"{arg_name}=inputs.{arg_name}")
     # Add error handling context manager:
     parts.append(
         _indent(
@@ -354,35 +392,23 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
             f'include_stack=True, chainlet_name="{chainlet_descriptor.name}"):'
         )
     )
-    # Convert items from json payload dict to an arg-list, parsing pydantic models.
-    args = []
-    for arg_name, arg_type in chainlet_descriptor.endpoint.input_names_and_types:
-        if arg_type.is_pydantic:
-            type_ref = _gen_type_import_and_ref(arg_type)
-            imports.update(type_ref.imports)
-            args.append(f"{arg_name}={type_ref.src}.parse_obj(payload['{arg_name}'])")
-        else:
-            args.append(f"{arg_name}=payload['{arg_name}']")
-
     # Invoke Chainlet.
     maybe_await = "await " if chainlet_descriptor.endpoint.is_async else ""
-    args_src = ",".join(args)
-    run = chainlet_descriptor.endpoint.name
-    parts.append(_indent(f"result = {maybe_await}self._chainlet.{run}({args_src})", 2))
-
-    # Return as json tuple, serialize pydantic models.
+    run_remote = chainlet_descriptor.endpoint.name
+    parts.append(
+        _indent(
+            f"result = {maybe_await}self._chainlet.{run_remote}({','.join(args)})", 2
+        )
+    )
     if len(chainlet_descriptor.endpoint.output_types) == 1:
-        output_type = chainlet_descriptor.endpoint.output_types[0]
-        result = "result.dict()" if output_type.is_pydantic else "result"
+        result_pydantic = (
+            f"{output_model_name}.parse_obj({{'{_OUTPUT_FIELD_NAME}': (result,)}})"
+        )
     else:
-        result_parts = [
-            f"result[{i}].dict()" if t.is_pydantic else f"result[{i}]"
-            for i, t in enumerate(chainlet_descriptor.endpoint.output_types)
-        ]
-        result = f"{', '.join(result_parts)}"
-
-    parts.append(_indent(f"return {result}"))
-
+        result_pydantic = (
+            f"{output_model_name}.parse_obj({{'{_OUTPUT_FIELD_NAME}': result}})"
+        )
+    parts.append(_indent(f"return {result_pydantic}"))
     return _Source(src="\n".join(parts), imports=imports)
 
 
@@ -441,9 +467,6 @@ def _gen_truss_chainlet_model(
     return _Source(src=f"{userconfig_pin}\n\n{model_class_src}", imports=imports)
 
 
-# Remote Chainlet Gen #################################################################
-
-
 def _gen_truss_chainlet_file(
     chainlet_dir: pathlib.Path,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
@@ -453,15 +476,18 @@ def _gen_truss_chainlet_file(
     file_path = chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / _MODEL_FILENAME
     file_path.parent.mkdir(parents=True, exist_ok=True)
     (chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / "__init__.py").touch()
-    imports = set()
-    src_parts = []
+    imports: set[str] = set()
+    src_parts: list[str] = []
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
-        imports.update(maybe_stub_src.imports)
-        src_parts.append(maybe_stub_src.src)
+        _update_src(maybe_stub_src, src_parts, imports)
 
+    input_src = _gen_truss_input_pydantic(chainlet_descriptor)
+    _update_src(input_src, src_parts, imports)
+    output_src = _gen_truss_output_pydantic(chainlet_descriptor)
+    _update_src(output_src, src_parts, imports)
     model_src = _gen_truss_chainlet_model(chainlet_descriptor)
-    src_parts.append(model_src.src)
-    imports.update(model_src.imports)
+    _update_src(model_src, src_parts, imports)
+
     imports_str = "\n".join(imports)
     src_str = "\n".join(src_parts)
     file_path.write_text(f"{imports_str}\n{src_str}")

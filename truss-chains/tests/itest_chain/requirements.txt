@@ -1,1 +1,1 @@
-git+https://github.com/basetenlabs/truss.git@f3f164f061c465a59d9c520700660424c0e4f8ab
+git+https://github.com/basetenlabs/truss.git

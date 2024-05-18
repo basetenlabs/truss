@@ -32,7 +32,6 @@ UserConfigT = TypeVar("UserConfigT", bound=Union[pydantic.BaseModel, None])
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
-
 GENERATED_CODE_DIR = ".chains_generated"
 
 # Below arg names must correspond to `definitions.ABCChainlet`.
