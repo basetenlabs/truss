@@ -2,6 +2,8 @@ import os
 import pathlib
 from typing import Set
 
+USE_BRITON = os.environ.get("USE_BRITON_FOR_TRTLLM", False)
+
 SKLEARN = "sklearn"
 TENSORFLOW = "tensorflow"
 KERAS = "keras"
@@ -17,7 +19,12 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
-TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
+# TODO: change this based on briton env var
+TRTLLM_BRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
+TRTLLM_TRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
+TRTLLM_TRUSS_DIR: pathlib.Path = (
+    TRTLLM_BRITON_TRUSS_DIR if USE_BRITON else TRTLLM_TRITON_TRUSS_DIR
+)
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME
