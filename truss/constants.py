@@ -106,11 +106,18 @@ HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_BASE_IMAGE = "baseten/triton_trt_llm:v0.9.0"
+BRITON_TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.0.1"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = [
     "tritonclient[all]==2.42.0",
     "transformers==4.40.2",
     "jinja2==3.1.3",
+    "truss==0.9.12",
+]
+BRITON_BASE_TRTLLM_REQUIREMENTS = [
+    "grpcio==1.64.0",
+    "grpcio-tools==1.64.0",
+    "transformers==4.41.0",
     "truss==0.9.12",
 ]
 OPENAI_COMPATIBLE_TAG = "openai-compatible"

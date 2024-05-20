@@ -1,109 +1,173 @@
 import os
+import signal
+import socket
+import subprocess
+import threading
+import time
 from itertools import count
 
-from constants import (
-    GRPC_SERVICE_PORT,
-    HF_AUTH_KEY_CONSTANT,
-    HTTP_SERVICE_PORT,
-    TOKENIZER_KEY_CONSTANT,
-)
-from schema import ModelInput
+import briton_pb2
+import briton_pb2_grpc
+import grpc
 from transformers import AutoTokenizer
-from triton_client import TritonClient, TritonServer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
-DEFAULT_MAX_TOKENS = 500
-DEFAULT_MAX_NEW_TOKENS = 500
+BRITON_PORT = 50051
+
+MODEL_INPUT_TO_BRITON_FIELD = {
+    "max_tokens": "request_output_len",
+    "beam_width": "beam_width",
+    "repetition_penalty": "repetition_penalty",
+    "presence_penalty": "presence_penalty",
+    "temperature": "temperature",
+    "length_penalty": "len_penalty",
+    "end_id": "end_id",
+    "pad_id": "pad_id",
+    "runtime_top_k": "runtime_top_k",
+    "runtime_top_p": "runtime_top_p",
+}
+
+
+def is_port_available(port, host="localhost"):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # Try to connect to the specified host and port
+            s.bind((host, port))
+            return True
+    except OSError:
+        # Port is not available
+        return False
+
+
+def briton_monitor(briton_process):
+    while True:
+        if briton_process.poll() is not None:
+            print(
+                f"Briton process has exited with code {briton_process.returncode}, exiting truss server"
+            )
+            pid = os.getpid()
+            os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
 
 
 class Model:
-    def __init__(self, data_dir, config, secrets):
-        self._data_dir = data_dir
-        self._config = config
-        self._secrets = secrets
+    def __init__(self, **kwargs):
+        self._model = None
+        self._config = kwargs["config"]
+        self._data_dir = kwargs["data_dir"]
+        self._stub = None
+        self._secrets = kwargs["secrets"]
         self._request_id_counter = count(start=1)
-        self.triton_client = None
-        self.triton_server = None
-        self.tokenizer = None
-        self.uses_openai_api = None
-
-    def load(self):
-        trtllm_config = self._config.get("trt_llm", {})
-        self.uses_openai_api = OPENAI_COMPATIBLE_TAG in self._config.get(
+        self._briton_process = None
+        self._uses_openai_api = OPENAI_COMPATIBLE_TAG in self._config.get(
             "model_metadata", {}
         ).get("tags", [])
-        hf_access_token = None
-        if "hf_access_token" in self._secrets._base_secrets.keys():
-            hf_access_token = self._secrets["hf_access_token"]
 
-        engine_repository_path = self._data_dir
+        if "trt_llm" not in self._config:
+            raise ValueError("trt_llm config is required for this model")
+
+        trtllm_config = self._config.get("trt_llm")
         truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
             **trtllm_config.get("build")
         )
-        tokenizer_repository = truss_trtllm_build_config.checkpoint_repository.repo
-        tensor_parallel_count = truss_trtllm_build_config.tensor_parallel_count
-        pipeline_parallel_count = truss_trtllm_build_config.pipeline_parallel_count
-        world_size = tensor_parallel_count * pipeline_parallel_count
+        self._tp_count = truss_trtllm_build_config.tensor_parallel_count
+        self._tokenizer_repository = (
+            truss_trtllm_build_config.checkpoint_repository.repo
+        )
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_repository, token=hf_access_token
-        )
-        self.eos_token_id = self.tokenizer.eos_token_id
+        self._hf_token = None
+        try:
+            self._hf_token = self._secrets.get("hf_access_token", None)
+        except:  # noqa
+            pass
 
-        # Set up Triton Server
-        env = {}
-        if hf_access_token:
-            env[HF_AUTH_KEY_CONSTANT] = hf_access_token
-        env[TOKENIZER_KEY_CONSTANT] = tokenizer_repository
+    def load(self):
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self._tokenizer_repository, token=self._hf_token
+        )
+        # Start engine
+        config_str = f'engine_path: "{self._data_dir.resolve()}"\nhf_tokenizer: "{self._tokenizer_repository}"'
+        config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()
+        config_pbtxt_path.write_text(config_str)
+        briton_env = os.environ.copy()
+        if self._hf_token is not None:
+            briton_env["HF_ACCESS_TOKEN"] = self._hf_token
+        if self._tp_count is None or self._tp_count == 1:
+            self._briton_process = subprocess.Popen(
+                ["Briton", "--config", str(config_pbtxt_path)], env=briton_env
+            )
+        else:
+            self._briton_process = subprocess.Popen(
+                [
+                    "mpirun",
+                    "--allow-run-as-root",
+                    "-n",
+                    f"{self._tp_count}",
+                    "Briton",
+                    "--config",
+                    str(config_pbtxt_path),
+                ],
+                env=briton_env,
+            )
+        while is_port_available(BRITON_PORT):
+            print("Waiting for Briton to start")
+            time.sleep(1)
 
-        self.triton_server = TritonServer(
-            grpc_port=GRPC_SERVICE_PORT,
-            http_port=HTTP_SERVICE_PORT,
+        briton_monitor_thread = threading.Thread(
+            target=briton_monitor, args=(self._briton_process,)
         )
-        self.triton_server.create_model_repository(
-            truss_data_dir=self._data_dir,
-            engine_repository_path=engine_repository_path,
-            huggingface_auth_token=hf_access_token,
-        )
-        self.triton_server.start(
-            world_size=world_size,
-            env=env,
-        )
-        self.triton_client = TritonClient(
-            grpc_service_port=GRPC_SERVICE_PORT,
-        )
+        briton_monitor_thread.start()
 
     async def predict(self, model_input):
-        if "messages" not in model_input and "prompt" not in model_input:
-            raise ValueError("Prompt or messages must be provided")
+        if self._stub is None:
+            channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
+            self._stub = briton_pb2_grpc.BritonStub(channel)
 
-        model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
-        model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
-        model_input["request_id"] = str(os.getpid()) + str(
-            next(self._request_id_counter)
-        )
-        model_input["eos_token_id"] = self.eos_token_id
-
-        if "messages" in model_input:
+        prompt = model_input.get("prompt", None)
+        if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
-            if self.uses_openai_api and "prompt" not in model_input:
-                model_input["prompt"] = self.tokenizer.apply_chat_template(
-                    messages, tokenize=False
-                )
+            if self._uses_openai_api:
+                prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
 
-        self.triton_client.start_grpc_stream()
-        model_input = ModelInput(**model_input)
-        result_iterator = self.triton_client.infer(model_input)
+        if prompt is None or prompt == "":
+            yield ""
+            return
+        request_id = int(str(os.getpid()) + str(next(self._request_id_counter)))
+        request = briton_pb2.InferenceRequest(
+            request_id=request_id,
+            input_text=prompt,
+        )
+        # Set default end_id and pad_id
+        if (
+            hasattr(self._tokenizer, "eos_token_id")
+            and self._tokenizer.eos_token_id is not None
+        ):
+            request.end_id = self._tokenizer.eos_token_id
+        if (
+            hasattr(self._tokenizer, "pad_token_id")
+            and self._tokenizer.pad_token_id is not None
+        ):
+            request.pad_id = self._tokenizer.pad_token_id
+        set_briton_request_fields_from_model_input(model_input, request)
+        for words in ["bad_words", "stop_words"]:
+            if words in model_input:
+                for word in model_input[words].split(","):
+                    getattr(request, words).append(word)
 
-        async def generate():
-            async for result in result_iterator:
-                yield result
+        try:
+            async for response in self._stub.Infer(request):
+                yield response.output_text
+        except grpc.RpcError as ex:
+            if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
+                print(ex.details())
+        except Exception as ex:
+            print(f"An error has occurred: {ex}")
+            raise ex
 
-        if model_input.stream:
-            return generate()
-        else:
-            if self.uses_openai_api:
-                return "".join(generate())
-            else:
-                return {"text": "".join(generate())}
+
+def set_briton_request_fields_from_model_input(model_input, briton_request):
+    for model_input_key, briton_field in MODEL_INPUT_TO_BRITON_FIELD.items():
+        if model_input_key in model_input:
+            model_input_value = model_input[model_input_key]
+            setattr(briton_request, briton_field, model_input_value)
