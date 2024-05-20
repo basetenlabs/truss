@@ -1,6 +1,146 @@
---- docs/chains/doc_gen/generated-reference.mdx	2024-06-17 14:57:58.625022632 -0700
-+++ docs/snippets/chains/API-reference.mdx	2024-06-17 15:03:31.415948834 -0700
-@@ -21,30 +21,28 @@
+--- docs/chains/doc_gen/generated-reference.mdx	2024-06-14 12:24:46.789725965 -0700
++++ docs/snippets/chains/API-reference.mdx	2024-06-14 12:31:38.142839277 -0700
+@@ -6,7 +6,7 @@
+
+ Model weight caching can be used like this:
+
+-```default
++```python
+ import truss_chains as chains
+ from truss import truss_config
+
+@@ -40,19 +40,14 @@
+
+ Bases: `pydantic.BaseModel`
+
+-Parsed and validated assets. See `Assets` for more information.
++Parsed and validated assets. See [`Assets`](#class-truss-chains-assets) for more information.
+
+ **Parameters:**
+
+ | Name | Type | Description |
+ |------|------|-------------|
+-| `secrets` | *dict[str,str]* |  |
+-| `cached` | *list[ModelCache]* |  |
+-
+-
+-#### cached *: list[ModelCache]*
+-
+-#### secrets *: dict[str, str]*
++| `secrets` | *dict[str,str]* | See [`Assets`](#class-truss-chains-assets) |
++| `cached` | *list[ModelCache]* | See [`Assets`](#class-truss-chains-assets) |
+
+ ## *class* `truss_chains.ChainletBase`
+
+@@ -69,8 +64,8 @@
+
+ Handle for a deployed chain.
+
+-A `ChainService` is created and returned when using `deploy_remotely`. It
+-bundles the individual services for each chainlet in the chain, and provides
++A `ChainService` is created and returned when using [`deploy_remotely`](#truss-chains-deploy-remotely).
++It bundles the individual services for each chainlet in the chain, and provides
+ utilities to query their status, invoke the entrypoint etc.
+
+
+@@ -97,14 +92,6 @@
+ * **Return type:**
+   None
+
+-#### *property* entrypoint_fake_json_data *: Any*
+-
+-Fake JSON example data that matches the entrypoint’s input schema.
+-This property must be externally populated.
+-
+-* **Raises:**
+-  **ValueError** – If fake data was not set.
+-
+ #### *property* entrypoint_name *: str*
+
+ #### *property* get_entrypoint *: TrussService*
+@@ -123,18 +110,19 @@
+ * **Return type:**
+   list[tuple[str, str, str]]
+
+-#### name *: str*
+-
+ #### run_remote(json)
+
+ Invokes the entrypoint with JSON data.
+
++**Parameters:**
++| Name | Type | Description |
++|------|------|-------------|
++| `json` | *JSON Dict* | Request payload. |
++
+ * **Returns:**
+   The JSON response.
+-* **Parameters:**
+-  **json** (*Dict*)
+ * **Return type:**
+-  *Any*
++  *JSON Dict*
+
+ #### *property* run_url *: str*
+
+@@ -144,20 +132,18 @@
+
+ ## *class* `truss_chains.ChainsRuntimeError`
+
+-Bases: `Exception`
+-
+ Raised when components are not used the expected way at runtime.
+
+ ## *class* `truss_chains.Compute`
+
+ Specifies which compute resources a chainlet has in the *remote* deployment.
+
+-#### NOTE
++<Note>
+ Not all combinations can be exactly satisfied by available hardware, in some
+ cases more powerful machine types are chosen to make sure requirements are met or
+ over-provisioned. Refer to the
+ [baseten instance reference](https://docs.baseten.co/performance/instances).
+-
++</Note>
+
+ **Parameters:**
+
+@@ -190,25 +176,17 @@
+
+ Bases: `BaseModel`
+
+-Parsed and validated compute.  See `Compute` for more information.
++Parsed and validated compute.  See [`Compute`](#class-truss-chains-compute)
++for more information.
+
+ **Parameters:**
+
+-| Name | Type | Description |
+-|------|------|-------------|
+-| `cpu_count` | *int* |  |
+-| `predict_concurrency` | *int* |  |
+-| `memory` | *str* |  |
+-| `accelerator` | *AcceleratorSpec* |  |
+-
+-
+-#### accelerator *: AcceleratorSpec*
+-
+-#### cpu_count *: int*
+-
+-#### memory *: str*
+-
+-#### predict_concurrency *: int*
++| Name | Type | Description                                   |
++|------|------|-----------------------------------------------|
++| `cpu_count` | *int* | See [`Compute`](#class-truss-chains-compute). |
++| `predict_concurrency` | *int* | See [`Compute`](#class-truss-chains-compute). |
++| `memory` | *str* | See [`Compute`](#class-truss-chains-compute). |
++| `accelerator` | *AcceleratorSpec* | See [`Compute`](#class-truss-chains-compute). |
+
+ ## `truss_chains.depends`
+
+@@ -216,30 +194,28 @@
  dependency of another chainlet. The return value of `depends` is intended to be
  used as a default argument in a chainlet’s `__init__`-method.
  When deploying a chain remotely, a corresponding stub to the remote is injected in
@@ -36,9 +176,9 @@
 -* **Return type:**
 -  *ChainletT*
 
- ### `truss_chains.depends_context`
+ ## `truss_chains.depends_context`
 
-@@ -54,20 +52,19 @@
+@@ -249,16 +225,15 @@
  [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
  for more guidance on the `__init__`-signature of chainlets.
 
@@ -55,15 +195,33 @@
 -* **Return type:**
 -  [*DeploymentContext*](#truss_chains.DeploymentContext)
 
--### *class* `truss_chains.DeploymentContext`
-+### *class* `truss_chains.DeploymentContext(Generic[UserConfigT])`
+ ## `truss_chains.deploy_remotely`
+
+@@ -269,7 +244,7 @@
+
+ | Name | Type | Description |
+ |------|------|-------------|
+-| `entrypoint` | *Type[ABCChainlet]* | The chainlet class that serves as the entrypoint to the chain. |
++| `entrypoint` | *Type[ChainletBase]* | The chainlet class that serves as the entrypoint to the chain. |
+ | `chain_name` | *str* | The name of the chain. |
+ | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
+ | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
+@@ -278,11 +253,11 @@
+ * **Returns:**
+   A chain service handle to the deployed chain.
+ * **Return type:**
+-  [*ChainService*](#truss_chains.deploy.ChainService)
++  [*ChainService*](#class-truss-chains-deploy-chainservice)
+
+-## *class* `truss_chains.DeploymentContext`
++## *class* `truss_chains.DeploymentContext(Generic[UserConfigT])`
 
 -Bases: `pydantic.BaseModel`, `Generic`[`UserConfigT`]
 +Bases: `pydantic.BaseModel`
 
  Bundles config values and resources needed to instantiate Chainlets.
 
-@@ -76,14 +73,14 @@
+@@ -291,14 +266,14 @@
 
  **Parameters:**
 
@@ -85,7 +243,7 @@
 
  #### data_dir *: Path | None*
 
-@@ -94,12 +91,16 @@
+@@ -309,12 +284,16 @@
 
  #### get_service_descriptor(chainlet_name)
 
@@ -99,99 +257,14 @@
 +
  * **Return type:**
 -  [*ServiceDescriptor*](#truss_chains.ServiceDescriptor)
-+  [*ServiceDescriptor*](#class-truss-chains-servicedescriptor)
++  [*ServiceDescriptor*](##class-truss-chains-servicedescriptor)
 
 -#### secrets *: MappingNoIter[str, str]*
 +#### secrets *: Mapping[str, str]*
 
  #### user_config *: UserConfigT*
 
-@@ -117,10 +118,6 @@
- | `retries` | *int* |  |
-
-
--#### retries *: int*
--
--#### timeout_sec *: int*
--
- ### `truss_chains.mark_entrypoint`
-
- Decorator to mark a chainlet as the entrypoint of a chain.
-@@ -131,7 +128,7 @@
-
- Example usage:
-
--```default
-+```python
- import truss_chains as chains
-
- @chains.mark_entrypoint
-@@ -139,10 +136,14 @@
-     ...
- ```
-
--* **Parameters:**
--  **cls** (*Type* *[**ChainletT* *]*)
-+**Parameters:**
-+
-+| Name              | Type                      | Description         |
-+|-------------------|---------------------------|---------------------|
-+| `cls`   | *Type[ChainletBase]* | The chainlet class. |
-+
- * **Return type:**
--  *Type*[*ChainletT*]
-+  *Type*[*ChainletBase*]
-
- # Remote Configuration
-
-@@ -156,7 +157,7 @@
-
- This is specified as a class variable for each chainlet class, e.g.:
-
--```default
-+```python
- import truss_chains as chains
-
-
-@@ -172,31 +173,12 @@
-
- **Parameters:**
-
--| Name | Type | Description |
--|------|------|-------------|
--| `docker_image` | *[DockerImage](#truss_chains.DockerImage* |  |
--| `compute` | *[Compute](#truss_chains.Compute* |  |
--| `assets` | *[Assets](#truss_chains.Assets* |  |
--| `name` | *str\|None* |  |
--
--
--#### assets *: [Assets](#truss_chains.Assets)*
--
--#### compute *: [Compute](#truss_chains.Compute)*
--
--#### docker_image *: [DockerImage](#truss_chains.DockerImage)*
--
--#### get_asset_spec()
--
--* **Return type:**
--  *AssetSpec*
--
--#### get_compute_spec()
--
--* **Return type:**
--  *ComputeSpec*
--
--#### name *: str | None*
-+| Name | Type                                             | Description |
-+|------|--------------------------------------------------|-------------|
-+| `docker_image` | *[DockerImage](#class-truss-chains-dockerimage)* |  |
-+| `compute` | *[Compute](#class-truss-chains-compute)*               |  |
-+| `assets` | *[Assets](#class-truss-chains-assets)*                 |  |
-+| `name` | *str\|None*                                      |  |
-
- ### *class* `truss_chains.DockerImage`
-
-@@ -204,12 +186,12 @@
+@@ -324,12 +303,12 @@
 
  Configures the docker image in which a remoted chainlet is deployed.
 
@@ -207,7 +280,7 @@
 
  **Parameters:**
 
-@@ -222,28 +204,16 @@
+@@ -342,18 +321,6 @@
  | `data_dir` | *AbsPath\|None* | Data from this directory is copied into the docker image and accessible to the remote chainlet at runtime. |
  | `external_package_dirs` | *list[AbsPath]\|None* | A list of directories containing additional python packages outside the chain’s workspace dir, e.g. a shared library. This code is copied into the docker image and importable at runtime. |
 
@@ -223,98 +296,10 @@
 -
 -#### pip_requirements_file *: AbsPath | None*
 -
- ### *class* `truss_chains.Compute`
+ ## `truss_chains.make_abs_path_here`
 
- Specifies which compute resources a chainlet has in the *remote* deployment.
-
--#### NOTE
-+<Note>
- Not all combinations can be exactly satisfied by available hardware, in some
- cases more powerful machine types are chosen to make sure requirements are met or
- over-provisioned. Refer to the
- [baseten instance reference](https://docs.baseten.co/performance/instances).
--
-+</Note>
-
- **Parameters:**
-
-@@ -278,7 +248,7 @@
-
- Model weight caching can be used like this:
-
--```default
-+```python
- import truss_chains as chains
- from truss import truss_config
-
-@@ -321,7 +291,7 @@
-
- | Name | Type | Description |
- |------|------|-------------|
--| `entrypoint` | *Type[ABCChainlet]* | The chainlet class that serves as the entrypoint to the chain. |
-+| `entrypoint` | *Type[ChainletBase]* | The chainlet class that serves as the entrypoint to the chain. |
- | `chain_name` | *str* | The name of the chain. |
- | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
- | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
-@@ -330,14 +300,14 @@
- * **Returns:**
-   A chain service handle to the deployed chain.
- * **Return type:**
--  [*ChainService*](#truss_chains.deploy.ChainService)
-+  [*ChainService*](#class-truss-chains-deploy-chainservice)
-
- ### *class* `truss_chains.deploy.ChainService`
-
- Handle for a deployed chain.
-
--A `ChainService` is created and returned when using `deploy_remotely`. It
--bundles the individual services for each chainlet in the chain, and provides
-+A `ChainService` is created and returned when using [`deploy_remotely`](#truss-chains-deploy-remotely).
-+It bundles the individual services for each chainlet in the chain, and provides
- utilities to query their status, invoke the entrypoint etc.
-
-
-@@ -364,14 +334,6 @@
- * **Return type:**
-   None
-
--#### *property* entrypoint_fake_json_data *: Any*
--
--Fake JSON example data that matches the entrypoint’s input schema.
--This property must be externally populated.
--
--* **Raises:**
--  **ValueError** – If fake data was not set.
--
- #### *property* entrypoint_name *: str*
-
- #### *property* get_entrypoint *: TrussService*
-@@ -390,18 +352,19 @@
- * **Return type:**
-   list[tuple[str, str, str]]
-
--#### name *: str*
--
- #### run_remote(json)
-
- Invokes the entrypoint with JSON data.
-
-+**Parameters:**
-+| Name | Type | Description |
-+|------|------|-------------|
-+| `json` | *JSON Dict* | Request payload. |
-+
- * **Returns:**
-   The JSON response.
--* **Parameters:**
--  **json** (*Dict*)
- * **Return type:**
--  *Any*
-+  *JSON Dict*
-
- #### *property* run_url *: str*
-
-@@ -427,12 +390,12 @@
+ Helper to specify file paths relative to the *immediately calling* module.
+@@ -372,12 +339,12 @@
  You can now in `root/sub_package/chainlet.py` point to the requirements
  file like this:
 
@@ -329,7 +314,7 @@
  This helper uses the directory of the immediately calling module as an
  absolute reference point for resolving the file location. Therefore,
  you MUST NOT wrap the instantiation of `make_abs_path_here` into a
-@@ -440,7 +403,7 @@
+@@ -385,7 +352,7 @@
 
  Ok:
 
@@ -338,7 +323,7 @@
  def foo(path: AbsPath):
      abs_path = path.abs_path
 
-@@ -449,15 +412,20 @@
+@@ -394,15 +361,20 @@
 
  Not Ok:
 
@@ -362,7 +347,113 @@
  * **Return type:**
    *AbsPath*
 
-@@ -466,23 +434,23 @@
+@@ -416,7 +388,7 @@
+
+ Example usage:
+
+-```default
++```python
+ import truss_chains as chains
+
+ @chains.mark_entrypoint
+@@ -424,10 +396,14 @@
+     ...
+ ```
+
+-* **Parameters:**
+-  **cls** (*Type* *[**ChainletT* *]*)
++**Parameters:**
++
++| Name              | Type                      | Description         |
++|-------------------|---------------------------|---------------------|
++| `cls`   | *Type[ChainletBase]* | The chainlet class. |
++
+ * **Return type:**
+-  *Type*[*ChainletT*]
++  *Type*[*ChainletBase*]
+
+ ## *class* `truss_chains.RemoteConfig`
+
+@@ -437,7 +413,7 @@
+
+ This is specified as a class variable for each chainlet class, e.g.:
+
+-```default
++```python
+ import truss_chains as chains
+
+
+@@ -453,31 +429,13 @@
+
+ **Parameters:**
+
+-| Name | Type | Description |
+-|------|------|-------------|
+-| `docker_image` | *[DockerImage](#truss_chains.DockerImage* |  |
+-| `compute` | *[Compute](#truss_chains.Compute* |  |
+-| `assets` | *[Assets](#truss_chains.Assets* |  |
+-| `name` | *str\|None* |  |
+-
+-
+-#### assets *: [Assets](#truss_chains.Assets)*
++| Name | Type                                             | Description |
++|------|--------------------------------------------------|-------------|
++| `docker_image` | *[DockerImage](#class-truss-chains-dockerimage)* |  |
++| `compute` | *[Compute](#class-truss-chains-compute)*               |  |
++| `assets` | *[Assets](#class-truss-chains-assets)*                 |  |
++| `name` | *str\|None*                                      |  |
+
+-#### compute *: [Compute](#truss_chains.Compute)*
+-
+-#### docker_image *: [DockerImage](#truss_chains.DockerImage)*
+-
+-#### get_asset_spec()
+-
+-* **Return type:**
+-  [*AssetSpec*](#truss_chains.definitions.AssetSpec)
+-
+-#### get_compute_spec()
+-
+-* **Return type:**
+-  [*ComputeSpec*](#truss_chains.definitions.ComputeSpec)
+-
+-#### name *: str | None*
+
+ ## *class* `truss_chains.RemoteErrorDetail`
+
+@@ -498,11 +456,6 @@
+ | `user_stack_trace` | *list[StackFrame]* |  |
+
+
+-#### exception_cls_name *: str*
+-
+-#### exception_message *: str*
+-
+-#### exception_module_name *: str | None*
+
+ #### format()
+
+@@ -512,10 +465,6 @@
+ * **Return type:**
+   str
+
+-#### remote_name *: str*
+-
+-#### user_stack_trace *: list[StackFrame]*
+-
+ ## *class* `truss_chains.RPCOptions`
+
+ Bases: `pydantic.BaseModel`
+@@ -530,32 +479,28 @@
+ | `retries` | *int* |  |
+
+
+-#### retries *: int*
+-
+-#### timeout_sec *: int*
+-
+ ## `truss_chains.run_local`
+
  Context manager local debug execution of a chain.
 
  The arguments only need to be provided if the chainlets explicitly access any the
@@ -393,7 +484,7 @@
  import os
  import truss_chains as chains
 
-@@ -520,22 +488,13 @@
+@@ -593,30 +538,21 @@
 
  **Parameters:**
 
@@ -407,22 +498,21 @@
 -#### name *: str*
 -
 -#### options *: [RPCOptions](#truss_chains.RPCOptions)*
+-
+-#### predict_url *: str*
 +| Name | Type                                           | Description |
 +|------|------------------------------------------------|-------------|
 +| `name` | *str*                                          |  |
 +| `predict_url` | *str*                                          |  |
 +| `options` | *[RPCOptions](#class-truss-chains-rpcoptions)* |  |
 
--#### predict_url *: str*
--
--### *class* `truss_chains.StubBase`
--
--Bases: `ABC`
-+## *class* `truss_chains.StubBase`
+ ## *class* `truss_chains.StubBase`
 
+-Bases: `ABC`
+-
  Base class for stubs that invoke remote chainlets.
 
-@@ -543,7 +502,7 @@
+ It is used internally for RPCs to dependency chainlets, but it can also be used
  in user-code for wrapping a deployed truss model into the chains framework, e.g.
  like that:
 
@@ -431,7 +521,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -553,7 +512,7 @@
+@@ -626,7 +562,7 @@
 
  class DeployedWhisper(chains.StubBase):
 
@@ -440,7 +530,7 @@
          resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
          return WhisperOutput(text=resp["text"], language==resp["language"])
 
-@@ -572,10 +531,10 @@
+@@ -645,10 +581,10 @@
 
  **Parameters:**
 
@@ -455,7 +545,7 @@
 
 
  #### *classmethod* from_url(predict_url, context, options=None)
-@@ -585,12 +544,11 @@
+@@ -658,9 +594,8 @@
 
  **Parameters:**
 
@@ -470,28 +560,3 @@
 +| `predict_url` | *str*                                                                        | URL to predict endpoint of another chain / truss model. |
 +| `context` | *[DeploymentContext](#class-truss-chains-deploymentcontext-generic-userconfigt)* | Deployment context object, obtained in the chainlet’s `__init__`. |
 +| `options` | *[RPCOptions](#class-truss-chains-rpcoptions)*                               | RPC options, e.g. retries. |
-
- ### *class* `truss_chains.RemoteErrorDetail`
-
-@@ -610,13 +568,6 @@
- | `exception_message` | *str* |  |
- | `user_stack_trace` | *list[StackFrame]* |  |
-
--
--#### exception_cls_name *: str*
--
--#### exception_message *: str*
--
--#### exception_module_name *: str | None*
--
- #### format()
-
- Format the error for printing, similar to how Python formats exceptions
-@@ -624,7 +575,3 @@
-
- * **Return type:**
-   str
--
--#### remote_name *: str*
--
--#### user_stack_trace *: list[StackFrame]*
