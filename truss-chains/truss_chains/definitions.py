@@ -123,6 +123,29 @@ class AbsPath:
 
 
 class DockerImage(SafeModelNonSerializable):
+    """Configures the docker image in which a remoted chainlet is deployed.
+
+    Note:
+        Any paths are relative to the source file where ``DockerImage`` is
+        defined and must be created with the helper function ``make_abs_path_here``.
+        This allows you for example organize chainlets in different (potentially nested)
+        modules and keep their requirement files right next their python source files.
+
+    Args:
+        base_image: The base image to use for the chainlet. Default is
+          ``python:3.11-slim``.
+        pip_requirements_file: Path to a file containing pip requirements. The file
+          content is naively concatenated with ``pip_requirements``.
+        pip_requirements: A list of pip requirements to install.  The items are
+          naively concatenated with the content of the ``pip_requirements_file``.
+        apt_requirements: A list of apt requirements to install.
+        data_dir: Data from this directory is copied into the docker image and
+          accessible to the remote chainlet at runtime.
+        external_package_dirs: A list of directories containing additional python
+          packages outside the chain's workspace dir, e.g. a shared library. This code
+          is copied into the docker image and importable at runtime.
+    """
+
     # TODO: this is not stable yet and might change or refer back to truss.
     base_image: str = "python:3.11-slim"
     pip_requirements_file: Optional[AbsPath] = None
@@ -133,6 +156,8 @@ class DockerImage(SafeModelNonSerializable):
 
 
 class ComputeSpec(pydantic.BaseModel):
+    """Parsed and validated compute.  See ``Compute`` for more information."""
+
     # TODO: this is not stable yet and might change or refer back to truss.
     cpu_count: int = 1
     predict_concurrency: int = 1
@@ -145,8 +170,16 @@ CPU_COUNT: CpuCountT = "cpu_count"
 
 
 class Compute:
-    """Builder to create ComputeSpec."""
+    """Specifies which compute resources a chainlet has in the *remote* deployment.
 
+    Note:
+        Not all combinations can be exactly satisfied by available hardware, in some
+        cases more powerful machine types are chosen to make sure requirements are met or
+        over-provisioned. Refer to the
+        `baseten instance reference <https://docs.baseten.co/performance/instances>`_.
+    """
+
+    # Builder to create ComputeSpec.
     # This extra layer around `ComputeSpec` is needed to parse the accelerator options.
 
     _spec: ComputeSpec
@@ -159,6 +192,29 @@ class Compute:
         gpu_count: int = 1,
         predict_concurrency: Union[int, CpuCountT] = 1,
     ) -> None:
+        """
+        Args:
+            cpu_count: Minimum number of CPUs to allocate.
+            memory: Minimum memory to allocate, e.g. "2Gi" (2 gibibytes).
+            gpu: GPU accelerator type, e.g. "A10G", "A100", refer to the
+              `truss config <https://truss.baseten.co/reference/config#resources-accelerator>`_
+              for more choices.
+            gpu_count: Number of GPUs to allocate.
+            predict_concurrency: Number of concurrent requests a single replica of a
+              deployed chainlet handles.
+
+        Concurrency concepts are explained in `this guide <https://truss.baseten.co/guides/concurrency>`_.
+        It is important to understand the difference between `predict_concurrency` and
+        the concurrency target (used for autoscaling, i.e. adding or removing replicas).
+        Furthermore, the ``predict_concurrency`` of a single instance is implemented in
+        two ways:
+
+        - Via python's ``asyncio``, if ``run_remote`` is an async def. This
+          requires that ``run_remote`` yields to the event loop.
+
+        - With a threadpool if it's a synchronous function. This requires
+          that the threads don't have significant CPU load (due to the GIL).
+        """
         accelerator = truss_config.AcceleratorSpec()
         if gpu:
             accelerator.accelerator = truss_config.Accelerator(gpu)
@@ -184,32 +240,74 @@ class Compute:
 
 
 class AssetSpec(SafeModel):
+    """Parsed and validated assets. See ``Assets`` for more information."""
+
     # TODO: this is not stable yet and might change or refer back to truss.
-    secrets: dict[str, str] = {}
-    cached: list[Any] = []
+    secrets: dict[str, str] = pydantic.Field({})
+    cached: list[truss_config.ModelCache] = []
 
 
 class Assets:
-    """Builder to create asset spec."""
+    """Specifies which assets a chainlet can access in the remote deployment.
 
-    # This extra layer around `ComputeSpec` is needed to add secret_keys.
+    Model weight caching can be used like this::
+
+        import truss_chains as chains
+        from truss import truss_config
+
+        mistral_cache = truss_config.ModelRepo(
+          repo_id="mistralai/Mistral-7B-Instruct-v0.2",
+          allow_patterns=["*.json", "*.safetensors", ".model"]
+          )
+        chains.Assets(cached=[mistral_cache], ...)
+
+    See `truss caching guide <https://truss.baseten.co/guides/model-cache#enabling-caching-for-a-model>`_
+    for more details on caching.
+    """
+
+    # Builder to create asset spec.
+    # This extra layer around `AssetSpec` is needed to add secret_keys.
     _spec: AssetSpec
 
     def __init__(
         self,
-        cached: Iterable[Any] = (),
+        cached: Iterable[truss_config.ModelRepo] = (),
         secret_keys: Iterable[str] = (),
     ) -> None:
+        """
+        Args:
+            cached: One or more ``truss_config.ModelRepo`` objects.
+            secret_keys: Names of secrets stored on baseten, that the
+              chainlet should have access to. You can manage secrets on baseten
+              `here <https://app.baseten.co/settings/secrets>`_.
+        """
         self._spec = AssetSpec(
             cached=list(cached), secrets={k: SECRET_DUMMY for k in secret_keys}
         )
 
     def get_spec(self) -> AssetSpec:
+        """Returns parsed and validated assets."""
         return self._spec.copy(deep=True)
 
 
 class RemoteConfig(SafeModelNonSerializable):
-    """Bundles config values needed to deploy a Chainlet."""
+    """Bundles config values needed to deploy a chainlet remotely..
+
+    This is specified as a class variable for each chainlet class, e.g.::
+
+            import truss_chains as chains
+
+
+            class MyChainlet(chains.ChainletBase):
+                remote_config = chains.RemoteConfig(
+                    docker_image=chains.DockerImage(
+                        pip_requirements=["torch==2.0.1", ... ]
+                    ),
+                    compute=chains.Compute(cpu_count=2, gpu="A10G", ...),
+                    assets=chains.Assets(secret_keys=["hf_access_token"], ...),
+                )
+
+    """
 
     docker_image: DockerImage = DockerImage()
     compute: Compute = Compute()
@@ -224,18 +322,37 @@ class RemoteConfig(SafeModelNonSerializable):
 
 
 class RPCOptions(SafeModel):
+    """Options to customize RPCs to dependency chainlets."""
+
     timeout_sec: int = 600
     retries: int = 1
 
 
 class ServiceDescriptor(SafeModel):
+    """Bundles values to establish an RPC session to a dependency chainlet,
+    specifically with ``StubBase``."""
+
     name: str
     predict_url: str
     options: RPCOptions
 
 
 class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
-    """Bundles config values and resources needed to instantiate Chainlets."""
+    """Bundles config values and resources needed to instantiate Chainlets.
+
+    This is provided at runtime to the Chainlet's ``__init__`` method.
+
+    Args:
+        data_dir: The directory where the chainlet can store and access data,
+          e.g. for downloading model weights.
+        user_config: User-defined configuration for the chainlet.
+        chainlet_to_service: A mapping from chainlet names to service descriptors.
+          This is used create RPCs sessions to dependency chainlets. It contains only
+          the chainlet services that are dependencies of the current chainlet.
+        secrets: A mapping from secret names to secret values. It contains only the
+          secrets that are listed in ``remote_config.assets.secret_keys`` of the
+          current chainlet.
+    """
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT
@@ -361,19 +478,26 @@ class StackFrame(SafeModel):
 
 
 class RemoteErrorDetail(SafeModel):
+    """When a remote chainlet raises an exception, this pydantic model contains
+    information about the error and stack trace and is included in JSON form in the
+    error response.
+    """
+
     remote_name: str
     exception_cls_name: str
     exception_module_name: Optional[str]
     exception_message: str
     user_stack_trace: list[StackFrame]
 
-    def to_stack_summary(self) -> traceback.StackSummary:
+    def _to_stack_summary(self) -> traceback.StackSummary:
         return traceback.StackSummary.from_list(
             frame.to_frame_summary() for frame in self.user_stack_trace
         )
 
     def format(self) -> str:
-        stack = "".join(traceback.format_list(self.to_stack_summary()))
+        """Format the error for printing, similar to how Python formats exceptions
+        with stack traces."""
+        stack = "".join(traceback.format_list(self._to_stack_summary()))
         exc_info = (
             f"\n(Exception class defined in `{self.exception_module_name}`.)"
             if self.exception_module_name
