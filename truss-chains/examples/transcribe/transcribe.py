@@ -27,7 +27,7 @@ class DeployedWhisper(chains.StubBase):
 
     Treat the whisper model like an external third party tool."""
 
-    async def run(self, audio_b64: str) -> data_types.WhisperOutput:
+    async def run_remote(self, audio_b64: str) -> data_types.WhisperOutput:
         resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
         # TODO: Get Whisper model with langauge, ideally also timestamps.
         language = "dummy language"
@@ -41,22 +41,24 @@ class MacroChunkWorker(chains.ChainletBase):
     """Downloads and transcribes larger chunks of the total file (~300s)."""
 
     remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE, compute=chains.Compute(cpu_count=16, memory="32G")
+        docker_image=_IMAGE,
+        compute=chains.Compute(
+            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
+        ),
     )
     _whisper: DeployedWhisper
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.provide_context(),
+        context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
-        super().__init__(context)
         self._whisper = DeployedWhisper.from_url(
             _WHISPER_URL,
             context,
             options=chains.RPCOptions(retries=3),
         )
 
-    async def run(
+    async def run_remote(
         self,
         media_url: str,
         params: data_types.TranscribeParams,
@@ -73,7 +75,7 @@ class MacroChunkWorker(chains.ChainletBase):
         ) as wav_stream:
             chunk_stream = helpers.wav_chunker(params, wav_stream, macro_chunk_index)
             async for seg_info, audio_b64 in chunk_stream:
-                tasks.append(asyncio.ensure_future(self._whisper.run(audio_b64)))
+                tasks.append(asyncio.ensure_future(self._whisper.run_remote(audio_b64)))
                 seg_infos.append(seg_info)
 
         results: list[data_types.WhisperOutput] = await asyncio.gather(*tasks)
@@ -98,18 +100,21 @@ class Transcribe(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=_IMAGE,
-        compute=chains.Compute(cpu_count=16, memory="32G"),
+        compute=chains.Compute(
+            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
+        ),
         assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
+    _context: chains.DeploymentContext
     _video_worker: MacroChunkWorker
     _async_http: httpx.AsyncClient
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.provide_context(),
-        video_worker: MacroChunkWorker = chains.provide(MacroChunkWorker, retries=3),
+        video_worker: MacroChunkWorker = chains.depends(MacroChunkWorker, retries=3),
+        context=chains.depends_context(),
     ) -> None:
-        super().__init__(context)
+        self._context = context
         self._video_worker = video_worker
         self._async_http = httpx.AsyncClient()
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -130,7 +135,7 @@ class Transcribe(chains.ChainletBase):
         if not ok:
             raise NotImplementedError(f"Range downloads unsupported for `{media_url}`.")
 
-    async def run(
+    async def run_remote(
         self,
         media_url: str,
         params: data_types.TranscribeParams,
@@ -147,7 +152,7 @@ class Transcribe(chains.ChainletBase):
             logging.info(f"Starting macro-chunk [{i+1:03}/{len(video_chunks):03}].")
             tasks.append(
                 asyncio.ensure_future(
-                    self._video_worker.run(media_url, params, i, *chunk_limits)
+                    self._video_worker.run_remote(media_url, params, i, *chunk_limits)
                 )
             )
 
@@ -218,18 +223,19 @@ class BatchTranscribe(chains.ChainletBase):
     """Accepts a request with multiple transcription jobs and starts the sub-jobs."""
 
     remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE, compute=chains.Compute(cpu_count=16, memory="32G")
+        docker_image=_IMAGE,
+        compute=chains.Compute(
+            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
+        ),
     )
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.provide_context(),
-        transcribe: Transcribe = chains.provide(Transcribe),
+        transcribe: Transcribe = chains.depends(Transcribe),
     ):
-        super().__init__(context)
         self._transcribe = transcribe
 
-    async def run(self, worklet_input: data_types.WorkletInput) -> list[float]:
+    async def run_remote(self, worklet_input: data_types.WorkletInput) -> list[float]:
         logging.info(worklet_input)
         logging.info(f"Got `{len(worklet_input.media_for_transcription)}` tasks.")
 
@@ -239,7 +245,9 @@ class BatchTranscribe(chains.ChainletBase):
         tasks = []
         for job in worklet_input.media_for_transcription:
             tasks.append(
-                asyncio.ensure_future(self._transcribe.run(job.media_url, params, job))
+                asyncio.ensure_future(
+                    self._transcribe.run_remote(job.media_url, params, job)
+                )
             )
         results = []
         for completed_task in asyncio.as_completed(tasks):
@@ -257,8 +265,11 @@ class Webhook(chains.ChainletBase):
     """Receives results for debugging."""
 
     remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE, compute=chains.Compute(cpu_count=16, memory="32G")
+        docker_image=_IMAGE,
+        compute=chains.Compute(
+            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
+        ),
     )
 
-    async def run(self, transcription: data_types.TranscriptionExternal) -> None:
+    async def run_remote(self, transcription: data_types.TranscriptionExternal) -> None:
         logging.info(transcription.json(indent=4))

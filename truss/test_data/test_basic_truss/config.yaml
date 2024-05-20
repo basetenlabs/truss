@@ -9,5 +9,7 @@ resources:
   cpu: '1'
   memory: 2Gi
   use_gpu: false
-secrets: {}
+secrets:
+  foo: "foo"
+  bar: "bar"
 system_packages: []

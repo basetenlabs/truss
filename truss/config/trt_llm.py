@@ -29,7 +29,7 @@ class TrussTRTLLMQuantizationType(str, Enum):
 class TrussTRTLLMPluginConfiguration(BaseModel):
     multi_block_mode: bool = False
     paged_kv_cache: bool = True
-    use_fused_mlp: bool = False
+    gemm_plugin: str = "float16"
 
 
 class CheckpointSource(Enum):

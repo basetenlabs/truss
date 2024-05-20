@@ -635,7 +635,7 @@ def predict(
         "specifying, the command will not complete until the deployment is complete."
     ),
 )
-# @error_handling
+@error_handling
 def push(
     target_directory: str,
     remote: str,
@@ -670,6 +670,16 @@ def push(
         tr.spec.config.model_name = model_name
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
+    # Log a warning if using secrets without --trusted.
+    # TODO(helen): this could be moved to a separate function that includes more
+    #  config checks.
+    if tr.spec.config.secrets and not trusted:
+        not_trusted_text = (
+            "Warning: your Truss has secrets but was not pushed with --trusted. "
+            "Please push with --trusted to grant access to secrets."
+        )
+        console.print(not_trusted_text, style="red")
+
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
@@ -697,16 +707,6 @@ def push(
 """
 
         click.echo(draft_model_text)
-
-    # Log a warning if using secrets without --trusted.
-    # TODO(helen): this could be moved to a separate function that includes more
-    #  config checks.
-    if tr.spec.config.secrets and not trusted:
-        not_trusted_text = (
-            "Warning: your Truss has secrets but was not pushed with --trusted."
-            "Please push with --trusted to grant access to secrets."
-        )
-        console.print(not_trusted_text, style="red")
 
     if promote:
         promotion_text = (

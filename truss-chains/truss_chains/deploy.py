@@ -149,7 +149,7 @@ class ChainService:
     def run_url(self) -> str:
         return self.get_entrypoint.predict_url
 
-    def run(self, json: Dict) -> Any:
+    def run_remote(self, json: Dict) -> Any:
         return self.get_entrypoint.predict(json)
 
     def get_info(self) -> list[tuple[str, str, str]]:

@@ -17,7 +17,7 @@ class BasetenSession:
         api_key: str,
     ) -> None:
         logging.info(
-            f"Creating stub for `{service_descriptor.name}` "
+            f"Creating BasetenSession (HTTP) for `{service_descriptor.name}` "
             f"({service_descriptor.options.retries} retries) with predict URL:\n"
             f"    `{service_descriptor.predict_url}`"
         )

@@ -39,6 +39,8 @@ DEFAULT_USE_GPU = False
 
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
+VALID_PYTHON_VERSIONS = ["py39", "py310", "py311"]
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -576,6 +578,21 @@ class TrussConfig:
         return TrussConfig.from_dict(self.to_dict())
 
     def validate(self):
+        if self.python_version not in VALID_PYTHON_VERSIONS:
+
+            raise ValueError(
+                f"Please ensure that `python_version` is one of {VALID_PYTHON_VERSIONS}"
+            )
+
+        if not isinstance(self.secrets, dict):
+            raise ValueError(
+                "Please ensure that `secrets` is a mapping of the form:\n"
+                "```\n"
+                "secrets:\n"
+                '  secret1: "some default value"\n'
+                '  secret2: "some other default value"\n'
+                "```"
+            )
         for secret_name in self.secrets:
             validate_secret_name(secret_name)
 
