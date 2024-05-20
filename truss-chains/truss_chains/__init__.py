@@ -15,7 +15,7 @@ if pydantic_major_version < 2:
         "You can still use other Truss functionality."
     )
 
-del pydantic
+del pydantic, pydantic_major_version
 
 
 # flake8: noqa F401
@@ -28,6 +28,7 @@ from truss_chains.definitions import (
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
+    ServiceDescriptor,
 )
 from truss_chains.public_api import (
     ChainletBase,
