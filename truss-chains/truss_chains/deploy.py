@@ -125,16 +125,29 @@ def _get_ordered_dependencies(
 
 
 class ChainService:
+    name: str
     _entrypoint: str
     _services: MutableMapping[str, b10_service.TrussService]
+    _entrypoint_fake_json_data = Any
 
     def __init__(self, entrypoint: str, name: str) -> None:
         self.name = name
         self._entrypoint = entrypoint
         self._services = collections.OrderedDict()  # Preserve order.
+        self.entrypoint_fake_json_data = None
 
     def add_service(self, name: str, service: b10_service.TrussService) -> None:
         self._services[name] = service
+
+    @property
+    def entrypoint_fake_json_data(self) -> Any:
+        if self._entrypoint_fake_json_data is None:
+            raise ValueError("Fake data was not set.")
+        return self._entrypoint_fake_json_data
+
+    @entrypoint_fake_json_data.setter
+    def entrypoint_fake_json_data(self, fake_data: Any) -> None:
+        self._entrypoint_fake_json_data = fake_data
 
     @property
     def get_entrypoint(self) -> b10_service.TrussService:
@@ -208,5 +221,9 @@ def deploy_remotely(
             chainlet_name_to_url[chainlet_descriptor.name] = service.predict_url
         else:
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
+
+    chain_service.entrypoint_fake_json_data = code_gen.create_fake_json_data(
+        framework.global_chainlet_registry.get_descriptor(entrypoint)
+    )
 
     return chain_service

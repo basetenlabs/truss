@@ -638,3 +638,8 @@ def gen_truss_chainlet(
         / "_model_dbg.py",
     )
     return chainlet_dir
+
+
+def create_fake_json_data(chainlet_descriptor: definitions.ChainletAPIDescriptor):
+    input_src = _gen_truss_input_pydantic(chainlet_descriptor)
+    input_src_str = f"{input_src.imports.}"
