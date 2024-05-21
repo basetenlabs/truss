@@ -19,7 +19,6 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
-# TODO: change this based on briton env var
 TRTLLM_BRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
 TRTLLM_TRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
 TRTLLM_TRUSS_DIR: pathlib.Path = (
