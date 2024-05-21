@@ -15,6 +15,8 @@ from huggingface_hub.utils import filter_repo_objects
 from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
+    BRITON_BASE_TRTLLM_REQUIREMENTS,
+    BRITON_TRTLLM_BASE_IMAGE,
     CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
@@ -30,6 +32,7 @@ from truss.constants import (
     TRTLLM_BASE_IMAGE,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    USE_BRITON,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
@@ -351,10 +354,14 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
             config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE,
+                image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
                 python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
             )
-            config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
+            config.requirements.extend(
+                BRITON_BASE_TRTLLM_REQUIREMENTS
+                if USE_BRITON
+                else BASE_TRTLLM_REQUIREMENTS
+            )
 
             config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
 
