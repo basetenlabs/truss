@@ -70,6 +70,12 @@ class LocalConfigHandler:
         return LocalConfigHandler.TRUSS_CONFIG_DIR / "secrets"
 
     @staticmethod
+    def lazy_data_resolution_dir_path():
+        btr_dir = LocalConfigHandler.TRUSS_CONFIG_DIR / "btr_resolver"
+        btr_dir.mkdir(exist_ok=True, parents=True)
+        return btr_dir
+
+    @staticmethod
     def _signatures_dir_path():
         return LocalConfigHandler.TRUSS_CONFIG_DIR / "signatures"
 

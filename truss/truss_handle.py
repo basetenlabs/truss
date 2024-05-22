@@ -219,7 +219,12 @@ class TrussHandle:
                             "type=bind",
                             f"src={str(secrets_mount_dir_path)}",
                             "target=/secrets",
-                        ]
+                        ],
+                        [
+                            "type=bind",
+                            f"src={str(LocalConfigHandler.lazy_data_resolution_dir_path())}",
+                            "target=/btr_resolver",
+                        ],
                     ],
                     gpus=gpus,
                     envs=envs,
