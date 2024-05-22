@@ -244,11 +244,15 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
         try:
             response_json = response.json()
         except Exception as e:
-            raise ValueError("Could not get JSON from error response") from e
+            raise ValueError(
+                "Could not get JSON from error response. Status: "
+                f"`{response.status_code}`."
+            ) from e
 
         try:
             error_json = response_json["error"]
         except KeyError as e:
+            logging.error(f"response.json(): {response_json}")
             raise ValueError(
                 "Could not get error field from JSON from error response"
             ) from e
