@@ -29,18 +29,14 @@ def test_chain():
         )
         print(response.content)
         assert response.status_code == 200
-        assert response.json()["result"] == [
-            6280,
-            "erodfderodfderodfderodfderodfd",
-            123,
-        ]
+        assert response.json() == [6280, "erodfderodfderodfderodfderodfd", 123]
 
         # Test with errors.
         response = requests.post(
             url, json={"length": 300, "num_partitions": 3}, stream=True
         )
         print(response)
-        error = definitions.RemoteErrorDetail.parse_obj(response.json()["error"])
+        error = definitions.RemoteErrorDetail.model_validate(response.json()["error"])
         error_str = error.format()
         print(error_str)
         assert "ValueError: This input is too long: 100." in error_str
@@ -56,7 +52,7 @@ async def test_chain_local():
             with pytest.raises(ValueError):
                 # First time `SplitTextFailOnce` raises an error and
                 # currently local mode does not have retries.
-                result = await entrypoint().run_remote(length=20, num_partitions=5)
+                await entrypoint().run_remote(length=20, num_partitions=5)
 
             result = await entrypoint().run_remote(length=20, num_partitions=5)
             assert result == (4198, "erodfderodfderodfder", 123)

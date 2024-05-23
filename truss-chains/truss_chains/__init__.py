@@ -1,13 +1,16 @@
 import warnings
 
-# These warnings show up if we have pydantic v2 installed, but still use v1-compatible
-# APIs, which are of course deprecated...
-warnings.filterwarnings("ignore", message="Valid config keys have changed in V2:*")
-warnings.filterwarnings(
-    "ignore",
-    message="`pydantic.generics:GenericModel` has been moved to `pydantic.BaseModel`.",
-)
+import pydantic
 
+pydantic_major_version = int(pydantic.VERSION.split(".")[0])
+if pydantic_major_version < 2:
+    warnings.warn(
+        f"Pydantic major version is less than 2 ({pydantic.VERSION}). You use Truss, "
+        "but for using Truss-Chains, you must upgrade to pydantic-v2.",
+        UserWarning,
+    )
+
+del pydantic
 del warnings
 
 # flake8: noqa F401
@@ -26,7 +29,7 @@ from truss_chains.public_api import (
     depends,
     depends_context,
     deploy_remotely,
-    entrypoint,
+    mark_entrypoint,
     run_local,
 )
 from truss_chains.stub import StubBase

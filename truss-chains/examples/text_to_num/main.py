@@ -114,7 +114,7 @@ class TextToNum(chains.ChainletBase):
         return number
 
 
-@chains.entrypoint
+@chains.mark_entrypoint
 class ExampleChain(chains.ChainletBase):
     def __init__(
         self,

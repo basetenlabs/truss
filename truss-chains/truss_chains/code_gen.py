@@ -46,7 +46,6 @@ from truss_chains import definitions, model_skeleton, utils
 _TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
 _MODEL_FILENAME = "model.py"
-_OUTPUT_FIELD_NAME = "output"
 _MODEL_CLS_NAME = model_skeleton.TrussChainletModel.__name__
 
 
@@ -168,8 +167,8 @@ def _gen_truss_output_pydantic(
         _update_src(_gen_type_import_and_ref(output_type), fields, imports)
 
     model_name = _get_output_model_name(chainlet_descriptor.name)
-    field = f"{_OUTPUT_FIELD_NAME}: tuple[{','.join(fields)}]"
-    src = f"class {model_name}(pydantic.BaseModel):\n{_indent(field)}"
+    root_type = f"tuple[{','.join(fields)}]"
+    src = f"{model_name} = pydantic.RootModel[{root_type}]"
     return _Source(src=src, imports=imports)
 
 
@@ -178,7 +177,12 @@ def _gen_truss_output_pydantic(
 
 def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
     """
-    E.g.: `async def run_remote(self, data: str, num_partitions: int) -> tuple[list, int]:`
+    E.g.:
+    ```
+    async def run_remote(
+        self, inputs: shared_chainlet.SplitTextInput, extra_arg: int
+    ) -> tuple[shared_chainlet.SplitTextOutput, int]:
+    ```
     """
     if endpoint.is_generator:
         # TODO: implement generator.
@@ -214,9 +218,9 @@ def _endpoint_body_src(
 
     E.g.:
     ```
-    json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
-    json_result = await self._remote.predict_async(json_args)
-    return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
+    json_result = await self._remote.predict_async(
+        SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
+    return SplitTextOutput.model_validate(json_result).output
     ```
     """
     if endpoint.is_generator:
@@ -224,7 +228,7 @@ def _endpoint_body_src(
 
     imports: set[str] = set()
     args = [f"{arg_name}={arg_name}" for arg_name, _ in endpoint.input_names_and_types]
-    inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)}).dict()"
+    inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)}).model_dump()"
 
     # Invoke remote.
     if endpoint.is_async:
@@ -235,9 +239,7 @@ def _endpoint_body_src(
     parts = [f"json_result = {remote_call}"]
     # Unpack response and parse as pydantic models if needed.
     output_model_name = _get_output_model_name(chainlet_name)
-    parts.append(
-        f"return {output_model_name}.parse_obj(json_result).{_OUTPUT_FIELD_NAME}"
-    )
+    parts.append(f"return {output_model_name}.model_validate(json_result).root")
     if len(endpoint.output_types) == 1:
         parts[-1] = f"{parts[-1]}[0]"
     return _Source(src="\n".join(parts), imports=imports)
@@ -247,16 +249,22 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates stub class source, e.g:
 
     ```
-    from truss_chains import stub
+    <IMPORTS>
+
+    class SplitTextInput(pydantic.BaseModel):
+        inputs: shared_chainlet.SplitTextInput
+        extra_arg: int
+
+    class SplitTextOutput(pydantic.BaseModel):
+        output: tuple[shared_chainlet.SplitTextOutput, int]
 
     class SplitText(stub.StubBase):
-        def __init__(self, url: str, api_key: str) -> None:
-            self._remote = stub.BasetenSession(url, api_key)
-
-        async def run_remote(self, data: str, num_partitions: int) -> tuple[SplitTextOutput, int]:
-            json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
-            json_result = await self._remote.predict_async(json_args)
-            return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
+        async def run_remote(
+            self, inputs: shared_chainlet.SplitTextInput, extra_arg: int
+        ) -> tuple[shared_chainlet.SplitTextOutput, int]:
+            json_result = await self._remote.predict_async(
+                SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
+            return SplitTextOutput.model_validate(json_result).root
     ```
     """
     imports = {"from truss_chains import stub"}
@@ -401,13 +409,9 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         )
     )
     if len(chainlet_descriptor.endpoint.output_types) == 1:
-        result_pydantic = (
-            f"{output_model_name}.parse_obj({{'{_OUTPUT_FIELD_NAME}': (result,)}})"
-        )
+        result_pydantic = f"{output_model_name}((result,))"
     else:
-        result_pydantic = (
-            f"{output_model_name}.parse_obj({{'{_OUTPUT_FIELD_NAME}': result}})"
-        )
+        result_pydantic = f"{output_model_name}(result)"
     parts.append(_indent(f"return {result_pydantic}"))
     return _Source(src="\n".join(parts), imports=imports)
 
@@ -501,14 +505,14 @@ def _gen_truss_chainlet_file(
 def _copy_python_source_files(root_dir: pathlib.Path, dest_dir: pathlib.Path) -> None:
     """Copy all python files under root recursively, but skips pycache."""
 
-    def python_files_only(path, names):
+    def python_files_only(_, names):
         return [name for name in names if name == "__pycache__"]
 
     shutil.copytree(root_dir, dest_dir, ignore=python_files_only, dirs_exist_ok=True)
 
 
 def _make_requirements(image: definitions.DockerImage) -> list[str]:
-    """Merges file- and list-based requirements and adds truss.git if not present."""
+    """Merges file- and list-based requirements and adds truss git if not present."""
     pip_requirements: set[str] = set()
     if image.pip_requirements_file:
         pip_requirements.update(
@@ -580,7 +584,9 @@ def _make_truss_config(
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
         user_config=user_config, chainlet_to_service=chainlet_to_service
     )
-    config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = chains_metadata.dict()
+    config.model_metadata[
+        definitions.TRUSS_CONFIG_CHAINS_KEY
+    ] = chains_metadata.model_dump()
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
@@ -638,8 +644,3 @@ def gen_truss_chainlet(
         / "_model_dbg.py",
     )
     return chainlet_dir
-
-
-def create_fake_json_data(chainlet_descriptor: definitions.ChainletAPIDescriptor):
-    input_src = _gen_truss_input_pydantic(chainlet_descriptor)
-    input_src_str = f"{input_src.imports.}"

@@ -94,7 +94,7 @@ class MacroChunkWorker(chains.ChainletBase):
         )
 
 
-@chains.entrypoint
+@chains.mark_entrypoint
 class Transcribe(chains.ChainletBase):
     """Transcribes one file end-to-end and sends results to webhook."""
 

@@ -155,7 +155,9 @@ def _handle_exception(
         exception_message=str(exception),
         user_stack_trace=stack,
     )
-    raise fastapi.HTTPException(status_code=500, detail=error.dict()) from exception
+    raise fastapi.HTTPException(
+        status_code=500, detail=error.model_dump()
+    ) from exception
 
 
 @contextlib.contextmanager
@@ -252,7 +254,7 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
             ) from e
 
         try:
-            error = definitions.RemoteErrorDetail.parse_obj(error_json)
+            error = definitions.RemoteErrorDetail.model_validate(error_json)
         except pydantic.ValidationError as e:
             if isinstance(error_json, str):
                 msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"

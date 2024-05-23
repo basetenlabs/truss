@@ -221,9 +221,4 @@ def deploy_remotely(
             chainlet_name_to_url[chainlet_descriptor.name] = service.predict_url
         else:
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
-
-    chain_service.entrypoint_fake_json_data = code_gen.create_fake_json_data(
-        framework.global_chainlet_registry.get_descriptor(entrypoint)
-    )
-
     return chain_service
