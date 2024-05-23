@@ -1,6 +1,4 @@
 import asyncio
-import hashlib
-import hmac
 import logging
 import time
 
@@ -9,17 +7,14 @@ import data_types
 import helpers
 import httpx
 import numpy as np
-import tenacity
 import truss_chains as chains
 
-_IMAGE = docker_image = chains.DockerImage(
-    apt_requirements=["ffmpeg"], pip_requirements=["pandas", "bcp47"]
+IMAGE = chains.DockerImage(
+    apt_requirements=["ffmpeg"],
+    pip_requirements=["pandas", "bcp47", "google-auth", "google-cloud-bigquery"],
 )
-
 # Whisper is deployed as a normal truss model from examples/library.
 _WHISPER_URL = "https://model-5woz91z3.api.baseten.co/production/predict"
-# This webhooks is a dummy for debugging / testing (see `Webhook` chainlet below).
-_WEBHOOK_URL = "https://model-4q99pkxq.api.baseten.co/development/predict"
 
 
 class DeployedWhisper(chains.StubBase):
@@ -40,10 +35,11 @@ class DeployedWhisper(chains.StubBase):
 class MacroChunkWorker(chains.ChainletBase):
     """Downloads and transcribes larger chunks of the total file (~300s)."""
 
+    _cpu_count = 8
     remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE,
+        docker_image=IMAGE,
         compute=chains.Compute(
-            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
+            cpu_count=_cpu_count, memory="16G", predict_concurrency=_cpu_count * 3
         ),
     )
     _whisper: DeployedWhisper
@@ -57,6 +53,7 @@ class MacroChunkWorker(chains.ChainletBase):
             context,
             options=chains.RPCOptions(retries=3),
         )
+        logging.getLogger("httpx").setLevel(logging.WARNING)
 
     async def run_remote(
         self,
@@ -82,7 +79,9 @@ class MacroChunkWorker(chains.ChainletBase):
         segments = []
         for transcription, seg_info in zip(results, seg_infos):
             segments.append(
-                data_types.Segment(transcription=transcription, segment_info=seg_info)
+                data_types.SegmentInternal(
+                    transcription=transcription, segment_info=seg_info
+                )
             )
         logging.debug(f"Chunk [{macro_chunk_index:03}]: Complete.")
         t1 = time.time()
@@ -95,14 +94,13 @@ class MacroChunkWorker(chains.ChainletBase):
         )
 
 
+@chains.entrypoint
 class Transcribe(chains.ChainletBase):
     """Transcribes one file end-to-end and sends results to webhook."""
 
     remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE,
-        compute=chains.Compute(
-            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
-        ),
+        docker_image=IMAGE,
+        compute=chains.Compute(cpu_count=8, memory="16G", predict_concurrency=128),
         assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
     _context: chains.DeploymentContext
@@ -112,7 +110,7 @@ class Transcribe(chains.ChainletBase):
     def __init__(
         self,
         video_worker: MacroChunkWorker = chains.depends(MacroChunkWorker, retries=3),
-        context=chains.depends_context(),
+        context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
         self._context = context
         self._video_worker = video_worker
@@ -136,20 +134,19 @@ class Transcribe(chains.ChainletBase):
             raise NotImplementedError(f"Range downloads unsupported for `{media_url}`.")
 
     async def run_remote(
-        self,
-        media_url: str,
-        params: data_types.TranscribeParams,
-        job_descr: data_types.JobDescriptor,
-    ) -> data_types.TranscribeOutput:
+        self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
+    ) -> data_types.Result:
         t0 = time.time()
+        media_url = job_descr.media_url
         await self._assert_media_supports_range_downloads(media_url)
         duration_secs = await helpers.query_video_length_secs(media_url)
+        logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
         video_chunks = helpers.generate_time_chunks(
             int(np.ceil(duration_secs)), params.macro_chunk_size_sec
         )
         tasks = []
         for i, chunk_limits in enumerate(video_chunks):
-            logging.info(f"Starting macro-chunk [{i+1:03}/{len(video_chunks):03}].")
+            logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(video_chunks):03}].")
             tasks.append(
                 asyncio.ensure_future(
                     self._video_worker.run_remote(media_url, params, i, *chunk_limits)
@@ -159,117 +156,46 @@ class Transcribe(chains.ChainletBase):
         results: list[data_types.TranscribeOutput] = await asyncio.gather(*tasks)
         t1 = time.time()
         processing_time = t1 - t0
-        result = data_types.TranscribeOutput(
-            segments=[seg for part in results for seg in part.segments],
+        logging.info(
+            data_types.TranscribeOutput(
+                segments=[],
+                input_duration_sec=duration_secs,
+                processing_duration_sec=processing_time,
+                speedup=duration_secs / processing_time,
+            )
+        )
+        segments = [
+            data_types.Segment(
+                start=seg.segment_info.start_time_sec,
+                end=seg.segment_info.end_time_sec,
+                text=seg.transcription.text,
+                language=seg.transcription.language,
+                bcp47_key=seg.transcription.bcp47_key,
+            )
+            for part in results
+            for seg in part.segments
+        ]
+        result = data_types.Result(
+            job_descr=job_descr.copy(update={"status": data_types.JobStatus.SUCCEEDED}),
+            segments=segments,
             input_duration_sec=duration_secs,
             processing_duration_sec=processing_time,
             speedup=duration_secs / processing_time,
         )
-
-        # Type issue seems to be a mypy bug.
-        external_result = data_types.TranscriptionExternal(
-            media_url=job_descr.media_url,
-            media_id=job_descr.media_id,
-            job_uuid=job_descr.job_uuid,
-            status=data_types.JobStatus.SUCCEEDED,  # type: ignore[arg-type]
-            text=[
-                data_types.TranscriptionSegmentExternal(
-                    start=seg.segment_info.start_time_sec,
-                    end=seg.segment_info.end_time_sec,
-                    text=seg.transcription.text,
-                    language=seg.transcription.language,
-                    bcp47_key=seg.transcription.bcp47_key,
-                )
-                for part in results
-                for seg in part.segments
-            ],
-        )
-        await self._call_webhook(params.result_webhook_url, external_result)
         return result
 
-    @tenacity.retry(
-        stop=tenacity.stop_after_attempt(3),
-        wait=tenacity.wait_exponential(multiplier=2, min=1, max=10),
-        reraise=True,
-    )
-    async def _call_webhook(
-        self, webhook_url: str, result: data_types.TranscriptionExternal
+
+if __name__ == "__main__":
+    import os
+
+    url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+    job_ = data_types.JobDescriptor(job_uuid="job_uuid_0", media_id=0, media_url=url_)
+    params_ = data_types.TranscribeParams(micro_chunk_size_sec=30)
+
+    with chains.run_local(
+        secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]}
     ):
-        # TODO: change secret key. Remove baseten auth.
-        result_json = result.json()
-        payload_signature = hmac.new(
-            self._context.secrets["dummy_webhook_key"].encode("utf-8"),
-            result_json.encode("utf-8"),
-            hashlib.sha1,
-        ).hexdigest()
-        headers = {
-            "X-Baseten-Signature": payload_signature,
-            "Authorization": f"Api-Key {self._context.get_baseten_api_key()}",
-        }
-        # Extra key `transcription` is needed for test webhook.
-        resp = await self._async_http.post(
-            webhook_url, json={"transcription": result.dict()}, headers=headers
-        )
-        if resp.status_code == 200:
-            return
-        else:
-            raise Exception(f"Could not call results webhook: {resp.content.decode()}.")
+        transcribe_job = Transcribe()
 
-
-# Shims for external APIs ##############################################################
-
-
-class BatchTranscribe(chains.ChainletBase):
-    """Accepts a request with multiple transcription jobs and starts the sub-jobs."""
-
-    remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE,
-        compute=chains.Compute(
-            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
-        ),
-    )
-
-    def __init__(
-        self,
-        transcribe: Transcribe = chains.depends(Transcribe),
-    ):
-        self._transcribe = transcribe
-
-    async def run_remote(self, worklet_input: data_types.WorkletInput) -> list[float]:
-        logging.info(worklet_input)
-        logging.info(f"Got `{len(worklet_input.media_for_transcription)}` tasks.")
-
-        params = data_types.TranscribeParams(  # type: ignore[call-arg]
-            result_webhook_url=_WEBHOOK_URL, micro_chunk_size_sec=30
-        )
-        tasks = []
-        for job in worklet_input.media_for_transcription:
-            tasks.append(
-                asyncio.ensure_future(
-                    self._transcribe.run_remote(job.media_url, params, job)
-                )
-            )
-        results = []
-        for completed_task in asyncio.as_completed(tasks):
-            # TODO: report errors with webhook.
-            result: data_types.TranscribeOutput = await completed_task
-            logging.info(
-                f"Finished `{result.input_duration_sec}` with {result.speedup} x."
-            )
-            results.append(result)
-
-        return [result.speedup for result in results]
-
-
-class Webhook(chains.ChainletBase):
-    """Receives results for debugging."""
-
-    remote_config = chains.RemoteConfig(
-        docker_image=_IMAGE,
-        compute=chains.Compute(
-            cpu_count=16, memory="32G", predict_concurrency="cpu_count"
-        ),
-    )
-
-    async def run_remote(self, transcription: data_types.TranscriptionExternal) -> None:
-        logging.info(transcription.json(indent=4))
+        result_ = asyncio.run(transcribe_job.run_remote(job_, params_))
+        print(result_)

@@ -24,6 +24,10 @@ class BasetenSession:
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
 
+    @property
+    def name(self) -> str:
+        return self._service_descriptor.name
+
     @functools.cached_property
     def _client_sync(self) -> httpx.Client:
         return httpx.Client(
@@ -47,14 +51,15 @@ class BasetenSession:
         for attempt in retrying:
             with attempt:
                 if (num := attempt.retry_state.attempt_number) > 1:
-                    logging.info(
-                        f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
+                    exc = attempt.retry_state.outcome.exception()
+                    logging.warning(
+                        f"Retrying `{self.name}`: attempt {num} due to {exc}."
                     )
                 return utils.handle_response(
                     self._client_sync.post(
                         self._service_descriptor.predict_url, json=json_payload
                     ),
-                    self._service_descriptor.name,
+                    self.name,
                 )
 
     async def predict_async(self, json_payload):
@@ -66,14 +71,15 @@ class BasetenSession:
         async for attempt in retrying:
             with attempt:
                 if (num := attempt.retry_state.attempt_number) > 1:
-                    logging.info(
-                        f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
+                    exc = attempt.retry_state.outcome.exception()
+                    logging.warning(
+                        f"Retrying `{self.name}`: attempt {num} due to {exc}."
                     )
                 return utils.handle_response(
                     await self._client_async.post(
                         self._service_descriptor.predict_url, json=json_payload
                     ),
-                    self._service_descriptor.name,
+                    self.name,
                 )
 
 

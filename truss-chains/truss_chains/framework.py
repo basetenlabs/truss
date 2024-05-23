@@ -577,6 +577,7 @@ def _create_modified_init_for_local(
     """
 
     def _verify_stack(stack: list[inspect.FrameInfo], levels_below_run_local: int):
+        # TODO: this checks is incompatible with sub-classing chainlets.
         for frame in stack[:levels_below_run_local]:
             # This is a robust way to compare for function identity, since `wraps`
             # actually changes the name.
