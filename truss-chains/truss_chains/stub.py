@@ -50,8 +50,11 @@ class BasetenSession:
         )
         for attempt in retrying:
             with attempt:
-                if attempt.retry_state.attempt_number > 1:
-                    logging.warning(f"Retrying `{self.name}`: {attempt.retry_state}.")
+                if (num := attempt.retry_state.attempt_number) > 1:
+                    exc = attempt.retry_state.outcome.exception()
+                    logging.warning(
+                        f"Retrying `{self.name}`: attempt {num} due to {exc}."
+                    )
                 return utils.handle_response(
                     self._client_sync.post(
                         self._service_descriptor.predict_url, json=json_payload
@@ -67,8 +70,11 @@ class BasetenSession:
         )
         async for attempt in retrying:
             with attempt:
-                if attempt.retry_state.attempt_number > 1:
-                    logging.warning(f"Retrying `{self.name}`: {attempt.retry_state}.")
+                if (num := attempt.retry_state.attempt_number) > 1:
+                    exc = attempt.retry_state.outcome.exception()
+                    logging.warning(
+                        f"Retrying `{self.name}`: attempt {num} due to {exc}."
+                    )
                 return utils.handle_response(
                     await self._client_async.post(
                         self._service_descriptor.predict_url, json=json_payload
