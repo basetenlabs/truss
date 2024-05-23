@@ -75,7 +75,7 @@ def preprocess(self, request: Dict) -> Dict:
     # Code that runs before inference
     return request
 
-def postprocess(self, request: Dict) -> Dict:
+def postprocess(self, response: Dict) -> Dict:
     # Code that runs after inference
-    return request
+    return response
 ```
