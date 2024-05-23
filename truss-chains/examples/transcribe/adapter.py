@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import json
 import logging
+import re
 import time
 from typing import Optional
 
@@ -16,6 +17,9 @@ import truss_chains as chains
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from truss_chains import stub
+
+NO_OP_SHADOW = False  # If on, just tests task creation and skips actual transcriptions.
+FILE_EXT_RE = re.compile(r"\.([a-zA-Z0-9]+)\?")
 
 
 class EnqueueInput(pydantic.BaseModel):
@@ -82,7 +86,7 @@ class InternalWebhook(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=transcribe_base.IMAGE,
-        compute=chains.Compute(cpu_count=1, memory="2G"),
+        compute=chains.Compute(cpu_count=1, memory="2G", predict_concurrency=128),
         assets=chains.Assets(secret_keys=["big_query_service_account"]),
     )
     _async_http: httpx.AsyncClient
@@ -133,13 +137,12 @@ class InternalWebhook(chains.ChainletBase):
 class TranscribeWithWebhook(chains.ChainletBase):
     """Transcribes one file end-to-end and sends results to webhook."""
 
-    # TODO: this would
+    # TODO: this would be a subclass of `transcribe_base.Transcribe`, but chains
+    #  does not support subclasses currently. Keep code in sync manually!
 
     remote_config = chains.RemoteConfig(
         docker_image=transcribe_base.IMAGE,
-        compute=chains.Compute(
-            cpu_count=8, memory="16G", predict_concurrency="cpu_count"
-        ),
+        compute=chains.Compute(cpu_count=8, memory="16G", predict_concurrency=128),
         assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
     _context: chains.DeploymentContext
@@ -159,7 +162,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
         self._internal_webhook = internal_webhook
         self._async_http = httpx.AsyncClient()
         logging.getLogger("httpx").setLevel(logging.WARNING)
-        if transcribe_base.NO_OP_SHADOW:
+        if NO_OP_SHADOW:
             logging.info("No-Op-Shadow on: will no create chunk jobs.")
         else:
             logging.info("No-Op-Shadow off.")
@@ -185,10 +188,21 @@ class TranscribeWithWebhook(chains.ChainletBase):
     ) -> TranscribeResult:
         t0 = time.time()
         media_url = job_descr.media_url
+        file_ext = "<unknown>"
+        try:
+            match = re.search(FILE_EXT_RE, media_url)
+            if match:
+                file_ext = match.group(1)
+        except Exception:
+            pass
+
         await self._assert_media_supports_range_downloads(media_url)
         duration_secs = await helpers.query_video_length_secs(media_url)
-        logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
-        if transcribe_base.NO_OP_SHADOW:
+        logging.info(
+            f"Transcribe request for `{duration_secs:.1f}` seconds, "
+            f"file_ext: `{file_ext}`."
+        )
+        if NO_OP_SHADOW:
             return TranscribeResult.from_job_descr(
                 job_descr,
                 status=data_types.JobStatus.DEBUG_RESULT,  # type: ignore[arg-type]
@@ -284,7 +298,7 @@ class EnqueueBatch(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=transcribe_base.IMAGE,
-        compute=chains.Compute(cpu_count=8, memory="16G"),
+        compute=chains.Compute(cpu_count=8, memory="16G", predict_concurrency=128),
     )
 
     def __init__(

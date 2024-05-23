@@ -15,7 +15,6 @@ IMAGE = chains.DockerImage(
 )
 # Whisper is deployed as a normal truss model from examples/library.
 _WHISPER_URL = "https://model-5woz91z3.api.baseten.co/production/predict"
-NO_OP_SHADOW = True  # If on, just tests task creation and skips actual transcriptions.
 
 
 class DeployedWhisper(chains.StubBase):
@@ -36,10 +35,11 @@ class DeployedWhisper(chains.StubBase):
 class MacroChunkWorker(chains.ChainletBase):
     """Downloads and transcribes larger chunks of the total file (~300s)."""
 
+    _cpu_count = 8
     remote_config = chains.RemoteConfig(
         docker_image=IMAGE,
         compute=chains.Compute(
-            cpu_count=8, memory="16G", predict_concurrency="cpu_count"
+            cpu_count=_cpu_count, memory="16G", predict_concurrency=_cpu_count * 3
         ),
     )
     _whisper: DeployedWhisper
@@ -100,9 +100,7 @@ class Transcribe(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=IMAGE,
-        compute=chains.Compute(
-            cpu_count=8, memory="16G", predict_concurrency="cpu_count"
-        ),
+        compute=chains.Compute(cpu_count=8, memory="16G", predict_concurrency=128),
         assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
     _context: chains.DeploymentContext
@@ -118,10 +116,6 @@ class Transcribe(chains.ChainletBase):
         self._video_worker = video_worker
         self._async_http = httpx.AsyncClient()
         logging.getLogger("httpx").setLevel(logging.WARNING)
-        if NO_OP_SHADOW:
-            logging.info("No-Op-Shadow on: will not create chunk jobs.")
-        else:
-            logging.info("No-Op-Shadow off.")
 
     async def _assert_media_supports_range_downloads(self, media_url: str) -> None:
         ok = False
@@ -147,17 +141,6 @@ class Transcribe(chains.ChainletBase):
         await self._assert_media_supports_range_downloads(media_url)
         duration_secs = await helpers.query_video_length_secs(media_url)
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
-        if NO_OP_SHADOW:
-            return data_types.Result(
-                job_descr=job_descr.copy(
-                    update={"status": data_types.JobStatus.DEBUG_RESULT}
-                ),
-                segments=[],
-                input_duration_sec=duration_secs,
-                processing_duration_sec=0,
-                speedup=0,
-            )
-
         video_chunks = helpers.generate_time_chunks(
             int(np.ceil(duration_secs)), params.macro_chunk_size_sec
         )
