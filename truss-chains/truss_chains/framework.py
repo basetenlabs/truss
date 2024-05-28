@@ -137,6 +137,15 @@ def _validate_io_type(param: inspect.Parameter) -> None:
     (int, str, float...) and `list` or `dict` containers of these.
     Any deeper nested and structured data must be typed as a pydantic model.
     """
+    containers_str = [c.__name__ for c in _SIMPLE_CONTAINERS]
+    types_str = [c.__name__ if c is not None else "None" for c in _SIMPLE_TYPES]
+    error_msg = (
+        f"Unsupported I/O type `{param}`. Supported are:\n"
+        f"\t* simple types: {types_str}\n"
+        f"\t* containers of these simple types, with annotated items: {containers_str}"
+        ", e.g. `dict[str, int]` (use built-in types, not `typing.Dict`).\n"
+        "\t* For complicated / nested data structures: `pydantic` models."
+    )
     anno = param.annotation
     if isinstance(anno, str):
         raise definitions.ChainsUsageError(
@@ -147,26 +156,16 @@ def _validate_io_type(param: inspect.Parameter) -> None:
         return
     if isinstance(anno, types.GenericAlias):
         if get_origin(anno) not in _SIMPLE_CONTAINERS:
-            raise definitions.ChainsUsageError(
-                f"For generic types, only containers {_SIMPLE_CONTAINERS} are "
-                f"allowed, but got `{param}`."
-            )
+            raise definitions.ChainsUsageError(error_msg)
         args = get_args(anno)
         for arg in args:
             if arg not in _SIMPLE_TYPES:
-                raise definitions.ChainsUsageError(
-                    f"For generic types, only the following item types {_SIMPLE_TYPES} "
-                    f"are allowed, but got `{param}`."
-                )
+                raise definitions.ChainsUsageError(error_msg)
         return
-    if issubclass(anno, pydantic.BaseModel):
+    if utils.issubclass_safe(anno, pydantic.BaseModel):
         return
 
-    raise definitions.ChainsUsageError(
-        f"Unsupported I/O type `{param}`. Use simple types {_SIMPLE_TYPES}, "
-        f"containers ({_SIMPLE_CONTAINERS}) of simple types or serializable pydantic "
-        "models."
-    )
+    raise definitions.ChainsUsageError(error_msg)
 
 
 def _validate_endpoint_params(
@@ -284,7 +283,7 @@ def _validate_dependency_arg(param) -> ChainletDependencyMarker:
             f"{_example_chainlet_code()}"
         )
     chainlet_cls = param.default.chainlet_cls
-    if not issubclass(chainlet_cls, definitions.ABCChainlet):
+    if not utils.issubclass_safe(chainlet_cls, definitions.ABCChainlet):
         raise definitions.ChainsUsageError(
             f"`{chainlet_cls}` must be a subclass of `{definitions.ABCChainlet}`."
         )
@@ -295,8 +294,8 @@ def _validate_dependency_arg(param) -> ChainletDependencyMarker:
     # Find a better way to inspect this.
     if not (
         param.annotation == inspect.Parameter.empty
-        or issubclass(param.annotation, Protocol)  # type: ignore[arg-type]
-        or issubclass(chainlet_cls, param.annotation)
+        or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
+        or utils.issubclass_safe(chainlet_cls, param.annotation)
     ):
         raise definitions.ChainsUsageError(
             f"The type annotation for `{param.name}` must either be a `{Protocol}` "
@@ -390,7 +389,7 @@ class _ChainletInitValidator:
         if (
             (param_type is not None)
             and (param_type != inspect.Parameter.empty)
-            and (not issubclass(param_type, definitions.DeploymentContext))
+            and (not utils.issubclass_safe(param_type, definitions.DeploymentContext))
         ):
             raise make_context_exception()
         if not isinstance(param.default, ContextDependencyMarker):
@@ -698,7 +697,7 @@ def run_local(
 
 def entrypoint(cls: Type[ChainletT]) -> Type[ChainletT]:
     """Decorator to tag a chainlet as an entrypoint."""
-    if not (isinstance(cls, type) and issubclass(cls, definitions.ABCChainlet)):
+    if not (utils.issubclass_safe(cls, definitions.ABCChainlet)):
         raise definitions.ChainsUsageError(
             "Only chainlet classes can be marked as entrypoint."
         )
@@ -710,8 +709,7 @@ def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
     return {
         sym
         for sym in symbols
-        if isinstance(sym, type)
-        and issubclass(sym, definitions.ABCChainlet)
+        if utils.issubclass_safe(sym, definitions.ABCChainlet)
         and getattr(sym, _ENTRYPOINT_ATTR_NAME, False)
     }
 
@@ -755,7 +753,7 @@ def import_target(
                 raise AttributeError(
                     f"Target chainlet class `{target_name}` not found in `{module_path}`."
                 )
-            if not issubclass(target_cls, definitions.ABCChainlet):
+            if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
                 raise TypeError(
                     f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
                 )
@@ -776,7 +774,7 @@ def import_target(
                     f"{entrypoints}"
                 )
             target_cls = utils.expect_one(entrypoints)
-            if not issubclass(target_cls, definitions.ABCChainlet):
+            if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
                 raise TypeError(
                     f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
                 )
