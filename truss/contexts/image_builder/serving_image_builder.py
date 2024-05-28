@@ -30,6 +30,7 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
+    TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     USE_BRITON,
@@ -364,6 +365,7 @@ class ServingImageBuilder(ImageBuilder):
             )
 
             config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
+            config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
