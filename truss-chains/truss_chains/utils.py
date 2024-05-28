@@ -325,3 +325,8 @@ class StrEnum(str, enum.Enum):
         if name.upper() != name:
             raise ValueError(f"Python enum members should be upper case. Got `{name}`.")
         return name
+
+
+def issubclass_safe(x: Any, cls: type) -> bool:
+    """Like built-in `issubclass`, but works on non-type objects."""
+    return isinstance(x, type) and issubclass(x, cls)

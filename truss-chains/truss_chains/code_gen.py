@@ -26,11 +26,10 @@ workspace/
 `shared_lib` can only be imported on the remote if its installed as a pip
 requirement (site-package), it will not be copied from the local host.
 """
-
-
 import logging
 import os
 import pathlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -39,17 +38,31 @@ import textwrap
 from typing import Any, Iterable, Mapping, Optional
 
 import libcst
+import truss
 from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss_chains import definitions, model_skeleton, utils
 
-_TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
+INDENT = " " * 4
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
 _MODEL_FILENAME = "model.py"
 _MODEL_CLS_NAME = model_skeleton.TrussChainletModel.__name__
-
-
-INDENT = " " * 4
+_TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
+_TRUSS_PIP_PATTERN = re.compile(
+    r"""
+    ^truss
+    (?:
+        \s*(==|>=|<=|!=|>|<)\s*   # Version comparison operators
+        \d+(\.\d+)*               # Version numbers (e.g., 1, 1.0, 1.0.0)
+        (?:                       # Optional pre-release or build metadata
+            (?:a|b|rc|dev)\d*
+            (?:\.post\d+)?
+            (?:\+[\w\.]+)?
+        )?
+    )?$
+""",
+    re.VERBOSE,
+)
 
 
 def _indent(text: str, num: int = 1) -> str:
@@ -462,7 +475,7 @@ def _gen_truss_chainlet_model(
     )
     model_class_src = libcst.Module(body=[class_definition]).code
 
-    if issubclass(chainlet_descriptor.user_config_type.raw, type(None)):
+    if utils.issubclass_safe(chainlet_descriptor.user_config_type.raw, type(None)):
         userconfig_pin = "UserConfigT = type(None)"
     else:
         user_config_ref = _gen_type_import_and_ref(chainlet_descriptor.user_config_type)
@@ -524,14 +537,17 @@ def _make_requirements(image: definitions.DockerImage) -> list[str]:
         )
     pip_requirements.update(image.pip_requirements)
 
-    has_truss_pypy = any(req == "truss" for req in pip_requirements)
+    has_truss_pypy = any(
+        bool(_TRUSS_PIP_PATTERN.match(req)) for req in pip_requirements
+    )
     has_truss_git = any(_TRUSS_GIT in req for req in pip_requirements)
 
     if not (has_truss_git or has_truss_pypy):
+        truss_pip = f"truss=={truss.version()}"
         logging.info(
-            f"Truss not found in pip requirements, auto-adding: `{_TRUSS_GIT}`."
+            f"Truss not found in pip requirements, auto-adding: `{truss_pip}`."
         )
-        pip_requirements.add(_TRUSS_GIT)
+        pip_requirements.add(truss_pip)
 
     return sorted(pip_requirements)
 
