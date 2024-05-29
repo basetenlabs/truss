@@ -49,7 +49,8 @@ pathspec = ">=0.9.0"
 psutil = ">=5.9.4"
 pydantic = ">=1.10.0"
 pytest-asyncio = "^0.23.6"
-python = ">=3.9,<3.12"
+# Note: when using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
+python = ">=3.8,<3.12"
 python-json-logger = ">=2.0.2"
 python-on-whales = "^0.68.0"
 PyYAML = ">=6.0"
@@ -72,7 +73,7 @@ loguru = ">=0.7.2"
 packaging = ">=20.9"
 pathspec = ">=0.9.0"
 psutil = ">=5.9.4"
-python = ">=3.9,<3.12"
+python = ">=3.8,<3.12"
 python-json-logger = ">=2.0.2"
 PyYAML = ">=6.0"
 requests = ">=2.31"
@@ -117,7 +118,7 @@ src_paths = ["isort", "test"]
 
 [tool.mypy]
 ignore_missing_imports = true
-python_version = "3.9"
+python_version = "3.8"
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]

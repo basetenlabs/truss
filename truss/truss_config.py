@@ -39,7 +39,7 @@ DEFAULT_USE_GPU = False
 
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
-VALID_PYTHON_VERSIONS = ["py39", "py310", "py311"]
+VALID_PYTHON_VERSIONS = ["py38", "py39", "py310", "py311"]
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -502,8 +502,10 @@ class TrussConfig:
     @property
     def canonical_python_version(self) -> str:
         return {
-            "py39": "3.9",
             "py311": "3.11",
+            "py39": "3.9",
+            "py38": "3.8",
+            "py37": "3.7",
         }[self.python_version]
 
     @staticmethod

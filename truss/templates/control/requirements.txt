@@ -1,5 +1,5 @@
 dataclasses-json==0.5.7
-truss==0.9.12
+truss==0.9.10  # This needs to support py3.8. It can be incremented to releases after #955 (i.e. >0.9.12).
 fastapi==0.109.1
 uvicorn==0.24.0
 uvloop==0.19.0

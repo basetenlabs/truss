@@ -100,7 +100,7 @@ def test_build_docker_image(custom_model_truss_dir_with_pre_and_post):
     "base_image, path, expected_fail",
     [
         ("baseten/truss-server-base:3.9-v0.4.8rc4", "/usr/local/bin/python3", False),
-        ("python:3.9", "/usr/local/bin/python3", False),
+        ("python:3.8", "/usr/local/bin/python3", False),
         ("python:3.10", "/usr/local/bin/python3", False),
         ("python:3.11", "/usr/local/bin/python3", False),
         ("python:alpine", "/usr/local/bin/python3", True),
@@ -396,6 +396,8 @@ def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
+        ("3.8", "py38"),
+        ("py38", "py38"),
         ("3.9", "py39"),
         ("py39", "py39"),
     ],
