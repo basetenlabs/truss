@@ -104,16 +104,18 @@ class Transcribe(chains.ChainletBase):
         assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
     _context: chains.DeploymentContext
-    _video_worker: MacroChunkWorker
+    _macro_chunk_worker: MacroChunkWorker
     _async_http: httpx.AsyncClient
 
     def __init__(
         self,
-        video_worker: MacroChunkWorker = chains.depends(MacroChunkWorker, retries=3),
+        macro_chunk_worker: MacroChunkWorker = chains.depends(
+            MacroChunkWorker, retries=3
+        ),
         context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
         self._context = context
-        self._video_worker = video_worker
+        self._macro_chunk_worker = macro_chunk_worker
         self._async_http = httpx.AsyncClient()
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -139,17 +141,20 @@ class Transcribe(chains.ChainletBase):
         t0 = time.time()
         media_url = job_descr.media_url
         await self._assert_media_supports_range_downloads(media_url)
-        duration_secs = await helpers.query_video_length_secs(media_url)
+        duration_secs = await helpers.query_source_length_secs(media_url)
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
-        video_chunks = helpers.generate_time_chunks(
+        # TODO: use silence-aware time chunking.
+        chunks = helpers.generate_time_chunks(
             int(np.ceil(duration_secs)), params.macro_chunk_size_sec
         )
         tasks = []
-        for i, chunk_limits in enumerate(video_chunks):
-            logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(video_chunks):03}].")
+        for i, chunk_limits in enumerate(chunks):
+            logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(chunks):03}].")
             tasks.append(
                 asyncio.ensure_future(
-                    self._video_worker.run_remote(media_url, params, i, *chunk_limits)
+                    self._macro_chunk_worker.run_remote(
+                        media_url, params, i, *chunk_limits
+                    )
                 )
             )
 
@@ -166,8 +171,8 @@ class Transcribe(chains.ChainletBase):
         )
         segments = [
             data_types.Segment(
-                start=seg.segment_info.start_time_sec,
-                end=seg.segment_info.end_time_sec,
+                start_time_sec=seg.segment_info.start_time_sec,
+                end_time_sec=seg.segment_info.end_time_sec,
                 text=seg.transcription.text,
                 language=seg.transcription.language,
                 bcp47_key=seg.transcription.bcp47_key,
@@ -188,7 +193,8 @@ class Transcribe(chains.ChainletBase):
 if __name__ == "__main__":
     import os
 
-    url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+    # url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+    url_ = "https://file-examples.com/storage/fe15076da466528199d9c5a/2017/11/file_example_MP3_5MG.mp3"
     job_ = data_types.JobDescriptor(job_uuid="job_uuid_0", media_id=0, media_url=url_)
     params_ = data_types.TranscribeParams(micro_chunk_size_sec=30)
 
@@ -198,4 +204,4 @@ if __name__ == "__main__":
         transcribe_job = Transcribe()
 
         result_ = asyncio.run(transcribe_job.run_remote(job_, params_))
-        print(result_)
+        print(result_.model_dump_json(indent=4))
