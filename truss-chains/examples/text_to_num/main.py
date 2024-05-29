@@ -10,7 +10,6 @@ import random
 import string
 from typing import Protocol
 
-import pydantic
 import truss_chains as chains
 from sub_package import shared_chainlet
 from truss import truss_config
@@ -22,19 +21,18 @@ class GenerateData(chains.ChainletBase):
 
 
 MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
+# This configures to cache model weights from the hunggingface repo
+# in the docker image that is used for deploying the Chainlet.
 MISTRAL_CACHE = truss_config.ModelRepo(
     repo_id=MISTRAL_HF_MODEL, allow_patterns=["*.json", "*.safetensors", ".model"]
 )
 
 
-class MistraLLMConfig(pydantic.BaseModel):
-    hf_model_name: str
-
-
 class MistralLLM(chains.ChainletBase):
-
+    # The RemoteConfig object defines the resources required for this chainlet.
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
+            # The mistral model needs some extra python packages.
             pip_requirements=[
                 "transformers==4.38.1",
                 "torch==2.0.1",
@@ -42,29 +40,37 @@ class MistralLLM(chains.ChainletBase):
                 "accelerate",
             ]
         ),
+        # The mistral model needs a GPU and more CPUs.
         compute=chains.Compute(cpu_count=2, gpu="A10G"),
-        assets=chains.Assets(cached=[MISTRAL_CACHE]),
+        # Cache the model weights in the image and make the huggingface
+        # access token secret available to the model.
+        assets=chains.Assets(cached=[MISTRAL_CACHE], secret_keys=["hf_access_token"]),
     )
-    default_user_config = MistraLLMConfig(hf_model_name=MISTRAL_HF_MODEL)
 
     def __init__(
         self,
-        context: chains.DeploymentContext[MistraLLMConfig] = chains.depends_context(),
+        # Adding the `context` to the init arguments, allows us to access the
+        # huggingface token.
+        context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
+        # Note the imports of the *specific* python requirements are pushed down to
+        # here. This code will only be executed on the remotely deployed chainlet,
+        # not in the local environment, so we don't need to install these packages
+        # in the local dev environment.
         import torch
         import transformers
 
-        model_name = context.user_config.hf_model_name
-
         self._model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_name,
+            MISTRAL_HF_MODEL,
             torch_dtype=torch.float16,
             device_map="auto",
+            use_auth_token=context.secrets["hf_access_token"],
         )
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_name,
+            MISTRAL_HF_MODEL,
             device_map="auto",
             torch_dtype=torch.float16,
+            use_auth_token=context.secrets["hf_access_token"],
         )
 
         self._generate_args = {
@@ -94,11 +100,21 @@ class MistralLLM(chains.ChainletBase):
 
 
 class MistralP(Protocol):
-    def __init__(self, context: chains.DeploymentContext) -> None:
-        ...
-
     def run_remote(self, data: str) -> str:
         ...
+
+
+@chains.mark_entrypoint
+class PoemGenerator(chains.ChainletBase):
+    def __init__(self, mistral_llm: MistralP = chains.depends(MistralLLM)) -> None:
+        self._mistral_llm = mistral_llm
+
+    def run_remote(self, words: list[str]) -> list[str]:
+        results = []
+        for word in words:
+            poem = self._mistral_llm.run_remote(f"Generate a poem about: {word}")
+            results.append(poem)
+        return results
 
 
 class TextToNum(chains.ChainletBase):
