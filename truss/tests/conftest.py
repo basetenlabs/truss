@@ -16,6 +16,7 @@ from truss.contexts.image_builder.serving_image_builder import (
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
+from truss.truss_handle import TrussHandle
 from truss.types import Example
 
 CUSTOM_MODEL_CODE = """
@@ -364,6 +365,34 @@ def no_params_init_custom_model(tmp_path):
         tmp_path,
         "my_no_params_init_load_model",
         NO_PARAMS_INIT_CUSTOM_MODEL_CODE,
+    )
+
+
+@pytest.fixture
+def custom_model_trt_llm(tmp_path):
+    def modify_handle(h: TrussHandle):
+        with _modify_yaml(h.spec.config_path) as content:
+            h.enable_gpu()
+            content["trt_llm"] = {
+                "build": {
+                    "base_model": "llama",
+                    "max_input_len": 1024,
+                    "max_output_len": 1024,
+                    "max_batch_size": 512,
+                    "max_beam_width": 1,
+                    "checkpoint_repository": {
+                        "source": "LOCAL",
+                        "repo": "/path/to/checkpoint",
+                    },
+                }
+            }
+            content["resources"]["accelerator"] = "H100:1"
+
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_trt_llm_model",
+        CUSTOM_MODEL_CODE,
+        handle_ops=modify_handle,
     )
 
 

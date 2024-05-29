@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pytest
+from truss.constants import TRTLLM_PREDICT_CONCURRENCY
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
@@ -288,3 +289,17 @@ def test_ignore_files_during_build_setup(custom_model_truss_dir_with_truss_ignor
 
         assert not (build_path / ignore_folder).exists()
         assert (build_path / do_not_ignore_folder).exists()
+
+
+def test_trt_llm_build_dir(custom_model_trt_llm):
+    th = TrussHandle(custom_model_trt_llm)
+    builder_context = ServingImageBuilderContext
+    image_builder = builder_context.run(th.spec.truss_dir)
+    with TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        image_builder.prepare_image_build_dir(tmp_path)
+        build_th = TrussHandle(tmp_path)
+        assert (
+            build_th.spec.config.runtime.predict_concurrency
+            == TRTLLM_PREDICT_CONCURRENCY
+        )

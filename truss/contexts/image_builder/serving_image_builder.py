@@ -30,6 +30,7 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
+    TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     USE_BRITON,
@@ -352,6 +353,8 @@ class ServingImageBuilder(ImageBuilder):
                 raise ValueError(
                     "Tensor parallelism and GPU count must be the same for TRT-LLM"
                 )
+
+            config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
             config.base_image = BaseImage(
                 image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
