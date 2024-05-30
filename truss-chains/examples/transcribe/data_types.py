@@ -42,15 +42,15 @@ class JobStatus(utils.StrEnum):
 class JobDescriptor(pydantic.BaseModel):
     # Do not change, taken from existing App.
     media_url: str
-    media_id: int
     job_uuid: str
+    media_id: int = 0
     status: Optional[JobStatus] = None
 
 
 class Segment(pydantic.BaseModel):
     # Do not change, taken from existing App.
-    start: float = pydantic.Field(..., description="In seconds.")
-    end: float = pydantic.Field(..., description="In seconds.")
+    start_time_sec: float = pydantic.Field(..., description="In seconds.")
+    end_time_sec: float = pydantic.Field(..., description="In seconds.")
     text: str
     language: str = pydantic.Field(..., description="E.g. 'English'")
     bcp47_key: str = pydantic.Field(

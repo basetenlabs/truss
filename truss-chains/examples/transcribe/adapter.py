@@ -56,6 +56,19 @@ class AsyncTranscribeRequest(pydantic.BaseModel):
     inference_retry_config: RetryConfig
 
 
+class Segment(pydantic.BaseModel):
+    # Do not change, taken from existing App.
+    start: float = pydantic.Field(..., description="In seconds.")
+    end: float = pydantic.Field(..., description="In seconds.")
+    text: str
+    language: str = pydantic.Field(..., description="E.g. 'English'")
+    bcp47_key: str = pydantic.Field(
+        ...,
+        description="IETF language tag, e.g. 'en', see. "
+        "https://en.wikipedia.org/wiki/IETF_language_tag.",
+    )
+
+
 class TranscribeResult(pydantic.BaseModel):
     # Do not change, taken from existing App.
     media_url: str
@@ -63,7 +76,7 @@ class TranscribeResult(pydantic.BaseModel):
     job_uuid: str
     status: data_types.JobStatus
     # TODO: this is not a great name.
-    text: Optional[list[data_types.Segment]] = None
+    text: Optional[list[Segment]] = None
     failure_reason: Optional[str] = None
 
     @classmethod
@@ -197,7 +210,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
             pass
 
         await self._assert_media_supports_range_downloads(media_url)
-        duration_secs = await helpers.query_video_length_secs(media_url)
+        duration_secs = await helpers.query_source_length_secs(media_url)
         logging.info(
             f"Transcribe request for `{duration_secs:.1f}` seconds, "
             f"file_ext: `{file_ext}`."
@@ -236,7 +249,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
             job_descr, status=data_types.JobStatus.SUCCEEDED  # type: ignore[arg-type]
         )
         result.text = [
-            data_types.Segment(
+            Segment(
                 start=seg.segment_info.start_time_sec,
                 end=seg.segment_info.end_time_sec,
                 text=seg.transcription.text,
