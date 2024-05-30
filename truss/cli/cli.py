@@ -112,16 +112,10 @@ def image():
 
 class ChainsGroup(click.Group):
     def invoke(self, ctx: click.Context) -> None:
-        import pydantic
+        # This import raises error messages if pydantic v2 or python older than 3.9
+        # are installed.
+        import truss_chains  # noqa: F401
 
-        pydantic_major_version = int(pydantic.VERSION.split(".")[0])
-        if pydantic_major_version < 2:
-            raise ImportError(
-                f"Pydantic major version is less than 2 ({pydantic.VERSION}). "
-                "You can use Truss, but for using Truss-Chains, you must upgrade "
-                "to pydantic-v2.",
-            )
-        del pydantic
         super().invoke(ctx)
 
 

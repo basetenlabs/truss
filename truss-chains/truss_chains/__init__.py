@@ -1,17 +1,22 @@
-import warnings
+import sys
 
+if (sys.version_info.major, sys.version_info.minor) <= (3, 8):
+    raise RuntimeError(
+        "Python version 3.8 or older is not supported for `Truss-Chains`. Please"
+        "upgrade to Python 3.9 or newer. You can still use other Truss functionality."
+    )
+del sys
 import pydantic
 
 pydantic_major_version = int(pydantic.VERSION.split(".")[0])
 if pydantic_major_version < 2:
-    warnings.warn(
-        f"Pydantic major version is less than 2 ({pydantic.VERSION}). You use Truss, "
-        "but for using Truss-Chains, you must upgrade to pydantic-v2.",
-        UserWarning,
+    raise RuntimeError(
+        f"Pydantic v2 is not supported for `Truss-Chains`. Please upgrade to v2. "
+        "You can still use other Truss functionality."
     )
 
 del pydantic
-del warnings
+
 
 # flake8: noqa F401
 from truss_chains.definitions import (
