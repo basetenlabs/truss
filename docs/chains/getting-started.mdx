@@ -14,27 +14,28 @@ import TOC from '/snippets/chains/TOC.mdx';
 Install Chains in your python development environment
 
 ```bash
-pip install truss==0.9.11rc1
+pip install truss==0.9.14rc1
 ```
 
-For deploying Chains remotely to Baseten you need a [Baseten account](https://app.baseten.co/signup).
-
+For deploying Chains remotely to Baseten you need
+a [Baseten account](https://app.baseten.co/signup).
 
 # Creating your first *Chain*
 
 <Info>
-A *Chain* is the result of defining one or several *Chainlets* and linking them to each other by marking Chainlet
-dependencies and making function calls to other Chainlets.
+A *Chain* is the result of defining one or several *Chainlets* and linking
+them to each other by marking Chainlet dependencies and making function
+calls to other Chainlets.
 
-A Chainlet is the fundamental building block, it performs one computation step (e.g. model inference). Each will be
-deployed as a separate, scalable remote service.
+A Chainlet is the fundamental building block, it performs one computation
+step (e.g. model inference). Each will be deployed as a separate, scalable
+remote service.
 
 More details are in the [concepts section](/chains/concepts).
 </Info>
 
-
-Create a Chain project directory with a python file in it. You can chose a name and location, in this example we
-assume the file is named `hello.py`.
+Create a Chain project directory with a python file in it. You can chose a name
+and location, in this example we assume the file is named `hello.py`.
 
 ```python
 import random
@@ -44,7 +45,7 @@ class RandInt(chains.ChainletBase):
     def run_remote(self, max_value: int) -> int:
         return random.randint(1, max_value)
 
-@chains.entrypoint
+@chains.mark_entrypoint
 class HelloWorld(chains.ChainletBase):
     def __init__(self, rand_int=chains.depends(RandInt, retries=3)) -> None:
         self._rand_int = rand_int
@@ -54,28 +55,42 @@ class HelloWorld(chains.ChainletBase):
         return "Hello World! " * num_repetitions
 ```
 
-This Chainlet takes an integer, and returns the string "Hello World!" repeated a variable number of times.
+This Chainlet takes an integer, and returns the string "Hello World!" repeated a
+variable number of times.
 
 ## Explanations
-* `run_remote` contains your user-defined implementation and is the entrypoint to invoke a Chainlet. Other Chainlets
-may *only* use the `run_remote` method of their dependency Chainlets.
-* To support input and output serialization in remote execution, `run_remote` must be fully type-annotated with
-<Tooltip tip="E.g. `int`, `str`, `list[float]`">primitive python types</Tooltip> or
-<Tooltip tip="They have builtin JSON serialization.">[pydantic models](https://docs.pydantic.dev/latest/)</Tooltip>.
-* A chainlet must not have any other *public* methods or attributes, besides `run_remote`. You can use private methods
-to structure you implementation. This is to allow the transformation of your local code to remote deployment.
-* Chainlets cannot be <Tooltip tip="I.e. creating instances like `chainlet = RandInt()` in arbitrary locations in your code.">naively</Tooltip>
-instantiated. The only correct usages are 1) via the `chains.depends()` directive as an `__init__`-argument as shown above
-for `RandInt` and 2) in the local [debugging mode](/chains/guide#local-debugging).
-* `@chains.entrypoint` is a simple marker to denote which Chainlet acts as the entrypoint to receive client requests.
-* Bear in mind that Chainlets are intended for *distributed, replicated, remote execution*, so using global variables,
-state and <Tooltip tip="E.g. changing classes and imported modules dynamically at runtime.">highly dynamic python
-features</Tooltip> should be avoided as they might not work as intended.
 
+* `run_remote` contains your user-defined implementation and is the entrypoint
+  to invoke a Chainlet. Other Chainlets
+  may *only* use the `run_remote` method of their dependency Chainlets.
+* To support input and output serialization in remote execution, `run_remote`
+  must be fully type-annotated with
+  <Tooltip tip="E.g. `int`, `str`, `list[float]`">primitive python
+  types</Tooltip> or
+  <Tooltip tip="They have builtin JSON serialization.">[pydantic models](https://docs.pydantic.dev/latest/)</Tooltip>.
+* A chainlet must not have any other *public* methods or attributes,
+  besides `run_remote`. You can use private methods
+  to structure you implementation. This is to allow the transformation of your
+  local code to remote deployment.
+* Chainlets cannot be <Tooltip tip="I.e. creating instances like `chainlet = RandInt()` in arbitrary locations in your code.">
+  naively</Tooltip>
+  instantiated. The only correct usages are 1) via the `chains.depends()`
+  directive as an `__init__`-argument as shown above
+  for `RandInt` and 2) in the
+  local [debugging mode](/chains/guide#local-debugging).
+* `@chains.mark_entrypoint` is a simple marker to denote which Chainlet acts as
+  the entrypoint to receive client requests.
+* Bear in mind that Chainlets are intended for *distributed, replicated, remote
+  execution*, so using global variables,
+  state
+  and <Tooltip tip="E.g. changing classes and imported modules dynamically at runtime.">
+  highly dynamic python
+  features</Tooltip> should be avoided as they might not work as intended.
 
 # Remote Deployment to Baseten
 
-To deploy your Chain to in a remote hosting environment like [Baseten](https://www.baseten.co/), run the following
+To deploy your Chain to in a remote hosting environment
+like [Baseten](https://www.baseten.co/), run the following
 command:
 
 ```bash
@@ -83,34 +98,49 @@ truss chains deploy ./hello.py
 ```
 
 This Truss command has the following structure:
-`truss chains deploy [OPTIONS] SOURCE ENTRYPOINT` where `ENTRYPOINT` is the Chainlet class name in your python file.
-For more options run `truss chains deploy --help`. `ENTRYPOINT` can be omitted if `@chains.entrypoint` is used.
+`truss chains deploy [OPTIONS] SOURCE ENTRYPOINT` where `ENTRYPOINT` is the
+Chainlet class name in your python file.
+For more options run `truss chains deploy --help`. `ENTRYPOINT` can be omitted
+if `@chains.mark_entrypoint` is used.
 
 The deploy command results in an output like this:
 
 ```
-              ⛓️   HelloWorld - Chainlets  ⛓️
+                  ⛓️   HelloWorld - Chainlets  ⛓️
 ╭──────────────────────┬─────────────────────────┬─────────────╮
 │ Status               │ Name                    │ Logs URL    │
 ├──────────────────────┼─────────────────────────┼─────────────┤
-│ 💚  ACTIVE           │ HelloWorld (entrypoint) │ https://... │
+│  💚 ACTIVE           │ HelloWorld (entrypoint) │ https://... │
 ├──────────────────────┼─────────────────────────┼─────────────┤
-│ 💚  ACTIVE           │ RandInt (dep)           │ https://... │
+│  💚 ACTIVE           │ RandInt (dep)           │ https://... │
 ╰──────────────────────┴─────────────────────────┴─────────────╯
 Deployment succeeded.
 You can run the chain with:
-curl -X POST 'https://model<MODEL_ID>.api.baseten.co/development/predict' \
+curl -X POST 'https://.../predict' \
     -H "Authorization: Api-Key $BASETEN_API_KEY" \
     -d '<JSON_INPUT>'
-
 ```
 
-Wait for the status to turn to `ACTIVE` and test invoking your Chain: copy+paste the displayed `curl` command
-and replace `JSON_INPUT`:
+Wait for the status to turn to `ACTIVE` and test invoking your Chain: copy+paste
+the displayed `curl` command and replace `JSON_INPUT`:
 
 ```bash
 curl -X POST $PREDICT_URL \
   -H "Authorization: Api-Key $BASETEN_API_KEY" \
-  -d '{"num_repetitions": 10}'
+  -d '{"max_value": 10}'
 # "Hello World! Hello World! Hello World! "
 ```
+
+
+# What's next?
+
+Now you know how to wire two Chainlets together and deploy them
+remotely. Possible extensions from here are:
+* Create more complex structures:
+  * Wiring more than two chains together.
+  * Calling `run_remote` in a loop or using conditional control flow.
+* Benefit from a fast dev loop with
+  [local debugging mode](/chains/guide#local-debugging-with-mock)
+  -- with partial mocking.
+* Deploy Chainlets with more complicated requirements such as
+  [LLMs](/chains/guide#llm-chain-with-special-requirements).

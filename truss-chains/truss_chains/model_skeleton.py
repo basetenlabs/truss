@@ -17,7 +17,7 @@ class TrussChainletModel:
     ) -> None:
         truss_metadata: definitions.TrussMetadata[
             UserConfigT
-        ] = definitions.TrussMetadata[UserConfigT].parse_obj(
+        ] = definitions.TrussMetadata[UserConfigT].model_validate(
             config["model_metadata"][definitions.TRUSS_CONFIG_CHAINS_KEY]
         )
         self._context = definitions.DeploymentContext[UserConfigT](
@@ -30,15 +30,13 @@ class TrussChainletModel:
     # Below illustrated code will be added by code generation.
 
     # def load(self) -> None:
-    #     logging.info(f"Loading Chainlet `SplitText`.")
-    #     self._chainlet = shared_chainlet.SplitText(context=self._context)
-
-    # async def predict(self, payload):
+    #     logging.info(f"Loading Chainlet `TextToNum`.")
+    #     self._chainlet = main.TextToNum(
+    #       mistral=stub.factory(MistralLLM, self._context))
+    #
+    # def predict(self, inputs: TextToNumInput) -> TextToNumOutput:
     #     with utils.exception_to_http_error(
-    #         include_stack=True, chainlet_name="SplitText"
+    #         include_stack=True, chainlet_name="TextToNum"
     #     ):
-    #         result = await self._chainlet.run_remote(
-    #             inputs=shared_chainlet.SplitTextInput.parse_obj(payload["inputs"]),
-    #             extra_arg=payload["extra_arg"],
-    #         )
-    #     return result[0].dict(), result[1]
+    #         result = self._chainlet.run_remote(data=inputs.data)
+    #     return TextToNumOutput((result,))

@@ -27,14 +27,19 @@ packages = [
 "Baseten" = "https://baseten.co"
 
 [tool.poetry.dependencies]
+autoflake = "<=2.2"# Not a dev dep, needed for chains code gen.
+black = "^22.6.0"# Not a dev dep, needed for chains code gen.
 blake3 = "^0.3.3"
 boto3 = "^1.34.85"
 fastapi = ">=0.109.1"
 google-cloud-storage = "2.10.0"
-httpx = "^0.24.1"
+httpcore = ">=1.0.5" # Need min version because of https://github.com/encode/httpx/issues/1171.
+httpx = ">=0.24.1"
 huggingface_hub = ">=0.19.4"
 inquirerpy = "^0.3.4"
+isort = "^5.10.1"# Not a dev dep, needed for chains code gen.
 Jinja2 = "^3.1.2"
+libcst = "<1.2.0"
 loguru = ">=0.7.2"
 msgpack = ">=1.0.2"
 msgpack-numpy = ">=0.4.8"
@@ -43,6 +48,7 @@ packaging = ">=20.9"
 pathspec = ">=0.9.0"
 psutil = ">=5.9.4"
 pydantic = ">=1.10.0"
+pytest-asyncio = "^0.23.6"
 python = ">=3.9,<3.12"
 python-json-logger = ">=2.0.2"
 python-on-whales = "^0.68.0"
@@ -52,9 +58,6 @@ rich-click = "^1.6.1"
 single-source = "^0.3.0"
 tenacity = "^8.0.1"
 watchfiles = "^0.19.0"
-libcst = "<1.2.0"
-autoflake = "<=2.2"
-pytest-asyncio = "^0.23.6"
 
 [tool.poetry.group.builder.dependencies]
 blake3 = "^0.3.3"
@@ -62,7 +65,7 @@ boto3 = "^1.26.157"
 click = "^8.0.3"
 fastapi = ">=0.109.1"
 google-cloud-storage = "2.10.0"
-httpx = "^0.24.1"
+httpx = ">=0.24.1"
 huggingface_hub = ">=0.19.4"
 Jinja2 = "^3.1.2"
 loguru = ">=0.7.2"
@@ -78,14 +81,12 @@ tenacity = "^8.0.1"
 uvicorn = "^0.24.0"
 
 [tool.poetry.dev-dependencies]
-black = "^22.6.0"
 coverage = "^6.4.1"
 dockerfile = "^3.2.0"
 flake8 = "^4.0.1"
 ipdb = "^0.13.9"
 ipykernel = "^6.16.0"
 ipython = "^7.16"
-isort = "^5.10.1"
 nbconvert = "^7.2.1"
 pre-commit = "^2.18.1"
 pytest = "7.2.0"
@@ -98,7 +99,7 @@ truss = 'truss.cli:truss_cli'
 
 [tool.poetry.group.dev.dependencies]
 flask = "^2.3.3"
-httpx = { extras = ["cli"], version = "^0.24.1" }
+httpx = { extras = ["cli"], version = "*" }
 mypy = "^1.0.0"
 pytest-split = "^0.8.1"
 requests-mock = ">=1.11.0"

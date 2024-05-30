@@ -24,7 +24,7 @@ FILE_EXT_RE = re.compile(r"\.([a-zA-Z0-9]+)\?")
 
 class EnqueueInput(pydantic.BaseModel):
     # This typo `media_for_transciption` is for backwards compatibility.
-    # Also this would ideally be `list[JobDescriptor]` instead of string...
+    # Also, this would ideally be `list[JobDescriptor]` instead of string...
     media_for_transciption: str
 
 
@@ -254,7 +254,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
         # When `Transcribe.run` is called with `async_predict` the async framework will
         # invoke the webhook, but it expects that the webhook does not need
         # authentication (instead will validate via payload signature).
-        # We can't run a chainlet (i.e. truss model) without requiring authentication
+        # We can't run a chainlet (i.e. truss model) without requiring authentication,
         # and we don't want to stand up and manage another service - so we basically
         # ignore async's webhook integration and "manually" call a webhook from here
         # where we can explicitly add the authentication.
@@ -270,15 +270,8 @@ class TranscribeWithWebhook(chains.ChainletBase):
             async for attempt in retrying:
                 with attempt:
                     if (num := attempt.retry_state.attempt_number) > 1:
-                        exc = None
-                        if (
-                            attempt.retry_state.outcome
-                            and attempt.retry_state.outcome.failed
-                        ):
-                            exc = attempt.retry_state.outcome.exception()
-                        logging.warning(
-                            f"Retrying `{self._transcribe.__name__}`: "
-                            f"attempt {num} due to {exc}."
+                        logging.info(
+                            f"Retrying `{self._transcribe.__name__}`, attempt {num}"
                         )
 
                     result = await self._transcribe(job_descr, params)
@@ -299,7 +292,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
         return result
 
 
-@chains.entrypoint
+@chains.mark_entrypoint
 class EnqueueBatch(chains.ChainletBase):
     """Accepts a request with multiple transcription jobs and starts the sub-jobs."""
 

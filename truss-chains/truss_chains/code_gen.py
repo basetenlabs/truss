@@ -26,11 +26,10 @@ workspace/
 `shared_lib` can only be imported on the remote if its installed as a pip
 requirement (site-package), it will not be copied from the local host.
 """
-
-
 import logging
 import os
 import pathlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -39,17 +38,31 @@ import textwrap
 from typing import Any, Iterable, Mapping, Optional
 
 import libcst
+import truss
 from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss_chains import definitions, model_skeleton, utils
 
-_TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
+INDENT = " " * 4
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
 _MODEL_FILENAME = "model.py"
 _MODEL_CLS_NAME = model_skeleton.TrussChainletModel.__name__
-
-
-INDENT = " " * 4
+_TRUSS_GIT = "git+https://github.com/basetenlabs/truss.git"
+_TRUSS_PIP_PATTERN = re.compile(
+    r"""
+    ^truss
+    (?:
+        \s*(==|>=|<=|!=|>|<)\s*   # Version comparison operators
+        \d+(\.\d+)*               # Version numbers (e.g., 1, 1.0, 1.0.0)
+        (?:                       # Optional pre-release or build metadata
+            (?:a|b|rc|dev)\d*
+            (?:\.post\d+)?
+            (?:\+[\w\.]+)?
+        )?
+    )?$
+""",
+    re.VERBOSE,
+)
 
 
 def _indent(text: str, num: int = 1) -> str:
@@ -76,6 +89,11 @@ def _format_python_file(file_path: pathlib.Path) -> None:
 class _Source(definitions.SafeModelNonSerializable):
     src: str
     imports: set[str] = set()
+
+
+def _update_src(new_source: _Source, src_parts: list[str], imports: set[str]) -> None:
+    src_parts.append(new_source.src)
+    imports.update(new_source.imports)
 
 
 def _gen_import_and_ref(raw_type: Any) -> _Source:
@@ -126,12 +144,58 @@ def _gen_chainlet_import_and_ref(
     return _gen_import_and_ref(chainlet_descriptor.chainlet_cls)
 
 
+# I/O used by Stubs and Truss models ###################################################
+
+
+def _get_input_model_name(chainlet_name: str) -> str:
+    return f"{chainlet_name}Input"
+
+
+def _get_output_model_name(chainlet_name: str) -> str:
+    return f"{chainlet_name}Output"
+
+
+def _gen_truss_input_pydantic(
+    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+) -> _Source:
+    imports = {"import pydantic"}
+    fields = []
+    for arg_name, arg_type in chainlet_descriptor.endpoint.input_names_and_types:
+        type_ref = _gen_type_import_and_ref(arg_type)
+        imports.update(type_ref.imports)
+        fields.append(f"{arg_name}: {type_ref.src}")
+
+    field_block = _indent("\n".join(fields))
+    model_name = _get_input_model_name(chainlet_descriptor.name)
+    src = f"class {model_name}(pydantic.BaseModel):\n{field_block}"
+    return _Source(src=src, imports=imports)
+
+
+def _gen_truss_output_pydantic(
+    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+) -> _Source:
+    imports = {"import pydantic"}
+    fields: list[str] = []
+    for i, output_type in enumerate(chainlet_descriptor.endpoint.output_types):
+        _update_src(_gen_type_import_and_ref(output_type), fields, imports)
+
+    model_name = _get_output_model_name(chainlet_descriptor.name)
+    root_type = f"tuple[{','.join(fields)}]"
+    src = f"{model_name} = pydantic.RootModel[{root_type}]"
+    return _Source(src=src, imports=imports)
+
+
 # Stub Gen #############################################################################
 
 
 def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
     """
-    E.g.: `async def run_remote(self, data: str, num_partitions: int) -> tuple[list, int]:`
+    E.g.:
+    ```
+    async def run_remote(
+        self, inputs: shared_chainlet.SplitTextInput, extra_arg: int
+    ) -> tuple[shared_chainlet.SplitTextOutput, int]:
+    ```
     """
     if endpoint.is_generator:
         # TODO: implement generator.
@@ -144,11 +208,9 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Sou
         imports.update(arg_ref.imports)
         args.append(f"{arg_name}: {arg_ref.src}")
 
-    outputs = []
+    outputs: list[str] = []
     for output_type in endpoint.output_types:
-        out_ref = _gen_type_import_and_ref(output_type)
-        outputs.append(out_ref.src)
-        imports.update(out_ref.imports)
+        _update_src(_gen_type_import_and_ref(output_type), outputs, imports)
 
     if len(outputs) == 1:
         output = outputs[0]
@@ -162,60 +224,37 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Sou
     )
 
 
-def _endpoint_body_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
+def _endpoint_body_src(
+    endpoint: definitions.EndpointAPIDescriptor, chainlet_name: str
+) -> _Source:
     """Generates source code for calling the stub and wrapping the I/O types.
 
     E.g.:
     ```
-    json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
-    json_result = await self._remote.predict_async(json_args)
-    return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
+    json_result = await self._remote.predict_async(
+        SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
+    return SplitTextOutput.model_validate(json_result).output
     ```
     """
     if endpoint.is_generator:
         raise NotImplementedError("Generator")
 
-    imports = set()
-    parts = []
-    # Pack arg list as json dictionary.
-    json_args = []
-    for arg_name, arg_type in endpoint.input_names_and_types:
-        if arg_type.is_pydantic:
-            json_args.append(f"'{arg_name}': {arg_name}.dict()")
-        else:
-            json_args.append(f"'{arg_name}': {arg_name}")
-    parts.append(f"json_args = {{{', '.join(json_args)}}}")
+    imports: set[str] = set()
+    args = [f"{arg_name}={arg_name}" for arg_name, _ in endpoint.input_names_and_types]
+    inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)}).model_dump()"
 
     # Invoke remote.
     if endpoint.is_async:
-        remote_call = "await self._remote.predict_async(json_args)"
+        remote_call = f"await self._remote.predict_async({inputs})"
     else:
-        remote_call = "self._remote.predict_sync(json_args)"
+        remote_call = f"self._remote.predict_sync({inputs})"
 
-    parts.append(f"json_result = {remote_call}")
-
+    parts = [f"json_result = {remote_call}"]
     # Unpack response and parse as pydantic models if needed.
+    output_model_name = _get_output_model_name(chainlet_name)
+    parts.append(f"return {output_model_name}.model_validate(json_result).root")
     if len(endpoint.output_types) == 1:
-        output_type = utils.expect_one(endpoint.output_types)
-        if output_type.is_pydantic:
-            out_ref = _gen_type_import_and_ref(output_type)
-            imports.update(out_ref.imports)
-            result = f"{out_ref.src}.parse_obj(json_result)"
-        else:
-            result = "json_result"
-    else:
-        outputs = []
-        for i, output_type in enumerate(endpoint.output_types):
-            if output_type.is_pydantic:
-                out_ref = _gen_type_import_and_ref(output_type)
-                outputs.append(f"{out_ref.src}.parse_obj(json_result[{i}])")
-                imports.update(out_ref.imports)
-            else:
-                outputs.append(f"json_result[{i}]")
-
-        result = ", ".join(outputs)
-
-    parts.append(f"return {result}")
+        parts[-1] = f"{parts[-1]}[0]"
     return _Source(src="\n".join(parts), imports=imports)
 
 
@@ -223,30 +262,43 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates stub class source, e.g:
 
     ```
-    from truss_chains import stub
+    <IMPORTS>
+
+    class SplitTextInput(pydantic.BaseModel):
+        inputs: shared_chainlet.SplitTextInput
+        extra_arg: int
+
+    class SplitTextOutput(pydantic.BaseModel):
+        output: tuple[shared_chainlet.SplitTextOutput, int]
 
     class SplitText(stub.StubBase):
-        def __init__(self, url: str, api_key: str) -> None:
-            self._remote = stub.BasetenSession(url, api_key)
-
-        async def run_remote(self, data: str, num_partitions: int) -> tuple[SplitTextOutput, int]:
-            json_args = {"inputs": inputs.dict(), "extra_arg": extra_arg}
-            json_result = await self._remote.predict_async(json_args)
-            return (SplitTextOutput.parse_obj(json_result[0]), json_result[1])
+        async def run_remote(
+            self, inputs: shared_chainlet.SplitTextInput, extra_arg: int
+        ) -> tuple[shared_chainlet.SplitTextOutput, int]:
+            json_result = await self._remote.predict_async(
+                SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
+            return SplitTextOutput.model_validate(json_result).root
     ```
     """
     imports = {"from truss_chains import stub"}
+    src_parts: list[str] = []
+    input_src = _gen_truss_input_pydantic(chainlet)
+    _update_src(input_src, src_parts, imports)
+    output_src = _gen_truss_output_pydantic(chainlet)
+    _update_src(output_src, src_parts, imports)
     signature = _endpoint_signature_src(chainlet.endpoint)
     imports.update(signature.imports)
-    body = _endpoint_body_src(chainlet.endpoint)
+    body = _endpoint_body_src(chainlet.endpoint, chainlet.name)
     imports.update(body.imports)
 
-    src_parts = [
-        f"class {chainlet.name}(stub.StubBase):",
-        _indent(signature.src),
-        _indent(body.src, 2),
-        "\n",
-    ]
+    src_parts.extend(
+        [
+            f"class {chainlet.name}(stub.StubBase):",
+            _indent(signature.src),
+            _indent(body.src, 2),
+            "\n",
+        ]
+    )
     return _Source(src="\n".join(src_parts), imports=imports)
 
 
@@ -254,12 +306,10 @@ def _gen_stub_src_for_deps(
     dependencies: Iterable[definitions.ChainletAPIDescriptor],
 ) -> Optional[_Source]:
     """Generates a source code and imports for stub classes."""
-    imports = set()
-    src_parts = []
+    imports: set[str] = set()
+    src_parts: list[str] = []
     for dep in dependencies:
-        stub_src = _gen_stub_src(dep)
-        imports.update(stub_src.imports)
-        src_parts.append(stub_src.src)
+        _update_src(_gen_stub_src(dep), src_parts, imports)
 
     if not (imports or src_parts):
         return None
@@ -343,10 +393,19 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         # TODO: implement generator.
         raise NotImplementedError("Generator.")
 
-    imports = set()
-    parts = []
+    imports: set[str] = set()
+    parts: list[str] = []
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
-    parts.append(f"{def_str} predict(self, payload):")
+    input_model_name = _get_input_model_name(chainlet_descriptor.name)
+    output_model_name = _get_output_model_name(chainlet_descriptor.name)
+    parts.append(
+        f"{def_str} predict(self, inputs: {input_model_name}) "
+        f"-> {output_model_name}:"
+    )
+
+    args = []
+    for arg_name, _ in chainlet_descriptor.endpoint.input_names_and_types:
+        args.append(f"{arg_name}=inputs.{arg_name}")
     # Add error handling context manager:
     parts.append(
         _indent(
@@ -354,35 +413,19 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
             f'include_stack=True, chainlet_name="{chainlet_descriptor.name}"):'
         )
     )
-    # Convert items from json payload dict to an arg-list, parsing pydantic models.
-    args = []
-    for arg_name, arg_type in chainlet_descriptor.endpoint.input_names_and_types:
-        if arg_type.is_pydantic:
-            type_ref = _gen_type_import_and_ref(arg_type)
-            imports.update(type_ref.imports)
-            args.append(f"{arg_name}={type_ref.src}.parse_obj(payload['{arg_name}'])")
-        else:
-            args.append(f"{arg_name}=payload['{arg_name}']")
-
     # Invoke Chainlet.
     maybe_await = "await " if chainlet_descriptor.endpoint.is_async else ""
-    args_src = ",".join(args)
-    run = chainlet_descriptor.endpoint.name
-    parts.append(_indent(f"result = {maybe_await}self._chainlet.{run}({args_src})", 2))
-
-    # Return as json tuple, serialize pydantic models.
+    run_remote = chainlet_descriptor.endpoint.name
+    parts.append(
+        _indent(
+            f"result = {maybe_await}self._chainlet.{run_remote}({','.join(args)})", 2
+        )
+    )
     if len(chainlet_descriptor.endpoint.output_types) == 1:
-        output_type = chainlet_descriptor.endpoint.output_types[0]
-        result = "result.dict()" if output_type.is_pydantic else "result"
+        result_pydantic = f"{output_model_name}((result,))"
     else:
-        result_parts = [
-            f"result[{i}].dict()" if t.is_pydantic else f"result[{i}]"
-            for i, t in enumerate(chainlet_descriptor.endpoint.output_types)
-        ]
-        result = f"{', '.join(result_parts)}"
-
-    parts.append(_indent(f"return {result}"))
-
+        result_pydantic = f"{output_model_name}(result)"
+    parts.append(_indent(f"return {result_pydantic}"))
     return _Source(src="\n".join(parts), imports=imports)
 
 
@@ -432,16 +475,13 @@ def _gen_truss_chainlet_model(
     )
     model_class_src = libcst.Module(body=[class_definition]).code
 
-    if issubclass(chainlet_descriptor.user_config_type.raw, type(None)):
+    if utils.issubclass_safe(chainlet_descriptor.user_config_type.raw, type(None)):
         userconfig_pin = "UserConfigT = type(None)"
     else:
         user_config_ref = _gen_type_import_and_ref(chainlet_descriptor.user_config_type)
         imports.update(user_config_ref.imports)
         userconfig_pin = f"UserConfigT = {user_config_ref.src}"
     return _Source(src=f"{userconfig_pin}\n\n{model_class_src}", imports=imports)
-
-
-# Remote Chainlet Gen #################################################################
 
 
 def _gen_truss_chainlet_file(
@@ -453,15 +493,18 @@ def _gen_truss_chainlet_file(
     file_path = chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / _MODEL_FILENAME
     file_path.parent.mkdir(parents=True, exist_ok=True)
     (chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / "__init__.py").touch()
-    imports = set()
-    src_parts = []
+    imports: set[str] = set()
+    src_parts: list[str] = []
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
-        imports.update(maybe_stub_src.imports)
-        src_parts.append(maybe_stub_src.src)
+        _update_src(maybe_stub_src, src_parts, imports)
 
+    input_src = _gen_truss_input_pydantic(chainlet_descriptor)
+    _update_src(input_src, src_parts, imports)
+    output_src = _gen_truss_output_pydantic(chainlet_descriptor)
+    _update_src(output_src, src_parts, imports)
     model_src = _gen_truss_chainlet_model(chainlet_descriptor)
-    src_parts.append(model_src.src)
-    imports.update(model_src.imports)
+    _update_src(model_src, src_parts, imports)
+
     imports_str = "\n".join(imports)
     src_str = "\n".join(src_parts)
     file_path.write_text(f"{imports_str}\n{src_str}")
@@ -475,14 +518,14 @@ def _gen_truss_chainlet_file(
 def _copy_python_source_files(root_dir: pathlib.Path, dest_dir: pathlib.Path) -> None:
     """Copy all python files under root recursively, but skips pycache."""
 
-    def python_files_only(path, names):
+    def python_files_only(_, names):
         return [name for name in names if name == "__pycache__"]
 
     shutil.copytree(root_dir, dest_dir, ignore=python_files_only, dirs_exist_ok=True)
 
 
 def _make_requirements(image: definitions.DockerImage) -> list[str]:
-    """Merges file- and list-based requirements and adds truss.git if not present."""
+    """Merges file- and list-based requirements and adds truss git if not present."""
     pip_requirements: set[str] = set()
     if image.pip_requirements_file:
         pip_requirements.update(
@@ -494,14 +537,17 @@ def _make_requirements(image: definitions.DockerImage) -> list[str]:
         )
     pip_requirements.update(image.pip_requirements)
 
-    has_truss_pypy = any(req == "truss" for req in pip_requirements)
+    has_truss_pypy = any(
+        bool(_TRUSS_PIP_PATTERN.match(req)) for req in pip_requirements
+    )
     has_truss_git = any(_TRUSS_GIT in req for req in pip_requirements)
 
     if not (has_truss_git or has_truss_pypy):
+        truss_pip = f"truss=={truss.version()}"
         logging.info(
-            f"Truss not found in pip requirements, auto-adding: `{_TRUSS_GIT}`."
+            f"Truss not found in pip requirements, auto-adding: `{truss_pip}`."
         )
-        pip_requirements.add(_TRUSS_GIT)
+        pip_requirements.add(truss_pip)
 
     return sorted(pip_requirements)
 
@@ -554,7 +600,9 @@ def _make_truss_config(
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
         user_config=user_config, chainlet_to_service=chainlet_to_service
     )
-    config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = chains_metadata.dict()
+    config.model_metadata[
+        definitions.TRUSS_CONFIG_CHAINS_KEY
+    ] = chains_metadata.model_dump()
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
