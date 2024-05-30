@@ -180,7 +180,10 @@ def _gen_truss_output_pydantic(
         _update_src(_gen_type_import_and_ref(output_type), fields, imports)
 
     model_name = _get_output_model_name(chainlet_descriptor.name)
-    root_type = f"tuple[{','.join(fields)}]"
+    if len(fields) > 1:
+        root_type = f"tuple[{','.join(fields)}]"
+    else:
+        root_type = fields[0]
     src = f"{model_name} = pydantic.RootModel[{root_type}]"
     return _Source(src=src, imports=imports)
 
@@ -188,7 +191,9 @@ def _gen_truss_output_pydantic(
 # Stub Gen #############################################################################
 
 
-def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Source:
+def _stub_endpoint_signature_src(
+    endpoint: definitions.EndpointAPIDescriptor,
+) -> _Source:
     """
     E.g.:
     ```
@@ -224,7 +229,7 @@ def _endpoint_signature_src(endpoint: definitions.EndpointAPIDescriptor) -> _Sou
     )
 
 
-def _endpoint_body_src(
+def _stub_endpoint_body_src(
     endpoint: definitions.EndpointAPIDescriptor, chainlet_name: str
 ) -> _Source:
     """Generates source code for calling the stub and wrapping the I/O types.
@@ -253,8 +258,6 @@ def _endpoint_body_src(
     # Unpack response and parse as pydantic models if needed.
     output_model_name = _get_output_model_name(chainlet_name)
     parts.append(f"return {output_model_name}.model_validate(json_result).root")
-    if len(endpoint.output_types) == 1:
-        parts[-1] = f"{parts[-1]}[0]"
     return _Source(src="\n".join(parts), imports=imports)
 
 
@@ -286,9 +289,9 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
     _update_src(input_src, src_parts, imports)
     output_src = _gen_truss_output_pydantic(chainlet)
     _update_src(output_src, src_parts, imports)
-    signature = _endpoint_signature_src(chainlet.endpoint)
+    signature = _stub_endpoint_signature_src(chainlet.endpoint)
     imports.update(signature.imports)
-    body = _endpoint_body_src(chainlet.endpoint, chainlet.name)
+    body = _stub_endpoint_body_src(chainlet.endpoint, chainlet.name)
     imports.update(body.imports)
 
     src_parts.extend(
@@ -421,10 +424,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
             f"result = {maybe_await}self._chainlet.{run_remote}({','.join(args)})", 2
         )
     )
-    if len(chainlet_descriptor.endpoint.output_types) == 1:
-        result_pydantic = f"{output_model_name}((result,))"
-    else:
-        result_pydantic = f"{output_model_name}(result)"
+    result_pydantic = f"{output_model_name}(result)"
     parts.append(_indent(f"return {result_pydantic}"))
     return _Source(src="\n".join(parts), imports=imports)
 
