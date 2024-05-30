@@ -36,7 +36,7 @@ def map_to_supported_python_version(python_version: str) -> str:
     python_major_version = int(python_version[2:3])
     python_minor_version = int(python_version[3:])
 
-    if python_major_version > 3:
+    if python_major_version != 3:
         raise NotImplementedError("Only python version 3 is supported")
 
     if python_minor_version > 11:
