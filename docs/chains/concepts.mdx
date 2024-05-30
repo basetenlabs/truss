@@ -2,8 +2,9 @@
 title: Concepts & Tips
 ---
 
-{/* This page is currently a collection of content that has not found a good other place or is WIP. Content might be split out to other pages for better organizaiton. */}
-
+{/* This page is currently a collection of content that has not found a good
+other place or is WIP. Content might be split out to other pages for better
+organizaiton. */}
 
 <Warning>*Chains* is a beta feature and subject to breaking changes.</Warning>
 
@@ -15,43 +16,63 @@ import TOC from '/snippets/chains/TOC.mdx';
 
 ## Chainlet
 
-The basic building block in a Truss Chain: it performs a specific computation. For example, running a
-large ML model, but it can also be a simple function that transforms data. Most importantly: a *Chainlet* can
+The basic building block in a Truss Chain: it performs a specific computation.
+For example, running a
+large ML model, but it can also be a simple function that transforms data. Most
+importantly: a *Chainlet* can
 call other *Chainlets* - which will be *remote calls* when deployed.
-Each *Chainlet* is intended to be deployed remotely, with potentially multiple replicas and running in its own
-environment (e.g. with specific compute hardware, autoscaling and software dependencies).
+Each *Chainlet* is intended to be deployed remotely, with potentially multiple
+replicas and running in its own
+environment (e.g. with specific compute hardware, autoscaling and software
+dependencies).
 
 <img src="/images/audio-transcription-chainlet.png" />
 
 ## Chain
 
-A *Chain* is the result of connecting multiple *Chainlets* to perform an overarching task.
-Each *Chain* has an *entrypoint* Chainlet to which requests are made by the client.
-Internally, the different Chainlets call each other, thereby structuring or distributing the overall computation -
+A *Chain* is the result of connecting multiple *Chainlets* to perform an
+overarching task.
+Each *Chain* has an *entrypoint* Chainlet to which requests are made by the
+client.
+Internally, the different Chainlets call each other, thereby structuring or
+distributing the overall computation -
 and eventually the *entrypoint* returns the final result back to the client.
 You can imagine this like a "flow chart" or "computational graph".
 
-Here's an example of a Chain that takes a large audio file, splits it into smaller chunks, and transcribes each chunk
- *in parallel* to speed up the transcription process - and then aggregates the results.
+Here's an example of a Chain that takes a large audio file, splits it into
+smaller chunks, and transcribes each chunk
+*in parallel* to speed up the transcription process - and then aggregates the
+results.
 
 <img src="/images/audio-transcription-chain.png" />
 
-
 ## Note for Truss Model users
 
- Chains is a fully re-designed SDK for writing ML models to be deployed on Baseten. It carries over some of the
-features and concepts: all the good of Baseten (resource provisioning, autoscaling, fast cold starts and more) and
-many of the config options from [Truss config](reference/config#yaml-syntax-help).
+Chains is a fully re-designed SDK for writing ML models to be deployed on
+Baseten. It carries over some of the
+features and concepts: all the good of Baseten (resource provisioning,
+autoscaling, fast cold starts and more) and
+many of the config options
+from [Truss config](reference/config#yaml-syntax-help).
 But it is not the same:
-* Instead of creating a "truss directory" for a single monolithic model with a fixed structure of required files,
-Chains encourages flexible and modular code organization. Specifically the development and interplay of
-multiple "component models" (called *Chainlets*) in a coherent python code base benefitting from code completion
-and type checking.
-* The main focus - and new functionality - is to facilitate the definition of flexible multi-component workloads such
-as multi-step pipelines or branching computational graphs.
-* The Truss config YAML file has been replaced by inlining config in your code alongside with implementation.
-A future feature in planning is to support file-based overrides of those config values.
+
+* Instead of creating a "truss directory" for a single monolithic model with a
+  fixed structure of required files,
+  Chains encourages flexible and modular code organization. Specifically the
+  development and interplay of
+  multiple "component models" (called *Chainlets*) in a coherent python code
+  base benefitting from code completion
+  and type checking.
+* The main focus - and new functionality - is to facilitate the definition of
+  flexible multi-component workloads such
+  as multi-step pipelines or branching computational graphs.
+* The Truss config YAML file has been replaced by inlining config in your code
+  alongside with implementation.
+  A future feature in planning is to support file-based overrides of those
+  config values.
 * In the beta phase, not all Truss config options are integrated yet.
-* In the beta phase, *Chainlets* are converted to Truss models and run as such on Baseten. This might be helpful
-for technical understanding, but it should be seen as an implementation detail which might change in the future.
-Conceptually they are not the same: `Chainlet != TrussModel`.
+* In the beta phase, *Chainlets* are converted to Truss models and run as such
+  on Baseten. This might be helpful
+  for technical understanding, but it should be seen as an implementation detail
+  which might change in the future.
+  Conceptually they are not the same: `Chainlet != TrussModel`.

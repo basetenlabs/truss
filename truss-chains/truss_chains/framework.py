@@ -763,13 +763,13 @@ def import_target(
             if len(entrypoints) == 0:
                 raise ValueError(
                     f"No `target_name` was specified and no chainlet in `{module_path}` "
-                    "was tagged with `@chains.entrypoint`. Tag one chainlet or provide "
+                    "was tagged with `@chains.mark_entrypoint`. Tag one chainlet or provide "
                     "the chainlet class name."
                 )
             elif len(entrypoints) > 1:
                 raise ValueError(
                     "`target_name` was not specified and multiple chainlets in "
-                    f"`{module_path}` were tagged with `@chains.entrypoint`. Tag one "
+                    f"`{module_path}` were tagged with `@chains.mark_entrypoint`. Tag one "
                     "chainlet or provide the chainlet class name. Found chainlets: \n"
                     f"{entrypoints}"
                 )

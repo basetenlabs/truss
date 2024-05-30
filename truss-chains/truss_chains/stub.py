@@ -51,9 +51,8 @@ class BasetenSession:
         for attempt in retrying:
             with attempt:
                 if (num := attempt.retry_state.attempt_number) > 1:
-                    exc = attempt.retry_state.outcome.exception()
-                    logging.warning(
-                        f"Retrying `{self.name}`: attempt {num} due to {exc}."
+                    logging.info(
+                        f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
                     )
                 return utils.handle_response(
                     self._client_sync.post(
@@ -71,9 +70,8 @@ class BasetenSession:
         async for attempt in retrying:
             with attempt:
                 if (num := attempt.retry_state.attempt_number) > 1:
-                    exc = attempt.retry_state.outcome.exception()
-                    logging.warning(
-                        f"Retrying `{self.name}`: attempt {num} due to {exc}."
+                    logging.info(
+                        f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
                     )
                 return utils.handle_response(
                     await self._client_async.post(

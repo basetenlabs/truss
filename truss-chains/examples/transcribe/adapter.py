@@ -270,15 +270,8 @@ class TranscribeWithWebhook(chains.ChainletBase):
             async for attempt in retrying:
                 with attempt:
                     if (num := attempt.retry_state.attempt_number) > 1:
-                        exc = None
-                        if (
-                            attempt.retry_state.outcome
-                            and attempt.retry_state.outcome.failed
-                        ):
-                            exc = attempt.retry_state.outcome.exception()
-                        logging.warning(
-                            f"Retrying `{self._transcribe.__name__}`: "
-                            f"attempt {num} due to {exc}."
+                        logging.info(
+                            f"Retrying `{self._transcribe.__name__}`, attempt {num}"
                         )
 
                     result = await self._transcribe(job_descr, params)
