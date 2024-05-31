@@ -132,8 +132,8 @@ def test_model_load_failure_truss():
 
 @pytest.mark.integration
 def test_concurrency_truss():
-    # Tests that concurrency limits work correctly
     with ensure_kill_all():
+        # Tests that concurrency limits work correctly
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
 
         truss_dir = truss_root / "test_data" / "test_concurrency_truss"
@@ -146,24 +146,26 @@ def test_concurrency_truss():
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
         # Each request takes 2 seconds, for this thread, we allow
-        # a concurrency of 2. This means the first two requests will
+        # a concurrency of 2. This means the first 50 requests will
         # succeed within the 2 seconds, and the third will fail, since
-        # it cannot start until the first two have completed.
+        # it cannot start until one of the first 50 have completed, since the predict_concurrency is 50.
         def make_request():
-            requests.post(full_url, json={}, timeout=3)
+            response = requests.post(full_url, json={}, timeout=3)
+            response.raise_for_status()
 
-        successful_thread_1 = PropagatingThread(target=make_request)
-        successful_thread_2 = PropagatingThread(target=make_request)
+        successful_threads = [PropagatingThread(target=make_request) for _ in range(50)]
+
         failed_thread = PropagatingThread(target=make_request)
 
-        successful_thread_1.start()
-        successful_thread_2.start()
+        for successful_thread in successful_threads:
+            successful_thread.start()
+
         # Ensure that the thread to fail starts a little after the others
         time.sleep(0.2)
         failed_thread.start()
+        for successful_thread in successful_threads:
+            successful_thread.join()
 
-        successful_thread_1.join()
-        successful_thread_2.join()
         with pytest.raises(requests.exceptions.ReadTimeout):
             failed_thread.join()
 

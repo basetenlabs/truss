@@ -1,2 +1,2 @@
 runtime:
-  predict_concurrency: 2
+  predict_concurrency: 50
