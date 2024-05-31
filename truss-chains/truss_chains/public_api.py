@@ -54,7 +54,7 @@ class ChainletBase(definitions.ABCChainlet):
             cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
 
 
-def entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]:
+def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]:
     return framework.entrypoint(cls)
 
 

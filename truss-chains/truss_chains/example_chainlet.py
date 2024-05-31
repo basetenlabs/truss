@@ -25,6 +25,7 @@ class DummyExample(chains.ChainletBase):
     ) -> None:
         self._data_generator = data_generator
         self._data_splitter = splitter
+        self._context = context
 
     def run_remote(self) -> list[str]:
         return self._data_splitter.run_remote(self._data_generator.run_remote())

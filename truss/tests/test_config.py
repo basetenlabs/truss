@@ -350,10 +350,9 @@ def test_from_yaml_secrets_as_list():
 
 
 def test_from_yaml_python_version():
-    yaml_path = Path("test.yaml")
     invalid_py_version_data = {
         "description": "this is a test",
-        "python_version": "py38",
+        "python_version": "py37",
     }
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
         yaml_path = Path(yaml_file.name)

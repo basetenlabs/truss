@@ -24,6 +24,10 @@ class BasetenSession:
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
 
+    @property
+    def name(self) -> str:
+        return self._service_descriptor.name
+
     @functools.cached_property
     def _client_sync(self) -> httpx.Client:
         return httpx.Client(
@@ -54,7 +58,7 @@ class BasetenSession:
                     self._client_sync.post(
                         self._service_descriptor.predict_url, json=json_payload
                     ),
-                    self._service_descriptor.name,
+                    self.name,
                 )
 
     async def predict_async(self, json_payload):
@@ -73,7 +77,7 @@ class BasetenSession:
                     await self._client_async.post(
                         self._service_descriptor.predict_url, json=json_payload
                     ),
-                    self._service_descriptor.name,
+                    self.name,
                 )
 
 
