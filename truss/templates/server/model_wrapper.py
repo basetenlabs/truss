@@ -93,11 +93,10 @@ class ModelWrapper:
         self.ready = False
         self._load_lock = Lock()
         self._status = ModelWrapper.Status.NOT_READY
-        self._predict_semaphore = Semaphore(
-            self._config.get("runtime", {}).get(
-                "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
-            )
+        self.predict_concurrency = self._config.get("runtime", {}).get(
+            "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
         )
+        self._predict_semaphore = Semaphore(self.predict_concurrency)
         self._background_tasks: Set[asyncio.Task] = set()
         self.truss_schema: TrussSchema = None
 
@@ -287,6 +286,12 @@ class ModelWrapper:
             Generator: In case of streaming response
         """
 
+        # Note that we set the thread limiter here because it can only be done in an
+        # async context, and this is the entrypoint to prediction.
+
+        to_thread.current_default_thread_limiter().total_tokens = (
+            self.predict_concurrency
+        )
         # The streaming read timeout is the amount of time in between streamed chunks before a timeout is triggered
         streaming_read_timeout = self._config.get("runtime", {}).get(
             "streaming_read_timeout", STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS
