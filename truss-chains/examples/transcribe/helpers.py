@@ -1,16 +1,17 @@
 import asyncio
 import base64
+import datetime
 import io
 import itertools
 import logging
 import signal
 import wave
 from asyncio import subprocess
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Iterable, Optional, TypeVar
 
 import data_types
 import numpy as np
-import pandas as pd
+import vad
 from truss_chains import utils
 
 _WAV_HEADER_NUM_BYTES = 78
@@ -19,17 +20,38 @@ _INJECT_ERRORS = False
 _DEBUG_PLOTS = False
 
 
-def generate_time_chunks(
-    duration_sec: int, macro_chunk_size_sec: int
-) -> list[tuple[str, int]]:
-    """E.g. [('00:00:00', 120), ('00:02:00', 120), ...]."""
-    times = pd.date_range(
-        "00:00:00",
-        periods=(duration_sec // macro_chunk_size_sec) + 1,
-        freq=f"{macro_chunk_size_sec}s",
+def _format_time_ffmpeg(seconds: float) -> str:
+    duration = datetime.timedelta(seconds=seconds)
+    days, remainder = divmod(duration.total_seconds(), 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    milliseconds = int((seconds % 1) * 1000)
+    formatted_time = (
+        f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}.{milliseconds:03}"
     )
-    start_times = times.strftime("%H:%M:%S").tolist()
-    return list([(t, macro_chunk_size_sec) for t in start_times])
+    return formatted_time
+
+
+def generate_time_chunks(
+    duration_sec: float, macro_chunk_size_sec: int, overlap_sec: int
+) -> list[data_types.ChunkInfo]:
+    step_sec = macro_chunk_size_sec + overlap_sec
+    start_times = np.arange(0, duration_sec, macro_chunk_size_sec)
+    end_times = np.minimum(start_times + step_sec, duration_sec)
+    chunks = []
+    for i, (start, end) in enumerate(zip(start_times, end_times)):
+        chunks.append(
+            data_types.ChunkInfo(
+                start_time_sec=start,
+                end_time_sec=end,
+                start_time_str=_format_time_ffmpeg(float(start)),
+                duration_sec=end - start,
+                is_last=False,
+                macro_chunk=i,
+            )
+        )
+    chunks[-1].is_last = True
+    return chunks
 
 
 async def query_source_length_secs(media_url: str) -> float:
@@ -66,11 +88,6 @@ def _dbg_show_waveform(data, x_marker):
     plt.plot(data)
     plt.vlines(x_marker, 0, 20000, colors=["red"])
     plt.grid()
-
-
-def _time_str_to_sec(time_str: str) -> float:
-    time_delta = pd.to_timedelta(time_str)
-    return time_delta.total_seconds()
 
 
 def _wav_block_to_b64(wav_block: bytes, wav_info: data_types.WavInfo) -> str:
@@ -132,7 +149,10 @@ async def _extract_wav_info(
 
 
 def _find_silent_split_point(
-    wav_block: bytes, smoothing_num_samples: int, wav_info: data_types.WavInfo
+    wav_block: bytes,
+    smoothing_num_samples: int,
+    wav_info: data_types.WavInfo,
+    vad_model: vad.VAD,
 ) -> int:
     # Note: this function uses both indices w.r.t to the bytes array and the numpy
     # array, with `bytes_per_sample` as a conversion factor. To avoid confusion
@@ -148,6 +168,8 @@ def _find_silent_split_point(
     assert wav_info.bytes_per_sample == 2  # For int16.
     data = np.frombuffer(wav_block[half_index_bytes:], dtype=np.int16)
     assert data.ndim == 1
+    # TODO: doesn't give very good results so far.
+    # vad_model.get_speech_timestamps(wav_block, data)
     # Offset by one for correct index calculation.
     cumsum = np.zeros(shape=len(data) + 1, dtype=np.float32)
     # Cumsum is a faster way to calculate convolution with box filter.
@@ -181,16 +203,14 @@ class DownloadSubprocess:
     """
 
     media_url: str
-    start_time: str
-    duration_sec: int
+    chunk_info: data_types.ChunkInfo
     _ffmpeg_command: str
     _process: Optional[subprocess.Process]
 
     def __init__(
         self,
         media_url: str,
-        start_time: str,
-        duration_sec: int,
+        chunk_info: data_types.ChunkInfo,
         wav_sampling_rate_hz: int,
     ) -> None:
         # -af "pan=mono|c0=0.5*c0+0.5*c1": Applies an audio filter to downmix to mono
@@ -200,8 +220,8 @@ class DownloadSubprocess:
         #  include them accordingly.
         ffmpeg_command = (
             f"ffmpeg -i {media_url} "
-            f"-ss {start_time} "  # seek time stamp.
-            f"-t {duration_sec} "
+            f"-ss {chunk_info.start_time_str} "  # seek time stamp.
+            f"-t {chunk_info.duration_sec} "
             f"-vn "  # Disables video recording.
             f"-acodec pcm_s16le "  # Audio codec: PCM signed 16-bit little endian.
             f"-ar {wav_sampling_rate_hz} "
@@ -211,8 +231,7 @@ class DownloadSubprocess:
             f"-"  # -: write output to stdout.
         )
         self.media_url = media_url
-        self.start_time = start_time
-        self.duration_sec = duration_sec
+        self.chunk_info = chunk_info
         self._ffmpeg_command = ffmpeg_command
         self._process = None
 
@@ -282,10 +301,13 @@ class DownloadSubprocess:
 async def wav_chunker(
     params: data_types.TranscribeParams,
     download: DownloadSubprocess,
-    macro_chunk_index: int,
-) -> AsyncIterator[tuple[data_types.SegmentInfo, str]]:
+    vad_model: vad.VAD,
+) -> AsyncIterator[tuple[data_types.ChunkInfo, str]]:
     """Consumes the download stream and yields small chunks of b64-encoded wav."""
     wav_info, initial_audio_data = await _extract_wav_info(download.wav_stream)
+    if params.macro_chunk_overlap_sec > 0:
+        # TODO: find consistent split point chunks in overlap area, skip last.
+        raise NotImplementedError("macro_chunk_overlap_sec")
     assert wav_info.sampling_rate_hz == params.wav_sampling_rate_hz
     assert wav_info.num_channels == 1
     micro_chunk_num_bytes = wav_info.get_chunk_size_bytes(params.micro_chunk_size_sec)
@@ -295,9 +317,9 @@ async def wav_chunker(
     # likely to split anywhere in the second half of the maximal micro chunk length.
     # I.e. each chunk is on average 3/4 of the maximal size.
     approx_num_micro_chunks = int(
-        np.ceil(download.duration_sec / params.micro_chunk_size_sec * 4 / 3)
+        np.ceil(download.chunk_info.duration_sec / params.micro_chunk_size_sec * 4 / 3)
     )
-    start_time_sec = _time_str_to_sec(download.start_time)
+    start_time_sec = download.chunk_info.start_time_sec
     for i in itertools.count():
         required_read = micro_chunk_num_bytes - len(wav_block_buffer)
         try:
@@ -318,22 +340,26 @@ async def wav_chunker(
                 wav_block_buffer,
                 params.silence_detection_smoothing_num_samples,
                 wav_info,
+                vad_model,
             )
 
         micro_chunk = wav_block_buffer[:split_index]
         duration_sec = wav_info.get_chunk_duration_sec(len(micro_chunk))
         end_time_sec = start_time_sec + duration_sec
-        seg_info = data_types.SegmentInfo(
+        seg_info = data_types.ChunkInfo(
             start_time_sec=start_time_sec,
             end_time_sec=end_time_sec,
             duration_sec=end_time_sec - start_time_sec,
-            macro_chunk=macro_chunk_index,
+            start_time_str=_format_time_ffmpeg(start_time_sec),
+            is_last=download.chunk_info.is_last
+            and end_time_sec == download.chunk_info.end_time_sec,
+            macro_chunk=download.chunk_info.macro_chunk,
             micro_chunk=i,
         )
         audio_b64 = _wav_block_to_b64(micro_chunk, wav_info)
         split_percentage = split_index / len(wav_block_buffer) * 100
         logging.info(
-            f"Macro-chunk [{macro_chunk_index:03}]: starting micro-chunk "
+            f"Macro-chunk [{download.chunk_info.macro_chunk:03}]: starting micro-chunk "
             f"[{i + 1:03}/~{approx_num_micro_chunks:03}], `{len(micro_chunk)}` "
             f"bytes ({len(audio_b64)} as base64) duration="
             f"{duration_sec:.2f}s, split at {split_percentage:.1f}%."
@@ -344,3 +370,24 @@ async def wav_chunker(
 
         start_time_sec = end_time_sec
         wav_block_buffer = wav_block_buffer[split_index:]
+
+
+def convert_whisper_segments(
+    whisper_result: data_types.WhisperResult, chunk_info: data_types.ChunkInfo
+) -> Iterable[data_types.Segment]:
+    for whisper_segment in whisper_result.segments:
+        segment = data_types.Segment(
+            start_time_sec=chunk_info.start_time_sec + whisper_segment.start_time_sec,
+            end_time_sec=chunk_info.start_time_sec + whisper_segment.end_time_sec,
+            text=whisper_segment.text,
+            language=whisper_result.language,
+            language_code=whisper_result.language_code,
+        )
+        yield segment
+
+
+_T = TypeVar("_T")
+
+
+async def gather(tasks: Iterable[asyncio.Task[_T]]) -> list[_T]:
+    return await asyncio.gather(*tasks)

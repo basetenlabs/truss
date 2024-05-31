@@ -17,6 +17,9 @@ class TranscribeParams(pydantic.BaseModel):
         description="This is the top-level splitting into larger 'macro' chunks (each "
         "will be split again into smaller 'micro chunks' to send to whisper).",
     )
+    macro_chunk_overlap_sec: int = pydantic.Field(
+        0, description="Overlap to avoid cutting off words at the end of a macro-chunk."
+    )
     micro_chunk_size_sec: int = pydantic.Field(
         5,
         description="Each macro-chunk is split into micro-chunks. When using silence "
@@ -47,20 +50,22 @@ class JobDescriptor(pydantic.BaseModel):
     status: Optional[JobStatus] = None
 
 
-class Segment(pydantic.BaseModel):
-    # Do not change, taken from existing App.
-    start_time_sec: float = pydantic.Field(..., description="In seconds.")
-    end_time_sec: float = pydantic.Field(..., description="In seconds.")
+class _BaseSegment(pydantic.BaseModel):
+    start_time_sec: float
+    end_time_sec: float
     text: str
-    language: str = pydantic.Field(..., description="E.g. 'English'")
-    bcp47_key: str = pydantic.Field(
+
+
+class Segment(_BaseSegment):
+    language: Optional[str]
+    language_code: Optional[str] = pydantic.Field(
         ...,
         description="IETF language tag, e.g. 'en', see. "
         "https://en.wikipedia.org/wiki/IETF_language_tag.",
     )
 
 
-class Result(pydantic.BaseModel):
+class TranscribeOutput(pydantic.BaseModel):
     job_descr: JobDescriptor
     segments: list[Segment]
     input_duration_sec: float
@@ -69,34 +74,36 @@ class Result(pydantic.BaseModel):
 
 
 # Internal Models ######################################################################
-class WhisperOutput(pydantic.BaseModel):
-    text: str
-    language: str
-    bcp47_key: str = pydantic.Field(
+
+
+class WhisperSegment(_BaseSegment):
+    pass
+
+
+class WhisperResult(pydantic.BaseModel):
+    segments: list[WhisperSegment]
+    language: Optional[str]
+    language_code: Optional[str] = pydantic.Field(
         ...,
         description="IETF language tag, e.g. 'en', see. "
         "https://en.wikipedia.org/wiki/IETF_language_tag.",
     )
 
 
-class SegmentInfo(pydantic.BaseModel):
+class ChunkInfo(pydantic.BaseModel):
     start_time_sec: float
     end_time_sec: float
     duration_sec: float
-    macro_chunk: Optional[int] = None
+    start_time_str: str
+    is_last: bool
+    macro_chunk: int
     micro_chunk: Optional[int] = None
+    processing_duration: Optional[float] = None
 
 
-class SegmentInternal(pydantic.BaseModel):
-    transcription: WhisperOutput
-    segment_info: SegmentInfo
-
-
-class TranscribeOutput(pydantic.BaseModel):
-    segments: list[SegmentInternal]
-    input_duration_sec: float
-    processing_duration_sec: float
-    speedup: float
+class SegmentList(pydantic.BaseModel):
+    segments: list[Segment]
+    chunk_info: ChunkInfo
 
 
 class WavInfo(pydantic.BaseModel):

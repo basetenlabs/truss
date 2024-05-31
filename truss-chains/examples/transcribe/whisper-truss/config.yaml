@@ -1,0 +1,28 @@
+external_package_dirs:
+- ../../../../../fde/whisper-trt/src
+model_name: Whisper - 2
+python_version: py310
+requirements:
+- --extra-index-url https://pypi.nvidia.com
+- tensorrt_llm==0.10.0.dev2024042300
+- hf_transfer
+- janus
+- kaldialign
+- librosa
+- mpi4py==3.1.4
+- safetensors
+- soundfile
+- tiktoken
+- torchaudio
+- async-batcher>=0.2.0
+- pydantic>=2.7.1
+system_packages:
+- python3.10-venv
+- openmpi-bin
+- libopenmpi-dev
+resources:
+  accelerator: A10G
+secrets:
+  hf_access_token: null
+runtime:
+  predict_concurrency: 128

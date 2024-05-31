@@ -253,6 +253,7 @@ def _stub_endpoint_body_src(
     parts = [f"json_result = {remote_call}"]
     # Unpack response and parse as pydantic models if needed.
     output_model_name = _get_output_model_name(chainlet_name)
+    # TODO: this validation is not covered by the retry logic - could it be?
     parts.append(f"return {output_model_name}.model_validate(json_result).root")
     return _Source(src="\n".join(parts), imports=imports)
 

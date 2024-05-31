@@ -33,6 +33,7 @@ class BasetenSession:
         return httpx.Client(
             headers=self._auth_header,
             timeout=self._service_descriptor.options.timeout_sec,
+            # proxy=os.environ.get("HTTPS_PROXY"),
         )
 
     @functools.cached_property
@@ -40,6 +41,7 @@ class BasetenSession:
         return httpx.AsyncClient(
             headers=self._auth_header,
             timeout=self._service_descriptor.options.timeout_sec,
+            # proxy=os.environ.get("HTTPS_PROXY"),
         )
 
     def predict_sync(self, json_payload):
