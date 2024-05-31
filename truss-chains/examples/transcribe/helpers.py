@@ -10,7 +10,6 @@ from asyncio import subprocess
 from typing import AsyncIterator, Iterable, Optional, TypeVar
 
 import data_types
-import httpx
 import numpy as np
 from truss_chains import utils
 
@@ -52,26 +51,6 @@ def generate_time_chunks(
         )
     chunks[-1].is_last = True
     return chunks
-
-
-async def assert_media_supports_range_downloads(
-    httpx_client: httpx.AsyncClient, media_url: str
-) -> None:
-    # TODO: specific logging if 404 errors occur.
-    ok = False
-    try:
-        head_response = await httpx_client.head(media_url)
-        if "bytes" in head_response.headers.get("Accept-Ranges", ""):
-            ok = True
-        # Check by making a test range request to see if '206' is returned.
-        range_header = {"Range": "bytes=0-0"}
-        range_response = await httpx_client.get(media_url, headers=range_header)
-        ok = range_response.status_code == 206
-    except httpx.HTTPError as e:
-        logging.error(f"Error checking URL: {e}")
-
-    if not ok:
-        raise NotImplementedError(f"Range downloads unsupported for `{media_url}`.")
 
 
 async def query_source_length_secs(media_url: str) -> float:

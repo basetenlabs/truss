@@ -58,8 +58,8 @@ class _BaseSegment(pydantic.BaseModel):
 
 
 class Segment(_BaseSegment):
-    language: str
-    language_code: str = pydantic.Field(
+    language: Optional[str]
+    language_code: Optional[str] = pydantic.Field(
         ...,
         description="IETF language tag, e.g. 'en', see. "
         "https://en.wikipedia.org/wiki/IETF_language_tag.",
@@ -87,7 +87,6 @@ class WhisperSegment(_BaseSegment):
 
 class WhisperResult(pydantic.BaseModel):
     segments: list[WhisperSegment]
-    # Note: `language` is only `None` if `segments` are empty.
     language: Optional[str]
     language_code: Optional[str] = pydantic.Field(
         ...,

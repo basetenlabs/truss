@@ -125,6 +125,8 @@ class Transcribe(chains.ChainletBase):
             params.macro_chunk_size_sec,
             params.macro_chunk_overlap_sec,
         )
+        # for c in macro_chunks:
+        #     print(c.model_dump_json(indent=4))
         tasks = []
         for i, macro_chunk in enumerate(macro_chunks):
             logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(macro_chunks):03}].")
