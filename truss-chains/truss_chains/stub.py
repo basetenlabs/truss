@@ -25,7 +25,6 @@ class BasetenSession:
         )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
-        self._clients_last_refreshed_at = datetime.now()
         self.refresh_clients()
 
     @property
@@ -41,6 +40,8 @@ class BasetenSession:
             headers=self._auth_header,
             timeout=self._service_descriptor.options.timeout_sec,
         )
+
+        self._clients_last_refreshed_at = datetime.now()
 
     @property
     def _client_sync(self) -> httpx.Client:
