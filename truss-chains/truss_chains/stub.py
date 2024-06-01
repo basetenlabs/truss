@@ -1,11 +1,13 @@
 import abc
-import functools
 import logging
+from datetime import datetime, timedelta
 from typing import Optional, Type, TypeVar, final
 
 import httpx
 import tenacity
 from truss_chains import definitions, utils
+
+CLIENT_EXPIRATION_SECONDS = 60 * 60 * 4  # 4 hours
 
 
 class BasetenSession:
@@ -23,24 +25,40 @@ class BasetenSession:
         )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
+        self._clients_last_refreshed_at = datetime.now()
+        self.refresh_clients()
 
     @property
     def name(self) -> str:
         return self._service_descriptor.name
 
-    @functools.cached_property
-    def _client_sync(self) -> httpx.Client:
-        return httpx.Client(
+    def refresh_clients(self):
+        self._cached_client_sync = httpx.Client(
+            headers=self._auth_header,
+            timeout=self._service_descriptor.options.timeout_sec,
+        )
+        self._cached_client_async = httpx.AsyncClient(
             headers=self._auth_header,
             timeout=self._service_descriptor.options.timeout_sec,
         )
 
-    @functools.cached_property
+    @property
+    def _client_sync(self) -> httpx.Client:
+        if datetime.now() - self._clients_last_refreshed_at > timedelta(
+            seconds=CLIENT_EXPIRATION_SECONDS
+        ):
+            self.refresh_clients()
+
+        return self._cached_client_sync
+
+    @property
     def _client_async(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            headers=self._auth_header,
-            timeout=self._service_descriptor.options.timeout_sec,
-        )
+        if datetime.now() - self._clients_last_refreshed_at > timedelta(
+            seconds=CLIENT_EXPIRATION_SECONDS
+        ):
+            self.refresh_clients()
+
+        return self._cached_client_async
 
     def predict_sync(self, json_payload):
         retrying = tenacity.Retrying(
