@@ -35,6 +35,10 @@ class TrussSpec:
         return self._config.external_data
 
     @property
+    def build_commands(self) -> Optional[List[str]]:
+        return self._config.build_commands
+
+    @property
     def model_module_dir(self) -> Path:
         return self._truss_dir / self._config.model_module_dir
 

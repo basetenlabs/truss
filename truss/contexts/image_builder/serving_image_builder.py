@@ -383,6 +383,12 @@ class ServingImageBuilder(ImageBuilder):
                     )
                 )
 
+        # User specified build commands
+        build_commands: list = []
+        if self._spec.build_commands is not None:
+            for command in self._spec.build_commands:
+                build_commands.append(command)
+
         # Download from HuggingFace
         model_files, cached_files = update_config_and_gather_files(
             config, truss_dir, build_dir
@@ -450,6 +456,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret,
             cached_files,
             external_data_files,
+            build_commands,
         )
 
     def _render_dockerfile(
@@ -460,6 +467,7 @@ class ServingImageBuilder(ImageBuilder):
         use_hf_secret: bool,
         cached_files: List[str],
         external_data_files: List[Tuple[str, str]],
+        build_commands: List[str],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -512,6 +520,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
+            build_commands=build_commands,
             **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME

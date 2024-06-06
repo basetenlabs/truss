@@ -62,6 +62,13 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 {% endfor %}
 {%- endif  %}
 
+
+{%- if build_commands %}
+{% for command in build_commands %}
+RUN {{ command }}
+{% endfor %}
+{%- endif  %}
+
 # Copy data before code for better caching
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data

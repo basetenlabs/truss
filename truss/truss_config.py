@@ -498,6 +498,7 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
+    build_commands: Optional[List[str]] = None
 
     @property
     def canonical_python_version(self) -> str:
@@ -553,6 +554,7 @@ class TrussConfig:
             trt_llm=transform_optional(
                 d.get("trt_llm"), lambda x: TRTLLMConfiguration(**x)
             ),
+            build_commands=d.get("build_commands", None),
         )
         config.validate()
         return config
@@ -613,6 +615,7 @@ DATACLASS_TO_REQ_KEYS_MAP = {
         "resources",
         "secrets",
         "system_packages",
+        "build_commands",
     },
     BaseImage: {"image", "python_executable_path"},
 }
