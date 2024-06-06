@@ -83,10 +83,9 @@ Architecture:
 
 
 <Note>
-To access the Mistral model, used in this guide, you need to accept
-the access policy on
-[huggingface](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2),
-get a huggingface access token and add it as a
+To access the Mistral model, used in this guide, you need to agree to the terms
+on [the model page](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2), 
+[obtain]((https://huggingface.co/settings/tokens) a Hugging Face access token and add it as a
 [secret on baseten](https://app.baseten.co/settings/secrets),
 using the key `"hf_access_token"`.
 </Note>
@@ -94,10 +93,10 @@ using the key `"hf_access_token"`.
 ### Configuring requirements
 
 The main difference between this Chain and the one from [getting started](/chains/getting-started)
-is that we add a heavy model that needs a GPU and
-large model weights - the Mistral7B LLM.
+is that we add a model that requires a GPU and
+large model weights - the Mistral 7B LLM.
 
-Below code shows how to define such a Chainlet (copy it into a file called
+The snippet below illustrates how to define such a Chainlet (copy it into a file called
 `poems.py`.)
 
 ```python
@@ -226,18 +225,18 @@ curl -X POST 'https://model-4w7g6pyw.api.baseten.co/development/predict' \
 
 ### Local Debugging with Mock
 
-Our Chain includes the `MistralLLM` Chainlet which requires heavy hardware and
-python dependencies. These requirements are fulfilled in the remote baseten
-deployment, but most likely not locally. The other Chainlet, `PoemGenerator`,
-contains simpler "coordination" logic and has less demanding requirements.
+Our Chain includes the `MistralLLM` Chainlet which requires specific Python dependencies
+and a powerful GPU that you may not have access to in your local development environment.
+The other Chainlet, `PoemGenerator`, contains simpler "coordination" logic and has less demanding requirements.
 
-We still encourage debugging and testing such "mixed" Chains locally (for a
-quicker dev loop). In that case, you can mock the parts that are infeasible
+For quicker iteration, we encourage debugging and testing such "mixed" Chains locally.
+In that case, you can mock the parts that are infeasible
 to run locally and test all the other components - especially the
 interplay and controlflow of multiple Chainlets in more complicated Chains.
 
 To do this, define a fake Mistral model class whose `run`-method implements the
-same *Protocol* as the original `MistralLLM` Chainlet, and produces some
+same [Protocol](https://typing.readthedocs.io/en/latest/spec/protocol.html)
+as the original `MistralLLM` Chainlet, and produces some
 test output. Then "inject" an instance of `FakeMistralLLM` into your Chain
 like so:
 
@@ -260,30 +259,3 @@ And run your Python file:
 python poems.py
 # ['Fake mistral response', 'Fake mistral response', 'Fake mistral response']
 ```
-
-<Note>
-This is strictly a type error: the argument `mistral_llm` of type
-`MistralLLM` we pass an instance of `FakeMistralLLM` - which is not the
-same.
-It still works at runtime, because we constructed `FakeMistralLLM` to
-have the same *procotol*. To also get this "clean" from a typing perspective,
-we can actually use a `Protocol` in the type annotation:
-
-```python
-from typing import Protocol
-
-class MistralP(Protocol):
-    def run_remote(self, data: str) -> str:
-        ...
-```
-
-and change the argument type in `PoemGenerator`:
-
-```python
-@chains.mark_entrypoint
-class PoemGenerator(chains.ChainletBase):
-    def __init__(self, mistral_llm: MistralP = chains.depends(MistralLLM)) -> None:
-        self._mistral_llm = mistral_llm
-```
-
-</Note>
