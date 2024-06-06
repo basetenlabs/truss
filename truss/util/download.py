@@ -74,12 +74,12 @@ def _download_from_url_using_b10cp(
 
 def _download_external_data_using_requests(data_dir: Path, external_data: ExternalData):
     for item in external_data.items:
-        _download_from_url_using_requests(
+        download_from_url_using_requests(
             item.url, (data_dir / item.local_data_path).resolve()
         )
 
 
-def _download_from_url_using_requests(URL: str, download_to: Path):
+def download_from_url_using_requests(URL: str, download_to: Path):
     # Streaming download to keep memory usage low
     resp = requests.get(
         URL,

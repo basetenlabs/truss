@@ -222,8 +222,8 @@ class TrussHandle:
                         ],
                         [
                             "type=bind",
-                            f"src={str(LocalConfigHandler.lazy_data_resolution_dir_path())}",
-                            "target=/btr_resolver",
+                            f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
+                            "target=/bptr_resolver",
                         ],
                     ],
                     gpus=gpus,

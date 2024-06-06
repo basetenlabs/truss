@@ -18,10 +18,11 @@ DEFAULT_MAX_NEW_TOKENS = 500
 
 
 class Model:
-    def __init__(self, data_dir, config, secrets):
+    def __init__(self, data_dir, config, secrets, lazy_data_resolver):
         self._data_dir = data_dir
         self._config = config
         self._secrets = secrets
+        self._lazy_data_resolver = lazy_data_resolver
         self._request_id_counter = count(start=1)
         self.triton_client = None
         self.triton_server = None
@@ -61,6 +62,7 @@ class Model:
             grpc_port=GRPC_SERVICE_PORT,
             http_port=HTTP_SERVICE_PORT,
         )
+        self._lazy_data_resolver.fetch()
         self.triton_server.create_model_repository(
             truss_data_dir=self._data_dir,
             engine_repository_path=engine_repository_path,

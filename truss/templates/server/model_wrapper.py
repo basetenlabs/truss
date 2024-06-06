@@ -165,8 +165,8 @@ class ModelWrapper:
             model_init_params["data_dir"] = data_dir
         if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
-        if _signature_accepts_keyword_arg(model_class_signature, "lazy_data"):
-            model_init_params["lazy_data"] = LazyDataResolver(data_dir)
+        if _signature_accepts_keyword_arg(model_class_signature, "lazy_data_resolver"):
+            model_init_params["lazy_data_resolver"] = LazyDataResolver(data_dir)
         apply_patches(
             self._config.get("apply_library_patches", True),
             self._config["requirements"],

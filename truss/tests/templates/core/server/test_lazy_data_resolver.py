@@ -1,0 +1,111 @@
+import datetime
+import json
+from contextlib import nullcontext
+from pathlib import Path
+from typing import Callable
+from unittest.mock import patch
+
+import pytest
+import requests_mock
+from truss.templates.shared.lazy_data_resolver import (
+    LAZY_DATA_RESOLVER_PATH,
+    LazyDataResolver,
+)
+
+
+@pytest.fixture
+def baseten_pointer_manifest_mock() -> Callable:
+    def _baseten_pointer_manifest_mock(
+        foo_expiry: datetime.datetime, bar_expiry: datetime.datetime
+    ):
+        return f"""
+pointers:
+- uid: foo
+  file_name: foo-name
+  hashtype: hash-type
+  hash: foo-hash
+  size: 100
+  resolution:
+    url: https://foo-rl
+    expiry: {foo_expiry.isoformat()}
+- uid: bar
+  file_name: bar-name
+  hashtype: hash-type
+  hash: bar-hash
+  size: 1000
+  resolution:
+    url: https://bar-rl
+    expiry: {bar_expiry.isoformat()}
+"""
+
+    return _baseten_pointer_manifest_mock
+
+
+def test_lazy_data_resolution_not_found():
+    ldr = LazyDataResolver(Path("foo"))
+    assert not LAZY_DATA_RESOLVER_PATH.exists()
+    assert ldr._bptr_resolution == {}
+
+
+@pytest.mark.parametrize(
+    "foo_expiry,bar_expiry,expectation",
+    [
+        (datetime.datetime(3000, 1, 1), datetime.datetime(3000, 1, 1), nullcontext()),
+        (
+            datetime.datetime(2020, 1, 1),
+            datetime.datetime(2020, 1, 1),
+            pytest.raises(RuntimeError),
+        ),
+    ],
+)
+def test_lazy_data_resolution(
+    baseten_pointer_manifest_mock, foo_expiry, bar_expiry, expectation, tmp_path
+):
+    baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
+        foo_expiry, bar_expiry
+    )
+    manifest_path = tmp_path / "bptr" / "bptr-manifest"
+    manifest_path.parent.mkdir()
+    manifest_path.touch()
+    manifest_path.write_text(baseten_pointer_manifest_mock)
+    with patch(
+        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+        manifest_path,
+    ):
+        with expectation:
+            ldr = LazyDataResolver(Path("foo"))
+            assert ldr._bptr_resolution == {
+                "foo-name": "https://foo-rl",
+                "bar-name": "https://bar-rl",
+            }
+
+
+@pytest.mark.parametrize(
+    "foo_expiry,bar_expiry",
+    [(datetime.datetime(3000, 1, 1), datetime.datetime(3000, 1, 1))],
+)
+def test_lazy_data_fetch(
+    baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path
+):
+    baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
+        foo_expiry, bar_expiry
+    )
+    manifest_path = tmp_path / "bptr" / "bptr-manifest"
+    manifest_path.parent.mkdir()
+    manifest_path.touch()
+    manifest_path.write_text(baseten_pointer_manifest_mock)
+    with patch(
+        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+        manifest_path,
+    ):
+        data_dir = Path(tmp_path)
+        ldr = LazyDataResolver(data_dir)
+        with requests_mock.Mocker() as m:
+            for file_name, url in ldr._bptr_resolution.items():
+                resp = {"file_name": file_name, "url": url}
+                m.get(url, json=resp)
+            ldr.fetch()
+            for file_name, url in ldr._bptr_resolution.items():
+                assert (ldr._data_dir / file_name).read_text() == json.dumps(
+                    {"file_name": file_name, "url": url}
+                )
