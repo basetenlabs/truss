@@ -259,3 +259,27 @@ And run your Python file:
 python poems.py
 # ['Fake mistral response', 'Fake mistral response', 'Fake mistral response']
 ```
+
+<Note>
+The argument mistral_llm is of type Mistral LLM that can be substituted
+by an instance of type FakeMistralLLM because FakeMistralLLM and MistralLLM have the same protocol.
+This can be made explicit by using `Protocol` type annotation: 
+
+```python
+from typing import Protocol
+
+class MistralP(Protocol):
+    def run_remote(self, data: str) -> str:
+        ...
+```
+
+and change the argument type in `PoemGenerator`:
+
+```python
+@chains.mark_entrypoint
+class PoemGenerator(chains.ChainletBase):
+    def __init__(self, mistral_llm: MistralP = chains.depends(MistralLLM)) -> None:
+        self._mistral_llm = mistral_llm
+```
+
+</Note>
