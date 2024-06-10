@@ -28,6 +28,8 @@ class SplitTextFailOnce(chains.ChainletBase):
     ) -> Tuple[SplitTextOutput, int]:
         import numpy as np
 
+        print(extra_arg)
+
         self._count += 1
         if self._count == 1:
             raise ValueError("Haha this is a fake error.")

@@ -56,6 +56,7 @@ class TextToNum(chains.ChainletBase):
         return number
 
 
+@chains.mark_entrypoint
 class ItestChain(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
