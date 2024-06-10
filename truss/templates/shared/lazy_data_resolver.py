@@ -4,7 +4,7 @@ from typing import Dict, List
 
 import pydantic
 import yaml
-from truss.util.download import download_from_url_using_requests
+from shared.util import download_from_url_using_requests
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 
