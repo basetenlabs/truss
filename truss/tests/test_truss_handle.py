@@ -800,6 +800,7 @@ def _read_readme(filename: str) -> str:
 
 def generate_default_config():
     config = {
+        "build_commands": None,
         "environment_variables": {},
         "external_package_dirs": [],
         "model_metadata": {},
