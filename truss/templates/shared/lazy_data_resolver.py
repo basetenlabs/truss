@@ -1,12 +1,18 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
 import pydantic
 import yaml
-from shared.util import download_from_url_using_requests
+
+try:
+    from shared.util import download_from_url_using_requests
+except ModuleNotFoundError:
+    from truss.templates.shared.util import download_from_url_using_requests
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
+NUM_WORKERS = 4
 
 
 class Resolution(pydantic.BaseModel):
@@ -35,8 +41,19 @@ class LazyDataResolver:
         self._bptr_resolution: Dict[str, str] = _read_bptr_resolution()
 
     def fetch(self):
-        for file_name, resolved_url in self._bptr_resolution.items():
-            download_from_url_using_requests(resolved_url, self._data_dir / file_name)
+        with ThreadPoolExecutor(NUM_WORKERS) as executor:
+            futures = []
+            for file_name, resolved_url in self._bptr_resolution.items():
+                futures.append(
+                    executor.submit(
+                        download_from_url_using_requests,
+                        resolved_url,
+                        self._data_dir / file_name,
+                    )
+                )
+            for future in futures:
+                if not future:
+                    raise RuntimeError(f"Download failure for file: {file_name}")
 
 
 def _read_bptr_resolution() -> Dict[str, str]:
