@@ -32,7 +32,7 @@ def generate_time_chunks(
     return list([(t, macro_chunk_size_sec) for t in start_times])
 
 
-async def query_video_length_secs(media_url: str) -> float:
+async def query_source_length_secs(media_url: str) -> float:
     cmd = (
         "ffprobe -v error -show_entries format=duration -of "
         f'default=noprint_wrappers=1:nokey=1 "{media_url}"'
@@ -51,7 +51,7 @@ async def query_video_length_secs(media_url: str) -> float:
         else:
             error_str = ""
         raise ValueError(
-            f"Could not retrieve media duration for `{media_url}`, error: {error_str}."
+            f"Could not retrieve source duration for `{media_url}`, error: {error_str}."
         ) from e
 
 
@@ -100,7 +100,7 @@ async def _extract_wav_info(
         if len(initial_data) < _WAV_HEADER_NUM_BYTES:
             raise ValueError(
                 f"Could not read at least `{_WAV_HEADER_NUM_BYTES}` "
-                "from the audio byte stream. This indicates the source media "
+                "from the audio byte stream. This indicates the source file "
                 "is broken or FFMPEG cannot download and convert it. Check for other "
                 "error messages."
             ) from e
@@ -200,7 +200,7 @@ class DownloadSubprocess:
         #  include them accordingly.
         ffmpeg_command = (
             f"ffmpeg -i {media_url} "
-            f"-ss {start_time} "  # seek time stamp in video.
+            f"-ss {start_time} "  # seek time stamp.
             f"-t {duration_sec} "
             f"-vn "  # Disables video recording.
             f"-acodec pcm_s16le "  # Audio codec: PCM signed 16-bit little endian.
@@ -262,7 +262,7 @@ class DownloadSubprocess:
                 else "No stderr available."
             )
             raise ChildProcessError(
-                "FFMPEG error during video download and "
+                "FFMPEG error during source download and "
                 f"wav extraction. Stderr:\n{stderr}"
             ) from exc  # In case there was also an error in the context-block, chain.
 

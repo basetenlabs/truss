@@ -16,6 +16,7 @@ from truss.contexts.image_builder.serving_image_builder import (
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
+from truss.truss_handle import TrussHandle
 from truss.types import Example
 
 CUSTOM_MODEL_CODE = """
@@ -368,6 +369,34 @@ def no_params_init_custom_model(tmp_path):
 
 
 @pytest.fixture
+def custom_model_trt_llm(tmp_path):
+    def modify_handle(h: TrussHandle):
+        with _modify_yaml(h.spec.config_path) as content:
+            h.enable_gpu()
+            content["trt_llm"] = {
+                "build": {
+                    "base_model": "llama",
+                    "max_input_len": 1024,
+                    "max_output_len": 1024,
+                    "max_batch_size": 512,
+                    "max_beam_width": 1,
+                    "checkpoint_repository": {
+                        "source": "LOCAL",
+                        "repo": "/path/to/checkpoint",
+                    },
+                }
+            }
+            content["resources"]["accelerator"] = "H100:1"
+
+    yield _custom_model_from_code(
+        tmp_path,
+        "my_trt_llm_model",
+        CUSTOM_MODEL_CODE,
+        handle_ops=modify_handle,
+    )
+
+
+@pytest.fixture
 def useless_file(tmp_path):
     f = tmp_path / "useless.py"
     f.write_text("")
@@ -403,7 +432,7 @@ def custom_model_truss_dir_with_hidden_files(tmp_path):
     _ = init(str(truss_dir_path))
     (truss_dir_path / "__pycache__").mkdir(parents=True, exist_ok=True)
     (truss_dir_path / ".git").mkdir(parents=True, exist_ok=True)
-    (truss_dir_path / "__pycache__" / "test.cpython-39.pyc").touch()
+    (truss_dir_path / "__pycache__" / "test.cpython-311.pyc").touch()
     (truss_dir_path / ".DS_Store").touch()
     (truss_dir_path / ".git" / ".test_file").touch()
     (truss_dir_path / "data" / "test_file").write_text("123456789")

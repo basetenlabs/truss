@@ -708,8 +708,6 @@ class TrussHandle:
         self._update_config(
             lambda conf: replace(
                 conf,
-                # TODO: should this be wrapped in
-                #   `map_to_supported_python_version`?
                 python_version=inferred_python_version,
             )
         )

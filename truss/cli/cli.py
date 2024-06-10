@@ -29,9 +29,6 @@ from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
-from truss_chains import definitions as chains_def
-from truss_chains import deploy as chains_deploy
-from truss_chains import framework
 
 logging.basicConfig(level=logging.INFO)
 
@@ -113,7 +110,16 @@ def image():
     """Subcommands for truss image"""
 
 
-@click.group()
+class ChainsGroup(click.Group):
+    def invoke(self, ctx: click.Context) -> None:
+        # This import raises error messages if pydantic v2 or python older than 3.9
+        # are installed.
+        import truss_chains  # noqa: F401
+
+        super().invoke(ctx)
+
+
+@click.group(cls=ChainsGroup)
 def chains():
     """Subcommands for truss chains"""
 
@@ -354,8 +360,13 @@ def deploy(
     SOURCE: Path to a python file that contains the entrypoint chainlet.
 
     ENTRYPOINT: Class name of the entrypoint chainlet in source file. May be omitted
-    if a chainlet definition in SOURCE is tagged with `@chains.entrypoint`.
+    if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
     """
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains import definitions as chains_def
+    from truss_chains import deploy as chains_deploy
+    from truss_chains import framework
+
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
         options = chains_def.DeploymentOptionsBaseten.create(

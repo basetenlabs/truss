@@ -22,7 +22,6 @@ from typing import (
 )
 
 import pydantic
-from pydantic import generics
 from truss import truss_config
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
@@ -32,7 +31,6 @@ UserConfigT = TypeVar("UserConfigT", bound=Union[pydantic.BaseModel, None])
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
-
 GENERATED_CODE_DIR = ".chains_generated"
 
 # Below arg names must correspond to `definitions.ABCChainlet`.
@@ -61,21 +59,23 @@ class MappingNoIter(Protocol[K, V]):
 class SafeModel(pydantic.BaseModel):
     """Pydantic base model with reasonable config."""
 
-    class Config:
-        arbitrary_types_allowed = False
-        validate_all = True
-        validate_assignment = True
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(
+        arbitrary_types_allowed=False,
+        strict=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
 
 
 class SafeModelNonSerializable(pydantic.BaseModel):
     """Pydantic base model with reasonable config - allowing arbitrary types."""
 
-    class Config:
-        arbitrary_types_allowed = True
-        validate_all = True
-        validate_assignment = True
-        extra = "forbid"
+    model_config = pydantic.ConfigDict(
+        arbitrary_types_allowed=True,
+        strict=True,
+        validate_assignment=True,
+        extra="forbid",
+    )
 
 
 class ChainsUsageError(TypeError):
@@ -233,14 +233,8 @@ class ServiceDescriptor(SafeModel):
     options: RPCOptions
 
 
-class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
+class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     """Bundles config values and resources needed to instantiate Chainlets."""
-
-    class Config:
-        arbitrary_types_allowed = True
-        validate_all = True
-        validate_assignment = True
-        extra = "forbid"
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT
@@ -274,7 +268,7 @@ class DeploymentContext(generics.GenericModel, Generic[UserConfigT]):
         return api_key
 
 
-class TrussMetadata(generics.GenericModel, Generic[UserConfigT]):
+class TrussMetadata(SafeModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     user_config: UserConfigT

@@ -43,7 +43,7 @@ def test_copy_tree_path_with_hidden_files(custom_model_truss_dir_with_hidden_fil
     with path.given_or_temporary_dir() as dir:
         path.copy_tree_path(custom_model_truss_dir_with_hidden_files, dir)
 
-        assert not (dir / "__pycache__" / "test.cpython-39.pyc").exists()
+        assert not (dir / "__pycache__" / "test.cpython-311.pyc").exists()
         assert not (dir / ".DS_Store").exists()
         assert not (dir / ".git").exists()
         assert (dir / "model").exists()
@@ -56,7 +56,7 @@ def test_is_ignored(custom_model_truss_dir_with_hidden_files):
     assert path.is_ignored(
         custom_model_truss_dir_with_hidden_files
         / "__pycache__"
-        / "test.cpython-39.pyc",
+        / "test.cpython-311.pyc",
         patterns,
     )
 
@@ -127,7 +127,7 @@ def test_ignored_files_in_docker_context(
 
         assert dir.exists()
 
-        assert not (dir / "__pycache__" / "test.cpython-39.pyc").exists()
+        assert not (dir / "__pycache__" / "test.cpython-311.pyc").exists()
         assert not (dir / ".DS_Store").exists()
         assert not (dir / ".git").exists()
         assert (dir / "model").exists()
@@ -135,7 +135,7 @@ def test_ignored_files_in_docker_context(
         assert (
             custom_model_truss_dir_with_hidden_files
             / "__pycache__"
-            / "test.cpython-39.pyc"
+            / "test.cpython-311.pyc"
         ).exists()
         assert (custom_model_truss_dir_with_hidden_files / ".DS_Store").exists()
         assert (custom_model_truss_dir_with_hidden_files / ".git").exists()
@@ -220,7 +220,7 @@ def test_get_ignored_relative_paths_from_root(custom_model_truss_dir_with_hidden
     )
     ignored_relative_paths_strs = {
         "__pycache__",
-        "__pycache__/test.cpython-39.pyc",
+        "__pycache__/test.cpython-311.pyc",
         ".DS_Store",
         ".git",
         ".git/.test_file",
