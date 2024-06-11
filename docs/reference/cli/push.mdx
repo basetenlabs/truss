@@ -15,6 +15,9 @@ Name of the remote in .trussrc to patch changes to.
 <ParamField body="--publish" type="BOOL">
 Push the truss as a published deployment. If no production deployment exists, promote the truss to production after deploy completes.
 </ParamField>
+<ParamField body="--model-name" type="TEXT">
+Name of the model
+</ParamField>
 <ParamField body="--promote" type="BOOL">
 Push the truss as a published deployment. Even if a production deployment exists, promote the truss to production after deploy completes.
 </ParamField>
@@ -30,6 +33,10 @@ Name of the deployment created by the push. Can only be used in combination with
 <ParamField body="--wait" type="BOOL">
 Whether to wait for deployment to complete before returning. If the deploy or build fails, will return with a non-zero exit code.
 </ParamField>
+<ParamField body="--timeout-seconds" type="INTEGER">
+Maximum time to wait for deployment to complete in seconds. Without specifying, the command will not complete until the deployment is complete.
+</ParamField>
+
 <ParamField body="--help">
 Show help message and exit.
 </ParamField>
