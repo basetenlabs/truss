@@ -383,11 +383,6 @@ class ServingImageBuilder(ImageBuilder):
                     )
                 )
 
-        # User specified build commands
-        build_commands: list = []
-        for command in self._spec.build_commands:
-            build_commands.append(command)
-
         # Download from HuggingFace
         model_files, cached_files = update_config_and_gather_files(
             config, truss_dir, build_dir
@@ -455,7 +450,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret,
             cached_files,
             external_data_files,
-            build_commands,
+            self._spec.build_commands,
         )
 
     def _render_dockerfile(
