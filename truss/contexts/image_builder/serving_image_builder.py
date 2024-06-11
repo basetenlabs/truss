@@ -450,6 +450,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret,
             cached_files,
             external_data_files,
+            self._spec.build_commands,
         )
 
     def _render_dockerfile(
@@ -460,6 +461,7 @@ class ServingImageBuilder(ImageBuilder):
         use_hf_secret: bool,
         cached_files: List[str],
         external_data_files: List[Tuple[str, str]],
+        build_commands: List[str],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -512,6 +514,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
+            build_commands=build_commands,
             **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME
