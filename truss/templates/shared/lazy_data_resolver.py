@@ -49,7 +49,7 @@ class LazyDataResolver:
                     resolved_url,
                     self._data_dir / file_name,
                 )
-            for file_name, future in futures:
+            for file_name, future in futures.items():
                 if not future:
                     raise RuntimeError(f"Download failure for file {file_name}")
 
