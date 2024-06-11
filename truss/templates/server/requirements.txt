@@ -11,6 +11,6 @@ msgpack==1.0.2
 psutil==5.9.4
 python-json-logger==2.0.2
 pyyaml==6.0.0
-requests==2.31.0
+requests==2.32.2
 uvicorn==0.24.0
 uvloop==0.17.0
