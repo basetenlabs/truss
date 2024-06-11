@@ -1,0 +1,13 @@
+build_commands:
+  - mkdir example_dir
+  - cd example_dir && touch testing.py
+model_metadata: {}
+model_name: null
+model_type: custom
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: 500m
+  memory: 512Mi
+  use_gpu: false
