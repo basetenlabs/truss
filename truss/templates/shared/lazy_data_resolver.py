@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -17,7 +17,7 @@ NUM_WORKERS = 4
 
 class Resolution(pydantic.BaseModel):
     url: str
-    expiry: datetime
+    expiration_timestamp: int
 
 
 class BasetenPointer(pydantic.BaseModel):
@@ -57,14 +57,16 @@ class LazyDataResolver:
 
 
 def _read_bptr_resolution() -> Dict[str, str]:
-    if not LAZY_DATA_RESOLVER_PATH.exists():
+    if not LAZY_DATA_RESOLVER_PATH.is_file():
         return {}
     bptr_manifest = BasetenPointerManifest(
         **yaml.safe_load(LAZY_DATA_RESOLVER_PATH.read_text())
     )
     resolution_map = {}
     for bptr in bptr_manifest.pointers:
-        if bptr.resolution.expiry < datetime.now():
+        if bptr.resolution.expiration_timestamp < int(
+            datetime.now(timezone.utc).timestamp()
+        ):
             raise RuntimeError("Baseten pointer lazy data resolution has expired")
         resolution_map[bptr.file_name] = bptr.resolution.url
     return resolution_map

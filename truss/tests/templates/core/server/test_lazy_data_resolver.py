@@ -16,7 +16,7 @@ from truss.templates.shared.lazy_data_resolver import (
 @pytest.fixture
 def baseten_pointer_manifest_mock() -> Callable:
     def _baseten_pointer_manifest_mock(
-        foo_expiry: datetime.datetime, bar_expiry: datetime.datetime
+        foo_expiry_timestamp: int, bar_expiry_timestamp: int
     ):
         return f"""
 pointers:
@@ -27,7 +27,7 @@ pointers:
   size: 100
   resolution:
     url: https://foo-rl
-    expiry: {foo_expiry.isoformat()}
+    expiration_timestamp: {foo_expiry_timestamp}
 - uid: bar
   file_name: bar-name
   hashtype: hash-type
@@ -35,7 +35,7 @@ pointers:
   size: 1000
   resolution:
     url: https://bar-rl
-    expiry: {bar_expiry.isoformat()}
+    expiration_timestamp: {bar_expiry_timestamp}
 """
 
     return _baseten_pointer_manifest_mock
@@ -50,10 +50,22 @@ def test_lazy_data_resolution_not_found():
 @pytest.mark.parametrize(
     "foo_expiry,bar_expiry,expectation",
     [
-        (datetime.datetime(3000, 1, 1), datetime.datetime(3000, 1, 1), nullcontext()),
         (
-            datetime.datetime(2020, 1, 1),
-            datetime.datetime(2020, 1, 1),
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+            nullcontext(),
+        ),
+        (
+            int(
+                datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+            int(
+                datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
             pytest.raises(RuntimeError),
         ),
     ],
@@ -82,7 +94,16 @@ def test_lazy_data_resolution(
 
 @pytest.mark.parametrize(
     "foo_expiry,bar_expiry",
-    [(datetime.datetime(3000, 1, 1), datetime.datetime(3000, 1, 1))],
+    [
+        (
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+        )
+    ],
 )
 def test_lazy_data_fetch(
     baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path
