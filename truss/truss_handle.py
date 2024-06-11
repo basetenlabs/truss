@@ -219,7 +219,12 @@ class TrussHandle:
                             "type=bind",
                             f"src={str(secrets_mount_dir_path)}",
                             "target=/secrets",
-                        ]
+                        ],
+                        [
+                            "type=bind",
+                            f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
+                            "target=/bptr",
+                        ],
                     ],
                     gpus=gpus,
                     envs=envs,
