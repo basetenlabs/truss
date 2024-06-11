@@ -35,7 +35,7 @@ class TrussSpec:
         return self._config.external_data
 
     @property
-    def build_commands(self) -> Optional[List[str]]:
+    def build_commands(self) -> List[str]:
         return self._config.build_commands
 
     @property

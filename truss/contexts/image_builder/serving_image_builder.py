@@ -385,9 +385,8 @@ class ServingImageBuilder(ImageBuilder):
 
         # User specified build commands
         build_commands: list = []
-        if self._spec.build_commands is not None:
-            for command in self._spec.build_commands:
-                build_commands.append(command)
+        for command in self._spec.build_commands:
+            build_commands.append(command)
 
         # Download from HuggingFace
         model_files, cached_files = update_config_and_gather_files(

@@ -152,7 +152,7 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
 
 def generate_default_config():
     config = {
-        "build_commands": None,
+        "build_commands": [],
         "environment_variables": {},
         "external_package_dirs": [],
         "model_metadata": {},
@@ -177,7 +177,7 @@ def test_default_config_not_crowded_end_to_end():
         requirements=[],
     )
 
-    config_yaml = """build_commands: null
+    config_yaml = """build_commands: []
 environment_variables: {}
 external_package_dirs: []
 model_metadata: {}
