@@ -64,6 +64,7 @@ click.rich_click.COMMAND_GROUPS = {
     ]
 }
 
+# Note: If you are changing this snippet, please update the example at docs/chains/getting_started.mdx
 HELLO_PY = """import random
 import truss_chains as chains
 
@@ -436,32 +437,32 @@ def deploy(
 
 @chains.command(name="init")  # type: ignore
 @click.option(
-    "--name",
+    "--target_directory",
     type=str,
     required=False,
     help="Name of the chain to be deployed, if not given, the user will be prompted for a name",
 )
 @error_handling
 def chains_init(
-    name: Optional[str],
+    target_directory: Optional[str],
 ) -> None:
     """
     Initializes a chains project with hello.py
     """
     FILENAME = "main.py"
-    if not name:
-        name = input("Enter the name of chain: ")
+    if not target_directory:
+        target_directory = input("Enter the target directory for the chain: ")
     cur_path = os.getcwd()
-    abs_path = os.path.join(cur_path, name)
-    if os.path.exists(abs_path):
+    abs_path = os.path.join(cur_path, target_directory)
+    filename = os.path.join(abs_path, FILENAME)
+    if os.path.exists(filename):
         raise click.UsageError(
-            f"Cannot init chains project with name {name}. Path already exists"
+            f"Cannot init chains project with name {target_directory}. Path already exists"
         )
-    user_friendly_path = os.path.join(name, FILENAME)
+    user_friendly_path = os.path.join(target_directory, FILENAME)
     rich.print(f"Creating {user_friendly_path}...\n")
 
     os.mkdir(abs_path)
-    filename = os.path.join(abs_path, FILENAME)
     with open(filename, "w") as f:
         f.write(HELLO_PY)
 
