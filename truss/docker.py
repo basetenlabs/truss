@@ -57,7 +57,7 @@ def get_urls_from_container(container_details) -> Dict[int, List[str]]:
         )
 
     def urls_from_port_protocol_values(
-        port_protocol_values: List[Dict[str, str]]
+        port_protocol_values: List[Dict[str, str]],
     ) -> List[str]:
         return [url_from_port_protocol_value(v) for v in port_protocol_values]
 

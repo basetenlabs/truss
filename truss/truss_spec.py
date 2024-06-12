@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
+
 from truss.constants import CONFIG_FILE
 from truss.errors import ValidationError
 from truss.truss_config import ExternalData, ModelServer, TrussConfig

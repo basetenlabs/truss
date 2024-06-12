@@ -13,6 +13,7 @@ import rich.live
 import rich.spinner
 import rich.table
 import rich_click as click
+
 import truss
 from InquirerPy import inquirer
 from truss.cli.console import console

@@ -24,6 +24,7 @@ from tenacity import (
     stop_after_delay,
     wait_fixed,
 )
+
 from truss.constants import (
     INFERENCE_SERVER_PORT,
     TRUSS,

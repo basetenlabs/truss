@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import yaml
+
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
 from truss.model_inference import infer_python_version, map_to_supported_python_version

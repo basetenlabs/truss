@@ -10,9 +10,10 @@ import random
 import string
 from typing import Protocol
 
-import truss_chains as chains
 from sub_package import shared_chainlet
 from truss import truss_config
+
+import truss_chains as chains
 
 
 class GenerateData(chains.ChainletBase):
@@ -100,8 +101,7 @@ class MistralLLM(chains.ChainletBase):
 
 
 class MistralP(Protocol):
-    def run_remote(self, data: str) -> str:
-        ...
+    def run_remote(self, data: str) -> str: ...
 
 
 @chains.mark_entrypoint

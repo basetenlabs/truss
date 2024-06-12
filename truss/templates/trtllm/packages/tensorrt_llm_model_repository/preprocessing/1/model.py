@@ -138,7 +138,6 @@ class TritonPythonModel:
             query = pb_utils.get_input_tensor_by_name(request, "QUERY").as_numpy()
             batch_dim = query.shape[0]
             if batch_dim != 1:
-
                 err_str = (
                     "Inflight batching backend expects requests with batch size of 1."
                 )
@@ -334,7 +333,6 @@ class TritonPythonModel:
     def _get_embedding_bias(
         self, embedding_bias_words, embedding_bias_weights, bias_dtype
     ):
-
         assert self.tokenizer is not None, "need to set tokenizer"
 
         if embedding_bias_words is None or embedding_bias_weights is None:
@@ -342,7 +340,6 @@ class TritonPythonModel:
 
         batch_embedding_bias = []
         for words, weights in zip(embedding_bias_words, embedding_bias_weights):
-
             vocab_size = self.tokenizer.vocab_size
             embedding_bias = [0.0] * vocab_size
 

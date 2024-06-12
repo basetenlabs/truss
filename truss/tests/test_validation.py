@@ -1,4 +1,5 @@
 import pytest
+
 from truss.errors import ValidationError
 from truss.validation import (
     validate_cpu_spec,

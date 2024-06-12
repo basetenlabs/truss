@@ -182,9 +182,9 @@ def _configured_control_server(
 
     def start_truss_server(stdout_capture_file_path):
         if with_patch_ping_flow:
-            os.environ[
-                "PATCH_PING_URL_TRUSS"
-            ] = f"http://localhost:{patch_ping_server_port}"
+            os.environ["PATCH_PING_URL_TRUSS"] = (
+                f"http://localhost:{patch_ping_server_port}"
+            )
         sys.stdout = open(stdout_capture_file_path, "w")
         app_path = truss_control_container_fs / "app"
         sys.path.append(str(app_path))

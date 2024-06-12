@@ -2,6 +2,7 @@ import enum
 from typing import Tuple
 
 import pydantic
+
 import truss_chains as chains
 
 
@@ -22,7 +23,6 @@ class SplitTextOutput(pydantic.BaseModel):
 
 
 class SplitText(chains.ChainletBase):
-
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(pip_requirements=["numpy"])
     )

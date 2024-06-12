@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import yaml
+
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.patch.hash import str_hash_str
 from truss.truss_handle import TrussHandle

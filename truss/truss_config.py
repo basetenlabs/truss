@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
 from truss.config.trt_llm import TRTLLMConfiguration
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
@@ -583,7 +584,6 @@ class TrussConfig:
 
     def validate(self):
         if self.python_version not in VALID_PYTHON_VERSIONS:
-
             raise ValueError(
                 f"Please ensure that `python_version` is one of {VALID_PYTHON_VERSIONS}"
             )

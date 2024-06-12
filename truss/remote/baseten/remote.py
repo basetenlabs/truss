@@ -230,9 +230,7 @@ class BasetenRemote(TrussRemote):
         target_directory: str,
     ) -> None:
         # verify that development deployment exists for given model name
-        dev_version = get_dev_version(
-            self._api, model_name
-        )  # pylint: disable=protected-access
+        dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
         if not dev_version:
             raise click.UsageError(
                 "No development model found. Run `truss push` then try again."

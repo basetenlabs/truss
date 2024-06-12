@@ -11,14 +11,13 @@ import pydantic
 pydantic_major_version = int(pydantic.VERSION.split(".")[0])
 if pydantic_major_version < 2:
     raise RuntimeError(
-        f"Pydantic v2 is not supported for `Truss-Chains`. Please upgrade to v2. "
+        "Pydantic v2 is not supported for `Truss-Chains`. Please upgrade to v2. "
         "You can still use other Truss functionality."
     )
 
 del pydantic, pydantic_major_version
 
 
-# flake8: noqa F401
 from truss_chains.definitions import (
     Assets,
     Compute,
@@ -39,3 +38,22 @@ from truss_chains.public_api import (
 )
 from truss_chains.stub import StubBase
 from truss_chains.utils import make_abs_path_here
+
+__all__ = [
+    "ChainletBase",
+    "depends",
+    "depends_context",
+    "deploy_remotely",
+    "mark_entrypoint",
+    "run_local",
+    "StubBase",
+    "Assets",
+    "ChainsRuntimeError",
+    "Compute",
+    "DeploymentContext",
+    "DockerImage",
+    "RemoteConfig",
+    "RemoteErrorDetail",
+    "RPCOptions",
+    "make_abs_path_here",
+]

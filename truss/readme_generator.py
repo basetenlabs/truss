@@ -1,4 +1,5 @@
 from jinja2 import Template
+
 from truss.constants import README_TEMPLATE_NAME, TEMPLATES_DIR
 from truss.truss_spec import TrussSpec
 

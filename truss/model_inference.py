@@ -106,7 +106,7 @@ def validate_provided_parameters_with_model(
     if not named_args:
         return
 
-    if provided_parameters and type(provided_parameters) is not dict:
+    if provided_parameters and not isinstance(provided_parameters, dict):
         raise TypeError(
             f"Provided parameters must be a dict, not {type(provided_parameters)}"
         )

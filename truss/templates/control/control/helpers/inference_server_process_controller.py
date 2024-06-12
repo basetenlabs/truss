@@ -49,7 +49,6 @@ class InferenceServerProcessController:
 
     def stop(self):
         if self._inference_server_process is not None:
-
             self._inference_server_process.terminate()
             self._inference_server_process.wait()
             # Introduce delay to avoid failing to grab the port
