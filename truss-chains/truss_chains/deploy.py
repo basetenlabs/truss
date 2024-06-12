@@ -32,6 +32,12 @@ def _deploy_to_baseten(
         f"Deploying chainlet `{model_name}` as truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
     )
+
+    # Since we are deploying a model independently of the chain, we add a random prefix to
+    # prevent us from running into issues with existing models with the same name.
+    #
+    # This is a bit of a hack for now. Once we support model_origin for Chains models, we
+    # can drop the requirement for names on models.
     model_prefix = "".join(random.choices(string.ascii_uppercase + string.digits, k=9))
 
     # Models must be trusted to use the API KEY secret.
