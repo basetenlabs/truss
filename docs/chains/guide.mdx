@@ -110,6 +110,8 @@ MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 MISTRAL_CACHE = truss_config.ModelRepo(
     repo_id=MISTRAL_HF_MODEL, allow_patterns=["*.json", "*.safetensors", ".model"]
 )
+# This name should correspond to a secret "name" in https://app.baseten.co/settings/secrets
+HF_ACCESS_TOKEN_NAME = "hf_access_token"
 
 class MistralLLM(chains.ChainletBase):
     # The RemoteConfig object defines the resources required for this chainlet.
@@ -127,7 +129,7 @@ class MistralLLM(chains.ChainletBase):
         compute=chains.Compute(cpu_count=2, gpu="A10G"),
         # Cache the model weights in the image and make the huggingface
         # access token secret available to the model.
-        assets=chains.Assets(cached=[MISTRAL_CACHE], secret_keys=["hf_access_token"]),
+        assets=chains.Assets(cached=[MISTRAL_CACHE], secret_keys=[HF_ACCESS_TOKEN_NAME]),
     )
 
     def __init__(
@@ -147,14 +149,14 @@ class MistralLLM(chains.ChainletBase):
             MISTRAL_HF_MODEL,
             torch_dtype=torch.float16,
             device_map="auto",
-            use_auth_token=context.secrets["HF_ACCESS_TOKEN"],
+            use_auth_token=context.secrets[HF_ACCESS_TOKEN_NAME],
         )
 
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             MISTRAL_HF_MODEL,
             device_map="auto",
             torch_dtype=torch.float16,
-            use_auth_token=context.secrets["HF_ACCESS_TOKEN"],
+            use_auth_token=context.secrets[HF_ACCESS_TOKEN_NAME],
         )
 
         self._generate_args = {
