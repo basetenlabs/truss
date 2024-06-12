@@ -19,7 +19,6 @@ if pydantic_major_version < 2:
 del pydantic, pydantic_major_version
 
 
-# flake8: noqa F401
 from truss_chains.definitions import (
     Assets,
     Compute,

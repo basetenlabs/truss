@@ -12,6 +12,7 @@ from threading import Thread
 import pytest
 import requests
 from requests.exceptions import RequestException
+
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.model_inference import map_to_supported_python_version
 from truss.tests.helpers import create_truss
@@ -318,7 +319,13 @@ def test_streaming_with_error():
         assert [
             byte_string.decode()
             for byte_string in predict_non_error_response.iter_content()
-        ] == ["0", "1", "2", "3", "4"]
+        ] == [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+        ]
 
 
 @pytest.mark.integration
@@ -344,7 +351,13 @@ def test_streaming_truss():
         assert [
             byte_string.decode()
             for byte_string in list(predict_response.iter_content())
-        ] == ["0", "1", "2", "3", "4"]
+        ] == [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+        ]
 
         # When accept is set to application/json, the response is not streamed.
         predict_non_stream_response = requests.post(

@@ -7,6 +7,7 @@ import pytest
 import requests
 from python_on_whales.exceptions import DockerException
 from tenacity import RetryError
+
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler

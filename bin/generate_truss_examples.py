@@ -13,6 +13,7 @@ Run this on a branch of truss-examples repo with:
 
 $ poetry run python bin/generate_truss_examples.py $BRANCH_NAME
 """
+
 import enum
 import json
 import os

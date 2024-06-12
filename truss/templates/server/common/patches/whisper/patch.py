@@ -7,6 +7,7 @@ to fail. This patch makes the download more defensive, addressing this issue. tq
 works when the Content-Length is None.
 Open PR (https://github.com/openai/whisper/pull/1366) - once merged we can remove the patch.
 """
+
 import os
 from typing import Union
 

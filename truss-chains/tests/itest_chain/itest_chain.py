@@ -1,9 +1,10 @@
 import math
 
 import pydantic
-import truss_chains as chains
 from user_package import shared_chainlet
 from user_package.nested_package import io_types
+
+import truss_chains as chains
 
 IMAGE_COMMON = chains.DockerImage(
     pip_requirements_file=chains.make_abs_path_here("requirements.txt")
@@ -11,7 +12,6 @@ IMAGE_COMMON = chains.DockerImage(
 
 
 class GenerateData(chains.ChainletBase):
-
     remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
 
     def run_remote(self, length: int) -> str:
@@ -25,7 +25,6 @@ class DummyUserConfig(pydantic.BaseModel):
 
 
 class TextReplicator(chains.ChainletBase):
-
     remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
     default_user_config = DummyUserConfig(multiplier=2)
 

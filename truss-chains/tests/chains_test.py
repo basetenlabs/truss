@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 import requests
-import truss_chains as chains
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+
+import truss_chains as chains
 from truss_chains import definitions, deploy, framework, public_api, utils
 
 utils.setup_dev_logging(logging.DEBUG)
@@ -69,7 +70,6 @@ async def test_chain_local():
 
 
 def test_raises_without_depends():
-
     with pytest.raises(definitions.ChainsUsageError, match="chains.provide"):
 
         class WithoutDepends(chains.ChainletBase):

@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 import pytest
 import yaml
+
 from truss.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,

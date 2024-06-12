@@ -1,5 +1,3 @@
-# flake8: noqa F401
-
 from pathlib import Path
 
 from single_source import get_version
@@ -12,3 +10,5 @@ def version():
 
 
 from truss.build import from_directory, init, kill_all, load
+
+__all__ = ["from_directory", "init", "kill_all", "load"]

@@ -26,6 +26,7 @@ from typing import (
 )
 
 import pydantic
+
 from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
@@ -667,9 +668,9 @@ def run_local(
     stack_depth = len(inspect.stack())
     token = None
     for chainlet_descriptor in global_chainlet_registry.chainlet_descriptors:
-        original_inits[
-            chainlet_descriptor.chainlet_cls
-        ] = chainlet_descriptor.chainlet_cls.__init__
+        original_inits[chainlet_descriptor.chainlet_cls] = (
+            chainlet_descriptor.chainlet_cls.__init__
+        )
         init_for_local = _create_modified_init_for_local(
             chainlet_descriptor,
             type_to_instance,

@@ -2,6 +2,7 @@ import pathlib
 
 import pydantic
 from truss.templates.shared import secrets_resolver
+
 from truss_chains import definitions
 
 # Better: in >=3.10 use `TypeAlias`.
@@ -15,10 +16,12 @@ class TrussChainletModel:
     def __init__(
         self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
     ) -> None:
-        truss_metadata: definitions.TrussMetadata[
-            UserConfigT
-        ] = definitions.TrussMetadata[UserConfigT].model_validate(
-            config["model_metadata"][definitions.TRUSS_CONFIG_CHAINS_KEY]
+        truss_metadata: definitions.TrussMetadata[UserConfigT] = (
+            definitions.TrussMetadata[
+                UserConfigT
+            ].model_validate(
+                config["model_metadata"][definitions.TRUSS_CONFIG_CHAINS_KEY]
+            )
         )
         self._context = definitions.DeploymentContext[UserConfigT](
             user_config=truss_metadata.user_config,
