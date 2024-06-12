@@ -64,6 +64,23 @@ click.rich_click.COMMAND_GROUPS = {
     ]
 }
 
+HELLO_PY = """import random
+import truss_chains as chains
+
+class RandInt(chains.ChainletBase):
+    def run_remote(self, max_value: int) -> int:
+        return random.randint(1, max_value)
+
+@chains.mark_entrypoint
+class HelloWorld(chains.ChainletBase):
+    def __init__(self, rand_int=chains.depends(RandInt, retries=3)) -> None:
+        self._rand_int = rand_int
+
+    def run_remote(self, max_value: int) -> str:
+        num_repetitions = self._rand_int.run_remote(max_value)
+        return "Hello World! " * num_repetitions
+"""
+
 
 def echo_output(f: Callable[..., object]):
     @wraps(f)
@@ -415,6 +432,44 @@ def deploy(
             "Once all chainlets are deployed, "
             f"you can run the chain with:\n\n{run_help_msg}"
         )
+
+
+@chains.command(name="init")  # type: ignore
+@click.option(
+    "--name",
+    type=str,
+    required=False,
+    help="Name of the chain to be deployed, if not given, the user will be prompted for a name",
+)
+@error_handling
+def chains_init(
+    name: Optional[str],
+) -> None:
+    """
+    Initializes a chains project with hello.py
+    """
+    FILENAME = "main.py"
+    if not name:
+        name = input("Enter the name of chain: ")
+    cur_path = os.getcwd()
+    abs_path = os.path.join(cur_path, name)
+    if os.path.exists(abs_path):
+        raise click.UsageError(
+            f"Cannot init chains project with name {name}. Path already exists"
+        )
+    user_friendly_path = os.path.join(name, FILENAME)
+    rich.print(f"Creating {user_friendly_path}...\n")
+
+    os.mkdir(abs_path)
+    filename = os.path.join(abs_path, FILENAME)
+    with open(filename, "w") as f:
+        f.write(HELLO_PY)
+
+    rich.print(
+        "Next steps:\n",
+        f"Run `python {user_friendly_path}` locally by adding `chains.run_local()` to your main.py file\n",
+        f"Run `truss chains deploy {user_friendly_path}` to deploy the chain to Baseten\n",
+    )
 
 
 def _extract_and_validate_model_identifier(
