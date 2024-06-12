@@ -1,7 +1,6 @@
 # TODO: this file contains too much implementation -> restructure.
 import abc
 import logging
-import os
 import pathlib
 import traceback
 from types import GenericAlias
@@ -103,7 +102,8 @@ class AbsPath:
         self._original_path = original_path
 
     def _raise_if_not_exists(self, abs_path: str) -> None:
-        if not os.path.isfile(abs_path):
+        path = pathlib.Path(abs_path)
+        if not (path.is_file() or (path.is_dir() and any(path.iterdir()))):
             raise MissingDependencyError(
                 f"With the file path `{self._original_path}` an absolute path relative "
                 f"to the calling module `{self._creating_module}` was created, "
@@ -129,6 +129,7 @@ class DockerImage(SafeModelNonSerializable):
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
     data_dir: Optional[AbsPath] = None
+    external_package_dirs: Optional[list[AbsPath]] = None
 
 
 class ComputeSpec(pydantic.BaseModel):
