@@ -66,14 +66,23 @@ click.rich_click.COMMAND_GROUPS = {
 
 # Note: If you are changing this snippet, please update the example at docs/chains/getting_started.mdx
 HELLO_PY = """import random
+# for more on chains, check out https://truss.baseten.co/chains/intro
 import truss_chains as chains
 
+
+# By inhereting chains.ChainletBase, chains will know to create a chainlet that hosts the RandInt class
 class RandInt(chains.ChainletBase):
+
+    # run_remote must be implemented by all chainlets. This is the code that will be executed at inference time
     def run_remote(self, max_value: int) -> int:
         return random.randint(1, max_value)
 
+# The @chains.mark_entrypoint decorator indicates that this Chainlet is the entrypoint.
+# There must be exactly one entrypoint per chainlet
 @chains.mark_entrypoint
 class HelloWorld(chains.ChainletBase):
+    # chains.depends indicates that the HelloWorld chainlet depends on the RandInt Chainlet
+    # this enables the HelloWorld chainlet to call the RandInt chainlet
     def __init__(self, rand_int=chains.depends(RandInt, retries=3)) -> None:
         self._rand_int = rand_int
 
@@ -457,7 +466,7 @@ def chains_init(
     filename = os.path.join(abs_path, FILENAME)
     if os.path.exists(filename):
         raise click.UsageError(
-            f"Cannot init chains project with name {target_directory}. Path already exists"
+            f"Cannot init chains project with {filename}. Path already exists"
         )
     user_friendly_path = os.path.join(target_directory, FILENAME)
     rich.print(f"Creating {user_friendly_path}...\n")
