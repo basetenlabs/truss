@@ -128,6 +128,8 @@ class BasetenApi:
             }}
         }}
         """
+
+        print(query_string)
         resp = self._post_graphql_query(query_string)
         return resp["data"]["create_model_from_truss"]
 
@@ -160,6 +162,7 @@ class BasetenApi:
             }}
         }}
         """
+
         resp = self._post_graphql_query(query_string)
         return resp["data"]["create_model_version_from_truss"]
 
@@ -170,6 +173,7 @@ class BasetenApi:
         config,
         client_version,
         is_trusted=False,
+        origin: Optional[ModelOrigin] = None,
     ):
         query_string = f"""
         mutation {{
@@ -177,7 +181,8 @@ class BasetenApi:
                     s3_key: "{s3_key}",
                     config: "{config}",
                     client_version: "{client_version}",
-                    is_trusted: {'true' if is_trusted else 'false'}
+                    is_trusted: {'true' if is_trusted else 'false'},
+                    {f'model_origin: {origin.value}' if origin else ""}
     ) {{
             id,
             name,

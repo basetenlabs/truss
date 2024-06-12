@@ -230,6 +230,7 @@ def create_truss_service(
             config,
             f"truss=={truss.version()}",
             is_trusted,
+            origin=origin,
         )
 
         return (model_version_json["id"], model_version_json["version_id"])
@@ -243,6 +244,7 @@ def create_truss_service(
             client_version=f"truss=={truss.version()}",
             is_trusted=is_trusted,
             deployment_name=deployment_name,
+            origin=origin,
         )
         return (model_version_json["id"], model_version_json["version_id"])
 

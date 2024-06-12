@@ -70,6 +70,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[ModelOrigin] = None,
     ) -> BasetenService:
+        print(f"IN push: {origin} ")
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
