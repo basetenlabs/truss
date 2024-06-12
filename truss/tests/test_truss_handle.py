@@ -458,6 +458,27 @@ def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
         Docker.client().kill(container)
 
 
+@pytest.mark.integration
+def test_build_commands():
+    truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+    truss_dir = truss_root / "test_data" / "test_build_commands"
+    tr = TrussHandle(truss_dir)
+    with ensure_kill_all():
+        r1 = tr.docker_predict([1, 2])
+        assert r1 == {"predictions": [1, 2]}
+
+
+@pytest.mark.integration
+def test_build_commands_failure():
+    truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+    truss_dir = truss_root / "test_data" / "test_build_commands_failure"
+    tr = TrussHandle(truss_dir)
+    try:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+    except DockerException as exc:
+        assert "It returned with code 1" in str(exc)
+
+
 def test_add_data_file(custom_model_truss_dir_with_pre_and_post, tmp_path):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     data_filepath = tmp_path / "test_data.txt"
@@ -800,6 +821,7 @@ def _read_readme(filename: str) -> str:
 
 def generate_default_config():
     config = {
+        "build_commands": [],
         "environment_variables": {},
         "external_package_dirs": [],
         "model_metadata": {},
