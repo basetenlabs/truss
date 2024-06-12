@@ -18,7 +18,7 @@ from typing import (
 
 import truss
 from truss.remote.baseten import service as b10_service
-from truss.remote.baseten.types import ChainletData
+from truss.remote.baseten.types import ChainletData, ModelOrigin
 from truss_chains import code_gen, definitions, framework, utils
 
 
@@ -47,6 +47,7 @@ def _deploy_to_baseten(
         trusted=True,
         publish=options.publish,
         promote=options.promote,
+        origin=ModelOrigin.CHAINS,
     )
     return cast(b10_service.BasetenService, service)
 
