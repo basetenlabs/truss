@@ -344,6 +344,12 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     is_flag=True,
     help="Produces only generated files, but doesn't deploy anything.",
 )
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to.",
+)
 @error_handling
 def deploy(
     source: Path,
@@ -353,6 +359,7 @@ def deploy(
     promote: bool,
     wait: bool,
     dryrun: bool,
+    remote: Optional[str],
 ) -> None:
     """
     Deploys a chain remotely.
@@ -374,6 +381,7 @@ def deploy(
             promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
+            remote=remote,
         )
         service = chains_deploy.deploy_remotely(entrypoint_cls, options)
 
