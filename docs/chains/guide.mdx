@@ -147,14 +147,14 @@ class MistralLLM(chains.ChainletBase):
             MISTRAL_HF_MODEL,
             torch_dtype=torch.float16,
             device_map="auto",
-            use_auth_token=context.secrets["HF_ACCESS_TOKEN"],
+            use_auth_token=context.secrets["hf_access_token"],
         )
 
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             MISTRAL_HF_MODEL,
             device_map="auto",
             torch_dtype=torch.float16,
-            use_auth_token=context.secrets["HF_ACCESS_TOKEN"],
+            use_auth_token=context.secrets["hf_access_token"],
         )
 
         self._generate_args = {
