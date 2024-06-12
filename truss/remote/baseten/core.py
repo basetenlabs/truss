@@ -4,7 +4,7 @@ from typing import IO, List, Optional, Tuple
 import truss
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
-from truss.remote.baseten.types import ChainletData
+from truss.remote.baseten.types import ChainletData, ModelOrigin
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
@@ -204,6 +204,7 @@ def create_truss_service(
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
+    origin: Optional[ModelOrigin] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.

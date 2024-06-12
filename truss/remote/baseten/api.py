@@ -5,7 +5,7 @@ from typing import Any, List, Optional
 import requests
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
-from truss.remote.baseten.types import ChainletData
+from truss.remote.baseten.types import ChainletData, ModelOrigin
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,7 @@ class BasetenApi:
         client_version: str,
         is_trusted: bool,
         deployment_name: Optional[str] = None,
+        origin: Optional[ModelOrigin] = None,
     ):
         query_string = f"""
         mutation {{
@@ -119,6 +120,7 @@ class BasetenApi:
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
+                {f'model_origin: {origin.value}' if origin else ""}
             ) {{
                 id,
                 name,
