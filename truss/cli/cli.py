@@ -14,6 +14,7 @@ import rich.spinner
 import rich.table
 import rich_click as click
 import truss
+from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
 from truss.remote.baseten.core import (
@@ -433,7 +434,12 @@ def chains_init(
     """
     FILENAME = "main.py"
     if not target_directory:
-        target_directory = input("Enter the target directory for the chain: ")
+        target_directory = inquirer.text(
+            qmark="", message="Enter the target directory for the chain"
+        ).execute()
+        if not isinstance(target_directory, str):
+            target_directory = ""
+    target_directory = str(target_directory)
     cur_path = os.getcwd()
     abs_path = os.path.join(cur_path, target_directory)
     filename = os.path.join(abs_path, FILENAME)
@@ -461,11 +467,9 @@ def chains_init(
 def _load_example_chainlet_code() -> str:
     try:
         from truss_chains import example_chainlet
-    # If `example_chainlet` fails validation and `_load_example_chainlet_code` is
-    # called as a result of that, we have a circular import ("partially initialized
-    # module 'truss_chains.example_chainlet' ...").
+    # if the example is faulty, a validation error would be raised
     except Exception as e:
-        raise Exception("failed to load starter code. Please notify support") from e
+        raise Exception("Failed to load starter code. Please notify support.") from e
 
     source = Path(example_chainlet.__file__).read_text()
     return source

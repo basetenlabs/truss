@@ -1,19 +1,19 @@
 import random
 
-# for more on chains, check out https://truss.baseten.co/chains/intro
+# For more on chains, check out https://truss.baseten.co/chains/intro.
 import truss_chains as chains
 
 
-# By inhereting chains.ChainletBase, chains will know to create a chainlet that hosts the RandInt class
+# By inhereting chains.ChainletBase, the chains framework will know to create a chainlet that hosts the RandInt class.
 class RandInt(chains.ChainletBase):
 
-    # run_remote must be implemented by all chainlets. This is the code that will be executed at inference time
+    # run_remote must be implemented by all chainlets. This is the code that will be executed at inference time.
     def run_remote(self, max_value: int) -> int:
         return random.randint(1, max_value)
 
 
 # The @chains.mark_entrypoint decorator indicates that this Chainlet is the entrypoint.
-# There must be exactly one entrypoint per chainlet
+# Each chain must have exactly one entrypoint.
 @chains.mark_entrypoint
 class HelloWorld(chains.ChainletBase):
     # chains.depends indicates that the HelloWorld chainlet depends on the RandInt Chainlet

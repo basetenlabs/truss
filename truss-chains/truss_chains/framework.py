@@ -722,7 +722,7 @@ def import_target(
     module_name = module_path.stem  # Use the file's name as the module name
     if not os.path.isfile(module_path):
         raise ImportError(
-            f"`{module_path}` is not a file. You must point to a file where the entrypoint is defined"
+            f"`{module_path}` is not a file. You must point to a file where the entrypoint is defined."
         )
 
     error_msg = f"Could not import `{target_name}` from `{module_path}`. Check path."
