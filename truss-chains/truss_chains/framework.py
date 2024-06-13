@@ -720,8 +720,13 @@ def import_target(
 ) -> Iterator[Type[definitions.ABCChainlet]]:
     module_path = pathlib.Path(module_path).resolve()
     module_name = module_path.stem  # Use the file's name as the module name
+    if not os.path.isfile(module_path):
+        raise ImportError(
+            f"`{module_path}` is not a file. You must point to a file where the entrypoint is defined"
+        )
 
     error_msg = f"Could not import `{target_name}` from `{module_path}`. Check path."
+    error_msg = f"Could not import `{target_name}`"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if not spec:
         raise ImportError(error_msg)
