@@ -16,8 +16,10 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionId,
     archive_truss,
+    create_chain,
     create_truss_service,
     exists_model,
+    get_chain_id_by_name,
     get_dev_version,
     get_dev_version_from_versions,
     get_model_versions,
@@ -26,6 +28,7 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
+from truss.remote.baseten.types import ChainletData
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
 from truss.truss_config import ModelServer
@@ -43,6 +46,18 @@ class BasetenRemote(TrussRemote):
     @property
     def api(self) -> BasetenApi:
         return self._api
+
+    def create_chain(
+        self, chain_name: str, chainlets: List[ChainletData], publish: bool = False
+    ) -> str:
+        chain_id = get_chain_id_by_name(self._api, chain_name)
+        return create_chain(
+            self._api,
+            chain_id=chain_id,
+            chain_name=chain_name,
+            chainlets=chainlets,
+            is_draft=not publish,
+        )
 
     def push(  # type: ignore
         self,

@@ -2,10 +2,22 @@ import collections
 import inspect
 import logging
 import pathlib
-from typing import Any, Dict, Iterable, Iterator, MutableMapping, Optional, Type, cast
+import uuid
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    MutableMapping,
+    Optional,
+    Type,
+    cast,
+)
 
 import truss
 from truss.remote.baseten import service as b10_service
+from truss.remote.baseten import types as b10_types
 from truss_chains import code_gen, definitions, framework, utils
 
 
@@ -19,10 +31,18 @@ def _deploy_to_baseten(
         f"Deploying chainlet `{model_name}` as truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
     )
+
+    # Since we are deploying a model independently of the chain, we add a random suffix to
+    # prevent us from running into issues with existing models with the same name.
+    #
+    # This is a bit of a hack for now. Once we support model_origin for Chains models, we
+    # can drop the requirement for names on models.
+    model_suffix = str(uuid.uuid4()).split("-")[0]
+
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
         truss_handle,
-        model_name=model_name,
+        model_name=model_name + model_suffix,
         trusted=True,
         publish=options.publish,
         promote=options.promote,
@@ -159,6 +179,14 @@ class ChainService:
         return service
 
     @property
+    def services(self) -> MutableMapping[str, b10_service.TrussService]:
+        return self._services
+
+    @property
+    def entrypoint_name(self) -> str:
+        return self._entrypoint
+
+    @property
     def run_url(self) -> str:
         return self.get_entrypoint.predict_url
 
@@ -221,4 +249,25 @@ def deploy_remotely(
             chainlet_name_to_url[chainlet_descriptor.name] = service.predict_url
         else:
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
+
+    if isinstance(options, definitions.DeploymentOptionsBaseten):
+        chainlets: List[b10_types.ChainletData] = []
+        entrypoint_name = chain_service.entrypoint_name
+
+        for chainlet_name, truss_service in chain_service.services.items():
+            baseten_service = cast(b10_service.BasetenService, truss_service)
+            chainlets.append(
+                b10_types.ChainletData(
+                    name=chainlet_name,
+                    oracle_version_id=baseten_service.model_version_id,
+                    is_entrypoint=chainlet_name == entrypoint_name,
+                )
+            )
+
+        chain_id = options.remote_provider.create_chain(
+            chain_name=chain_service.name, chainlets=chainlets, publish=options.publish
+        )
+
+        print(f"Newly Created Chain: {chain_id}")
+
     return chain_service
