@@ -3,9 +3,9 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import requests
+from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
-from truss.remote.baseten.types import ChainletData
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
-def _chainlet_data_to_graphql_mutation(chainlet: ChainletData):
+def _chainlet_data_to_graphql_mutation(chainlet: b10_types.ChainletData):
     return f"""
         {{
             name: "{chainlet.name}",
@@ -186,7 +186,7 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_draft_truss"]
 
-    def deploy_chain(self, name: str, chainlet_data: List[ChainletData]):
+    def deploy_chain(self, name: str, chainlet_data: List[b10_types.ChainletData]):
         chainlet_data_strings = [
             _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
         ]
@@ -205,7 +205,9 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_chain"]
 
-    def deploy_draft_chain(self, name: str, chainlet_data: List[ChainletData]):
+    def deploy_draft_chain(
+        self, name: str, chainlet_data: List[b10_types.ChainletData]
+    ):
         chainlet_data_strings = [
             _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
         ]
@@ -223,7 +225,9 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_draft_chain"]
 
-    def deploy_chain_deployment(self, chain_id: str, chainlet_data: List[ChainletData]):
+    def deploy_chain_deployment(
+        self, chain_id: str, chainlet_data: List[b10_types.ChainletData]
+    ):
         chainlet_data_strings = [
             _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
         ]

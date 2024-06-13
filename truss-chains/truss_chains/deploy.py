@@ -2,8 +2,7 @@ import collections
 import inspect
 import logging
 import pathlib
-import random
-import string
+import uuid
 from typing import (
     Any,
     Dict,
@@ -18,7 +17,7 @@ from typing import (
 
 import truss
 from truss.remote.baseten import service as b10_service
-from truss.remote.baseten.types import ChainletData
+from truss.remote.baseten import types as b10_types
 from truss_chains import code_gen, definitions, framework, utils
 
 
@@ -33,17 +32,17 @@ def _deploy_to_baseten(
         f"(publish={options.publish}, promote={options.promote})."
     )
 
-    # Since we are deploying a model independently of the chain, we add a random prefix to
+    # Since we are deploying a model independently of the chain, we add a random suffix to
     # prevent us from running into issues with existing models with the same name.
     #
     # This is a bit of a hack for now. Once we support model_origin for Chains models, we
     # can drop the requirement for names on models.
-    model_prefix = "".join(random.choices(string.ascii_uppercase + string.digits, k=9))
+    model_suffix = str(uuid.uuid4()).split("-")[0]
 
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
         truss_handle,
-        model_name=model_prefix + model_name,
+        model_name=model_name + model_suffix,
         trusted=True,
         publish=options.publish,
         promote=options.promote,
@@ -252,13 +251,13 @@ def deploy_remotely(
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
 
     if isinstance(options, definitions.DeploymentOptionsBaseten):
-        chainlets: List[ChainletData] = []
+        chainlets: List[b10_types.ChainletData] = []
         entrypoint_name = chain_service.entrypoint_name
 
         for chainlet_name, truss_service in chain_service.services.items():
             baseten_service = cast(b10_service.BasetenService, truss_service)
             chainlets.append(
-                ChainletData(
+                b10_types.ChainletData(
                     name=chainlet_name,
                     oracle_version_id=baseten_service.model_version_id,
                     is_entrypoint=chainlet_name == entrypoint_name,

@@ -18,8 +18,8 @@ from truss.remote.baseten.core import (
     archive_truss,
     create_chain,
     create_truss_service,
-    exists_chain,
     exists_model,
+    get_chain_id_by_name,
     get_dev_version,
     get_dev_version_from_versions,
     get_model_versions,
@@ -50,7 +50,7 @@ class BasetenRemote(TrussRemote):
     def create_chain(
         self, chain_name: str, chainlets: List[ChainletData], publish: bool = False
     ) -> str:
-        chain_id = exists_chain(self._api, chain_name)
+        chain_id = get_chain_id_by_name(self._api, chain_name)
         return create_chain(
             self._api,
             chain_id=chain_id,
