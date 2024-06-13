@@ -462,8 +462,8 @@ def chains_init(
 
     rich.print(
         "Next steps:\n",
-        f"Run `python {user_friendly_path}` to execute the code locally\n",
-        f"Run `truss chains deploy {user_friendly_path}` to deploy the chain to Baseten\n",
+        f"💻 Run `python {user_friendly_path}` to execute the code locally\n",
+        f"🚢 Run `truss chains deploy {user_friendly_path}` to deploy the chain to Baseten\n",
     )
 
 
