@@ -726,7 +726,6 @@ def import_target(
         )
 
     error_msg = f"Could not import `{target_name}` from `{module_path}`. Check path."
-    error_msg = f"Could not import `{target_name}`"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if not spec:
         raise ImportError(error_msg)
