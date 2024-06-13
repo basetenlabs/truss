@@ -458,7 +458,7 @@ def chains_init(
     )
 
 
-def _load_example_chainlet_code() -> Optional[str]:
+def _load_example_chainlet_code() -> str:
     try:
         from truss_chains import example_chainlet
     # If `example_chainlet` fails validation and `_load_example_chainlet_code` is
