@@ -226,6 +226,12 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--remote_base_domain",
+    type=str,
+    required=False,
+    help="Name of the remote_base_domain in .trussrc to patch changes to",
+)
 @error_handling
 def watch(
     target_directory: str,
@@ -465,6 +471,12 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     help="Name of the remote in .trussrc to push to",
 )
 @click.option(
+    "--remote_base_domain",
+    type=str,
+    required=False,
+    help="Name of the remote_base_domain in .trussrc for invoking onferences from",
+)
+@click.option(
     "-d",
     "--data",
     type=str,
@@ -510,6 +522,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
 def predict(
     target_directory: str,
     remote: str,
+    remote_base_domain: str,
     data: Optional[str],
     file: Optional[Path],
     published: Optional[bool],
