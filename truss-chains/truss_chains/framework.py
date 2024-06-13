@@ -104,7 +104,7 @@ def _example_chainlet_code() -> str:
         logging.error("example_chainlet` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_chainlet.DummyExample.__name__
+    example_name = example_chainlet.HelloWorld.__name__
     source = pathlib.Path(example_chainlet.__file__).read_text()
     tree = ast.parse(source)
     class_code = ""
