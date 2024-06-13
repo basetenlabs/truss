@@ -437,8 +437,11 @@ def chains_init(
         target_directory = inquirer.text(
             qmark="", message="Enter the target directory for the chain"
         ).execute()
-        if not isinstance(target_directory, str):
+        # Ensure that `None` is replaced to empty string. This will write a main.py
+        # file to the cwd.
+        if not target_directory:
             target_directory = ""
+    # we do this cast to satisfy mypy when handling the output of the inquirer.text call
     target_directory = str(target_directory)
     cur_path = os.getcwd()
     abs_path = os.path.join(cur_path, target_directory)
