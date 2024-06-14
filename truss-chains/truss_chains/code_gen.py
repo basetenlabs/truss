@@ -76,11 +76,9 @@ def _run_simple_subprocess(cmd: str) -> None:
 
 
 def _format_python_file(file_path: pathlib.Path) -> None:
-    _run_simple_subprocess(
-        f"autoflake --in-place --remove-all-unused-imports {file_path}"
-    )
-    _run_simple_subprocess(f"black {file_path}")
-    _run_simple_subprocess(f"isort {file_path}")
+    # Resolve importing sorting and unused import issues.
+    _run_simple_subprocess(f"ruff check {file_path} --fix --select F401,I")
+    _run_simple_subprocess(f"ruff format {file_path}")
 
 
 class _Source(definitions.SafeModelNonSerializable):

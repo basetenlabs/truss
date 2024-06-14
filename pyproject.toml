@@ -124,8 +124,12 @@ markers = [
 src = ["truss", "truss-chains", "truss-utils"]
 target-version = "py38"
 line-length = 88
-lint.extend-select = ["I"]
-lint.ignore = ["E402"]
+lint.extend-select = [
+    "I", # isort
+]
+lint.ignore = [
+    "E402", # module-import-not-at-top
+]
 
 [tool.ruff.lint.isort]
 # Matches the Google Python Style Guide.
@@ -138,8 +142,14 @@ section-order = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"**tests/samples.py" = ["I", "F"]
-"config.py" = ["I", "F"]
+"**tests/samples.py" = [
+    "I", # isort
+    "F", # flake8
+]
+"config.py" = [
+    "I", # isort
+    "F", # flake8
+]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 120
