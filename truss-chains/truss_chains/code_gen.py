@@ -77,6 +77,7 @@ def _run_simple_subprocess(cmd: str) -> None:
 
 
 def _format_python_file(file_path: pathlib.Path) -> None:
+    # Resolve importing sorting and unused import issues.
     _run_simple_subprocess(f"ruff check {file_path} --fix --select F401,I")
     _run_simple_subprocess(f"ruff format {file_path}")
 
