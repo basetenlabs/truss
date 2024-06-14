@@ -1,9 +1,9 @@
 dataclasses-json==0.5.7
-truss==0.9.10  # This needs to support py3.8. It can be incremented to releases after #955 (i.e. >0.9.12).
+truss==0.9.14
 fastapi==0.109.1
 uvicorn==0.24.0
 uvloop==0.19.0
 tenacity==8.1.0
-httpx==0.24.1
+httpx==0.27.0
 python-json-logger==2.0.2
 loguru==0.7.2
