@@ -42,18 +42,16 @@ class LazyDataResolver:
 
     def fetch(self):
         with ThreadPoolExecutor(NUM_WORKERS) as executor:
-            futures = []
+            futures = {}
             for file_name, resolved_url in self._bptr_resolution.items():
-                futures.append(
-                    executor.submit(
-                        download_from_url_using_requests,
-                        resolved_url,
-                        self._data_dir / file_name,
-                    )
+                futures[file_name] = executor.submit(
+                    download_from_url_using_requests,
+                    resolved_url,
+                    self._data_dir / file_name,
                 )
-            for future in futures:
+            for file_name, future in futures.items():
                 if not future:
-                    raise RuntimeError(f"Download failure for file: {file_name}")
+                    raise RuntimeError(f"Download failure for file {file_name}")
 
 
 def _read_bptr_resolution() -> Dict[str, str]:

@@ -585,6 +585,9 @@ def _make_truss_config(
     # Absolute paths don't work with remote build.
     config.requirements_file = _REQUIREMENTS_FILENAME
     config.system_packages = image.apt_requirements
+    if image.external_package_dirs:
+        for ext_dir in image.external_package_dirs:
+            config.external_package_dirs.append(ext_dir.abs_path)
     # Assets.
     assets = chains_config.get_asset_spec()
     config.secrets = assets.secrets

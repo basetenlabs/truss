@@ -14,6 +14,7 @@ import rich.spinner
 import rich.table
 import rich_click as click
 import truss
+from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
 from truss.remote.baseten.core import (
@@ -423,6 +424,66 @@ def deploy(
             "Once all chainlets are deployed, "
             f"you can run the chain with:\n\n{run_help_msg}"
         )
+
+
+@chains.command(name="init")  # type: ignore
+@click.option(
+    "--target_directory",
+    type=str,
+    required=False,
+    help="Name of the chain to be deployed, if not given, the user will be prompted for a name",
+)
+@error_handling
+def chains_init(
+    target_directory: Optional[str],
+) -> None:
+    """
+    Initializes a chains project with hello.py
+    """
+    FILENAME = "main.py"
+    if not target_directory:
+        target_directory = inquirer.text(
+            qmark="", message="Enter the target directory for the chain"
+        ).execute()
+        # Ensure that `None` is replaced to empty string. This will write a main.py
+        # file to the cwd.
+        if not target_directory:
+            target_directory = ""
+    # we do this cast to satisfy mypy when handling the output of the inquirer.text call
+    target_directory = str(target_directory)
+    cur_path = os.getcwd()
+    abs_path = os.path.join(cur_path, target_directory)
+    filename = os.path.join(abs_path, FILENAME)
+    if os.path.exists(filename):
+        raise click.UsageError(
+            f"Cannot init chains project with {filename}. Path already exists"
+        )
+    user_friendly_path = os.path.join(target_directory, FILENAME)
+    rich.print(f"Creating {user_friendly_path}...\n")
+
+    source_code = _load_example_chainlet_code()
+
+    if not os.path.exists(abs_path):
+        os.mkdir(abs_path)
+    with open(filename, "w") as f:
+        f.write(source_code)
+
+    rich.print(
+        "Next steps:\n",
+        f"💻 Run `python {user_friendly_path}` to execute the code locally\n",
+        f"🚢 Run `truss chains deploy {user_friendly_path}` to deploy the chain to Baseten\n",
+    )
+
+
+def _load_example_chainlet_code() -> str:
+    try:
+        from truss_chains import example_chainlet
+    # if the example is faulty, a validation error would be raised
+    except Exception as e:
+        raise Exception("Failed to load starter code. Please notify support.") from e
+
+    source = Path(example_chainlet.__file__).read_text()
+    return source
 
 
 def _extract_and_validate_model_identifier(

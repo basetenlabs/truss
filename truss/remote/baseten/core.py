@@ -2,9 +2,9 @@ import logging
 from typing import IO, List, Optional, Tuple
 
 import truss
+from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
-from truss.remote.baseten.types import ChainletData, ModelOrigin
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
@@ -36,7 +36,7 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
-def exists_chain(api: BasetenApi, chain_name: str) -> Optional[str]:
+def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
     """
     Check if a chain with the given name exists in the Baseten remote.
 
@@ -82,7 +82,7 @@ def create_chain(
     api: BasetenApi,
     chain_id: Optional[str],
     chain_name: str,
-    chainlets: List[ChainletData],
+    chainlets: List[b10_types.ChainletData],
     is_draft: bool = False,
 ) -> str:
     if is_draft:
@@ -204,7 +204,7 @@ def create_truss_service(
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
-    origin: Optional[ModelOrigin] = None,
+    origin: Optional[b10_types.ModelOrigin] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
