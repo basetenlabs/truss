@@ -152,5 +152,5 @@ section-order = [
 ]
 
 [tool.ruff.lint.pycodestyle]
-# The formatter can go sometimes go over the 88 character limit, so want to provide some buffer.
+# The formatter can go sometimes go over the 88 character limit, so we want to provide some buffer.
 max-line-length = 120
