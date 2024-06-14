@@ -244,7 +244,7 @@ class AssetSpec(SafeModel):
 
     # TODO: this is not stable yet and might change or refer back to truss.
     secrets: dict[str, str] = pydantic.Field({})
-    cached: list[truss_config.ModelCache] = []
+    cached: list[truss_config.ModelRepo] = []
 
 
 class Assets:
