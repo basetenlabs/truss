@@ -34,20 +34,7 @@ for more details on caching.
 Returns parsed and validated assets.
 
 * **Return type:**
-  [*AssetSpec*](#truss_chains.definitions.AssetSpec)
-
-## *class* `truss_chains.definitions.AssetSpec`
-
-Bases: `pydantic.BaseModel`
-
-Parsed and validated assets. See [`Assets`](#class-truss-chains-assets) for more information.
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `secrets` | *dict[str,str]* | See [`Assets`](#class-truss-chains-assets) |
-| `cached` | *list[ModelCache]* | See [`Assets`](#class-truss-chains-assets) |
+  *AssetSpec*
 
 ## *class* `truss_chains.ChainletBase`
 
@@ -170,23 +157,7 @@ two ways:
 #### get_spec()
 
 * **Return type:**
-  [*ComputeSpec*](#truss_chains.definitions.ComputeSpec)
-
-## *class* `truss_chains.definitions.ComputeSpec`
-
-Bases: `BaseModel`
-
-Parsed and validated compute.  See [`Compute`](#class-truss-chains-compute)
-for more information.
-
-**Parameters:**
-
-| Name | Type | Description                                   |
-|------|------|-----------------------------------------------|
-| `cpu_count` | *int* | See [`Compute`](#class-truss-chains-compute). |
-| `predict_concurrency` | *int* | See [`Compute`](#class-truss-chains-compute). |
-| `memory` | *str* | See [`Compute`](#class-truss-chains-compute). |
-| `accelerator` | *AcceleratorSpec* | See [`Compute`](#class-truss-chains-compute). |
+  *ComputeSpec*
 
 ## `truss_chains.depends`
 

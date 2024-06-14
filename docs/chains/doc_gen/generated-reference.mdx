@@ -34,25 +34,7 @@ for more details on caching.
 Returns parsed and validated assets.
 
 * **Return type:**
-  [*AssetSpec*](#truss_chains.definitions.AssetSpec)
-
-## *class* `truss_chains.definitions.AssetSpec`
-
-Bases: `pydantic.BaseModel`
-
-Parsed and validated assets. See `Assets` for more information.
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `secrets` | *dict[str,str]* |  |
-| `cached` | *list[ModelCache]* |  |
-
-
-#### cached *: list[ModelCache]*
-
-#### secrets *: dict[str, str]*
+  *AssetSpec*
 
 ## *class* `truss_chains.ChainletBase`
 
@@ -184,31 +166,7 @@ two ways:
 #### get_spec()
 
 * **Return type:**
-  [*ComputeSpec*](#truss_chains.definitions.ComputeSpec)
-
-## *class* `truss_chains.definitions.ComputeSpec`
-
-Bases: `BaseModel`
-
-Parsed and validated compute.  See `Compute` for more information.
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `cpu_count` | *int* |  |
-| `predict_concurrency` | *int* |  |
-| `memory` | *str* |  |
-| `accelerator` | *AcceleratorSpec* |  |
-
-
-#### accelerator *: AcceleratorSpec*
-
-#### cpu_count *: int*
-
-#### memory *: str*
-
-#### predict_concurrency *: int*
+  *ComputeSpec*
 
 ## `truss_chains.depends`
 
@@ -470,12 +428,12 @@ class MyChainlet(chains.ChainletBase):
 #### get_asset_spec()
 
 * **Return type:**
-  [*AssetSpec*](#truss_chains.definitions.AssetSpec)
+  *AssetSpec*
 
 #### get_compute_spec()
 
 * **Return type:**
-  [*ComputeSpec*](#truss_chains.definitions.ComputeSpec)
+  *ComputeSpec*
 
 #### name *: str | None*
 
