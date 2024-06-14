@@ -1,5 +1,5 @@
---- docs/chains/doc_gen/generated-reference.mdx	2024-06-14 12:24:46.789725965 -0700
-+++ docs/snippets/chains/API-reference.mdx	2024-06-14 12:31:38.142839277 -0700
+--- docs/chains/doc_gen/generated-reference.mdx	2024-06-14 13:31:41.697803456 -0700
++++ docs/snippets/chains/API-reference.mdx	2024-06-14 13:33:46.338438494 -0700
 @@ -6,7 +6,7 @@
 
  Model weight caching can be used like this:
@@ -9,30 +9,7 @@
  import truss_chains as chains
  from truss import truss_config
 
-@@ -40,19 +40,14 @@
-
- Bases: `pydantic.BaseModel`
-
--Parsed and validated assets. See `Assets` for more information.
-+Parsed and validated assets. See [`Assets`](#class-truss-chains-assets) for more information.
-
- **Parameters:**
-
- | Name | Type | Description |
- |------|------|-------------|
--| `secrets` | *dict[str,str]* |  |
--| `cached` | *list[ModelCache]* |  |
--
--
--#### cached *: list[ModelCache]*
--
--#### secrets *: dict[str, str]*
-+| `secrets` | *dict[str,str]* | See [`Assets`](#class-truss-chains-assets) |
-+| `cached` | *list[ModelCache]* | See [`Assets`](#class-truss-chains-assets) |
-
- ## *class* `truss_chains.ChainletBase`
-
-@@ -69,8 +64,8 @@
+@@ -51,8 +51,8 @@
 
  Handle for a deployed chain.
 
@@ -43,7 +20,7 @@
  utilities to query their status, invoke the entrypoint etc.
 
 
-@@ -97,14 +92,6 @@
+@@ -79,14 +79,6 @@
  * **Return type:**
    None
 
@@ -58,7 +35,7 @@
  #### *property* entrypoint_name *: str*
 
  #### *property* get_entrypoint *: TrussService*
-@@ -123,18 +110,19 @@
+@@ -105,18 +97,19 @@
  * **Return type:**
    list[tuple[str, str, str]]
 
@@ -83,7 +60,7 @@
 
  #### *property* run_url *: str*
 
-@@ -144,20 +132,18 @@
+@@ -126,20 +119,18 @@
 
  ## *class* `truss_chains.ChainsRuntimeError`
 
@@ -106,41 +83,7 @@
 
  **Parameters:**
 
-@@ -190,25 +176,17 @@
-
- Bases: `BaseModel`
-
--Parsed and validated compute.  See `Compute` for more information.
-+Parsed and validated compute.  See [`Compute`](#class-truss-chains-compute)
-+for more information.
-
- **Parameters:**
-
--| Name | Type | Description |
--|------|------|-------------|
--| `cpu_count` | *int* |  |
--| `predict_concurrency` | *int* |  |
--| `memory` | *str* |  |
--| `accelerator` | *AcceleratorSpec* |  |
--
--
--#### accelerator *: AcceleratorSpec*
--
--#### cpu_count *: int*
--
--#### memory *: str*
--
--#### predict_concurrency *: int*
-+| Name | Type | Description                                   |
-+|------|------|-----------------------------------------------|
-+| `cpu_count` | *int* | See [`Compute`](#class-truss-chains-compute). |
-+| `predict_concurrency` | *int* | See [`Compute`](#class-truss-chains-compute). |
-+| `memory` | *str* | See [`Compute`](#class-truss-chains-compute). |
-+| `accelerator` | *AcceleratorSpec* | See [`Compute`](#class-truss-chains-compute). |
-
- ## `truss_chains.depends`
-
-@@ -216,30 +194,28 @@
+@@ -174,30 +165,28 @@
  dependency of another chainlet. The return value of `depends` is intended to be
  used as a default argument in a chainlet’s `__init__`-method.
  When deploying a chain remotely, a corresponding stub to the remote is injected in
@@ -178,7 +121,7 @@
 
  ## `truss_chains.depends_context`
 
-@@ -249,16 +225,15 @@
+@@ -207,16 +196,15 @@
  [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
  for more guidance on the `__init__`-signature of chainlets.
 
@@ -197,7 +140,7 @@
 
  ## `truss_chains.deploy_remotely`
 
-@@ -269,7 +244,7 @@
+@@ -227,7 +215,7 @@
 
  | Name | Type | Description |
  |------|------|-------------|
@@ -206,7 +149,7 @@
  | `chain_name` | *str* | The name of the chain. |
  | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
  | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
-@@ -278,11 +253,11 @@
+@@ -236,11 +224,11 @@
  * **Returns:**
    A chain service handle to the deployed chain.
  * **Return type:**
@@ -221,7 +164,7 @@
 
  Bundles config values and resources needed to instantiate Chainlets.
 
-@@ -291,14 +266,14 @@
+@@ -249,14 +237,14 @@
 
  **Parameters:**
 
@@ -243,7 +186,7 @@
 
  #### data_dir *: Path | None*
 
-@@ -309,12 +284,16 @@
+@@ -267,12 +255,16 @@
 
  #### get_service_descriptor(chainlet_name)
 
@@ -264,7 +207,7 @@
 
  #### user_config *: UserConfigT*
 
-@@ -324,12 +303,12 @@
+@@ -282,12 +274,12 @@
 
  Configures the docker image in which a remoted chainlet is deployed.
 
@@ -280,7 +223,7 @@
 
  **Parameters:**
 
-@@ -342,18 +321,6 @@
+@@ -300,18 +292,6 @@
  | `data_dir` | *AbsPath\|None* | Data from this directory is copied into the docker image and accessible to the remote chainlet at runtime. |
  | `external_package_dirs` | *list[AbsPath]\|None* | A list of directories containing additional python packages outside the chain’s workspace dir, e.g. a shared library. This code is copied into the docker image and importable at runtime. |
 
@@ -299,7 +242,7 @@
  ## `truss_chains.make_abs_path_here`
 
  Helper to specify file paths relative to the *immediately calling* module.
-@@ -372,12 +339,12 @@
+@@ -330,12 +310,12 @@
  You can now in `root/sub_package/chainlet.py` point to the requirements
  file like this:
 
@@ -314,7 +257,7 @@
  This helper uses the directory of the immediately calling module as an
  absolute reference point for resolving the file location. Therefore,
  you MUST NOT wrap the instantiation of `make_abs_path_here` into a
-@@ -385,7 +352,7 @@
+@@ -343,7 +323,7 @@
 
  Ok:
 
@@ -323,7 +266,7 @@
  def foo(path: AbsPath):
      abs_path = path.abs_path
 
-@@ -394,15 +361,20 @@
+@@ -352,15 +332,20 @@
 
  Not Ok:
 
@@ -347,7 +290,7 @@
  * **Return type:**
    *AbsPath*
 
-@@ -416,7 +388,7 @@
+@@ -374,7 +359,7 @@
 
  Example usage:
 
@@ -356,7 +299,7 @@
  import truss_chains as chains
 
  @chains.mark_entrypoint
-@@ -424,10 +396,14 @@
+@@ -382,10 +367,14 @@
      ...
  ```
 
@@ -374,7 +317,7 @@
 
  ## *class* `truss_chains.RemoteConfig`
 
-@@ -437,7 +413,7 @@
+@@ -395,7 +384,7 @@
 
  This is specified as a class variable for each chainlet class, e.g.:
 
@@ -383,7 +326,7 @@
  import truss_chains as chains
 
 
-@@ -453,31 +429,13 @@
+@@ -411,31 +400,13 @@
 
  **Parameters:**
 
@@ -394,8 +337,6 @@
 -| `assets` | *[Assets](#truss_chains.Assets* |  |
 -| `name` | *str\|None* |  |
 -
--
--#### assets *: [Assets](#truss_chains.Assets)*
 +| Name | Type                                             | Description |
 +|------|--------------------------------------------------|-------------|
 +| `docker_image` | *[DockerImage](#class-truss-chains-dockerimage)* |  |
@@ -403,6 +344,8 @@
 +| `assets` | *[Assets](#class-truss-chains-assets)*                 |  |
 +| `name` | *str\|None*                                      |  |
 
+-#### assets *: [Assets](#truss_chains.Assets)*
+-
 -#### compute *: [Compute](#truss_chains.Compute)*
 -
 -#### docker_image *: [DockerImage](#truss_chains.DockerImage)*
@@ -410,18 +353,18 @@
 -#### get_asset_spec()
 -
 -* **Return type:**
--  [*AssetSpec*](#truss_chains.definitions.AssetSpec)
+-  *AssetSpec*
 -
 -#### get_compute_spec()
 -
 -* **Return type:**
--  [*ComputeSpec*](#truss_chains.definitions.ComputeSpec)
+-  *ComputeSpec*
 -
 -#### name *: str | None*
 
  ## *class* `truss_chains.RemoteErrorDetail`
 
-@@ -498,11 +456,6 @@
+@@ -456,11 +427,6 @@
  | `user_stack_trace` | *list[StackFrame]* |  |
 
 
@@ -433,7 +376,7 @@
 
  #### format()
 
-@@ -512,10 +465,6 @@
+@@ -470,10 +436,6 @@
  * **Return type:**
    str
 
@@ -444,7 +387,7 @@
  ## *class* `truss_chains.RPCOptions`
 
  Bases: `pydantic.BaseModel`
-@@ -530,32 +479,28 @@
+@@ -488,32 +450,28 @@
  | `retries` | *int* |  |
 
 
@@ -484,7 +427,7 @@
  import os
  import truss_chains as chains
 
-@@ -593,30 +538,21 @@
+@@ -551,30 +509,21 @@
 
  **Parameters:**
 
@@ -521,7 +464,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -626,7 +562,7 @@
+@@ -584,7 +533,7 @@
 
  class DeployedWhisper(chains.StubBase):
 
@@ -530,7 +473,7 @@
          resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
          return WhisperOutput(text=resp["text"], language==resp["language"])
 
-@@ -645,10 +581,10 @@
+@@ -603,10 +552,10 @@
 
  **Parameters:**
 
@@ -545,7 +488,7 @@
 
 
  #### *classmethod* from_url(predict_url, context, options=None)
-@@ -658,9 +594,8 @@
+@@ -616,8 +565,8 @@
 
  **Parameters:**
 
@@ -554,7 +497,6 @@
 -| `predict_url` | *str* | URL to predict endpoint of another chain / truss model. |
 -| `context` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__`. |
 -| `options` | *[RPCOptions](#truss_chains.RPCOptions* | RPC options, e.g. retries. |
--
 +| Name | Type                                                                         | Description |
 +|------|------------------------------------------------------------------------------|-------------|
 +| `predict_url` | *str*                                                                        | URL to predict endpoint of another chain / truss model. |

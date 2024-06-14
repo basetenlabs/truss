@@ -1,10 +1,10 @@
 # type: ignore  # This tool is only for Marius.
 """Script to auot-generate the API reference for Truss Chains."""
-
 import inspect
 import pathlib
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import truss_chains as chains
@@ -26,8 +26,8 @@ Welcome to Truss Chains's documentation!
 
 BUILDER = "mdx_adapter"  # "html"
 NON_PUBLIC_SYMBOLS = [
-    "truss_chains.definitions.AssetSpec",
-    "truss_chains.definitions.ComputeSpec",
+    # "truss_chains.definitions.AssetSpec",
+    # "truss_chains.definitions.ComputeSpec",
     "truss_chains.deploy.ChainService",
 ]
 
@@ -60,20 +60,49 @@ def _clean_build_directory(build_dir: Path) -> None:
 def _apply_patch(
     original_file_path: str, patch_file_path: str, output_file_path: str
 ) -> None:
+    original_file = Path(original_file_path)
+    patch_file = Path(patch_file_path)
+    output_file = Path(output_file_path)
+
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_output_file_path = Path(temp_file.name)
+
     try:
-        result = subprocess.run(
-            ["patch", original_file_path, "-o", output_file_path, patch_file_path],
+        subprocess.run(
+            [
+                "patch",
+                str(original_file),
+                "-o",
+                str(temp_output_file_path),
+                str(patch_file),
+            ],
             check=True,
             capture_output=True,
             text=True,
         )
-        print(result.stdout)
+
+        # Copy temp file to final output if no errors
+        shutil.copy(temp_output_file_path, output_file)
+
     except subprocess.CalledProcessError as e:
-        print("Patch failed with the following output:")
-        print(e.stdout)
-        print(e.stderr)
-        print("Launching meld for manual resolution...")
-        subprocess.run(["meld", original_file_path, output_file_path])
+        reject_file = temp_output_file_path.with_suffix(".rej")
+        if reject_file.exists():
+            print(f"Conflicts found, saved to {reject_file}")
+            subprocess.run(
+                [
+                    "meld",
+                    str(original_file_path),
+                    str(output_file),
+                    str(temp_output_file_path),
+                ],
+                check=True,
+            )
+        else:
+            print(f"Patch failed: {e.stderr}")
+
+    finally:
+        if temp_output_file_path.exists():
+            temp_output_file_path.unlink()
 
 
 def generate_sphinx_docs(
