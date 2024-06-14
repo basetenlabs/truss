@@ -1,8 +1,9 @@
 import logging
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import requests
+from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -20,6 +21,16 @@ API_URL_MAPPING = {
 # If a non-standard domain is used with the baseten remote, default to
 # using the production api routes
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
+
+
+def _chainlet_data_to_graphql_mutation(chainlet: b10_types.ChainletData):
+    return f"""
+        {{
+            name: "{chainlet.name}",
+            oracle_version_id: "{chainlet.oracle_version_id}",
+            is_entrypoint: {'true' if chainlet.is_entrypoint else 'false'}
+        }}
+        """
 
 
 class BasetenApi:
@@ -51,6 +62,7 @@ class BasetenApi:
 
     def _post_graphql_query(self, query_string: str) -> dict:
         headers = self._auth_token.header()
+
         resp = requests.post(
             self._graphql_api_url,
             data={"query": query_string},
@@ -173,6 +185,84 @@ class BasetenApi:
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_draft_truss"]
+
+    def deploy_chain(self, name: str, chainlet_data: List[b10_types.ChainletData]):
+        chainlet_data_strings = [
+            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
+        ]
+
+        chainlets_string = ", ".join(chainlet_data_strings)
+        query_string = f"""
+        mutation {{
+        deploy_chain(
+            name: "{name}",
+            chainlets: [{chainlets_string}]
+        ) {{
+            id
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["deploy_chain"]
+
+    def deploy_draft_chain(
+        self, name: str, chainlet_data: List[b10_types.ChainletData]
+    ):
+        chainlet_data_strings = [
+            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
+        ]
+        chainlets_string = ", ".join(chainlet_data_strings)
+        query_string = f"""
+        mutation {{
+        deploy_draft_chain(
+            name: "{name}",
+            chainlets: [{chainlets_string}]
+        ) {{
+            chain_id
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["deploy_draft_chain"]
+
+    def deploy_chain_deployment(
+        self, chain_id: str, chainlet_data: List[b10_types.ChainletData]
+    ):
+        chainlet_data_strings = [
+            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
+        ]
+        chainlets_string = ", ".join(chainlet_data_strings)
+        query_string = f"""
+        mutation {{
+        deploy_chain_deployment(
+            chain_id: "{chain_id}",
+            chainlets: [{chainlets_string}]
+        ) {{
+            chain_id
+            chain_deployment_id
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["deploy_chain_deployment"]
+
+    def get_chain_by_id(self, id: str):
+
+        # TODO: Implement
+        pass
+
+    def get_chains(self):
+        query_string = """
+        {
+            chains {
+                id
+                name
+            }
+        }
+        """
+
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["chains"]
 
     def models(self):
         query_string = """

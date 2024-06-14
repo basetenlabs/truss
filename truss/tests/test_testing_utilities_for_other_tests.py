@@ -1,7 +1,7 @@
 # This file contains shared code to be used in other tests
 # TODO(pankaj): Using a tests file for shared code is not ideal, we should
 # move it to a regular file. This is a short term hack.
-
+import json
 import shutil
 import subprocess
 import time
@@ -17,10 +17,44 @@ DISK_SPACE_LOW_PERCENTAGE = 20
 @contextmanager
 def ensure_kill_all():
     try:
-        yield
+        with _show_container_logs_if_raised():
+            yield
     finally:
         kill_all_with_retries()
         ensure_free_disk_space()
+
+
+def _human_readable_json_logs(raw_logs: str) -> str:
+    output = []
+    for line in raw_logs.splitlines():
+        try:
+            log_entry = json.loads(line)
+            human_readable_log = " ".join(
+                f"{key}: {value}" for key, value in log_entry.items()
+            )
+            output.append(f"\t{human_readable_log}")
+        except Exception:
+            output.append(line)
+    return "\n".join(output)
+
+
+@contextmanager
+def _show_container_logs_if_raised():
+    initial_ids = {c.id for c in get_containers({TRUSS: True})}
+    exception_raised = False
+    try:
+        yield
+    except Exception:
+        exception_raised = True
+        raise
+    finally:
+        if exception_raised:
+            print("An exception was raised, showing logs of all containers.")
+            containers = get_containers({TRUSS: True})
+            new_containers = [c for c in containers if c.id not in initial_ids]
+            for container in new_containers:
+                print(f"Logs for container {container.name} ({container.id}):")
+                print(_human_readable_json_logs(container.logs()))
 
 
 def kill_all_with_retries(num_retries: int = 10):

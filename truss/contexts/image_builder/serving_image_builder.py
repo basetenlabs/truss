@@ -30,6 +30,7 @@ from truss.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
+    TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     USE_BRITON,
@@ -353,6 +354,8 @@ class ServingImageBuilder(ImageBuilder):
                     "Tensor parallelism and GPU count must be the same for TRT-LLM"
                 )
 
+            config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
+
             config.base_image = BaseImage(
                 image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
                 python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
@@ -447,6 +450,7 @@ class ServingImageBuilder(ImageBuilder):
             use_hf_secret,
             cached_files,
             external_data_files,
+            self._spec.build_commands,
         )
 
     def _render_dockerfile(
@@ -457,6 +461,7 @@ class ServingImageBuilder(ImageBuilder):
         use_hf_secret: bool,
         cached_files: List[str],
         external_data_files: List[Tuple[str, str]],
+        build_commands: List[str],
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
@@ -509,6 +514,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token=hf_access_token,
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
+            build_commands=build_commands,
             **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME

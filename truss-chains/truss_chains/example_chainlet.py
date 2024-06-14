@@ -1,31 +1,35 @@
+import random
+
+# For more on chains, check out https://truss.baseten.co/chains/intro.
 import truss_chains as chains
 
 
-class DummyGenerateData(chains.ChainletBase):
-    def run_remote(self) -> str:
-        return "abc"
+# By inhereting chains.ChainletBase, the chains framework will know to create a chainlet that hosts the RandInt class.
+class RandInt(chains.ChainletBase):
+
+    # run_remote must be implemented by all chainlets. This is the code that will be executed at inference time.
+    def run_remote(self, max_value: int) -> int:
+        return random.randint(1, max_value)
 
 
-# Nesting the classes is a hack to make it *appear* like SplitText is from a different
-# module.
-class shared_chainlet:
-    class DummySplitText(chains.ChainletBase):
-        def run_remote(self, data: str) -> list[str]:
-            return [data[:2], data[2:]]
+# The @chains.mark_entrypoint decorator indicates that this Chainlet is the entrypoint.
+# Each chain must have exactly one entrypoint.
+@chains.mark_entrypoint
+class HelloWorld(chains.ChainletBase):
+    # chains.depends indicates that the HelloWorld chainlet depends on the RandInt Chainlet
+    # this enables the HelloWorld chainlet to call the RandInt chainlet
+    def __init__(self, rand_int=chains.depends(RandInt, retries=3)) -> None:
+        self._rand_int = rand_int
+
+    def run_remote(self, max_value: int) -> str:
+        num_repetitions = self._rand_int.run_remote(max_value)
+        return "Hello World! " * num_repetitions
 
 
-class DummyExample(chains.ChainletBase):
-    def __init__(
-        self,
-        data_generator: DummyGenerateData = chains.depends(DummyGenerateData),
-        splitter: shared_chainlet.DummySplitText = chains.depends(
-            shared_chainlet.DummySplitText
-        ),
-        context: chains.DeploymentContext = chains.depends_context(),
-    ) -> None:
-        self._data_generator = data_generator
-        self._data_splitter = splitter
-        self._context = context
+if __name__ == "__main__":
+    with chains.run_local():
+        hello_world_chain = HelloWorld()
+        result = hello_world_chain.run_remote(max_value=5)
 
-    def run_remote(self) -> list[str]:
-        return self._data_splitter.run_remote(self._data_generator.run_remote())
+    print(result)
+    # Hello World! Hello World! Hello World!

@@ -2,6 +2,7 @@ import logging
 from typing import IO, List, Optional, Tuple
 
 import truss
+from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
@@ -35,6 +36,23 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
+def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
+    """
+    Check if a chain with the given name exists in the Baseten remote.
+
+    Args:
+        api: BasetenApi instance
+        chain_name: Name of the chain to check for existence
+
+    Returns:
+        chain_id if present, otherwise None
+    """
+    chains = api.get_chains()
+
+    chain_name_id_mapping = {chain["name"]: chain["id"] for chain in chains}
+    return chain_name_id_mapping.get(chain_name)
+
+
 def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     """
     Check if a model with the given name exists in the Baseten remote.
@@ -58,6 +76,22 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
         raise e
 
     return model["model"]["id"]
+
+
+def create_chain(
+    api: BasetenApi,
+    chain_id: Optional[str],
+    chain_name: str,
+    chainlets: List[b10_types.ChainletData],
+    is_draft: bool = False,
+) -> str:
+    if is_draft:
+        return api.deploy_draft_chain(chain_name, chainlets)["chain_id"]
+
+    if chain_id:
+        return api.deploy_chain_deployment(chain_id, chainlets)["chain_id"]
+
+    return api.deploy_chain(chain_name, chainlets)["id"]
 
 
 def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:

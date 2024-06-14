@@ -104,7 +104,7 @@ def _example_chainlet_code() -> str:
         logging.error("example_chainlet` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_chainlet.DummyExample.__name__
+    example_name = example_chainlet.HelloWorld.__name__
     source = pathlib.Path(example_chainlet.__file__).read_text()
     tree = ast.parse(source)
     class_code = ""
@@ -720,6 +720,10 @@ def import_target(
 ) -> Iterator[Type[definitions.ABCChainlet]]:
     module_path = pathlib.Path(module_path).resolve()
     module_name = module_path.stem  # Use the file's name as the module name
+    if not os.path.isfile(module_path):
+        raise ImportError(
+            f"`{module_path}` is not a file. You must point to a file where the entrypoint is defined."
+        )
 
     error_msg = f"Could not import `{target_name}` from `{module_path}`. Check path."
     spec = importlib.util.spec_from_file_location(module_name, module_path)
