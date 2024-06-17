@@ -250,7 +250,7 @@ class AssetSpec(SafeModel):
 class Assets:
     """Specifies which assets a chainlet can access in the remote deployment.
 
-    Model weight caching can be used like this::
+    For example, model weight caching can be used like this::
 
         import truss_chains as chains
         from truss import truss_config
@@ -340,7 +340,9 @@ class ServiceDescriptor(SafeModel):
 class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     """Bundles config values and resources needed to instantiate Chainlets.
 
-    This is provided at runtime to the Chainlet's ``__init__`` method.
+    The context can optionally added as a trailing argument in a Chainlet's
+    ``__init__`` method and then used to set up the chainlet (e.g. using a secret as
+    an access token for downloading model weights).
 
     Args:
         data_dir: The directory where the chainlet can store and access data,
