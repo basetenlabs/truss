@@ -37,7 +37,6 @@ def _deploy_to_baseten(
     #
     # This is a bit of a hack for now. Once we support model_origin for Chains models, we
     # can drop the requirement for names on models.
-
     model_suffix = str(uuid.uuid4()).split("-")[0]
 
     # Models must be trusted to use the API KEY secret.
@@ -253,7 +252,6 @@ def deploy_remotely(
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
 
     if isinstance(options, definitions.DeploymentOptionsBaseten):
-
         chainlets: List[b10_types.ChainletData] = []
         entrypoint_name = chain_service.entrypoint_name
 

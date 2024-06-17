@@ -129,7 +129,6 @@ class BasetenApi:
         }}
         """
 
-        print(query_string)
         resp = self._post_graphql_query(query_string)
         return resp["data"]["create_model_from_truss"]
 
