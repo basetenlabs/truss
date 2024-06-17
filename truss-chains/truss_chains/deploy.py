@@ -147,9 +147,12 @@ def _get_ordered_dependencies(
 
 
 def _chainlet_logs_url(
-    chain_id: str, chain_deployment_id: str, chainlet_id: str
+    chain_id: str,
+    chain_deployment_id: str,
+    chainlet_id: str,
+    remote: b10_remote.BasetenRemote,
 ) -> str:
-    return ""
+    return f"{remote._remote_url}/chains/{chain_id}/logs/{chain_deployment_id}/{chainlet_id}"
 
 
 class RemoteChainService:
@@ -175,7 +178,10 @@ class RemoteChainService:
                 chainlet["name"],
                 chainlet["oracle_version"]["current_model_deployment_status"]["status"],
                 _chainlet_logs_url(
-                    self._chain_id, self._chain_deployment_id, chainlet["id"]
+                    self._chain_id,
+                    self._chain_deployment_id,
+                    chainlet["id"],
+                    self._remote,
                 ),
             )
             for chainlet in chainlets
