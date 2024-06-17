@@ -94,9 +94,7 @@ def _list_imported_symbols(module: object) -> dict[str, str]:
 
 def _make_rst_structure(chains):
     exported_symbols = _list_imported_symbols(chains)
-    rst_parts = ["API Reference"]
-    rst_parts.append("=" * len(rst_parts[-1]) + "\n")
-
+    rst_parts = []
     for name, descr, symbols in SECTIONS:
         rst_parts.append(name)
         rst_parts.append("=" * len(rst_parts[-1]) + "\n")
