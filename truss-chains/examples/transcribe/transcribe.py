@@ -111,28 +111,12 @@ class Transcribe(chains.ChainletBase):
         self._async_http = httpx.AsyncClient()
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    async def _assert_media_supports_range_downloads(self, media_url: str) -> None:
-        ok = False
-        try:
-            head_response = await self._async_http.head(media_url)
-            if "bytes" in head_response.headers.get("Accept-Ranges", ""):
-                ok = True
-            # Check by making a test range request to see if '206' is returned.
-            range_header = {"Range": "bytes=0-0"}
-            range_response = await self._async_http.get(media_url, headers=range_header)
-            ok = range_response.status_code == 206
-        except httpx.HTTPError as e:
-            logging.error(f"Error checking URL: {e}")
-
-        if not ok:
-            raise NotImplementedError(f"Range downloads unsupported for `{media_url}`.")
-
     async def run_remote(
         self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
     ) -> data_types.TranscribeOutput:
         t0 = time.time()
         media_url = job_descr.media_url
-        await self._assert_media_supports_range_downloads(media_url)
+        await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
         duration_secs = await helpers.query_source_length_secs(media_url)
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
         # TODO: use silence-aware time chunking.
@@ -141,8 +125,6 @@ class Transcribe(chains.ChainletBase):
             params.macro_chunk_size_sec,
             params.macro_chunk_overlap_sec,
         )
-        # for c in macro_chunks:
-        #     print(c.model_dump_json(indent=4))
         tasks = []
         for i, macro_chunk in enumerate(macro_chunks):
             logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(macro_chunks):03}].")

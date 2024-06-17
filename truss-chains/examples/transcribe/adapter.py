@@ -9,7 +9,6 @@ from typing import Optional
 import data_types
 import helpers
 import httpx
-import numpy as np
 import pydantic
 import tenacity
 import transcribe as transcribe_base
@@ -36,7 +35,7 @@ class EnqueueOutput(pydantic.BaseModel):
 
 
 class TranscribeInput(pydantic.BaseModel):
-    # Do not change, taken from existing App.
+    # Needed as `model_input` for `async_predict`-API.
     job_descr: data_types.JobDescriptor
     params: data_types.TranscribeParams
 
@@ -81,14 +80,30 @@ class TranscribeResult(pydantic.BaseModel):
 
     @classmethod
     def from_job_descr(
-        cls, job_descr: data_types.JobDescriptor, status: data_types.JobStatus
+        cls,
+        job_descr: data_types.JobDescriptor,
+        status: data_types.JobStatus,
+        segments: Optional[list[data_types.Segment]] = None,
     ):
-        return TranscribeResult(
+        result = TranscribeResult(
             media_url=job_descr.media_url,
             media_id=job_descr.media_id,
             job_uuid=job_descr.job_uuid,
             status=status,
         )
+        if segments:
+            result.text = [
+                Segment(
+                    start=seg.start_time_sec,
+                    end=seg.end_time_sec,
+                    text=seg.text,
+                    language=seg.language.capitalize(),
+                    bcp47_key=seg.language_code,
+                )
+                for seg in segments
+            ]
+
+        return result
 
 
 # Chainlets ############################################################################
@@ -159,19 +174,19 @@ class TranscribeWithWebhook(chains.ChainletBase):
         assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
     _context: chains.DeploymentContext
-    _video_worker: transcribe_base.MacroChunkWorker
+    _macro_chunk_worker: transcribe_base.MacroChunkWorker
     _async_http: httpx.AsyncClient
 
     def __init__(
         self,
-        video_worker: transcribe_base.MacroChunkWorker = chains.depends(
+        macro_chunk_worker: transcribe_base.MacroChunkWorker = chains.depends(
             transcribe_base.MacroChunkWorker, retries=3
         ),
         internal_webhook: InternalWebhook = chains.depends(InternalWebhook, retries=2),
         context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
         self._context = context
-        self._video_worker = video_worker
+        self._macro_chunk_worker = macro_chunk_worker
         self._internal_webhook = internal_webhook
         self._async_http = httpx.AsyncClient()
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -179,22 +194,6 @@ class TranscribeWithWebhook(chains.ChainletBase):
             logging.info("No-Op-Shadow on: will no create chunk jobs.")
         else:
             logging.info("No-Op-Shadow off.")
-
-    async def _assert_media_supports_range_downloads(self, media_url: str) -> None:
-        ok = False
-        try:
-            head_response = await self._async_http.head(media_url)
-            if "bytes" in head_response.headers.get("Accept-Ranges", ""):
-                ok = True
-            # Check by making a test range request to see if '206' is returned.
-            range_header = {"Range": "bytes=0-0"}
-            range_response = await self._async_http.get(media_url, headers=range_header)
-            ok = range_response.status_code == 206
-        except httpx.HTTPError as e:
-            logging.error(f"Error checking URL: {e}")
-
-        if not ok:
-            raise NotImplementedError(f"Range downloads unsupported for `{media_url}`.")
 
     async def _transcribe(
         self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
@@ -209,7 +208,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
         except Exception:
             pass
 
-        await self._assert_media_supports_range_downloads(media_url)
+        await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
         duration_secs = await helpers.query_source_length_secs(media_url)
         logging.info(
             f"Transcribe request for `{duration_secs:.1f}` seconds, "
@@ -221,45 +220,38 @@ class TranscribeWithWebhook(chains.ChainletBase):
                 status=data_types.JobStatus.DEBUG_RESULT,  # type: ignore[arg-type]
             )
 
-        video_chunks = helpers.generate_time_chunks(
-            int(np.ceil(duration_secs)), params.macro_chunk_size_sec
+        macro_chunks = helpers.generate_time_chunks(
+            duration_secs,
+            params.macro_chunk_size_sec,
+            params.macro_chunk_overlap_sec,
         )
         tasks = []
-        for i, chunk_limits in enumerate(video_chunks):
-            logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(video_chunks):03}].")
+        for i, macro_chunk in enumerate(macro_chunks):
+            logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(macro_chunks):03}].")
             tasks.append(
                 asyncio.ensure_future(
-                    self._video_worker.run_remote(media_url, params, i, *chunk_limits)
+                    self._macro_chunk_worker.run_remote(media_url, params, macro_chunk)
                 )
             )
-
-        results: list[data_types.TranscribeOutput] = await asyncio.gather(*tasks)
-        t1 = time.time()
-        processing_time = t1 - t0
-        logging.info(
-            data_types.TranscribeOutput(
-                segments=[],
-                input_duration_sec=duration_secs,
-                processing_duration_sec=processing_time,
-                speedup=duration_secs / processing_time,
-            )
-        )
-        # Ignored type issue seems to be a mypy bug.
-        result = TranscribeResult.from_job_descr(
-            job_descr, status=data_types.JobStatus.SUCCEEDED  # type: ignore[arg-type]
-        )
-        result.text = [
-            Segment(
-                start=seg.segment_info.start_time_sec,
-                end=seg.segment_info.end_time_sec,
-                text=seg.transcription.text,
-                language=seg.transcription.language,
-                bcp47_key=seg.transcription.bcp47_key,
-            )
-            for part in results
-            for seg in part.segments
+        segments = [
+            seg
+            for segment_list in await helpers.gather(tasks)
+            for seg in segment_list.segments
         ]
-        return result
+        processing_time = time.time() - t0
+        result = data_types.TranscribeOutput(
+            job_descr=job_descr.copy(update={"status": data_types.JobStatus.SUCCEEDED}),
+            segments=segments,
+            input_duration_sec=duration_secs,
+            processing_duration_sec=processing_time,
+            speedup=duration_secs / processing_time,
+        )
+        logging.info(result.model_dump_json(indent=4, exclude={"segments"}))
+        return TranscribeResult.from_job_descr(
+            job_descr=result.job_descr,
+            status=data_types.JobStatus.SUCCEEDED,  # type: ignore[arg-type]
+            segments=result.segments,
+        )
 
     async def run_remote(
         self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
