@@ -84,14 +84,14 @@ def create_chain(
     chain_name: str,
     chainlets: List[b10_types.ChainletData],
     is_draft: bool = False,
-) -> str:
+) -> Tuple[str, str]:
     if is_draft:
-        return api.deploy_draft_chain(chain_name, chainlets)["chain_id"]
-
-    if chain_id:
-        return api.deploy_chain_deployment(chain_id, chainlets)["chain_id"]
-
-    return api.deploy_chain(chain_name, chainlets)["id"]
+        response = api.deploy_draft_chain(chain_name, chainlets)
+    elif chain_id:
+        response = api.deploy_chain_deployment(chain_id, chainlets)
+    else:
+        response = api.deploy_chain(chain_name, chainlets)
+    return (response["chain_id"], response["chain_deployment_id"])
 
 
 def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:
