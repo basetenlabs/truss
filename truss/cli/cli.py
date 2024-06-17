@@ -26,6 +26,7 @@ from truss.remote.baseten.core import (
     ModelVersionId,
 )
 from truss.remote.baseten.service import BasetenService
+from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
@@ -284,18 +285,19 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     statuses = []
     # After reversing, the first one is the entrypoint (per order in service).
     for i, (name, status, logs_url) in enumerate(reversed(service.get_info())):
-        if status == ACTIVE_STATUS:
+        displayable_status = get_displayable_status(status)
+        if displayable_status == ACTIVE_STATUS:
             spinner_name = "active"
-        elif status in DEPLOYING_STATUSES:
-            if status == "BUILDING":
+        elif displayable_status in DEPLOYING_STATUSES:
+            if displayable_status == "BUILDING":
                 spinner_name = "building"
-            elif status == "LOADING":
+            elif displayable_status == "LOADING":
                 spinner_name = "loading"
             else:
                 spinner_name = "deploying"
         else:
             spinner_name = "failed"
-        spinner = rich.spinner.Spinner(spinner_name, text=status)
+        spinner = rich.spinner.Spinner(spinner_name, text=displayable_status)
         if i == 0:
             display_name = f"{name} (entrypoint)"
         else:
@@ -304,7 +306,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         table.add_row(spinner, display_name, logs_url)
         if i == 0:  # Add section divider after entrypoint.
             table.add_section()
-        statuses.append(status)
+        statuses.append(displayable_status)
     return table, statuses
 
 
