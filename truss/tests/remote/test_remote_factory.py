@@ -24,7 +24,7 @@ SAMPLE_TRUSSRC_NO_PARAMS = """
 remote_provider=test_remote
 """
 
-SAMPLE_TRUSSRC_WITH_REMOTE_BASE_DOMAIN = """
+SAMPLE_TRUSSRC_WITH_REMOTE_INFERENCE_BASE_DOMAIN = """
 [test]
 api_key=test_key
 remote_url=http://test.com
@@ -147,7 +147,7 @@ def test_load_remote_config_no_params(mock_exists, mock_open):
 @mock.patch(
     "builtins.open",
     new_callable=mock.mock_open,
-    read_data=SAMPLE_TRUSSRC_WITH_REMOTE_BASE_DOMAIN,
+    read_data=SAMPLE_TRUSSRC_WITH_REMOTE_INFERENCE_BASE_DOMAIN,
 )
 @mock.patch("pathlib.Path.exists", return_value=True)
 def test_load_remote_config_with_remote_base_domain(mock_exists, mock_open):

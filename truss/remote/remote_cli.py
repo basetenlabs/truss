@@ -28,7 +28,7 @@ def inquire_remote_config() -> RemoteConfig:
         validate=NonEmptyValidator(),
     ).execute()
 
-    remote_base_domain = inquirer.text(
+    remote_inference_base_domain = inquirer.text(
         "🌐 What is the base domain for your deployed models?",
         qmark="",
     ).execute()
@@ -39,7 +39,7 @@ def inquire_remote_config() -> RemoteConfig:
             "remote_provider": "baseten",
             "api_key": api_key,
             "remote_url": remote_url,
-            "remote_base_domain": remote_base_domain,
+            "remote_inference_base_domain": remote_inference_base_domain,
         },
     )
 

@@ -52,14 +52,14 @@ class BasetenService(TrussService):
         api_key: str,
         service_url: str,
         api: BasetenApi,
-        remote_base_domain: Optional[str] = None,
+        remote_inference_base_domain: Optional[str] = None,
         truss_handle: Optional[TrussHandle] = None,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
         self._auth_service = AuthService(api_key=api_key)
-        self.remote_base_domain = remote_base_domain
+        self.remote_inference_base_domain = remote_inference_base_domain
         self._api = api
         self._truss_handle = truss_handle
 
@@ -131,9 +131,10 @@ class BasetenService(TrussService):
         """
         # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
         url = _add_model_domain(
-            self._api.rest_api_url, f"model-{self.model_id}", self.remote_base_domain
+            self._api.rest_api_url,
+            f"model-{self.model_id}",
+            self.remote_inference_base_domain,
         )
-        print(url)
         if self.is_draft:
             # "https://model-{model_id}.api.baseten.co/development".
             url = f"{url}/development/predict"
