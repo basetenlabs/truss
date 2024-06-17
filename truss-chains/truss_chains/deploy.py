@@ -46,6 +46,7 @@ def _deploy_to_baseten(
         trusted=True,
         publish=options.publish,
         promote=options.promote,
+        origin=b10_types.ModelOrigin.CHAINS,
     )
     return cast(b10_service.BasetenService, service)
 

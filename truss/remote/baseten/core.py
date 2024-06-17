@@ -204,6 +204,7 @@ def create_truss_service(
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
+    origin: Optional[b10_types.ModelOrigin] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -229,6 +230,7 @@ def create_truss_service(
             config,
             f"truss=={truss.version()}",
             is_trusted,
+            origin=origin,
         )
 
         return (model_version_json["id"], model_version_json["version_id"])
@@ -242,6 +244,7 @@ def create_truss_service(
             client_version=f"truss=={truss.version()}",
             is_trusted=is_trusted,
             deployment_name=deployment_name,
+            origin=origin,
         )
         return (model_version_json["id"], model_version_json["version_id"])
 
