@@ -21,7 +21,6 @@ del pydantic, pydantic_major_version
 # flake8: noqa F401
 from truss_chains.definitions import (
     Assets,
-    ChainsRuntimeError,
     Compute,
     DeploymentContext,
     DockerImage,
