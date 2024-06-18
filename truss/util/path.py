@@ -3,8 +3,8 @@ import random
 import string
 import tempfile
 from contextlib import contextmanager
-from distutils.dir_util import remove_tree
-from distutils.file_util import copy_file
+from shutil import rmtree as remove_tree
+from shutil import copy2 as copy_file
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
 
@@ -33,11 +33,11 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
             dest_fp.mkdir(exist_ok=True)
         else:
             dest_fp.parent.mkdir(exist_ok=True, parents=True)
-            copy_file(str(sub_path), str(dest_fp), verbose=False)
+            copy_file(str(sub_path), str(dest_fp))
 
 
 def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
-    return copy_file(str(src), str(dest), verbose=False)
+    return copy_file(str(src), str(dest))
 
 
 def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
