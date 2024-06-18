@@ -1,8 +1,6 @@
-import enum
 from typing import Literal, Optional
 
 import pydantic
-from truss_chains import utils
 
 # External Models ######################################################################
 
@@ -35,23 +33,8 @@ class TranscribeParams(pydantic.BaseModel):
     )
 
 
-class JobStatus(utils.StrEnum):
-    # Do not change, taken from existing App.
-    QUEUED = enum.auto()
-    SUCCEEDED = enum.auto()
-    PERMAFAILED = enum.auto()
-    DEBUG_RESULT = enum.auto()
-
-
-class JobDescriptor(pydantic.BaseModel):
-    # Do not change, taken from existing App.
-    media_url: str
-    job_uuid: str
-    media_id: int = 0
-    status: Optional[JobStatus] = None
-
-
 class _BaseSegment(pydantic.BaseModel):
+    # Common to internal whisper and external segment.
     start_time_sec: float
     end_time_sec: float
     text: str
@@ -67,7 +50,6 @@ class Segment(_BaseSegment):
 
 
 class TranscribeOutput(pydantic.BaseModel):
-    job_descr: JobDescriptor
     segments: list[Segment]
     input_duration_sec: float
     processing_duration_sec: float
