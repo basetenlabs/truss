@@ -1,6 +1,7 @@
 # type: ignore  # This tool is only for Marius.
 """Super hacky plugin to make the generated markdown more suitable for
 rendering in mintlify as an mdx doc."""
+
 import os
 import re
 from typing import Any, Dict
@@ -23,8 +24,7 @@ self is explicitly positional-only to allow self as a field name.
 """
 
 
-class MDXAdapterTranslator(MarkdownTranslator):
-    ...
+class MDXAdapterTranslator(MarkdownTranslator): ...
 
 
 def extract_and_format_parameters_section(content: str) -> str:
