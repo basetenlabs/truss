@@ -108,6 +108,7 @@ class BasetenApi:
         client_version: str,
         is_trusted: bool,
         deployment_name: Optional[str] = None,
+        origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
         mutation {{
@@ -119,6 +120,7 @@ class BasetenApi:
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
+                {f'model_origin: {origin.value}' if origin else ""}
             ) {{
                 id,
                 name,
@@ -126,6 +128,7 @@ class BasetenApi:
             }}
         }}
         """
+
         resp = self._post_graphql_query(query_string)
         return resp["data"]["create_model_from_truss"]
 
@@ -158,6 +161,7 @@ class BasetenApi:
             }}
         }}
         """
+
         resp = self._post_graphql_query(query_string)
         return resp["data"]["create_model_version_from_truss"]
 
@@ -168,6 +172,7 @@ class BasetenApi:
         config,
         client_version,
         is_trusted=False,
+        origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
         mutation {{
@@ -175,7 +180,8 @@ class BasetenApi:
                     s3_key: "{s3_key}",
                     config: "{config}",
                     client_version: "{client_version}",
-                    is_trusted: {'true' if is_trusted else 'false'}
+                    is_trusted: {'true' if is_trusted else 'false'},
+                    {f'model_origin: {origin.value}' if origin else ""}
     ) {{
             id,
             name,
@@ -199,6 +205,8 @@ class BasetenApi:
             chainlets: [{chainlets_string}]
         ) {{
             id
+            chain_id
+            chain_deployment_id
         }}
         }}
         """
@@ -219,6 +227,7 @@ class BasetenApi:
             chainlets: [{chainlets_string}]
         ) {{
             chain_id
+            chain_deployment_id
         }}
         }}
         """
@@ -246,11 +255,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_chain_deployment"]
 
-    def get_chain_by_id(self, id: str):
-
-        # TODO: Implement
-        pass
-
     def get_chains(self):
         query_string = """
         {
@@ -263,6 +267,25 @@ class BasetenApi:
 
         resp = self._post_graphql_query(query_string)
         return resp["data"]["chains"]
+
+    def get_chainlets_by_deployment_id(self, chain_deployment_id: str):
+        query_string = f"""
+        {{
+            chain_deployment(id:"{chain_deployment_id}") {{
+                chainlets{{
+                    name
+                    id
+                    oracle_version {{
+                        current_model_deployment_status {{
+                            status
+                        }}
+                    }}
+                 }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["chain_deployment"]["chainlets"]
 
     def models(self):
         query_string = """

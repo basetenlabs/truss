@@ -8,9 +8,11 @@ import rich
 import yaml
 from requests import ReadTimeout
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
+    ChainDeploymentHandle,
     ModelId,
     ModelIdentifier,
     ModelName,
@@ -28,7 +30,6 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
-from truss.remote.baseten.types import ChainletData
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
 from truss.truss_config import ModelServer
@@ -48,8 +49,12 @@ class BasetenRemote(TrussRemote):
         return self._api
 
     def create_chain(
-        self, chain_name: str, chainlets: List[ChainletData], publish: bool = False
-    ) -> str:
+        self,
+        chain_name: str,
+        chainlets: List[b10_types.ChainletData],
+        publish: bool = False,
+    ) -> ChainDeploymentHandle:
+        # Returns tuple of (chain_id, chain_deployment_id)
         chain_id = get_chain_id_by_name(self._api, chain_name)
         return create_chain(
             self._api,
@@ -58,6 +63,9 @@ class BasetenRemote(TrussRemote):
             chainlets=chainlets,
             is_draft=not publish,
         )
+
+    def get_chainlets(self, chain_deployment_id: str) -> List[dict]:
+        return self._api.get_chainlets_by_deployment_id(chain_deployment_id)
 
     def push(  # type: ignore
         self,
@@ -68,6 +76,7 @@ class BasetenRemote(TrussRemote):
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
+        origin: Optional[b10_types.ModelOrigin] = None,
     ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -117,6 +126,7 @@ class BasetenRemote(TrussRemote):
             promote=promote,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
+            origin=origin,
         )
 
         return BasetenService(

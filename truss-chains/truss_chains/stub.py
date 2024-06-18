@@ -82,12 +82,49 @@ class BasetenSession:
 
 
 class StubBase(abc.ABC):
+    """Base class for stubs that invoke remote chainlets.
+
+    It is used internally for RPCs to dependency chainlets, but it can also be used
+    in user-code for wrapping a deployed truss model into the chains framework, e.g.
+    like that::
+
+        import pydantic
+        import truss_chains as chains
+
+        class WhisperOutput(pydantic.BaseModel):
+          ...
+
+
+        class DeployedWhisper(chains.StubBase):
+
+            async def run_remote(self, audio_b64: str) -> WhisperOutput:
+                resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
+                return WhisperOutput(text=resp["text"], language==resp["language"])
+
+
+        class MyChainlet(chains.ChainletBase):
+
+           def __init__(self, ..., context = chains.depends_context()):
+               ...
+               self._whisper = DeployedWhisper.from_url(
+                WHISPER_URL,
+                context,
+                options=chains.RPCOptions(retries=3),
+            )
+
+    """
+
     _remote: BasetenSession
 
     @final
     def __init__(
         self, service_descriptor: definitions.ServiceDescriptor, api_key: str
     ) -> None:
+        """
+        Args:
+            service_descriptor: Contains the URL and other configuration.
+            api_key: A baseten API key to authorize requests.
+        """
         self._remote = BasetenSession(service_descriptor, api_key)
 
     @classmethod
@@ -96,13 +133,18 @@ class StubBase(abc.ABC):
         predict_url: str,
         context: definitions.DeploymentContext,
         options: Optional[definitions.RPCOptions] = None,
-        name: Optional[str] = None,
     ):
-        name = name or cls.__name__
+        """Factory method, convenient to be used in chainlet's ``__init__``-method.
+
+        Args:
+            predict_url: URL to predict endpoint of another chain / truss model.
+            context: Deployment context object, obtained in the chainlet's ``__init__``.
+            options: RPC options, e.g. retries.
+        """
         options = options or definitions.RPCOptions()
         return cls(
             definitions.ServiceDescriptor(
-                name=name, predict_url=predict_url, options=options
+                name=cls.__name__, predict_url=predict_url, options=options
             ),
             api_key=context.get_baseten_api_key(),
         )
@@ -112,7 +154,7 @@ StubT = TypeVar("StubT", bound=StubBase)
 
 
 def factory(stub_cls: Type[StubT], context: definitions.DeploymentContext) -> StubT:
-    # Assumes the stub_cls-name and the name of the service in `context` match.
+    # Assumes the stub_cls-name and the name of the service in ``context` match.
     return stub_cls(
         service_descriptor=context.get_service_descriptor(stub_cls.__name__),
         api_key=context.get_baseten_api_key(),

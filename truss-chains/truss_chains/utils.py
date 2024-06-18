@@ -22,44 +22,42 @@ T = TypeVar("T")
 def make_abs_path_here(file_path: str) -> definitions.AbsPath:
     """Helper to specify file paths relative to the *immediately calling* module.
 
-    E.g. in you have a project structure like this
+    E.g. in you have a project structure like this::
 
-    root/
-        chain.py
-        common_requirements.text
-        sub_package/
-            Chainlet.py
-            chainlet_requirements.txt
+        root/
+            chain.py
+            common_requirements.text
+            sub_package/
+                chainlet.py
+                chainlet_requirements.txt
 
-    Not in `root/sub_package/Chainlet.py` you can point to the requirements
-    file like this:
+    You can now in ``root/sub_package/chainlet.py`` point to the requirements
+    file like this::
 
-    ```
-    shared = RelativePathToHere("../common_requirements.text")
-    specific = RelativePathToHere("chainlet_requirements.text")
-    ```
-
-    Caveat: this helper uses the directory of the immediately calling module as an
-    absolute reference point for resolving the file location.
-    Therefore, you MUST NOT wrap the instantiation of `RelativePathToHere` into a
-    function (e.g. applying decorators) or use dynamic code execution.
-
-    Ok:
-    ```
-    def foo(path: AbsPath):
-        abs_path = path.abs_path
+        shared = RelativePathToHere("../common_requirements.text")
+        specific = RelativePathToHere("chainlet_requirements.text")
 
 
-    foo(make_abs_path_here("blabla"))
-    ```
+    Warning:
+        This helper uses the directory of the immediately calling module as an
+        absolute reference point for resolving the file location. Therefore,
+        you MUST NOT wrap the instantiation of ``make_abs_path_here`` into a
+        function (e.g. applying decorators) or use dynamic code execution.
 
-    Not Ok:
-    ```
-    def foo(path: str):
-        badbadbad = make_abs_path_here(path).abs_path
+        Ok::
 
-    foo("blabla"))
-    ```
+            def foo(path: AbsPath):
+                abs_path = path.abs_path
+
+            foo(make_abs_path_here("./somewhere"))
+
+        Not Ok::
+
+            def foo(path: str):
+                dangerous_value = make_abs_path_here(path).abs_path
+
+            foo("./somewhere")
+
     """
     # TODO: the absolute path resolution below uses the calling module as a
     #   reference point. This would not work if users wrap this call in a function
@@ -300,6 +298,7 @@ class StrEnum(str, enum.Enum):
     StrEnum is a Python `enum.Enum` that inherits from `str`. The `auto()` behavior
     uses the member name and lowers it. This is useful for compatibility with pydantic.
     Example usage:
+
     ```
     class Example(StrEnum):
         SOME_VALUE = enum.auto()
