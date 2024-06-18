@@ -28,12 +28,18 @@ def inquire_remote_config() -> RemoteConfig:
         validate=NonEmptyValidator(),
     ).execute()
 
+    remote_inference_base_domain = inquirer.text(
+        "🌐 What is the base domain for your deployed models?",
+        qmark="",
+    ).execute()
+
     return RemoteConfig(
         name="baseten",
         configs={
             "remote_provider": "baseten",
             "api_key": api_key,
             "remote_url": remote_url,
+            "remote_inference_base_domain": remote_inference_base_domain,
         },
     )
 

@@ -228,6 +228,12 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@click.option(
+    "--remote_inference_base_domain",
+    type=str,
+    required=False,
+    help="Name of the remote_inference_base_domain in .trussrc to patch changes to",
+)
 @error_handling
 def watch(
     target_directory: str,
