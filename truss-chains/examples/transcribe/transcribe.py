@@ -112,10 +112,9 @@ class Transcribe(chains.ChainletBase):
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
     async def run_remote(
-        self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
+        self, media_url: str, params: data_types.TranscribeParams
     ) -> data_types.TranscribeOutput:
         t0 = time.time()
-        media_url = job_descr.media_url
         await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
         duration_secs = await helpers.query_source_length_secs(media_url)
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
@@ -140,7 +139,6 @@ class Transcribe(chains.ChainletBase):
         ]
         processing_time = time.time() - t0
         result = data_types.TranscribeOutput(
-            job_descr=job_descr.copy(update={"status": data_types.JobStatus.SUCCEEDED}),
             segments=segments,
             input_duration_sec=duration_secs,
             processing_duration_sec=processing_time,
@@ -154,9 +152,11 @@ if __name__ == "__main__":
     import os
 
     url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-    # url_ = "https://file-examples.com/storage/fe15076da466528199d9c5a/2017/11/file_example_MP3_5MG.mp3"
-    job_ = data_types.JobDescriptor(job_uuid="job_uuid_0", media_id=0, media_url=url_)
     params_ = data_types.TranscribeParams(micro_chunk_size_sec=25)
+
+    json_input = {"media_url": url_, "params": params_.model_dump()}
+
+    print(f"Example JSON input:\n{json_input}")
 
     with chains.run_local(
         secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]}
@@ -164,6 +164,6 @@ if __name__ == "__main__":
         transcribe_job = Transcribe()
 
         result_ = asyncio.get_event_loop().run_until_complete(
-            transcribe_job.run_remote(job_, params_)
+            transcribe_job.run_remote(url_, params_)
         )
         print(result_.model_dump_json(indent=4))

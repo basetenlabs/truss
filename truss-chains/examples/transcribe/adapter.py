@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import enum
 import json
 import logging
 import re
@@ -15,10 +16,26 @@ import transcribe as transcribe_base
 import truss_chains as chains
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from truss_chains import stub
+from truss_chains import stub, utils
 
 NO_OP_SHADOW = False  # If on, just tests task creation and skips actual transcriptions.
 FILE_EXT_RE = re.compile(r"\.([a-zA-Z0-9]+)\?")
+
+
+class JobStatus(utils.StrEnum):
+    # Do not change, taken from existing App.
+    QUEUED = enum.auto()
+    SUCCEEDED = enum.auto()
+    PERMAFAILED = enum.auto()
+    DEBUG_RESULT = enum.auto()
+
+
+class JobDescriptor(pydantic.BaseModel):
+    # Do not change, taken from existing App.
+    media_url: str
+    job_uuid: str
+    media_id: int = 0
+    status: Optional[JobStatus] = None
 
 
 class EnqueueInput(pydantic.BaseModel):
@@ -30,13 +47,13 @@ class EnqueueInput(pydantic.BaseModel):
 class EnqueueOutput(pydantic.BaseModel):
     # Do not change, taken from existing App.
     success: bool
-    jobs: list[data_types.JobDescriptor]
+    jobs: list[JobDescriptor]
     error_message: Optional[str] = None
 
 
 class TranscribeInput(pydantic.BaseModel):
     # Needed as `model_input` for `async_predict`-API.
-    job_descr: data_types.JobDescriptor
+    job_descr: JobDescriptor
     params: data_types.TranscribeParams
 
 
@@ -73,7 +90,7 @@ class TranscribeResult(pydantic.BaseModel):
     media_url: str
     media_id: int  # Seems to be just 0 or 1.
     job_uuid: str
-    status: data_types.JobStatus
+    status: JobStatus
     # TODO: this is not a great name.
     text: Optional[list[Segment]] = None
     failure_reason: Optional[str] = None
@@ -81,8 +98,8 @@ class TranscribeResult(pydantic.BaseModel):
     @classmethod
     def from_job_descr(
         cls,
-        job_descr: data_types.JobDescriptor,
-        status: data_types.JobStatus,
+        job_descr: JobDescriptor,
+        status: JobStatus,
         segments: Optional[list[data_types.Segment]] = None,
     ):
         result = TranscribeResult(
@@ -196,7 +213,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
             logging.info("No-Op-Shadow off.")
 
     async def _transcribe(
-        self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
+        self, job_descr: JobDescriptor, params: data_types.TranscribeParams
     ) -> TranscribeResult:
         t0 = time.time()
         media_url = job_descr.media_url
@@ -216,8 +233,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
         )
         if NO_OP_SHADOW:
             return TranscribeResult.from_job_descr(
-                job_descr,
-                status=data_types.JobStatus.DEBUG_RESULT,  # type: ignore[arg-type]
+                job_descr, status=JobStatus.DEBUG_RESULT
             )
 
         macro_chunks = helpers.generate_time_chunks(
@@ -240,7 +256,6 @@ class TranscribeWithWebhook(chains.ChainletBase):
         ]
         processing_time = time.time() - t0
         result = data_types.TranscribeOutput(
-            job_descr=job_descr.copy(update={"status": data_types.JobStatus.SUCCEEDED}),
             segments=segments,
             input_duration_sec=duration_secs,
             processing_duration_sec=processing_time,
@@ -248,13 +263,13 @@ class TranscribeWithWebhook(chains.ChainletBase):
         )
         logging.info(result.model_dump_json(indent=4, exclude={"segments"}))
         return TranscribeResult.from_job_descr(
-            job_descr=result.job_descr,
-            status=data_types.JobStatus.SUCCEEDED,  # type: ignore[arg-type]
+            job_descr=job_descr.copy(update={"status": JobStatus.SUCCEEDED}),
+            status=JobStatus.SUCCEEDED,
             segments=result.segments,
         )
 
     async def run_remote(
-        self, job_descr: data_types.JobDescriptor, params: data_types.TranscribeParams
+        self, job_descr: JobDescriptor, params: data_types.TranscribeParams
     ) -> TranscribeResult:
         # When `Transcribe.run` is called with `async_predict` the async framework will
         # invoke the webhook, but it expects that the webhook does not need
@@ -286,8 +301,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
             error_msg = f"{type(e)}: {str(e)}"
             # Ignored type issue seems to be a mypy bug.
             failure_result = TranscribeResult.from_job_descr(
-                job_descr,
-                status=data_types.JobStatus.PERMAFAILED,  # type: ignore[arg-type]
+                job_descr, status=JobStatus.PERMAFAILED
             )
             failure_result.failure_reason = error_msg
             await self._internal_webhook.run_remote(result=failure_result)
@@ -324,9 +338,7 @@ class EnqueueBatch(chains.ChainletBase):
         )
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    def _enqueue(
-        self, job: data_types.JobDescriptor, params: data_types.TranscribeParams
-    ):
+    def _enqueue(self, job: JobDescriptor, params: data_types.TranscribeParams):
         # While we can't use the async framework's webhooks, we have to do the retry
         # logic manually inside `Transcribe`, not use async's retry.
         # The internal webhook endpoint will return 401 because it requires
@@ -344,9 +356,7 @@ class EnqueueBatch(chains.ChainletBase):
     async def run_remote(self, worklet_input: EnqueueInput) -> EnqueueOutput:
         # `worklet_input` must not be renamed, it matches the expected payload.
         media_for_transcription = json.loads(worklet_input.media_for_transciption)
-        jobs = [
-            data_types.JobDescriptor.model_validate(x) for x in media_for_transcription
-        ]
+        jobs = [JobDescriptor.model_validate(x) for x in media_for_transcription]
         logging.info(f"Got `{len(jobs)}` jobs in batch.")
         params = data_types.TranscribeParams()
         tasks = [asyncio.ensure_future(self._enqueue(job, params)) for job in jobs]
@@ -357,10 +367,10 @@ class EnqueueBatch(chains.ChainletBase):
                 logging.exception(
                     f"Could not enqueue `{job.json()}`. {val}", stack_info=True
                 )
-                job = job.copy(update={"status": data_types.JobStatus.PERMAFAILED})
+                job = job.copy(update={"status": JobStatus.PERMAFAILED})
             else:
                 logging.info(f"Async call response: {val}")
-                job = job.copy(update={"status": data_types.JobStatus.QUEUED})
+                job = job.copy(update={"status": JobStatus.QUEUED})
 
             queued_jobs.append(job)
         output = EnqueueOutput(success=True, jobs=queued_jobs)
@@ -373,7 +383,7 @@ if __name__ == "__main__":
     from truss_chains import definitions
 
     url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-    job_ = data_types.JobDescriptor(job_uuid="job_uuid_0", media_id=0, media_url=url_)
+    job_ = JobDescriptor(job_uuid="job_uuid_0", media_id=0, media_url=url_)
     worklet_input_ = EnqueueInput(
         media_for_transciption=json.dumps([job_.model_dump()])
     )
