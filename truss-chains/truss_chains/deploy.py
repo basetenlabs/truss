@@ -16,6 +16,7 @@ from typing import (
 )
 
 import truss
+from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.remote.baseten import types as b10_types
 from truss_chains import code_gen, definitions, framework, utils
@@ -145,6 +146,48 @@ def _get_ordered_dependencies(
     ]
 
 
+def _chainlet_logs_url(
+    chain_id: str,
+    chain_deployment_id: str,
+    chainlet_id: str,
+    remote: b10_remote.BasetenRemote,
+) -> str:
+    return f"{remote._remote_url}/chains/{chain_id}/logs/{chain_deployment_id}/{chainlet_id}"
+
+
+class RemoteChainService:
+    _remote: b10_remote.BasetenRemote  # TODO, make this a generic TypeVar for this calss
+    _chain_id: str
+    _chain_deployment_id: str
+
+    def __init__(
+        self, chain_id: str, chain_deployment_id: str, remote: b10_remote.BasetenRemote
+    ) -> None:
+        self._remote = remote
+        self._chain_id = chain_id
+        self._chain_deployment_id = chain_deployment_id
+
+    def get_info(self) -> list[tuple[str, str, str]]:
+        """Return list with elements (name, status, logs_url) for each chainlet."""
+        chainlets = self._remote.get_chainlets(
+            chain_deployment_id=self._chain_deployment_id
+        )
+
+        return [
+            (
+                chainlet["name"],
+                chainlet["oracle_version"]["current_model_deployment_status"]["status"],
+                _chainlet_logs_url(
+                    self._chain_id,
+                    self._chain_deployment_id,
+                    chainlet["id"],
+                    self._remote,
+                ),
+            )
+            for chainlet in chainlets
+        ]
+
+
 class ChainService:
     # TODO: this exposes methods to users that should be internal (e.g. `add_service`).
     """Handle for a deployed chain.
@@ -158,6 +201,7 @@ class ChainService:
     _entrypoint: str
     _services: MutableMapping[str, b10_service.TrussService]
     _entrypoint_fake_json_data = Any
+    _remote_chain_service: Optional[RemoteChainService]
 
     def __init__(self, entrypoint: str, name: str) -> None:
         """
@@ -180,6 +224,13 @@ class ChainService:
             service: Service object for the chainlet.
         """
         self._services[name] = service
+
+    def set_remote_chain_service(
+        self, chain_id: str, chain_deployment_id: str, remote: b10_remote.BasetenRemote
+    ) -> None:
+        self._remote_chain_service = RemoteChainService(
+            chain_id, chain_deployment_id, remote
+        )
 
     @property
     def entrypoint_fake_json_data(self) -> Any:
@@ -236,10 +287,10 @@ class ChainService:
 
         Returns:
             List with elements ``(name, status, logs_url)`` for each chainlet."""
-        return list(
-            (name, next(service.poll_deployment_status(sleep_secs=0)), service.logs_url)
-            for name, service in self._services.items()
-        )
+        if not self._remote_chain_service:
+            raise ValueError("Chain was not deployed remotely.")
+
+        return self._remote_chain_service.get_info()
 
 
 def deploy_remotely(
@@ -305,10 +356,14 @@ def deploy_remotely(
                 )
             )
 
-        chain_id = options.remote_provider.create_chain(
+        chain_deployment_handle = options.remote_provider.create_chain(
             chain_name=chain_service.name, chainlets=chainlets, publish=options.publish
         )
 
-        print(f"Newly Created Chain: {chain_id}")
+        chain_service.set_remote_chain_service(
+            chain_deployment_handle.chain_id,
+            chain_deployment_handle.chain_deployment_id,
+            options.remote_provider,
+        )
 
     return chain_service

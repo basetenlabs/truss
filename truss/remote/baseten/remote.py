@@ -12,6 +12,7 @@ from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
+    ChainDeploymentHandle,
     ModelId,
     ModelIdentifier,
     ModelName,
@@ -52,8 +53,8 @@ class BasetenRemote(TrussRemote):
         chain_name: str,
         chainlets: List[b10_types.ChainletData],
         publish: bool = False,
-    ) -> str:
-
+    ) -> ChainDeploymentHandle:
+        # Returns tuple of (chain_id, chain_deployment_id)
         chain_id = get_chain_id_by_name(self._api, chain_name)
         return create_chain(
             self._api,
@@ -62,6 +63,9 @@ class BasetenRemote(TrussRemote):
             chainlets=chainlets,
             is_draft=not publish,
         )
+
+    def get_chainlets(self, chain_deployment_id: str) -> List[dict]:
+        return self._api.get_chainlets_by_deployment_id(chain_deployment_id)
 
     def push(  # type: ignore
         self,

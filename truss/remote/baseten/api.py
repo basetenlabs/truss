@@ -205,6 +205,8 @@ class BasetenApi:
             chainlets: [{chainlets_string}]
         ) {{
             id
+            chain_id
+            chain_deployment_id
         }}
         }}
         """
@@ -225,6 +227,7 @@ class BasetenApi:
             chainlets: [{chainlets_string}]
         ) {{
             chain_id
+            chain_deployment_id
         }}
         }}
         """
@@ -252,11 +255,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_chain_deployment"]
 
-    def get_chain_by_id(self, id: str):
-
-        # TODO: Implement
-        pass
-
     def get_chains(self):
         query_string = """
         {
@@ -269,6 +267,25 @@ class BasetenApi:
 
         resp = self._post_graphql_query(query_string)
         return resp["data"]["chains"]
+
+    def get_chainlets_by_deployment_id(self, chain_deployment_id: str):
+        query_string = f"""
+        {{
+            chain_deployment(id:"{chain_deployment_id}") {{
+                chainlets{{
+                    name
+                    id
+                    oracle_version {{
+                        current_model_deployment_status {{
+                            status
+                        }}
+                    }}
+                 }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["chain_deployment"]["chainlets"]
 
     def models(self):
         query_string = """
