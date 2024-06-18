@@ -1,5 +1,6 @@
 # type: ignore  # This tool is only for Marius.
 """Script to auot-generate the API reference for Truss Chains."""
+
 import inspect
 import pathlib
 import shutil

@@ -6,7 +6,6 @@ import truss_chains as chains
 
 # By inhereting chains.ChainletBase, the chains framework will know to create a chainlet that hosts the RandInt class.
 class RandInt(chains.ChainletBase):
-
     # run_remote must be implemented by all chainlets. This is the code that will be executed at inference time.
     def run_remote(self, max_value: int) -> int:
         return random.randint(1, max_value)
