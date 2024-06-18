@@ -2,7 +2,6 @@
 Chains currently assumes that everything from the directory in which the entrypoint
 is defined (i.e. sibling files and nested dirs) could be imported/used. e.g.:
 
-```
 workspace/
   entrypoint.py
   helper.py
@@ -10,18 +9,15 @@ workspace/
     utils.py
     sub_package/
       ...
-```
 
 These sources are copied into truss's `/packages` and can be imported on the remote.
 Using code *outside* of the workspace is not supported:
 
-```
 shared_lib/
   common.py
 workspace/
   entrypoint.py
   ...
-```
 
 `shared_lib` can only be imported on the remote if its installed as a pip
 requirement (site-package), it will not be copied from the local host.
