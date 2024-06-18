@@ -12,6 +12,7 @@ from typing import AsyncIterator, Iterable, Optional, TypeVar
 import data_types
 import httpx
 import numpy as np
+
 from truss_chains import utils
 
 _WAV_HEADER_NUM_BYTES = 78

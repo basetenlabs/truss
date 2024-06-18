@@ -8,13 +8,13 @@ sys.path.append(_LOCAL_WHISPER_LIB)
 import base64
 
 import data_types
-import truss_chains as chains
 from huggingface_hub import snapshot_download
+
+import truss_chains as chains
 
 
 @chains.mark_entrypoint
 class WhisperModel(chains.ChainletBase):
-
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             base_image="baseten/truss-server-base:3.10-gpu-v0.9.0",

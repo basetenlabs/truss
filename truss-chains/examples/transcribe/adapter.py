@@ -13,9 +13,10 @@ import httpx
 import pydantic
 import tenacity
 import transcribe as transcribe_base
-import truss_chains as chains
 from google.cloud import bigquery
 from google.oauth2 import service_account
+
+import truss_chains as chains
 from truss_chains import stub, utils
 
 NO_OP_SHADOW = False  # If on, just tests task creation and skips actual transcriptions.

@@ -19,6 +19,7 @@ import truss
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.remote.baseten import types as b10_types
+
 from truss_chains import code_gen, definitions, framework, utils
 
 
@@ -156,7 +157,8 @@ def _chainlet_logs_url(
 
 
 class RemoteChainService:
-    _remote: b10_remote.BasetenRemote  # TODO, make this a generic TypeVar for this calss
+    # TODO, make this a generic TypeVar for this class.
+    _remote: b10_remote.BasetenRemote
     _chain_id: str
     _chain_deployment_id: str
 
