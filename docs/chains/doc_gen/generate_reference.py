@@ -7,8 +7,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import truss_chains as chains
 from sphinx import application
+
+import truss_chains as chains
 
 DUMMY_INDEX_RST = """
 .. Dummy
