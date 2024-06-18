@@ -3,9 +3,8 @@ import random
 import string
 import tempfile
 from contextlib import contextmanager
-from shutil import rmtree as remove_tree
-from shutil import copy2 as copy_file
 from pathlib import Path
+from shutil import copy2, rmtree
 from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
 
 import pathspec
@@ -33,11 +32,11 @@ def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> No
             dest_fp.mkdir(exist_ok=True)
         else:
             dest_fp.parent.mkdir(exist_ok=True, parents=True)
-            copy_file(str(sub_path), str(dest_fp))
+            copy2(str(sub_path), str(dest_fp))
 
 
 def copy_file_path(src: Path, dest: Path) -> Tuple[str, str]:
-    return copy_file(str(src), str(dest))
+    return copy2(str(src), str(dest))
 
 
 def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]]:
@@ -48,7 +47,7 @@ def copy_tree_or_file(src: Path, dest: Path) -> Union[List[str], Tuple[str, str]
 
 
 def remove_tree_path(target: Path) -> None:
-    return remove_tree(str(target), verbose=0)
+    return rmtree(str(target))
 
 
 def get_max_modified_time_of_dir(path: Path) -> float:
