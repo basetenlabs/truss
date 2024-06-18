@@ -1,4 +1,5 @@
 import logging
+import typing
 from typing import IO, List, Optional, Tuple
 
 import truss
@@ -15,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
+
+
+class ChainDeploymentHandle(typing.NamedTuple):
+    chain_id: str
+    chain_deployment_id: str
 
 
 class ModelIdentifier:
@@ -84,14 +90,18 @@ def create_chain(
     chain_name: str,
     chainlets: List[b10_types.ChainletData],
     is_draft: bool = False,
-) -> Tuple[str, str]:
+) -> ChainDeploymentHandle:
     if is_draft:
         response = api.deploy_draft_chain(chain_name, chainlets)
     elif chain_id:
         response = api.deploy_chain_deployment(chain_id, chainlets)
     else:
         response = api.deploy_chain(chain_name, chainlets)
-    return (response["chain_id"], response["chain_deployment_id"])
+
+    return ChainDeploymentHandle(
+        chain_id=response["chain_id"],
+        chain_deployment_id=response["chain_deployment_id"],
+    )
 
 
 def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:

@@ -189,6 +189,8 @@ class RemoteChainService:
 
 
 class ChainService:
+    # TODO: This class needs to be refactored It's very tateful right now
+    # and bug-prone as a consequence, as it has to deal with both the local & remote flows.
     name: str
     _entrypoint: str
     _services: MutableMapping[str, b10_service.TrussService]
@@ -315,12 +317,14 @@ def deploy_remotely(
                 )
             )
 
-        chain_id, chain_deployment_id = options.remote_provider.create_chain(
+        chain_deployment_handle = options.remote_provider.create_chain(
             chain_name=chain_service.name, chainlets=chainlets, publish=options.publish
         )
 
         chain_service.set_remote_chain_service(
-            chain_id, chain_deployment_id, options.remote_provider
+            chain_deployment_handle.chain_id,
+            chain_deployment_handle.chain_deployment_id,
+            options.remote_provider,
         )
 
     return chain_service

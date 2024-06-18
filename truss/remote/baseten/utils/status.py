@@ -26,4 +26,4 @@ def get_displayable_status(status: str) -> str:
     Baseten REST API will return status strings matching the ones here, so we don't
     need to do any mapping.
     """
-    return STATUS_TO_DISPLAYABLE[status]
+    return STATUS_TO_DISPLAYABLE.get(status, "UNKNOWN")
