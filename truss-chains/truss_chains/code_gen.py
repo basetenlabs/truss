@@ -31,13 +31,14 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import time
 from typing import Any, Iterable, Mapping, Optional
 
 import libcst
 import truss
 from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
-from truss_chains import definitions, model_skeleton, utils
+from truss_chains import cli, definitions, model_skeleton, utils
 
 INDENT = " " * 4
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
@@ -326,6 +327,8 @@ def _make_chainlet_dir(
     chainlet_name = chainlet_descriptor.name
     dir_name = f"chainlet_{chainlet_name}"
     chainlet_dir = root / definitions.GENERATED_CODE_DIR / chain_name / dir_name
+    if chainlet_dir.exists():
+        shutil.rmtree(chainlet_dir)
     chainlet_dir.mkdir(exist_ok=True, parents=True)
     return chainlet_dir
 
@@ -511,13 +514,74 @@ def _gen_truss_chainlet_file(
 # Truss Gen ############################################################################
 
 
-def _copy_python_source_files(root_dir: pathlib.Path, dest_dir: pathlib.Path) -> None:
+def _copy_python_source_files(
+    root_dir: pathlib.Path,
+    dest_dir: pathlib.Path,
+    max_files: int = 1000,
+    max_size_mb: int = 100,
+    time_limit_seconds: int = 3,
+) -> None:
     """Copy all python files under root recursively, but skips pycache."""
 
-    def python_files_only(_, names):
-        return [name for name in names if name == "__pycache__"]
+    def exclude_filter(_, names):
+        return [name for name in names if name in ("__pycache__", ".mypy_cache")]
 
-    shutil.copytree(root_dir, dest_dir, ignore=python_files_only, dirs_exist_ok=True)
+    start_time = time.time()
+    total_size = 0
+    total_files = 0
+    max_size_bytes = max_size_mb * 1024 * 1024
+    limit_issue = False
+
+    for dir_path, dir_names, filenames in os.walk(root_dir):
+        # In-place modification affects `os.walk` iterator intentionally.
+        dir_names[:] = [
+            d for d in dir_names if d not in exclude_filter(dir_path, dir_names)
+        ]
+        filenames = [
+            f for f in filenames if f not in exclude_filter(dir_path, filenames)
+        ]
+        for filename in filenames:
+            total_files += 1
+            filepath = pathlib.Path(dir_path) / filename
+            total_size += filepath.stat().st_size
+            if total_files > max_files or total_size > max_size_bytes:
+                limit_issue = True
+                break
+            if (time.time() - start_time) > time_limit_seconds:
+                limit_issue = True
+                break
+
+        if limit_issue:
+            break
+
+    if limit_issue:
+        if total_files > max_files:
+            issue_msg = f"found a large number of files (>{max_files})"
+        elif total_size > max_size_bytes:
+            issue_msg = (
+                f"found a large amount of data (>{total_size / (1024 * 1024):.2f} MB)"
+            )
+        else:
+            issue_msg = f"it took longer than {time_limit_seconds} seconds to scan"
+
+        msg = (
+            f"All files nested in the chains workspace directory are included in the "
+            "remote deployment. To prevent accidental inclusion of more files than "
+            "intended we scanned \n"
+            f"📁 {root_dir} \nand {issue_msg}. Please ensure the following:\n"
+            "✅ A chain should always be defined in a sub-dir to prevent including "
+            "unwanted content from your dev env. Use `truss chains init` or "
+            "refer to the docs for creating a new chain.\n"
+            "✅ Don't nest large data files and assets inside your chain directory. "
+            "Keep them in a directory next to the chain directory and use the "
+            "'remote_config.docker_image.data_dir' option to include them in the "
+            "remote deployment.\n"
+        )
+        confirmed = cli.inquire_copy_confirm(msg)
+        if not confirmed:
+            raise definitions.ChainsUsageError("User aborted copying files.")
+
+    shutil.copytree(root_dir, dest_dir, ignore=exclude_filter, dirs_exist_ok=True)
 
 
 def _make_requirements(image: definitions.DockerImage) -> list[str]:

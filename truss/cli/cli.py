@@ -32,8 +32,6 @@ from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
 
-logging.basicConfig(level=logging.INFO)
-
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
 rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
 rich.spinner.SPINNERS["loading"] = {"interval": 500, "frames": ["⏱️ ", " ⏱️"]}
@@ -88,6 +86,52 @@ def error_handling(f: Callable[..., object]):
     return wrapper
 
 
+_HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
+_log_level_str_to_level = {
+    _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,
+    "I": logging.INFO,
+    "INFO": logging.INFO,
+    "D": logging.DEBUG,
+    "DEBUG": logging.DEBUG,
+}
+
+
+def _set_logging_level(log_level: str) -> None:
+    level = _log_level_str_to_level[log_level]
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
+        formatter = logging.Formatter(fmt="%(message)s")
+    else:
+        # Absl-inspired logging for technical output.
+        log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
+        date_format = "%m%d %H:%M:%S"
+        formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+
+    if root_logger.handlers:
+        for handler in root_logger.handlers:
+            handler.setFormatter(formatter)
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+
+
+def log_level_option(f):
+    def callback(ctx, param, value):
+        _set_logging_level(value)
+        return value
+
+    return click.option(
+        "--log",
+        default=_HUMANFRIENDLY_LOG_LEVEL,
+        expose_value=False,
+        help="Customizes logging.",
+        type=click.Choice(list(_log_level_str_to_level.keys()), case_sensitive=False),
+        callback=callback,
+    )(f)
+
+
 def print_help() -> None:
     ctx = click.get_current_context()
     click.echo(ctx.get_help())
@@ -96,6 +140,7 @@ def print_help() -> None:
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
 @click.version_option(truss.version())
+@log_level_option
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
     if not ctx.invoked_subcommand:
@@ -135,6 +180,7 @@ def chains():
     default=ModelServer.TrussServer.value,
     type=click.Choice([server.value for server in ModelServer]),
 )
+@log_level_option
 @error_handling
 def init(target_directory, backend) -> None:
     """Create a new truss.
@@ -160,6 +206,7 @@ def init(target_directory, backend) -> None:
 @image.command()  # type: ignore
 @click.argument("build_dir")
 @click.argument("target_directory", required=False)
+@log_level_option
 @error_handling
 def build_context(build_dir, target_directory: str) -> None:
     """
@@ -176,8 +223,9 @@ def build_context(build_dir, target_directory: str) -> None:
 @image.command()  # type: ignore
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
-@error_handling
 @click.option("--tag", help="Docker image tag")
+@log_level_option
+@error_handling
 def build(target_directory: str, build_dir: Path, tag) -> None:
     """
     Builds the docker image for a Truss.
@@ -200,6 +248,7 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
 @click.option(
     "--attach", is_flag=True, default=False, help="Flag for attaching the process"
 )
+@log_level_option
 @error_handling
 def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     """
@@ -228,6 +277,7 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@log_level_option
 @error_handling
 def watch(
     target_directory: str,
@@ -353,6 +403,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help="Name of the remote in .trussrc to push to.",
 )
+@log_level_option
 @error_handling
 def deploy(
     source: Path,
@@ -435,6 +486,7 @@ def deploy(
     required=False,
     help="Name of the chain to be deployed, if not given, the user will be prompted for a name",
 )
+@log_level_option
 @error_handling
 def chains_init(
     target_directory: Optional[str],
@@ -577,6 +629,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     required=False,
     help="ID of model to call",
 )
+@log_level_option
 @echo_output
 def predict(
     target_directory: str,
@@ -717,6 +770,7 @@ def predict(
         "specifying, the command will not complete until the deployment is complete."
     ),
 )
+@log_level_option
 @error_handling
 def push(
     target_directory: str,

@@ -11,8 +11,9 @@ import pydantic
 pydantic_major_version = int(pydantic.VERSION.split(".")[0])
 if pydantic_major_version < 2:
     raise RuntimeError(
-        f"Pydantic v2 is not supported for `Truss-Chains`. Please upgrade to v2. "
-        "You can still use other Truss functionality."
+        f"Pydantic version {pydantic.VERSION} is not supported for Truss-Chains."
+        "Please upgrade to pydantic v2. With v1, you can still use all 'classical' "
+        "(non-Chains) Truss features."
     )
 
 del pydantic, pydantic_major_version

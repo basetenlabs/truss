@@ -2,6 +2,7 @@ import collections
 import inspect
 import logging
 import pathlib
+import tempfile
 import uuid
 from typing import (
     Any,
@@ -29,7 +30,7 @@ def _deploy_to_baseten(
     model_name = truss_handle.spec.config.model_name
     assert model_name is not None
     logging.info(
-        f"Deploying chainlet `{model_name}` as truss model on Baseten "
+        f"Deploying chainlet `{model_name}` as a truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
     )
 
@@ -297,14 +298,17 @@ def deploy_remotely(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.DeploymentOptions,
     non_entrypoint_root_dir: Optional[str] = None,
-    gen_root: pathlib.Path = pathlib.Path("/tmp"),
+    gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
 ) -> ChainService:
     # TODO: revisit how chain root is inferred/specified, current might be brittle.
     if non_entrypoint_root_dir:
         chain_root = pathlib.Path(non_entrypoint_root_dir).absolute()
     else:
         chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
-    logging.info(f"Using project root for chain: `{chain_root}`.")
+    logging.info(
+        f"Using chain workspace dir: `{chain_root}` (files under this dir will "
+        "be included as dependencies in the remote deployments and are importable)."
+    )
 
     chainlet_name_to_url: dict[str, str] = {}
     chain_service = ChainService(
