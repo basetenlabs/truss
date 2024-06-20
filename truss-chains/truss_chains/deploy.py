@@ -2,6 +2,7 @@ import collections
 import inspect
 import logging
 import pathlib
+import tempfile
 import uuid
 from typing import (
     Any,
@@ -28,8 +29,10 @@ def _deploy_to_baseten(
     truss_handle = truss.load(str(truss_dir))
     model_name = truss_handle.spec.config.model_name
     assert model_name is not None
+    if options.promote and not options.publish:
+        logging.info("`promote=True` overrides `publish` to `True`.")
     logging.info(
-        f"Deploying chainlet `{model_name}` as truss model on Baseten "
+        f"Deploying chainlet `{model_name}` as a truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
     )
 
@@ -43,7 +46,7 @@ def _deploy_to_baseten(
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
         truss_handle,
-        model_name=model_name + model_suffix,
+        model_name=f"{model_name}-{model_suffix}",
         trusted=True,
         publish=options.publish,
         promote=options.promote,
@@ -297,14 +300,17 @@ def deploy_remotely(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.DeploymentOptions,
     non_entrypoint_root_dir: Optional[str] = None,
-    gen_root: pathlib.Path = pathlib.Path("/tmp"),
+    gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
 ) -> ChainService:
     # TODO: revisit how chain root is inferred/specified, current might be brittle.
     if non_entrypoint_root_dir:
         chain_root = pathlib.Path(non_entrypoint_root_dir).absolute()
     else:
         chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
-    logging.info(f"Using project root for chain: `{chain_root}`.")
+    logging.info(
+        f"Using chain workspace dir: `{chain_root}` (files under this dir will "
+        "be included as dependencies in the remote deployments and are importable)."
+    )
 
     chainlet_name_to_url: dict[str, str] = {}
     chain_service = ChainService(
@@ -339,10 +345,13 @@ def deploy_remotely(
         if service:
             chain_service.add_service(chainlet_descriptor.name, service)
             chainlet_name_to_url[chainlet_descriptor.name] = service.predict_url
-        else:
+        else:  # only_generate_trusses case.
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
 
-    if isinstance(options, definitions.DeploymentOptionsBaseten):
+    if (
+        isinstance(options, definitions.DeploymentOptionsBaseten)
+        and not options.only_generate_trusses
+    ):
         chainlets: List[b10_types.ChainletData] = []
         entrypoint_name = chain_service.entrypoint_name
 
@@ -357,7 +366,10 @@ def deploy_remotely(
             )
 
         chain_deployment_handle = options.remote_provider.create_chain(
-            chain_name=chain_service.name, chainlets=chainlets, publish=options.publish
+            chain_name=chain_service.name,
+            chainlets=chainlets,
+            publish=options.publish,
+            promote=options.promote,
         )
 
         chain_service.set_remote_chain_service(
