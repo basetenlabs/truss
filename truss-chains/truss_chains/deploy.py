@@ -29,6 +29,8 @@ def _deploy_to_baseten(
     truss_handle = truss.load(str(truss_dir))
     model_name = truss_handle.spec.config.model_name
     assert model_name is not None
+    if options.promote and not options.publish:
+        logging.info("`promote=True` overrides `publish` to `True`.")
     logging.info(
         f"Deploying chainlet `{model_name}` as a truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
@@ -44,7 +46,7 @@ def _deploy_to_baseten(
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
         truss_handle,
-        model_name=model_name + model_suffix,
+        model_name=f"{model_name}-{model_suffix}",
         trusted=True,
         publish=options.publish,
         promote=options.promote,
@@ -343,10 +345,13 @@ def deploy_remotely(
         if service:
             chain_service.add_service(chainlet_descriptor.name, service)
             chainlet_name_to_url[chainlet_descriptor.name] = service.predict_url
-        else:
+        else:  # only_generate_trusses case.
             chainlet_name_to_url[chainlet_descriptor.name] = "http://dummy"
 
-    if isinstance(options, definitions.DeploymentOptionsBaseten):
+    if (
+        isinstance(options, definitions.DeploymentOptionsBaseten)
+        and not options.only_generate_trusses
+    ):
         chainlets: List[b10_types.ChainletData] = []
         entrypoint_name = chain_service.entrypoint_name
 
@@ -361,7 +366,10 @@ def deploy_remotely(
             )
 
         chain_deployment_handle = options.remote_provider.create_chain(
-            chain_name=chain_service.name, chainlets=chainlets, publish=options.publish
+            chain_name=chain_service.name,
+            chainlets=chainlets,
+            publish=options.publish,
+            promote=options.promote,
         )
 
         chain_service.set_remote_chain_service(

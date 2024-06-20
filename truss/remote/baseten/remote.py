@@ -53,7 +53,12 @@ class BasetenRemote(TrussRemote):
         chain_name: str,
         chainlets: List[b10_types.ChainletData],
         publish: bool = False,
+        promote: bool = False,
     ) -> ChainDeploymentHandle:
+        if promote:
+            # If we are promoting a model after deploy, it must be published.
+            # Draft models cannot be promoted.
+            publish = True
         # Returns tuple of (chain_id, chain_deployment_id)
         chain_id = get_chain_id_by_name(self._api, chain_name)
         return create_chain(
