@@ -567,7 +567,7 @@ def _copy_python_source_files(
         msg = (
             f"All files nested in the chains workspace directory are included in the "
             "remote deployment. To prevent accidental inclusion of more files than "
-            "intended we scanned \n"
+            "intended, we scanned \n"
             f"📁 {root_dir} \nand {issue_msg}. Please ensure the following:\n"
             "✅ A chain should always be defined in a sub-dir to prevent including "
             "unwanted content from your dev env. Use `truss chains init` or "
