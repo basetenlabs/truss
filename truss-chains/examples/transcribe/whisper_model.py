@@ -9,12 +9,10 @@ import base64
 
 import data_types
 import truss_chains as chains
-from huggingface_hub import snapshot_download
 
 
 @chains.mark_entrypoint
 class WhisperModel(chains.ChainletBase):
-
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             base_image="baseten/truss-server-base:3.10-gpu-v0.9.0",
@@ -37,28 +35,26 @@ class WhisperModel(chains.ChainletBase):
             external_package_dirs=[chains.make_abs_path_here(_LOCAL_WHISPER_LIB)],
         ),
         compute=chains.Compute(gpu="A10G", predict_concurrency=128),
-        assets=chains.Assets(secret_keys=["hf_access_token"]),
     )
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
-        snapshot_download(
-            repo_id="baseten/whisper_trt_large-v3_A10G_i224_o512_bs8_bw5",
-            local_dir=context.data_dir,
-            allow_patterns=["**"],
-            token=context.secrets["hf_access_token"],
-        )
         from whisper_trt import WhisperModel
-
-        self._model = WhisperModel(str(context.data_dir), max_queue_time=0.050)
+        self._model = WhisperModel.from_model_name("large-v3", max_queue_time=0.010)
 
     async def run_remote(
         self, whisper_input: data_types.WhisperInput
     ) -> data_types.WhisperResult:
         binary_data = base64.b64decode(whisper_input.audio_b64.encode("utf-8"))
         waveform = self._model.preprocess_audio(binary_data)
-        return await self._model.transcribe(
-            waveform, timestamps=True, raise_when_trimmed=True
+        return await self._model.generate(
+            waveform,
+            prompt=whisper_input.prompt,
+            timestamps=whisper_input.timestamps,
+            language=whisper_input.language,
+            prefix=whisper_input.prefix,
+            max_new_tokens=whisper_input.max_new_tokens,
+            task=whisper_input.task,
+            raise_when_trimmed=True,
         )

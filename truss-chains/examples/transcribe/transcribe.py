@@ -6,26 +6,12 @@ import data_types
 import helpers
 import httpx
 import truss_chains as chains
+from whisper_model import WhisperModel
 
 IMAGE = chains.DockerImage(
     apt_requirements=["ffmpeg"],
     pip_requirements=["google-auth", "google-cloud-bigquery"],
 )
-# Whisper is deployed as a normal truss model from examples/library.
-# See `whisper-truss/model/model.py`.
-_WHISPER_URL = "https://model-v31y4243.api.baseten.co/development/predict"
-
-
-class DeployedWhisper(chains.StubBase):
-    """Transcribes b64_encoded wave snippets.
-
-    Treat the whisper model like an external third party tool."""
-
-    async def run_remote(
-        self, whisper_input: data_types.WhisperInput
-    ) -> data_types.WhisperResult:
-        resp = await self._remote.predict_async(json_payload=whisper_input.model_dump())
-        return data_types.WhisperResult.parse_obj(resp)
 
 
 class MacroChunkWorker(chains.ChainletBase):
@@ -38,22 +24,19 @@ class MacroChunkWorker(chains.ChainletBase):
             cpu_count=_cpu_count, memory="16G", predict_concurrency=_cpu_count * 3
         ),
     )
-    _whisper: DeployedWhisper
+    _whisper: WhisperModel
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.depends_context(),
+        whisper: WhisperModel = chains.depends(WhisperModel, retries=2),
     ) -> None:
-        self._whisper = DeployedWhisper.from_url(
-            _WHISPER_URL,
-            context,
-            options=chains.RPCOptions(retries=2),
-        )
+        self._whisper = whisper
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
     async def run_remote(
         self,
         media_url: str,
+        whisper_parmas: data_types.WhisperParams,
         params: data_types.TranscribeParams,
         macro_chunk: data_types.ChunkInfo,
     ) -> data_types.SegmentList:
@@ -66,7 +49,9 @@ class MacroChunkWorker(chains.ChainletBase):
         ) as wav_stream:
             chunk_stream = helpers.wav_chunker(params, wav_stream)
             async for micro_chunk, audio_b64 in chunk_stream:
-                inputs = data_types.WhisperInput(audio_b64=audio_b64)
+                inputs = data_types.WhisperInput(
+                    audio_b64=audio_b64, **whisper_parmas.model_dump()
+                )
                 tasks.append(asyncio.ensure_future(self._whisper.run_remote(inputs)))
                 micro_chunks.append(micro_chunk)
 
@@ -112,7 +97,10 @@ class Transcribe(chains.ChainletBase):
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
     async def run_remote(
-        self, media_url: str, params: data_types.TranscribeParams
+        self,
+        media_url: str,
+        whisper_parmas: data_types.WhisperParams,
+        params: data_types.TranscribeParams,
     ) -> data_types.TranscribeOutput:
         t0 = time.time()
         await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
@@ -129,7 +117,9 @@ class Transcribe(chains.ChainletBase):
             logging.debug(f"Starting macro-chunk [{i + 1:03}/{len(macro_chunks):03}].")
             tasks.append(
                 asyncio.ensure_future(
-                    self._macro_chunk_worker.run_remote(media_url, params, macro_chunk)
+                    self._macro_chunk_worker.run_remote(
+                        media_url, whisper_parmas, params, macro_chunk
+                    )
                 )
             )
         segments = [
@@ -153,8 +143,19 @@ if __name__ == "__main__":
 
     url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
     params_ = data_types.TranscribeParams(micro_chunk_size_sec=25)
+    whisper_params_ = data_types.WhisperParams(
+        timestamps=True, max_new_tokens=512, language="english"
+    )
+    
+    inputs = data_types.WhisperInput(
+                    audio_b64="", **whisper_params_.model_dump()
+                )
 
-    json_input = {"media_url": url_, "params": params_.model_dump()}
+    json_input = {
+        "media_url": url_,
+        "whisper_parmas": whisper_params_.model_dump(),
+        "params": params_.model_dump(),
+    }
 
     print(f"Example JSON input:\n{json_input}")
 
@@ -164,6 +165,6 @@ if __name__ == "__main__":
         transcribe_job = Transcribe()
 
         result_ = asyncio.get_event_loop().run_until_complete(
-            transcribe_job.run_remote(url_, params_)
+            transcribe_job.run_remote(url_, whisper_params_, params_)
         )
         print(result_.model_dump_json(indent=4))

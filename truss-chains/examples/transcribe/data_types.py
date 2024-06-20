@@ -58,10 +58,17 @@ class TranscribeOutput(pydantic.BaseModel):
 
 # Internal Models ######################################################################
 
+class WhisperParams(pydantic.BaseModel):
+    prompt: Optional[str] = None
+    language: Optional[str] = None
+    timestamps: bool = True
+    prefix: Optional[str] = None
+    task: str = "transcribe"
+    max_new_tokens: int = 128
 
-class WhisperInput(pydantic.BaseModel):
+
+class WhisperInput(WhisperParams):
     audio_b64: str
-
 
 class WhisperSegment(_BaseSegment):
     pass
