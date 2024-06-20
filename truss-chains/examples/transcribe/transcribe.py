@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from typing import Optional
 
 import data_types
 import helpers
@@ -37,7 +38,7 @@ class MacroChunkWorker(chains.ChainletBase):
         self,
         media_url: str,
         whisper_parmas: data_types.WhisperParams,
-        params: data_types.TranscribeParams,
+        params: data_types.ChunkingParams,
         macro_chunk: data_types.ChunkInfo,
     ) -> data_types.SegmentList:
         t0 = time.time()
@@ -98,13 +99,13 @@ class Transcribe(chains.ChainletBase):
 
     async def run_remote(
         self,
-        media_url: str,
-        whisper_parmas: data_types.WhisperParams,
-        params: data_types.TranscribeParams,
+        url: str,
+        whisper_parmas: data_types.WhisperParams = data_types.WhisperParams(),
+        params: data_types.ChunkingParams = data_types.ChunkingParams(),
     ) -> data_types.TranscribeOutput:
         t0 = time.time()
-        await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
-        duration_secs = await helpers.query_source_length_secs(media_url)
+        await helpers.assert_media_supports_range_downloads(self._async_http, url)
+        duration_secs = await helpers.query_source_length_secs(url)
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
         # TODO: use silence-aware time chunking.
         macro_chunks = helpers.generate_time_chunks(
@@ -118,7 +119,7 @@ class Transcribe(chains.ChainletBase):
             tasks.append(
                 asyncio.ensure_future(
                     self._macro_chunk_worker.run_remote(
-                        media_url, whisper_parmas, params, macro_chunk
+                        url, whisper_parmas, params, macro_chunk
                     )
                 )
             )
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     import os
 
     url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-    params_ = data_types.TranscribeParams(micro_chunk_size_sec=25)
+    params_ = data_types.ChunkingParams(micro_chunk_size_sec=25)
     whisper_params_ = data_types.WhisperParams(
         timestamps=True, max_new_tokens=512, language="english"
     )
@@ -165,6 +166,6 @@ if __name__ == "__main__":
         transcribe_job = Transcribe()
 
         result_ = asyncio.get_event_loop().run_until_complete(
-            transcribe_job.run_remote(url_, whisper_params_, params_)
+            transcribe_job.run_remote(url_)
         )
         print(result_.model_dump_json(indent=4))

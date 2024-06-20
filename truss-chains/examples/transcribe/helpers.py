@@ -316,7 +316,7 @@ class DownloadSubprocess:
 
 
 async def wav_chunker(
-    params: data_types.TranscribeParams,
+    params: data_types.ChunkingParams,
     download: DownloadSubprocess,
 ) -> AsyncIterator[tuple[data_types.ChunkInfo, str]]:
     """Consumes the download stream and yields small chunks of b64-encoded wav."""

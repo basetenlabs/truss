@@ -4,8 +4,15 @@ import pydantic
 
 # External Models ######################################################################
 
+class WhisperParams(pydantic.BaseModel):
+    prompt: Optional[str] = None
+    language: Optional[str] = None
+    timestamps: bool = True
+    prefix: Optional[str] = None
+    task: str = "transcribe"
+    max_new_tokens: int = 512
 
-class TranscribeParams(pydantic.BaseModel):
+class ChunkingParams(pydantic.BaseModel):
     wav_sampling_rate_hz: Literal[16000] = pydantic.Field(
         default=16000,
         description=" This is a constant of Whisper and should not be changed.",
@@ -20,7 +27,7 @@ class TranscribeParams(pydantic.BaseModel):
         description="Overlap to avoid cutting off words at the end of a macro-chunk.",
     )
     micro_chunk_size_sec: int = pydantic.Field(
-        default=5,
+        default=30,
         description="Each macro-chunk is split into micro-chunks. When using silence "
         "detection, this is the *maximal* size (i.e. an actual micro-chunk could be "
         "smaller): A point of minimal silence searched in the second half of the "
@@ -35,10 +42,9 @@ class TranscribeParams(pydantic.BaseModel):
 
 class _BaseSegment(pydantic.BaseModel):
     # Common to internal whisper and external segment.
-    start_time_sec: float
-    end_time_sec: float
+    start_time_sec: Optional[float]
+    end_time_sec: Optional[float]
     text: str
-
 
 class Segment(_BaseSegment):
     language: str
@@ -49,6 +55,12 @@ class Segment(_BaseSegment):
     )
 
 
+class TranscribeInput(pydantic.BaseModel):
+    url: str
+    whisper_params: Optional[WhisperParams] = WhisperParams()
+    chunking_params: Optional[ChunkingParams] = ChunkingParams()
+    
+
 class TranscribeOutput(pydantic.BaseModel):
     segments: list[Segment]
     input_duration_sec: float
@@ -57,15 +69,6 @@ class TranscribeOutput(pydantic.BaseModel):
 
 
 # Internal Models ######################################################################
-
-class WhisperParams(pydantic.BaseModel):
-    prompt: Optional[str] = None
-    language: Optional[str] = None
-    timestamps: bool = True
-    prefix: Optional[str] = None
-    task: str = "transcribe"
-    max_new_tokens: int = 128
-
 
 class WhisperInput(WhisperParams):
     audio_b64: str

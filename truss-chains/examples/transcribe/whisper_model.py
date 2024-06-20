@@ -10,8 +10,6 @@ import base64
 import data_types
 import truss_chains as chains
 
-
-@chains.mark_entrypoint
 class WhisperModel(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
@@ -34,7 +32,7 @@ class WhisperModel(chains.ChainletBase):
             ],
             external_package_dirs=[chains.make_abs_path_here(_LOCAL_WHISPER_LIB)],
         ),
-        compute=chains.Compute(gpu="A10G", predict_concurrency=128),
+        compute=chains.Compute(gpu="H100", predict_concurrency=128),
     )
 
     def __init__(

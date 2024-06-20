@@ -54,7 +54,7 @@ class EnqueueOutput(pydantic.BaseModel):
 class TranscribeInput(pydantic.BaseModel):
     # Needed as `model_input` for `async_predict`-API.
     job_descr: JobDescriptor
-    params: data_types.TranscribeParams
+    params: data_types.ChunkingParams
 
 
 class RetryConfig(pydantic.BaseModel):
@@ -213,7 +213,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
             logging.info("No-Op-Shadow off.")
 
     async def _transcribe(
-        self, job_descr: JobDescriptor, params: data_types.TranscribeParams
+        self, job_descr: JobDescriptor, params: data_types.ChunkingParams
     ) -> TranscribeResult:
         t0 = time.time()
         media_url = job_descr.media_url
@@ -269,7 +269,7 @@ class TranscribeWithWebhook(chains.ChainletBase):
         )
 
     async def run_remote(
-        self, job_descr: JobDescriptor, params: data_types.TranscribeParams
+        self, job_descr: JobDescriptor, params: data_types.ChunkingParams
     ) -> TranscribeResult:
         # When `Transcribe.run` is called with `async_predict` the async framework will
         # invoke the webhook, but it expects that the webhook does not need
@@ -338,7 +338,7 @@ class EnqueueBatch(chains.ChainletBase):
         )
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    def _enqueue(self, job: JobDescriptor, params: data_types.TranscribeParams):
+    def _enqueue(self, job: JobDescriptor, params: data_types.ChunkingParams):
         # While we can't use the async framework's webhooks, we have to do the retry
         # logic manually inside `Transcribe`, not use async's retry.
         # The internal webhook endpoint will return 401 because it requires
@@ -358,7 +358,7 @@ class EnqueueBatch(chains.ChainletBase):
         media_for_transcription = json.loads(worklet_input.media_for_transciption)
         jobs = [JobDescriptor.model_validate(x) for x in media_for_transcription]
         logging.info(f"Got `{len(jobs)}` jobs in batch.")
-        params = data_types.TranscribeParams()
+        params = data_types.ChunkingParams()
         tasks = [asyncio.ensure_future(self._enqueue(job, params)) for job in jobs]
         queued_jobs = []
         for i, val in enumerate(await asyncio.gather(*tasks, return_exceptions=True)):
