@@ -38,7 +38,6 @@ CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
 
-
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
 
@@ -430,9 +429,15 @@ class TypeDescriptor(SafeModelNonSerializable):
         )
 
 
+class InputArg(SafeModelNonSerializable):
+    name: str
+    type: TypeDescriptor
+    is_optional: bool
+
+
 class EndpointAPIDescriptor(SafeModelNonSerializable):
     name: str = ENDPOINT_METHOD_NAME
-    input_names_and_types: list[tuple[str, TypeDescriptor]]
+    input_args: list[InputArg]
     output_types: list[TypeDescriptor]
     is_async: bool
     is_generator: bool
