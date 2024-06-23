@@ -10,10 +10,7 @@ import briton_pb2
 import briton_pb2_grpc
 import grpc
 from transformers import AutoTokenizer
-from truss.config.trt_llm import (
-    TrussTRTLLMBuildConfiguration,
-    TrussTRTLLMServingConfiguration,
-)
+from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
 BRITON_PORT = 50051
@@ -74,15 +71,12 @@ class Model:
         truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
             **trtllm_config.get("build")
         )
-        truss_trtllm_serving_config = TrussTRTLLMServingConfiguration(
-            **trtllm_config.get("serve")
-        )
         self._tp_count = truss_trtllm_build_config.tensor_parallel_count
         self._tokenizer_repository = (
             truss_trtllm_build_config.checkpoint_repository.repo
         )
         self._kv_cache_free_gpu_mem_fraction = (
-            truss_trtllm_serving_config.kv_cache_free_gpu_mem_fraction
+            truss_trtllm_build_config.kv_cache_free_gpu_mem_fraction
         )
 
         self._hf_token = None
