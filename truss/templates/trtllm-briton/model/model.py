@@ -10,7 +10,10 @@ import briton_pb2
 import briton_pb2_grpc
 import grpc
 from transformers import AutoTokenizer
-from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
+from truss.config.trt_llm import (
+    TrussTRTLLMBuildConfiguration,
+    TrussTRTLLMServingConfiguration,
+)
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
 BRITON_PORT = 50051
@@ -71,9 +74,15 @@ class Model:
         truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
             **trtllm_config.get("build")
         )
+        truss_trtllm_serving_config = TrussTRTLLMServingConfiguration(
+            **trtllm_config.get("serve")
+        )
         self._tp_count = truss_trtllm_build_config.tensor_parallel_count
         self._tokenizer_repository = (
             truss_trtllm_build_config.checkpoint_repository.repo
+        )
+        self._kv_cache_free_gpu_mem_fraction = (
+            truss_trtllm_serving_config.kv_cache_free_gpu_mem_fraction
         )
 
         self._hf_token = None
@@ -87,7 +96,11 @@ class Model:
             self._tokenizer_repository, token=self._hf_token
         )
         # Start engine
-        config_str = f'engine_path: "{self._data_dir.resolve()}"\nhf_tokenizer: "{self._tokenizer_repository}"'
+        config_str = f"""
+    engine_path: "{self._data_dir.resolve()}"
+    hf_tokenizer: "{self._tokenizer_repository}"
+    kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
+"""
         config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()
         config_pbtxt_path.write_text(config_str)
         briton_env = os.environ.copy()

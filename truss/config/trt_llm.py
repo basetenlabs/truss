@@ -72,10 +72,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
 
 class TrussTRTLLMServingConfiguration(BaseModel):
-    engine_repository: str
-    tokenizer_repository: str
+    engine_repository: Optional[str] = None
+    tokenizer_repository: Optional[str] = None
     tensor_parallel_count: int = 1
     pipeline_parallel_count: int = 1
+    kv_cache_free_gpu_mem_fraction: float = 0.9
 
 
 class TRTLLMConfiguration(BaseModel):
