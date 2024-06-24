@@ -13,6 +13,7 @@ class TrussTRTLLMModel(Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
     DEEPSEEK: str = "deepseek"
+    WHISPER: str = "whisper"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
@@ -36,6 +37,7 @@ class CheckpointSource(Enum):
     HF: str = "HF"
     GCS: str = "GCS"
     LOCAL: str = "LOCAL"
+    REMOTE_URL: str = "REMOTE_URL"
 
 
 class CheckpointRepository(BaseModel):
