@@ -237,11 +237,6 @@ two ways:
 - With a threadpool if it’s a synchronous function. This requires
   that the threads don’t have significant CPU load (due to the GIL).
 
-#### get_spec()
-
-* **Return type:**
-  *ComputeSpec*
-
 ### *class* `truss_chains.Assets`
 
 Specifies which assets a chainlet can access in the remote deployment.
@@ -270,14 +265,6 @@ for more details on caching.
 | `cached` | *Iterable[ModelRepo]* | One or more `truss_config.ModelRepo` objects. |
 | `secret_keys` | *Iterable[str]* | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets). |
 
-
-#### get_spec()
-
-Returns parsed and validated assets.
-
-* **Return type:**
-  *AssetSpec*
-
 # Core
 
 General framework and helper functions.
@@ -301,60 +288,6 @@ Deploys a chain remotely (with all dependent chainlets).
   A chain service handle to the deployed chain.
 * **Return type:**
   [*ChainService*](#class-truss-chains-deploy-chainservice)
-
-### *class* `truss_chains.deploy.ChainService`
-
-Handle for a deployed chain.
-
-A `ChainService` is created and returned when using [`deploy_remotely`](#truss-chains-deploy-remotely).
-It bundles the individual services for each chainlet in the chain, and provides
-utilities to query their status, invoke the entrypoint etc.
-
-
-**Parameters:**
-
-| Name | Type | Description |
-|------|------|-------------|
-| `entrypoint` | *str* | Name of the entrypoint chainlet. |
-| `name` | *str* | Name of the chain. |
-
-#### *property* entrypoint_name *: str*
-
-#### *property* get_entrypoint *: TrussService*
-
-Returns the entrypoint’s service handle.
-
-* **Raises:**
-  **MissingDependencyError** – If the entrypoint service was not added.
-
-#### get_info()
-
-Queries the statuses of all chainlets in the chain.
-
-* **Returns:**
-  List with elements `(name, status, logs_url)` for each chainlet.
-* **Return type:**
-  list[tuple[str, str, str]]
-
-#### run_remote(json)
-
-Invokes the entrypoint with JSON data.
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `json` | *JSON Dict* | Request payload. |
-
-* **Returns:**
-  The JSON response.
-* **Return type:**
-  *JSON Dict*
-
-#### *property* run_url *: str*
-
-URL to invoke the entrypoint.
-
-#### *property* services *: MutableMapping[str, TrussService]*
 
 ### `truss_chains.make_abs_path_here`
 
