@@ -92,8 +92,6 @@ class Model:
             model_input = ModelInput.from_bridge_oai_request(
                 model_input,
                 templater,
-                DEFAULT_MAX_TOKENS,
-                DEFAULT_MAX_NEW_TOKENS,
                 request_id,
                 self.eos_token_id,
             )
