@@ -121,7 +121,7 @@ BRITON_BASE_TRTLLM_REQUIREMENTS = [
     "transformers==4.41.0",
     "truss==0.9.17rc2",
 ]
-WHISPER_TRTLLM_REQUIREMENTS = [
+AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
     "tensorrt_llm==0.9.0",
     "hf_transfer",
@@ -136,7 +136,7 @@ WHISPER_TRTLLM_REQUIREMENTS = [
     "async-batcher>=0.2.0",
     "pydantic>=2.7.1",
 ]
-WHISPER_TRTLLM_SYSTEM_PACKAGES = [
+AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES = [
     "python3.10-venv",
     "openmpi-bin",
     "libopenmpi-dev",

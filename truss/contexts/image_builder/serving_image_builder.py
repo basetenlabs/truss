@@ -32,10 +32,10 @@ from truss.constants import (
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
+    AUDIO_MODEL_TRTLLM_REQUIREMENTS,
+    AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
+    AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     TRTLLM_TRUSS_DIR,
-    TRTLLM_WHISPER_TRUSS_DIR,
-    WHISPER_TRTLLM_SYSTEM_PACKAGES,
-    WHISPER_TRTLLM_REQUIREMENTS,
     USE_BRITON,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
@@ -345,10 +345,10 @@ class ServingImageBuilder(ImageBuilder):
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
         # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
-            is_whisper = config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
+            is_audio_model = config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
             
-            if is_whisper:
-                copy_tree_path(TRTLLM_WHISPER_TRUSS_DIR, build_dir, ignore_patterns=[])
+            if is_audio_model:
+                copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
             else:
                 copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
@@ -365,7 +365,7 @@ class ServingImageBuilder(ImageBuilder):
 
             config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-            if not is_whisper:
+            if not is_audio_model:
                 config.base_image = BaseImage(
                     image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
                     python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
@@ -379,8 +379,8 @@ class ServingImageBuilder(ImageBuilder):
 
                 config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
             else:
-                config.requirements.extend(WHISPER_TRTLLM_REQUIREMENTS)
-                config.system_packages.extend(WHISPER_TRTLLM_SYSTEM_PACKAGES)
+                config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
+                config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
                 config.resources.use_gpu = True
 
         # Override config.yml
