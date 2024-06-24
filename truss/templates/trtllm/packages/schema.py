@@ -47,6 +47,24 @@ class ModelInput:
         request_id: str,
         eos_token_id: str,
     ) -> "ModelInput":
+        """
+        The BridgeCompletionRequest is input into the `from_bridge_oai_request` function.
+        This model is json-serialized as input into the `predict` endpoint. 
+        If changes are needed, reach out the Baseten Core Product team
+
+        class BridgeCompletionRequest(BaseModel):
+            messages: Union[str, List[Dict[str, str]]]
+            raw: Dict[Any, Any]
+            client_origin: str
+            repetition_penalty: Optional[float] = None
+            temperature: Optional[float] = None
+            top_p: Optional[float] = None
+            top_k: Optional[float] = None
+            stream: bool = False
+            max_tokens: Optional[int] = None
+            max_new_tokens: Optional[int] = None
+            stop_words_list: Optional[List[str]] = None
+        """
         if "messages" not in model_input:
             raise ValueError("'messages' key expected in bridge request")
 
@@ -114,24 +132,3 @@ class ModelInput:
             inputs.append(self._prepare_grpc_tensor("end_id", end_id_data))
 
         return inputs
-
-"""
-The BridgeCompletionRequest is input into the `from_bridge_request` function.
-This model is json-serialized as input into the `predict` endpoint. 
-If changes are needed, reach out the Baseten Core Product team
-
-class BridgeCompletionRequest(BaseModel):
-    messages: Union[str, List[Dict[str, str]]]
-    # raw is the incoming request with the "messages" omitted
-    # to avoid unnecessarily large request size
-    raw: Dict[Any, Any]
-    client_origin: str
-    repetition_penalty: Optional[float] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    top_k: Optional[float] = None
-    stream: bool = False
-    max_tokens: Optional[int] = None
-    max_new_tokens: Optional[int] = None
-    stop_words_list: Optional[List[str]] = None
-"""
