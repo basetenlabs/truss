@@ -187,7 +187,7 @@ def _validate_endpoint_params(
             raise definitions.ChainsUsageError(
                 "Inputs of endpoints must have type annotations. For "
                 f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` parameter "
-                f"`{param.name}` has not type annotation."
+                f"`{param.name}` has no type annotation."
             )
         _validate_io_type(param)
         type_descriptor = definitions.TypeDescriptor(raw=param.annotation)
