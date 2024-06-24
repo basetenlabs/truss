@@ -85,7 +85,7 @@ class Model:
         model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
         model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
 
-        is_oai_protocol = model_input.get("client_origin", "") == "open_ai_protocol"
+        is_oai_protocol = model_input.get("client_origin", "") == "open_ai_protocol" or self.uses_openai_api
 
         if is_oai_protocol:
             templater = lambda x: self.tokenizer.apply_chat_template(x, tokenize=False)
