@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import tritonclient
@@ -40,6 +40,38 @@ class ModelInput:
         self._top_p = top_p
         self._top_k = top_k
 
+    @staticmethod
+    def from_bridge_oai_request(
+        model_input: Dict[Any, Any],
+        chat_templater: Callable[[Any], Any],
+        request_id: str,
+        eos_token_id: str,
+    ):
+        if "messages" not in model_input:
+            raise ValueError("'messages' key expected in bridge request")
+
+        messages = model_input.pop("messages")
+        if "prompt" not in model_input:
+            model_input["prompt"] = chat_templater(messages)
+
+        # example of pulling off a value from raw
+        # if 'raw' in model_input and isinstance(model_input['raw'], dict):
+        #     seed = model_input['raw'].get(seed)
+        return ModelInput(
+            prompt=model_input.get("prompt"),
+            max_tokens=model_input.get("max_tokens"),
+            max_new_tokens=model_input.get("max_new_tokens"),
+            temperature=model_input.get("temperature"),
+            top_k=model_input.get("top_k"),
+            top_p=model_input.get("top_p"),
+            stop_words_list=model_input.get("stop_words_list"),
+            repetition_penalty=model_input.get("repetition_penalty"),
+            stream=model_input.get("stream"),
+            eos_token_id=eos_token_id,
+            request_id=request_id,
+            # seed=seed,
+        )
+
     def _prepare_grpc_tensor(
         self, name: str, input_data: np.ndarray
     ) -> grpcclient.InferInput:
@@ -59,7 +91,9 @@ class ModelInput:
         output_len_data = np.ones_like(prompt_data, dtype=np.int32) * self._max_tokens
         bad_words_data = np.array([self._bad_words_list], dtype=object)
         stop_words_data = np.array([self._stop_words_list], dtype=object)
-        stream_data = np.array([[self.stream]], dtype=bool)
+        # Note: this is necessary until we can serve trt-llm with this flag set to False.
+        # as of this commit, the iterator will return nothing when set to false.
+        stream_data = np.array([[True]], dtype=bool)
         beam_width_data = np.array([[self._beam_width]], dtype=np.int32)
         repetition_penalty_data = np.array(
             [[self._repetition_penalty]], dtype=np.float32
@@ -80,3 +114,24 @@ class ModelInput:
             inputs.append(self._prepare_grpc_tensor("end_id", end_id_data))
 
         return inputs
+
+"""
+The BridgeCompletionRequest is input into the `from_bridge_request` function.
+This model is json-serialized as input into the `predict` endpoint. 
+If changes are needed, reach out the Baseten Core Product team
+
+class BridgeCompletionRequest(BaseModel):
+    messages: Union[str, List[Dict[str, str]]]
+    # raw is the incoming request with the "messages" omitted
+    # to avoid unnecessarily large request size
+    raw: Dict[Any, Any]
+    client_origin: str
+    repetition_penalty: Optional[float] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    top_k: Optional[float] = None
+    stream: bool = False
+    max_tokens: Optional[int] = None
+    max_new_tokens: Optional[int] = None
+    stop_words_list: Optional[List[str]] = None
+"""

@@ -79,22 +79,26 @@ class Model:
         if "messages" not in model_input and "prompt" not in model_input:
             raise ValueError("Prompt or messages must be provided")
 
-        model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
-        model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
-        model_input["request_id"] = str(os.getpid()) + str(
+        request_id = str(os.getpid()) + str(
             next(self._request_id_counter)
         )
-        model_input["eos_token_id"] = self.eos_token_id
+        model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
+        model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
 
-        if "messages" in model_input:
-            messages = model_input.pop("messages")
-            if self.uses_openai_api and "prompt" not in model_input:
-                model_input["prompt"] = self.tokenizer.apply_chat_template(
-                    messages, tokenize=False
-                )
+        if model_input.get("client_origin", "") == "open_ai_protocol":
+            templater = lambda x: self.tokenizer.apply_chat_template(x, tokenize=False)
+            model_input = ModelInput.from_bridge_oai_request(
+                model_input,
+                templater,
+                DEFAULT_MAX_TOKENS,
+                DEFAULT_MAX_NEW_TOKENS,
+                request_id,
+                self.eos_token_id,
+            )
+        else:
+            model_input = ModelInput(**model_input)
 
         self.triton_client.start_grpc_stream()
-        model_input = ModelInput(**model_input)
         result_iterator = self.triton_client.infer(model_input)
 
         async def generate():
