@@ -46,7 +46,7 @@ class ModelInput:
         chat_templater: Callable[[Any], Any],
         request_id: str,
         eos_token_id: str,
-    ):
+    ) -> "ModelInput":
         if "messages" not in model_input:
             raise ValueError("'messages' key expected in bridge request")
 

@@ -85,7 +85,9 @@ class Model:
         model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
         model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
 
-        if model_input.get("client_origin", "") == "open_ai_protocol":
+        is_oai_protocol = model_input.get("client_origin", "") == "open_ai_protocol"
+
+        if is_oai_protocol:
             templater = lambda x: self.tokenizer.apply_chat_template(x, tokenize=False)
             model_input = ModelInput.from_bridge_oai_request(
                 model_input,
@@ -96,6 +98,8 @@ class Model:
                 self.eos_token_id,
             )
         else:
+            model_input["request_id"] = request_id
+            model_input["eos_token_id"] = self.eos_token_id
             model_input = ModelInput(**model_input)
 
         self.triton_client.start_grpc_stream()
@@ -105,10 +109,17 @@ class Model:
             async for result in result_iterator:
                 yield result
 
+        async def build_response():
+            full_text = ""
+            async for delta in generate():
+                full_text += delta
+            return full_text
+
         if model_input.stream:
             return generate()
         else:
-            if self.uses_openai_api:
-                return "".join(generate())
+            text = await build_response()
+            if is_oai_protocol:
+                return text
             else:
-                return {"text": "".join(generate())}
+                return {"text": text}
