@@ -37,6 +37,7 @@ class CheckpointSource(Enum):
     HF: str = "HF"
     GCS: str = "GCS"
     LOCAL: str = "LOCAL"
+    REMOTE_URL: str = "REMOTE_URL"
 
 
 class CheckpointRepository(BaseModel):

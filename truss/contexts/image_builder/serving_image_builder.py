@@ -33,6 +33,9 @@ from truss.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    TRTLLM_WHISPER_TRUSS_DIR,
+    WHISPER_TRTLLM_SYSTEM_PACKAGES,
+    WHISPER_TRTLLM_REQUIREMENTS,
     USE_BRITON,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
@@ -51,6 +54,7 @@ from truss.contexts.image_builder.util import (
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.truss_config import BaseImage, TrussConfig
+from truss.config.trt_llm import TrussTRTLLMModel
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -341,7 +345,7 @@ class ServingImageBuilder(ImageBuilder):
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
         # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
-            is_whisper = config.trt_llm.base_model == TrussTRTLLMModel.WHISPER
+            is_whisper = config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
             
             if is_whisper:
                 copy_tree_path(TRTLLM_WHISPER_TRUSS_DIR, build_dir, ignore_patterns=[])
