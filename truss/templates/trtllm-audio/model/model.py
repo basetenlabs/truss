@@ -11,8 +11,6 @@ import time
 
 class Model:
     def __init__(self, **kwargs):
-        # Uncomment the following to get access
-        # to various parts of the Truss config.
         self._data_dir = kwargs["data_dir"]
         self._secrets = kwargs["secrets"]
         self._model = None
@@ -43,7 +41,6 @@ class Model:
         return binary_data, request
 
     async def predict(self, preprocessed_request) -> WhisperResult:
-        # Run model inference here
         binary_data, request = preprocessed_request
         waveform = self._model.preprocess_audio(binary_data)
         return await self._model.transcribe(
