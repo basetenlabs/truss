@@ -118,6 +118,6 @@ BRITON_BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
     "transformers==4.41.0",
-    "truss==0.9.12",
+    "truss==0.9.17rc2",
 ]
 OPENAI_COMPATIBLE_TAG = "openai-compatible"

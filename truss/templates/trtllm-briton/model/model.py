@@ -75,6 +75,9 @@ class Model:
         self._tokenizer_repository = (
             truss_trtllm_build_config.checkpoint_repository.repo
         )
+        self._kv_cache_free_gpu_mem_fraction = (
+            truss_trtllm_build_config.kv_cache_free_gpu_mem_fraction
+        )
 
         self._hf_token = None
         try:
@@ -87,7 +90,11 @@ class Model:
             self._tokenizer_repository, token=self._hf_token
         )
         # Start engine
-        config_str = f'engine_path: "{self._data_dir.resolve()}"\nhf_tokenizer: "{self._tokenizer_repository}"'
+        config_str = f"""
+    engine_path: "{self._data_dir.resolve()}"
+    hf_tokenizer: "{self._tokenizer_repository}"
+    kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
+"""
         config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()
         config_pbtxt_path.write_text(config_str)
         briton_env = os.environ.copy()

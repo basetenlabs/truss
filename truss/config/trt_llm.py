@@ -62,6 +62,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         TrussTRTLLMPluginConfiguration()
     )
     use_fused_mlp: bool = False
+    kv_cache_free_gpu_mem_fraction: float = 0.9
 
     class Config:
         json_encoders = {
