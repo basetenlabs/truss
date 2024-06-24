@@ -21,6 +21,7 @@ SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 TRTLLM_BRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
 TRTLLM_TRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
+TRTLLM_WHISPER_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-whisper"
 TRTLLM_TRUSS_DIR: pathlib.Path = (
     TRTLLM_BRITON_TRUSS_DIR if USE_BRITON else TRTLLM_TRITON_TRUSS_DIR
 )
@@ -119,5 +120,25 @@ BRITON_BASE_TRTLLM_REQUIREMENTS = [
     "grpcio-tools==1.64.0",
     "transformers==4.41.0",
     "truss==0.9.17rc2",
+]
+WHISPER_TRTLLM_REQUIREMENTS = [
+    "--extra-index-url https://pypi.nvidia.com",
+    "tensorrt_llm==0.9.0",
+    "hf_transfer",
+    "janus",
+    "kaldialign",
+    "librosa",
+    "mpi4py==3.1.4",
+    "safetensors",
+    "soundfile",
+    "tiktoken",
+    "torchaudio",
+    "async-batcher>=0.2.0",
+    "pydantic>=2.7.1",
+]
+WHISPER_TRTLLM_SYSTEM_PACKAGES = [
+    "python3.10-venv",
+    "openmpi-bin",
+    "libopenmpi-dev",
 ]
 OPENAI_COMPATIBLE_TAG = "openai-compatible"

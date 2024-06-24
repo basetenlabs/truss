@@ -13,6 +13,7 @@ class TrussTRTLLMModel(Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
     DEEPSEEK: str = "deepseek"
+    WHISPER: str = "whisper"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):

@@ -341,7 +341,12 @@ class ServingImageBuilder(ImageBuilder):
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
         # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
-            copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+            is_whisper = config.trt_llm.base_model == TrussTRTLLMModel.WHISPER
+            
+            if is_whisper:
+                copy_tree_path(TRTLLM_WHISPER_TRUSS_DIR, build_dir, ignore_patterns=[])
+            else:
+                copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
             tensor_parallel_count = (
                 config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]
@@ -356,17 +361,23 @@ class ServingImageBuilder(ImageBuilder):
 
             config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-            config.base_image = BaseImage(
-                image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
-                python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
-            )
-            config.requirements.extend(
-                BRITON_BASE_TRTLLM_REQUIREMENTS
-                if USE_BRITON
-                else BASE_TRTLLM_REQUIREMENTS
-            )
+            if not is_whisper:
+                config.base_image = BaseImage(
+                    image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
+                    python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
+                )
+            
+                config.requirements.extend(
+                    BRITON_BASE_TRTLLM_REQUIREMENTS
+                    if USE_BRITON
+                    else BASE_TRTLLM_REQUIREMENTS
+                )
 
-            config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
+                config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
+            else:
+                config.requirements.extend(WHISPER_TRTLLM_REQUIREMENTS)
+                config.system_packages.extend(WHISPER_TRTLLM_SYSTEM_PACKAGES)
+                config.resources.use_gpu = True
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
