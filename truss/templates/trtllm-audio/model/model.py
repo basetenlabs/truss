@@ -1,12 +1,8 @@
+import base64
+
+import requests
 from whisper_trt import WhisperModel
 from whisper_trt.types import WhisperResult
-import os
-from huggingface_hub import snapshot_download
-import base64
-import requests
-import torch
-import logging
-import time
 
 
 class Model:

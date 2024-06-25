@@ -1,25 +1,29 @@
+import io
+import re
 from pathlib import Path
-
 from typing import Optional
 
-import torch
-from whisper_trt.tokenizer import REVERSED_LANGUAGES, get_tokenizer
-from whisper_trt.modeling import WhisperDecoding, WhisperEncoding
-from whisper_trt.assets import download_assets
-from whisper_trt.types import BatchWhisperItem, Segment, WhisperResult, SUPPORTED_SAMPLE_RATE, DEFAULT_NUM_BEAMS, DEFAULT_MAX_NEW_TOKENS
-from whisper_trt.batching import WhisperBatchProcessor
-
 import tensorrt_llm
+import torch
 import torchaudio
-import io
-
-import re
 from torch import Tensor
-
+from whisper_trt.assets import download_assets
+from whisper_trt.batching import WhisperBatchProcessor
+from whisper_trt.modeling import WhisperDecoding, WhisperEncoding
+from whisper_trt.tokenizer import REVERSED_LANGUAGES, get_tokenizer
+from whisper_trt.types import (
+    DEFAULT_MAX_NEW_TOKENS,
+    DEFAULT_NUM_BEAMS,
+    SUPPORTED_SAMPLE_RATE,
+    BatchWhisperItem,
+    Segment,
+    WhisperResult,
+)
 from whisper_trt.utils import log_mel_spectrogram
 
 SEGMENTS_PATTERN = re.compile(r"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>")
 LANG_CODE_PATTERN = re.compile(r"<\|([a-z]{2})\|>")
+
 
 class WhisperModel(object):
     def __init__(
@@ -121,36 +125,36 @@ class WhisperModel(object):
         return text
 
     async def detect_audio_and_language(
-            self,
-            mel,
-        ) -> Optional[str]:
-            """
-            Detects the audio and language from the given mel spectrogram.
+        self,
+        mel,
+    ) -> Optional[str]:
+        """
+        Detects the audio and language from the given mel spectrogram.
 
-            Args:
-                mel: The mel spectrogram of the audio.
+        Args:
+            mel: The mel spectrogram of the audio.
 
-            Returns:
-                The detected language code, or None if no speech is detected.
-            """
-            text_prefix = "<|startoftranscript|>"
+        Returns:
+            The detected language code, or None if no speech is detected.
+        """
+        text_prefix = "<|startoftranscript|>"
 
-            prompt_ids = self.tokenizer.encode(
-                text_prefix,
-                allowed_special=self.tokenizer.special_tokens_set,
+        prompt_ids = self.tokenizer.encode(
+            text_prefix,
+            allowed_special=self.tokenizer.special_tokens_set,
+        )
+
+        output_ids = await self.batch_processor.process(
+            item=BatchWhisperItem(
+                mel=mel,
+                prompt_ids=prompt_ids,
+                max_new_tokens=1,
             )
-
-            output_ids = await self.batch_processor.process(
-                item=BatchWhisperItem(
-                    mel=mel,
-                    prompt_ids=prompt_ids,
-                    max_new_tokens=1,
-                )
-            )
-            text = self.decode_output_ids(output_ids, text_prefix)
-            if text == "<|nospeech|>":
-                return None
-            return text.replace(text_prefix, "").replace("<|", "").replace("|>", "")
+        )
+        text = self.decode_output_ids(output_ids, text_prefix)
+        if text == "<|nospeech|>":
+            return None
+        return text.replace(text_prefix, "").replace("<|", "").replace("|>", "")
 
     async def transcribe(
         self,
@@ -160,7 +164,7 @@ class WhisperModel(object):
         timestamps: bool = False,
         num_beams: int = DEFAULT_NUM_BEAMS,
         prefix: Optional[str] = None,
-        task: Optional[str] = "transcribe",
+        task: str = "transcribe",
         max_new_tokens=128,
     ):
         mel = await log_mel_spectrogram(

@@ -1,8 +1,7 @@
+from typing import List, NamedTuple
+
 from pydantic import BaseModel
-from typing import NamedTuple
-
 from torch import Tensor
-
 
 SUPPORTED_SAMPLE_RATE = 16_000
 DEFAULT_NUM_BEAMS = 1
@@ -23,5 +22,5 @@ class Segment(BaseModel):
 
 
 class WhisperResult(BaseModel):
-    segments: list[Segment]
+    segments: List[Segment]
     language_code: str

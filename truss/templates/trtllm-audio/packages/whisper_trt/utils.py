@@ -13,16 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Iterable, List, Optional, TextIO, Tuple, Union
 import os
-import torch
-import soundfile
-import numpy as np
+from functools import lru_cache
 from pathlib import Path
 from subprocess import CalledProcessError, run
-import torch.nn.functional as F
+from typing import Optional, Union
 
-from functools import lru_cache
+import numpy as np
+import soundfile
+import torch
+import torch.nn.functional as F
 from anyio import to_thread
 
 Pathlike = Union[str, Path]
@@ -103,7 +103,9 @@ def pad_or_trim(array, length: int = N_SAMPLES, *, axis: int = -1):
 
 
 @lru_cache(maxsize=None)
-def mel_filters(device, n_mels: int, mel_filters_dir: str = None) -> torch.Tensor:
+def mel_filters(
+    device, n_mels: int, mel_filters_dir: Optional[str] = None
+) -> torch.Tensor:
     """
     load the mel filterbank matrix for projecting STFT into a Mel spectrogram.
     Allows decoupling librosa dependency; saved using:
@@ -129,7 +131,7 @@ def _log_mel_spectrogram(
     n_mels: int,
     padding: int = 0,
     device: Optional[Union[str, torch.device]] = None,
-    mel_filters_dir: str = None,
+    mel_filters_dir: Optional[str] = None,
 ):
     """
     Compute the log-Mel spectrogram of
@@ -160,20 +162,19 @@ def _log_mel_spectrogram(
             else:
                 audio = load_audio(audio)
         assert isinstance(audio, np.ndarray), f"Unsupported audio type: {type(audio)}"
-        duration = audio.shape[-1] / SAMPLE_RATE
         audio = pad_or_trim(audio, N_SAMPLES)
         audio = audio.astype(np.float32)
         audio = torch.from_numpy(audio)
 
     if device is not None:
-        audio = audio.to(device)
+        audio = audio.to(device)  # type: ignore
     if padding > 0:
         audio = F.pad(audio, (0, padding))
-    window = torch.hann_window(N_FFT).to(audio.device)
+    window = torch.hann_window(N_FFT).to(audio.device)  # type: ignore
     stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
     magnitudes = stft[..., :-1].abs() ** 2
 
-    filters = mel_filters(audio.device, n_mels, mel_filters_dir)
+    filters = mel_filters(audio.device, n_mels, mel_filters_dir)  # type: ignore
     mel_spec = filters @ magnitudes
 
     log_spec = torch.clamp(mel_spec, min=1e-10).log10()
@@ -181,16 +182,15 @@ def _log_mel_spectrogram(
     log_spec = (log_spec + 4.0) / 4.0
     return log_spec
 
+
 async def log_mel_spectrogram(
     audio: Union[str, np.ndarray, torch.Tensor],
     n_mels: int,
     padding: int = 0,
     device: Optional[Union[str, torch.device]] = None,
-    mel_filters_dir: str = None,
+    mel_filters_dir: Optional[str] = None,
 ):
     log_spec = await to_thread.run_sync(
-        lambda: _log_mel_spectrogram(
-            audio, n_mels, padding, device, mel_filters_dir
-        )
+        lambda: _log_mel_spectrogram(audio, n_mels, padding, device, mel_filters_dir)
     )
     return log_spec

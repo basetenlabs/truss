@@ -40,6 +40,7 @@ class CheckpointSource(Enum):
     # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
     REMOTE_URL: str = "REMOTE_URL"
 
+
 class CheckpointRepository(BaseModel):
     source: CheckpointSource
     repo: str

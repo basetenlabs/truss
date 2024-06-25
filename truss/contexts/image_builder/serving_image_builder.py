@@ -12,7 +12,11 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
+from truss.config.trt_llm import TrussTRTLLMModel
 from truss.constants import (
+    AUDIO_MODEL_TRTLLM_REQUIREMENTS,
+    AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
+    AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     BRITON_BASE_TRTLLM_REQUIREMENTS,
@@ -32,9 +36,6 @@ from truss.constants import (
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
-    AUDIO_MODEL_TRTLLM_REQUIREMENTS,
-    AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
-    AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     TRTLLM_TRUSS_DIR,
     USE_BRITON,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
@@ -54,7 +55,6 @@ from truss.contexts.image_builder.util import (
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
 from truss.truss_config import BaseImage, TrussConfig
-from truss.config.trt_llm import TrussTRTLLMModel
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -345,10 +345,16 @@ class ServingImageBuilder(ImageBuilder):
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
         # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
-            is_audio_model = config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
-            
+            is_audio_model = (
+                config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
+                if config.trt_llm.build is not None
+                else False
+            )
+
             if is_audio_model:
-                copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+                copy_tree_path(
+                    AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[]
+                )
             else:
                 copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
@@ -370,7 +376,7 @@ class ServingImageBuilder(ImageBuilder):
                     image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
                     python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
                 )
-            
+
                 config.requirements.extend(
                     BRITON_BASE_TRTLLM_REQUIREMENTS
                     if USE_BRITON

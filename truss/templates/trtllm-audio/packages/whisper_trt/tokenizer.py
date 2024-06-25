@@ -15,6 +15,7 @@
 # Modified from https://github.com/openai/whisper/blob/main/whisper/tokenizer.py
 import base64
 import os
+from typing import Optional
 
 import tiktoken
 
@@ -125,7 +126,9 @@ REVERSED_LANGUAGES = {v: k for k, v in LANGUAGES.items()}
 
 
 def get_tokenizer(
-    name: str = "multilingual", num_languages: int = 99, tokenizer_dir: str = None
+    name: str = "multilingual",
+    num_languages: int = 99,
+    tokenizer_dir: Optional[str] = None,
 ):
     if tokenizer_dir is None:
         vocab_path = os.path.join(os.path.dirname(__file__), f"assets/{name}.tiktoken")

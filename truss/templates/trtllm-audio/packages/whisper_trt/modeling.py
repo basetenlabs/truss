@@ -2,13 +2,11 @@ import json
 from collections import OrderedDict
 
 import tensorrt_llm
-
-import torch
 import tensorrt_llm.logger as logger
+import torch
 from tensorrt_llm._utils import str_dtype_to_trt, trt_dtype_to_torch
 from tensorrt_llm.runtime import ModelConfig, SamplingConfig
 from tensorrt_llm.runtime.session import Session, TensorInfo
-
 from whisper_trt.types import DEFAULT_NUM_BEAMS
 
 
@@ -21,7 +19,6 @@ class WhisperEncoding:
         with open(config_path, "r") as f:
             config = json.load(f)
 
-        use_gpt_attention_plugin = config["plugin_config"]["gpt_attention_plugin"]
         dtype = config["builder_config"]["precision"]
         n_mels = config["builder_config"]["n_mels"]
         num_languages = config["builder_config"]["num_languages"]
@@ -116,7 +113,12 @@ class WhisperDecoding:
         return decoder_generation_session
 
     def generate(
-        self, decoder_input_ids, encoder_outputs, eot_id, max_new_tokens=40, num_beams=DEFAULT_NUM_BEAMS
+        self,
+        decoder_input_ids,
+        encoder_outputs,
+        eot_id,
+        max_new_tokens=40,
+        num_beams=DEFAULT_NUM_BEAMS,
     ):
         encoder_input_lengths = torch.tensor(
             [encoder_outputs.shape[1] for x in range(encoder_outputs.shape[0])],
