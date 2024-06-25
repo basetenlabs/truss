@@ -79,16 +79,20 @@ class Model:
         if "messages" not in model_input and "prompt" not in model_input:
             raise ValueError("Prompt or messages must be provided")
 
-        request_id = str(os.getpid()) + str(
-            next(self._request_id_counter)
-        )
+        request_id = str(os.getpid()) + str(next(self._request_id_counter))
         model_input.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
         model_input.setdefault("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
 
-        is_oai_protocol = model_input.get("client_origin", "") == "open_ai_protocol" or self.uses_openai_api
+        is_oai_protocol = (
+            model_input.get("client_origin", "") == "open_ai_protocol"
+            or self.uses_openai_api
+        )
 
         if is_oai_protocol:
-            templater = lambda x: self.tokenizer.apply_chat_template(x, tokenize=False)
+
+            def templater(msgs):
+                return self.tokenizer.apply_chat_template(msgs, tokenize=False)
+
             model_input = ModelInput.from_bridge_oai_request(
                 model_input,
                 templater,

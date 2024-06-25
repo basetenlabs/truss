@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import tritonclient
@@ -42,14 +42,14 @@ class ModelInput:
 
     @staticmethod
     def from_bridge_oai_request(
-        model_input: Dict[Any, Any],
+        model_input,
         chat_templater: Callable[[Any], Any],
         request_id: str,
         eos_token_id: str,
     ) -> "ModelInput":
         """
         The BridgeCompletionRequest is input into the `from_bridge_oai_request` function.
-        This model is json-serialized as input into the `predict` endpoint. 
+        This model is json-serialized as input into the `predict` endpoint.
         If changes are needed, reach out the Baseten Core Product team
 
         class BridgeCompletionRequest(BaseModel):
@@ -75,20 +75,34 @@ class ModelInput:
         # example of pulling off a value from raw
         # if 'raw' in model_input and isinstance(model_input['raw'], dict):
         #     seed = model_input['raw'].get(seed)
-        return ModelInput(
-            prompt=model_input.get("prompt"),
-            max_tokens=model_input.get("max_tokens"),
-            max_new_tokens=model_input.get("max_new_tokens"),
-            temperature=model_input.get("temperature"),
-            top_k=model_input.get("top_k"),
-            top_p=model_input.get("top_p"),
-            stop_words_list=model_input.get("stop_words_list"),
-            repetition_penalty=model_input.get("repetition_penalty"),
-            stream=model_input.get("stream"),
-            eos_token_id=eos_token_id,
+
+        # add to the kwargs when optional fields are present to avoid
+        # overwriting defaults
+        kwargs = dict(
+            prompt=model_input["prompt"],
             request_id=request_id,
-            # seed=seed,
+            eos_token_id=eos_token_id,
         )
+        if "temperature" in model_input:
+            kwargs["temperature"] = model_input["temperature"]
+        if "top_k" in model_input:
+            kwargs["top_k"] = model_input["top_k"]
+        if "top_p" in model_input:
+            kwargs["top_p"] = model_input["top_p"]
+        if "stop_words_list" in model_input:
+            kwargs["stop_words_list"] = model_input["stop_words_list"]
+        if "repetition_penalty" in model_input:
+            kwargs["repetition_penalty"] = model_input["repetition_penalty"]
+        if "stream" in model_input:
+            kwargs["stream"] = model_input["stream"]
+        # example of pulling a value from the raw
+        if (
+            "raw" in model_input
+            and isinstance(model_input["raw"], dict)
+            and "seed" in model_input["raw"]
+        ):
+            kwargs["seed"] = model_input["raw"]["seed"]
+        return ModelInput(**kwargs)
 
     def _prepare_grpc_tensor(
         self, name: str, input_data: np.ndarray
