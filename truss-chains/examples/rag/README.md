@@ -1,8 +1,11 @@
 # Chains RAG example
 
-Retrieval-augmented generation (RAG) is a multi-model pipeline for generating context-aware answers from LLMs. This example implements a basic RAG pipeline with as a Chain.
+Retrieval-augmented generation (RAG) is a multi-model pipeline for generating
+context-aware answers from LLMs. This example implements a basic RAG pipeline
+with as a Chain.
 
-For a detailed guide to using this example, see the [RAG example in the docs](https://docs.baseten.co/chains/examples/build-rag).
+For a detailed guide to using this example, see
+the [RAG example in the docs](https://docs.baseten.co/chains/examples/build-rag).
 
 ## Development setup
 
@@ -21,10 +24,15 @@ pip install --upgrade 'truss>=0.9.16' 'pydantic>=2.0.0' chromadb
 
 Deploy the Phi model:
 
-1. Go to the [Baseten model library](https://www.baseten.co/library/phi-3-mini-4k-instruct/)
-2. Deploy the model
-3. Copy your deployed model URL (formatted like `https://model-<model_id>.api.baseten.co/production/predict`)
-4. Create an API key and save it with `export BASETEN_API_KEY="your_api_key"`
+1. Go to the
+   [Baseten model library](https://www.baseten.co/library/phi-3-mini-4k-instruct/)
+   and deploy the Phi-3 model.
+3. Copy your deployed model URL (formatted like
+   `https://model-<model_id>.api.baseten.co/production/predict`) and update
+    `LLM_PREDICT_URL` in `rag_chain.py` with *your* URL.
+4. Create a baseten API key and make it available in your terminal it with
+   `export BASETEN_API_KEY="your_api_key"` (either in each session or adding it
+   to `.bashrc`).
 
 You're ready to go!
 
@@ -42,13 +50,19 @@ Deploy the Chain to production:
 truss chains deploy rag_chain.py
 ```
 
-Call the deployed chain:
+Note that this command will print you with an example cURL command how to
+call it, you only need to update the JSON payload.
+
+For example a chain invocation might look like this (you need to update the
+URL):
 
 ```sh
-# You must update the missing values in the Python file first
-python call_rag.py
+curl -X POST 'https://model-5wo86nn3.api.baseten.co/development/predict' \
+    -H "Authorization: Api-Key $BASETEN_API_KEY" \
+    -d '{"new_bio": "Sam just moved to Manhattan for his new job at a large bank.In college, he enjoyed building sets for student plays."}'
 ```
 
 ## Learn more
 
-For a detailed guide to using this example, see the [RAG example in the docs](https://docs.baseten.co/chains/examples/build-rag).
+For a detailed guide to using this example, see
+the [RAG example in the docs](https://docs.baseten.co/chains/examples/build-rag).
