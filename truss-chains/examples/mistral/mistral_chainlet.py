@@ -1,7 +1,8 @@
 from typing import Protocol
 
-import truss_chains as chains
 from truss import truss_config
+
+import truss_chains as chains
 
 MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
@@ -84,8 +85,7 @@ class MistralLLM(chains.ChainletBase):
 
 
 class MistralP(Protocol):
-    async def run_remote(self, data: str) -> str:
-        ...
+    async def run_remote(self, data: str) -> str: ...
 
 
 @chains.mark_entrypoint

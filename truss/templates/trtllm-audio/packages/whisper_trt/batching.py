@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 import torch
 from async_batcher.batcher import AsyncBatcher
 from torch import Tensor
+
 from whisper_trt.types import DEFAULT_NUM_BEAMS, BatchWhisperItem
 
 FIXED_TEXT_PRFIX = "<|startoftranscript|><|en|><|transcribe|><|0.00|>"

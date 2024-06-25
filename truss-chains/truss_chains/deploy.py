@@ -21,6 +21,7 @@ from tenacity import retry, stop_after_delay, wait_fixed
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.remote.baseten import types as b10_types
+
 from truss_chains import code_gen, definitions, framework, utils
 
 
@@ -167,7 +168,9 @@ def _chain_status_page_url(
 
 
 class RemoteChainService:
-    _remote: b10_remote.BasetenRemote  # TODO, make this a generic TypeVar for this calss
+    _remote: (
+        b10_remote.BasetenRemote
+    )  # TODO, make this a generic TypeVar for this calss
     _chain_id: str
     _chain_deployment_id: str
 
