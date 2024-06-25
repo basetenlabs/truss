@@ -21,15 +21,13 @@ def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
     return True
 
 
-def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> None:
+def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
     if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
-        if (
-            not tr.spec.memory_in_bytes
-            or tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_BYTES
-        ):
+        if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_BYTES:
             tr.spec.config.resources.memory = TRTLLM_MIN_MEMORY_REQUEST
-            tr.spec.config.resources.memory_in_bytes = TRTLLM_MIN_MEMORY_REQUEST_BYTES
             tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
+            return False
+    return True
 
 
 def _is_model_public(model_id: str) -> bool:

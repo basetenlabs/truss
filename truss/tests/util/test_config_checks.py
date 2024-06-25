@@ -35,6 +35,6 @@ def test_check_secrets_for_trt_llm_builder(
 
 def test_check_and_update_memory_for_trt_llm_builder(custom_model_trt_llm):
     handle = TrussHandle(custom_model_trt_llm)
-    check_and_update_memory_for_trt_llm_builder(handle)
+    assert not check_and_update_memory_for_trt_llm_builder(handle)
     assert handle.spec.memory == TRTLLM_MIN_MEMORY_REQUEST
     assert handle.spec.memory_in_bytes == TRTLLM_MIN_MEMORY_REQUEST_BYTES

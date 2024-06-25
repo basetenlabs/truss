@@ -7,6 +7,7 @@ from truss.constants import CONFIG_FILE
 from truss.errors import ValidationError
 from truss.truss_config import ExternalData, ModelServer, TrussConfig
 from truss.types import Example, ModelFrameworkType
+from truss.validation import validate_memory_spec
 
 
 class TrussSpec:
@@ -95,8 +96,8 @@ class TrussSpec:
         return self._config.resources.memory
 
     @property
-    def memory_in_bytes(self) -> Optional[int]:
-        return self._config.resources.memory_in_bytes
+    def memory_in_bytes(self) -> int:
+        return validate_memory_spec(self.memory)
 
     @property
     def use_gpu(self) -> str:

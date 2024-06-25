@@ -198,7 +198,6 @@ class Build:
 class Resources:
     cpu: str = DEFAULT_CPU
     memory: str = DEFAULT_MEMORY
-    memory_in_bytes: Optional[int] = None
     use_gpu: bool = DEFAULT_USE_GPU
     accelerator: AcceleratorSpec = field(default_factory=AcceleratorSpec)
 
@@ -207,7 +206,7 @@ class Resources:
         cpu = d.get("cpu", DEFAULT_CPU)
         validate_cpu_spec(cpu)
         memory = d.get("memory", DEFAULT_MEMORY)
-        memory_in_bytes = validate_memory_spec(memory)
+        validate_memory_spec(memory)
         accelerator = AcceleratorSpec.from_str((d.get("accelerator", None)))
         use_gpu = d.get("use_gpu", DEFAULT_USE_GPU)
         if accelerator.accelerator is not None:
@@ -216,7 +215,6 @@ class Resources:
         return Resources(
             cpu=cpu,
             memory=memory,
-            memory_in_bytes=memory_in_bytes,
             use_gpu=use_gpu,
             accelerator=accelerator,
         )
