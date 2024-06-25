@@ -23,6 +23,7 @@ from subprocess import CalledProcessError, run
 import torch.nn.functional as F
 
 from functools import lru_cache
+from anyio import to_thread
 
 Pathlike = Union[str, Path]
 
@@ -123,7 +124,7 @@ def mel_filters(device, n_mels: int, mel_filters_dir: str = None) -> torch.Tenso
         return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
 
 
-def log_mel_spectrogram(
+def _log_mel_spectrogram(
     audio: Union[str, np.ndarray, torch.Tensor],
     n_mels: int,
     padding: int = 0,
@@ -178,4 +179,18 @@ def log_mel_spectrogram(
     log_spec = torch.clamp(mel_spec, min=1e-10).log10()
     log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
     log_spec = (log_spec + 4.0) / 4.0
+    return log_spec
+
+async def log_mel_spectrogram(
+    audio: Union[str, np.ndarray, torch.Tensor],
+    n_mels: int,
+    padding: int = 0,
+    device: Optional[Union[str, torch.device]] = None,
+    mel_filters_dir: str = None,
+):
+    log_spec = await to_thread.run_sync(
+        lambda: _log_mel_spectrogram(
+            audio, n_mels, padding, device, mel_filters_dir
+        )
+    )
     return log_spec

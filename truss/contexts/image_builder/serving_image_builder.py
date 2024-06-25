@@ -381,7 +381,6 @@ class ServingImageBuilder(ImageBuilder):
             else:
                 config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
                 config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
-                config.resources.use_gpu = True
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:

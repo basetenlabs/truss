@@ -20,13 +20,13 @@ class Model:
 
     def preprocess(self, request: dict):
         audio_base64 = request.get("audio")
-        url = request.get("url")
+        audio_url = request.get("url")
 
-        if audio_base64 and url:
+        if audio_base64 and audio_url:
             return {
                 "error": "Only a base64 audio file OR a URL can be passed to the API, not both of them.",
             }
-        if not audio_base64 and not url:
+        if not audio_base64 and not audio_url:
             return {
                 "error": "Please provide either an audio file in base64 string format or a URL to an audio file.",
             }
@@ -35,8 +35,8 @@ class Model:
 
         if audio_base64:
             binary_data = base64.b64decode(audio_base64.encode("utf-8"))
-        elif url:
-            resp = requests.get(url)
+        elif audio_url:
+            resp = requests.get(audio_url)
             binary_data = resp.content
         return binary_data, request
 

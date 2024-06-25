@@ -37,8 +37,8 @@ class CheckpointSource(Enum):
     HF: str = "HF"
     GCS: str = "GCS"
     LOCAL: str = "LOCAL"
+    # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
     REMOTE_URL: str = "REMOTE_URL"
-
 
 class CheckpointRepository(BaseModel):
     source: CheckpointSource

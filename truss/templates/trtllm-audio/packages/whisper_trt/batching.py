@@ -19,12 +19,14 @@ class WhisperBatchProcessor(AsyncBatcher[list[BatchWhisperItem], list[str]]):
         self.model: "WhisperModel" = model
 
     def concat_and_pad_mels(self, tensors: list[Tensor]):
+        """Concatenates mel spectrograms to the maximum batch size using the last mel spectrogram as padding."""
         while len(tensors) < self.max_batch_size:
             tensors.append(tensors[-1])
         res = torch.cat(tensors, dim=0).type(torch.float16)
         return res
 
     def concat_and_pad_prompts(self, prompts: list[list]) -> Tensor:
+        """Concatenates prompts to the maximum batch size using the last prompt as padding."""
         while len(prompts) < self.max_batch_size:
             prompts.append(prompts[-1])
         return Tensor(prompts)
@@ -45,4 +47,5 @@ class WhisperBatchProcessor(AsyncBatcher[list[BatchWhisperItem], list[str]]):
             max_new_tokens=max_new_tokens,
             num_beams=DEFAULT_NUM_BEAMS,
         )
+        # Splicing to len(batch) is needed to remove the padding we add during `concat_and_pad_mels` and `concat_and_pad_prompts`
         return batch_result[: len(batch)]

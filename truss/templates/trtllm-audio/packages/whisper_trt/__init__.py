@@ -18,6 +18,8 @@ from torch import Tensor
 
 from whisper_trt.utils import log_mel_spectrogram
 
+SEGMENTS_PATTERN = re.compile(r"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>")
+LANG_CODE_PATTERN = re.compile(r"<\|([a-z]{2})\|>")
 
 class WhisperModel(object):
     def __init__(
@@ -161,7 +163,7 @@ class WhisperModel(object):
         task: Optional[str] = "transcribe",
         max_new_tokens=128,
     ):
-        mel = log_mel_spectrogram(
+        mel = await log_mel_spectrogram(
             waveform.numpy(),
             self.n_mels,
             device="cuda",
@@ -202,13 +204,10 @@ class WhisperModel(object):
         """
         Post-process the output of the transcription model.
         """
-        # Define the pattern to match
-        segments_pattern = re.compile(r"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>")
-        lang_code_pattern = re.compile(r"<\|([a-z]{2})\|>")
-        language_code = lang_code_pattern.findall(transcribed_text)[0]
+        language_code = LANG_CODE_PATTERN.findall(transcribed_text)[0]
 
         # Find all matches in the input string
-        matches = segments_pattern.findall(transcribed_text)
+        matches = SEGMENTS_PATTERN.findall(transcribed_text)
 
         # Process matches to create the desired output format
         segments = []
