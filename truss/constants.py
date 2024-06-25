@@ -21,7 +21,7 @@ SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 TRTLLM_BRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
 TRTLLM_TRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
-TRTLLM_WHISPER_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-whisper"
+AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"
 TRTLLM_TRUSS_DIR: pathlib.Path = (
     TRTLLM_BRITON_TRUSS_DIR if USE_BRITON else TRTLLM_TRITON_TRUSS_DIR
 )
