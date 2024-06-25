@@ -45,10 +45,7 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": "V100"},
-            Resources(
-                accelerator=AcceleratorSpec(Accelerator.V100, 1),
-                use_gpu=True,
-            ),
+            Resources(accelerator=AcceleratorSpec(Accelerator.V100, 1), use_gpu=True),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -58,10 +55,7 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": "T4:1"},
-            Resources(
-                accelerator=AcceleratorSpec(Accelerator.T4, 1),
-                use_gpu=True,
-            ),
+            Resources(accelerator=AcceleratorSpec(Accelerator.T4, 1), use_gpu=True),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -71,10 +65,7 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": "A10G:4"},
-            Resources(
-                accelerator=AcceleratorSpec(Accelerator.A10G, 4),
-                use_gpu=True,
-            ),
+            Resources(accelerator=AcceleratorSpec(Accelerator.A10G, 4), use_gpu=True),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
