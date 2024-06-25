@@ -275,6 +275,7 @@ class BasetenApi:
                 chainlets{{
                     name
                     id
+                    is_entrypoint
                     oracle_version {{
                         current_model_deployment_status {{
                             status
