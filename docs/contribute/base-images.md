@@ -1,7 +1,4 @@
----
-title: "Creating base images"
-description: "Add a custom base image to Truss"
----
+# Base images
 
 Base images are used to create Docker images for containers. Truss uses customized base images to:
 

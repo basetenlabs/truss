@@ -1,7 +1,4 @@
----
-title: "Setting up local development"
-description: "Get started working on Truss"
----
+# Setting up local development (contributor)
 
 To get started contributing to Truss, first fork the repository.
 
