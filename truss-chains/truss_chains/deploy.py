@@ -180,7 +180,7 @@ class RemoteChainService:
         return [
             b10_types.DeployedChainlet(
                 name=chainlet["name"],
-                is_entrypoint=chainlet["oracle_version"]["is_entrypoint"],
+                is_entrypoint=chainlet["is_entrypoint"],
                 status=chainlet["oracle_version"]["current_model_deployment_status"][
                     "status"
                 ],
