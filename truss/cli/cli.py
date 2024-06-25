@@ -17,6 +17,7 @@ import truss
 from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
+from truss.constants import TRTLLM_MIN_MEMORY_REQUEST, TRTLLM_MIN_MEMORY_REQUEST_BYTES
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -31,6 +32,7 @@ from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
+from truss.util.huggingface import is_model_public
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
 rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
@@ -815,6 +817,24 @@ def push(
             "Please push with --trusted to grant access to secrets."
         )
         console.print(not_trusted_text, style="red")
+
+    # trt-llm engine builder checks
+    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
+        model_id = tr.spec.config.trt_llm.build.checkpoint_repository.repo
+        if "hf_access_token" not in tr.spec.secrets and not is_model_public(model_id):
+            missing_token_text = (
+                f"`hf_access_token` must be provided in secrets to deploy gated model {model_id}. "
+                "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
+            )
+            console.print(missing_token_text, style="red")
+            sys.exit(1)
+
+        if (
+            not tr.spec.memory_in_bytes
+            or tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_BYTES
+        ):
+            tr.spec.config.resources.memory = TRTLLM_MIN_MEMORY_REQUEST
+            tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(

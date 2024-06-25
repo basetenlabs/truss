@@ -95,6 +95,10 @@ class TrussSpec:
         return self._config.resources.memory
 
     @property
+    def memory_in_bytes(self) -> Optional[int]:
+        return self._config.resources.memory_in_bytes
+
+    @property
     def use_gpu(self) -> str:
         return self._config.resources.use_gpu
 
