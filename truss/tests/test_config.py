@@ -25,7 +25,7 @@ from truss.types import ModelFrameworkType
     [
         (
             {},
-            Resources(),
+            Resources(memory_in_bytes=2 * 1024**3),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -35,7 +35,7 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": None},
-            Resources(),
+            Resources(memory_in_bytes=2 * 1024**3),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -45,7 +45,11 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": "V100"},
-            Resources(accelerator=AcceleratorSpec(Accelerator.V100, 1), use_gpu=True),
+            Resources(
+                accelerator=AcceleratorSpec(Accelerator.V100, 1),
+                memory_in_bytes=2 * 1024**3,
+                use_gpu=True,
+            ),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -55,7 +59,11 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": "T4:1"},
-            Resources(accelerator=AcceleratorSpec(Accelerator.T4, 1), use_gpu=True),
+            Resources(
+                accelerator=AcceleratorSpec(Accelerator.T4, 1),
+                memory_in_bytes=2 * 1024**3,
+                use_gpu=True,
+            ),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
@@ -65,12 +73,26 @@ from truss.types import ModelFrameworkType
         ),
         (
             {"accelerator": "A10G:4"},
-            Resources(accelerator=AcceleratorSpec(Accelerator.A10G, 4), use_gpu=True),
+            Resources(
+                accelerator=AcceleratorSpec(Accelerator.A10G, 4),
+                memory_in_bytes=2 * 1024**3,
+                use_gpu=True,
+            ),
             {
                 "cpu": DEFAULT_CPU,
                 "memory": DEFAULT_MEMORY,
                 "use_gpu": True,
                 "accelerator": "A10G:4",
+            },
+        ),
+        (
+            {"memory": "2G"},
+            Resources(memory="2G", memory_in_bytes=2 * 10**9),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": "2G",
+                "use_gpu": DEFAULT_USE_GPU,
+                "accelerator": None,
             },
         ),
     ],
