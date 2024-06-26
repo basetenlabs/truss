@@ -404,7 +404,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Name of the remote in .trussrc to push to.",
 )
 @log_level_option
-# @error_handling
+@error_handling
 def deploy(
     source: Path,
     entrypoint: Optional[str],
