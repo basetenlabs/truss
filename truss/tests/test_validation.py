@@ -64,21 +64,22 @@ def test_validate_cpu_spec(cpu_spec, expected_valid):
 
 
 @pytest.mark.parametrize(
-    "mem_spec, expected_valid",
+    "mem_spec, expected_valid, memory_in_bytes",
     [
-        (None, False),
-        (1, False),
-        ("1m", False),
-        ("1k", True),
-        ("512k", True),
-        ("512M", True),
-        ("1.5Gi", True),
-        ("abc", False),
+        (None, False, None),
+        (1, False, None),
+        ("1m", False, None),
+        ("1k", True, 10**3),
+        ("512k", True, 512 * 10**3),
+        ("512M", True, 512 * 10**6),
+        ("1.5Gi", True, 1.5 * 1024**3),
+        ("abc", False, None),
+        ("1024", True, 1024),
     ],
 )
-def test_validate_mem_spec(mem_spec, expected_valid):
+def test_validate_mem_spec(mem_spec, expected_valid, memory_in_bytes):
     if not expected_valid:
         with pytest.raises(ValidationError):
             validate_memory_spec(mem_spec)
     else:
-        validate_memory_spec(mem_spec)
+        assert memory_in_bytes == validate_memory_spec(mem_spec)

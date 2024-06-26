@@ -17,6 +17,7 @@ import truss
 from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
+from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -30,6 +31,10 @@ from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
+from truss.util.config_checks import (
+    check_and_update_memory_for_trt_llm_builder,
+    check_secrets_for_trt_llm_builder,
+)
 from truss.util.errors import RemoteNetworkError
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -809,6 +814,19 @@ def push(
             "Please push with --trusted to grant access to secrets."
         )
         console.print(not_trusted_text, style="red")
+
+    # trt-llm engine builder checks
+    if not check_secrets_for_trt_llm_builder(tr):
+        missing_token_text = (
+            "`hf_access_token` must be provided in secrets to build a gated model. "
+            "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
+        )
+        console.print(missing_token_text, style="red")
+        sys.exit(1)
+    if not check_and_update_memory_for_trt_llm_builder(tr):
+        console.print(
+            f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
+        )
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
