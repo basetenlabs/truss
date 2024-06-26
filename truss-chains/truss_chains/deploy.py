@@ -17,6 +17,7 @@ from typing import (
 )
 
 import truss
+from tenacity import retry, stop_after_delay, wait_fixed
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.remote.baseten import types as b10_types
@@ -170,17 +171,20 @@ class RemoteChainService:
         self._chain_id = chain_id
         self._chain_deployment_id = chain_deployment_id
 
-    def get_info(self) -> list[tuple[str, str, str]]:
+    def get_info(self) -> list[b10_types.DeployedChainlet]:
         """Return list with elements (name, status, logs_url) for each chainlet."""
         chainlets = self._remote.get_chainlets(
             chain_deployment_id=self._chain_deployment_id
         )
 
         return [
-            (
-                chainlet["name"],
-                chainlet["oracle_version"]["current_model_deployment_status"]["status"],
-                _chainlet_logs_url(
+            b10_types.DeployedChainlet(
+                name=chainlet["name"],
+                is_entrypoint=chainlet["is_entrypoint"],
+                status=chainlet["oracle_version"]["current_model_deployment_status"][
+                    "status"
+                ],
+                logs_url=_chainlet_logs_url(
                     self._chain_id,
                     self._chain_deployment_id,
                     chainlet["id"],
@@ -285,7 +289,8 @@ class ChainService:
             The JSON response."""
         return self.get_entrypoint.predict(json)
 
-    def get_info(self) -> list[tuple[str, str, str]]:
+    @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
+    def get_info(self) -> list[b10_types.DeployedChainlet]:
         """Queries the statuses of all chainlets in the chain.
 
         Returns:

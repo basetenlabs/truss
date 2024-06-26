@@ -659,6 +659,7 @@ def _make_truss_config(
             "to secrets - no need to manually add it."
         )
     config.model_cache.models = assets.cached
+    config.external_data = truss_config.ExternalData(items=assets.external_data)
     # Metadata.
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
         user_config=user_config, chainlet_to_service=chainlet_to_service

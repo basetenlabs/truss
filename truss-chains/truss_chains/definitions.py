@@ -245,6 +245,7 @@ class AssetSpec(SafeModel):
     # TODO: this is not stable yet and might change or refer back to truss.
     secrets: dict[str, str] = pydantic.Field({})
     cached: list[truss_config.ModelRepo] = []
+    external_data: list[truss_config.ExternalDataItem] = []
 
 
 class Assets:
@@ -273,6 +274,7 @@ class Assets:
         self,
         cached: Iterable[truss_config.ModelRepo] = (),
         secret_keys: Iterable[str] = (),
+        external_data: Iterable[truss_config.ExternalDataItem] = (),
     ) -> None:
         """
         Args:
@@ -280,9 +282,15 @@ class Assets:
             secret_keys: Names of secrets stored on baseten, that the
               chainlet should have access to. You can manage secrets on baseten
               `here <https://app.baseten.co/settings/secrets>`_.
+            external_data: Data to be downloaded from public URLs and made available
+              in the deployment (via ``context.data_dir``). See
+              `here <https://docs.baseten.co/reference/config#external-data>` for
+              more details.
         """
         self._spec = AssetSpec(
-            cached=list(cached), secrets={k: SECRET_DUMMY for k in secret_keys}
+            cached=list(cached),
+            secrets={k: SECRET_DUMMY for k in secret_keys},
+            external_data=list(external_data),
         )
 
     def get_spec(self) -> AssetSpec:
