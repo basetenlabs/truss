@@ -4,6 +4,7 @@ try:
     from configparser import DEFAULTSECT
     from configparser import SafeConfigParser as ConfigParser
 except ImportError:
+    # need to do this for py312 and onwards
     from configparser import DEFAULTSECT, ConfigParser  # type: ignore
 
 from functools import partial
