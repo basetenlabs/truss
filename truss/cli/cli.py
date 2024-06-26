@@ -17,7 +17,7 @@ import truss
 from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
-from truss.constants import TRTLLM_MIN_MEMORY_REQUEST
+from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -831,7 +831,7 @@ def push(
         sys.exit(1)
     if not check_and_update_memory_for_trt_llm_builder(tr):
         console.print(
-            f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST}."
+            f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
         )
 
     # TODO(Abu): This needs to be refactored to be more generic
