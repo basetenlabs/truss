@@ -334,8 +334,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     table.add_column("Logs URL")
     statuses = []
     # After reversing, the first one is the entrypoint (per order in service).
-    for i, (name, status, logs_url) in enumerate(reversed(service.get_info())):
-        displayable_status = get_displayable_status(status)
+    for i, chainlet in enumerate(reversed(service.get_info())):
+        displayable_status = get_displayable_status(chainlet.status)
         if displayable_status == ACTIVE_STATUS:
             spinner_name = "active"
         elif displayable_status in DEPLOYING_STATUSES:
@@ -348,13 +348,13 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         else:
             spinner_name = "failed"
         spinner = rich.spinner.Spinner(spinner_name, text=displayable_status)
-        if i == 0:
-            display_name = f"{name} (entrypoint)"
+        if chainlet.is_entrypoint:
+            display_name = f"{chainlet.name} (entrypoint)"
         else:
-            display_name = f"{name} (dep)"
+            display_name = f"{chainlet.name} (dep)"
 
-        table.add_row(spinner, display_name, logs_url)
-        if i == 0:  # Add section divider after entrypoint.
+        table.add_row(spinner, display_name, chainlet.logs_url)
+        if chainlet.is_entrypoint:  # Add section divider after entrypoint.
             table.add_section()
         statuses.append(displayable_status)
     return table, statuses
