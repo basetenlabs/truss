@@ -4,9 +4,12 @@ from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
+from rich.console import Console
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+console = Console()
 
 
 class TrussTRTLLMModel(Enum):
@@ -66,6 +69,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
+    num_builder_gpus: Optional[int] = None
 
     class Config:
         json_encoders = {
@@ -89,6 +93,7 @@ class TRTLLMConfiguration(BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
+        self._validate_fp8_and_num_builder_gpus()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -103,6 +108,19 @@ class TRTLLMConfiguration(BaseModel):
             ):
                 raise ValueError(
                     "Both engine_repository and tokenizer_repository must be provided"
+                )
+        return self
+
+    def _validate_fp8_and_num_builder_gpus(self):
+        if self.build is not None:
+            if (
+                self.build.quantization_type
+                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+                and not self.build.num_builder_gpus
+            ):
+                console.print(
+                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build gpus",
+                    style="red",
                 )
         return self
 
