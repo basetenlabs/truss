@@ -824,7 +824,7 @@ def push(
     # trt-llm engine builder checks
     if not check_secrets_for_trt_llm_builder(tr):
         missing_token_text = (
-            "`hf_access_token` must be provided in secrets to build a gated model"
+            "`hf_access_token` must be provided in secrets to build a gated model. "
             "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
         )
         console.print(missing_token_text, style="red")
