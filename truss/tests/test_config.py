@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from typing import Any, Dict
 
 import pytest
 import yaml
@@ -18,6 +19,47 @@ from truss.truss_config import (
     TrussConfig,
 )
 from truss.types import ModelFrameworkType
+
+
+@pytest.fixture
+def default_config() -> Dict[str, Any]:
+    return {
+        "build_commands": [],
+        "environment_variables": {},
+        "external_package_dirs": [],
+        "model_metadata": {},
+        "model_name": None,
+        "python_version": "py39",
+        "requirements": [],
+        "resources": {
+            "accelerator": None,
+            "cpu": "1",
+            "memory": "2Gi",
+            "use_gpu": False,
+        },
+        "secrets": {},
+        "system_packages": [],
+    }
+
+
+@pytest.fixture
+def trtllm_config(default_config) -> Dict[str, Any]:
+    trtllm_config = default_config
+    trtllm_config["trt_llm"] = {
+        "build": {
+            "base_model": "llama",
+            "max_input_len": 1024,
+            "max_output_len": 1024,
+            "max_batch_size": 512,
+            "max_beam_width": 1,
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "gather_all_token_logits": False,
+        }
+    }
+    return trtllm_config
 
 
 @pytest.mark.parametrize(
@@ -150,27 +192,6 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
     assert parsed_result.to_dict() == output_dict
 
 
-def generate_default_config():
-    config = {
-        "build_commands": [],
-        "environment_variables": {},
-        "external_package_dirs": [],
-        "model_metadata": {},
-        "model_name": None,
-        "python_version": "py39",
-        "requirements": [],
-        "resources": {
-            "accelerator": None,
-            "cpu": "1",
-            "memory": "2Gi",
-            "use_gpu": False,
-        },
-        "secrets": {},
-        "system_packages": [],
-    }
-    return config
-
-
 def test_default_config_not_crowded_end_to_end():
     config = TrussConfig(
         python_version="py39",
@@ -200,14 +221,14 @@ system_packages: []
     "model_framework",
     [ModelFrameworkType.CUSTOM, ModelFrameworkType.SKLEARN, ModelFrameworkType.PYTORCH],
 )
-def test_model_framework(model_framework):
+def test_model_framework(model_framework, default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
         model_framework=model_framework,
     )
 
-    new_config = generate_default_config()
+    new_config = default_config
     if model_framework == ModelFrameworkType.CUSTOM:
         assert new_config == config.to_dict(verbose=False)
     else:
@@ -231,14 +252,14 @@ def test_null_hf_cache_key():
     assert config.model_cache == ModelCache.from_list([])
 
 
-def test_huggingface_cache_single_model_default_revision():
+def test_huggingface_cache_single_model_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
         model_cache=ModelCache(models=[ModelRepo("test/model")]),
     )
 
-    new_config = generate_default_config()
+    new_config = default_config
     new_config["model_cache"] = [
         {
             "repo_id": "test/model",
@@ -259,7 +280,7 @@ def test_huggingface_cache_single_model_non_default_revision():
     assert config.to_dict(verbose=False)["model_cache"][0].get("revision") == "not-main"
 
 
-def test_huggingface_cache_multiple_models_default_revision():
+def test_huggingface_cache_multiple_models_default_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
@@ -271,7 +292,7 @@ def test_huggingface_cache_multiple_models_default_revision():
         ),
     )
 
-    new_config = generate_default_config()
+    new_config = default_config
     new_config["model_cache"] = [
         {"repo_id": "test/model1", "revision": "main"},
         {
@@ -284,7 +305,7 @@ def test_huggingface_cache_multiple_models_default_revision():
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") is None
 
 
-def test_huggingface_cache_multiple_models_mixed_revision():
+def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     config = TrussConfig(
         python_version="py39",
         requirements=[],
@@ -296,7 +317,7 @@ def test_huggingface_cache_multiple_models_mixed_revision():
         ),
     )
 
-    new_config = generate_default_config()
+    new_config = default_config
     new_config["model_cache"] = [
         {
             "repo_id": "test/model1",
@@ -309,9 +330,9 @@ def test_huggingface_cache_multiple_models_mixed_revision():
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
-def test_empty_config():
+def test_empty_config(default_config):
     config = TrussConfig()
-    new_config = generate_default_config()
+    new_config = default_config
 
     assert new_config == config.to_dict(verbose=False)
 
@@ -369,4 +390,11 @@ def test_from_yaml_python_version():
         yaml.safe_dump(valid_py_version_data, yaml_file)
 
         result = TrussConfig.from_yaml(yaml_path)
-        result.python_version == "py39"
+        assert result.python_version == "py39"
+
+
+@pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
+def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
+    assert (
+        TrussConfig.from_dict(trtllm_config).to_dict(verbose=verbose) == trtllm_config
+    ) == expect_equal

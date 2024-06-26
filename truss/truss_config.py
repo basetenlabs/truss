@@ -548,7 +548,7 @@ class TrussConfig:
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
             model_cache=transform_optional(
-                d.get("model_cache") or d.get("hf_cache") or [],
+                d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
             ),
             trt_llm=transform_optional(
@@ -662,7 +662,7 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(
-                    field_curr_value, lambda data: data.to_json_dict()
+                    field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
                 )
             elif isinstance(field_curr_value, BaseImage):
                 d["base_image"] = transform_optional(

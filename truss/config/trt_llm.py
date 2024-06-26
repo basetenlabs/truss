@@ -9,22 +9,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class TrussTRTLLMModel(Enum):
-    LLAMA: str = "llama"
-    MISTRAL: str = "mistral"
-    DEEPSEEK: str = "deepseek"
-    WHISPER: str = "whisper"
+class TrussTRTLLMModel(str, Enum):
+    LLAMA = "llama"
+    MISTRAL = "mistral"
+    DEEPSEEK = "deepseek"
+    WHISPER = "whisper"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
-    NO_QUANT: str = "no_quant"
-    WEIGHTS_ONLY_INT8: str = "weights_int8"
-    WEIGHTS_KV_INT8: str = "weights_kv_int8"
-    WEIGHTS_ONLY_INT4: str = "weights_int4"
-    WEIGHTS_KV_INT4: str = "weights_kv_int4"
-    SMOOTH_QUANT: str = "smooth_quant"
-    FP8: str = "fp8"
-    FP8_KV: str = "fp8_kv"
+    NO_QUANT = "no_quant"
+    WEIGHTS_ONLY_INT8 = "weights_int8"
+    WEIGHTS_KV_INT8 = "weights_kv_int8"
+    WEIGHTS_ONLY_INT4 = "weights_int4"
+    WEIGHTS_KV_INT4 = "weights_kv_int4"
+    SMOOTH_QUANT = "smooth_quant"
+    FP8 = "fp8"
+    FP8_KV = "fp8_kv"
 
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
@@ -33,7 +33,7 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
     gemm_plugin: str = "float16"
 
 
-class CheckpointSource(Enum):
+class CheckpointSource(str, Enum):
     HF: str = "HF"
     GCS: str = "GCS"
     LOCAL: str = "LOCAL"
@@ -65,13 +65,6 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
-
-    class Config:
-        json_encoders = {
-            TrussTRTLLMModel: lambda x: x.value,
-            TrussTRTLLMQuantizationType: lambda x: x.value,
-            CheckpointSource: lambda x: x.value,
-        }
 
 
 class TrussTRTLLMServingConfiguration(BaseModel):
@@ -113,5 +106,5 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
-    def to_json_dict(self):
-        return json.loads(self.json())
+    def to_json_dict(self, verbose=True):
+        return json.loads(self.json(exclude_unset=not verbose))
