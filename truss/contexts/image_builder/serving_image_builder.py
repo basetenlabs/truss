@@ -12,7 +12,11 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
+from truss.config.trt_llm import TrussTRTLLMModel
 from truss.constants import (
+    AUDIO_MODEL_TRTLLM_REQUIREMENTS,
+    AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
+    AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     BRITON_BASE_TRTLLM_REQUIREMENTS,
@@ -341,7 +345,18 @@ class ServingImageBuilder(ImageBuilder):
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
         # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
         if config.trt_llm is not None:
-            copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+            is_audio_model = (
+                config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
+                if config.trt_llm.build is not None
+                else False
+            )
+
+            if is_audio_model:
+                copy_tree_path(
+                    AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[]
+                )
+            else:
+                copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
 
             tensor_parallel_count = (
                 config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]
@@ -356,17 +371,23 @@ class ServingImageBuilder(ImageBuilder):
 
             config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-            config.base_image = BaseImage(
-                image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
-                python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
-            )
-            config.requirements.extend(
-                BRITON_BASE_TRTLLM_REQUIREMENTS
-                if USE_BRITON
-                else BASE_TRTLLM_REQUIREMENTS
-            )
+            if not is_audio_model:
+                config.base_image = BaseImage(
+                    image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
+                    python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
+                )
 
-            config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
+                config.requirements.extend(
+                    BRITON_BASE_TRTLLM_REQUIREMENTS
+                    if USE_BRITON
+                    else BASE_TRTLLM_REQUIREMENTS
+                )
+
+                config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
+            else:
+                config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
+                config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
+                config.python_version = "py310"
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:

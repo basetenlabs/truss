@@ -32,8 +32,6 @@ from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.errors import RemoteNetworkError
 
-logging.basicConfig(level=logging.INFO)
-
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
 rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
 rich.spinner.SPINNERS["loading"] = {"interval": 500, "frames": ["⏱️ ", " ⏱️"]}
@@ -88,6 +86,52 @@ def error_handling(f: Callable[..., object]):
     return wrapper
 
 
+_HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
+_log_level_str_to_level = {
+    _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,
+    "I": logging.INFO,
+    "INFO": logging.INFO,
+    "D": logging.DEBUG,
+    "DEBUG": logging.DEBUG,
+}
+
+
+def _set_logging_level(log_level: str) -> None:
+    level = _log_level_str_to_level[log_level]
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
+        formatter = logging.Formatter(fmt="%(message)s")
+    else:
+        # Absl-inspired logging for technical output.
+        log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
+        date_format = "%m%d %H:%M:%S"
+        formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+
+    if root_logger.handlers:
+        for handler in root_logger.handlers:
+            handler.setFormatter(formatter)
+    else:
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+
+
+def log_level_option(f):
+    def callback(ctx, param, value):
+        _set_logging_level(value)
+        return value
+
+    return click.option(
+        "--log",
+        default=_HUMANFRIENDLY_LOG_LEVEL,
+        expose_value=False,
+        help="Customizes logging.",
+        type=click.Choice(list(_log_level_str_to_level.keys()), case_sensitive=False),
+        callback=callback,
+    )(f)
+
+
 def print_help() -> None:
     ctx = click.get_current_context()
     click.echo(ctx.get_help())
@@ -96,6 +140,7 @@ def print_help() -> None:
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
 @click.version_option(truss.version())
+@log_level_option
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
     if not ctx.invoked_subcommand:
@@ -135,6 +180,7 @@ def chains():
     default=ModelServer.TrussServer.value,
     type=click.Choice([server.value for server in ModelServer]),
 )
+@log_level_option
 @error_handling
 def init(target_directory, backend) -> None:
     """Create a new truss.
@@ -160,6 +206,7 @@ def init(target_directory, backend) -> None:
 @image.command()  # type: ignore
 @click.argument("build_dir")
 @click.argument("target_directory", required=False)
+@log_level_option
 @error_handling
 def build_context(build_dir, target_directory: str) -> None:
     """
@@ -176,8 +223,9 @@ def build_context(build_dir, target_directory: str) -> None:
 @image.command()  # type: ignore
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
-@error_handling
 @click.option("--tag", help="Docker image tag")
+@log_level_option
+@error_handling
 def build(target_directory: str, build_dir: Path, tag) -> None:
     """
     Builds the docker image for a Truss.
@@ -200,6 +248,7 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
 @click.option(
     "--attach", is_flag=True, default=False, help="Flag for attaching the process"
 )
+@log_level_option
 @error_handling
 def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     """
@@ -228,6 +277,7 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
     required=False,
     help="Name of the remote in .trussrc to patch changes to",
 )
+@log_level_option
 @error_handling
 def watch(
     target_directory: str,
@@ -284,8 +334,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     table.add_column("Logs URL")
     statuses = []
     # After reversing, the first one is the entrypoint (per order in service).
-    for i, (name, status, logs_url) in enumerate(reversed(service.get_info())):
-        displayable_status = get_displayable_status(status)
+    for i, chainlet in enumerate(reversed(service.get_info())):
+        displayable_status = get_displayable_status(chainlet.status)
         if displayable_status == ACTIVE_STATUS:
             spinner_name = "active"
         elif displayable_status in DEPLOYING_STATUSES:
@@ -298,13 +348,13 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         else:
             spinner_name = "failed"
         spinner = rich.spinner.Spinner(spinner_name, text=displayable_status)
-        if i == 0:
-            display_name = f"{name} (entrypoint)"
+        if chainlet.is_entrypoint:
+            display_name = f"{chainlet.name} (entrypoint)"
         else:
-            display_name = f"{name} (dep)"
+            display_name = f"{chainlet.name} (dep)"
 
-        table.add_row(spinner, display_name, logs_url)
-        if i == 0:  # Add section divider after entrypoint.
+        table.add_row(spinner, display_name, chainlet.logs_url)
+        if chainlet.is_entrypoint:  # Add section divider after entrypoint.
             table.add_section()
         statuses.append(displayable_status)
     return table, statuses
@@ -353,6 +403,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help="Name of the remote in .trussrc to push to.",
 )
+@log_level_option
 @error_handling
 def deploy(
     source: Path,
@@ -429,51 +480,46 @@ def deploy(
 
 
 @chains.command(name="init")  # type: ignore
-@click.option(
-    "--target_directory",
-    type=str,
-    required=False,
-    help="Name of the chain to be deployed, if not given, the user will be prompted for a name",
-)
+@click.argument("directory", type=Path, required=False)
+@log_level_option
 @error_handling
 def chains_init(
-    target_directory: Optional[str],
+    directory: Optional[Path],
 ) -> None:
     """
-    Initializes a chains project with hello.py
+    Initializes a chains project directory.
+
+    DIRECTORY: A name of new or existing directory to create the chain in,
+      it must be empty. If not specified, the current directory is used.
+
     """
-    FILENAME = "main.py"
-    if not target_directory:
-        target_directory = inquirer.text(
-            qmark="", message="Enter the target directory for the chain"
-        ).execute()
-        # Ensure that `None` is replaced to empty string. This will write a main.py
-        # file to the cwd.
-        if not target_directory:
-            target_directory = ""
-    # we do this cast to satisfy mypy when handling the output of the inquirer.text call
-    target_directory = str(target_directory)
-    cur_path = os.getcwd()
-    abs_path = os.path.join(cur_path, target_directory)
-    filename = os.path.join(abs_path, FILENAME)
-    if os.path.exists(filename):
-        raise click.UsageError(
-            f"Cannot init chains project with {filename}. Path already exists"
-        )
-    user_friendly_path = os.path.join(target_directory, FILENAME)
-    rich.print(f"Creating {user_friendly_path}...\n")
+    if not directory:
+        directory = Path.cwd()
+    if directory.exists():
+        if not directory.is_dir():
+            raise ValueError(f"The path {directory} must be a directory.")
+        if any(directory.iterdir()):
+            raise ValueError(f"Directory {directory} must be empty.")
+    else:
+        directory.mkdir()
 
+    filename = (
+        inquirer.text(
+            qmark="",
+            message="Enter the python file name for the chain.",
+            default="my_chain.py",
+        ).execute(),
+    )
+    filepath = directory / str(filename)
+    rich.print(f"Creating and populating {filepath}...\n")
     source_code = _load_example_chainlet_code()
-
-    if not os.path.exists(abs_path):
-        os.mkdir(abs_path)
-    with open(filename, "w") as f:
-        f.write(source_code)
-
+    filepath.write_text(source_code)
     rich.print(
         "Next steps:\n",
-        f"💻 Run `python {user_friendly_path}` to execute the code locally\n",
-        f"🚢 Run `truss chains deploy {user_friendly_path}` to deploy the chain to Baseten\n",
+        f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
+        "execution.\n"
+        f"🚢 Run [bold green]`truss chains deploy {filepath}`[/bold green] "
+        "to deploy the chain to Baseten.\n",
     )
 
 
@@ -577,6 +623,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     required=False,
     help="ID of model to call",
 )
+@log_level_option
 @echo_output
 def predict(
     target_directory: str,
@@ -717,6 +764,7 @@ def predict(
         "specifying, the command will not complete until the deployment is complete."
     ),
 )
+@log_level_option
 @error_handling
 def push(
     target_directory: str,

@@ -187,7 +187,7 @@ def _validate_endpoint_params(
             raise definitions.ChainsUsageError(
                 "Inputs of endpoints must have type annotations. For "
                 f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` parameter "
-                f"`{param.name}` has not type annotation."
+                f"`{param.name}` has no type annotation."
             )
         _validate_io_type(param)
         type_descriptor = definitions.TypeDescriptor(raw=param.annotation)
@@ -722,15 +722,16 @@ def import_target(
     module_name = module_path.stem  # Use the file's name as the module name
     if not os.path.isfile(module_path):
         raise ImportError(
-            f"`{module_path}` is not a file. You must point to a file where the entrypoint is defined."
+            f"`{module_path}` is not a file. You must point to a python file where "
+            "the entrypoint chainlet is defined."
         )
 
-    error_msg = f"Could not import `{target_name}` from `{module_path}`. Check path."
+    import_error_msg = f"Could not import `{module_path}`. Check path."
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if not spec:
-        raise ImportError(error_msg)
+        raise ImportError(import_error_msg)
     if not spec.loader:
-        raise ImportError(error_msg)
+        raise ImportError(import_error_msg)
 
     module = importlib.util.module_from_spec(spec)
     module.__file__ = str(module_path)
@@ -740,9 +741,9 @@ def import_target(
     # registration has to stay at least until the deployment command has finished.
     if module_name in sys.modules:
         raise ImportError(
-            f"{error_msg}. There is already a module in `sys.modules` "
-            f"with name {module_name}. Overwriting that value is unsafe. "
-            "Try renaming your file."
+            f"{import_error_msg}. There is already a module in `sys.modules` "
+            f"with name `{module_name}`. Overwriting that value is unsafe. "
+            "Try renaming your source file."
         )
     modules_before = set(sys.modules.keys())
     sys.modules[module_name] = module

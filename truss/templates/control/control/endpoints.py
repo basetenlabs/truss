@@ -51,6 +51,9 @@ async def proxy(request: Request):
             retry_if_exception_type(ConnectError)
             | retry_if_exception_type(ModelNotReady)
             | retry_if_exception_type(RemoteProtocolError)
+            | retry_if_exception_type(httpx.ReadError)
+            | retry_if_exception_type(httpx.ReadTimeout)
+            | retry_if_exception_type(httpx.ConnectTimeout)
         ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
         wait=wait_fixed(1),

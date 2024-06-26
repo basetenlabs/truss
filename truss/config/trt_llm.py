@@ -13,6 +13,7 @@ class TrussTRTLLMModel(Enum):
     LLAMA: str = "llama"
     MISTRAL: str = "mistral"
     DEEPSEEK: str = "deepseek"
+    WHISPER: str = "whisper"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
@@ -36,6 +37,8 @@ class CheckpointSource(Enum):
     HF: str = "HF"
     GCS: str = "GCS"
     LOCAL: str = "LOCAL"
+    # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
+    REMOTE_URL: str = "REMOTE_URL"
 
 
 class CheckpointRepository(BaseModel):
@@ -62,6 +65,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         TrussTRTLLMPluginConfiguration()
     )
     use_fused_mlp: bool = False
+    kv_cache_free_gpu_mem_fraction: float = 0.9
 
     class Config:
         json_encoders = {
