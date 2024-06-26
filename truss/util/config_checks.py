@@ -1,9 +1,9 @@
 import requests
 from truss.config.trt_llm import CheckpointSource
 from truss.constants import (
+    HF_ACCESS_TOKEN_KEY,
     HF_MODELS_API_URL,
-    TRTLLM_MIN_MEMORY_REQUEST,
-    TRTLLM_MIN_MEMORY_REQUEST_BYTES,
+    TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.truss_handle import TrussHandle
 
@@ -14,7 +14,7 @@ def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
         hf_model_id = tr.spec.config.trt_llm.build.checkpoint_repository.repo
         if (
             source == CheckpointSource.HF
-            and "hf_access_token" not in tr.spec.secrets
+            and HF_ACCESS_TOKEN_KEY not in tr.spec.secrets
             and not _is_model_public(hf_model_id)
         ):
             return False
@@ -23,8 +23,8 @@ def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
 
 def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
     if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
-        if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_BYTES:
-            tr.spec.config.resources.memory = TRTLLM_MIN_MEMORY_REQUEST
+        if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_GI * 1024**3:
+            tr.spec.config.resources.memory = f"{TRTLLM_MIN_MEMORY_REQUEST_GI}Gi"
             tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
             return False
     return True
