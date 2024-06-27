@@ -236,7 +236,7 @@ class DownloadSubprocess:
         #  channel (c1). For sources with more than two channels, adjust the formula to
         #  include them accordingly.
         ffmpeg_command = (
-            f"ffmpeg -i {media_url} "
+            f'ffmpeg -i "{media_url}" '
             f"-ss {chunk_info.start_time_str} "  # seek time stamp.
             f"-t {chunk_info.duration_sec} "
             f"-vn "  # Disables video recording.
