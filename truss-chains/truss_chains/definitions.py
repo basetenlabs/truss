@@ -197,13 +197,13 @@ class Compute:
             cpu_count: Minimum number of CPUs to allocate.
             memory: Minimum memory to allocate, e.g. "2Gi" (2 gibibytes).
             gpu: GPU accelerator type, e.g. "A10G", "A100", refer to the
-              `truss config <https://truss.baseten.co/reference/config#resources-accelerator>`_
+              `truss config <https://docs.baseten.co/reference/config#resources-accelerator>`_
               for more choices.
             gpu_count: Number of GPUs to allocate.
             predict_concurrency: Number of concurrent requests a single replica of a
               deployed chainlet handles.
 
-        Concurrency concepts are explained in `this guide <https://truss.baseten.co/guides/concurrency>`_.
+        Concurrency concepts are explained in `this guide <https://docs.baseten.co/deploy/guides/concurrency#predict-concurrency>`_. # noqa: E501
         It is important to understand the difference between `predict_concurrency` and
         the concurrency target (used for autoscaling, i.e. adding or removing replicas).
         Furthermore, the ``predict_concurrency`` of a single instance is implemented in
@@ -262,7 +262,7 @@ class Assets:
           )
         chains.Assets(cached=[mistral_cache], ...)
 
-    See `truss caching guide <https://truss.baseten.co/guides/model-cache#enabling-caching-for-a-model>`_
+    See `truss caching guide <https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model>`_
     for more details on caching.
     """
 
@@ -284,7 +284,7 @@ class Assets:
               `here <https://app.baseten.co/settings/secrets>`_.
             external_data: Data to be downloaded from public URLs and made available
               in the deployment (via ``context.data_dir``). See
-              `here <https://docs.baseten.co/reference/config#external-data>` for
+              `here <https://docs.baseten.co/reference/config#external-data>`_ for
               more details.
         """
         self._spec = AssetSpec(

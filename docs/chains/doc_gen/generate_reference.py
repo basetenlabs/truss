@@ -33,7 +33,7 @@ NON_PUBLIC_SYMBOLS = [
 
 
 SECTION_CHAINLET = (
-    "Chainlets",
+    "Chainlet classes",
     "APIs for creating user-defined Chainlets.",
     [
         "truss_chains.ChainletBase",
@@ -197,11 +197,11 @@ def generate_sphinx_docs(
         shutil.copy(output_dir / "modules.mdx", generated_reference_path)
         patch_file_path = dog_gen_dir / "reference.patch"
         # Apply patch to generated_reference_path
-        snippets_reference_path = snippets_dir / "chains/API-reference.mdx"
+        patched_reference_path = dog_gen_dir / "API-reference.mdx"
         _apply_patch(
             str(generated_reference_path),
             str(patch_file_path),
-            str(snippets_reference_path),
+            str(patched_reference_path),
         )
 
 

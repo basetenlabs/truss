@@ -17,6 +17,10 @@ the current setup deployed separately:
 truss chains deploy whisper_chainlet.py
 ```
 
+Insert the predict URL for the Whisper Chainlet (printed by above deploy
+command or can be found on the status page) as a value for
+`WHISPER_PREDICT_URL` in `transcribe.py`. The deploy the transcribe chain.
+
 ```bash
 truss chains deploy transcribe.py
 ```

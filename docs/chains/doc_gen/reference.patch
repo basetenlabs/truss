@@ -1,13 +1,13 @@
---- docs/chains/doc_gen/generated-reference.mdx	2024-06-24 11:10:31.325810396 -0700
-+++ docs/snippets/chains/API-reference.mdx	2024-06-24 11:16:05.138379568 -0700
-@@ -19,30 +19,28 @@
+--- docs/chains/doc_gen/generated-reference.mdx	2024-06-27 13:49:37.554412285 -0700
++++ docs/chains/doc_gen/API-reference.mdx	2024-06-27 13:49:37.558412260 -0700
+@@ -23,30 +23,28 @@
  dependency of another chainlet. The return value of `depends` is intended to be
  used as a default argument in a chainlet’s `__init__`-method.
  When deploying a chain remotely, a corresponding stub to the remote is injected in
 -its place. In `run_local` mode an instance of a local chainlet is injected.
 +its place. In [`run_local`](#truss-chains-run-local) mode an instance of a local chainlet is injected.
 
- Refer to [the docs](https://truss.baseten.co/chains/getting-started) and this
+ Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
  [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
  for more guidance on how make one chainlet depend on another chainlet.
 
@@ -38,7 +38,7 @@
 
  ### `truss_chains.depends_context`
 
-@@ -52,20 +50,19 @@
+@@ -56,20 +54,19 @@
  [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
  for more guidance on the `__init__`-signature of chainlets.
 
@@ -63,7 +63,7 @@
 
  Bundles config values and resources needed to instantiate Chainlets.
 
-@@ -76,14 +73,14 @@
+@@ -80,14 +77,14 @@
 
  **Parameters:**
 
@@ -85,7 +85,7 @@
 
  #### data_dir *: Path | None*
 
-@@ -94,12 +91,16 @@
+@@ -98,12 +95,16 @@
 
  #### get_service_descriptor(chainlet_name)
 
@@ -106,7 +106,7 @@
 
  #### user_config *: UserConfigT*
 
-@@ -117,10 +118,6 @@
+@@ -121,10 +122,6 @@
  | `retries` | *int* |  |
 
 
@@ -117,7 +117,7 @@
  ### `truss_chains.mark_entrypoint`
 
  Decorator to mark a chainlet as the entrypoint of a chain.
-@@ -131,7 +128,7 @@
+@@ -135,7 +132,7 @@
 
  Example usage:
 
@@ -126,7 +126,7 @@
  import truss_chains as chains
 
  @chains.mark_entrypoint
-@@ -139,10 +136,14 @@
+@@ -143,10 +140,14 @@
      ...
  ```
 
@@ -144,7 +144,7 @@
 
  # Remote Configuration
 
-@@ -156,7 +157,7 @@
+@@ -160,7 +161,7 @@
 
  This is specified as a class variable for each chainlet class, e.g.:
 
@@ -153,7 +153,7 @@
  import truss_chains as chains
 
 
-@@ -172,31 +173,12 @@
+@@ -176,31 +177,12 @@
 
  **Parameters:**
 
@@ -191,7 +191,7 @@
 
  ### *class* `truss_chains.DockerImage`
 
-@@ -204,12 +186,12 @@
+@@ -208,12 +190,12 @@
 
  Configures the docker image in which a remoted chainlet is deployed.
 
@@ -207,7 +207,7 @@
 
  **Parameters:**
 
-@@ -222,28 +204,16 @@
+@@ -226,28 +208,16 @@
  | `data_dir` | *AbsPath\|None* | Data from this directory is copied into the docker image and accessible to the remote chainlet at runtime. |
  | `external_package_dirs` | *list[AbsPath]\|None* | A list of directories containing additional python packages outside the chain’s workspace dir, e.g. a shared library. This code is copied into the docker image and importable at runtime. |
 
@@ -238,7 +238,7 @@
 
  **Parameters:**
 
-@@ -267,18 +237,13 @@
+@@ -271,18 +241,13 @@
  - With a threadpool if it’s a synchronous function. This requires
    that the threads don’t have significant CPU load (due to the GIL).
 
@@ -258,10 +258,21 @@
  import truss_chains as chains
  from truss import truss_config
 
-@@ -300,14 +265,6 @@
- | `cached` | *Iterable[ModelRepo]* | One or more `truss_config.ModelRepo` objects. |
- | `secret_keys` | *Iterable[str]* | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets). |
+@@ -299,24 +264,11 @@
 
+ **Parameters:**
+
+-| Name | Type | Description |
+-|------|------|-------------|
+-| `cached` | *Iterable[ModelRepo]* | One or more `truss_config.ModelRepo` objects. |
+-| `secret_keys` | *Iterable[str]* | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets). |
+-| `external_data` | *Iterable[ExternalDataItem]* |  |
+-
+-
+-    Data to be downloaded from public URLs and made available
+-    in the deployment (via `context.data_dir`). See
+-    [here](https://docs.baseten.co/reference/config#external-data) for
+-    more details.
 -
 -#### get_spec()
 -
@@ -269,11 +280,15 @@
 -
 -* **Return type:**
 -  *AssetSpec*
--
++| Name | Type | Description                                                                                                                                                                                |
++|------|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
++| `cached` | *Iterable[ModelRepo]* | One or more `truss_config.ModelRepo` objects.                                                                                                                                              |
++| `secret_keys` | *Iterable[str]* | Names of secrets stored on baseten, that the chainlet should have access to. You can manage secrets on baseten [here](https://app.baseten.co/settings/secrets).                            |
++| `external_data` | *Iterable[ExternalDataItem]* | Data to be downloaded from public URLs and made available in the deployment (via `context.data_dir`). See [here](https://docs.baseten.co/reference/config#external-data) for more details. |
+
  # Core
 
- General framework and helper functions.
-@@ -321,7 +278,7 @@
+@@ -331,7 +283,7 @@
 
  | Name | Type | Description |
  |------|------|-------------|
@@ -282,7 +297,7 @@
  | `chain_name` | *str* | The name of the chain. |
  | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
  | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
-@@ -330,98 +287,7 @@
+@@ -340,98 +292,7 @@
  * **Returns:**
    A chain service handle to the deployed chain.
  * **Return type:**
@@ -344,7 +359,7 @@
 -* **Returns:**
 -  List with elements `(name, status, logs_url)` for each chainlet.
 -* **Return type:**
--  list[tuple[str, str, str]]
+-  list[*DeployedChainlet*]
 -
 -#### name *: str*
 -
@@ -382,7 +397,7 @@
 
  ### `truss_chains.make_abs_path_here`
 
-@@ -441,12 +307,12 @@
+@@ -451,12 +312,12 @@
  You can now in `root/sub_package/chainlet.py` point to the requirements
  file like this:
 
@@ -397,7 +412,7 @@
  This helper uses the directory of the immediately calling module as an
  absolute reference point for resolving the file location. Therefore,
  you MUST NOT wrap the instantiation of `make_abs_path_here` into a
-@@ -454,7 +320,7 @@
+@@ -464,7 +325,7 @@
 
  Ok:
 
@@ -406,7 +421,7 @@
  def foo(path: AbsPath):
      abs_path = path.abs_path
 
-@@ -463,15 +329,20 @@
+@@ -473,15 +334,20 @@
 
  Not Ok:
 
@@ -418,11 +433,11 @@
  foo("./somewhere")
  ```
 +</Warning>
-+
-+**Parameters:**
 
 -* **Parameters:**
 -  **file_path** (*str*)
++**Parameters:**
++
 +| Name        | Type    | Description                |
 +|-------------|---------|----------------------------|
 +| `file_path` | *str*   | Absolute or relative path. |
@@ -430,7 +445,7 @@
  * **Return type:**
    *AbsPath*
 
-@@ -480,23 +351,23 @@
+@@ -490,23 +356,23 @@
  Context manager local debug execution of a chain.
 
  The arguments only need to be provided if the chainlets explicitly access any the
@@ -461,7 +476,7 @@
  import os
  import truss_chains as chains
 
-@@ -534,22 +405,13 @@
+@@ -544,22 +410,13 @@
 
  **Parameters:**
 
@@ -471,14 +486,14 @@
 -| `predict_url` | *str* |  |
 -| `options` | *[RPCOptions](#truss_chains.RPCOptions* |  |
 -
--
--#### name *: str*
 +| Name | Type                                           | Description |
 +|------|------------------------------------------------|-------------|
 +| `name` | *str*                                          |  |
 +| `predict_url` | *str*                                          |  |
 +| `options` | *[RPCOptions](#class-truss-chains-rpcoptions)* |  |
 
+-#### name *: str*
+-
 -#### options *: [RPCOptions](#truss_chains.RPCOptions)*
 -
 -#### predict_url *: str*
@@ -490,7 +505,7 @@
 
  Base class for stubs that invoke remote chainlets.
 
-@@ -557,7 +419,7 @@
+@@ -567,7 +424,7 @@
  in user-code for wrapping a deployed truss model into the chains framework, e.g.
  like that:
 
@@ -499,7 +514,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -567,7 +429,7 @@
+@@ -577,7 +434,7 @@
 
  class DeployedWhisper(chains.StubBase):
 
@@ -508,7 +523,7 @@
          resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
          return WhisperOutput(text=resp["text"], language==resp["language"])
 
-@@ -586,10 +448,10 @@
+@@ -596,10 +453,10 @@
 
  **Parameters:**
 
@@ -523,7 +538,7 @@
 
 
  #### *classmethod* from_url(predict_url, context, options=None)
-@@ -599,12 +461,11 @@
+@@ -609,12 +466,11 @@
 
  **Parameters:**
 
@@ -541,7 +556,7 @@
 
  ### *class* `truss_chains.RemoteErrorDetail`
 
-@@ -624,13 +485,6 @@
+@@ -634,13 +490,6 @@
  | `exception_message` | *str* |  |
  | `user_stack_trace` | *list[StackFrame]* |  |
 
@@ -555,7 +570,7 @@
  #### format()
 
  Format the error for printing, similar to how Python formats exceptions
-@@ -638,7 +492,3 @@
+@@ -648,7 +497,3 @@
 
  * **Return type:**
    str

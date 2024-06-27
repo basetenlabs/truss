@@ -8,7 +8,7 @@ from truss_chains import definitions, deploy, framework
 def depends_context() -> definitions.DeploymentContext:
     """Sets a "symbolic marker" for injecting a context object at runtime.
 
-    Refer to `the docs <https://truss.baseten.co/chains/getting-started>`_ and this
+    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
     `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
     for more guidance on the ``__init__``-signature of chainlets.
 
@@ -39,7 +39,7 @@ def depends(
     When deploying a chain remotely, a corresponding stub to the remote is injected in
     its place. In ``run_local`` mode an instance of a local chainlet is injected.
 
-    Refer to `the docs <https://truss.baseten.co/chains/getting-started>`_ and this
+    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
     `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
     for more guidance on how make one chainlet depend on another chainlet.
 
@@ -72,7 +72,7 @@ class ChainletBase(definitions.ABCChainlet):
     Inheriting from this class adds validations to make sure subclasses adhere to the
     chainlet pattern and facilitates remote chainlet deployment.
 
-    Refer to `the docs <https://truss.baseten.co/chains/getting-started>`_ and this
+    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
     `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
     for more guidance on how to create subclasses.
     """
@@ -188,7 +188,7 @@ def run_local(
             print(result)
 
 
-    Refer to the `local debugging guide <https://truss.baseten.co/chains/guide#local-debugging>`_
+    Refer to the `local debugging guide <https://docs.baseten.co/chains/guide#test-a-chain-locally>`_
     for more details.
     """
     data_dir = pathlib.Path(data_dir) if data_dir else None
