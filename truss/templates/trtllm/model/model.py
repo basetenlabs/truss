@@ -101,10 +101,17 @@ class Model:
             async for result in result_iterator:
                 yield result
 
+        async def build_response():
+            text = ""
+            async for res in result_iterator:
+                text += res
+            return text
+
         if model_input.stream:
             return generate()
         else:
+            text = await build_response()
             if self.uses_openai_api:
-                return "".join(generate())
+                return text
             else:
-                return {"text": "".join(generate())}
+                return {"text": text}
