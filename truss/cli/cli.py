@@ -13,9 +13,8 @@ import rich.live
 import rich.spinner
 import rich.table
 import rich_click as click
-from InquirerPy import inquirer
-
 import truss
+from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
 from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
@@ -34,6 +33,7 @@ from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
+    check_fp8_hardware_compat,
     check_secrets_for_trt_llm_builder,
 )
 from truss.util.errors import RemoteNetworkError
@@ -826,6 +826,12 @@ def push(
         console.print(
             f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
         )
+    if not check_fp8_hardware_compat(tr):
+        incompatible_hardware_text = (
+            "FP8 quantization is only compatible with H100 accelerator."
+        )
+        console.print(incompatible_hardware_text, style="red")
+        sys.exit(1)
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(

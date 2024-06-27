@@ -1,11 +1,19 @@
 import requests
-from truss.config.trt_llm import CheckpointSource
+from truss.config.trt_llm import CheckpointSource, TrussTRTLLMQuantizationType
 from truss.constants import (
     HF_ACCESS_TOKEN_KEY,
     HF_MODELS_API_URL,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
+from truss.truss_config import Accelerator
 from truss.truss_handle import TrussHandle
+
+FP8_COMPATIBLE_ACCELERATORS = [Accelerator.L4, Accelerator.H100, Accelerator.H100_40GB]
+
+FP8_QUANTIZATION_TYPES = [
+    TrussTRTLLMQuantizationType.FP8,
+    TrussTRTLLMQuantizationType.FP8_KV,
+]
 
 
 def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
@@ -26,6 +34,19 @@ def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
         if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_GI * 1024**3:
             tr.spec.config.resources.memory = f"{TRTLLM_MIN_MEMORY_REQUEST_GI}Gi"
             tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
+            return False
+    return True
+
+
+def check_fp8_hardware_compat(tr: TrussHandle) -> bool:
+    """Check if quantization type is compatible with"""
+    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
+        user_defined_quantization_type = tr.spec.config.trt_llm.build.quantization_type
+        user_defined_accelerator = tr.spec.config.resources.accelerator.accelerator
+        if (
+            user_defined_quantization_type in FP8_QUANTIZATION_TYPES
+            and user_defined_accelerator not in FP8_COMPATIBLE_ACCELERATORS
+        ):
             return False
     return True
 
