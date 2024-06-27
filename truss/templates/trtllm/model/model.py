@@ -102,10 +102,10 @@ class Model:
                 yield result
 
         async def build_response():
-            text = ""
-            async for res in result_iterator:
-                text += res
-            return text
+            full_text = ""
+            async for delta in result_iterator:
+                full_text += delta
+            return full_text
 
         if model_input.stream:
             return generate()
