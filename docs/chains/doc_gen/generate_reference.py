@@ -1,5 +1,6 @@
 # type: ignore  # This tool is only for Marius.
 """Script to auot-generate the API reference for Truss Chains."""
+
 import inspect
 import pathlib
 import shutil
@@ -7,8 +8,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import truss_chains as chains
 from sphinx import application
+
+import truss_chains as chains
 
 DUMMY_INDEX_RST = """
 .. Dummy

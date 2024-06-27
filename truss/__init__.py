@@ -1,5 +1,3 @@
-# flake8: noqa F401
-
 from pathlib import Path
 
 from single_source import get_version

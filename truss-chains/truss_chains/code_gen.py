@@ -22,6 +22,7 @@ workspace/
 `shared_lib` can only be imported on the remote if its installed as a pip
 requirement (site-package), it will not be copied from the local host.
 """
+
 import logging
 import os
 import pathlib
@@ -38,6 +39,7 @@ import libcst
 import truss
 from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
+
 from truss_chains import cli, definitions, model_skeleton, utils
 
 INDENT = " " * 4
@@ -76,11 +78,9 @@ def _run_simple_subprocess(cmd: str) -> None:
 
 
 def _format_python_file(file_path: pathlib.Path) -> None:
-    _run_simple_subprocess(
-        f"autoflake --in-place --remove-all-unused-imports {file_path}"
-    )
-    _run_simple_subprocess(f"black {file_path}")
-    _run_simple_subprocess(f"isort {file_path}")
+    # Resolve importing sorting and unused import issues.
+    _run_simple_subprocess(f"ruff check {file_path} --fix --select F401,I")
+    _run_simple_subprocess(f"ruff format {file_path}")
 
 
 class _Source(definitions.SafeModelNonSerializable):
@@ -664,9 +664,9 @@ def _make_truss_config(
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
         user_config=user_config, chainlet_to_service=chainlet_to_service
     )
-    config.model_metadata[
-        definitions.TRUSS_CONFIG_CHAINS_KEY
-    ] = chains_metadata.model_dump()
+    config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
+        chains_metadata.model_dump()
+    )
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )

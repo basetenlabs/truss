@@ -7,6 +7,7 @@ import tensorrt_llm
 import torch
 import torchaudio
 from torch import Tensor
+
 from whisper_trt.assets import download_assets
 from whisper_trt.batching import WhisperBatchProcessor
 from whisper_trt.modeling import WhisperDecoding, WhisperEncoding

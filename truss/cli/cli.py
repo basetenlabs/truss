@@ -13,8 +13,9 @@ import rich.live
 import rich.spinner
 import rich.table
 import rich_click as click
-import truss
 from InquirerPy import inquirer
+
+import truss
 from truss.cli.console import console
 from truss.cli.create import ask_name
 from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI

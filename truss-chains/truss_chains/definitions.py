@@ -45,14 +45,11 @@ V = TypeVar("V", covariant=True)
 
 @runtime_checkable
 class MappingNoIter(Protocol[K, V]):
-    def __getitem__(self, key: K) -> V:
-        ...
+    def __getitem__(self, key: K) -> V: ...
 
-    def __len__(self) -> int:
-        ...
+    def __len__(self) -> int: ...
 
-    def __contains__(self, key: K) -> bool:
-        ...
+    def __contains__(self, key: K) -> bool: ...
 
 
 class SafeModel(pydantic.BaseModel):
@@ -521,8 +518,7 @@ class RemoteErrorDetail(SafeModel):
         return error
 
 
-class GenericRemoteException(Exception):
-    ...
+class GenericRemoteException(Exception): ...
 
 
 ########################################################################################
