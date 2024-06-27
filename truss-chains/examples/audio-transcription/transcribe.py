@@ -12,8 +12,11 @@ IMAGE = chains.DockerImage(
     apt_requirements=["ffmpeg"],
     pip_requirements=["google-auth", "google-cloud-bigquery"],
 )
+
+
 # Whisper is deployed as a separate chainlet `whisper_chainlet.py`.
-_WHISPER_URL = "https://model-5wo86gg3.api.baseten.co/development/predict"
+MODEL_ID = ""  # Fill this in with the model id of the deployed whisper chainlet
+_WHISPER_URL = f"https://model-{MODEL_ID}.api.baseten.co/development/predict"
 
 
 class DeployedWhisper(chains.StubBase):
