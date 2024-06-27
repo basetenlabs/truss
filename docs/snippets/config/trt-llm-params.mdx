@@ -1,9 +1,29 @@
 ### `trt_llm`
 
-Configuration for TRT-LLM accelerated model services
+Configuration for TRT-LLM accelerated model services. Here's a TinyLlama example to get started quickly:
+
+```yaml
+model_name: TinyLlama-1.1B-Chat TRT-LLM
+resources:
+  accelerator: A10G
+  use_gpu: True
+trt_llm:
+  build:
+    max_input_len: 1000
+    max_batch_size: 1
+    max_beam_width: 1
+    max_output_len: 500
+    strongly_typed: True
+    quantization_type: no_quant
+    base_model: llama
+    checkpoint_repository:
+      repo: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+      source: HF
+```
 #### `build`
 
-TRT-LLM engine build configuration
+TRT-LLM engine build configuration.
+
 ##### `base_model`
 
 The base model architecture of your model checkpoint. Supported architectures include:
@@ -15,52 +35,61 @@ The base model architecture of your model checkpoint. Supported architectures in
 
 ##### `max_input_len`
 
-Maximum input length in tokens to limit prompts to
+Maximum input length in tokens to limit prompts to.
 
 ##### `max_output_len`
 
-Maximum output length in tokens to limit prompts to
+Maximum output length in tokens to limit outputs to.
 
 ##### `max_batch_size`
 
-Maximum number of sequences to pass through the engine consecutively
+Maximum number of input sequences to pass through the engine consecutively.
 
 ##### `max_beam_width`
 
-Maximum number of candidate sequences with which to conduct beam search
+Maximum number of candidate sequences with which to conduct beam search.
 
 ##### `max_prompt_embedding_table_size`
-(default: 0)
+(default: `0`)
 
-Maximum prompt embedding table size
+Maximum prompt embedding table size for prompt tuning.
 
 ##### `checkpoint_repository`
 
-Specification of the model checkpoint to be leveraged for engine building
+Specification of the model checkpoint to be leveraged for engine building. E.g.
+
+```yaml
+checkpoint_repository:
+    source: HF | GCS | REMOTE_URL
+    repo: meta-llama/Meta-Llama-3-8B-Instruct | gs://bucket_name | https://your-checkpoint.com
+```
+
+To configure access to private model checkpoints, [register secrets in your Baseten workspace](https://docs.baseten.co/observability/secrets#best-practices-for-secrets), namely the `hf_access_token` or `trt_llm_gcs_service_account` secrets with a valid service account json for HuggingFace or GCS, respectively.
+Ensure that you push your truss with the `--trusted` flag to enable access to your secrets.
 
 ###### `checkpoint_repository.source`
 
-Source for where the checkpoint is stored. Supported sources include:
+Source where the checkpoint is stored. Supported sources include:
 * `HF` (HuggingFace)
 * `GCS` (Google Cloud Storage)
 * `REMOTE_URL`
 
 ###### `checkpoint_repository.repo`
 
-Checkpoint repository name, bucket, or remote url
+Checkpoint repository name, bucket, or url.
 
 ##### `gather_all_token_logits`
-(default: False)
+(default: `False`)
 
-Whether or not to gather all token logits
+Whether to gather all token logits.
 
 ##### `strongly_typed`
-(default: False)
+(default: `False`)
 
-Whether to build the engine using strong typing, can speed up build time for some formats
+Whether to build the engine using strong typing, can speed up build time for some formats.
 
 ##### `quantization_type`
-(default: no_quant)
+(default: `no_quant`)
 
 Quantization format with which to build the engine. Supported formats include:
 * `no_quant`
@@ -72,47 +101,48 @@ Quantization format with which to build the engine. Supported formats include:
 * `fp8`
 * `fp8_kv`
 
-Read more about the different quantization techniques [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/blogs/quantization-in-TRT-LLM.md)
+Read more about different post training quantization techniques supported by TRT-LLM [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/blogs/quantization-in-TRT-LLM.md).
 
 ##### `tensor_parallel_count`
-(default: 1)
+(default: `1`)
 
-Tensor parallelism count
+Tensor parallelism count.
 
 ##### `pipeline_parallel_count`
-(default: 1)
+(default: `1`)
 
-Pipeline parallelism count
+Pipeline parallelism count.
 
 ##### `plugin_configuration`
 
-Config for inserting plugin nodes into network graph definition for execution of user-defined kernels
+Config for inserting plugin nodes into network graph definition for execution of user-defined kernels.
 
 ###### `plugin_configuration.multi_block_mode`
-(default: False)
+(default: `False`)
 
-Distribute masked MHA kernel work across multiple CUDA thread blocks in scenarios with low GPU occupancy. Read more about when to enable this plugin [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/advanced/gpt-attention.md#generation-phase)
+Distribute masked MHA kernel work across multiple CUDA thread blocks in scenarios with low GPU occupancy. Read more about when to enable this plugin [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/advanced/gpt-attention.md#generation-phase).
 
 ###### `plugin_configuration.paged_kv_cache`
-(default: True)
+(default: `True`)
 
-Decompose KV cahce into page blocks. Read more about what this does [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/advanced/gpt-attention.md#paged-kv-cache).
+Decompose KV cache into page blocks. Read more about what this does [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/advanced/gpt-attention.md#paged-kv-cache).
 
 ###### `plugin_configuration.gemm_plugin`
-(default: float16)
+(default: `float16`)
 
-Utilize NVIDIA cuBLASLt for GEMM ops. Read more about when to enable this [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md#gemm-plugin)
+Utilize NVIDIA cuBLASLt for GEMM ops. Read more about when to enable this [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md#gemm-plugin).
 
 ##### `use_fused_mlp`
-(default: False)
+(default: `False`)
 
-Enables GEMM horizontal fusion in gated MLP layer, potentially improving performance
+Enables GEMM horizontal fusion in gated MLP layer, potentially improving performance.
 
 ##### `kv_cache_free_gpu_mem_fraction`
-(default: 0.9)
+(default: `0.9`)
 
-Used to control the fraction of free gpu memory allocated for the KV cache
+Used to control the fraction of free gpu memory allocated for the KV cache.
 
 ##### `num_builder_gpus`
+(default: `auto`)
 
-Number of GPUs to be used at build time
+Number of GPUs to be used at build time, defaults to configured `resource.accelerator` count – useful for FP8 quantization in particular, when more GPU memory is required at build time relative to memory usage at inference.
