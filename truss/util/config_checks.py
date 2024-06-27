@@ -38,8 +38,8 @@ def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
     return True
 
 
-def check_fp8_hardware_compat(tr: TrussHandle) -> bool:
-    """Check if quantization type is compatible with"""
+def check_quantization_and_hardware_compat(tr: TrussHandle) -> bool:
+    """Check if quantization type is compatible with hardware"""
     if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
         user_defined_quantization_type = tr.spec.config.trt_llm.build.quantization_type
         user_defined_accelerator = tr.spec.config.resources.accelerator.accelerator

@@ -33,7 +33,7 @@ from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
-    check_fp8_hardware_compat,
+    check_quantization_and_hardware_compat,
     check_secrets_for_trt_llm_builder,
 )
 from truss.util.errors import RemoteNetworkError
@@ -826,7 +826,7 @@ def push(
         console.print(
             f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
         )
-    if not check_fp8_hardware_compat(tr):
+    if not check_quantization_and_hardware_compat(tr):
         incompatible_hardware_text = (
             "FP8 quantization is only compatible with H100 accelerator."
         )
