@@ -31,13 +31,13 @@ of the pydantic model), together into one dictionary, i.e.:
 
 ```json
 {
-  'media_url': 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-  'params': {
-    'wav_sampling_rate_hz': 16000,
-    'macro_chunk_size_sec': 300,
-    'macro_chunk_overlap_sec': 0,
-    'micro_chunk_size_sec': 25,
-    'silence_detection_smoothing_num_samples': 1600
+  "media_url": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+  "params": {
+    "wav_sampling_rate_hz": 16000,
+    "macro_chunk_size_sec": 300,
+    "macro_chunk_overlap_sec": 0,
+    "micro_chunk_size_sec": 25,
+    "silence_detection_smoothing_num_samples": 1600
   }
 }
 ```
