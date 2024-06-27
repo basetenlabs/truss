@@ -171,6 +171,7 @@ class RemoteChainService:
         self._chain_id = chain_id
         self._chain_deployment_id = chain_deployment_id
 
+    @retry(stop=stop_after_delay(300), wait=wait_fixed(1), reraise=True)
     def get_info(self) -> list[b10_types.DeployedChainlet]:
         """Return list with elements (name, status, logs_url) for each chainlet."""
         chainlets = self._remote.get_chainlets(
@@ -289,7 +290,6 @@ class ChainService:
             The JSON response."""
         return self.get_entrypoint.predict(json)
 
-    @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
     def get_info(self) -> list[b10_types.DeployedChainlet]:
         """Queries the statuses of all chainlets in the chain.
 

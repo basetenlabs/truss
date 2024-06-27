@@ -66,38 +66,49 @@ PERSON_MATCHING_PROMPT = (
     "matching database. Keep the reply brief to 1 to 3 sentences."
 )
 
-# Adapt this to the URL of a model you have deployed from here:
+# Deploy the Phi-3 model from Baseten's model library:
 # https://app.baseten.co/deploy/phi_3_mini_4k_instruct
-LLM_PREDICT_URL = "https://model-6wgeygoq.api.baseten.co/production/predict"
+# And insert the predict URL here (you can get it from the status page):
+# E.g. "https://model-6wgeygoq.api.baseten.co/production/predict"
+LLM_PREDICT_URL = ""
 
 
+if not LLM_PREDICT_URL:
+    raise ValueError("Please insert the predict URL for the Phi-3 model.")
+
+
+# Create a Chainlet to serve as our vector database.
 class VectorStore(chains.ChainletBase):
-
+    # Add chromadb as a dependency for deployment.
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(pip_requirements=["chromadb"])
     )
 
+    # Runs once when the Chainlet is deployed or scaled up.
     def __init__(self):
+        # Import Chainlet-specific dependencies in init, not at the top of
+        # the file.
         import chromadb
 
         chroma_client = chromadb.EphemeralClient()
         self._collection = chroma_client.create_collection(name="bios")
-        self._collection.add(documents=DOCUMENTS, ids=[f"id{n}" for n in range(10)])
+        self._collection.add(
+            documents=DOCUMENTS, ids=[f"id{n}" for n in range(len(DOCUMENTS))]
+        )
 
+    # Runs each time the Chainlet is called
     async def run_remote(self, query: str) -> list[str]:
         # This call to includes embedding the query string.
         results = self._collection.query(query_texts=[query], n_results=2)
-
         if results is None or not results:
             raise ValueError("No bios returned from the query")
-
         if not results["documents"] or not results["documents"][0]:
             raise ValueError("Bios are empty")
-
         return results["documents"][0]
 
 
 class LLMClient(chains.StubBase):
+    # Runs each time the Stub is called
     async def run_remote(self, new_bio: str, bios: list[str]) -> str:
         bios_info = "\n".join(bios)
         prompt = (
@@ -111,21 +122,25 @@ class LLMClient(chains.StubBase):
                 "max_new_tokens": 32,
             }
         )
-        return resp["output"][len(prompt) :]
+        return resp["output"][len(prompt) :].strip()
 
 
 @chains.mark_entrypoint
 class RAG(chains.ChainletBase):
     def __init__(
         self,
+        # Declare dependency chainlets.
         vector_store: VectorStore = chains.depends(VectorStore),
         context: chains.DeploymentContext = chains.depends_context(),
     ):
         self._vector_store = vector_store
+        # The stub needs the context for setting up authentication.
         self._llm = LLMClient.from_url(LLM_PREDICT_URL, context)
 
     async def run_remote(self, new_bio: str) -> str:
+        # Use the VectorStore Chainlet for context retrieval.
         bios = await self._vector_store.run_remote(new_bio)
+        # Use the LLMClient Stub for augmented generation.
         contacts = await self._llm.run_remote(new_bio, bios)
         return contacts
 
@@ -148,5 +163,4 @@ if __name__ == "__main__":
                 """
             )
         )
-
         print(result)

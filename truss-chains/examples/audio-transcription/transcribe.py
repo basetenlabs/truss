@@ -14,15 +14,14 @@ IMAGE = chains.DockerImage(
 )
 
 
-# Whisper is deployed as a separate chainlet `whisper_chainlet.py`.
-MODEL_ID = ""  # Fill this in with the model id of the deployed whisper chainlet
+# Deploy the Whisper model with `truss chains deploy whisper_chainlet.py`:
+# And insert the predict URL here. You can get it from the CLI output or
+# the status page, e.g. "https://model-6wgeygoq.api.baseten.co/production/predict"
 
-if not MODEL_ID:
-    raise ValueError(
-        "Fill in the MODEL_ID in transcribe.py with the model id of your deployed whisper chainlet"
-    )
+WHISPER_PREDICT_URL = ""
 
-_WHISPER_URL = f"https://model-{MODEL_ID}.api.baseten.co/development/predict"
+if not WHISPER_PREDICT_URL:
+    raise ValueError("Please insert the predict URL for the Whisper model.")
 
 
 class DeployedWhisper(chains.StubBase):
@@ -56,7 +55,7 @@ class MacroChunkWorker(chains.ChainletBase):
         context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
         self._whisper = DeployedWhisper.from_url(
-            _WHISPER_URL,
+            WHISPER_PREDICT_URL,
             context,
             options=chains.RPCOptions(retries=2),
         )

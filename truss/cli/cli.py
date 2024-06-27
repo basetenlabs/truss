@@ -13,9 +13,8 @@ import rich.live
 import rich.spinner
 import rich.table
 import rich_click as click
-from InquirerPy import inquirer
-
 import truss
+from InquirerPy import inquirer
 from truss.cli.console import console
 from truss.cli.create import ask_name
 from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
@@ -471,6 +470,7 @@ def deploy(
                     break
                 elif num_failed := num_services - num_active - num_deploying:
                     break
+                time.sleep(2)
         # Print must be outside `Live` context.
         if success:
             console.print("Deployment succeeded.", style="bold green")
