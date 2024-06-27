@@ -52,7 +52,7 @@ Maximum number of candidate sequences with which to conduct beam search.
 ##### `max_prompt_embedding_table_size`
 (default: `0`)
 
-Maximum prompt embedding table size for prompt tuning.
+Maximum prompt embedding table size for [prompt tuning](https://developer.nvidia.com/blog/an-introduction-to-large-language-models-prompt-engineering-and-p-tuning/).
 
 ##### `checkpoint_repository`
 
@@ -81,12 +81,13 @@ Checkpoint repository name, bucket, or url.
 ##### `gather_all_token_logits`
 (default: `False`)
 
-Whether to gather all token logits.
+Whether to gather all token logits to obtain context and generation logits.
 
 ##### `strongly_typed`
 (default: `False`)
 
-Whether to build the engine using strong typing, can speed up build time for some formats.
+Whether to build the engine using strong typing, enabling TensorRT's optimizer to statically infer intermediate tensor types which can speed up build time for some formats.
+Weak typing enables the optimizer to elect tensor types, which may result in a faster runtime. For more information refer to TensorRT documentation [here](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#strong-vs-weak-typing).
 
 ##### `quantization_type`
 (default: `no_quant`)
@@ -102,6 +103,7 @@ Quantization format with which to build the engine. Supported formats include:
 * `fp8_kv`
 
 Read more about different post training quantization techniques supported by TRT-LLM [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/blogs/quantization-in-TRT-LLM.md).
+Additionally, refer to the hardware and quantization technique [support matrix](https://nvidia.github.io/TensorRT-LLM/reference/support-matrix.html).
 
 ##### `tensor_parallel_count`
 (default: `1`)
