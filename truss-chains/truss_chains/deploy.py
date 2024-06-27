@@ -159,6 +159,13 @@ def _chainlet_logs_url(
     return f"{remote._remote_url}/chains/{chain_id}/logs/{chain_deployment_id}/{chainlet_id}"
 
 
+def _chain_status_page_url(
+    chain_id: str,
+    remote: b10_remote.BasetenRemote,
+) -> str:
+    return f"{remote._remote_url}/chains/{chain_id}/overview"
+
+
 class RemoteChainService:
     _remote: b10_remote.BasetenRemote  # TODO, make this a generic TypeVar for this calss
     _chain_id: str
@@ -194,6 +201,10 @@ class RemoteChainService:
             )
             for chainlet in chainlets
         ]
+
+    @property
+    def status_page_url(self) -> str:
+        return _chain_status_page_url(self._chain_id, self._remote)
 
 
 class ChainService:
@@ -299,6 +310,14 @@ class ChainService:
             raise ValueError("Chain was not deployed remotely.")
 
         return self._remote_chain_service.get_info()
+
+    @property
+    def status_page_url(self) -> str:
+        """Queries the statuses of all chainlets in the chain."""
+        if not self._remote_chain_service:
+            raise ValueError("Chain was not deployed remotely.")
+
+        return self._remote_chain_service.status_page_url
 
 
 def deploy_remotely(

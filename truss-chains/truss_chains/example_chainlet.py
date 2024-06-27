@@ -1,6 +1,6 @@
 import random
 
-# For more on chains, check out https://docs.baseten.co/chains/overviewo.
+# For more on chains, check out https://docs.baseten.co/chains/overview.
 import truss_chains as chains
 
 
