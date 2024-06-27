@@ -22,7 +22,9 @@ class ModelInput:
         ignore_eos: bool = False,
         stream: bool = True,
         eos_token_id: int = None,  # type: ignore
-        # enables new arguments to be passed in without breaking instantiation
+        # Arguments included as part of kwargs are not passed on to the triton server.
+        # We declare **kwargs as an input to prevent erroring in the case of unexpected
+        # keyword args being passed in.
         **kwargs,
     ) -> None:
         self.stream = stream
@@ -61,7 +63,7 @@ class ModelInput:
         output_len_data = np.ones_like(prompt_data, dtype=np.int32) * self._max_tokens
         bad_words_data = np.array([self._bad_words_list], dtype=object)
         stop_words_data = np.array([self._stop_words_list], dtype=object)
-        # temporary fix to enbale non-streaming response from the truss
+        # temporary fix to enable non-streaming response from the truss
         stream_data = np.array([[True]], dtype=bool)
         beam_width_data = np.array([[self._beam_width]], dtype=np.int32)
         repetition_penalty_data = np.array(
