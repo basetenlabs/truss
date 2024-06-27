@@ -51,4 +51,5 @@ repos:
         files: ^truss-chains/.*
         args:
           - --python-version=3.9
+        exclude: helpers.py$|whisper.py$|data_types.py$|transcribe.py$ # Duplicate module error.
         pass_filenames: true
