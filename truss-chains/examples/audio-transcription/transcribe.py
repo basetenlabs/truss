@@ -16,6 +16,12 @@ IMAGE = chains.DockerImage(
 
 # Whisper is deployed as a separate chainlet `whisper_chainlet.py`.
 MODEL_ID = ""  # Fill this in with the model id of the deployed whisper chainlet
+
+if not MODEL_ID:
+    raise ValueError(
+        "Fill in the MODEL_ID in transcribe.py with the model id of your deployed whisper chainlet"
+    )
+
 _WHISPER_URL = f"https://model-{MODEL_ID}.api.baseten.co/development/predict"
 
 
