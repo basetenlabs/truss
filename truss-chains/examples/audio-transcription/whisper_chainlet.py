@@ -18,7 +18,7 @@ class WhisperModel(chains.ChainletBase):
 
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
-            # base_image="python:3.10-slim",
+            base_image="baseten/truss-server-base:3.10-gpu-v0.9.0",
             apt_requirements=[
                 "ffmpeg",
             ],
@@ -46,7 +46,7 @@ class WhisperModel(chains.ChainletBase):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         if self._data_dir is None:
             raise ValueError("data_dir is required for WhisperModel")
-        self.model = whisper.load_model(
+        self.model = whisper.load_model(  # type: ignore [attr-defined]
             self._data_dir / "weights" / "large-v3.pt", self.device
         )
 
@@ -57,7 +57,7 @@ class WhisperModel(chains.ChainletBase):
 
         with tempfile.NamedTemporaryFile() as fp:
             base64_to_wav(whisper_input.audio_b64, fp.name)
-            result = whisper.transcribe(self.model, fp.name, temperature=0)
+            result = whisper.transcribe(self.model, fp.name, temperature=0)  # type: ignore [attr-defined]
             segments = [
                 data_types.WhisperSegment(
                     start_time_sec=r["start"], end_time_sec=r["end"], text=r["text"]
@@ -66,7 +66,7 @@ class WhisperModel(chains.ChainletBase):
             ]
 
         return data_types.WhisperResult(
-            language=whisper.tokenizer.LANGUAGES[result["language"]],
+            language=whisper.tokenizer.LANGUAGES[result["language"]],  # type: ignore [attr-defined]
             language_code=result["language"],
             segments=segments,
         )

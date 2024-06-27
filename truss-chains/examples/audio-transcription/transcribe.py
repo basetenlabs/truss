@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 
@@ -11,21 +12,21 @@ IMAGE = chains.DockerImage(
     apt_requirements=["ffmpeg"],
     pip_requirements=["google-auth", "google-cloud-bigquery"],
 )
-# Whisper is deployed as a normal truss model from examples/library.
-# See `whisper-truss/model/model.py`.
-# _WHISPER_URL = "https://model-v31y4243.api.baseten.co/development/predict"
-_WHISPER_URL = "https://model-4q99yr9q.api.baseten.co/production/predict"
+# Whisper is deployed as a separate chainlet `whisper_chainlet.py`.
+_WHISPER_URL = "https://model-5wo86gg3.api.baseten.co/development/predict"
 
 
 class DeployedWhisper(chains.StubBase):
-    """Transcribes b64_encoded wave snippets.
+    """Transcribes b64_encoded wave snippets to text - see `whisper_chainlet.py`.
 
     Treat the whisper model like an external third party tool."""
 
     async def run_remote(
         self, whisper_input: data_types.WhisperInput
     ) -> data_types.WhisperResult:
-        resp = await self._remote.predict_async(json_payload=whisper_input.model_dump())
+        resp = await self._remote.predict_async(
+            json_payload={"whisper_input": whisper_input.model_dump()},
+        )
         return data_types.WhisperResult.parse_obj(resp)
 
 
@@ -157,7 +158,7 @@ if __name__ == "__main__":
 
     json_input = {"media_url": url_, "params": params_.model_dump()}
 
-    print(f"Example JSON input:\n{json_input}")
+    print(f"Example JSON input:\n{json.dumps(json_input)}")
 
     with chains.run_local(
         secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]}

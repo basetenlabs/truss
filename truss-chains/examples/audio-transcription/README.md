@@ -6,7 +6,7 @@ supports range downloads. Very large files are supported in near-constant time
 using chunking.
 
 More details are described in the
-[guide](https://truss.baseten.co/chains/example-transcribe) (note that the docs
+[guide](https://docs.baseten.co/chains/examples/audio-transcription) (note that the docs
 will be moved soon and the link might need to be updated).
 
 To separate the development of the chain business logic and the low level
@@ -14,7 +14,7 @@ whisper transcription model (which has slower deployment times), they are in
 the current setup deployed separately:
 
 ```bash
-truss chains deploy whisper.py
+truss chains deploy whisper_chainlet.py
 ```
 
 ```bash
