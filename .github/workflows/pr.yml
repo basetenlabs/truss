@@ -52,8 +52,10 @@ jobs:
         with:
           lfs: true
           fetch-depth: 2
+
       - name: Fetch main branch
         run: git fetch origin main
+
       - name: Check if chains examples were modified
         id: check_files
         run: |
@@ -63,6 +65,7 @@ jobs:
           else
             echo "chains_docs_update_needed=false" >> $GITHUB_ENV
             echo "Chains examples were not modified."
+            echo "::notice file=truss-chains/examples/::Chains examples not modified."
           fi
 
       - name: Enforce acknowledgment in PR description
@@ -70,6 +73,8 @@ jobs:
         run: |
           DESCRIPTION="${{ github.event.pull_request.body }}"
           if [[ "$DESCRIPTION" != *"UPDATE_DOCS=done"* && "$DESCRIPTION" != *"UPDATE_DOCS=not_needed"* ]]; then
-            echo "::error file=truss-chains/examples/::Chains examples were modified, in this case the documentation at https://github.com/basetenlabs/docs.baseten.co/tree/main/chains might need to be updated. Add a tag UPDATE_DOCS={done|not_needed} to the PR description to acknowledge."
+            echo "::error file=truss-chains/examples/::Chains examples were modified and ack not found in PR description. Verify whether docs need to be update (https://github.com/basetenlabs/docs.baseten.co/tree/main/chains) and add an ack tag `UPDATE_DOCS={done|not_needed}` to the PR description."
             exit 1
+          else
+            echo "::notice file=truss-chains/examples/::Chains examples modified and ack found int PR description."
           fi
