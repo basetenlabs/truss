@@ -150,9 +150,6 @@ section-order = [
     "I", # isort
     "F", # flake8
 ]
-"__init__.py" = [
-    "F401" # unused-import. We deviate from PEP8 as we don't expect wildcard imports.
-]
 
 [tool.ruff.lint.pycodestyle]
 # The formatter can go sometimes go over the 88 character limit, so we want to provide some buffer.
