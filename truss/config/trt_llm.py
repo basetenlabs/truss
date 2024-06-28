@@ -4,27 +4,30 @@ from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
+from rich.console import Console
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+console = Console()
 
-class TrussTRTLLMModel(Enum):
-    LLAMA: str = "llama"
-    MISTRAL: str = "mistral"
-    DEEPSEEK: str = "deepseek"
-    WHISPER: str = "whisper"
+
+class TrussTRTLLMModel(str, Enum):
+    LLAMA = "llama"
+    MISTRAL = "mistral"
+    DEEPSEEK = "deepseek"
+    WHISPER = "whisper"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
-    NO_QUANT: str = "no_quant"
-    WEIGHTS_ONLY_INT8: str = "weights_int8"
-    WEIGHTS_KV_INT8: str = "weights_kv_int8"
-    WEIGHTS_ONLY_INT4: str = "weights_int4"
-    WEIGHTS_KV_INT4: str = "weights_kv_int4"
-    SMOOTH_QUANT: str = "smooth_quant"
-    FP8: str = "fp8"
-    FP8_KV: str = "fp8_kv"
+    NO_QUANT = "no_quant"
+    WEIGHTS_ONLY_INT8 = "weights_int8"
+    WEIGHTS_KV_INT8 = "weights_kv_int8"
+    WEIGHTS_ONLY_INT4 = "weights_int4"
+    WEIGHTS_KV_INT4 = "weights_kv_int4"
+    SMOOTH_QUANT = "smooth_quant"
+    FP8 = "fp8"
+    FP8_KV = "fp8_kv"
 
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
@@ -33,10 +36,11 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
     gemm_plugin: str = "float16"
 
 
-class CheckpointSource(Enum):
+class CheckpointSource(str, Enum):
     HF: str = "HF"
     GCS: str = "GCS"
     LOCAL: str = "LOCAL"
+    # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
     REMOTE_URL: str = "REMOTE_URL"
 
 
@@ -65,13 +69,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
-
-    class Config:
-        json_encoders = {
-            TrussTRTLLMModel: lambda x: x.value,
-            TrussTRTLLMQuantizationType: lambda x: x.value,
-            CheckpointSource: lambda x: x.value,
-        }
+    num_builder_gpus: Optional[int] = None
 
 
 class TrussTRTLLMServingConfiguration(BaseModel):
@@ -88,6 +86,7 @@ class TRTLLMConfiguration(BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
+        self._validate_fp8_and_num_builder_gpus()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -105,6 +104,19 @@ class TRTLLMConfiguration(BaseModel):
                 )
         return self
 
+    def _validate_fp8_and_num_builder_gpus(self):
+        if self.build is not None:
+            if (
+                self.build.quantization_type
+                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+                and not self.build.num_builder_gpus
+            ):
+                console.print(
+                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build gpus",
+                    style="red",
+                )
+        return self
+
     @property
     def requires_build(self):
         if self.build is not None:
@@ -113,5 +125,5 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
-    def to_json_dict(self):
-        return json.loads(self.json())
+    def to_json_dict(self, verbose=True):
+        return json.loads(self.json(exclude_unset=not verbose))

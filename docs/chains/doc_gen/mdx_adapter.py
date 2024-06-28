@@ -24,8 +24,7 @@ self is explicitly positional-only to allow self as a field name.
 """
 
 
-class MDXAdapterTranslator(MarkdownTranslator):
-    ...
+class MDXAdapterTranslator(MarkdownTranslator): ...
 
 
 def extract_and_format_parameters_section(content: str) -> str:

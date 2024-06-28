@@ -1,5 +1,12 @@
 import inspect
-from configparser import DEFAULTSECT, SafeConfigParser
+
+try:
+    from configparser import DEFAULTSECT
+    from configparser import SafeConfigParser as ConfigParser
+except ImportError:
+    # We need to do this for py312 and onwards.
+    from configparser import DEFAULTSECT, ConfigParser  # type: ignore
+
 from functools import partial
 from operator import is_not
 from pathlib import Path
@@ -11,13 +18,13 @@ from truss.remote.truss_remote import RemoteConfig, TrussRemote
 USER_TRUSSRC_PATH = Path("~/.trussrc").expanduser()
 
 
-def load_config() -> SafeConfigParser:
-    config = SafeConfigParser()
+def load_config() -> ConfigParser:
+    config = ConfigParser()
     config.read(USER_TRUSSRC_PATH)
     return config
 
 
-def update_config(config: SafeConfigParser):
+def update_config(config: ConfigParser):
     with open(USER_TRUSSRC_PATH, "w") as configfile:
         config.write(configfile)
 

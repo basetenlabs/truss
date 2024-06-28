@@ -1,6 +1,7 @@
+import math
 import re
 from pathlib import PosixPath
-from typing import Pattern, Set
+from typing import Dict, Pattern
 
 from truss.constants import REGISTRY_BUILD_SECRET_PREFIX
 from truss.errors import ValidationError
@@ -8,9 +9,20 @@ from truss.errors import ValidationError
 SECRET_NAME_MATCH_REGEX: Pattern[str] = re.compile(r"^[-._a-zA-Z0-9]+$")
 MILLI_CPU_REGEX: Pattern[str] = re.compile(r"^[0-9.]*m$")
 MEMORY_REGEX: Pattern[str] = re.compile(r"^[0-9.]*(\w*)$")
-MEMORY_UNITS: Set[str] = set(
-    ["k", "M", "G", "T", "P", "E", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"]
-)
+MEMORY_UNITS: Dict[str, int] = {
+    "k": 10**3,
+    "M": 10**6,
+    "G": 10**9,
+    "T": 10**12,
+    "P": 10**15,
+    "E": 10**18,
+    "Ki": 1024,
+    "Mi": 1024**2,
+    "Gi": 1024**3,
+    "Ti": 1024**4,
+    "Pi": 1024**5,
+    "Ei": 1024**6,
+}
 
 
 def validate_secret_name(secret_name: str) -> None:
@@ -53,13 +65,14 @@ def validate_cpu_spec(cpu_spec: str) -> None:
         raise ValidationError(f"Invalid cpu specification {cpu_spec}")
 
 
-def validate_memory_spec(mem_spec: str) -> None:
+def validate_memory_spec(mem_spec: str) -> int:
+    """Validate the memory spec and return the requested memory in bytes."""
     if not isinstance(mem_spec, str):
         raise ValidationError(
             f"{mem_spec} needs to be a string, but is {type(mem_spec)}"
         )
     if _is_numeric(mem_spec):
-        return
+        return math.ceil(float(mem_spec))
 
     match = MEMORY_REGEX.search(mem_spec)
     if match is None:
@@ -68,6 +81,7 @@ def validate_memory_spec(mem_spec: str) -> None:
     unit = match.group(1)
     if unit not in MEMORY_UNITS:
         raise ValidationError(f"Invalid memory unit {unit} in {mem_spec}")
+    return math.ceil(float(mem_spec.strip(unit)) * MEMORY_UNITS[unit])
 
 
 def _is_numeric(number_like: str) -> bool:

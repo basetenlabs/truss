@@ -51,15 +51,16 @@ async def proxy(request: Request):
             retry_if_exception_type(ConnectError)
             | retry_if_exception_type(ModelNotReady)
             | retry_if_exception_type(RemoteProtocolError)
+            | retry_if_exception_type(httpx.ReadError)
+            | retry_if_exception_type(httpx.ReadTimeout)
+            | retry_if_exception_type(httpx.ConnectTimeout)
         ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
         wait=wait_fixed(1),
     ):
         with attempt:
             try:
-                if (
-                    inference_server_process_controller.is_inference_server_intentionally_stopped()
-                ):
+                if inference_server_process_controller.is_inference_server_intentionally_stopped():
                     raise ModelLoadFailed("Model load failed")
                 resp = await client.send(inf_serv_req, stream=True)
 
@@ -74,8 +75,10 @@ async def proxy(request: Request):
                     inference_server_process_controller.inference_server_ever_started()
                     and not inference_server_process_controller.is_inference_server_running()
                 ):
-                    error_msg = "It appears your model has stopped running. This often means' \
+                    error_msg = (
+                        "It appears your model has stopped running. This often means' \
                         ' it crashed and may need a fix to get it running again."
+                    )
                     return JSONResponse(error_msg, 503)
                 raise exp
 

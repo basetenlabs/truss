@@ -34,7 +34,6 @@ RUN apt update && \
     add-apt-repository -y ppa:deadsnakes/ppa && \
     apt update -y && \
     apt install -y python{{python_version}} && \
-    apt install -y python{{python_version}}-distutils && \
     apt install -y python{{python_version}}-venv && \
     apt install -y python{{python_version}}-dev && \
     rm -rf /var/lib/apt/lists

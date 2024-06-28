@@ -37,7 +37,6 @@ def create_tar_with_progress_bar(
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)
 
     with tarfile.open(temp_file.name, "w:") as tar:
-
         progress = Progress()
 
         task_id = progress.add_task("[cyan]Compressing...", total=total_size)
@@ -55,6 +54,7 @@ def create_tar_with_progress_bar(
                     )
                     tarinfo = tar.gettarinfo(name=str(file_path), arcname=arcname)
                     tar.addfile(
-                        tarinfo=tarinfo, fileobj=file_obj_with_progress  # type: ignore[arg-type]
+                        tarinfo=tarinfo,
+                        fileobj=file_obj_with_progress,  # type: ignore[arg-type]
                     )
     return temp_file

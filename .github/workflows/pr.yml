@@ -18,9 +18,11 @@ jobs:
       - run: poetry install
       - run: poetry run pre-commit run --all-files
         env:
-          SKIP: isort,flake8
-      - run: poetry run isort **/*.py --check-only
-      - run: poetry run flake8 truss
+          SKIP: ruff
+      - run: |
+            poetry run ruff check .
+            poetry run ruff format . --check
+
 
   test:
     timeout-minutes: 30

@@ -1,30 +1,41 @@
 import asyncio
+import json
 import logging
 import time
 
 import data_types
 import helpers
 import httpx
+
 import truss_chains as chains
 
 IMAGE = chains.DockerImage(
     apt_requirements=["ffmpeg"],
     pip_requirements=["google-auth", "google-cloud-bigquery"],
 )
-# Whisper is deployed as a normal truss model from examples/library.
-# See `whisper-truss/model/model.py`.
-_WHISPER_URL = "https://model-v31y4243.api.baseten.co/development/predict"
+
+
+# Deploy the Whisper model with `truss chains deploy whisper_chainlet.py`:
+# And insert the predict URL here. You can get it from the CLI output or
+# the status page, e.g. "https://model-6wgeygoq.api.baseten.co/production/predict"
+
+WHISPER_PREDICT_URL = ""
+
+if not WHISPER_PREDICT_URL:
+    raise ValueError("Please insert the predict URL for the Whisper model.")
 
 
 class DeployedWhisper(chains.StubBase):
-    """Transcribes b64_encoded wave snippets.
+    """Transcribes b64_encoded wave snippets to text - see `whisper_chainlet.py`.
 
     Treat the whisper model like an external third party tool."""
 
     async def run_remote(
         self, whisper_input: data_types.WhisperInput
     ) -> data_types.WhisperResult:
-        resp = await self._remote.predict_async(json_payload=whisper_input.model_dump())
+        resp = await self._remote.predict_async(
+            json_payload={"whisper_input": whisper_input.model_dump()},
+        )
         return data_types.WhisperResult.parse_obj(resp)
 
 
@@ -45,7 +56,7 @@ class MacroChunkWorker(chains.ChainletBase):
         context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
         self._whisper = DeployedWhisper.from_url(
-            _WHISPER_URL,
+            WHISPER_PREDICT_URL,
             context,
             options=chains.RPCOptions(retries=2),
         )
@@ -156,7 +167,7 @@ if __name__ == "__main__":
 
     json_input = {"media_url": url_, "params": params_.model_dump()}
 
-    print(f"Example JSON input:\n{json_input}")
+    print(f"Example JSON input:\n{json.dumps(json_input)}")
 
     with chains.run_local(
         secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]}

@@ -1,12 +1,11 @@
 from typing import Dict, List
 
-import pkg_resources
-from pkg_resources.extern.packaging import requirements  # type: ignore
+from packaging import requirements  # type: ignore
 
 
 def identify_requirement_name(req: str) -> str:
     try:
-        parsed_req = pkg_resources.Requirement.parse(req)
+        parsed_req = requirements.Requirement(req)
         return parsed_req.name  # type: ignore
     except (requirements.InvalidRequirement, ValueError):
         # default to the whole line if we can't parse it.

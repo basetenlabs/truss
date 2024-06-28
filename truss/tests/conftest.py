@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import requests
 import yaml
+
 from truss.build import init
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
@@ -381,8 +382,8 @@ def custom_model_trt_llm(tmp_path):
                     "max_batch_size": 512,
                     "max_beam_width": 1,
                     "checkpoint_repository": {
-                        "source": "LOCAL",
-                        "repo": "/path/to/checkpoint",
+                        "source": "HF",
+                        "repo": "meta/llama4-500B",
                     },
                 }
             }
