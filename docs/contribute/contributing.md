@@ -1,7 +1,4 @@
----
-title: "Contributing to Truss"
-description: "Truss is MIT licensed and welcomes contributions"
----
+# Contributing to Truss
 
 Truss was first created at [Baseten](https://baseten.co), but as an open and living project eagerly accepts contributions of all kinds from the broader developer community. Please note that all participation with Truss falls under our [code of conduct](https://github.com/basetenlabs/truss/blob/main/CODE_OF_CONDUCT.md).
 

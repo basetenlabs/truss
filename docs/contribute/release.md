@@ -1,7 +1,4 @@
----
-title: "Creating a PyPi release"
-description: "Create a new version of Truss"
----
+# Creating a release
 
 <Note>
 You must be a repository admin to create a PyPi release or release candidate.

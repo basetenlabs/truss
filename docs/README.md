@@ -1,10 +1,5 @@
-# Docs (Mintlify)
+# Docs
 
-Make sure you're in the `docs` folder before running the following commands.
+Truss docs have been unified with [docs.baseten.co](https://docs.baseten.co).
 
-Get set up:
-
-1. Install node version 19.9.0
-2. `npm i -g mintlify`
-3. `mintlify install`
-4. `mintlify dev` (localhost preview)
+This folder contains scripts and files for the docs build pipeline as well as contributor guides.
