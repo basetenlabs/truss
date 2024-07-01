@@ -74,10 +74,10 @@ class ItestChain(chains.ChainletBase):
         length: int,
         num_partitions: int,
         pydantic_default_arg: shared_chainlet.SplitTextOutput = shared_chainlet.SplitTextOutput(
-            parts=[], part_lens=[]
+            parts=[], part_lens=[10]
         ),
         simple_default_arg: list[str] = ["a", "b"],
-    ) -> tuple[int, str, int]:
+    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str]]:
         data = self._data_generator.run_remote(length)
         text_parts, number = await self._data_splitter.run_remote(
             io_types.SplitTextInput(
@@ -91,4 +91,4 @@ class ItestChain(chains.ChainletBase):
         value = 0
         for part in text_parts.parts:
             value += self._text_to_num.run_remote(part)
-        return value, data, number
+        return value, data, number, pydantic_default_arg, simple_default_arg

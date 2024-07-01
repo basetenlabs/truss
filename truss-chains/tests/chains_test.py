@@ -25,12 +25,45 @@ def test_chain():
 
         url = service.run_url.replace("host.docker.internal", "localhost")
 
+        # Call without providing values for default arguments.
+        response = requests.post(url, json={"length": 30, "num_partitions": 3})
+        print(response.content)
+        assert response.status_code == 200
+        assert response.json() == [
+            6280,
+            "erodfderodfderodfderodfderodfd",
+            123,
+            {
+                "parts": [],
+                "part_lens": [10],
+            },
+            ["a", "b"],
+        ]
+        # Call with values for default arguments.
         response = requests.post(
-            url, json={"length": 30, "num_partitions": 3}, stream=True
+            url,
+            json={
+                "length": 30,
+                "num_partitions": 3,
+                "pydantic_default_arg": {
+                    "parts": ["marius"],
+                    "part_lens": [3],
+                },
+                "simple_default_arg": ["bola"],
+            },
         )
         print(response.content)
         assert response.status_code == 200
-        assert response.json() == [6280, "erodfderodfderodfderodfderodfd", 123]
+        assert response.json() == [
+            6280,
+            "erodfderodfderodfderodfderodfd",
+            123,
+            {
+                "parts": ["marius"],
+                "part_lens": [3],
+            },
+            ["bola"],
+        ]
 
         # Test with errors.
         response = requests.post(
