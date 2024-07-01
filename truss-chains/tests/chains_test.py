@@ -89,8 +89,28 @@ async def test_chain_local():
                 await entrypoint().run_remote(length=20, num_partitions=5)
 
             result = await entrypoint().run_remote(length=20, num_partitions=5)
-            assert result == (4198, "erodfderodfderodfder", 123)
             print(result)
+            expected = (
+                4198,
+                "erodfderodfderodfder",
+                123,
+                {
+                    "parts": [],
+                    "part_lens": [10],
+                },
+                ["a", "b"],
+            )
+
+            # Convert the pydantic model to a dict for comparison
+            result_dict = (
+                result[0],
+                result[1],
+                result[2],
+                result[3].dict(),
+                result[4],
+            )
+
+            assert result_dict == expected
 
         with pytest.raises(
             definitions.ChainsRuntimeError,
