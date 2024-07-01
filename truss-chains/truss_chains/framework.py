@@ -171,7 +171,7 @@ def _validate_io_type(param: inspect.Parameter) -> None:
 
 def _validate_endpoint_params(
     params: list[inspect.Parameter], cls_name: str
-) -> list[tuple[str, definitions.TypeDescriptor]]:
+) -> list[definitions.InputArg]:
     if len(params) == 0:
         raise definitions.ChainsUsageError(
             f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
@@ -182,7 +182,7 @@ def _validate_endpoint_params(
             f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method, i.e. "
             f"with `{definitions.SELF_ARG_NAME}` argument."
         )
-    input_name_and_types = []
+    input_args = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
             raise definitions.ChainsUsageError(
@@ -192,8 +192,13 @@ def _validate_endpoint_params(
             )
         _validate_io_type(param)
         type_descriptor = definitions.TypeDescriptor(raw=param.annotation)
-        input_name_and_types.append((param.name, type_descriptor))
-    return input_name_and_types
+        is_optional = param.default != inspect.Parameter.empty
+        input_args.append(
+            definitions.InputArg(
+                name=param.name, type=type_descriptor, is_optional=is_optional
+            )
+        )
+    return input_args
 
 
 def _validate_and_describe_endpoint(
@@ -225,7 +230,7 @@ def _validate_and_describe_endpoint(
             f"`{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}` must be a method."
         )
     signature = inspect.signature(endpoint_method)
-    input_name_and_types = _validate_endpoint_params(
+    input_args = _validate_endpoint_params(
         list(signature.parameters.values()), cls.__name__
     )
     if signature.return_annotation == inspect.Parameter.empty:
@@ -252,7 +257,7 @@ def _validate_and_describe_endpoint(
         is_generator = inspect.isgeneratorfunction(endpoint_method)
 
     return definitions.EndpointAPIDescriptor(
-        input_names_and_types=input_name_and_types,
+        input_args=input_args,
         output_types=output_types,
         is_async=is_async,
         is_generator=is_generator,
