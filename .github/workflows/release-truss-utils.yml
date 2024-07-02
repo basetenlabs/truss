@@ -1,4 +1,4 @@
-name: Release CI
+name: Release CI (truss-utils)
 
 on:
   workflow_dispatch:
