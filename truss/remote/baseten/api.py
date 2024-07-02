@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 API_URL_MAPPING = {
     "https://app.baseten.co": "https://api.baseten.co",
     "https://app.staging.baseten.co": "https://api.staging.baseten.co",
-    "https://app.dev.baseten.co": "https://api.staging.baseten.co",
+    "https://app.dev.baseten.co": "https://api.dev.baseten.co",
     # For local development, this is how we map URLs
     "http://localhost:8000": "http://api.localhost:8000",
 }
