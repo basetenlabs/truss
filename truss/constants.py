@@ -110,7 +110,9 @@ HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_BASE_IMAGE = "baseten/triton_trt_llm:v0.9.0"
-BRITON_TRTLLM_BASE_IMAGE = "baseten/briton-server:250d9c29_v0.0.2"
+BRITON_TRTLLM_BASE_IMAGE = (
+    "baseten/briton-server:2a115dae84f13daaa54727534daa837c534eceb4"
+)
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = [
     "tritonclient[all]==2.42.0",
