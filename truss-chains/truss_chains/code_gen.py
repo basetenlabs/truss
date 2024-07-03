@@ -22,6 +22,7 @@ workspace/
 `shared_lib` can only be imported on the remote if its installed as a pip
 requirement (site-package), it will not be copied from the local host.
 """
+
 import logging
 import os
 import pathlib
@@ -38,6 +39,7 @@ import libcst
 import truss
 from truss import truss_config
 from truss.contexts.image_builder import serving_image_builder
+
 from truss_chains import cli, definitions, model_skeleton, utils
 
 INDENT = " " * 4
@@ -76,11 +78,9 @@ def _run_simple_subprocess(cmd: str) -> None:
 
 
 def _format_python_file(file_path: pathlib.Path) -> None:
-    _run_simple_subprocess(
-        f"autoflake --in-place --remove-all-unused-imports {file_path}"
-    )
-    _run_simple_subprocess(f"black {file_path}")
-    _run_simple_subprocess(f"isort {file_path}")
+    # Resolve importing sorting and unused import issues.
+    _run_simple_subprocess(f"ruff check {file_path} --fix --select F401,I")
+    _run_simple_subprocess(f"ruff format {file_path}")
 
 
 class _Source(definitions.SafeModelNonSerializable):
@@ -155,12 +155,15 @@ def _get_output_model_name(chainlet_name: str) -> str:
 def _gen_truss_input_pydantic(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
 ) -> _Source:
-    imports = {"import pydantic"}
+    imports = {"import pydantic", "from typing import Optional"}
     fields = []
-    for arg_name, arg_type in chainlet_descriptor.endpoint.input_names_and_types:
-        type_ref = _gen_type_import_and_ref(arg_type)
+    for arg in chainlet_descriptor.endpoint.input_args:
+        type_ref = _gen_type_import_and_ref(arg.type)
         imports.update(type_ref.imports)
-        fields.append(f"{arg_name}: {type_ref.src}")
+        if arg.is_optional:
+            fields.append(f"{arg.name}: Optional[{type_ref.src}] = None")
+        else:
+            fields.append(f"{arg.name}: {type_ref.src}")
 
     field_block = _indent("\n".join(fields))
     model_name = _get_input_model_name(chainlet_descriptor.name)
@@ -205,10 +208,10 @@ def _stub_endpoint_signature_src(
 
     imports = set()
     args = []
-    for arg_name, arg_type in endpoint.input_names_and_types:
-        arg_ref = _gen_type_import_and_ref(arg_type)
+    for arg in endpoint.input_args:
+        arg_ref = _gen_type_import_and_ref(arg.type)
         imports.update(arg_ref.imports)
-        args.append(f"{arg_name}: {arg_ref.src}")
+        args.append(f"{arg.name}: {arg_ref.src}")
 
     outputs: list[str] = []
     for output_type in endpoint.output_types:
@@ -242,7 +245,7 @@ def _stub_endpoint_body_src(
         raise NotImplementedError("Generator")
 
     imports: set[str] = set()
-    args = [f"{arg_name}={arg_name}" for arg_name, _ in endpoint.input_names_and_types]
+    args = [f"{arg.name}={arg.name}" for arg in endpoint.input_args]
     inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)}).model_dump()"
 
     # Invoke remote.
@@ -395,7 +398,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         # TODO: implement generator.
         raise NotImplementedError("Generator.")
 
-    imports: set[str] = set()
+    imports: set[str] = {"from truss_chains import utils"}
     parts: list[str] = []
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
     input_model_name = _get_input_model_name(chainlet_descriptor.name)
@@ -404,10 +407,6 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         f"{def_str} predict(self, inputs: {input_model_name}) "
         f"-> {output_model_name}:"
     )
-
-    args = []
-    for arg_name, _ in chainlet_descriptor.endpoint.input_names_and_types:
-        args.append(f"{arg_name}=inputs.{arg_name}")
     # Add error handling context manager:
     parts.append(
         _indent(
@@ -418,10 +417,15 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     # Invoke Chainlet.
     maybe_await = "await " if chainlet_descriptor.endpoint.is_async else ""
     run_remote = chainlet_descriptor.endpoint.name
+    # `exclude_unset` is important to handle arguments where `run_remote` has a default
+    # correctly. In that case the pydantic model has an optional field and defaults to
+    # `None`. But there might also be situations where the user explicitly passes a
+    # value of `None`. So the condition whether to pass that argument or not is
+    # whether it was *set* in the model. It is considered unset, if the incoming JSON
+    # (from which the model was parsed/initialized) does not have that key.
+    args = "**utils.pydantic_set_arg_dict(inputs)"
     parts.append(
-        _indent(
-            f"result = {maybe_await}self._chainlet.{run_remote}({','.join(args)})", 2
-        )
+        _indent(f"result = {maybe_await}self._chainlet.{run_remote}({args})", 2)
     )
     result_pydantic = f"{output_model_name}(result)"
     parts.append(_indent(f"return {result_pydantic}"))
@@ -664,9 +668,9 @@ def _make_truss_config(
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
         user_config=user_config, chainlet_to_service=chainlet_to_service
     )
-    config.model_metadata[
-        definitions.TRUSS_CONFIG_CHAINS_KEY
-    ] = chains_metadata.model_dump()
+    config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
+        chains_metadata.model_dump()
+    )
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
@@ -701,7 +705,7 @@ def gen_truss_chainlet(
         remote_config,
         chainlet_descriptor.chainlet_cls.default_user_config,
         dep_services,
-        f"{options.chain_name}.{chainlet_name}",
+        chainlet_name,
     )
     # TODO This assume all imports are absolute w.r.t chain root (or site-packages).
     _copy_python_source_files(

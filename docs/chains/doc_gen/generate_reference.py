@@ -1,5 +1,6 @@
 # type: ignore  # This tool is only for Marius.
 """Script to auot-generate the API reference for Truss Chains."""
+
 import inspect
 import pathlib
 import shutil
@@ -7,8 +8,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import truss_chains as chains
 from sphinx import application
+
+import truss_chains as chains
 
 DUMMY_INDEX_RST = """
 .. Dummy
@@ -33,7 +35,7 @@ NON_PUBLIC_SYMBOLS = [
 
 
 SECTION_CHAINLET = (
-    "Chainlets",
+    "Chainlet classes",
     "APIs for creating user-defined Chainlets.",
     [
         "truss_chains.ChainletBase",
@@ -197,11 +199,11 @@ def generate_sphinx_docs(
         shutil.copy(output_dir / "modules.mdx", generated_reference_path)
         patch_file_path = dog_gen_dir / "reference.patch"
         # Apply patch to generated_reference_path
-        snippets_reference_path = snippets_dir / "chains/API-reference.mdx"
+        patched_reference_path = dog_gen_dir / "API-reference.mdx"
         _apply_patch(
             str(generated_reference_path),
             str(patch_file_path),
-            str(snippets_reference_path),
+            str(patched_reference_path),
         )
 
 

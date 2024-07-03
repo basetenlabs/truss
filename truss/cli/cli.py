@@ -13,10 +13,12 @@ import rich.live
 import rich.spinner
 import rich.table
 import rich_click as click
-import truss
 from InquirerPy import inquirer
+
+import truss
 from truss.cli.console import console
 from truss.cli.create import ask_name
+from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -30,6 +32,10 @@ from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
+from truss.util.config_checks import (
+    check_and_update_memory_for_trt_llm_builder,
+    check_secrets_for_trt_llm_builder,
+)
 from truss.util.errors import RemoteNetworkError
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -130,6 +136,10 @@ def log_level_option(f):
         type=click.Choice(list(_log_level_str_to_level.keys()), case_sensitive=False),
         callback=callback,
     )(f)
+
+
+def _format_link(text: str) -> str:
+    return f"[link={text}]{text}[/link]"
 
 
 def print_help() -> None:
@@ -304,7 +314,7 @@ def watch(
         sys.exit(1)
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
-    rich.print(f"🪵  View logs for your deployment at {service.logs_url}")
+    rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
     remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
 
 
@@ -322,15 +332,19 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     │  👾 DEPLOYING        │ Chain                │ https://app.baseten.co/... │
     ╰──────────────────────┴──────────────────────┴────────────────────────────╯
     """
+    title = (
+        f"⛓️   {service.name} - Chain  ⛓️\n\n "
+        f"🌐 Status page: {_format_link(service.status_page_url)}"
+    )
     table = rich.table.Table(
         show_header=True,
         header_style="bold yellow",
-        title=f"⛓️   {service.name} - Chainlets  ⛓️",
+        title=title,
         box=rich.table.box.ROUNDED,
         border_style="blue",
     )
     table.add_column("Status", style="dim", min_width=20)
-    table.add_column("Name", min_width=20)
+    table.add_column("Chainlet", min_width=20)
     table.add_column("Logs URL")
     statuses = []
     # After reversing, the first one is the entrypoint (per order in service).
@@ -351,9 +365,9 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
         if chainlet.is_entrypoint:
             display_name = f"{chainlet.name} (entrypoint)"
         else:
-            display_name = f"{chainlet.name} (dep)"
+            display_name = f"{chainlet.name} (internal)"
 
-        table.add_row(spinner, display_name, chainlet.logs_url)
+        table.add_row(spinner, display_name, _format_link(chainlet.logs_url))
         if chainlet.is_entrypoint:  # Add section divider after entrypoint.
             table.add_section()
         statuses.append(displayable_status)
@@ -450,6 +464,7 @@ def deploy(
     )
 
     table, statuses = _create_chains_table(service)
+    status_check_wait_sec = 2
     if wait:
         num_services = len(statuses)
         success = False
@@ -465,6 +480,7 @@ def deploy(
                     break
                 elif num_failed := num_services - num_active - num_deploying:
                     break
+                time.sleep(status_check_wait_sec)
         # Print must be outside `Live` context.
         if success:
             console.print("Deployment succeeded.", style="bold green")
@@ -503,14 +519,12 @@ def chains_init(
     else:
         directory.mkdir()
 
-    filename = (
-        inquirer.text(
-            qmark="",
-            message="Enter the python file name for the chain.",
-            default="my_chain.py",
-        ).execute(),
-    )
-    filepath = directory / str(filename)
+    filename = inquirer.text(
+        qmark="",
+        message="Enter the python file name for the chain.",
+        default="my_chain.py",
+    ).execute()
+    filepath = directory / str(filename).strip()
     rich.print(f"Creating and populating {filepath}...\n")
     source_code = _load_example_chainlet_code()
     filepath.write_text(source_code)
@@ -810,6 +824,19 @@ def push(
         )
         console.print(not_trusted_text, style="red")
 
+    # trt-llm engine builder checks
+    if not check_secrets_for_trt_llm_builder(tr):
+        missing_token_text = (
+            "`hf_access_token` must be provided in secrets to build a gated model. "
+            "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
+        )
+        console.print(missing_token_text, style="red")
+        sys.exit(1)
+    if not check_and_update_memory_for_trt_llm_builder(tr):
+        console.print(
+            f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
+        )
+
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
@@ -845,7 +872,7 @@ def push(
         )
         console.print(promotion_text, style="green")
 
-    rich.print(f"🪵  View logs for your deployment at {service.logs_url}")
+    rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:

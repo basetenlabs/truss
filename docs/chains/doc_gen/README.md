@@ -8,11 +8,11 @@ The general process is:
 2. Auto-generate `generated-API-reference.mdx` with `poetry run python
    docs/chains/doc_gen/generate_reference.py`. This applies the patch file and
    launches meld to resolve conflicts.
-4. Proofread `docs/snippets/chains/API-reference.mdx`.
+4. Proofread `docs/chains/doc_gen/API-reference.mdx`.
 5. If proofreading leads to edits or the upstream docstrings changed lot,
    update the patch file: `diff -u \
    docs/chains/doc_gen/generated-reference.mdx \
-   docs/snippets/chains/API-reference.mdx > \
+   docs/chains/doc_gen/API-reference.mdx > \
    docs/chains/doc_gen/reference.patch`
 
 For questions, please reach out to @marius-baseten.

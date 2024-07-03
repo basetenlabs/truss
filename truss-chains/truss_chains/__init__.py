@@ -19,7 +19,6 @@ if pydantic_major_version < 2:
 del pydantic, pydantic_major_version
 
 
-# flake8: noqa F401
 from truss_chains.definitions import (
     Assets,
     Compute,
@@ -40,3 +39,22 @@ from truss_chains.public_api import (
 )
 from truss_chains.stub import StubBase
 from truss_chains.utils import make_abs_path_here
+
+__all__ = [
+    "Assets",
+    "ChainletBase",
+    "Compute",
+    "DeploymentContext",
+    "DockerImage",
+    "RPCOptions",
+    "RemoteConfig",
+    "RemoteErrorDetail",
+    "ServiceDescriptor",
+    "StubBase",
+    "depends",
+    "depends_context",
+    "deploy_remotely",
+    "make_abs_path_here",
+    "mark_entrypoint",
+    "run_local",
+]

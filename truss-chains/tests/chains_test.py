@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 import requests
-import truss_chains as chains
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+
+import truss_chains as chains
 from truss_chains import definitions, deploy, framework, public_api, utils
 
 utils.setup_dev_logging(logging.DEBUG)
@@ -24,12 +25,45 @@ def test_chain():
 
         url = service.run_url.replace("host.docker.internal", "localhost")
 
+        # Call without providing values for default arguments.
+        response = requests.post(url, json={"length": 30, "num_partitions": 3})
+        print(response.content)
+        assert response.status_code == 200
+        assert response.json() == [
+            6280,
+            "erodfderodfderodfderodfderodfd",
+            123,
+            {
+                "parts": [],
+                "part_lens": [10],
+            },
+            ["a", "b"],
+        ]
+        # Call with values for default arguments.
         response = requests.post(
-            url, json={"length": 30, "num_partitions": 3}, stream=True
+            url,
+            json={
+                "length": 30,
+                "num_partitions": 3,
+                "pydantic_default_arg": {
+                    "parts": ["marius"],
+                    "part_lens": [3],
+                },
+                "simple_default_arg": ["bola"],
+            },
         )
         print(response.content)
         assert response.status_code == 200
-        assert response.json() == [6280, "erodfderodfderodfderodfderodfd", 123]
+        assert response.json() == [
+            6280,
+            "erodfderodfderodfderodfderodfd",
+            123,
+            {
+                "parts": ["marius"],
+                "part_lens": [3],
+            },
+            ["bola"],
+        ]
 
         # Test with errors.
         response = requests.post(
@@ -55,8 +89,28 @@ async def test_chain_local():
                 await entrypoint().run_remote(length=20, num_partitions=5)
 
             result = await entrypoint().run_remote(length=20, num_partitions=5)
-            assert result == (4198, "erodfderodfderodfder", 123)
             print(result)
+            expected = (
+                4198,
+                "erodfderodfderodfder",
+                123,
+                {
+                    "parts": [],
+                    "part_lens": [10],
+                },
+                ["a", "b"],
+            )
+
+            # Convert the pydantic model to a dict for comparison
+            result_dict = (
+                result[0],
+                result[1],
+                result[2],
+                result[3].dict(),
+                result[4],
+            )
+
+            assert result_dict == expected
 
         with pytest.raises(
             definitions.ChainsRuntimeError,
@@ -69,7 +123,6 @@ async def test_chain_local():
 
 
 def test_raises_without_depends():
-
     with pytest.raises(definitions.ChainsUsageError, match="chains.provide"):
 
         class WithoutDepends(chains.ChainletBase):

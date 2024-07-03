@@ -1,17 +1,18 @@
 import os
 from itertools import count
 
+from schema import ModelInput
+from transformers import AutoTokenizer
+from triton_client import TritonClient, TritonServer
+from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
+from truss.constants import OPENAI_COMPATIBLE_TAG
+
 from constants import (
     GRPC_SERVICE_PORT,
     HF_AUTH_KEY_CONSTANT,
     HTTP_SERVICE_PORT,
     TOKENIZER_KEY_CONSTANT,
 )
-from schema import ModelInput
-from transformers import AutoTokenizer
-from triton_client import TritonClient, TritonServer
-from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
-from truss.constants import OPENAI_COMPATIBLE_TAG
 
 DEFAULT_MAX_TOKENS = 500
 DEFAULT_MAX_NEW_TOKENS = 500
@@ -101,10 +102,17 @@ class Model:
             async for result in result_iterator:
                 yield result
 
+        async def build_response():
+            full_text = ""
+            async for delta in result_iterator:
+                full_text += delta
+            return full_text
+
         if model_input.stream:
             return generate()
         else:
+            text = await build_response()
             if self.uses_openai_api:
-                return "".join(generate())
+                return text
             else:
-                return {"text": "".join(generate())}
+                return {"text": text}

@@ -13,29 +13,15 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
-  - repo: https://github.com/psf/black
-    rev: 22.10.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.4.8
     hooks:
-      - id: black
-        # It is recommended to specify the latest version of Python
-        # supported by your project here, or alternatively use
-        # pre-commit's default_language_version, see
-        # https://pre-commit.com/#top_level-default_language_version
-        language_version: python3.9
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
   - repo: local
     hooks:
-      - id: isort
-        name: isort-local
-        entry: poetry run isort
-        language: system
-        types: [python]
-        pass_filenames: true
-      - id: flake8
-        name: flake8-local
-        entry: poetry run flake8
-        language: system
-        types: [python]
-        pass_filenames: true
       - id: mypy
         name: mypy-local
         entry: poetry run mypy

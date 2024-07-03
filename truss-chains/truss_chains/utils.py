@@ -14,6 +14,7 @@ from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 import fastapi
 import httpx
 import pydantic
+
 from truss_chains import definitions
 
 T = TypeVar("T")
@@ -329,3 +330,8 @@ class StrEnum(str, enum.Enum):
 def issubclass_safe(x: Any, cls: type) -> bool:
     """Like built-in `issubclass`, but works on non-type objects."""
     return isinstance(x, type) and issubclass(x, cls)
+
+
+def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
+    """Like `BaseModel.model_dump(exclude_unset=True), but only top-level."""
+    return {name: getattr(obj, name) for name in obj.__fields_set__}

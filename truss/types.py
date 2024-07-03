@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, Dict, List
 
 from pydantic import BaseModel
+
 from truss.patch.types import TrussSignature
 from truss.templates.control.control.helpers.types import Patch
 

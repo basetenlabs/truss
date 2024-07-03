@@ -1,6 +1,7 @@
 from typing import List, Tuple  # Cover testing of antique type annotations.
 
 import pydantic
+
 import truss_chains as chains
 
 from .nested_package import io_types  # Cover testing of relative import resolution.
@@ -12,7 +13,6 @@ class SplitTextOutput(pydantic.BaseModel):
 
 
 class SplitTextFailOnce(chains.ChainletBase):
-
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             pip_requirements_file=chains.make_abs_path_here("../requirements.txt"),

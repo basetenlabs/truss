@@ -445,7 +445,7 @@ def _intercept_exceptions_sync(func: Callable[_P, _R]) -> Callable[_P, _R]:
 
 
 def _intercept_exceptions_async(
-    func: Callable[_P, Coroutine[Any, Any, _R]]
+    func: Callable[_P, Coroutine[Any, Any, _R]],
 ) -> Callable[_P, Coroutine[Any, Any, _R]]:
     async def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         try:
