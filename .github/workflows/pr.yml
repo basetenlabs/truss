@@ -2,6 +2,7 @@ name: PR - pre-commit
 
 on:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: pr-${{ github.ref_name }}
@@ -43,7 +44,6 @@ jobs:
         with:
           use-verbose-mode: "yes"
           folder-path: "docs"
-
 
   enforce-chains-example-docs-sync:
     runs-on: ubuntu-20.04
