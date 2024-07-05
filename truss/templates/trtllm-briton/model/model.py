@@ -128,6 +128,18 @@ class Model:
         briton_monitor_thread.start()
 
     async def predict(self, model_input):
+        """
+        Run inference
+
+        Note that the async nature of this function is a little tricky. Care is
+        needed to make sure this function is a regular async function and not an
+        async generator, i.e. there shouldn't be any direct yields in this
+        function. This is because we need to support both streaming and
+        non-streaming cases in this function. We do this by either returning an
+        async-generator for the streaming case, or directly the full text for
+        the other case. Returning an async generator for non-streaming case
+        interferes with the open ai client proxy.
+        """
         if self._stub is None:
             channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
             self._stub = briton_pb2_grpc.BritonStub(channel)
