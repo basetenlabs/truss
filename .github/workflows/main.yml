@@ -98,7 +98,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss-chains/tests -s --log-cli-level=INFO  --durations=0 -m 'integration'integration-tests
+      - run: poetry run pytest truss-chains/tests -s --log-cli-level=INFO  --durations=0 -m 'integration'
 
   publish-to-pypi:
     needs: [detect-version-changed]
