@@ -163,8 +163,14 @@ class Model:
                     getattr(request, words).append(word)
 
         try:
-            async for response in self._stub.Infer(request):
-                yield response.output_text
+            if model_input.get("stream", True):
+                async for response in self._stub.Infer(request):
+                    yield response.output_text
+            else:
+                full_text = ""
+                async for response in self._stub.Infer(request):
+                    full_text += response.output_text
+                yield full_text
         except grpc.RpcError as ex:
             if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
                 print(ex.details())
