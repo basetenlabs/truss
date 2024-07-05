@@ -60,9 +60,10 @@ class Model:
         self._secrets = kwargs["secrets"]
         self._request_id_counter = count(start=1)
         self._briton_process = None
-        self._uses_openai_api = OPENAI_COMPATIBLE_TAG in self._config.get(
-            "model_metadata", {}
-        ).get("tags", [])
+        if OPENAI_COMPATIBLE_TAG not in self._config.get("model_metadata", {}):
+            print(
+                "Warning: Defaulting to openai compatible interface, even though not indicated in config."
+            )
 
         if "trt_llm" not in self._config:
             raise ValueError("trt_llm config is required for this model")
@@ -134,12 +135,8 @@ class Model:
         prompt = model_input.get("prompt", None)
         if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
-            if self._uses_openai_api:
-                prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
+            prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
 
-        if prompt is None or prompt == "":
-            yield ""
-            return
         request_id = int(str(os.getpid()) + str(next(self._request_id_counter)))
         request = briton_pb2.InferenceRequest(
             request_id=request_id,
@@ -162,15 +159,23 @@ class Model:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
 
+        resp_iter = self._stub.Infer(request)
+
+        async def generate():
+            async for response in resp_iter:
+                yield response.output_text
+
+        async def build_response():
+            full_text = ""
+            async for delta in resp_iter:
+                full_text += delta.output_text
+            return full_text
+
         try:
             if model_input.get("stream", True):
-                async for response in self._stub.Infer(request):
-                    yield response.output_text
+                return generate()
             else:
-                full_text = ""
-                async for response in self._stub.Infer(request):
-                    full_text += response.output_text
-                yield full_text
+                return await build_response()
         except grpc.RpcError as ex:
             if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
                 print(ex.details())
