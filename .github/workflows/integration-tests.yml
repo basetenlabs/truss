@@ -18,7 +18,7 @@ jobs:
       release_version: ${{ steps.versions.outputs.release_version }}
       is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
@@ -44,7 +44,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - shell: bash
@@ -63,14 +63,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        split_group: ["1", "2", "3", "4", "5"]
+        split_group: [ "1", "2", "3", "4", "5" ]
     steps:
-      - name: Purge Docker cache
-        run: docker builder prune -af
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: poetry install
-      - run: poetry run pytest truss/tests --durations=0 -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+      - run: poetry run pytest truss/tests --durations=0 -m 'integration' --splits 5 --group ${{ matrix.split_group }} -k "not test_requirements_pydantic[1]"
+
+  # Running `test_requirements_pydantic[1]` started failing when running together with the other tests.
+  # We could pin down the issue to the fact that the built image had v2 installed, despite v1 in `requirements.txt`
+  # The test passes locally and when running in its own env, suggesting that there is a bug in docker caching / hash
+  # computation that makes the test falsely run with the wrong version in the image. As a stop gap solution, separating
+  # this particular test in its own job made it pass again.
+  integration-tests-pydantic-v1:
+    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
+    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python/
+      - run: poetry install
+      - run: poetry run pytest truss/tests/test_model_inference.py::test_requirements_pydantic[1]
 
   chain-integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
@@ -79,9 +92,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - name: Purge Docker cache
-        run: docker builder prune -af
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - run: poetry run pytest truss-chains/tests -s --log-cli-level=INFO  --durations=0 -m 'integration'
