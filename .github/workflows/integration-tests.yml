@@ -59,6 +59,6 @@ jobs:
   jobs:
     integration-tests:
       needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-      uses: ./.github/workflows/shared/integration-tests.yml
+      uses: ./.github/workflows/_shared_integration_tests.yml
       with:
         build-and-push-truss-base-images-if-needed-result: ${{ needs.build-and-push-truss-base-images-if-needed.result }}
