@@ -20,7 +20,7 @@ jobs:
       release_version: ${{ steps.versions.outputs.release_version }}
       is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
         token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
@@ -33,7 +33,7 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' }}
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: "Git tag release"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
       - run: |
