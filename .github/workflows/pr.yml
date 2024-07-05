@@ -2,6 +2,7 @@ name: PR - pre-commit
 
 on:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: pr-${{ github.ref_name }}
@@ -78,3 +79,10 @@ jobs:
           else
             echo "::notice file=truss-chains/examples/::Chains examples modified and ack found int PR description."
           fi
+
+  integration-tests:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
+    uses: ./.github/workflows/shared/integration-tests.yml
+    with:
+      build-and-push-truss-base-images-if-needed-result: "skipped"
