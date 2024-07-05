@@ -21,7 +21,7 @@ jobs:
       release_version: ${{ steps.versions.outputs.release_version }}
       is_prerelease_version: ${{ steps.versions.outputs.is_prerelease_version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # We need to use a different github token because GITHUB_TOKEN cannot trigger a workflow from another
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
@@ -47,7 +47,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - shell: bash
@@ -61,17 +61,9 @@ jobs:
 
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        split_group: ["1", "2", "3", "4", "5"]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss/tests  -m 'integration' --splits 5 --group ${{ matrix.split_group }}
+    uses: ./.github/workflows/shared/integration-tests.yml
+    with:
+      build-and-push-truss-base-images-if-needed-result: ${{ needs.build-and-push-truss-base-images-if-needed.result }}
 
   publish-to-pypi:
     needs: [detect-version-changed]
@@ -79,7 +71,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: "Git tag release"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
       - run: |
