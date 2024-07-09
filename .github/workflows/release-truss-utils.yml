@@ -1,4 +1,4 @@
-name: Release CI
+name: Release CI (truss-utils)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: "Git tag release"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           token: ${{secrets.BASETENBOT_GITHUB_TOKEN}}
 

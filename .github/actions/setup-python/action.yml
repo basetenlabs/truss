@@ -5,14 +5,14 @@ description: "setups python, poetry and associated cache"
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-python@v2
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.9.9'
 
     - name: Get full Python version
       id: full-python-version
       shell: bash
-      run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
+      run: echo "version=$(python -c 'import sys; print(\"-\".join(str(v) for v in sys.version_info))')" >> $GITHUB_ENV
 
     - run: curl -sSL https://install.python-poetry.org | python3 -
       shell: bash
@@ -22,11 +22,11 @@ runs:
       shell: bash
 
     - name: Set up cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       id: cache
       with:
         path: .venv
-        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
+        key: venv-${{ runner.os }}-${{ env.version }}-${{ hashFiles('**/poetry.lock') }}
 
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'

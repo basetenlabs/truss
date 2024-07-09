@@ -423,7 +423,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     # value of `None`. So the condition whether to pass that argument or not is
     # whether it was *set* in the model. It is considered unset, if the incoming JSON
     # (from which the model was parsed/initialized) does not have that key.
-    args = "**utils.pydantic_set_arg_dict(inputs)"
+    args = "**utils.pydantic_set_field_dict(inputs)"
     parts.append(
         _indent(f"result = {maybe_await}self._chainlet.{run_remote}({args})", 2)
     )
