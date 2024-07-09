@@ -7,7 +7,6 @@ import click
 import rich
 import yaml
 from requests import ReadTimeout
-from truss.constants import CONFIG_FILE
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import types as b10_types
 from truss.remote.baseten.api import BasetenApi
@@ -33,8 +32,7 @@ from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
-from truss.truss_config import ModelServer, TrussConfig
-from truss.truss_handle import TrussSignature
+from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
