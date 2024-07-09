@@ -71,6 +71,17 @@ def calc_truss_patch(
         ignore_patterns,
     )
 
+    new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
+    prev_config = TrussConfig.from_dict(
+        yaml.safe_load(previous_truss_signature.config)
+    )
+    if new_config.requirements_file != prev_config.requirements_file:
+        # TODO(rcano)
+        logger.info("Changing requirement files not supported yet")
+        return None
+    
+    requirements_path = prev_config.requirements_file
+
     truss_spec = TrussSpec(truss_dir)
     model_module_path = _relative_to_root(truss_spec.model_module_dir)
     data_dir_path = _relative_to_root(truss_spec.data_dir)
@@ -138,11 +149,12 @@ def calc_truss_patch(
                     ),
                 )
             )
+        elif path == requirements_path:
+            requirement_config_patches = _calc_python_requirements_patches(prev_config._requirements_file_requirements, new_config._requirements_file_requirements)
+            if requirement_config_patches:
+                logger.info(f"Created patch for requirements changes")
+                patches.extend(requirement_config_patches)
         elif path == CONFIG_FILE:
-            new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
-            prev_config = TrussConfig.from_dict(
-                yaml.safe_load(previous_truss_signature.config)
-            )
             config_patches = calc_config_patches(prev_config, new_config)
             if config_patches:
                 logger.info(f"Created patch to {action.value.lower()} config")
@@ -226,7 +238,7 @@ def calc_config_patches(
     try:
         config_patches = _calc_general_config_patches(prev_config, new_config)
         python_requirement_patches = _calc_python_requirements_patches(
-            prev_config, new_config
+            prev_config.requirements, new_config.requirements
         )
         system_package_patches = _calc_system_packages_patches(prev_config, new_config)
         return [*config_patches, *python_requirement_patches, *system_package_patches]
@@ -319,16 +331,16 @@ def _calc_external_data_patches(
 
 
 def _calc_python_requirements_patches(
-    prev_config: TrussConfig, new_config: TrussConfig
+    prev_raw_reqs: List[str],new_raw_reqs: List[str]
 ) -> List[Patch]:
     """Calculate patch based on changes to python requirements.
 
     Empty list means no relevant differences found.
     """
     patches = []
-    prev_reqs = reqs_by_name(prev_config.requirements)
+    prev_reqs = reqs_by_name(prev_raw_reqs)
     prev_req_names = set(prev_reqs.keys())
-    new_reqs = reqs_by_name(new_config.requirements)
+    new_reqs = reqs_by_name(new_raw_reqs)
     new_req_names = set(new_reqs.keys())
     removed_reqs = prev_req_names.difference(new_req_names)
     for removed_req in removed_reqs:
