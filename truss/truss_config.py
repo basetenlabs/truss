@@ -1,14 +1,14 @@
+import json
 import logging
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import json
 
 import yaml
 
 from truss.config.trt_llm import TRTLLMConfiguration
-from truss.constants import HTTP_PUBLIC_BLOB_BACKEND, CONFIG_FILE
+from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
 from truss.util.data_structures import transform_optional
@@ -529,7 +529,9 @@ class TrussConfig:
             input_type=d.get("input_type", DEFAULT_MODEL_INPUT_TYPE),
             model_metadata=d.get("model_metadata", {}),
             requirements_file=d.get("requirements_file", None),
-            _requirements_file_requirements=d.get("_requirements_file_requirements", []),
+            _requirements_file_requirements=d.get(
+                "_requirements_file_requirements", []
+            ),
             requirements=d.get("requirements", []),
             system_packages=d.get("system_packages", []),
             environment_variables=d.get("environment_variables", {}),
@@ -572,15 +574,17 @@ class TrussConfig:
         """
         from_yaml_with_requirements_file_requirements loads the yaml file with the
         appropriate requirements attached. This method injects the requirements
-        into the config's object. 
+        into the config's object.
         """
         config = TrussConfig._from_yaml(yaml_path)
-        if config.requirements_file and not config._requirements_file_requirements: 
+        if config.requirements_file and not config._requirements_file_requirements:
             requirements_path = yaml_path.parent / config.requirements_file
             with open(requirements_path) as f:
-                config._requirements_file_requirements = [x for x in f.read().split('\n')]
+                config._requirements_file_requirements = [
+                    x for x in f.read().split("\n")
+                ]
         return config
-    
+
     @staticmethod
     def _from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
@@ -598,8 +602,7 @@ class TrussConfig:
             yaml.dump(self.to_dict(verbose=verbose), config_file)
 
     def to_dict(self, verbose: bool = True):
-        val =obj_to_dict(self, verbose=verbose)
-        return val
+        return obj_to_dict(self, verbose=verbose)
 
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())
