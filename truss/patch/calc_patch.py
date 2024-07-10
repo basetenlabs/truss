@@ -95,6 +95,7 @@ def calc_truss_patch(
     )
     if patches:
         print("created patches for requirements")
+        print(patches)
         logger.info("Created patches for requirements")
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
