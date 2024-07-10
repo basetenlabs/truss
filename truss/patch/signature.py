@@ -15,13 +15,8 @@ def calc_truss_signature(
     with (config_path).open("r") as config_file:
         config = config_file.read()
     requirements = TrussConfig.load_requirements_file_from_filepath(config_path)
-    s = TrussSignature(
+    return TrussSignature(
         content_hashes_by_path=content_signature,
         config=config,
         requirements_file_requirements=requirements,
     )
-    print("calculating truss signature")
-    import json
-
-    print(json.dumps(s.to_dict()))
-    return s

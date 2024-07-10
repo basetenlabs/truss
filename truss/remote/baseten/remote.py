@@ -291,10 +291,8 @@ class BasetenRemote(TrussRemote):
                 "attempting to watch for changes"
             )
             return
-        print("adding signature")
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
-            print("calc patch")
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
         except Exception:
             error_console.print("Failed to calculate patch, bailing on patching")

@@ -563,8 +563,14 @@ class TrussConfig:
     def load_requirements_from_file(self, truss_dir: Path) -> List[str]:
         if self.requirements_file:
             requirements_path = truss_dir / self.requirements_file
-            with open(requirements_path) as f:
-                return [x for x in f.read().split("\n") if x]
+            try:
+                with open(requirements_path) as f:
+                    return [x for x in f.read().split("\n") if x]
+            except Exception as e:
+                logger.exception(
+                    f"failed to read requirements file: {self.requirements_file}"
+                )
+                raise e
         return []
 
     @staticmethod

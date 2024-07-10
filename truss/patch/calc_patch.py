@@ -58,7 +58,6 @@ def calc_truss_patch(
         ignored. E.g. at the root level, only changes to config.yaml are
         checked, any other changes are ignored.
     """
-    print("calc_truss_patch")
 
     def _relative_to_root(path: Path) -> str:
         return str(path.relative_to(truss_dir))
@@ -74,7 +73,6 @@ def calc_truss_patch(
 
     new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
     prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
-    print("loaded configs")
 
     truss_spec = TrussSpec(truss_dir)
     model_module_path = _relative_to_root(truss_spec.model_module_dir)
@@ -94,8 +92,6 @@ def calc_truss_patch(
         truss_dir, previous_truss_signature, prev_config, new_config
     )
     if patches:
-        print("created patches for requirements")
-        print(patches)
         logger.info("Created patches for requirements")
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
