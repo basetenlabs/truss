@@ -618,6 +618,11 @@ class TrussConfig:
         for secret_name in self.secrets:
             validate_secret_name(secret_name)
 
+        if self.requirements and self.requirements_file:
+            raise ValueError(
+                "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
+
 
 DATACLASS_TO_REQ_KEYS_MAP = {
     Resources: {"accelerator", "cpu", "memory", "use_gpu"},
