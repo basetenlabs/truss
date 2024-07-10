@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List
 
 
@@ -15,7 +15,7 @@ class TrussSignature:
 
     content_hashes_by_path: Dict[str, str]
     config: str
-    requirements_file_requirements: List[str] = []
+    requirements_file_requirements: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
