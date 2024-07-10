@@ -564,7 +564,7 @@ class TrussConfig:
         if self.requirements_file:
             requirements_path = truss_dir / self.requirements_file
             with open(requirements_path) as f:
-                return [x for x in f.read().split("\n")]
+                return [x for x in f.read().split("\n") if x]
         return []
 
     @staticmethod

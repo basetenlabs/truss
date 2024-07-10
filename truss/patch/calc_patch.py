@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Set
 import yaml
 from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
-from truss.patch.types import TrussSignature
+from truss.patch.types import ChangedPaths, TrussSignature
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
     reqs_by_name,
 )
@@ -75,12 +75,6 @@ def calc_truss_patch(
     new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
     prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
     print("loaded configs")
-    if new_config.requirements_file != prev_config.requirements_file:
-        # TODO(rcano)
-        logger.info("Changing requirement files not supported yet")
-        return None
-
-    requirements_path = prev_config.requirements_file
 
     truss_spec = TrussSpec(truss_dir)
     model_module_path = _relative_to_root(truss_spec.model_module_dir)
@@ -96,7 +90,12 @@ def calc_truss_patch(
         """
         return _strictly_under(path, [data_dir_path])
 
-    patches = []
+    patches = calc_requirements_patches(
+        truss_dir, previous_truss_signature, prev_config, new_config
+    )
+    if patches:
+        print("created patches for requirements")
+        logger.info("Created patches for requirements")
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
             logger.info(f"Created patch to remove model code file: {path}")
@@ -149,14 +148,6 @@ def calc_truss_patch(
                     ),
                 )
             )
-        elif path == requirements_path:
-            requirement_config_patches = _calc_python_requirements_patches(
-                previous_truss_signature.requirements_file_requirements,
-                new_config.load_requirements_from_file(truss_dir),
-            )
-            if requirement_config_patches:
-                logger.info("Created patch for requirements changes")
-                patches.extend(requirement_config_patches)
         elif path == CONFIG_FILE:
             config_patches = calc_config_patches(prev_config, new_config)
             if config_patches:
@@ -187,7 +178,7 @@ def _calc_changed_paths(
     root: Path,
     previous_root_path_content_hashes: Dict[str, str],
     ignore_patterns: Optional[List[str]],
-) -> Dict[str, List[str]]:
+) -> ChangedPaths:
     """
     TODO(pankaj) add support for directory creation in patch
     """
@@ -240,11 +231,8 @@ def calc_config_patches(
     """
     try:
         config_patches = _calc_general_config_patches(prev_config, new_config)
-        python_requirement_patches = _calc_python_requirements_patches(
-            prev_config.requirements, new_config.requirements
-        )
         system_package_patches = _calc_system_packages_patches(prev_config, new_config)
-        return [*config_patches, *python_requirement_patches, *system_package_patches]
+        return [*config_patches, *system_package_patches]
     except Exception as e:
         logger.error(f"Failed to calculate config patch with exception: {e}")
         raise
@@ -331,6 +319,36 @@ def _calc_external_data_patches(
     for added_item in added_items:
         patches.append(_mk_external_data_patch(Action.ADD, added_item))
     return patches
+
+
+def calc_requirements_patches(
+    truss_dir: Path,
+    prev_signature: TrussSignature,
+    prev_config: TrussConfig,
+    new_config: TrussConfig,
+) -> List[Patch]:
+    """
+    what are the things that could happen
+    - contents in the requirements file change
+        - the file will be picked up by the changes
+        - we will be able to diff the contents between the files
+    - requirements move from config file to requirements file
+        - we'll have added the file and changed the config. config yaml will
+        end up with a new requirements_file and new requirements
+    - requirements move from requirements file to config file
+        - we'll have removed the file and changed the config...reverse of above
+    - requirement file changes
+        - config file changed, with new requirements file string. This can be ignored
+        - requirements can come from the signatures
+    - requirements in the config file change
+    """
+    prev_requirements = (
+        prev_config.requirements or prev_signature.requirements_file_requirements
+    )
+    new_requirements = (
+        new_config.requirements or new_config.load_requirements_from_file(truss_dir)
+    )
+    return _calc_python_requirements_patches(prev_requirements, new_requirements)
 
 
 def _calc_python_requirements_patches(

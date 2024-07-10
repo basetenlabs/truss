@@ -31,3 +31,6 @@ class TrussSignature:
             config=d["config"],
             requirements_file_requirements=d.get("requirements_file_requirements", []),
         )
+
+
+ChangedPaths = Dict[str, List[str]]
