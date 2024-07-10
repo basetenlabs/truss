@@ -152,7 +152,7 @@ def calc_truss_patch(
         elif path == requirements_path:
             requirement_config_patches = _calc_python_requirements_patches(
                 previous_truss_signature.requirements_file_requirements,
-                new_config.load_requirements_from_file(),
+                new_config.load_requirements_from_file(truss_dir),
             )
             if requirement_config_patches:
                 logger.info("Created patch for requirements changes")

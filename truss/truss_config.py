@@ -560,9 +560,9 @@ class TrussConfig:
         config.validate()
         return config
 
-    def load_requirements_from_file(self, config_path: Path) -> List[str]:
+    def load_requirements_from_file(self, truss_dir: Path) -> List[str]:
         if self.requirements_file:
-            requirements_path = config_path.parent / self.requirements_file
+            requirements_path = truss_dir / self.requirements_file
             with open(requirements_path) as f:
                 return [x for x in f.read().split("\n")]
         return []
@@ -570,7 +570,7 @@ class TrussConfig:
     @staticmethod
     def load_requirements_file_from_filepath(yaml_path: Path) -> List[str]:
         config = TrussConfig.from_yaml(yaml_path)
-        return config.load_requirements_from_file(yaml_path)
+        return config.load_requirements_from_file(yaml_path.parent)
 
     @staticmethod
     def from_yaml(yaml_path: Path):
