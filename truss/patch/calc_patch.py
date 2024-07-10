@@ -58,6 +58,7 @@ def calc_truss_patch(
         ignored. E.g. at the root level, only changes to config.yaml are
         checked, any other changes are ignored.
     """
+    print("calc_truss_patch")
 
     def _relative_to_root(path: Path) -> str:
         return str(path.relative_to(truss_dir))
@@ -73,6 +74,7 @@ def calc_truss_patch(
 
     new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
     prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
+    print("loaded configs")
     if new_config.requirements_file != prev_config.requirements_file:
         # TODO(rcano)
         logger.info("Changing requirement files not supported yet")

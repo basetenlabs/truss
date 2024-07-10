@@ -770,11 +770,14 @@ class TrussHandle:
         Returns None if signature cannot be found locally for previous truss hash
         or if the change cannot be expressed with currently supported patches.
         """
+        print("in calc_patch")
         prev_sign_str = LocalConfigHandler.get_signature(prev_truss_hash)
         if prev_sign_str is None:
             logger.info(f"Signature not found for truss for hash {prev_truss_hash}")
             return None
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
+        print("prev sign")
+        print(prev_sign)
         ignore_patterns = truss_ignore_patterns + self._spec.hash_ignore_patterns
         patch_ops = calc_truss_patch(self._truss_dir, prev_sign, ignore_patterns)
         if patch_ops is None:
