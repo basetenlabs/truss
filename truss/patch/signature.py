@@ -1,5 +1,3 @@
-import json 
-
 from pathlib import Path
 from typing import List, Optional
 
@@ -7,7 +5,6 @@ from truss.constants import CONFIG_FILE
 from truss.patch.dir_signature import directory_content_signature
 from truss.patch.types import TrussSignature
 from truss.truss_config import TrussConfig
-
 
 
 def calc_truss_signature(

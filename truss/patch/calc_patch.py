@@ -72,14 +72,12 @@ def calc_truss_patch(
     )
 
     new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
-    prev_config = TrussConfig.from_dict(
-        yaml.safe_load(previous_truss_signature.config)
-    )
+    prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
     if new_config.requirements_file != prev_config.requirements_file:
         # TODO(rcano)
         logger.info("Changing requirement files not supported yet")
         return None
-    
+
     requirements_path = prev_config.requirements_file
 
     truss_spec = TrussSpec(truss_dir)
@@ -150,9 +148,12 @@ def calc_truss_patch(
                 )
             )
         elif path == requirements_path:
-            requirement_config_patches = _calc_python_requirements_patches(prev_config._requirements_file_requirements, new_config._requirements_file_requirements)
+            requirement_config_patches = _calc_python_requirements_patches(
+                prev_config._requirements_file_requirements,
+                new_config._requirements_file_requirements,
+            )
             if requirement_config_patches:
-                logger.info(f"Created patch for requirements changes")
+                logger.info("Created patch for requirements changes")
                 patches.extend(requirement_config_patches)
         elif path == CONFIG_FILE:
             config_patches = calc_config_patches(prev_config, new_config)
@@ -331,7 +332,7 @@ def _calc_external_data_patches(
 
 
 def _calc_python_requirements_patches(
-    prev_raw_reqs: List[str],new_raw_reqs: List[str]
+    prev_raw_reqs: List[str], new_raw_reqs: List[str]
 ) -> List[Patch]:
     """Calculate patch based on changes to python requirements.
 
