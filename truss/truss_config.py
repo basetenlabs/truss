@@ -1,4 +1,3 @@
-import json
 import logging
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
@@ -481,7 +480,6 @@ class TrussConfig:
     input_type: str = DEFAULT_MODEL_INPUT_TYPE
     model_metadata: Dict[str, Any] = field(default_factory=dict)
     requirements_file: Optional[str] = None
-    _requirements_file_requirements: List[str] = field(default_factory=list)
     requirements: List[str] = field(default_factory=list)
     system_packages: List[str] = field(default_factory=list)
     environment_variables: Dict[str, str] = field(default_factory=dict)
@@ -529,9 +527,6 @@ class TrussConfig:
             input_type=d.get("input_type", DEFAULT_MODEL_INPUT_TYPE),
             model_metadata=d.get("model_metadata", {}),
             requirements_file=d.get("requirements_file", None),
-            _requirements_file_requirements=d.get(
-                "_requirements_file_requirements", []
-            ),
             requirements=d.get("requirements", []),
             system_packages=d.get("system_packages", []),
             environment_variables=d.get("environment_variables", {}),
@@ -565,28 +560,20 @@ class TrussConfig:
         config.validate()
         return config
 
+    def load_requirements_from_file(self, config_path: Path) -> List[str]:
+        if self.requirements_file:
+            requirements_path = config_path.parent / self.requirements_file
+            with open(requirements_path) as f:
+                return [x for x in f.read().split("\n")]
+        return []
+
     @staticmethod
-    def to_signature_config(yaml_path: Path) -> str:
-        return json.dumps(TrussConfig.from_yaml(yaml_path).to_dict())
+    def load_requirements_file_from_filepath(yaml_path: Path) -> List[str]:
+        config = TrussConfig.from_yaml(yaml_path)
+        return config.load_requirements_from_file(yaml_path)
 
     @staticmethod
     def from_yaml(yaml_path: Path):
-        """
-        from_yaml_with_requirements_file_requirements loads the yaml file with the
-        appropriate requirements attached. This method injects the requirements
-        into the config's object.
-        """
-        config = TrussConfig._from_yaml(yaml_path)
-        if config.requirements_file and not config._requirements_file_requirements:
-            requirements_path = yaml_path.parent / config.requirements_file
-            with open(requirements_path) as f:
-                config._requirements_file_requirements = [
-                    x for x in f.read().split("\n")
-                ]
-        return config
-
-    @staticmethod
-    def _from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
             if "hf_cache" in raw_data:

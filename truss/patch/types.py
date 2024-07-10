@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List
 
 
 @dataclass
@@ -15,11 +15,13 @@ class TrussSignature:
 
     content_hashes_by_path: Dict[str, str]
     config: str
+    requirements_file_requirements: List[str] = []
 
     def to_dict(self) -> dict:
         return {
             "content_hashes_by_path": self.content_hashes_by_path,
             "config": self.config,
+            "requirements_file_requirements": self.requirements_file_requirements,
         }
 
     @staticmethod
@@ -27,4 +29,5 @@ class TrussSignature:
         return TrussSignature(
             content_hashes_by_path=d["content_hashes_by_path"],
             config=d["config"],
+            requirements_file_requirements=d.get("requirements_file_requirements", []),
         )
