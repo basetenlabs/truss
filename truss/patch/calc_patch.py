@@ -88,11 +88,7 @@ def calc_truss_patch(
         """
         return _strictly_under(path, [data_dir_path])
 
-    patches = calc_requirements_patches(
-        truss_dir, previous_truss_signature, prev_config, new_config
-    )
-    if patches:
-        logger.info("Created patches for requirements")
+    patches = []
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
             logger.info(f"Created patch to remove model code file: {path}")
@@ -124,6 +120,7 @@ def calc_truss_patch(
             logger.warn(f"Patching not supported for removing {path}")
             return None
 
+    has_calculated_config = False
     for path in changed_paths["added"] + changed_paths["updated"]:
         action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
         if _strictly_under(path, [model_module_path]):
@@ -145,8 +142,16 @@ def calc_truss_patch(
                     ),
                 )
             )
-        elif path == CONFIG_FILE:
-            config_patches = calc_config_patches(prev_config, new_config)
+        elif (
+            path == CONFIG_FILE or _is_requirements_file_change(path, new_config)
+        ) and not has_calculated_config:
+            # we could enter this code block from the requirements file's path
+            # or from the config file's path. In any case, we only want to calculate these
+            # patches once.
+            has_calculated_config = True
+            config_patches = calc_config_patches(
+                truss_dir, previous_truss_signature, prev_config, new_config
+            )
             if config_patches:
                 logger.info(f"Created patch to {action.value.lower()} config")
             patches.extend(config_patches)
@@ -169,6 +174,13 @@ def calc_truss_patch(
             logger.info(f"Patching not supported for updating {path}")
             return None
     return patches
+
+
+def _is_requirements_file_change(changed_path: str, new_config: TrussConfig):
+    return (
+        new_config.requirements_file
+        and Path(changed_path) == new_config.requirements_file
+    )
 
 
 def _calc_changed_paths(
@@ -219,7 +231,10 @@ def calc_unignored_paths(
 
 
 def calc_config_patches(
-    prev_config: TrussConfig, new_config: TrussConfig
+    truss_dir: Path,
+    prev_signature: TrussSignature,
+    prev_config: TrussConfig,
+    new_config: TrussConfig,
 ) -> List[Patch]:
     """Calculate patch based on changes to config.
 
@@ -228,8 +243,11 @@ def calc_config_patches(
     """
     try:
         config_patches = _calc_general_config_patches(prev_config, new_config)
+        python_requirements_patches = calc_requirements_patches(
+            truss_dir, prev_signature, prev_config, new_config
+        )
         system_package_patches = _calc_system_packages_patches(prev_config, new_config)
-        return [*config_patches, *system_package_patches]
+        return [*config_patches, *python_requirements_patches, *system_package_patches]
     except Exception as e:
         logger.error(f"Failed to calculate config patch with exception: {e}")
         raise
@@ -325,19 +343,14 @@ def calc_requirements_patches(
     new_config: TrussConfig,
 ) -> List[Patch]:
     """
-    what are the things that could happen
+    requirements patches that are accounted for
     - contents in the requirements file change
-        - the file will be picked up by the changes
-        - we will be able to diff the contents between the files
     - requirements move from config file to requirements file
-        - we'll have added the file and changed the config. config yaml will
-        end up with a new requirements_file and new requirements
     - requirements move from requirements file to config file
-        - we'll have removed the file and changed the config...reverse of above
-    - requirement file changes
-        - config file changed, with new requirements file string. This can be ignored
-        - requirements can come from the signatures
+    - requirement file changes (i.e. requirement.txt --> requirements.txt)
     - requirements in the config file change
+
+    assumes that only one of requirements or requirements_file is present for a given config
     """
     prev_requirements = (
         prev_config.requirements or prev_signature.requirements_file_requirements
