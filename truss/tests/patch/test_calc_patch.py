@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
+import pytest
 import yaml
 from truss.patch.calc_patch import calc_truss_patch, calc_unignored_paths
 from truss.patch.signature import calc_truss_signature
@@ -260,6 +262,213 @@ def test_calc_truss_patch_update_package(
             content=new_package_file_content,
         ),
     )
+
+
+def test_calc_truss_patch_handles_requirements_file_name_change(
+    custom_model_truss_dir: Path,
+):
+    requirements_contents = """xformers"""
+
+    def pre_config_op(config: TrussConfig):
+        filename = "requirement.txt"
+        config.requirements.clear()
+        config.requirements_file = filename
+        config.requirements.append(requirements_contents)
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+
+    def config_op(config: TrussConfig):
+        filename = "requirements.txt"
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_op=config_op,
+        config_pre_op=pre_config_op,
+    )
+    assert len(patches) == 1
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+    ]
+
+
+def test_calc_truss_patch_handles_requirements_file_changes(
+    custom_model_truss_dir: Path,
+):
+    def pre_config_op(config: TrussConfig):
+        requirements_contents = """xformers\ntorch==2.0.1"""
+        filename = "requirement.txt"
+        config.requirements.clear()
+        config.requirements_file = filename
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+
+    def config_op(config: TrussConfig):
+        requirements_contents = """requests\ntorch==2.3.1"""
+        filename = "requirements.txt"
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_op=config_op,
+        config_pre_op=pre_config_op,
+    )
+    assert len(patches) == 4
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.REMOVE,
+                requirement="xformers",
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.ADD,
+                requirement="requests",
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE,
+                requirement="torch==2.3.1",
+            ),
+        ),
+    ]
+
+
+def test_calc_truss_patch_handles_requirements_file_removal(
+    custom_model_truss_dir: Path,
+):
+    requirements_contents = """xformers"""
+    filename = "requirements.txt"
+
+    def pre_config_op(config: TrussConfig):
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    def config_op(config: TrussConfig):
+        config.requirements.append(requirements_contents)
+        os.remove(custom_model_truss_dir / filename)
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_op=config_op,
+        config_pre_op=pre_config_op,
+    )
+    assert len(patches) == 1
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+    ]
+
+
+def test_calc_truss_signature_raises_for_invalid_requirements_file(
+    custom_model_truss_dir: Path,
+):
+    config_path = custom_model_truss_dir / "config.yaml"
+    config = TrussConfig.from_yaml(config_path)
+    config.requirements.clear()
+    config.requirements_file = "no_exist.txt"
+    config.write_to_yaml_file(config_path)
+
+    with pytest.raises(FileNotFoundError):
+        calc_truss_signature(custom_model_truss_dir)
+
+
+def test_calc_truss_patch_handles_requirements_file_added_no_change(
+    custom_model_truss_dir: Path,
+):
+    requirements_contents = """xformers"""
+
+    def pre_config_op(config: TrussConfig):
+        config.requirements.append(requirements_contents)
+
+    def config_op(config: TrussConfig):
+        filename = "requirements.txt"
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_op=config_op,
+        config_pre_op=pre_config_op,
+    )
+    assert len(patches) == 1
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+    ]
+
+
+def test_calc_truss_patch_handles_requirements_file_added_with_changes(
+    custom_model_truss_dir: Path,
+):
+    requirements_contents = """xformers"""
+
+    def config_op(config: TrussConfig):
+        filename = "requirements.txt"
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+        config.requirements_file = filename
+        config.requirements.clear()
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir, config_op=config_op
+    )
+
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.ADD,
+                requirement="xformers",
+            ),
+        ),
+    ]
 
 
 def test_calc_config_patches_remove_python_requirement(custom_model_truss_dir: Path):
