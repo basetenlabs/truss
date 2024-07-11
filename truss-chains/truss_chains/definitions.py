@@ -1,5 +1,6 @@
 # TODO: this file contains too much implementation -> restructure.
 import abc
+import enum
 import logging
 import pathlib
 import traceback
@@ -118,6 +119,20 @@ class AbsPath:
         return abs_path
 
 
+class BasetenImage(enum.Enum):
+    # Enum values correspond to truss canonical python versions.
+    PY39 = "py39"
+    PY310 = "py310"
+    PY311 = "py311"
+
+
+class CustomImage(SafeModel):
+    # Enum values (lowercase!) correspond to truss canonical python versions.
+    image: str
+    python_executable_path: Optional[str] = None
+    docker_auth: Optional[truss_config.DockerAuthSettings] = None
+
+
 class DockerImage(SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
@@ -128,8 +143,12 @@ class DockerImage(SafeModelNonSerializable):
         modules and keep their requirement files right next their python source files.
 
     Args:
-        base_image: The base image to use for the chainlet. Default is
-          ``python:3.11-slim``.
+        base_image: The base image to use for the chainlet. Configured dependencies and
+          assets are included as additional layers on top of that image. You can choose
+          a baseten default image for a supported pythonversion (e.g.
+          ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
+          provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
+          Specification as string is deprecated.
         pip_requirements_file: Path to a file containing pip requirements. The file
           content is naively concatenated with ``pip_requirements``.
         pip_requirements: A list of pip requirements to install.  The items are
@@ -143,7 +162,8 @@ class DockerImage(SafeModelNonSerializable):
     """
 
     # TODO: this is not stable yet and might change or refer back to truss.
-    base_image: str = "python:3.11-slim"
+    # Image as str is deprecated.
+    base_image: Union[BasetenImage, CustomImage, str] = BasetenImage.PY311
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []

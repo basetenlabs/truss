@@ -6,13 +6,26 @@ from user_package.nested_package import io_types
 
 import truss_chains as chains
 
-IMAGE_COMMON = chains.DockerImage(
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt")
+IMAGE_BASETEN = chains.DockerImage(
+    base_image=chains.BasetenImage.PY311,
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+)
+
+IMAGE_CUSTOM = chains.DockerImage(
+    base_image=chains.CustomImage(
+        image="python:3.11-slim", python_executable_path="python3"
+    ),
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+)
+
+IMAGE_STR = chains.DockerImage(
+    base_image="python:3.11-slim",
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
 
 
 class GenerateData(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_BASETEN)
 
     def run_remote(self, length: int) -> str:
         template = "erodfd"
@@ -25,7 +38,7 @@ class DummyUserConfig(pydantic.BaseModel):
 
 
 class TextReplicator(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
     default_user_config = DummyUserConfig(multiplier=2)
 
     def __init__(self, context=chains.depends_context()):
@@ -38,7 +51,7 @@ class TextReplicator(chains.ChainletBase):
 
 
 class TextToNum(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_STR)
 
     def __init__(
         self,
@@ -57,7 +70,7 @@ class TextToNum(chains.ChainletBase):
 
 @chains.mark_entrypoint
 class ItestChain(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_BASETEN)
 
     def __init__(
         self,
