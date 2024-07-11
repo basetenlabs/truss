@@ -1,5 +1,5 @@
---- docs/chains/doc_gen/generated-reference.mdx	2024-06-27 13:49:37.554412285 -0700
-+++ docs/chains/doc_gen/API-reference.mdx	2024-06-27 13:49:37.558412260 -0700
+--- docs/chains/doc_gen/generated-reference.mdx	2024-07-11 13:06:12.891317164 -0700
++++ docs/chains/doc_gen/API-reference.mdx	2024-07-11 13:06:01.275520504 -0700
 @@ -23,30 +23,28 @@
  dependency of another chainlet. The return value of `depends` is intended to be
  used as a default argument in a chainlet’s `__init__`-method.
@@ -63,7 +63,7 @@
 
  Bundles config values and resources needed to instantiate Chainlets.
 
-@@ -80,14 +77,14 @@
+@@ -80,15 +77,15 @@
 
  **Parameters:**
 
@@ -79,13 +79,14 @@
 +| `user_config` | *UserConfigT*                                                       | User-defined configuration for the chainlet. |
 +| `chainlet_to_service` | *Mapping[str,[ServiceDescriptor](#class-truss-chains-servicedescriptor)]* | A mapping from chainlet names to service descriptors. This is used create RPCs sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
 +| `secrets` | *Mapping[str,str]*                                            | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet. |
+ | `user_env` | *Mapping[str,str]* | A mapping of string key-vale-pairs. These can be provided during the deploy command an customize the behavior of deployed chainlets. E.g. for differentiating between prod and dev version of the same chain. |
 
 -#### chainlet_to_service *: Mapping[str, [ServiceDescriptor](#truss_chains.ServiceDescriptor)]*
 +#### chainlet_to_service *: Mapping[str, [ServiceDescriptor](#class-truss-chains-servicedescriptor)]*
 
  #### data_dir *: Path | None*
 
-@@ -98,12 +95,16 @@
+@@ -99,12 +96,16 @@
 
  #### get_service_descriptor(chainlet_name)
 
@@ -106,7 +107,7 @@
 
  #### user_config *: UserConfigT*
 
-@@ -121,10 +122,6 @@
+@@ -124,10 +125,6 @@
  | `retries` | *int* |  |
 
 
@@ -117,7 +118,7 @@
  ### `truss_chains.mark_entrypoint`
 
  Decorator to mark a chainlet as the entrypoint of a chain.
-@@ -135,7 +132,7 @@
+@@ -138,7 +135,7 @@
 
  Example usage:
 
@@ -126,7 +127,7 @@
  import truss_chains as chains
 
  @chains.mark_entrypoint
-@@ -143,10 +140,14 @@
+@@ -146,10 +143,14 @@
      ...
  ```
 
@@ -144,7 +145,7 @@
 
  # Remote Configuration
 
-@@ -160,7 +161,7 @@
+@@ -163,7 +164,7 @@
 
  This is specified as a class variable for each chainlet class, e.g.:
 
@@ -153,7 +154,7 @@
  import truss_chains as chains
 
 
-@@ -176,31 +177,12 @@
+@@ -179,31 +180,12 @@
 
  **Parameters:**
 
@@ -191,7 +192,7 @@
 
  ### *class* `truss_chains.DockerImage`
 
-@@ -208,12 +190,12 @@
+@@ -211,35 +193,23 @@
 
  Configures the docker image in which a remoted chainlet is deployed.
 
@@ -207,13 +208,18 @@
 
  **Parameters:**
 
-@@ -226,28 +208,16 @@
- | `data_dir` | *AbsPath\|None* | Data from this directory is copied into the docker image and accessible to the remote chainlet at runtime. |
- | `external_package_dirs` | *list[AbsPath]\|None* | A list of directories containing additional python packages outside the chain’s workspace dir, e.g. a shared library. This code is copied into the docker image and importable at runtime. |
-
+-| Name | Type                                                                                     | Description |
+-|------|------------------------------------------------------------------------------------------|-------------|
+-| `base_image` | *[BasetenImage](#truss-chains-basetenimage) \| [CustomImage](#truss-chains-customimage)* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a baseten default image for a supported pythonversion (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). Specification by string is deprecated. |
+-| `pip_requirements_file` | *AbsPath\|None*                                                                          | Path to a file containing pip requirements. The file content is naively concatenated with `pip_requirements`. |
+-| `pip_requirements` | *list[str]*                                                                              | A list of pip requirements to install.  The items are naively concatenated with the content of the `pip_requirements_file`. |
+-| `apt_requirements` | *list[str]*                                                                              | A list of apt requirements to install. |
+-| `data_dir` | *AbsPath\|None*                                                                          | Data from this directory is copied into the docker image and accessible to the remote chainlet at runtime. |
+-| `external_package_dirs` | *list[AbsPath]\|None*                                                                    | A list of directories containing additional python packages outside the chain’s workspace dir, e.g. a shared library. This code is copied into the docker image and importable at runtime. |
+-
 -#### apt_requirements *: list[str]*
 -
--#### base_image *: str*
+-#### base_image *: [BasetenImage](#truss-chains-basetenimage) | [CustomImage](#truss-chains-customimage) | str*
 -
 -#### data_dir *: AbsPath | None*
 -
@@ -222,7 +228,39 @@
 -#### pip_requirements *: list[str]*
 -
 -#### pip_requirements_file *: AbsPath | None*
++| Name | Type | Description |
++|------|------|-------------|
++| `base_image` |*Union[[BasetenImage](#truss-chains-basetenimage),[CustomImage](#truss-chains-customimage)]* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a baseten default image for a supported pythonversion (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). Specification by string is deprecated. |
++| `pip_requirements_file` | *AbsPath\|None* | Path to a file containing pip requirements. The file content is naively concatenated with `pip_requirements`. |
++| `pip_requirements` | *list[str]* | A list of pip requirements to install.  The items are naively concatenated with the content of the `pip_requirements_file`. |
++| `apt_requirements` | *list[str]* | A list of apt requirements to install. |
++| `data_dir` | *AbsPath\|None* | Data from this directory is copied into the docker image and accessible to the remote chainlet at runtime. |
++| `external_package_dirs` | *list[AbsPath]\|None* | A list of directories containing additional python packages outside the chain’s workspace dir, e.g. a shared library. This code is copied into the docker image and importable at runtime. |
+
+ ### *class* `truss_chains.BasetenImage`
+
+@@ -262,29 +232,22 @@
+
+ **Parameters:**
+
+-| Name | Type | Description |
+-|------|------|-------------|
+-| `image` | *str* |  |
+-| `python_executable_path` | *str\|None* |  |
+-| `docker_auth` | *DockerAuthSettings\|None* |  |
 -
+-
+-#### docker_auth *: DockerAuthSettings | None*
+-
+-#### image *: str*
+-
+-#### python_executable_path *: str | None*
++| Name | Type | Description                                                                      |
++|------|------|----------------------------------------------------------------------------------|
++| `image` | *str* | Reference to image on dockerhub.                                                 |
++| `python_executable_path` | *str\|None* | Absolute path to python executable (if deafult `python` is ambiguous).           |
++| `docker_auth` | *DockerAuthSettings\|None* | See [corresponding truss config](https://docs.baseten.co/truss-reference/config#base-image-docker-auth). |
+
  ### *class* `truss_chains.Compute`
 
  Specifies which compute resources a chainlet has in the *remote* deployment.
@@ -238,7 +276,7 @@
 
  **Parameters:**
 
-@@ -271,18 +241,13 @@
+@@ -308,18 +271,13 @@
  - With a threadpool if it’s a synchronous function. This requires
    that the threads don’t have significant CPU load (due to the GIL).
 
@@ -258,7 +296,7 @@
  import truss_chains as chains
  from truss import truss_config
 
-@@ -299,24 +264,11 @@
+@@ -336,24 +294,11 @@
 
  **Parameters:**
 
@@ -288,7 +326,7 @@
 
  # Core
 
-@@ -331,7 +283,7 @@
+@@ -368,7 +313,7 @@
 
  | Name | Type | Description |
  |------|------|-------------|
@@ -297,7 +335,7 @@
  | `chain_name` | *str* | The name of the chain. |
  | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
  | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
-@@ -340,98 +292,7 @@
+@@ -378,99 +323,7 @@
  * **Returns:**
    A chain service handle to the deployed chain.
  * **Return type:**
@@ -307,9 +345,10 @@
 -
 -Handle for a deployed chain.
 -
--A `ChainService` is created and returned when using `deploy_remotely`. It
--bundles the individual services for each chainlet in the chain, and provides
--utilities to query their status, invoke the entrypoint etc.
+-A `ChainService` is created and returned when using
+-[`deploy_remotely`](#truss-chains-deployremotely). It bundles the individual
+-services for each chainlet in the chain, and provides utilities to query their
+-status, invoke the entrypoint etc.
 -
 -
 -**Parameters:**
@@ -395,9 +434,9 @@
 -  None
 +  [*ChainService*](#class-truss-chains-deploy-chainservice)
 
- ### `truss_chains.make_abs_path_here`
+ #### *property* status_page_url *: str*
 
-@@ -451,12 +312,12 @@
+@@ -494,12 +347,12 @@
  You can now in `root/sub_package/chainlet.py` point to the requirements
  file like this:
 
@@ -412,7 +451,7 @@
  This helper uses the directory of the immediately calling module as an
  absolute reference point for resolving the file location. Therefore,
  you MUST NOT wrap the instantiation of `make_abs_path_here` into a
-@@ -464,7 +325,7 @@
+@@ -507,7 +360,7 @@
 
  Ok:
 
@@ -421,7 +460,7 @@
  def foo(path: AbsPath):
      abs_path = path.abs_path
 
-@@ -473,15 +334,20 @@
+@@ -516,15 +369,20 @@
 
  Not Ok:
 
@@ -433,11 +472,11 @@
  foo("./somewhere")
  ```
 +</Warning>
++
++**Parameters:**
 
 -* **Parameters:**
 -  **file_path** (*str*)
-+**Parameters:**
-+
 +| Name        | Type    | Description                |
 +|-------------|---------|----------------------------|
 +| `file_path` | *str*   | Absolute or relative path. |
@@ -445,7 +484,7 @@
  * **Return type:**
    *AbsPath*
 
-@@ -490,23 +356,23 @@
+@@ -533,24 +391,24 @@
  Context manager local debug execution of a chain.
 
  The arguments only need to be provided if the chainlets explicitly access any the
@@ -455,16 +494,18 @@
 
  **Parameters:**
 
--| Name | Type | Description |
--|------|------|-------------|
+-| Name | Type | Description                                                    |
+-|------|------|----------------------------------------------------------------|
 -| `secrets` | *Mapping[str,str]\|None* | A dict of secrets keys and values to provide to the chainlets. |
--| `data_dir` | *Path\|str\|None* | Path to a directory with data files. |
--| `chainlet_to_service` | *Mapping[str,[ServiceDescriptor](#truss_chains.ServiceDescriptor* | A dict of chainlet names to service descriptors. |
-+| Name | Type                                                                     | Description |
-+|------|--------------------------------------------------------------------------|-------------|
+-| `data_dir` | *Path\|str\|None* | Path to a directory with data files.                           |
+-| `chainlet_to_service` | *Mapping[str,[ServiceDescriptor](#truss_chains.ServiceDescriptor* | A dict of chainlet names to service descriptors.               |
+-| `user_env` | *Mapping[str,str]\|None* | see [`deploy_remotely`](#truss-chains-deployremotely).         |
++| Name | Type                                                                     | Description                                                    |
++|------|--------------------------------------------------------------------------|----------------------------------------------------------------|
 +| `secrets` | *Mapping[str,str]\|None*                                                 | A dict of secrets keys and values to provide to the chainlets. |
-+| `data_dir` | *Path\|str\|None*                                                        | Path to a directory with data files. |
-+| `chainlet_to_service` | *Mapping[str,[ServiceDescriptor](#class-truss-chains-servicedescriptor)* | A dict of chainlet names to service descriptors. |
++| `data_dir` | *Path\|str\|None*                                                        | Path to a directory with data files.                           |
++| `chainlet_to_service` | *Mapping[str,[ServiceDescriptor](#class-truss-chains-servicedescriptor)* | A dict of chainlet names to service descriptors.               |
++| `user_env` | *Mapping[str,str]\|None* | see [`deploy_remotely`](#truss-chains-deploy-remotely).        |
 
  * **Return type:**
    *ContextManager*[None]
@@ -476,7 +517,7 @@
  import os
  import truss_chains as chains
 
-@@ -544,22 +410,13 @@
+@@ -588,22 +446,13 @@
 
  **Parameters:**
 
@@ -505,7 +546,7 @@
 
  Base class for stubs that invoke remote chainlets.
 
-@@ -567,7 +424,7 @@
+@@ -611,7 +460,7 @@
  in user-code for wrapping a deployed truss model into the chains framework, e.g.
  like that:
 
@@ -514,7 +555,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -577,7 +434,7 @@
+@@ -621,7 +470,7 @@
 
  class DeployedWhisper(chains.StubBase):
 
@@ -523,7 +564,7 @@
          resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
          return WhisperOutput(text=resp["text"], language==resp["language"])
 
-@@ -596,10 +453,10 @@
+@@ -640,10 +489,10 @@
 
  **Parameters:**
 
@@ -538,7 +579,7 @@
 
 
  #### *classmethod* from_url(predict_url, context, options=None)
-@@ -609,12 +466,11 @@
+@@ -653,12 +502,11 @@
 
  **Parameters:**
 
@@ -556,7 +597,7 @@
 
  ### *class* `truss_chains.RemoteErrorDetail`
 
-@@ -634,13 +490,6 @@
+@@ -678,13 +526,6 @@
  | `exception_message` | *str* |  |
  | `user_stack_trace` | *list[StackFrame]* |  |
 
@@ -570,7 +611,7 @@
  #### format()
 
  Format the error for printing, similar to how Python formats exceptions
-@@ -648,7 +497,3 @@
+@@ -692,7 +533,3 @@
 
  * **Return type:**
    str

@@ -120,6 +120,9 @@ class AbsPath:
 
 
 class BasetenImage(enum.Enum):
+    """Default images, curated by baseten, for different python versions. If a Chainlet
+    uses GPUs, drivers will be included in the image."""
+
     # Enum values correspond to truss canonical python versions.
     PY39 = "py39"
     PY310 = "py310"
@@ -127,7 +130,8 @@ class BasetenImage(enum.Enum):
 
 
 class CustomImage(SafeModel):
-    # Enum values (lowercase!) correspond to truss canonical python versions.
+    """Configures the usage of a custom image hosted on dockerhub."""
+
     image: str
     python_executable_path: Optional[str] = None
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
@@ -143,12 +147,12 @@ class DockerImage(SafeModelNonSerializable):
         modules and keep their requirement files right next their python source files.
 
     Args:
-        base_image: The base image to use for the chainlet. Configured dependencies and
+        base_image: The base image used by the chainlet. Other dependencies and
           assets are included as additional layers on top of that image. You can choose
           a baseten default image for a supported pythonversion (e.g.
           ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
           provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
-          Specification as string is deprecated.
+          Specification by string is deprecated.
         pip_requirements_file: Path to a file containing pip requirements. The file
           content is naively concatenated with ``pip_requirements``.
         pip_requirements: A list of pip requirements to install.  The items are
@@ -378,6 +382,9 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
+        user_env: A mapping of string key-vale-pairs. These can be provided during
+          the deploy command an customize the behavior of deployed chainlets. E.g.
+          for differentiating between prod and dev version of the same chain.
     """
 
     data_dir: Optional[pathlib.Path] = None

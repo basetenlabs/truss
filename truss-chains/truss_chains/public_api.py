@@ -130,6 +130,9 @@ def deploy_remotely(
           draft deployment otherwise)
         promote: Whether to promote the chain to be the production deployment (this
           implies publishing as well).
+        user_env: A mapping of string key-vale-pairs. These can be provided during
+          the deploy command an customize the behavior of deployed chainlets. E.g.
+          for differentiating between prod and dev version of the same chain.
         only_generate_trusses: Used for debugging purposes. If set to True, only the
           the underlying truss models for the chainlets are generated in
           ``/tmp/.chains_generated``.
@@ -163,6 +166,7 @@ def run_local(
         secrets: A dict of secrets keys and values to provide to the chainlets.
         data_dir: Path to a directory with data files.
         chainlet_to_service: A dict of chainlet names to service descriptors.
+        user_env: see ``deploy_remotely``.
 
     Example usage (as trailing main section in a chain file)::
 

@@ -316,7 +316,7 @@ class ChainService:
 
     @property
     def status_page_url(self) -> str:
-        """Queries the statuses of all chainlets in the chain."""
+        """Link to baseten UI statuspage."""
         if not self._remote_chain_service:
             raise ValueError("Chain was not deployed remotely.")
 
