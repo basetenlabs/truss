@@ -640,6 +640,7 @@ def _make_truss_config(
     user_config: definitions.UserConfigT,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
+    user_env: Mapping[str, str],
 ) -> truss_config.TrussConfig:
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
@@ -682,7 +683,9 @@ def _make_truss_config(
     config.external_data = truss_config.ExternalData(items=assets.external_data)
     # Metadata.
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
-        user_config=user_config, chainlet_to_service=chainlet_to_service
+        user_config=user_config,
+        chainlet_to_service=chainlet_to_service,
+        user_env=user_env,
     )
     config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
         chains_metadata.model_dump()
@@ -722,6 +725,7 @@ def gen_truss_chainlet(
         chainlet_descriptor.chainlet_cls.default_user_config,
         dep_services,
         chainlet_name,
+        options.user_env,
     )
     # TODO This assume all imports are absolute w.r.t chain root (or site-packages).
     _copy_python_source_files(

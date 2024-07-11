@@ -382,8 +382,9 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT
-    chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
+    user_env: Mapping[str, str]
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
@@ -416,7 +417,8 @@ class TrussMetadata(SafeModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     user_config: UserConfigT
-    chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    user_env: Mapping[str, str]
 
 
 class ABCChainlet(abc.ABC):
@@ -551,6 +553,7 @@ class GenericRemoteException(Exception): ...
 
 class DeploymentOptions(SafeModelNonSerializable):
     chain_name: str
+    user_env: Mapping[str, str]
     only_generate_trusses: bool = False
 
 
@@ -566,6 +569,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
         publish: bool,
         promote: bool,
         only_generate_trusses: bool,
+        user_env: Mapping[str, str],
         remote: Optional[str] = None,
     ) -> "DeploymentOptionsBaseten":
         if not remote:
@@ -582,6 +586,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
             publish=publish,
             promote=promote,
             only_generate_trusses=only_generate_trusses,
+            user_env=user_env,
         )
 
 

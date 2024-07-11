@@ -7,13 +7,13 @@ from user_package.nested_package import io_types
 import truss_chains as chains
 
 IMAGE_BASETEN = chains.DockerImage(
-    base_image=chains.BasetenImage.PY311,
+    base_image=chains.BasetenImage.PY310,
     pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
 
 IMAGE_CUSTOM = chains.DockerImage(
     base_image=chains.CustomImage(
-        image="python:3.11-slim", python_executable_path="python3"
+        image="python:3.11-slim", python_executable_path="/usr/local/bin/python"
     ),
     pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
@@ -77,7 +77,9 @@ class ItestChain(chains.ChainletBase):
         data_generator: GenerateData = chains.depends(GenerateData),
         splitter=chains.depends(shared_chainlet.SplitTextFailOnce, retries=2),
         text_to_num: TextToNum = chains.depends(TextToNum),
+        context=chains.depends_context(),
     ) -> None:
+        self._context = context
         self._data_generator = data_generator
         self._data_splitter = splitter
         self._text_to_num = text_to_num
@@ -90,7 +92,7 @@ class ItestChain(chains.ChainletBase):
             parts=[], part_lens=[10]
         ),
         simple_default_arg: list[str] = ["a", "b"],
-    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str]]:
+    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str], str]:
         data = self._data_generator.run_remote(length)
         text_parts, number = await self._data_splitter.run_remote(
             io_types.SplitTextInput(
@@ -104,4 +106,11 @@ class ItestChain(chains.ChainletBase):
         value = 0
         for part in text_parts.parts:
             value += self._text_to_num.run_remote(part)
-        return value, data, number, pydantic_default_arg, simple_default_arg
+        return (
+            value,
+            data,
+            number,
+            pydantic_default_arg,
+            simple_default_arg,
+            self._context.user_env["test_env_key"],
+        )

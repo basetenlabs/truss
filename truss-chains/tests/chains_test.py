@@ -19,7 +19,8 @@ def test_chain():
         chain_root = root / "itest_chain" / "itest_chain.py"
         with framework.import_target(chain_root, "ItestChain") as entrypoint:
             options = definitions.DeploymentOptionsLocalDocker(
-                chain_name="integration-test"
+                chain_name="integration-test",
+                user_env={"test_env_key": "test_env_value"},
             )
             service = deploy.deploy_remotely(entrypoint, options)
 
@@ -38,6 +39,7 @@ def test_chain():
                 "part_lens": [10],
             },
             ["a", "b"],
+            "test_env_value",
         ]
         # Call with values for default arguments.
         response = requests.post(
@@ -63,6 +65,7 @@ def test_chain():
                 "part_lens": [3],
             },
             ["bola"],
+            "test_env_value",
         ]
 
         # Test with errors.

@@ -417,6 +417,12 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help="Name of the remote in .trussrc to push to.",
 )
+@click.option(
+    "--user_env",
+    required=False,
+    type=str,
+    help="Key-value-pairs (as JSON str) that can be used to control deployment-specific chainlet behavior.",
+)
 @log_level_option
 @error_handling
 def deploy(
@@ -427,6 +433,7 @@ def deploy(
     promote: bool,
     wait: bool,
     dryrun: bool,
+    user_env: Optional[str],
     remote: Optional[str],
 ) -> None:
     """
@@ -449,6 +456,7 @@ def deploy(
             promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
+            user_env=json.loads(user_env) if user_env else {},
             remote=remote,
         )
         service = chains_deploy.deploy_remotely(entrypoint_cls, options)
