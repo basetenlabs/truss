@@ -1,0 +1,15 @@
+build_commands: []
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: example-trace
+python_version: py39
+requirements:
+- truss @ git+https://github.com/basetenlabs/truss.git@nicolas/add-otlp-trace
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
