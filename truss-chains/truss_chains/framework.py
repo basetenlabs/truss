@@ -655,6 +655,67 @@ def _create_modified_init_for_local(
 
     return __init_local__
 
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
+    ConsoleSpanExporter,
+    BatchSpanProcessor,
+)
+from opentelemetry.trace.status import Status, StatusCode
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+# Set up the trace provider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv.resource import ResourceAttributes
+
+# Create a Resource object to set the service name
+resource = Resource(attributes={
+    ResourceAttributes.SERVICE_NAME: "Chains"
+})
+
+trace.set_tracer_provider(TracerProvider(resource=resource))
+
+jaeger_exporter = JaegerExporter(
+    agent_host_name="localhost",
+    agent_port=6831,
+)
+
+# Create a console exporter
+console_exporter = ConsoleSpanExporter()
+
+span_processor = BatchSpanProcessor(jaeger_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+from opentelemetry.trace import SpanKind
+# Get a tracer
+tracer = trace.get_tracer(__name__)
+
+def trace_wrapper(func, cls):
+    print(func.__name__, cls.__name__)
+    class_name = cls.__name__
+
+    async def wrapper(*args, **kwargs):
+        with tracer.start_as_current_span(cls.__name__,
+            kind=SpanKind.INTERNAL,
+            attributes={"service.name": class_name}) as span:
+            # Set service properly
+            span.set_attribute("service", class_name)
+            print(f"Entering {class_name}")
+            if inspect.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
+            print(f"Exiting {class_name}")
+            return result
+    return wrapper
+
+# def create_proxy(cls):
+#     class Proxy(cls):
+#         pass
+
+#     for name, method in cls.__dict__.items():
+#         if callable(method):
+#             setattr(Proxy, name, types.MethodType(trace_wrapper(method), Proxy))
+
+#     return Proxy
 
 @contextlib.contextmanager
 def run_local(
@@ -673,6 +734,7 @@ def run_local(
     stack_depth = len(inspect.stack())
     token = None
     for chainlet_descriptor in global_chainlet_registry.chainlet_descriptors:
+        print(chainlet_descriptor.chainlet_cls)
         original_inits[chainlet_descriptor.chainlet_cls] = (
             chainlet_descriptor.chainlet_cls.__init__
         )
@@ -685,10 +747,15 @@ def run_local(
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True
+        chainlet_descriptor.chainlet_cls.run_remote = trace_wrapper(chainlet_descriptor.chainlet_cls.run_remote, chainlet_descriptor.chainlet_cls)
+        chainlet_descriptor.chainlet_cls.tracer = tracer
+
+
     try:
         # Subtract 2 levels: `run_local` (this) and `__enter__` (from @contextmanager).
         token = run_local_stack_depth.set(stack_depth - 2)
-        yield
+        with tracer.start_as_current_span("run_local"):
+            yield
     finally:
         # Restore original classes to unpatched state.
         for chainlet_cls, original_init in original_inits.items():
