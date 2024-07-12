@@ -5,7 +5,7 @@ quality in this directory is non-existent.
 The general process is:
 1. Document as much as possible in the code, including usage examples, links
    etc.
-2. Auto-generate `generated-API-reference.mdx` with `poetry run python
+2. Auto-generate `generated-API-reference.mdx` with `poetry run python \
    docs/chains/doc_gen/generate_reference.py`. This applies the patch file and
    launches meld to resolve conflicts.
 4. Proofread `docs/chains/doc_gen/API-reference.mdx`.

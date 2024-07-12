@@ -55,6 +55,8 @@ SECTION_CONFIG = (
     [
         "truss_chains.RemoteConfig",
         "truss_chains.DockerImage",
+        "truss_chains.BasetenImage",
+        "truss_chains.CustomImage",
         "truss_chains.Compute",
         "truss_chains.Assets",
     ],

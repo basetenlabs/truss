@@ -574,6 +574,7 @@ def _create_modified_init_for_local(
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+    user_env: Mapping[str, str],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
@@ -618,6 +619,7 @@ def _create_modified_init_for_local(
                 secrets=secrets,
                 data_dir=data_dir,
                 chainlet_to_service=chainlet_to_service,
+                user_env=user_env,
             )
         else:
             logging.debug(
@@ -658,9 +660,10 @@ def _create_modified_init_for_local(
 
 @contextlib.contextmanager
 def run_local(
-    secrets: Optional[Mapping[str, str]] = None,
-    data_dir: Optional[pathlib.Path] = None,
-    chainlet_to_service: Optional[Mapping[str, definitions.ServiceDescriptor]] = None,
+    secrets: Mapping[str, str],
+    data_dir: Optional[pathlib.Path],
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+    user_env: Mapping[str, str],
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
     # TODO: support retries in local mode.
@@ -679,9 +682,10 @@ def run_local(
         init_for_local = _create_modified_init_for_local(
             chainlet_descriptor,
             type_to_instance,
-            secrets or {},
+            secrets,
             data_dir,
-            chainlet_to_service or {},
+            chainlet_to_service,
+            user_env,
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True

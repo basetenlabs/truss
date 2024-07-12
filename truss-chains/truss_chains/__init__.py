@@ -21,7 +21,9 @@ del pydantic, pydantic_major_version
 
 from truss_chains.definitions import (
     Assets,
+    BasetenImage,
     Compute,
+    CustomImage,
     DeploymentContext,
     DockerImage,
     RemoteConfig,
@@ -42,8 +44,10 @@ from truss_chains.utils import make_abs_path_here
 
 __all__ = [
     "Assets",
+    "BasetenImage",
     "ChainletBase",
     "Compute",
+    "CustomImage",
     "DeploymentContext",
     "DockerImage",
     "RPCOptions",

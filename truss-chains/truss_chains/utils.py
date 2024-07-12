@@ -35,8 +35,8 @@ def make_abs_path_here(file_path: str) -> definitions.AbsPath:
     You can now in ``root/sub_package/chainlet.py`` point to the requirements
     file like this::
 
-        shared = RelativePathToHere("../common_requirements.text")
-        specific = RelativePathToHere("chainlet_requirements.text")
+        shared = make_abs_path_here("../common_requirements.text")
+        specific = make_abs_path_here("chainlet_requirements.text")
 
 
     Warning:
