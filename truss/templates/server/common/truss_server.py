@@ -164,7 +164,7 @@ class BasetenEndpoints:
                 error_message = f"Invalid JSON payload: {str(e)}"
                 logging.error(error_message)
                 raise HTTPException(status_code=400, detail=error_message)
-        logging.info(f"Received request: YAHOU")
+        logging.info("Received request: YAHOU")
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         with tracer.start_as_current_span("predict"):
             print("HELLO HELLO")

@@ -5,7 +5,7 @@ model_metadata: {}
 model_name: example-trace
 python_version: py39
 requirements:
-- truss @ git+https://github.com/basetenlabs/truss.git@nicolas/add-otlp-trace
+- truss @ git+https://github.com/basetenlabs/truss.git@1584dca941d9f880f01c41d145ae3ae9328dc813
 resources:
   accelerator: null
   cpu: '1'
