@@ -707,16 +707,6 @@ def trace_wrapper(func, cls):
             return result
     return wrapper
 
-# def create_proxy(cls):
-#     class Proxy(cls):
-#         pass
-
-#     for name, method in cls.__dict__.items():
-#         if callable(method):
-#             setattr(Proxy, name, types.MethodType(trace_wrapper(method), Proxy))
-
-#     return Proxy
-
 @contextlib.contextmanager
 def run_local(
     secrets: Optional[Mapping[str, str]] = None,
