@@ -11,6 +11,29 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Union
 
+from opentelemetry import trace
+
+# Set up the trace provider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+)
+from opentelemetry.semconv.resource import ResourceAttributes
+
+resource = Resource(attributes={ResourceAttributes.SERVICE_NAME: "Chains"})
+
+trace.set_tracer_provider(TracerProvider(resource=resource))
+
+console_exporter = ConsoleSpanExporter()
+
+span_processor = BatchSpanProcessor(console_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+
+tracer = trace.get_tracer(__name__)
+
+
 import common.errors as errors
 import shared.util as utils
 import uvicorn
@@ -143,10 +166,11 @@ class BasetenEndpoints:
                 raise HTTPException(status_code=400, detail=error_message)
 
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Union[Dict, Generator] = await model(
-            body,
-            headers=utils.transform_keys(request.headers, lambda key: key.lower()),
-        )
+        with tracer.start_as_current_span("predict"):
+            response: Union[Dict, Generator] = await model(
+                body,
+                headers=utils.transform_keys(request.headers, lambda key: key.lower()),
+            )
 
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.

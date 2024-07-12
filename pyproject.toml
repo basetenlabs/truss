@@ -31,6 +31,9 @@ ruff = "^0.4.8" # Not a dev dep, needed for chains code gen.
 blake3 = "^0.3.3"
 boto3 = "^1.34.85"
 fastapi = ">=0.109.1"
+opentelemetry-api = ">=1.25.0"
+opentelemetry-sdk = ">=1.25.0"
+opentelemetry-exporter-jaeger-thrift = ">=1.21.0"
 google-cloud-storage = "2.10.0"
 httpcore = ">=1.0.5"  # Need min version because of https://github.com/encode/httpx/issues/1171.
 httpx = ">=0.24.1"
