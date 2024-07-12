@@ -560,6 +560,24 @@ class TrussConfig:
         config.validate()
         return config
 
+    def load_requirements_from_file(self, truss_dir: Path) -> List[str]:
+        if self.requirements_file:
+            requirements_path = truss_dir / self.requirements_file
+            try:
+                with open(requirements_path) as f:
+                    return [x for x in f.read().split("\n") if x]
+            except Exception as e:
+                logger.exception(
+                    f"failed to read requirements file: {self.requirements_file}"
+                )
+                raise e
+        return []
+
+    @staticmethod
+    def load_requirements_file_from_filepath(yaml_path: Path) -> List[str]:
+        config = TrussConfig.from_yaml(yaml_path)
+        return config.load_requirements_from_file(yaml_path.parent)
+
     @staticmethod
     def from_yaml(yaml_path: Path):
         with yaml_path.open() as yaml_file:
@@ -599,6 +617,11 @@ class TrussConfig:
             )
         for secret_name in self.secrets:
             validate_secret_name(secret_name)
+
+        if self.requirements and self.requirements_file:
+            raise ValueError(
+                "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {

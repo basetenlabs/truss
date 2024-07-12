@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Set
 import yaml
 from truss.constants import CONFIG_FILE
 from truss.patch.hash import file_content_hash_str
-from truss.patch.types import TrussSignature
+from truss.patch.types import ChangedPaths, TrussSignature
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
     reqs_by_name,
 )
@@ -71,6 +71,9 @@ def calc_truss_patch(
         ignore_patterns,
     )
 
+    new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
+    prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
+
     truss_spec = TrussSpec(truss_dir)
     model_module_path = _relative_to_root(truss_spec.model_module_dir)
     data_dir_path = _relative_to_root(truss_spec.data_dir)
@@ -117,6 +120,7 @@ def calc_truss_patch(
             logger.warn(f"Patching not supported for removing {path}")
             return None
 
+    has_calculated_config = False
     for path in changed_paths["added"] + changed_paths["updated"]:
         action = Action.ADD if path in changed_paths["added"] else Action.UPDATE
         if _strictly_under(path, [model_module_path]):
@@ -138,12 +142,16 @@ def calc_truss_patch(
                     ),
                 )
             )
-        elif path == CONFIG_FILE:
-            new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
-            prev_config = TrussConfig.from_dict(
-                yaml.safe_load(previous_truss_signature.config)
+        elif (
+            path == CONFIG_FILE or _is_requirements_file_change(path, new_config)
+        ) and not has_calculated_config:
+            # we could enter this code block from the requirements file's path
+            # or from the config file's path. In any case, we only want to calculate these
+            # patches once.
+            has_calculated_config = True
+            config_patches = calc_config_patches(
+                truss_dir, previous_truss_signature, prev_config, new_config
             )
-            config_patches = calc_config_patches(prev_config, new_config)
             if config_patches:
                 logger.info(f"Created patch to {action.value.lower()} config")
             patches.extend(config_patches)
@@ -168,11 +176,18 @@ def calc_truss_patch(
     return patches
 
 
+def _is_requirements_file_change(changed_path: str, new_config: TrussConfig):
+    return (
+        new_config.requirements_file
+        and Path(changed_path) == new_config.requirements_file
+    )
+
+
 def _calc_changed_paths(
     root: Path,
     previous_root_path_content_hashes: Dict[str, str],
     ignore_patterns: Optional[List[str]],
-) -> Dict[str, List[str]]:
+) -> ChangedPaths:
     """
     TODO(pankaj) add support for directory creation in patch
     """
@@ -216,7 +231,10 @@ def calc_unignored_paths(
 
 
 def calc_config_patches(
-    prev_config: TrussConfig, new_config: TrussConfig
+    truss_dir: Path,
+    prev_signature: TrussSignature,
+    prev_config: TrussConfig,
+    new_config: TrussConfig,
 ) -> List[Patch]:
     """Calculate patch based on changes to config.
 
@@ -225,11 +243,11 @@ def calc_config_patches(
     """
     try:
         config_patches = _calc_general_config_patches(prev_config, new_config)
-        python_requirement_patches = _calc_python_requirements_patches(
-            prev_config, new_config
+        python_requirements_patches = calc_requirements_patches(
+            truss_dir, prev_signature, prev_config, new_config
         )
         system_package_patches = _calc_system_packages_patches(prev_config, new_config)
-        return [*config_patches, *python_requirement_patches, *system_package_patches]
+        return [*config_patches, *python_requirements_patches, *system_package_patches]
     except Exception as e:
         logger.error(f"Failed to calculate config patch with exception: {e}")
         raise
@@ -318,17 +336,42 @@ def _calc_external_data_patches(
     return patches
 
 
+def calc_requirements_patches(
+    truss_dir: Path,
+    prev_signature: TrussSignature,
+    prev_config: TrussConfig,
+    new_config: TrussConfig,
+) -> List[Patch]:
+    """
+    requirements patches that are accounted for
+    - contents in the requirements file change
+    - requirements move from config file to requirements file
+    - requirements move from requirements file to config file
+    - requirement file changes (i.e. requirement.txt --> requirements.txt)
+    - requirements in the config file change
+
+    assumes that only one of requirements or requirements_file is present for a given config
+    """
+    prev_requirements = (
+        prev_config.requirements or prev_signature.requirements_file_requirements
+    )
+    new_requirements = (
+        new_config.requirements or new_config.load_requirements_from_file(truss_dir)
+    )
+    return _calc_python_requirements_patches(prev_requirements, new_requirements)
+
+
 def _calc_python_requirements_patches(
-    prev_config: TrussConfig, new_config: TrussConfig
+    prev_raw_reqs: List[str], new_raw_reqs: List[str]
 ) -> List[Patch]:
     """Calculate patch based on changes to python requirements.
 
     Empty list means no relevant differences found.
     """
     patches = []
-    prev_reqs = reqs_by_name(prev_config.requirements)
+    prev_reqs = reqs_by_name(prev_raw_reqs)
     prev_req_names = set(prev_reqs.keys())
-    new_reqs = reqs_by_name(new_config.requirements)
+    new_reqs = reqs_by_name(new_raw_reqs)
     new_req_names = set(new_reqs.keys())
     removed_reqs = prev_req_names.difference(new_req_names)
     for removed_req in removed_reqs:

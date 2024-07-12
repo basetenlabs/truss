@@ -774,7 +774,6 @@ class TrussHandle:
         if prev_sign_str is None:
             logger.info(f"Signature not found for truss for hash {prev_truss_hash}")
             return None
-
         prev_sign = TrussSignature.from_dict(json.loads(prev_sign_str))
         ignore_patterns = truss_ignore_patterns + self._spec.hash_ignore_patterns
         patch_ops = calc_truss_patch(self._truss_dir, prev_sign, ignore_patterns)

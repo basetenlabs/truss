@@ -399,3 +399,16 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
     assert (
         TrussConfig.from_dict(trtllm_config).to_dict(verbose=verbose) == trtllm_config
     ) == expect_equal
+
+
+def test_from_yaml_invalid_requirements_configuration():
+    invalid_requirements = {
+        "requirements_file": "requirements.txt",
+        "requirements": ["requests"],
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(invalid_requirements, yaml_file)
+
+        with pytest.raises(ValueError):
+            TrussConfig.from_yaml(yaml_path)
