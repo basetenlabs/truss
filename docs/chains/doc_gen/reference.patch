@@ -79,7 +79,7 @@
 +| `user_config` | *UserConfigT*                                                       | User-defined configuration for the chainlet. |
 +| `chainlet_to_service` | *Mapping[str,[ServiceDescriptor](#class-truss-chains-servicedescriptor)]* | A mapping from chainlet names to service descriptors. This is used create RPCs sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
 +| `secrets` | *Mapping[str,str]*                                            | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet. |
- | `user_env` | *Mapping[str,str]* | A mapping of string key-vale-pairs. These can be provided during the deploy command an customize the behavior of deployed chainlets. E.g. for differentiating between prod and dev version of the same chain. |
+ | `user_env` | *Mapping[str,str]* | These values can be providedto the deploy command and customize the behavior of deployed chainlets. E.g. for differentiating between prod and dev version of the same chain. |
 
 -#### chainlet_to_service *: Mapping[str, [ServiceDescriptor](#truss_chains.ServiceDescriptor)]*
 +#### chainlet_to_service *: Mapping[str, [ServiceDescriptor](#class-truss-chains-servicedescriptor)]*
@@ -210,7 +210,7 @@
 
 -| Name | Type                                                                                     | Description |
 -|------|------------------------------------------------------------------------------------------|-------------|
--| `base_image` | *[BasetenImage](#truss-chains-basetenimage) \| [CustomImage](#truss-chains-customimage)* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a baseten default image for a supported pythonversion (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). Specification by string is deprecated. |
+-| `base_image` | *[BasetenImage](#truss-chains-basetenimage) \| [CustomImage](#truss-chains-customimage)* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a baseten default image for a supported python version (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). Specification by string is deprecated. |
 -| `pip_requirements_file` | *AbsPath\|None*                                                                          | Path to a file containing pip requirements. The file content is naively concatenated with `pip_requirements`. |
 -| `pip_requirements` | *list[str]*                                                                              | A list of pip requirements to install.  The items are naively concatenated with the content of the `pip_requirements_file`. |
 -| `apt_requirements` | *list[str]*                                                                              | A list of apt requirements to install. |
@@ -230,7 +230,7 @@
 -#### pip_requirements_file *: AbsPath | None*
 +| Name | Type | Description |
 +|------|------|-------------|
-+| `base_image` |*Union[[BasetenImage](#truss-chains-basetenimage),[CustomImage](#truss-chains-customimage)]* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a baseten default image for a supported pythonversion (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). Specification by string is deprecated. |
++| `base_image` |*Union[[BasetenImage](#truss-chains-basetenimage),[CustomImage](#truss-chains-customimage)]* | The base image used by the chainlet. Other dependencies and assets are included as additional layers on top of that image. You can choose a baseten default image for a supported python version (e.g. `BasetenImage.PY311`), this will also include GPU drivers if needed, or provide a custom image (e.g. `CustomImage(image="python:3.11-slim")`). Specification by string is deprecated. |
 +| `pip_requirements_file` | *AbsPath\|None* | Path to a file containing pip requirements. The file content is naively concatenated with `pip_requirements`. |
 +| `pip_requirements` | *list[str]* | A list of pip requirements to install.  The items are naively concatenated with the content of the `pip_requirements_file`. |
 +| `apt_requirements` | *list[str]* | A list of apt requirements to install. |
@@ -258,7 +258,7 @@
 +| Name | Type | Description                                                                      |
 +|------|------|----------------------------------------------------------------------------------|
 +| `image` | *str* | Reference to image on dockerhub.                                                 |
-+| `python_executable_path` | *str\|None* | Absolute path to python executable (if deafult `python` is ambiguous).           |
++| `python_executable_path` | *str\|None* | Absolute path to python executable (if default `python` is ambiguous).           |
 +| `docker_auth` | *DockerAuthSettings\|None* | See [corresponding truss config](https://docs.baseten.co/truss-reference/config#base-image-docker-auth). |
 
  ### *class* `truss_chains.Compute`

@@ -10,7 +10,7 @@ from truss_chains import definitions, utils
 
 
 class BasetenSession:
-    """Helper to invoke predict method on baseten deployments."""
+    """Helper to invoke predict method on Baseten deployments."""
 
     def __init__(
         self,

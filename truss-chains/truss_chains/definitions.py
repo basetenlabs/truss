@@ -149,7 +149,7 @@ class DockerImage(SafeModelNonSerializable):
     Args:
         base_image: The base image used by the chainlet. Other dependencies and
           assets are included as additional layers on top of that image. You can choose
-          a baseten default image for a supported pythonversion (e.g.
+          a Baseten default image for a supported python version (e.g.
           ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
           provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
           Specification by string is deprecated.
@@ -382,8 +382,8 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
-        user_env: A mapping of string key-vale-pairs. These can be provided during
-          the deploy command an customize the behavior of deployed chainlets. E.g.
+        user_env: These values can be provided during
+          the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
     """
 
@@ -405,7 +405,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
             )
         error_msg = (
             "For using chains, it is required to setup a an API key with name "
-            f"`{BASETEN_API_SECRET_NAME}` on baseten to allow chain Chainlet to "
+            f"`{BASETEN_API_SECRET_NAME}` on Baseten to allow chain Chainlet to "
             "call other Chainlets. For local execution, secrets can be provided "
             "to `run_local`."
         )

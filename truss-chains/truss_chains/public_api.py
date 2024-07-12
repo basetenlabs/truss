@@ -130,8 +130,8 @@ def deploy_remotely(
           draft deployment otherwise)
         promote: Whether to promote the chain to be the production deployment (this
           implies publishing as well).
-        user_env: A mapping of string key-vale-pairs. These can be provided during
-          the deploy command an customize the behavior of deployed chainlets. E.g.
+        user_env: These values can be provided during
+          the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
         only_generate_trusses: Used for debugging purposes. If set to True, only the
           the underlying truss models for the chainlets are generated in
