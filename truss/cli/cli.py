@@ -417,6 +417,12 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     help="Name of the remote in .trussrc to push to.",
 )
+@click.option(
+    "--user_env",
+    required=False,
+    type=str,
+    help="Key-value-pairs (as JSON str) that can be used to control deployment-specific chainlet behavior.",
+)
 @log_level_option
 @error_handling
 def deploy(
@@ -427,6 +433,7 @@ def deploy(
     promote: bool,
     wait: bool,
     dryrun: bool,
+    user_env: Optional[str],
     remote: Optional[str],
 ) -> None:
     """
@@ -442,6 +449,19 @@ def deploy(
     from truss_chains import deploy as chains_deploy
     from truss_chains import framework
 
+    if user_env:
+        try:
+            user_env_parsed = json.loads(user_env)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Invalid JSON string for user_env: `{user_env}`.\n"
+                f"user_env must be a JSON dict with string values and string keys.\n"
+                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
+                f"Error: {e}"
+            )
+    else:
+        user_env_parsed = {}
+
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
         options = chains_def.DeploymentOptionsBaseten.create(
@@ -449,6 +469,7 @@ def deploy(
             promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
+            user_env=user_env_parsed,
             remote=remote,
         )
         service = chains_deploy.deploy_remotely(entrypoint_cls, options)

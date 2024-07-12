@@ -616,12 +616,31 @@ def _make_requirements(image: definitions.DockerImage) -> list[str]:
     return sorted(pip_requirements)
 
 
+def _inplace_fill_base_image(
+    image: definitions.DockerImage, mutable_truss_config: truss_config.TrussConfig
+) -> None:
+    if isinstance(image.base_image, definitions.BasetenImage):
+        mutable_truss_config.python_version = image.base_image.value
+    elif isinstance(image.base_image, definitions.CustomImage):
+        mutable_truss_config.base_image = truss_config.BaseImage(
+            image=image.base_image.image, docker_auth=image.base_image.docker_auth
+        )
+        if image.base_image.python_executable_path:
+            mutable_truss_config.base_image.python_executable_path = (
+                image.base_image.python_executable_path
+            )
+
+    elif isinstance(image.base_image, str):  # This options is deprecated.
+        mutable_truss_config.base_image = truss_config.BaseImage(image=image.base_image)
+
+
 def _make_truss_config(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
     user_config: definitions.UserConfigT,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
+    user_env: Mapping[str, str],
 ) -> truss_config.TrussConfig:
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
@@ -637,10 +656,8 @@ def _make_truss_config(
     # TODO: expose this setting directly.
     config.runtime.predict_concurrency = compute.predict_concurrency
     # Image.
-    image = chains_config.docker_image
-    config.base_image = truss_config.BaseImage(image=image.base_image)
-
-    pip_requirements = _make_requirements(image)
+    _inplace_fill_base_image(chains_config.docker_image, config)
+    pip_requirements = _make_requirements(chains_config.docker_image)
     # TODO: `pip_requirements` will add server requirements which give version
     #  conflicts. Check if that's still the case after relaxing versions.
     # config.requirements = pip_requirements
@@ -648,9 +665,9 @@ def _make_truss_config(
     pip_requirements_file_path.write_text("\n".join(pip_requirements))
     # Absolute paths don't work with remote build.
     config.requirements_file = _REQUIREMENTS_FILENAME
-    config.system_packages = image.apt_requirements
-    if image.external_package_dirs:
-        for ext_dir in image.external_package_dirs:
+    config.system_packages = chains_config.docker_image.apt_requirements
+    if chains_config.docker_image.external_package_dirs:
+        for ext_dir in chains_config.docker_image.external_package_dirs:
             config.external_package_dirs.append(ext_dir.abs_path)
     # Assets.
     assets = chains_config.get_asset_spec()
@@ -666,7 +683,9 @@ def _make_truss_config(
     config.external_data = truss_config.ExternalData(items=assets.external_data)
     # Metadata.
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
-        user_config=user_config, chainlet_to_service=chainlet_to_service
+        user_config=user_config,
+        chainlet_to_service=chainlet_to_service,
+        user_env=user_env,
     )
     config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
         chains_metadata.model_dump()
@@ -706,6 +725,7 @@ def gen_truss_chainlet(
         chainlet_descriptor.chainlet_cls.default_user_config,
         dep_services,
         chainlet_name,
+        options.user_env,
     )
     # TODO This assume all imports are absolute w.r.t chain root (or site-packages).
     _copy_python_source_files(

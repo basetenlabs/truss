@@ -30,7 +30,7 @@ Deploy the Phi model:
 3. Copy your deployed model URL (formatted like
    `https://model-<MODEL_ID>.api.baseten.co/production/predict`) and update
     `LLM_PREDICT_URL` in `rag_chain.py` with *your* URL.
-4. Create a baseten API key and make it available in your terminal it with
+4. Create a Baseten API key and make it available in your terminal it with
    `export BASETEN_API_KEY="your_api_key"` (either in each session or adding it
    to `.bashrc`).
 
