@@ -5,7 +5,7 @@ model_metadata: {}
 model_name: example-trace
 python_version: py39
 requirements:
-- truss @ git+https://github.com/basetenlabs/truss.git@ae2d150052a892a7a625681349a0df09e91a1627
+- truss @ git+https://github.com/basetenlabs/truss.git@4d70a3f08ab1e4768e7aa438b01db179ce96bd5c
 resources:
   accelerator: null
   cpu: '1'

@@ -168,6 +168,7 @@ class BasetenEndpoints:
         # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
         with tracer.start_as_current_span("predict"):
             logging.info("Starting predict")
+            return 
             response: Union[Dict, Generator] = await model(
                 body,
                 headers=utils.transform_keys(request.headers, lambda key: key.lower()),
