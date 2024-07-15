@@ -1,5 +1,6 @@
 # TODO: this file contains too much implementation -> restructure.
 import abc
+import enum
 import logging
 import pathlib
 import traceback
@@ -118,6 +119,24 @@ class AbsPath:
         return abs_path
 
 
+class BasetenImage(enum.Enum):
+    """Default images, curated by baseten, for different python versions. If a Chainlet
+    uses GPUs, drivers will be included in the image."""
+
+    # Enum values correspond to truss canonical python versions.
+    PY39 = "py39"
+    PY310 = "py310"
+    PY311 = "py311"
+
+
+class CustomImage(SafeModel):
+    """Configures the usage of a custom image hosted on dockerhub."""
+
+    image: str
+    python_executable_path: Optional[str] = None
+    docker_auth: Optional[truss_config.DockerAuthSettings] = None
+
+
 class DockerImage(SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
@@ -128,8 +147,12 @@ class DockerImage(SafeModelNonSerializable):
         modules and keep their requirement files right next their python source files.
 
     Args:
-        base_image: The base image to use for the chainlet. Default is
-          ``python:3.11-slim``.
+        base_image: The base image used by the chainlet. Other dependencies and
+          assets are included as additional layers on top of that image. You can choose
+          a Baseten default image for a supported python version (e.g.
+          ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
+          provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
+          Specification by string is deprecated.
         pip_requirements_file: Path to a file containing pip requirements. The file
           content is naively concatenated with ``pip_requirements``.
         pip_requirements: A list of pip requirements to install.  The items are
@@ -143,7 +166,8 @@ class DockerImage(SafeModelNonSerializable):
     """
 
     # TODO: this is not stable yet and might change or refer back to truss.
-    base_image: str = "python:3.11-slim"
+    # Image as str is deprecated.
+    base_image: Union[BasetenImage, CustomImage, str] = BasetenImage.PY311
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
@@ -358,12 +382,16 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
+        user_env: These values can be provided during
+          the deploy command and customize the behavior of deployed chainlets. E.g.
+          for differentiating between prod and dev version of the same chain.
     """
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT
-    chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
+    user_env: Mapping[str, str]
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
@@ -377,7 +405,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
             )
         error_msg = (
             "For using chains, it is required to setup a an API key with name "
-            f"`{BASETEN_API_SECRET_NAME}` on baseten to allow chain Chainlet to "
+            f"`{BASETEN_API_SECRET_NAME}` on Baseten to allow chain Chainlet to "
             "call other Chainlets. For local execution, secrets can be provided "
             "to `run_local`."
         )
@@ -396,7 +424,8 @@ class TrussMetadata(SafeModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     user_config: UserConfigT
-    chainlet_to_service: Mapping[str, ServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    user_env: Mapping[str, str]
 
 
 class ABCChainlet(abc.ABC):
@@ -531,6 +560,7 @@ class GenericRemoteException(Exception): ...
 
 class DeploymentOptions(SafeModelNonSerializable):
     chain_name: str
+    user_env: Mapping[str, str]
     only_generate_trusses: bool = False
 
 
@@ -546,6 +576,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
         publish: bool,
         promote: bool,
         only_generate_trusses: bool,
+        user_env: Mapping[str, str],
         remote: Optional[str] = None,
     ) -> "DeploymentOptionsBaseten":
         if not remote:
@@ -562,6 +593,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
             publish=publish,
             promote=promote,
             only_generate_trusses=only_generate_trusses,
+            user_env=user_env,
         )
 
 

@@ -6,13 +6,26 @@ from user_package.nested_package import io_types
 
 import truss_chains as chains
 
-IMAGE_COMMON = chains.DockerImage(
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt")
+IMAGE_BASETEN = chains.DockerImage(
+    base_image=chains.BasetenImage.PY310,
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+)
+
+IMAGE_CUSTOM = chains.DockerImage(
+    base_image=chains.CustomImage(
+        image="python:3.11-slim", python_executable_path="/usr/local/bin/python"
+    ),
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
+)
+
+IMAGE_STR = chains.DockerImage(
+    base_image="python:3.11-slim",
+    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
 
 
 class GenerateData(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_BASETEN)
 
     def run_remote(self, length: int) -> str:
         template = "erodfd"
@@ -25,7 +38,7 @@ class DummyUserConfig(pydantic.BaseModel):
 
 
 class TextReplicator(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
     default_user_config = DummyUserConfig(multiplier=2)
 
     def __init__(self, context=chains.depends_context()):
@@ -38,7 +51,7 @@ class TextReplicator(chains.ChainletBase):
 
 
 class TextToNum(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_STR)
 
     def __init__(
         self,
@@ -57,14 +70,16 @@ class TextToNum(chains.ChainletBase):
 
 @chains.mark_entrypoint
 class ItestChain(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_COMMON)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_BASETEN)
 
     def __init__(
         self,
         data_generator: GenerateData = chains.depends(GenerateData),
         splitter=chains.depends(shared_chainlet.SplitTextFailOnce, retries=2),
         text_to_num: TextToNum = chains.depends(TextToNum),
+        context=chains.depends_context(),
     ) -> None:
+        self._context = context
         self._data_generator = data_generator
         self._data_splitter = splitter
         self._text_to_num = text_to_num
@@ -77,7 +92,7 @@ class ItestChain(chains.ChainletBase):
             parts=[], part_lens=[10]
         ),
         simple_default_arg: list[str] = ["a", "b"],
-    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str]]:
+    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str], str]:
         data = self._data_generator.run_remote(length)
         text_parts, number = await self._data_splitter.run_remote(
             io_types.SplitTextInput(
@@ -91,4 +106,11 @@ class ItestChain(chains.ChainletBase):
         value = 0
         for part in text_parts.parts:
             value += self._text_to_num.run_remote(part)
-        return value, data, number, pydantic_default_arg, simple_default_arg
+        return (
+            value,
+            data,
+            number,
+            pydantic_default_arg,
+            simple_default_arg,
+            self._context.user_env["test_env_key"],
+        )

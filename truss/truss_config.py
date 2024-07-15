@@ -505,9 +505,9 @@ class TrussConfig:
     def canonical_python_version(self) -> str:
         return {
             "py311": "3.11",
+            "py310": "3.10",
             "py39": "3.9",
             "py38": "3.8",
-            "py37": "3.7",
         }[self.python_version]
 
     @staticmethod
@@ -617,6 +617,11 @@ class TrussConfig:
             )
         for secret_name in self.secrets:
             validate_secret_name(secret_name)
+
+        if self.requirements and self.requirements_file:
+            raise ValueError(
+                "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {
