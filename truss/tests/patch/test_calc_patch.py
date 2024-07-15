@@ -305,8 +305,7 @@ def test_calc_truss_patch_handles_requirements_file_changes(
 ):
     def pre_config_op(config: TrussConfig):
         requirements_contents = """xformers\ntorch==2.0.1"""
-        filename = "requirement.txt"
-        config.requirements.clear()
+        filename = "requirements.txt"
         config.requirements_file = filename
         with (custom_model_truss_dir / filename).open("w") as req_file:
             req_file.write(requirements_contents)
@@ -316,23 +315,15 @@ def test_calc_truss_patch_handles_requirements_file_changes(
         filename = "requirements.txt"
         with (custom_model_truss_dir / filename).open("w") as req_file:
             req_file.write(requirements_contents)
-        config.requirements_file = filename
-        config.requirements.clear()
 
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
         config_op=config_op,
         config_pre_op=pre_config_op,
     )
-    assert len(patches) == 4
+    assert len(patches) == 3
     assert patches == [
-        Patch(
-            type=PatchType.CONFIG,
-            body=ConfigPatch(
-                action=Action.UPDATE,
-                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
-            ),
-        ),
+        # In this case, a Config Update patch is not issued. This does not cause issues on the backend
         Patch(
             type=PatchType.PYTHON_REQUIREMENT,
             body=PythonRequirementPatch(

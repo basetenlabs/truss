@@ -88,7 +88,6 @@ def calc_truss_patch(
         """
         return _strictly_under(path, [data_dir_path])
 
-    print('looking for patches')
     patches = []
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
@@ -149,7 +148,6 @@ def calc_truss_patch(
             # we could enter this code block from the requirements file's path
             # or from the config file's path. In any case, we only want to calculate these
             # patches once.
-            print('calculating config patch')
             has_calculated_config = True
             config_patches = calc_config_patches(
                 truss_dir, previous_truss_signature, prev_config, new_config
@@ -360,9 +358,6 @@ def calc_requirements_patches(
     new_requirements = (
         new_config.requirements if not new_config.requirements_file else new_config.load_requirements_from_file(truss_dir)
     )
-    print('requirements details')
-    print(prev_requirements)
-    print(new_requirements)
     return _calc_python_requirements_patches(prev_requirements, new_requirements)
 
 
