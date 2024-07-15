@@ -177,9 +177,8 @@ def calc_truss_patch(
 
 
 def _is_requirements_file_change(changed_path: str, new_config: TrussConfig):
-    return (
+    return new_config.requirements_file and Path(changed_path) == Path(
         new_config.requirements_file
-        and Path(changed_path) == Path(new_config.requirements_file)
     )
 
 
@@ -353,10 +352,14 @@ def calc_requirements_patches(
     assumes that only one of requirements or requirements_file is present for a given config
     """
     prev_requirements = (
-        prev_config.requirements if not prev_config.requirements_file else prev_signature.requirements_file_requirements
+        prev_config.requirements
+        if not prev_config.requirements_file
+        else prev_signature.requirements_file_requirements
     )
     new_requirements = (
-        new_config.requirements if not new_config.requirements_file else new_config.load_requirements_from_file(truss_dir)
+        new_config.requirements
+        if not new_config.requirements_file
+        else new_config.load_requirements_from_file(truss_dir)
     )
     return _calc_python_requirements_patches(prev_requirements, new_requirements)
 
