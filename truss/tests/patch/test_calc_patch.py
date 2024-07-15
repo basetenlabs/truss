@@ -305,7 +305,7 @@ def test_calc_truss_patch_handles_requirements_file_changes(
 ):
     def pre_config_op(config: TrussConfig):
         requirements_contents = """xformers\ntorch==2.0.1"""
-        filename = "requirements.txt"
+        filename = "./requirements.txt"
         config.requirements_file = filename
         with (custom_model_truss_dir / filename).open("w") as req_file:
             req_file.write(requirements_contents)
