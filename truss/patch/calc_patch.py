@@ -143,7 +143,7 @@ def calc_truss_patch(
                 )
             )
         elif (
-            path == CONFIG_FILE or _is_requirements_file_change(path, new_config)
+            path == CONFIG_FILE or _changed_path_is_requirements_file(path, new_config)
         ) and not has_calculated_config:
             # we could enter this code block from the requirements file's path
             # or from the config file's path. In any case, we only want to calculate these
@@ -176,7 +176,11 @@ def calc_truss_patch(
     return patches
 
 
-def _is_requirements_file_change(changed_path: str, new_config: TrussConfig):
+def _changed_path_is_requirements_file(changed_path: str, new_config: TrussConfig):
+    """
+    _changed_path_is_requirements_file determines if `changed_path` is the same path
+    as the requirements file on a new configuration.
+    """
     return new_config.requirements_file and Path(changed_path) == Path(
         new_config.requirements_file
     )

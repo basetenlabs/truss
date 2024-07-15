@@ -348,6 +348,61 @@ def test_calc_truss_patch_handles_requirements_file_changes(
     ]
 
 
+def test_calc_truss_patch_handles_requirements_file_changes_and_config_changes(
+    custom_model_truss_dir: Path,
+):
+    def pre_config_op(config: TrussConfig):
+        requirements_contents = """xformers\ntorch==2.0.1"""
+        filename = "./requirements.txt"
+        config.requirements_file = filename
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+
+    def config_op(config: TrussConfig):
+        requirements_contents = """requests\ntorch==2.3.1"""
+        filename = "requirement.txt"
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+        config.requirements_file = filename
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_op=config_op,
+        config_pre_op=pre_config_op,
+    )
+    assert len(patches) == 4
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.REMOVE,
+                requirement="xformers",
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.ADD,
+                requirement="requests",
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE,
+                requirement="torch==2.3.1",
+            ),
+        ),
+    ]
+
+
 def test_calc_truss_patch_handles_requirements_file_removal(
     custom_model_truss_dir: Path,
 ):
@@ -361,7 +416,8 @@ def test_calc_truss_patch_handles_requirements_file_removal(
         config.requirements.clear()
 
     def config_op(config: TrussConfig):
-        config.requirements.append(requirements_contents)
+        requirements_contents = ["xformers", "requests"]
+        config.requirements.extend(requirements_contents)
         config.requirements_file = ""
         os.remove(custom_model_truss_dir / filename)
 
@@ -370,13 +426,20 @@ def test_calc_truss_patch_handles_requirements_file_removal(
         config_op=config_op,
         config_pre_op=pre_config_op,
     )
-    assert len(patches) == 1
+    assert len(patches) == 2
     assert patches == [
         Patch(
             type=PatchType.CONFIG,
             body=ConfigPatch(
                 action=Action.UPDATE,
                 config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.ADD,
+                requirement="requests",
             ),
         ),
     ]
