@@ -143,7 +143,7 @@ def calc_truss_patch(
                 )
             )
         elif (
-            path == CONFIG_FILE or _is_requirements_file_change(path, new_config)
+            path == CONFIG_FILE or _changed_path_is_requirements_file(path, new_config)
         ) and not has_calculated_config:
             # we could enter this code block from the requirements file's path
             # or from the config file's path. In any case, we only want to calculate these
@@ -176,10 +176,13 @@ def calc_truss_patch(
     return patches
 
 
-def _is_requirements_file_change(changed_path: str, new_config: TrussConfig):
-    return (
+def _changed_path_is_requirements_file(changed_path: str, new_config: TrussConfig):
+    """
+    _changed_path_is_requirements_file determines if `changed_path` is the same path
+    as the requirements file on a new configuration.
+    """
+    return new_config.requirements_file and Path(changed_path) == Path(
         new_config.requirements_file
-        and Path(changed_path) == new_config.requirements_file
     )
 
 
@@ -353,10 +356,14 @@ def calc_requirements_patches(
     assumes that only one of requirements or requirements_file is present for a given config
     """
     prev_requirements = (
-        prev_config.requirements or prev_signature.requirements_file_requirements
+        prev_config.requirements
+        if not prev_config.requirements_file
+        else prev_signature.requirements_file_requirements
     )
     new_requirements = (
-        new_config.requirements or new_config.load_requirements_from_file(truss_dir)
+        new_config.requirements
+        if not new_config.requirements_file
+        else new_config.load_requirements_from_file(truss_dir)
     )
     return _calc_python_requirements_patches(prev_requirements, new_requirements)
 
