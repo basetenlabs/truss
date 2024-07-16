@@ -6,6 +6,7 @@ import time
 import data_types
 import helpers
 import httpx
+import whisper_chainlet_batching
 
 import truss_chains as chains
 
@@ -13,30 +14,6 @@ IMAGE = chains.DockerImage(
     apt_requirements=["ffmpeg"],
     pip_requirements=["google-auth", "google-cloud-bigquery"],
 )
-
-
-# Deploy the Whisper model with `truss chains deploy whisper_chainlet.py`:
-# And insert the predict URL here. You can get it from the CLI output or
-# the status page, e.g. "https://model-6wgeygoq.api.baseten.co/production/predict"
-
-WHISPER_PREDICT_URL = ""
-
-if not WHISPER_PREDICT_URL:
-    raise ValueError("Please insert the predict URL for the Whisper model.")
-
-
-class DeployedWhisper(chains.StubBase):
-    """Transcribes b64_encoded wave snippets to text - see `whisper_chainlet.py`.
-
-    Treat the whisper model like an external third party tool."""
-
-    async def run_remote(
-        self, whisper_input: data_types.WhisperInput
-    ) -> data_types.WhisperResult:
-        resp = await self._remote.predict_async(
-            json_payload={"whisper_input": whisper_input.model_dump()},
-        )
-        return data_types.WhisperResult.parse_obj(resp)
 
 
 class MacroChunkWorker(chains.ChainletBase):
@@ -49,17 +26,13 @@ class MacroChunkWorker(chains.ChainletBase):
             cpu_count=_cpu_count, memory="16G", predict_concurrency=_cpu_count * 3
         ),
     )
-    _whisper: DeployedWhisper
+    _whisper: whisper_chainlet_batching.WhisperModel
 
     def __init__(
         self,
-        context: chains.DeploymentContext = chains.depends_context(),
+        whisper=chains.depends(whisper_chainlet_batching.WhisperModel, retries=2),
     ) -> None:
-        self._whisper = DeployedWhisper.from_url(
-            WHISPER_PREDICT_URL,
-            context,
-            options=chains.RPCOptions(retries=2),
-        )
+        self._whisper = whisper
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
     async def run_remote(
@@ -84,16 +57,17 @@ class MacroChunkWorker(chains.ChainletBase):
         whisper_results = await helpers.gather(tasks)
         segments: list[data_types.Segment] = []
         whisper_result: data_types.WhisperResult
+        language = None
         for whisper_result, micro_chunk in zip(whisper_results, micro_chunks):
-            segments.extend(
-                helpers.convert_whisper_segments(whisper_result, micro_chunk)
-            )
+            language = whisper_result.language
+            segments.extend(helpers.convert_segments(whisper_result, micro_chunk))
 
         logging.debug(f"Chunk [{macro_chunk.macro_chunk:03}]: Complete.")
         t1 = time.time()
         return data_types.SegmentList(
             segments=segments,
             chunk_info=macro_chunk.copy(update={"processing_duration": t1 - t0}),
+            language=language,
         )
 
 
@@ -104,7 +78,6 @@ class Transcribe(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=IMAGE,
         compute=chains.Compute(cpu_count=8, memory="16G", predict_concurrency=128),
-        assets=chains.Assets(secret_keys=["dummy_webhook_key"]),
     )
     _context: chains.DeploymentContext
     _macro_chunk_worker: MacroChunkWorker
@@ -113,7 +86,7 @@ class Transcribe(chains.ChainletBase):
     def __init__(
         self,
         macro_chunk_worker: MacroChunkWorker = chains.depends(
-            MacroChunkWorker, retries=3
+            MacroChunkWorker, retries=2
         ),
         context: chains.DeploymentContext = chains.depends_context(),
     ) -> None:
@@ -126,7 +99,7 @@ class Transcribe(chains.ChainletBase):
         self, media_url: str, params: data_types.TranscribeParams
     ) -> data_types.TranscribeOutput:
         t0 = time.time()
-        await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
+        # await helpers.assert_media_supports_range_downloads(self._async_http, media_url)
         duration_secs = await helpers.query_source_length_secs(media_url)
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
         # TODO: use silence-aware time chunking.
@@ -160,21 +133,28 @@ class Transcribe(chains.ChainletBase):
 
 
 if __name__ == "__main__":
-    import os
-
     url_ = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+    url_ = "https://ocw.mit.edu/courses/8-323-relativistic-quantum-field-theory-i-spring-2023/ocw_8323_lecture10_2023mar08_v2_360p_16_9.mp4"
     params_ = data_types.TranscribeParams(micro_chunk_size_sec=25)
 
     json_input = {"media_url": url_, "params": params_.model_dump()}
 
     print(f"Example JSON input:\n{json.dumps(json_input)}")
 
-    with chains.run_local(
-        secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]}
-    ):
-        transcribe_job = Transcribe()
+    # with chains.run_local(
+    #     secrets={"baseten_chain_api_key": os.environ["BASETEN_API_KEY"]}
+    # ):
+    #     transcribe_job = Transcribe()
+    #
+    #     result_ = asyncio.get_event_loop().run_until_complete(
+    #         transcribe_job.run_remote(url_, params_)
+    #     )
+    #     print(result_.model_dump_json(indent=4))
 
-        result_ = asyncio.get_event_loop().run_until_complete(
-            transcribe_job.run_remote(url_, params_)
-        )
-        print(result_.model_dump_json(indent=4))
+    # CHAIN_URL = "https://model-nwxlyezw.api.baseten.co/deployment/qkp42ew/predict"
+    # resp = requests.post(
+    #     CHAIN_URL,
+    #     headers={"Authorization": f"Api-Key {os.environ['BASETEN_API_KEY']}"},
+    #     json=json_input,
+    # )
+    # print(resp.json())

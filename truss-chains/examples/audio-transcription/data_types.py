@@ -33,20 +33,11 @@ class TranscribeParams(pydantic.BaseModel):
     )
 
 
-class _BaseSegment(pydantic.BaseModel):
+class Segment(pydantic.BaseModel):
     # Common to internal whisper and external segment.
     start_time_sec: float
     end_time_sec: float
     text: str
-
-
-class Segment(_BaseSegment):
-    language: str
-    language_code: str = pydantic.Field(
-        ...,
-        description="IETF language tag, e.g. 'en', see. "
-        "https://en.wikipedia.org/wiki/IETF_language_tag.",
-    )
 
 
 class TranscribeOutput(pydantic.BaseModel):
@@ -59,23 +50,23 @@ class TranscribeOutput(pydantic.BaseModel):
 # Internal Models ######################################################################
 
 
-class WhisperInput(pydantic.BaseModel):
+class WhisperParams(pydantic.BaseModel):
+    prompt: Optional[str] = None
+    language: Optional[str] = None
+    prefix: Optional[str] = None
+    task: str = "transcribe"
+    max_new_tokens: int = 512
+    raise_when_trimmed: bool = False
+
+
+class WhisperInput(WhisperParams):
     audio_b64: str
 
 
-class WhisperSegment(_BaseSegment):
-    pass
-
-
 class WhisperResult(pydantic.BaseModel):
-    segments: list[WhisperSegment]
+    segments: list[Segment]
     # Note: `language` is only `None` if `segments` are empty.
     language: Optional[str]
-    language_code: Optional[str] = pydantic.Field(
-        ...,
-        description="IETF language tag, e.g. 'en', see. "
-        "https://en.wikipedia.org/wiki/IETF_language_tag.",
-    )
 
 
 class ChunkInfo(pydantic.BaseModel):
@@ -92,6 +83,7 @@ class ChunkInfo(pydantic.BaseModel):
 class SegmentList(pydantic.BaseModel):
     segments: list[Segment]
     chunk_info: ChunkInfo
+    language: Optional[str]
 
 
 class WavInfo(pydantic.BaseModel):

@@ -388,16 +388,16 @@ async def wav_chunker(
         wav_block_buffer = wav_block_buffer[split_index:]
 
 
-def convert_whisper_segments(
+def convert_segments(
     whisper_result: data_types.WhisperResult, chunk_info: data_types.ChunkInfo
 ) -> Iterable[data_types.Segment]:
     for whisper_segment in whisper_result.segments:
         segment = data_types.Segment(
             start_time_sec=chunk_info.start_time_sec + whisper_segment.start_time_sec,
             end_time_sec=chunk_info.start_time_sec + whisper_segment.end_time_sec,
-            text=whisper_segment.text,
-            language=whisper_result.language,
-            language_code=whisper_result.language_code,
+            text=whisper_segment.text.replace("||", "")
+            .replace("|", " ")
+            .replace("  ", " "),  # TODO: fix regex in model.
         )
         yield segment
 
