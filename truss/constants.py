@@ -128,6 +128,8 @@ BRITON_BASE_TRTLLM_REQUIREMENTS = [
 ]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
+    "tensorrt==10.0.1",
+    "tensorrt-cu12==10.0.1",
     "tensorrt_llm==0.11.0.dev2024061800",
     "hf_transfer",
     "janus",
@@ -140,8 +142,6 @@ AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "torchaudio",
     "async-batcher>=0.2.0",
     "pydantic>=2.7.1",
-    "tensorrt==10.0.1",
-    "tensorrt-cu12==10.0.1",
     "tensorrt-cu12-bindings==10.0.1",
     "tensorrt-cu12-libs==10.0.1",
 ]
