@@ -1,7 +1,7 @@
 import io
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import tensorrt_llm
 import torch
@@ -21,6 +21,7 @@ from whisper_trt.types import (
     WhisperResult,
 )
 from whisper_trt.utils import log_mel_spectrogram
+import numpy as np
 
 SEGMENTS_PATTERN = re.compile(r"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>")
 LANG_CODE_PATTERN = re.compile(r"<\|([a-z]{2})\|>")
