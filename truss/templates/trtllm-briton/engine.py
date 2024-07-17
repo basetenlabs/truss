@@ -6,12 +6,13 @@ import threading
 import time
 from itertools import count
 
-import briton_pb2
-import briton_pb2_grpc
 import grpc
 from transformers import AutoTokenizer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
+
+from .briton_pb2 import InferenceRequest
+from .briton_pb2_grpc import BritonStub
 
 BRITON_PORT = 50051
 
@@ -51,8 +52,9 @@ def briton_monitor(briton_process):
         time.sleep(1)
 
 
-class Model:
+class Engine:
     def __init__(self, **kwargs):
+        self._loaded = False
         self._model = None
         self._config = kwargs["config"]
         self._data_dir = kwargs["data_dir"]
@@ -87,6 +89,9 @@ class Model:
             pass
 
     def load(self):
+        if self._loaded:
+            return
+
         self._tokenizer = AutoTokenizer.from_pretrained(
             self._tokenizer_repository, token=self._hf_token
         )
@@ -126,6 +131,7 @@ class Model:
             target=briton_monitor, args=(self._briton_process,)
         )
         briton_monitor_thread.start()
+        self._loaded = True
 
     async def predict(self, model_input):
         """
@@ -142,7 +148,7 @@ class Model:
         """
         if self._stub is None:
             channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
-            self._stub = briton_pb2_grpc.BritonStub(channel)
+            self._stub = BritonStub(channel)
 
         prompt = model_input.get("prompt", None)
         if prompt is None and "messages" in model_input:
@@ -150,7 +156,7 @@ class Model:
             prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
 
         request_id = int(str(os.getpid()) + str(next(self._request_id_counter)))
-        request = briton_pb2.InferenceRequest(
+        request = InferenceRequest(
             request_id=request_id,
             input_text=prompt,
         )

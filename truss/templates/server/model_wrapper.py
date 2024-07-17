@@ -149,29 +149,43 @@ class ModelWrapper:
             bundled_packages_path = Path("/packages")
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
-        model_module_name = str(
-            Path(self._config["model_class_filename"]).with_suffix("")
-        )
 
-        module = importlib.import_module(
-            f"{self._config['model_module_dir']}.{model_module_name}"
-        )
-        model_class = getattr(module, self._config["model_class_name"])
-        model_class_signature = inspect.signature(model_class)
-        model_init_params = {}
-        if _signature_accepts_keyword_arg(model_class_signature, "config"):
-            model_init_params["config"] = self._config
-        if _signature_accepts_keyword_arg(model_class_signature, "data_dir"):
-            model_init_params["data_dir"] = data_dir
-        if _signature_accepts_keyword_arg(model_class_signature, "secrets"):
-            model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
-        if _signature_accepts_keyword_arg(model_class_signature, "lazy_data_resolver"):
-            model_init_params["lazy_data_resolver"] = LazyDataResolver(data_dir).fetch()
+        secrets_resolver = SecretsResolver.get_secrets(self._config)
+        lazy_data_resolver = LazyDataResolver(data_dir).fetch()
+
         apply_patches(
             self._config.get("apply_library_patches", True),
             self._config["requirements"],
         )
-        self._model = model_class(**model_init_params)
+
+        extensions = _load_extensions(
+            self._config, data_dir, secrets_resolver, lazy_data_resolver
+        )
+
+        model_module_path = Path(self._config["model_class_filename"])
+        if model_module_path.exists():
+            model_module_name = str(model_module_path.with_suffix(""))
+            module = importlib.import_module(
+                f"{self._config['model_module_dir']}.{model_module_name}"
+            )
+            model_class = getattr(module, self._config["model_class_name"])
+            model_init_params = _prepare_init_args(
+                model_class,
+                self._config,
+                data_dir,
+                secrets_resolver,
+                lazy_data_resolver,
+            )
+            for ext_name, ext in extensions.items():
+                model_init_params.update({ext_name: ext.model_args()})
+            self._model = model_class(**model_init_params)
+        elif "trt_llm" in extensions:
+            # trt_llm extension allows model.py to be absent. It supplies its
+            # own model class in that case.
+            trt_llm_extension = extensions["trt_llm"]
+            self._model = trt_llm_extension.model_override()
+        else:
+            raise RuntimeError("No module class file found")
 
         self.set_truss_schema()
 
@@ -454,3 +468,46 @@ def _intercept_exceptions_async(
             _handle_exception(e)
 
     return inner
+
+
+def _load_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
+    def load_extension(extension_name: str):
+        extension_module = importlib.import_module(
+            f"extensions.{extension_name}.extension"
+        )
+        extension_class = getattr(extension_module, "TrussExtension")
+        init_args = _prepare_init_args(
+            extension_class,
+            config=config,
+            data_dir=data_dir,
+            secrets_resolver=secrets_resolver,
+            lazy_data_resolver=lazy_data_resolver,
+        )
+        return extension_class(**init_args)
+
+    extensions = {}
+    extensions_path = Path(__file__) / "extensions"
+    if extensions_path.exists():
+        for extension_path in extensions_path.iterdir():
+            if extension_path.is_dir():
+                extension_name = extension_path.name
+                extension = load_extension(extension_name)
+                extensions[extension_name] = extension
+    return extensions
+
+
+def _prepare_init_args(klass, config, data_dir, secrets_resolver, lazy_data_resolver):
+    """Prepares init params based on signature.
+
+    Used to pass params to extension and model class' __init__ function.
+    """
+    signature = inspect.signature(klass)
+    model_init_params = {}
+    if _signature_accepts_keyword_arg(signature, "config"):
+        model_init_params["config"] = config
+    if _signature_accepts_keyword_arg(signature, "data_dir"):
+        model_init_params["data_dir"] = data_dir
+    if _signature_accepts_keyword_arg(signature, "secrets"):
+        model_init_params["secrets"] = secrets_resolver
+    if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
+        model_init_params["lazy_data_resolver"] = lazy_data_resolver

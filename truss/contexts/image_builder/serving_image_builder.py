@@ -353,7 +353,9 @@ class ServingImageBuilder(ImageBuilder):
                     AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[]
                 )
             else:
-                copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+                copy_into_build_dir(
+                    TRTLLM_TRUSS_DIR, BUILD_SERVER_DIR_NAME + "/extensions/trtllm"
+                )
 
             tensor_parallel_count = (
                 config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]

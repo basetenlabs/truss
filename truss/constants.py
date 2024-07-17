@@ -109,12 +109,6 @@ BRITON_TRTLLM_BASE_IMAGE = (
     "baseten/briton-server:2a115dae84f13daaa54727534daa837c534eceb4"
 )
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
-BASE_TRTLLM_REQUIREMENTS = [
-    "tritonclient[all]==2.42.0",
-    "transformers==4.40.2",
-    "jinja2==3.1.3",
-    "truss==0.9.12",
-]
 BRITON_BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
