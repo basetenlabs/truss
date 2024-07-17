@@ -161,6 +161,8 @@ class ModelWrapper:
         extensions = _load_extensions(
             self._config, data_dir, secrets_resolver, lazy_data_resolver
         )
+        for extension in extensions:
+            extension.load()
 
         model_module_path = Path(self._config["model_class_filename"])
         if model_module_path.exists():
@@ -176,8 +178,10 @@ class ModelWrapper:
                 secrets_resolver,
                 lazy_data_resolver,
             )
+            signature = inspect.signature(model_class)
             for ext_name, ext in extensions.items():
-                model_init_params.update({ext_name: ext.model_args()})
+                if _signature_accepts_keyword_arg(signature, ext_name):
+                    model_init_params[ext_name] = ext.model_args()
             self._model = model_class(**model_init_params)
         elif "trt_llm" in extensions:
             # trt_llm extension allows model.py to be absent. It supplies its
