@@ -2,7 +2,7 @@ from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
-from constants import TENSORRT_LLM_MODEL_REPOSITORY_PATH
+from trtllm.constants import TENSORRT_LLM_MODEL_REPOSITORY_PATH
 
 
 def move_all_files(src: Path, dest: Path) -> None:

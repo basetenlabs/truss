@@ -8,10 +8,10 @@ from typing import AsyncGenerator, Optional
 
 import tritonclient.grpc.aio as grpcclient
 import tritonclient.http as httpclient
-from schema import ModelInput
-from utils import download_engine, prepare_model_repository
+from trtllm.schema import ModelInput
+from trtllm.utils import download_engine, prepare_model_repository
 
-from constants import (
+from trtllm.constants import (
     ENTRYPOINT_MODEL_NAME,
     GRPC_SERVICE_PORT,
     TENSORRT_LLM_MODEL_REPOSITORY_PATH,

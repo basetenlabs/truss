@@ -167,6 +167,20 @@ class ModelWrapper:
             model_init_params["secrets"] = SecretsResolver.get_secrets(self._config)
         if _signature_accepts_keyword_arg(model_class_signature, "lazy_data_resolver"):
             model_init_params["lazy_data_resolver"] = LazyDataResolver(data_dir).fetch()
+        
+        if _signature_accepts_keyword_arg(model_class_signature, "engine"):
+            if "trt_llm" in self._config:
+                if "build" in self._config["trt_llm"]:
+                    from trtllm.trt_llm_engine_resolver import TRTLLMEngine
+                    engine = TRTLLMEngine(
+                        engine_dir=data_dir,
+                        config=self._config,
+                        secrets=SecretsResolver.get_secrets(self._config),
+                        lazy_data_resolver=LazyDataResolver(data_dir).fetch(),
+                    )
+                    engine.load()
+                    model_init_params["engine"] = engine
+        
         apply_patches(
             self._config.get("apply_library_patches", True),
             self._config["requirements"],

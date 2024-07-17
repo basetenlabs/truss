@@ -1,13 +1,13 @@
 import os
 from itertools import count
 
-from schema import ModelInput
+from trtllm.schema import ModelInput
 from transformers import AutoTokenizer
-from triton_client import TritonClient, TritonServer
+from trtllm.triton_client import TritonClient, TritonServer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
-from constants import (
+from trtllm.constants import (
     GRPC_SERVICE_PORT,
     HF_AUTH_KEY_CONSTANT,
     HTTP_SERVICE_PORT,
@@ -18,9 +18,9 @@ DEFAULT_MAX_TOKENS = 500
 DEFAULT_MAX_NEW_TOKENS = 500
 
 
-class Model:
-    def __init__(self, data_dir, config, secrets, lazy_data_resolver):
-        self._data_dir = data_dir
+class TRTLLMEngine:
+    def __init__(self, engine_dir, config, secrets, lazy_data_resolver):
+        self._data_dir = engine_dir
         self._config = config
         self._secrets = secrets
         self._request_id_counter = count(start=1)
@@ -29,8 +29,15 @@ class Model:
         self.triton_server = None
         self.tokenizer = None
         self.uses_openai_api = None
+    
+    @property
+    def is_loaded(self):
+        return self.triton_client is not None
 
     def load(self):
+        if self.is_loaded:
+            print("TRTLLMEngine is already initialized")
+            return
         trtllm_config = self._config.get("trt_llm", {})
         self.uses_openai_api = OPENAI_COMPATIBLE_TAG in self._config.get(
             "model_metadata", {}
@@ -76,7 +83,7 @@ class Model:
             grpc_service_port=GRPC_SERVICE_PORT,
         )
 
-    async def predict(self, model_input):
+    async def generate(self, model_input):
         if "messages" not in model_input and "prompt" not in model_input:
             raise ValueError("Prompt or messages must be provided")
 
