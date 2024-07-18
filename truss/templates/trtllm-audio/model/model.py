@@ -4,7 +4,7 @@ import requests
 import sigint_patch
 
 # We patch TensorRT-LLM v0.11 to fix an issue where they set a SIGINT handler
-# which breaks because we do not use the main thread. 
+# which breaks because we do not use the main thread.
 sigint_patch.patch()
 from whisper_trt import WhisperModel
 from whisper_trt.types import WhisperResult

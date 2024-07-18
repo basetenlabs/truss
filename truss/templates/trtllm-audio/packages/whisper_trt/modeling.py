@@ -93,8 +93,12 @@ class WhisperDecoding:
             hidden_size=self.decoder_config["hidden_size"],
             vocab_size=self.decoder_config["vocab_size"],
             num_layers=self.decoder_config["num_hidden_layers"],
-            gpt_attention_plugin=self.decoder_config["plugin_config"]["gpt_attention_plugin"],
-            remove_input_padding=self.decoder_config["plugin_config"]["remove_input_padding"],
+            gpt_attention_plugin=self.decoder_config["plugin_config"][
+                "gpt_attention_plugin"
+            ],
+            remove_input_padding=self.decoder_config["plugin_config"][
+                "remove_input_padding"
+            ],
             cross_attention=True,
             has_position_embedding=self.decoder_config["has_position_embedding"],
             has_token_type_embedding=False,
