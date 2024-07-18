@@ -490,7 +490,7 @@ def _load_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
         return extension_class(**init_args)
 
     extensions = {}
-    extensions_path = Path(__file__) / "extensions"
+    extensions_path = Path(__file__).parent / "extensions"
     if extensions_path.exists():
         for extension_path in extensions_path.iterdir():
             if extension_path.is_dir():

@@ -75,3 +75,5 @@ yarn.lock
 
 # Truss-Chains generated code.
 **/.chains_generated/**
+
+.hypothesis

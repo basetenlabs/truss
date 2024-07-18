@@ -1,5 +1,6 @@
 import ast
 
+from truss.errors import ValidationError
 from truss.truss_spec import TrussSpec
 
 
@@ -27,9 +28,14 @@ def _has_class_init_arg(source: str, class_name: str, arg_name: str):
                         if arg.arg == arg_name:
                             arg_found = True
                     if not arg_found:
-                        raise RuntimeError("")
+                        raise ValidationError(
+                            (
+                                "Model class `__init__` method is required to have `trt_llm` as an argument. Please add that argument.\n  "
+                                "Or if you want to use the automatically generated model class then remove the `model.py` file."
+                            )
+                        )
 
     if not model_class_init_found:
-        raise RuntimeError(
+        raise ValidationError(
             "Model class does not have an `__init__` method; when using `trt_llm` it is required"
         )
