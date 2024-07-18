@@ -347,8 +347,13 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     table.add_column("Chainlet", min_width=20)
     table.add_column("Logs URL")
     statuses = []
-    # After reversing, the first one is the entrypoint (per order in service).
-    for i, chainlet in enumerate(reversed(service.get_info())):
+    status_iterable = service.get_info()
+    # Organize status_iterable s.t. entrypoint is first.
+    entrypoint = next(x for x in status_iterable if x.is_entrypoint)
+    sorted_chainlets = sorted(
+        (x for x in status_iterable if not x.is_entrypoint), key=lambda x: x.name
+    )
+    for i, chainlet in enumerate([entrypoint] + sorted_chainlets):
         displayable_status = get_displayable_status(chainlet.status)
         if displayable_status == ACTIVE_STATUS:
             spinner_name = "active"
@@ -368,7 +373,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
             display_name = f"{chainlet.name} (internal)"
 
         table.add_row(spinner, display_name, _format_link(chainlet.logs_url))
-        if chainlet.is_entrypoint:  # Add section divider after entrypoint.
+        # Add section divider after entrypoint, entrypoint must be first.
+        if chainlet.is_entrypoint:
             table.add_section()
         statuses.append(displayable_status)
     return table, statuses
@@ -384,24 +390,21 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
 )
 @click.option(
-    "--publish",
+    "--publish/--no-publish",
     type=bool,
     default=True,
-    is_flag=True,
     help="Create chainlets as published deployments.",
 )
 @click.option(
-    "--promote",
+    "--promote/--no-promote",
     type=bool,
     default=False,
-    is_flag=True,
     help="Replace production chainlets with newly deployed chainlets.",
 )
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
     type=bool,
     default=True,
-    is_flag=True,
     help="Wait until all chainlets are ready (or deployment failed).",
 )
 @click.option(
