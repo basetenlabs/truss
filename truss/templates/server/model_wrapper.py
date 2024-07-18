@@ -479,7 +479,7 @@ def _load_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
         extension_module = importlib.import_module(
             f"extensions.{extension_name}.extension"
         )
-        extension_class = getattr(extension_module, "TrussExtension")
+        extension_class = getattr(extension_module, "Extension")
         init_args = _prepare_init_args(
             extension_class,
             config=config,

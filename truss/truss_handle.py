@@ -59,6 +59,7 @@ from truss.templates.shared.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
+from truss.trt_llm.validation import validate
 from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails, PatchRequest
@@ -87,6 +88,7 @@ class TrussHandle:
 
     def validate(self):
         self._validate_external_packages()
+        self._validate_extensions()
 
     @property
     def spec(self) -> TrussSpec:
@@ -965,6 +967,11 @@ class TrussHandle:
                         f"Truss referes to external package at "
                         f"{path.resolve()} but that path does not exist."
                     )
+
+    def _validate_extensions(self):
+        # Only one extenstion right now.
+        if self._spec.config.trt_llm is not None:
+            validate(self._spec)
 
 
 def _prediction_flow(model, request: Dict):

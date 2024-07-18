@@ -354,7 +354,7 @@ class ServingImageBuilder(ImageBuilder):
                 )
             else:
                 copy_into_build_dir(
-                    TRTLLM_TRUSS_DIR, BUILD_SERVER_DIR_NAME + "/extensions/trtllm"
+                    TRTLLM_TRUSS_DIR, BUILD_SERVER_DIR_NAME + "/extensions/trt_llm"
                 )
 
             tensor_parallel_count = (

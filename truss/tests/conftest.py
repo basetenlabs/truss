@@ -207,6 +207,18 @@ class Model:
             return file.read()
 """
 
+CUSTOM_MODEL_TRT_LLM_CODE = """
+class Model:
+    def __init__(trt_llm, *args, **kwargs):
+        pass
+
+    def load(self):
+        pass
+
+    def predict(self, model_input):
+        return [1 for i in model_input]
+"""
+
 
 @pytest.fixture
 def pytorch_model_init_args():
@@ -392,7 +404,7 @@ def custom_model_trt_llm(tmp_path):
     yield _custom_model_from_code(
         tmp_path,
         "my_trt_llm_model",
-        CUSTOM_MODEL_CODE,
+        CUSTOM_MODEL_TRT_LLM_CODE,
         handle_ops=modify_handle,
     )
 
