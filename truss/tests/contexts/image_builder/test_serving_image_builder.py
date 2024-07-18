@@ -310,16 +310,15 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         image_builder.prepare_image_build_dir(tmp_path)
         build_th = TrussHandle(tmp_path)
 
-        # Check that all files were copied
-        for dirpath, dirnames, filenames in os.walk(TRTLLM_TRUSS_DIR):
-            rel_path = os.path.relpath(dirpath, TRTLLM_TRUSS_DIR)
-            for filename in filenames:
-                src_file = os.path.join(dirpath, filename)
-                dest_file = os.path.join(tmp_path, rel_path, filename)
-                assert os.path.exists(dest_file), f"{dest_file} was not copied"
-                assert filecmp.cmp(
-                    src_file, dest_file, shallow=False
-                ), f"{src_file} and {dest_file} are not the same"
+        # Check that all src files were copied
+        _assert_copied(
+            TRTLLM_TRUSS_DIR / "src",
+            tmp_path / "server" / "extensions" / "trt_llm",
+        )
+        _assert_copied(
+            TRTLLM_TRUSS_DIR / "packages",
+            tmp_path / "packages",
+        )
 
         assert (
             build_th.spec.config.runtime.predict_concurrency
@@ -332,3 +331,15 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         )
         assert BASE_TRTLLM_REQUIREMENTS == build_th.spec.config.requirements
         assert OPENAI_COMPATIBLE_TAG in build_th.spec.config.model_metadata["tags"]
+
+
+def _assert_copied(src_path: str, dest_path: str):
+    for dirpath, dirnames, filenames in os.walk(src_path):
+        rel_path = os.path.relpath(dirpath, src_path)
+        for filename in filenames:
+            src_file = os.path.join(dirpath, filename)
+            dest_file = os.path.join(dest_path, rel_path, filename)
+            assert os.path.exists(dest_file), f"{dest_file} was not copied"
+            assert filecmp.cmp(
+                src_file, dest_file, shallow=False
+            ), f"{src_file} and {dest_file} are not the same"

@@ -18,8 +18,7 @@ from truss.constants import (
     AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
     AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
-    BRITON_BASE_TRTLLM_REQUIREMENTS,
-    BRITON_TRTLLM_BASE_IMAGE,
+    BASE_TRTLLM_REQUIREMENTS,
     CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
@@ -32,6 +31,7 @@ from truss.constants import (
     SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
+    TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
@@ -377,11 +377,11 @@ class ServingImageBuilder(ImageBuilder):
 
             if not is_audio_model:
                 config.base_image = BaseImage(
-                    image=BRITON_TRTLLM_BASE_IMAGE,
+                    image=TRTLLM_BASE_IMAGE,
                     python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
                 )
 
-                config.requirements.extend(BRITON_BASE_TRTLLM_REQUIREMENTS)
+                config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
                 config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
             else:
