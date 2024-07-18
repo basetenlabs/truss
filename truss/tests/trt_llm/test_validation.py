@@ -84,3 +84,7 @@ class Model:
     new_spec = TrussSpec(custom_model_trt_llm)
     with pytest.raises(RuntimeError):
         validate(new_spec)
+
+    # If model class file is removed, it should be ok
+    spec.model_class_filepath.unlink()
+    validate(new_spec)
