@@ -91,7 +91,7 @@ async def test_model_wrapper_streaming_timeout(app_path):
 
 
 @pytest.mark.asyncio
-async def test_trt_llm_truss_load_extension(trt_llm_truss_container_fs, helpers):
+async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
     with helpers.sys_paths(app_path, packages_path):
@@ -101,13 +101,13 @@ async def test_trt_llm_truss_load_extension(trt_llm_truss_container_fs, helpers)
         mock_extension = Mock()
         mock_extension.load = Mock()
         with patch.object(
-            model_wrapper_module, "_load_extension", return_value=mock_extension
-        ) as mock_load_extension:
+            model_wrapper_module, "_init_extension", return_value=mock_extension
+        ) as mock_init_extension:
             model_wrapper = model_wrapper_class(config)
             model_wrapper.load()
             called_with_specific_extension = any(
                 call_args[0][0] == "trt_llm"
-                for call_args in mock_load_extension.call_args_list
+                for call_args in mock_init_extension.call_args_list
             )
             assert (
                 called_with_specific_extension
@@ -136,7 +136,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
         mock_extension.load = Mock()
         mock_extension.model_args = Mock(return_value={"engine": mock_engine})
         with patch.object(
-            model_wrapper_module, "_load_extension", return_value=mock_extension
+            model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
             model_wrapper = model_wrapper_class(config)
             model_wrapper.load()
@@ -171,7 +171,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
         mock_extension.load = Mock()
         mock_extension.model_override = Mock(return_value=mock_engine)
         with patch.object(
-            model_wrapper_module, "_load_extension", return_value=mock_extension
+            model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
             model_wrapper = model_wrapper_class(config)
             model_wrapper.load()

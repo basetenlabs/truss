@@ -353,10 +353,19 @@ class ServingImageBuilder(ImageBuilder):
                     AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[]
                 )
             else:
+                # trt_llm is treated as an extension at model run time.
                 copy_into_build_dir(
                     TRTLLM_TRUSS_DIR / "src",
                     BUILD_SERVER_DIR_NAME + "/extensions/trt_llm",
                 )
+                # TODO(pankaj) Do this differently. This is not ideal, user
+                # supplied code in bundled packages can conflict with those from
+                # the trtllm extension. We don't want to put this in the build
+                # directory directly either because of chances of conflict there
+                # as well and the noise it can create there. We need to find a
+                # new place that's made available in model's pythonpath. This is
+                # a bigger lift and feels overkill right now. Worth revisiting
+                # if we come across cases of actual conflicts.
                 copy_into_build_dir(
                     TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
                     DEFAULT_BUNDLED_PACKAGES_DIR,

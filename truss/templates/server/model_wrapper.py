@@ -158,7 +158,7 @@ class ModelWrapper:
             self._config["requirements"],
         )
 
-        extensions = _load_extensions(
+        extensions = _init_extensions(
             self._config, data_dir, secrets_resolver, lazy_data_resolver
         )
         for extension in extensions.values():
@@ -478,14 +478,14 @@ def _intercept_exceptions_async(
     return inner
 
 
-def _load_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
+def _init_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
     extensions = {}
     extensions_path = Path(__file__).parent / "extensions"
     if extensions_path.exists():
         for extension_path in extensions_path.iterdir():
             if extension_path.is_dir():
                 extension_name = extension_path.name
-                extension = _load_extension(
+                extension = _init_extension(
                     extension_name,
                     config,
                     data_dir,
@@ -496,7 +496,7 @@ def _load_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
     return extensions
 
 
-def _load_extension(
+def _init_extension(
     extension_name: str,
     config,
     data_dir,
