@@ -164,8 +164,12 @@ class ModelWrapper:
         for extension in extensions.values():
             extension.load()
 
-        model_module_path = Path(self._config["model_class_filename"])
-        if model_module_path.exists():
+        model_class_file_path = (
+            Path(self._config["model_module_dir"])
+            / self._config["model_class_filename"]
+        )
+        if model_class_file_path.exists():
+            model_module_path = Path(self._config["model_class_filename"])
             model_module_name = str(model_module_path.with_suffix(""))
             module = importlib.import_module(
                 f"{self._config['model_module_dir']}.{model_module_name}"
