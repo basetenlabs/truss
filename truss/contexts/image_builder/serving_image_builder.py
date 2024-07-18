@@ -51,7 +51,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import BaseImage, TrussConfig
+from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -354,7 +354,12 @@ class ServingImageBuilder(ImageBuilder):
                 )
             else:
                 copy_into_build_dir(
-                    TRTLLM_TRUSS_DIR, BUILD_SERVER_DIR_NAME + "/extensions/trt_llm"
+                    TRTLLM_TRUSS_DIR / "src",
+                    BUILD_SERVER_DIR_NAME + "/extensions/trt_llm",
+                )
+                copy_into_build_dir(
+                    TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
+                    DEFAULT_BUNDLED_PACKAGES_DIR,
                 )
 
             tensor_parallel_count = (

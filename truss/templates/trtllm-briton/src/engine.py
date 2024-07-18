@@ -6,13 +6,12 @@ import threading
 import time
 from itertools import count
 
+import briton_pb2
+import briton_pb2_grpc
 import grpc
 from transformers import AutoTokenizer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
-
-from .briton_pb2 import InferenceRequest
-from .briton_pb2_grpc import BritonStub
 
 BRITON_PORT = 50051
 
@@ -148,7 +147,7 @@ class Engine:
         """
         if self._stub is None:
             channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
-            self._stub = BritonStub(channel)
+            self._stub = briton_pb2_grpc.BritonStub(channel)
 
         prompt = model_input.get("prompt", None)
         if prompt is None and "messages" in model_input:
@@ -156,7 +155,7 @@ class Engine:
             prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
 
         request_id = int(str(os.getpid()) + str(next(self._request_id_counter)))
-        request = InferenceRequest(
+        request = briton_pb2.InferenceRequest(
             request_id=request_id,
             input_text=prompt,
         )

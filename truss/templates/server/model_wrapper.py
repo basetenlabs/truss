@@ -161,7 +161,7 @@ class ModelWrapper:
         extensions = _load_extensions(
             self._config, data_dir, secrets_resolver, lazy_data_resolver
         )
-        for extension in extensions:
+        for extension in extensions.values():
             extension.load()
 
         model_module_path = Path(self._config["model_class_filename"])
@@ -515,3 +515,4 @@ def _prepare_init_args(klass, config, data_dir, secrets_resolver, lazy_data_reso
         model_init_params["secrets"] = secrets_resolver
     if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
         model_init_params["lazy_data_resolver"] = lazy_data_resolver
+    return model_init_params
