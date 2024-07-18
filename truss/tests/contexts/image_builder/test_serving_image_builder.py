@@ -310,7 +310,7 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
         image_builder.prepare_image_build_dir(tmp_path)
         build_th = TrussHandle(tmp_path)
 
-        # Check that all src files were copied
+        # Check that all files were copied
         _assert_copied(
             TRTLLM_TRUSS_DIR / "src",
             tmp_path / "server" / "extensions" / "trt_llm",

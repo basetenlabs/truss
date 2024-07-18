@@ -555,6 +555,14 @@ def truss_container_fs(tmp_path):
 
 
 @pytest.fixture
+def trt_llm_truss_container_fs(tmp_path):
+    ROOT = Path(__file__).parent.parent.parent.resolve()
+    return _build_truss_fs(
+        ROOT / "truss" / "test_data" / "test_trt_llm_truss", tmp_path
+    )
+
+
+@pytest.fixture
 def truss_control_container_fs(tmp_path):
     ROOT = Path(__file__).parent.parent.parent.resolve()
     test_truss_dir = ROOT / "truss" / "test_data" / "test_truss"
@@ -663,6 +671,18 @@ class Helpers:
             yield
         finally:
             sys.path.pop()
+
+    @staticmethod
+    @contextlib.contextmanager
+    def sys_paths(*paths: Path):
+        num_paths = len(paths)
+        try:
+            for path in paths:
+                sys.path.append(str(path))
+            yield
+        finally:
+            for _ in range(num_paths):
+                sys.path.pop()
 
     @staticmethod
     @contextlib.contextmanager

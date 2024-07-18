@@ -479,29 +479,40 @@ def _intercept_exceptions_async(
 
 
 def _load_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
-    def load_extension(extension_name: str):
-        extension_module = importlib.import_module(
-            f"extensions.{extension_name}.extension"
-        )
-        extension_class = getattr(extension_module, "Extension")
-        init_args = _prepare_init_args(
-            extension_class,
-            config=config,
-            data_dir=data_dir,
-            secrets_resolver=secrets_resolver,
-            lazy_data_resolver=lazy_data_resolver,
-        )
-        return extension_class(**init_args)
-
     extensions = {}
     extensions_path = Path(__file__).parent / "extensions"
     if extensions_path.exists():
         for extension_path in extensions_path.iterdir():
             if extension_path.is_dir():
                 extension_name = extension_path.name
-                extension = load_extension(extension_name)
+                extension = _load_extension(
+                    extension_name,
+                    config,
+                    data_dir,
+                    secrets_resolver,
+                    lazy_data_resolver,
+                )
                 extensions[extension_name] = extension
     return extensions
+
+
+def _load_extension(
+    extension_name: str,
+    config,
+    data_dir,
+    secrets_resolver,
+    lazy_data_resolver,
+):
+    extension_module = importlib.import_module(f"extensions.{extension_name}.extension")
+    extension_class = getattr(extension_module, "Extension")
+    init_args = _prepare_init_args(
+        extension_class,
+        config=config,
+        data_dir=data_dir,
+        secrets_resolver=secrets_resolver,
+        lazy_data_resolver=lazy_data_resolver,
+    )
+    return extension_class(**init_args)
 
 
 def _prepare_init_args(klass, config, data_dir, secrets_resolver, lazy_data_resolver):

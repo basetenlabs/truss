@@ -1,8 +1,11 @@
 import importlib
+import os
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import yaml
@@ -85,3 +88,64 @@ async def test_model_wrapper_streaming_timeout(app_path):
     model_wrapper = model_wraper_class(config)
     model_wrapper.load()
     assert model_wrapper._config.get("runtime").get("streaming_read_timeout") == 5
+
+
+@pytest.mark.asyncio
+async def test_trt_llm_truss_load_extension(trt_llm_truss_container_fs, helpers):
+    app_path = trt_llm_truss_container_fs / "app"
+    packages_path = trt_llm_truss_container_fs / "packages"
+    with helpers.sys_paths(app_path, packages_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+        mock_extension = Mock()
+        mock_extension.load = Mock()
+        with patch.object(
+            model_wrapper_module, "_load_extension", return_value=mock_extension
+        ) as mock_load_extension:
+            model_wrapper = model_wrapper_class(config)
+            model_wrapper.load()
+            called_with_specific_extension = any(
+                call_args[0][0] == "trt_llm"
+                for call_args in mock_load_extension.call_args_list
+            )
+            assert (
+                called_with_specific_extension
+            ), "Expected extension_name was not called"
+
+
+@pytest.mark.asyncio
+async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
+    app_path = trt_llm_truss_container_fs / "app"
+    packages_path = trt_llm_truss_container_fs / "packages"
+    with helpers.sys_paths(app_path, packages_path), _change_directory(app_path):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        expected_predict_response = "test"
+        mock_predict = AsyncMock(return_value=expected_predict_response)
+        mock_engine = Mock(predict=mock_predict)
+        mock_extension = Mock()
+        mock_extension.load = Mock()
+        mock_extension.model_args = Mock(return_value={"engine": mock_engine})
+        with patch.object(
+            model_wrapper_module, "_load_extension", return_value=mock_extension
+        ):
+            model_wrapper = model_wrapper_class(config)
+            model_wrapper.load()
+            resp = await model_wrapper.predict({})
+            mock_extension.load.assert_called()
+            mock_extension.model_args.assert_called()
+            mock_predict.assert_called()
+            assert resp == expected_predict_response
+
+
+@contextmanager
+def _change_directory(new_directory: Path):
+    original_directory = os.getcwd()
+    os.chdir(str(new_directory))
+    try:
+        yield
+    finally:
+        os.chdir(original_directory)
