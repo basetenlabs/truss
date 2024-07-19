@@ -63,6 +63,7 @@ from truss.util.path import (
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
+BUILD_SERVER_EXTENSIONS_PATH = "extensions"
 
 CONFIG_FILE = "config.yaml"
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
@@ -356,7 +357,7 @@ class ServingImageBuilder(ImageBuilder):
                 # trt_llm is treated as an extension at model run time.
                 copy_into_build_dir(
                     TRTLLM_TRUSS_DIR / "src",
-                    BUILD_SERVER_DIR_NAME + "/extensions/trt_llm",
+                    f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
                 )
                 # TODO(pankaj) Do this differently. This is not ideal, user
                 # supplied code in bundled packages can conflict with those from

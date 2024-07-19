@@ -40,6 +40,9 @@ MODEL_BASENAME = "model"
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
 STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS = 60
 DEFAULT_PREDICT_CONCURRENCY = 1
+EXTENSIONS_DIR_NAME = "extensions"
+EXTENSION_CLASS_NAME = "Extension"
+EXTENSION_FILE_NAME = "extension"
 
 
 class DeferredSemaphoreManager:
@@ -480,7 +483,7 @@ def _intercept_exceptions_async(
 
 def _init_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
     extensions = {}
-    extensions_path = Path(__file__).parent / "extensions"
+    extensions_path = Path(__file__).parent / EXTENSIONS_DIR_NAME
     if extensions_path.exists():
         for extension_path in extensions_path.iterdir():
             if extension_path.is_dir():
@@ -503,8 +506,10 @@ def _init_extension(
     secrets_resolver,
     lazy_data_resolver,
 ):
-    extension_module = importlib.import_module(f"extensions.{extension_name}.extension")
-    extension_class = getattr(extension_module, "Extension")
+    extension_module = importlib.import_module(
+        f"{EXTENSIONS_DIR_NAME}.{extension_name}.{EXTENSION_FILE_NAME}"
+    )
+    extension_class = getattr(extension_module, EXTENSION_CLASS_NAME)
     init_args = _prepare_init_args(
         extension_class,
         config=config,

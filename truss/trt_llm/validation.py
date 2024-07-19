@@ -12,10 +12,10 @@ def validate(truss_spec: TrussSpec):
         return
 
     source = model_class_filepath.read_text()
-    _has_class_init_arg(source, truss_spec.model_class_name, "trt_llm")
+    _verify_has_class_init_arg(source, truss_spec.model_class_name, "trt_llm")
 
 
-def _has_class_init_arg(source: str, class_name: str, arg_name: str):
+def _verify_has_class_init_arg(source: str, class_name: str, arg_name: str):
     tree = ast.parse(source)
     model_class_init_found = False
     for node in tree.body:

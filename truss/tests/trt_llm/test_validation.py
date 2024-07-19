@@ -1,5 +1,6 @@
 import pytest
-from truss.trt_llm.validation import _has_class_init_arg, validate
+from truss.errors import ValidationError
+from truss.trt_llm.validation import _verify_has_class_init_arg, validate
 from truss.truss_spec import TrussSpec
 
 
@@ -64,10 +65,10 @@ class Model:
 )
 def test_has_class_init_arg(src, expected_arg, class_name, expected_to_raise):
     if expected_to_raise:
-        with pytest.raises(RuntimeError):
-            _has_class_init_arg(src, class_name, expected_arg)
+        with pytest.raises(ValidationError):
+            _verify_has_class_init_arg(src, class_name, expected_arg)
     else:
-        _has_class_init_arg(src, class_name, expected_arg)
+        _verify_has_class_init_arg(src, class_name, expected_arg)
 
 
 def test_validate(custom_model_trt_llm):
@@ -82,7 +83,7 @@ class Model:
 """
     spec.model_class_filepath.write_text(override_model_code_invalid)
     new_spec = TrussSpec(custom_model_trt_llm)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValidationError):
         validate(new_spec)
 
     # If model class file is removed, it should be ok
