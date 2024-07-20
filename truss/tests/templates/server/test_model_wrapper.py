@@ -94,7 +94,7 @@ async def test_model_wrapper_streaming_timeout(app_path):
 async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
-    with helpers.sys_paths(app_path, packages_path):
+    with _clear_model_load_modules(), helpers.sys_paths(app_path, packages_path):
         model_wrapper_module = importlib.import_module("model_wrapper")
         model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
         config = yaml.safe_load((app_path / "config.yaml").read_text())
@@ -118,7 +118,9 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
 async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
-    with helpers.sys_paths(app_path, packages_path), _change_directory(app_path):
+    with _clear_model_load_modules(), helpers.sys_paths(
+        app_path, packages_path
+    ), _change_directory(app_path):
         model_wrapper_module = importlib.import_module("model_wrapper")
         model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
         config = yaml.safe_load((app_path / "config.yaml").read_text())
@@ -153,7 +155,9 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
     (app_path / "model" / "model.py").unlink()
 
     packages_path = trt_llm_truss_container_fs / "packages"
-    with helpers.sys_paths(app_path, packages_path), _change_directory(app_path):
+    with _clear_model_load_modules(), helpers.sys_paths(
+        app_path, packages_path
+    ), _change_directory(app_path):
         model_wrapper_module = importlib.import_module("model_wrapper")
         model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
         config = yaml.safe_load((app_path / "config.yaml").read_text())
@@ -190,3 +194,27 @@ def _change_directory(new_directory: Path):
         yield
     finally:
         os.chdir(original_directory)
+
+
+@contextmanager
+def _clear_model_load_modules():
+    """Clear dangling references to model and model_wrapper modules
+
+    We do this before to clear any debris from before, and after to clean up
+    after self. This is meant for cases where we simulate running a truss model
+    in process, where these modules are loaded dyamically.
+    """
+    # These are left over by TrussModuleLoader used by local prediction tests.
+    # TODO(pankaj) Find a way for TrussModuleLoader to clean up after itself.
+    _remove_model_load_sys_modules()
+    yield
+    _remove_model_load_sys_modules()
+
+
+def _remove_model_load_sys_modules():
+    if "model" in sys.modules:
+        del sys.modules["model"]
+    if "model.model" in sys.modules:
+        del sys.modules["model.model"]
+    if "model_wrapper" in sys.modules:
+        del sys.modules["model_wrapper"]
