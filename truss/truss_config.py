@@ -623,7 +623,8 @@ class TrussConfig:
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
         if (
-            self.trt_llm.build
+            self.trt_llm
+            and self.trt_llm.build
             and self.trt_llm.build.quantization_type
             is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
             and self.resources.accelerator.accelerator is Accelerator.A100
