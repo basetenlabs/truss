@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from truss.config.trt_llm import TRTLLMConfiguration
+from truss.config.trt_llm import TRTLLMConfiguration, TrussTRTLLMQuantizationType
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.errors import ValidationError
 from truss.types import ModelFrameworkType
@@ -621,6 +621,15 @@ class TrussConfig:
         if self.requirements and self.requirements_file:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
+            )
+        if (
+            self.trt_llm.build
+            and self.trt_llm.build.quantization_type
+            is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
+            and self.resources.accelerator.accelerator is Accelerator.A100
+        ):
+            raise ValueError(
+                "Weight only int8 quantization on A100 accelerators is not currently supported"
             )
 
 
