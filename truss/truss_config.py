@@ -600,6 +600,27 @@ class TrussConfig:
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())
 
+    def _validate_quant_format_and_accelerator_for_trt_llm_builder(self) -> None:
+        if self.trt_llm and self.trt_llm.build:
+            if (
+                self.trt_llm.build.quantization_type
+                is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
+                and self.resources.accelerator.accelerator is Accelerator.A100
+            ):
+                raise ValueError(
+                    "Weight only int8 quantization on A100 accelerators is not currently supported"
+                )
+            elif self.trt_llm.build.quantization_type in [
+                TrussTRTLLMQuantizationType.FP8,
+                TrussTRTLLMQuantizationType.FP8_KV,
+            ] and self.resources.accelerator.accelerator not in [
+                Accelerator.H100,
+                Accelerator.H100_40GB,
+            ]:
+                raise ValueError(
+                    "FP8 quantization is only supported on H100 accelerators"
+                )
+
     def validate(self):
         if self.python_version not in VALID_PYTHON_VERSIONS:
             raise ValueError(
@@ -622,25 +643,7 @@ class TrussConfig:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
-        if self.trt_llm and self.trt_llm.build:
-            if (
-                self.trt_llm.build.quantization_type
-                is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
-                and self.resources.accelerator.accelerator is Accelerator.A100
-            ):
-                raise ValueError(
-                    "Weight only int8 quantization on A100 accelerators is not currently supported"
-                )
-            elif self.trt_llm.build.quantization_type in [
-                TrussTRTLLMQuantizationType.FP8,
-                TrussTRTLLMQuantizationType.FP8_KV,
-            ] and self.resources.accelerator.accelerator not in [
-                Accelerator.H100,
-                Accelerator.H100_40GB,
-            ]:
-                raise ValueError(
-                    "FP8 quantization is only supported on H100 accelerators"
-                )
+        self._validate_quant_format_and_accelerator_for_trt_llm_builder()
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {
