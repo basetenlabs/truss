@@ -1,10 +1,12 @@
 import tempfile
+from contextlib import nullcontext as does_not_raise
 from pathlib import Path
 from typing import Any, Dict
 
 import pytest
 import yaml
 
+from truss.config.trt_llm import TrussTRTLLMQuantizationType
 from truss.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
@@ -19,6 +21,7 @@ from truss.truss_config import (
     Resources,
     TrussConfig,
 )
+from truss.truss_handle import TrussHandle
 from truss.types import ModelFrameworkType
 
 
@@ -412,3 +415,32 @@ def test_from_yaml_invalid_requirements_configuration():
 
         with pytest.raises(ValueError):
             TrussConfig.from_yaml(yaml_path)
+
+
+@pytest.mark.parametrize(
+    "quant_format, accelerator, expectation",
+    [
+        (TrussTRTLLMQuantizationType.NO_QUANT, Accelerator.A100, does_not_raise()),
+        (TrussTRTLLMQuantizationType.FP8, Accelerator.H100, does_not_raise()),
+        (TrussTRTLLMQuantizationType.FP8_KV, Accelerator.H100_40GB, does_not_raise()),
+        (
+            TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8,
+            Accelerator.A100,
+            pytest.raises(ValueError),
+        ),
+        (TrussTRTLLMQuantizationType.FP8, Accelerator.A100, pytest.raises(ValueError)),
+        (
+            TrussTRTLLMQuantizationType.FP8_KV,
+            Accelerator.A100,
+            pytest.raises(ValueError),
+        ),
+    ],
+)
+def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
+    quant_format, accelerator, expectation, custom_model_trt_llm
+):
+    config = TrussHandle(custom_model_trt_llm).spec.config
+    config.trt_llm.build.quantization_type = quant_format
+    config.resources.accelerator.accelerator = accelerator
+    with expectation:
+        config.clone()
