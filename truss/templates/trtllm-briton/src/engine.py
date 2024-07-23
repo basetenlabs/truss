@@ -51,8 +51,9 @@ def briton_monitor(briton_process):
         time.sleep(1)
 
 
-class Model:
+class Engine:
     def __init__(self, **kwargs):
+        self._loaded = False
         self._model = None
         self._config = kwargs["config"]
         self._data_dir = kwargs["data_dir"]
@@ -87,6 +88,9 @@ class Model:
             pass
 
     def load(self):
+        if self._loaded:
+            return
+
         self._tokenizer = AutoTokenizer.from_pretrained(
             self._tokenizer_repository, token=self._hf_token
         )
@@ -126,6 +130,7 @@ class Model:
             target=briton_monitor, args=(self._briton_process,)
         )
         briton_monitor_thread.start()
+        self._loaded = True
 
     async def predict(self, model_input):
         """
