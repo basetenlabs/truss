@@ -39,8 +39,12 @@ class LazyDataResolver:
     def __init__(self, data_dir: Path):
         self._data_dir: Path = data_dir
         self._bptr_resolution: Dict[str, str] = _read_bptr_resolution()
+        self._resolution_done = False
 
     def fetch(self):
+        if self._resolution_done:
+            return
+
         with ThreadPoolExecutor(NUM_WORKERS) as executor:
             futures = {}
             for file_name, resolved_url in self._bptr_resolution.items():
@@ -52,6 +56,7 @@ class LazyDataResolver:
             for file_name, future in futures.items():
                 if not future:
                     raise RuntimeError(f"Download failure for file {file_name}")
+        self._resolution_done = True
 
 
 def _read_bptr_resolution() -> Dict[str, str]:

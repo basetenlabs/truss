@@ -43,6 +43,7 @@ DEFAULT_PREDICT_CONCURRENCY = 1
 EXTENSIONS_DIR_NAME = "extensions"
 EXTENSION_CLASS_NAME = "Extension"
 EXTENSION_FILE_NAME = "extension"
+TRT_LLM_EXTENSION_NAME = "trt_llm"
 
 
 class DeferredSemaphoreManager:
@@ -153,8 +154,8 @@ class ModelWrapper:
             if bundled_packages_path.exists():
                 sys.path.append(str(bundled_packages_path))
 
-        secrets_resolver = SecretsResolver.get_secrets(self._config)
-        lazy_data_resolver = LazyDataResolver(data_dir).fetch()
+        secrets = SecretsResolver.get_secrets(self._config)
+        lazy_data_resolver = LazyDataResolver(data_dir)
 
         apply_patches(
             self._config.get("apply_library_patches", True),
@@ -162,7 +163,7 @@ class ModelWrapper:
         )
 
         extensions = _init_extensions(
-            self._config, data_dir, secrets_resolver, lazy_data_resolver
+            self._config, data_dir, secrets, lazy_data_resolver
         )
         for extension in extensions.values():
             extension.load()
@@ -182,7 +183,7 @@ class ModelWrapper:
                 model_class,
                 self._config,
                 data_dir,
-                secrets_resolver,
+                secrets,
                 lazy_data_resolver,
             )
             signature = inspect.signature(model_class)
@@ -190,7 +191,7 @@ class ModelWrapper:
                 if _signature_accepts_keyword_arg(signature, ext_name):
                     model_init_params[ext_name] = ext.model_args()
             self._model = model_class(**model_init_params)
-        elif "trt_llm" in extensions:
+        elif TRT_LLM_EXTENSION_NAME in extensions:
             # trt_llm extension allows model.py to be absent. It supplies its
             # own model class in that case.
             trt_llm_extension = extensions["trt_llm"]
@@ -481,7 +482,7 @@ def _intercept_exceptions_async(
     return inner
 
 
-def _init_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
+def _init_extensions(config, data_dir, secrets, lazy_data_resolver):
     extensions = {}
     extensions_path = Path(__file__).parent / EXTENSIONS_DIR_NAME
     if extensions_path.exists():
@@ -492,7 +493,7 @@ def _init_extensions(config, data_dir, secrets_resolver, lazy_data_resolver):
                     extension_name,
                     config,
                     data_dir,
-                    secrets_resolver,
+                    secrets,
                     lazy_data_resolver,
                 )
                 extensions[extension_name] = extension
@@ -503,7 +504,7 @@ def _init_extension(
     extension_name: str,
     config,
     data_dir,
-    secrets_resolver,
+    secrets,
     lazy_data_resolver,
 ):
     extension_module = importlib.import_module(
@@ -514,13 +515,13 @@ def _init_extension(
         extension_class,
         config=config,
         data_dir=data_dir,
-        secrets_resolver=secrets_resolver,
+        secrets=secrets,
         lazy_data_resolver=lazy_data_resolver,
     )
     return extension_class(**init_args)
 
 
-def _prepare_init_args(klass, config, data_dir, secrets_resolver, lazy_data_resolver):
+def _prepare_init_args(klass, config, data_dir, secrets, lazy_data_resolver):
     """Prepares init params based on signature.
 
     Used to pass params to extension and model class' __init__ function.
@@ -532,7 +533,7 @@ def _prepare_init_args(klass, config, data_dir, secrets_resolver, lazy_data_reso
     if _signature_accepts_keyword_arg(signature, "data_dir"):
         model_init_params["data_dir"] = data_dir
     if _signature_accepts_keyword_arg(signature, "secrets"):
-        model_init_params["secrets"] = secrets_resolver
+        model_init_params["secrets"] = secrets
     if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
-        model_init_params["lazy_data_resolver"] = lazy_data_resolver
+        model_init_params["lazy_data_resolver"] = lazy_data_resolver.fetch()
     return model_init_params
