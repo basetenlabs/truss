@@ -141,11 +141,12 @@ class Engine:
 
     def validate_input(self, model_input, request):
         # Input length <= max_input_length.
-        input_length = model_input.prompt.len()
-        if input_length > self._max_input_len:
-            raise ValueError(
-                f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_len}."
-            )
+        if model_input.prompt:
+            input_length = model_input.prompt.len()
+            if input_length > self._max_input_len:
+                raise ValueError(
+                    f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_len}."
+                )
 
         # Beam width == max_beam_width.
         if request.beam_width != self._max_beam_width:
