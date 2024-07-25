@@ -151,17 +151,18 @@ class Engine:
 
         # Beam width == max_beam_width.
         logging.info(f" ==> request.beam_width: {request.beam_width}")
-        if request.beam_width != self._max_beam_width:
-            raise ValueError(
-                "TensorRT-LLM requires beam_width to equal max_beam_width."
-            )
-
-        # Beam width == 1 for streaming.
-        stream = model_input.get("stream", False)
-        logging.info(f" ==> stream: {stream}")
         beam_width = model_input.get("beam_width", None)
-        if model_input.get("stream", False) and beam_width and beam_width != 1:
-            raise ValueError("TensorRT-LLM requires beam_width to equal 1 for streaming")
+        if beam_width:
+            if beam_width != self._max_beam_width:
+                raise ValueError(
+                    "TensorRT-LLM requires beam_width to equal max_beam_width."
+                )
+
+            # Beam width == 1 for streaming.
+            stream = model_input.get("stream", False) # TODO(Gary): Remove.
+            logging.info(f" ==> stream: {stream}")    # TODO(Gary): Remove.
+            if model_input.get("stream", False) and beam_width != 1:
+                raise ValueError("TensorRT-LLM requires beam_width to equal 1 for streaming")
 
     async def predict(self, model_input):
         """
