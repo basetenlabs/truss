@@ -141,7 +141,7 @@ class Engine:
 
     def validate_input(self, model_input, request):
         # Input length <= max_input_length.
-        input_length = request.prompt.len()
+        input_length = model_input.prompt.len()
         if input_length > self._max_input_len:
             raise ValueError(
                 f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_len}."
