@@ -143,7 +143,7 @@ class Engine:
         # Input length <= max_input_length.
         logging.info(f" ==> prompt: {prompt}")
         if prompt:
-            input_length = prompt.len()
+            input_length = len(prompt)
             if input_length > self._max_input_len:
                 raise ValueError(
                     f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_len}."
