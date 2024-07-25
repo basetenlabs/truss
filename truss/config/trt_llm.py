@@ -28,10 +28,10 @@ class TrussTRTLLMQuantizationType(str, Enum):
     SMOOTH_QUANT = "smooth_quant"
     FP8 = "fp8"
     FP8_KV = "fp8_kv"
+    FP8_ROWWISE = "fp8_rowwise"
 
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
-    multi_block_mode: bool = False
     paged_kv_cache: bool = True
     gemm_plugin: str = "auto"
 
