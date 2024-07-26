@@ -91,8 +91,8 @@ class Engine:
         logging.info(f"truss_trtllm_build_config: {truss_trtllm_build_config}")
         self._max_input_len = truss_trtllm_build_config.max_input_len
         self._max_beam_width = truss_trtllm_build_config.max_beam_width
-        logging.info(f" ==> self._max_input_len: {self._max_input_len}")
-        logging.info(f" ==> self._max_beam_width: {self._max_beam_width}")
+        logging.info(f"self._max_input_len: {self._max_input_len}")
+        logging.info(f"self._max_beam_width: {self._max_beam_width}")
 
     def load(self):
         if self._loaded:
@@ -139,26 +139,22 @@ class Engine:
         briton_monitor_thread.start()
         self._loaded = True
 
-    def validate_input(self, prompt, model_input, request):
+    def validate_input(self, model_input, request):
         # Input length <= max_input_length.
-        logging.info(f" ==> prompt: {prompt}")
-        if prompt:
-            input_length = prompt.len()
+        if model_input.prompt:
+            input_length = model_input.prompt.len()
             if input_length > self._max_input_len:
                 raise ValueError(
                     f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_len}."
                 )
 
         # Beam width == max_beam_width.
-        logging.info(f" ==> request.beam_width: {request.beam_width}")
         if request.beam_width != self._max_beam_width:
             raise ValueError(
                 "TensorRT-LLM requires beam_width to equal max_beam_width."
             )
 
         # Beam width == 1 for streaming.
-        stream = model_input.get("stream", False)
-        logging.info(f" ==> stream: {stream}")
         if model_input.get("stream", False) and request.beam_width != 1:
             raise ValueError("TensorRT-LLM requires beam_width to equal 1 for streaming")
 
@@ -206,7 +202,7 @@ class Engine:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
 
-        self.validate_input(prompt, model_input, request)
+        self.validate_input(model_input, request)
 
         resp_iter = self._stub.Infer(request)
 
