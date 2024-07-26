@@ -137,13 +137,12 @@ class Engine:
 
     def validate_input(self, model_input):
         beam_width = model_input.get("beam_width", None)
-        if beam_width:
-            # Beam width == 1.
-            # There's no need to check if streaming is passed in the input.
-            # Briton explicitly sets streaming to true in britonToTbRequest().
-            # https://github.com/basetenlabs/baseten/blob/1c2c9cbe1adafc0c736566bd012abbe7d7e2c2da/briton/src/briton.cpp#L272
-            if beam_width != 1:
-                raise ValueError("TensorRT-LLM requires beam_width to equal 1")
+        # Beam width == 1.
+        # There's no need to check if streaming is passed in the input.
+        # Briton explicitly sets streaming to true in britonToTbRequest().
+        # https://github.com/basetenlabs/baseten/blob/1c2c9cbe1adafc0c736566bd012abbe7d7e2c2da/briton/src/briton.cpp#L272
+        if beam_width is not None and beam_width != 1:
+            raise ValueError("TensorRT-LLM requires beam_width to equal 1")
 
         # If Beam width != max_beam_width, TensorRt-LLM will fail an assert.
         # Since Briton sets streaming, the max_beam_width must aslo equal 1.
