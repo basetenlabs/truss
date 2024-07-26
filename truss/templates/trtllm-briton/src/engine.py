@@ -135,15 +135,7 @@ class Engine:
         briton_monitor_thread.start()
         self._loaded = True
 
-    def validate_input(self, prompt, model_input):
-        # Input length <= max_input_length.
-        if prompt:
-            input_length = len(prompt)
-            if input_length > self._max_input_len:
-                raise ValueError(
-                    f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_len}."
-                )
-
+    def validate_input(self, model_input):
         beam_width = model_input.get("beam_width", None)
         if beam_width:
             # Beam width == 1.
@@ -202,7 +194,7 @@ class Engine:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
 
-        self.validate_input(prompt, model_input)
+        self.validate_input(model_input)
 
         resp_iter = self._stub.Infer(request)
 
