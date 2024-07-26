@@ -159,8 +159,7 @@ class Engine:
         # Beam width == 1 for streaming.
         stream = model_input.get("stream", False)
         logging.info(f" ==> stream: {stream}")
-        beam_width = model_input.get("beam_width", None)
-        if model_input.get("stream", False) and beam_width and beam_width != 1:
+        if model_input.get("stream", False) and request.beam_width != 1:
             raise ValueError("TensorRT-LLM requires beam_width to equal 1 for streaming")
 
     async def predict(self, model_input):
@@ -207,8 +206,6 @@ class Engine:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
 
-        logging.info(f" ==> model_input: {model_input}")
-        logging.info(f" ==> request: {request}")
         self.validate_input(prompt, model_input, request)
 
         resp_iter = self._stub.Infer(request)
