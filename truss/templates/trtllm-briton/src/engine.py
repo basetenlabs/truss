@@ -139,7 +139,7 @@ class Engine:
         briton_monitor_thread.start()
         self._loaded = True
 
-    def validate_input(self, model_input, request):
+    def validate(self, model_input, request):
         # Input length <= max_input_length.
         input_length = request.prompt.len()
         if input_length > self._max_input_len:
