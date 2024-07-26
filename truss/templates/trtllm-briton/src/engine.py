@@ -1,4 +1,3 @@
-import logging
 import os
 import signal
 import socket
@@ -87,12 +86,8 @@ class Engine:
             self._hf_token = self._secrets.get("hf_access_token", None)
         except:  # noqa
             pass
-
-        logging.info(f"truss_trtllm_build_config: {truss_trtllm_build_config}")
-        self._max_input_len = truss_trtllm_build_config.max_input_len
-        self._max_beam_width = truss_trtllm_build_config.max_beam_width
-        logging.info(f"self._max_input_len: {self._max_input_len}")
-        logging.info(f"self._max_beam_width: {self._max_beam_width}")
+        self._max_input_len = truss_trtllm_build_config.get("max_input_len", None)
+        self._max_beam_width = truss_trtllm_build_config.get("max_beam_width", None)
 
     def load(self):
         if self._loaded:
