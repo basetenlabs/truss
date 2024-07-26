@@ -86,8 +86,6 @@ class Engine:
             self._hf_token = self._secrets.get("hf_access_token", None)
         except:  # noqa
             pass
-        self._max_input_len = truss_trtllm_build_config.get("max_input_len", None)
-        self._max_beam_width = truss_trtllm_build_config.get("max_beam_width", None)
 
     def load(self):
         if self._loaded:
@@ -134,24 +132,6 @@ class Engine:
         briton_monitor_thread.start()
         self._loaded = True
 
-    def validate(self, model_input, request):
-        # Input length <= max_input_length.
-        input_length = request.prompt.len()
-        if self._max_input_length and input_length > self._max_input_length:
-            raise ValueError(
-                f"Input length `{input_length}` is longer than allowed by max_input_length: {self._max_input_length}."
-            )
-
-        # Beam width == max_beam_width.
-        if self.__max_beam_width and request.beam_width != self._max_beam_width:
-            raise ValueError(
-                "TensorRT-LLM requires beam_width to equal max_beam_width."
-            )
-
-        # Beam width == 1 for streaming.
-        if model_input.get("stream", False) and request.beam_width != 1:
-            raise ValueError("For streaming, TensorRT-LLM requires beam_width to be 1.")
-
     async def predict(self, model_input):
         """
         Run inference
@@ -195,8 +175,6 @@ class Engine:
             if words in model_input:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
-
-        self.validate_input(model_input, request)
 
         resp_iter = self._stub.Infer(request)
 
