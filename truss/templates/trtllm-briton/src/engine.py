@@ -87,6 +87,9 @@ class Engine:
         except:  # noqa
             pass
 
+        self._max_input_len = truss_trtllm_build_config.max_input_len
+        self._max_beam_width = truss_trtllm_build_config.max_beam_width
+
     def load(self):
         if self._loaded:
             return
@@ -132,6 +135,20 @@ class Engine:
         briton_monitor_thread.start()
         self._loaded = True
 
+    def validate_input(self, model_input):
+        beam_width = model_input.get("beam_width", None)
+        # Beam width == 1.
+        # There's no need to check if streaming is passed in the input.
+        # Briton explicitly sets streaming to true in britonToTbRequest().
+        # https://github.com/basetenlabs/baseten/blob/1c2c9cbe1adafc0c736566bd012abbe7d7e2c2da/briton/src/briton.cpp#L272
+        if beam_width is not None and beam_width != 1:
+            raise ValueError("TensorRT-LLM requires beam_width to equal 1")
+
+        # If Beam width != max_beam_width, TensorRt-LLM will fail an assert.
+        # Since Briton sets streaming, the max_beam_width must aslo equal 1.
+        if self._max_beam_width != 1:
+            raise ValueError("TensorRT-LLM requires max_beam_width to equal 1.")
+
     async def predict(self, model_input):
         """
         Run inference
@@ -175,6 +192,8 @@ class Engine:
             if words in model_input:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
+
+        self.validate_input(model_input)
 
         resp_iter = self._stub.Infer(request)
 

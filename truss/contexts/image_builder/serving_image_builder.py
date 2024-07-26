@@ -496,6 +496,7 @@ class ServingImageBuilder(ImageBuilder):
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
+        model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
 
         dockerfile_template = read_template_from_fs(
@@ -533,6 +534,7 @@ class ServingImageBuilder(ImageBuilder):
             python_version=python_version,
             live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
+            model_dir_exists=model_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(
                 self._truss_dir, self._spec.hash_ignore_patterns
