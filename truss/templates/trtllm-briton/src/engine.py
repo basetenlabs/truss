@@ -156,7 +156,7 @@ class Engine:
 
         # Beam width == 1 for streaming.
         if model_input.get("stream", False) and request.beam_width != 1:
-            raise ValueError("TensorRT-LLM requires beam_width to equal 1 for streaming")
+            raise ValueError("For streaming, TensorRT-LLM requires beam_width to equal 1.")
 
     async def predict(self, model_input):
         """
