@@ -103,13 +103,13 @@ HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
-TRTLLM_BASE_IMAGE = "baseten/briton-server:2a115dae84f13daaa54727534daa837c534eceb4"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:5fa9436e17c2f9aeace070f49aa645d2577f676b"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
-    "transformers==4.41.0",
-    "truss==0.9.17rc2",
+    "transformers==4.43.2",
+    "truss==0.9.25rc2",
 ]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
