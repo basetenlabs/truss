@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from subprocess import CalledProcessError, run
@@ -231,3 +233,13 @@ def remove_tensor_padding(input_tensor, input_tensor_lengths=None, pad_value=0):
         raise ValueError("Input tensor must have 2 or 3 dimensions")
 
     return output_tensor
+
+
+def read_config(component, engine_dir):
+    config_path = engine_dir / component / "config.json"
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    model_config = OrderedDict()
+    model_config.update(config["pretrained_config"])
+    model_config.update(config["build_config"])
+    return model_config

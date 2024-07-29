@@ -1,4 +1,3 @@
-import json
 from collections import OrderedDict
 
 import tensorrt_llm
@@ -9,7 +8,7 @@ from tensorrt_llm.runtime import ModelConfig, SamplingConfig
 from tensorrt_llm.runtime.session import Session, TensorInfo
 
 from whisper_trt.types import DEFAULT_NUM_BEAMS
-from whisper_trt.utils import remove_tensor_padding
+from whisper_trt.utils import read_config, remove_tensor_padding
 
 
 class WhisperEncoding:
@@ -17,13 +16,12 @@ class WhisperEncoding:
         self.session = self.get_session(engine_dir)
 
     def get_session(self, engine_dir):
-        config_path = engine_dir / "encoder" / "config.json"
-        with open(config_path, "r") as f:
-            config = json.load(f)
+        config = read_config("encoder", engine_dir)
+        self.encoder_config = config
 
-        self.dtype = config["pretrained_config"]["dtype"]
-        self.n_mels = config["pretrained_config"]["n_mels"]
-        self.num_languages = config["pretrained_config"]["num_languages"]
+        self.dtype = config["dtype"]
+        self.n_mels = config["n_mels"]
+        self.num_languages = config["num_languages"]
 
         serialize_path = engine_dir / "encoder" / "rank0.engine"
 
@@ -74,19 +72,10 @@ class WhisperEncoding:
 
 class WhisperDecoding:
     def __init__(self, engine_dir, runtime_mapping, debug_mode=False):
-        self.decoder_config = self.get_config(engine_dir)
+        self.decoder_config = read_config("decoder", engine_dir)
         self.decoder_generation_session = self.get_session(
             engine_dir, runtime_mapping, debug_mode
         )
-
-    def get_config(self, engine_dir):
-        config_path = engine_dir / "decoder" / "config.json"
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        decoder_config = OrderedDict()
-        decoder_config.update(config["pretrained_config"])
-        decoder_config.update(config["build_config"])
-        return decoder_config
 
     def get_session(self, engine_dir, runtime_mapping, debug_mode=False):
         serialize_path = engine_dir / "decoder" / "rank0.engine"
