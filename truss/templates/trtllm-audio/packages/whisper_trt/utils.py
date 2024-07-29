@@ -194,3 +194,40 @@ async def log_mel_spectrogram(
         lambda: _log_mel_spectrogram(audio, n_mels, padding, device, mel_filters_dir)
     )
     return log_spec
+
+
+def remove_tensor_padding(input_tensor, input_tensor_lengths=None, pad_value=0):
+    if input_tensor.dim() == 2:
+        # Text tensor case: batch, seq_len
+        assert torch.all(
+            input_tensor[:, 0] != pad_value
+        ), "First token in each sequence should not be pad_value"
+        assert input_tensor_lengths is None
+
+        # Create a mask for all non-pad tokens
+        mask = input_tensor != pad_value
+
+        # Apply the mask to input_tensor to remove pad tokens
+        output_tensor = input_tensor[mask].view(1, -1)
+
+    elif input_tensor.dim() == 3:
+        # Audio tensor case: batch, seq_len, feature_len
+        assert (
+            input_tensor_lengths is not None
+        ), "input_tensor_lengths must be provided for 3D input_tensor"
+        batch_size, seq_len, feature_len = input_tensor.shape
+
+        # Initialize a list to collect valid sequences
+        valid_sequences = []
+
+        for i in range(batch_size):
+            valid_length = input_tensor_lengths[i]
+            valid_sequences.append(input_tensor[i, :valid_length, :])
+
+        # Concatenate all valid sequences along the batch dimension
+        output_tensor = torch.cat(valid_sequences, dim=0)
+
+    else:
+        raise ValueError("Input tensor must have 2 or 3 dimensions")
+
+    return output_tensor
