@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from rich.console import Console
 
 logging.basicConfig(level=logging.INFO)
@@ -70,6 +70,12 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
+
+    @field_validator("max_beam_width")
+    @classmethod
+    def ensure_unary_max_beam_width(cls, v: int):
+        if v != 1:
+            raise ValueError("Non-unary max_beam_width not supported")
 
 
 class TrussTRTLLMServingConfiguration(BaseModel):
