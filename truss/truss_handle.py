@@ -160,6 +160,13 @@ class TrussHandle:
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
 
         envs: Dict[str, str] = {}
+        # Add bundled packages to the PYTHONPATH. Note
+        # that this is necessary to achieve the same environment as Truss Server
+        # -- this is setup that is done by Truss Server, that won't be available
+        # to the standalone script.
+        bundled_packages_path = Path("/packages")
+        envs["PYTHONPATH"] = bundled_packages_path.as_posix()
+
         return Docker.client().run(
             image.id,
             entrypoint="python",
