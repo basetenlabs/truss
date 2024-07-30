@@ -8,6 +8,12 @@ from truss.constants import (
 from truss.truss_handle import TrussHandle
 
 
+def uses_trt_llm_builder(tr: TrussHandle) -> bool:
+    return (
+        tr.spec.config.trt_llm is not None and tr.spec.config.trt_llm.build is not None
+    )
+
+
 def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
     if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
         source = tr.spec.config.trt_llm.build.checkpoint_repository.source
@@ -32,7 +38,7 @@ def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
 
 def check_live_reload_for_trt_llm_builder(tr: TrussHandle) -> bool:
     """Check live_reload for trusses with TRT-LLM builder configuration"""
-    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
+    if uses_trt_llm_builder(tr):
         return tr.spec.live_reload
     return False
 
