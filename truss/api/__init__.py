@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Optional, cast
 
 import truss
 from truss.api import definitions
+from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
 
 
@@ -42,9 +43,13 @@ def push(
         available_remotes = RemoteFactory.get_available_config_names()
         if len(available_remotes) == 1:
             remote = available_remotes[0]
-        else:
+        elif len(available_remotes) == 0:
             raise ValueError(
                 "Please authenticate via truss.login and pass it as an argument."
+            )
+        else:
+            raise ValueError(
+                "Multiple remotes found. Please pass the remote as an argument."
             )
 
     remote_provider = RemoteFactory.create(remote=remote)
@@ -65,4 +70,4 @@ def push(
         deployment_name=deployment_name,
     )  # type: ignore
 
-    return definitions.ModelDeployment.from_service(service)  # type: ignore
+    return definitions.ModelDeployment(cast(BasetenService, service))
