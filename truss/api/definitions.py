@@ -39,11 +39,11 @@ class ModelDeployment:
             ):
                 raise TimeoutError("Deployment timed out.")
 
-            if deployment_status not in DEPLOYING_STATUSES:
-                raise Exception(f"Deployment failed with status: {deployment_status}")
-
             if deployment_status == ACTIVE_STATUS:
                 return True
+
+            if deployment_status not in DEPLOYING_STATUSES:
+                raise Exception(f"Deployment failed with status: {deployment_status}")
 
         raise RuntimeError("Error polling deployment status.")
 
