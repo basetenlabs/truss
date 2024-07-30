@@ -55,7 +55,7 @@ def trtllm_config(default_config) -> Dict[str, Any]:
             "max_input_len": 1024,
             "max_output_len": 1024,
             "max_batch_size": 512,
-            "max_beam_width": 1,
+            "max_beam_width": None,
             "checkpoint_repository": {
                 "source": "HF",
                 "repo": "meta/llama4-500B",
