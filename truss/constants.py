@@ -109,7 +109,7 @@ BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
     "transformers==4.43.2",
-    "truss==0.9.25rc10",
+    "truss==0.9.25rc11",
 ]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
