@@ -724,6 +724,29 @@ def predict(
 
 
 @truss_cli.command()
+@click.argument("script", required=True)
+@click.argument("target_directory", required=False, default=os.getcwd())
+def run_python(script, target_directory):
+    from python_on_whales.exceptions import DockerException
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    output_stream = tr.run_python_script(Path(script))
+    try:
+        for output in output_stream:
+            output_type = output[0]
+            output_content = output[1]
+
+            options = {}
+
+            if output_type == "stderr":
+                options["fg"] = "red"
+
+            click.secho(output_content.decode("utf-8", "replace"), nl=False, **options)
+    except DockerException:
+        pass
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",

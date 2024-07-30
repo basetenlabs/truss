@@ -151,6 +151,44 @@ class TrussHandle:
         return _docker_image_from_labels(labels)
 
     @proxy_to_shadow_if_scattered
+    def run_python_script(
+        self,
+        script_path: Path,
+        build_dir: Optional[Path] = None,
+    ):
+        image = self.build_serving_docker_image(build_dir=build_dir)
+        secrets_mount_dir_path = _prepare_secrets_mount_dir()
+
+        envs: Dict[str, str] = {}
+        return Docker.client().run(
+            image.id,
+            entrypoint="python",
+            command=["/app/script.py"],
+            detach=False,
+            mounts=[
+                [
+                    "type=bind",
+                    f"src={str(secrets_mount_dir_path)}",
+                    "target=/secrets",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
+                    "target=/bptr",
+                ],
+                [
+                    "type=bind",
+                    f"src={str(script_path.absolute())}",
+                    "target=/app/script.py",
+                ],
+            ],
+            gpus="all" if self._spec.config.resources.use_gpu else None,
+            envs=envs,
+            add_hosts=[("host.docker.internal", "host-gateway")],
+            stream=True,
+        )
+
+    @proxy_to_shadow_if_scattered
     def docker_run(
         self,
         build_dir: Optional[Path] = None,
