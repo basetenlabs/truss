@@ -123,7 +123,5 @@ class TRTLLMConfiguration(BaseModel):
             return True
         return False
 
-    # TODO(Abu): Replace this with model_dump(json=True)
-    # when pydantic v2 is used here
-    def to_json_dict(self):
-        return json.loads(self.model_dump_json())
+    def to_json_dict(self, verbose: bool):
+        return json.loads(self.model_dump_json(exclude_unset=not verbose))
