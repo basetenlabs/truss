@@ -54,7 +54,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     max_input_len: int
     max_output_len: int
     max_batch_size: int
-    max_beam_width: int
+    max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
     gather_all_token_logits: bool = False
