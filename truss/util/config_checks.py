@@ -30,15 +30,10 @@ def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
     return True
 
 
-def disable_live_reload_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    """Disable live_reload for trusses with TRT-LLM builder configuration
-
-    Returns True if live_reload was disabled, False otherwise
-    """
+def check_live_reload_for_trt_llm_builder(tr: TrussHandle) -> bool:
+    """Check live_reload for trusses with TRT-LLM builder configuration"""
     if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
-        if tr.spec.live_reload:
-            tr.spec.config.live_reload = False
-            return True
+        return tr.spec.live_reload
     return False
 
 

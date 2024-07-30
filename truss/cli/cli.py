@@ -34,8 +34,8 @@ from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
+    check_live_reload_for_trt_llm_builder,
     check_secrets_for_trt_llm_builder,
-    disable_live_reload_for_trt_llm_builder,
 )
 from truss.util.errors import RemoteNetworkError
 
@@ -861,9 +861,10 @@ def push(
         console.print(
             f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
         )
-    if disable_live_reload_for_trt_llm_builder(tr):
-        live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, deploying as a published model"
-        console.print(live_reload_disabled_text)
+    if check_live_reload_for_trt_llm_builder(tr):
+        live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+        console.print(live_reload_disabled_text, style="red")
+        sys.exit(1)
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
