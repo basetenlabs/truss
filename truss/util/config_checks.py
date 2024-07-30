@@ -36,13 +36,6 @@ def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
     return True
 
 
-def check_live_reload_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    """Check live_reload for trusses with TRT-LLM builder configuration"""
-    if uses_trt_llm_builder(tr):
-        return tr.spec.live_reload
-    return False
-
-
 def _is_model_public(model_id: str) -> bool:
     """Validate that a huggingface hub model is public.
 
