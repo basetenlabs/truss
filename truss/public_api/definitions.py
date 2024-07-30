@@ -50,5 +50,4 @@ class ModelDeployment(pydantic.BaseModel):
             if deployment_status == ACTIVE_STATUS:
                 return deployment_status
 
-        # Should never reach here.
-        return deployment_status
+        raise RuntimeError("Error polling deployment status.")
