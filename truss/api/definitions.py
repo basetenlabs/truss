@@ -17,7 +17,7 @@ class ModelDeployment(pydantic.BaseModel):
     _baseten_service: service.BasetenService
 
     @classmethod
-    def from_service(cls, service) -> "ModelDeployment":
+    def from_service(cls, service: service.BasetenService) -> "ModelDeployment":
         model_deployment = cls(
             model_id=service._model_id,
             model_deployment_id=service._model_version_id,

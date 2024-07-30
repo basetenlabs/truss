@@ -1,7 +1,7 @@
 from typing import Optional
 
 import truss
-from truss.public_api import definitions
+from truss.api import definitions
 from truss.remote.remote_factory import RemoteFactory
 
 
