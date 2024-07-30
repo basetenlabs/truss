@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from rich.console import Console
 
 logging.basicConfig(level=logging.INFO)
@@ -73,7 +73,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     @field_validator("max_beam_width", mode="after")
     @classmethod
     def ensure_unary_max_beam_width(cls, value):
-        if value and value != 1:
+        if value != 1:
             raise ValueError("Non-unary max_beam_width not supported")
 
 
@@ -88,13 +88,7 @@ class TRTLLMConfiguration(BaseModel):
     serve: Optional[TrussTRTLLMServingConfiguration] = None
     build: Optional[TrussTRTLLMBuildConfiguration] = None
 
-    def __init__(self, **data):
-        super().__init__(**data)
-        self._validate_minimum_required_configuration()
-        self._validate_fp8_and_num_builder_gpus()
-
-    # In pydantic v2 this would be `@model_validator(mode="after")` and
-    # the __init__ override can be removed.
+    @model_validator(mode="after")
     def _validate_minimum_required_configuration(self):
         if not self.serve and not self.build:
             raise ValueError("Either serve or build configurations must be provided")
@@ -109,6 +103,7 @@ class TRTLLMConfiguration(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
     def _validate_fp8_and_num_builder_gpus(self):
         if self.build is not None:
             if (
@@ -130,5 +125,5 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
-    def to_json_dict(self, verbose=True):
+    def to_json_dict(self):
         return json.loads(self.model_dump_json())
