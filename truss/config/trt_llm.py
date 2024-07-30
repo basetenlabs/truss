@@ -53,7 +53,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     max_input_len: int
     max_output_len: int
     max_batch_size: int
-    max_beam_width: Optional[int] = 1
+    max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
     gather_all_token_logits: bool = False
@@ -131,4 +131,4 @@ class TRTLLMConfiguration(BaseModel):
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
     def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
+        return json.loads(self.model_dump_json())
