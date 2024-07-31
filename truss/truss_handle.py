@@ -180,11 +180,6 @@ class TrussHandle:
                 ],
                 [
                     "type=bind",
-                    f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
-                    "target=/bptr",
-                ],
-                [
-                    "type=bind",
                     f"src={str(script_path.absolute())}",
                     "target=/app/script.py",
                 ],
