@@ -77,6 +77,19 @@ if is_notebook_or_ipython():
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
+from python_on_whales import Container, docker
+
+
+class RunningContainer:
+    def __init__(self, container: Container):
+        self.container = container
+
+    def logs(self):
+        return docker.logs(self.container, follow=True, stream=True)
+
+    def wait(self):
+        return docker.wait(self.container)
+
 
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
@@ -198,7 +211,7 @@ class TrussHandle:
                 add_hosts=[("host.docker.internal", "host-gateway")],
             )
 
-            return Docker.client().logs(container, follow=True, stream=True)
+            return RunningContainer(container)
 
         try:
             return _docker_run("all" if self._spec.config.resources.use_gpu else None)

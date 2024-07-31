@@ -744,9 +744,9 @@ def run_python(script, target_directory):
         )
 
     tr = _get_truss_from_directory(target_directory=target_directory)
-    output_stream = tr.run_python_script(Path(script))
+    container = tr.run_python_script(Path(script))
     try:
-        for output in output_stream:
+        for output in container.logs():
             output_type = output[0]
             output_content = output[1]
 
@@ -756,8 +756,10 @@ def run_python(script, target_directory):
                 options["fg"] = "red"
 
             click.secho(output_content.decode("utf-8", "replace"), nl=False, **options)
+        exit_code = container.wait()
+        sys.exit(exit_code)
     except DockerException:
-        pass
+        sys.exit(1)
 
 
 @truss_cli.command()
