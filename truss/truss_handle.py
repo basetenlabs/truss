@@ -77,17 +77,19 @@ if is_notebook_or_ipython():
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
-from python_on_whales import Container, docker
-
 
 class RunningContainer:
-    def __init__(self, container: Container):
+    def __init__(self, container):
         self.container = container
 
     def logs(self):
+        from python_on_whales import docker
+
         return docker.logs(self.container, follow=True, stream=True)
 
     def wait(self):
+        from python_on_whales import docker
+
         return docker.wait(self.container)
 
 
