@@ -1,0 +1,14 @@
+model_name: Test
+resources:
+  accelerator: A100
+  use_gpu: True
+trt_llm:
+  build:
+    max_input_len: 1000
+    max_batch_size: 1
+    max_beam_width: 1
+    max_output_len: 1000
+    base_model: llama
+    checkpoint_repository:
+      repo: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+      source: HF

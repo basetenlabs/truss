@@ -190,8 +190,12 @@ class TrussSpec:
         return self._config.base_image.image
 
     @property
-    def python_executable_path(self) -> str:
-        return self._config.base_image.python_executable_path
+    def python_executable_path(self) -> Optional[str]:
+        return (
+            self._config.base_image.python_executable_path
+            if self._config.base_image
+            else None
+        )
 
     @property
     def apply_library_patches(self) -> bool:

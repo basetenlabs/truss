@@ -35,6 +35,7 @@ from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
     check_secrets_for_trt_llm_builder,
+    uses_trt_llm_builder,
 )
 from truss.util.errors import RemoteNetworkError
 
@@ -724,6 +725,42 @@ def predict(
 
 
 @truss_cli.command()
+@click.argument("script", required=True)
+@click.argument("target_directory", required=False, default=os.getcwd())
+def run_python(script, target_directory):
+    from python_on_whales.exceptions import DockerException
+
+    if not Path(script).exists():
+        raise click.BadParameter(
+            f"File {script} does not exist. Please provide a valid file."
+        )
+
+    if not Path(target_directory).exists():
+        raise click.BadParameter(f"Directory {target_directory} does not exist.")
+
+    if not (Path(target_directory) / "config.yaml").exists():
+        raise click.BadParameter(
+            f"Directory {target_directory} does not contain a valid Truss."
+        )
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    output_stream = tr.run_python_script(Path(script))
+    try:
+        for output in output_stream:
+            output_type = output[0]
+            output_content = output[1]
+
+            options = {}
+
+            if output_type == "stderr":
+                options["fg"] = "red"
+
+            click.secho(output_content.decode("utf-8", "replace"), nl=False, **options)
+    except DockerException:
+        pass
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
@@ -860,6 +897,10 @@ def push(
         console.print(
             f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
         )
+    if uses_trt_llm_builder(tr) and not publish:
+        live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+        console.print(live_reload_disabled_text, style="red")
+        sys.exit(1)
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(

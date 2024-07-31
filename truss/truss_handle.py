@@ -59,6 +59,7 @@ from truss.templates.shared.serialization import (
     truss_msgpack_deserialize,
     truss_msgpack_serialize,
 )
+from truss.trt_llm.validation import validate
 from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.types import Example, PatchDetails, PatchRequest
@@ -87,6 +88,7 @@ class TrussHandle:
 
     def validate(self):
         self._validate_external_packages()
+        self._validate_extensions()
 
     @property
     def spec(self) -> TrussSpec:
@@ -149,6 +151,61 @@ class TrussHandle:
     def get_docker_image(self, labels: Dict):
         """[Deprecated] Do not use."""
         return _docker_image_from_labels(labels)
+
+    @proxy_to_shadow_if_scattered
+    def run_python_script(
+        self,
+        script_path: Path,
+        build_dir: Optional[Path] = None,
+    ):
+        from python_on_whales.exceptions import DockerException
+
+        image = self.build_serving_docker_image(build_dir=build_dir)
+        secrets_mount_dir_path = _prepare_secrets_mount_dir()
+
+        envs: Dict[str, str] = {}
+        # Add bundled packages to the PYTHONPATH. Note
+        # that this is necessary to achieve the same environment as Truss Server
+        # -- this is setup that is done by Truss Server, that won't be available
+        # to the standalone script.
+        bundled_packages_path = Path("/packages")
+        envs["PYTHONPATH"] = bundled_packages_path.as_posix()
+
+        # Note that the entrypoint command should match
+        # what we use when executing Truss Server.
+        entrypoint_command = self.spec.python_executable_path or "python3"
+
+        def _docker_run(gpus: Optional[str] = None):
+            container = Docker.client().run(
+                image.id,
+                entrypoint=entrypoint_command,
+                command=["/app/script.py"],
+                detach=True,
+                mounts=[
+                    [
+                        "type=bind",
+                        f"src={str(secrets_mount_dir_path)}",
+                        "target=/secrets",
+                    ],
+                    [
+                        "type=bind",
+                        f"src={str(script_path.absolute())}",
+                        "target=/app/script.py",
+                    ],
+                ],
+                gpus=gpus,
+                envs=envs,
+                add_hosts=[("host.docker.internal", "host-gateway")],
+            )
+
+            return Docker.client().logs(container, follow=True, stream=True)
+
+        try:
+            return _docker_run("all" if self._spec.config.resources.use_gpu else None)
+        except DockerException:
+            # The reason we'd wind up here is if the Truss needs
+            # a GPU, but the host does not have one that can attach.
+            return _docker_run(None)
 
     @proxy_to_shadow_if_scattered
     def docker_run(
@@ -965,6 +1022,11 @@ class TrussHandle:
                         f"Truss referes to external package at "
                         f"{path.resolve()} but that path does not exist."
                     )
+
+    def _validate_extensions(self):
+        # Only one extenstion right now.
+        if self._spec.config.trt_llm is not None:
+            validate(self._spec)
 
 
 def _prediction_flow(model, request: Dict):
