@@ -725,6 +725,42 @@ def predict(
 
 
 @truss_cli.command()
+@click.argument("script", required=True)
+@click.argument("target_directory", required=False, default=os.getcwd())
+def run_python(script, target_directory):
+    from python_on_whales.exceptions import DockerException
+
+    if not Path(script).exists():
+        raise click.BadParameter(
+            f"File {script} does not exist. Please provide a valid file."
+        )
+
+    if not Path(target_directory).exists():
+        raise click.BadParameter(f"Directory {target_directory} does not exist.")
+
+    if not (Path(target_directory) / "config.yaml").exists():
+        raise click.BadParameter(
+            f"Directory {target_directory} does not contain a valid Truss."
+        )
+
+    tr = _get_truss_from_directory(target_directory=target_directory)
+    output_stream = tr.run_python_script(Path(script))
+    try:
+        for output in output_stream:
+            output_type = output[0]
+            output_content = output[1]
+
+            options = {}
+
+            if output_type == "stderr":
+                options["fg"] = "red"
+
+            click.secho(output_content.decode("utf-8", "replace"), nl=False, **options)
+    except DockerException:
+        pass
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
