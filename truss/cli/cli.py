@@ -729,6 +729,19 @@ def predict(
 def run_python(script, target_directory):
     from python_on_whales.exceptions import DockerException
 
+    if not Path(script).exists():
+        raise click.BadParameter(
+            f"File {script} does not exist. Please provide a valid file."
+        )
+
+    if not Path(target_directory).exists():
+        raise click.BadParameter(f"Directory {target_directory} does not exist.")
+
+    if not (Path(target_directory) / "config.yaml").exists():
+        raise click.BadParameter(
+            f"Directory {target_directory} does not contain a valid Truss."
+        )
+
     tr = _get_truss_from_directory(target_directory=target_directory)
     output_stream = tr.run_python_script(Path(script))
     try:
