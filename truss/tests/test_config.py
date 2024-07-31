@@ -55,7 +55,6 @@ def trtllm_config(default_config) -> Dict[str, Any]:
             "max_input_len": 1024,
             "max_output_len": 1024,
             "max_batch_size": 512,
-            "max_beam_width": 1,
             "checkpoint_repository": {
                 "source": "HF",
                 "repo": "meta/llama4-500B",
@@ -397,6 +396,12 @@ def test_from_yaml_python_version():
         assert result.python_version == "py39"
 
 
+def test_max_beam_width_check(trtllm_config):
+    trtllm_config["trt_llm"]["build"]["max_beam_width"] = 2
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
     assert (
@@ -443,4 +448,4 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
     config.trt_llm.build.quantization_type = quant_format
     config.resources.accelerator.accelerator = accelerator
     with expectation:
-        config.clone()
+        TrussConfig.from_dict(config.to_dict())
