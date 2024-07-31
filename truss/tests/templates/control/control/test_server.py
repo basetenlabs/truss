@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import pytest
 from httpx import AsyncClient
-from truss.types import PatchRequest
+from truss.custom_types import PatchRequest
 
 # Needed to simulate the set up on the model docker container
 sys.path.append(
@@ -24,7 +24,7 @@ sys.path.append(
 )
 
 from truss.templates.control.control.application import create_app  # noqa
-from truss.templates.control.control.helpers.types import (  # noqa
+from truss.templates.control.control.helpers.custom_types import (  # noqa
     Action,
     ModelCodePatch,
     Patch,

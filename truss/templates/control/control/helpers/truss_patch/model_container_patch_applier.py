@@ -3,9 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from helpers.errors import UnsupportedPatch
-from helpers.truss_patch.model_code_patch_applier import apply_code_patch
-from helpers.types import (
+from helpers.custom_types import (
     Action,
     ConfigPatch,
     EnvVarPatch,
@@ -16,6 +14,8 @@ from helpers.types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
+from helpers.errors import UnsupportedPatch
+from helpers.truss_patch.model_code_patch_applier import apply_code_patch
 from truss.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.util.download import download_external_data
 

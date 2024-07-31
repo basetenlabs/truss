@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
-from truss.templates.control.control.helpers.types import (
+from truss.templates.control.control.helpers.custom_types import (
     Action,
     ConfigPatch,
     ModelCodePatch,

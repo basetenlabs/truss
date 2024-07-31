@@ -8,8 +8,8 @@ import yaml
 
 from truss.config.trt_llm import TRTLLMConfiguration, TrussTRTLLMQuantizationType
 from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
+from truss.custom_types import ModelFrameworkType
 from truss.errors import ValidationError
-from truss.types import ModelFrameworkType
 from truss.util.data_structures import transform_optional
 from truss.validation import (
     validate_cpu_spec,

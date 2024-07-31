@@ -18,9 +18,9 @@ from typing import (
 
 import truss
 from tenacity import retry, stop_after_delay, wait_fixed
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
-from truss.remote.baseten import types as b10_types
 
 from truss_chains import code_gen, definitions, framework, utils
 

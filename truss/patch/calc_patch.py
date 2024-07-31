@@ -4,15 +4,9 @@ from typing import Dict, List, Optional, Set
 
 import yaml
 from truss.constants import CONFIG_FILE
+from truss.patch.custom_types import ChangedPaths, TrussSignature
 from truss.patch.hash import file_content_hash_str
-from truss.patch.types import ChangedPaths, TrussSignature
-from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
-    reqs_by_name,
-)
-from truss.templates.control.control.helpers.truss_patch.system_packages import (
-    system_packages_set,
-)
-from truss.templates.control.control.helpers.types import (
+from truss.templates.control.control.helpers.custom_types import (
     Action,
     ConfigPatch,
     DataPatch,
@@ -24,6 +18,12 @@ from truss.templates.control.control.helpers.types import (
     PatchType,
     PythonRequirementPatch,
     SystemPackagePatch,
+)
+from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
+    reqs_by_name,
+)
+from truss.templates.control.control.helpers.truss_patch.system_packages import (
+    system_packages_set,
 )
 from truss.truss_config import ExternalData, TrussConfig
 from truss.truss_spec import TrussSpec

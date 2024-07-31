@@ -20,7 +20,7 @@ sys.path.append(
 from helpers.truss_patch.model_container_patch_applier import (  # noqa
     ModelContainerPatchApplier,
 )
-from helpers.types import (  # noqa
+from helpers.custom_types import (  # noqa
     Action,
     ConfigPatch,
     EnvVarPatch,

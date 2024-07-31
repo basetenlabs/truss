@@ -4,8 +4,8 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
-from truss.patch.types import TrussSignature
-from truss.templates.control.control.helpers.types import Patch
+from truss.patch.custom_types import TrussSignature
+from truss.templates.control.control.helpers.custom_types import Patch
 
 
 class ModelFrameworkType(Enum):

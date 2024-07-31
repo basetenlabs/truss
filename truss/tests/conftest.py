@@ -16,9 +16,9 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
+from truss.custom_types import Example
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.truss_handle import TrussHandle
-from truss.types import Example
 
 CUSTOM_MODEL_CODE = """
 class Model:

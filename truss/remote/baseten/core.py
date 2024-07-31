@@ -3,7 +3,7 @@ import typing
 from typing import IO, List, Optional, Tuple
 
 import truss
-from truss.remote.baseten import types as b10_types
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar

@@ -8,7 +8,7 @@ import rich
 import yaml
 from requests import ReadTimeout
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.remote.baseten import types as b10_types
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
