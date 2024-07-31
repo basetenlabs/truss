@@ -176,11 +176,11 @@ class TrussHandle:
         entrypoint_command = self.spec.python_executable_path or "python3"
 
         def _docker_run(gpus: Optional[str] = None):
-            return Docker.client().run(
+            container = Docker.client().run(
                 image.id,
                 entrypoint=entrypoint_command,
                 command=["/app/script.py"],
-                detach=False,
+                detach=True,
                 mounts=[
                     [
                         "type=bind",
@@ -196,11 +196,12 @@ class TrussHandle:
                 gpus=gpus,
                 envs=envs,
                 add_hosts=[("host.docker.internal", "host-gateway")],
-                stream=True,
             )
 
+            return Docker.client().logs(container, follow=True, stream=True)
+
         try:
-            return _docker_run(None)
+            return _docker_run("all" if self._spec.config.resources.use_gpu else None)
         except DockerException:
             # The reason we'd wind up here is if the Truss needs
             # a GPU, but the host does not have one that can attach.
