@@ -103,7 +103,7 @@ HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
-TRTLLM_BASE_IMAGE = "baseten/briton-server:5fa9436e17c2f9aeace070f49aa645d2577f676b"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:5fa9436e_v0.0.5"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
