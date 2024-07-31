@@ -19,8 +19,6 @@ from truss.constants import (
     AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
-    BRITON_BASE_TRTLLM_REQUIREMENTS,
-    BRITON_TRTLLM_BASE_IMAGE,
     CONTROL_SERVER_CODE_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
@@ -37,7 +35,6 @@ from truss.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
-    USE_BRITON,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
@@ -54,7 +51,7 @@ from truss.contexts.image_builder.util import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.patch.hash import directory_content_hash
-from truss.truss_config import BaseImage, TrussConfig
+from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
 from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
@@ -66,6 +63,7 @@ from truss.util.path import (
 
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
+BUILD_SERVER_EXTENSIONS_PATH = "extensions"
 
 CONFIG_FILE = "config.yaml"
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
@@ -356,7 +354,23 @@ class ServingImageBuilder(ImageBuilder):
                     AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[]
                 )
             else:
-                copy_tree_path(TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+                # trt_llm is treated as an extension at model run time.
+                copy_into_build_dir(
+                    TRTLLM_TRUSS_DIR / "src",
+                    f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
+                )
+                # TODO(pankaj) Do this differently. This is not ideal, user
+                # supplied code in bundled packages can conflict with those from
+                # the trtllm extension. We don't want to put this in the build
+                # directory directly either because of chances of conflict there
+                # as well and the noise it can create there. We need to find a
+                # new place that's made available in model's pythonpath. This is
+                # a bigger lift and feels overkill right now. Worth revisiting
+                # if we come across cases of actual conflicts.
+                copy_into_build_dir(
+                    TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
+                    DEFAULT_BUNDLED_PACKAGES_DIR,
+                )
 
             tensor_parallel_count = (
                 config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]
@@ -373,15 +387,11 @@ class ServingImageBuilder(ImageBuilder):
 
             if not is_audio_model:
                 config.base_image = BaseImage(
-                    image=BRITON_TRTLLM_BASE_IMAGE if USE_BRITON else TRTLLM_BASE_IMAGE,
+                    image=TRTLLM_BASE_IMAGE,
                     python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
                 )
 
-                config.requirements.extend(
-                    BRITON_BASE_TRTLLM_REQUIREMENTS
-                    if USE_BRITON
-                    else BASE_TRTLLM_REQUIREMENTS
-                )
+                config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
                 config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
             else:
@@ -486,6 +496,7 @@ class ServingImageBuilder(ImageBuilder):
     ):
         config = self._spec.config
         data_dir = build_dir / config.data_dir
+        model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
 
         dockerfile_template = read_template_from_fs(
@@ -523,6 +534,7 @@ class ServingImageBuilder(ImageBuilder):
             python_version=python_version,
             live_reload=config.live_reload,
             data_dir_exists=data_dir.exists(),
+            model_dir_exists=model_dir.exists(),
             bundled_packages_dir_exists=bundled_packages_dir.exists(),
             truss_hash=directory_content_hash(
                 self._truss_dir, self._spec.hash_ignore_patterns

@@ -2,8 +2,6 @@ import os
 import pathlib
 from typing import Set
 
-USE_BRITON = os.environ.get("USE_BRITON_FOR_TRTLLM", False)
-
 SKLEARN = "sklearn"
 TENSORFLOW = "tensorflow"
 KERAS = "keras"
@@ -19,12 +17,8 @@ CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
-TRTLLM_BRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
-TRTLLM_TRITON_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm"
 AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"
-TRTLLM_TRUSS_DIR: pathlib.Path = (
-    TRTLLM_BRITON_TRUSS_DIR if USE_BRITON else TRTLLM_TRITON_TRUSS_DIR
-)
+TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
     TEMPLATES_DIR / SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME
@@ -109,28 +103,20 @@ HTTP_PUBLIC_BLOB_BACKEND = "http_public"
 
 REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
-TRTLLM_BASE_IMAGE = "baseten/triton_trt_llm:v0.9.0"
-BRITON_TRTLLM_BASE_IMAGE = (
-    "baseten/briton-server:2a115dae84f13daaa54727534daa837c534eceb4"
-)
+TRTLLM_BASE_IMAGE = "baseten/briton-server:5fa9436e17c2f9aeace070f49aa645d2577f676b"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = [
-    "tritonclient[all]==2.42.0",
-    "transformers==4.40.2",
-    "jinja2==3.1.3",
-    "truss==0.9.12",
-]
-BRITON_BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
-    "transformers==4.41.0",
-    "truss==0.9.17rc2",
+    "transformers==4.43.2",
+    "truss==0.9.25rc2",
 ]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
-    "tensorrt==10.0.1",
-    "tensorrt-cu12==10.0.1",
-    "tensorrt_llm==0.11.0.dev2024061800",
+    "tensorrt_cu12_bindings==10.2.0.post1",
+    "tensorrt_cu12_libs==10.2.0.post1",
+    "tensorrt-cu12==10.2.0.post1",
+    "tensorrt_llm==0.12.0.dev2024072301",
     "hf_transfer",
     "janus",
     "kaldialign",
@@ -142,8 +128,6 @@ AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "torchaudio",
     "async-batcher>=0.2.0",
     "pydantic>=2.7.1",
-    "tensorrt-cu12-bindings==10.0.1",
-    "tensorrt-cu12-libs==10.0.1",
 ]
 AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES = [
     "python3.10-venv",

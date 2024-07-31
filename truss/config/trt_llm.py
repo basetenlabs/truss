@@ -31,7 +31,6 @@ class TrussTRTLLMQuantizationType(str, Enum):
 
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
-    multi_block_mode: bool = False
     paged_kv_cache: bool = True
     gemm_plugin: str = "auto"
 

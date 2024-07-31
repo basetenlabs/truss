@@ -9,24 +9,19 @@ from truss.remote.baseten.core import (
 )
 
 
-class ModelDeployment(pydantic.BaseModel):
+class ModelDeployment:
     model_config = pydantic.ConfigDict(protected_namespaces=())
 
     model_id: str
     model_deployment_id: str
     _baseten_service: service.BasetenService
 
-    @classmethod
-    def from_service(cls, service: service.BasetenService) -> "ModelDeployment":
-        model_deployment = cls(
-            model_id=service._model_id,
-            model_deployment_id=service._model_version_id,
-        )
+    def __init__(self, service: service.BasetenService):
+        self.model_id = service._model_id
+        self.model_deployment_id = service._model_version_id
+        self._baseten_service = service
 
-        model_deployment._baseten_service = service
-        return model_deployment
-
-    def wait_for_active(self, timeout_seconds: int = 60) -> str:
+    def wait_for_active(self, timeout_seconds: int = 600) -> bool:
         """
         Waits for the deployment to be active.
 
@@ -44,10 +39,16 @@ class ModelDeployment(pydantic.BaseModel):
             ):
                 raise TimeoutError("Deployment timed out.")
 
+            if deployment_status == ACTIVE_STATUS:
+                return True
+
             if deployment_status not in DEPLOYING_STATUSES:
                 raise Exception(f"Deployment failed with status: {deployment_status}")
 
-            if deployment_status == ACTIVE_STATUS:
-                return deployment_status
-
         raise RuntimeError("Error polling deployment status.")
+
+    def __repr__(self):
+        return (
+            f"ModelDeployment(model_id={self.model_id}, "
+            f"model_deployment_id={self.model_deployment_id})"
+        )
