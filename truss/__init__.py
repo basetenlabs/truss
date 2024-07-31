@@ -9,6 +9,7 @@ def version():
     return __version__
 
 
+from truss.api import push
 from truss.build import from_directory, init, kill_all, load
 
-__all__ = ["from_directory", "init", "kill_all", "load"]
+__all__ = ["from_directory", "init", "kill_all", "load", "push"]
