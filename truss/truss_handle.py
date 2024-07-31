@@ -156,6 +156,8 @@ class TrussHandle:
         script_path: Path,
         build_dir: Optional[Path] = None,
     ):
+        from python_on_whales.exceptions import DockerException
+
         image = self.build_serving_docker_image(build_dir=build_dir)
         secrets_mount_dir_path = _prepare_secrets_mount_dir()
 
@@ -167,28 +169,40 @@ class TrussHandle:
         bundled_packages_path = Path("/packages")
         envs["PYTHONPATH"] = bundled_packages_path.as_posix()
 
-        return Docker.client().run(
-            image.id,
-            entrypoint="python",
-            command=["/app/script.py"],
-            detach=False,
-            mounts=[
-                [
-                    "type=bind",
-                    f"src={str(secrets_mount_dir_path)}",
-                    "target=/secrets",
+        # Note that the entrypoint command should match
+        # what we use when executing Truss Server.
+        entrypoint_command = self.spec.python_executable_path or "python3"
+
+        def _docker_run(gpus: Optional[str] = None):
+            return Docker.client().run(
+                image.id,
+                entrypoint=entrypoint_command,
+                command=["/app/script.py"],
+                detach=False,
+                mounts=[
+                    [
+                        "type=bind",
+                        f"src={str(secrets_mount_dir_path)}",
+                        "target=/secrets",
+                    ],
+                    [
+                        "type=bind",
+                        f"src={str(script_path.absolute())}",
+                        "target=/app/script.py",
+                    ],
                 ],
-                [
-                    "type=bind",
-                    f"src={str(script_path.absolute())}",
-                    "target=/app/script.py",
-                ],
-            ],
-            gpus="all" if self._spec.config.resources.use_gpu else None,
-            envs=envs,
-            add_hosts=[("host.docker.internal", "host-gateway")],
-            stream=True,
-        )
+                gpus=gpus,
+                envs=envs,
+                add_hosts=[("host.docker.internal", "host-gateway")],
+                stream=True,
+            )
+
+        try:
+            return _docker_run(None)
+        except DockerException:
+            # The reason we'd wind up here is if the Truss needs
+            # a GPU, but the host does not have one that can attach.
+            return _docker_run(None)
 
     @proxy_to_shadow_if_scattered
     def docker_run(
