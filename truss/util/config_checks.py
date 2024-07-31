@@ -37,3 +37,9 @@ def _is_model_public(model_id: str) -> bool:
     """
     response = requests.get(f"{HF_MODELS_API_URL}/{model_id}")
     return response.status_code == 200
+
+
+def uses_trt_llm_builder(tr: TrussHandle) -> bool:
+    return (
+        tr.spec.config.trt_llm is not None and tr.spec.config.trt_llm.build is not None
+    )
