@@ -7,7 +7,7 @@ from tensorrt_llm._utils import str_dtype_to_trt, trt_dtype_to_torch
 from tensorrt_llm.runtime import ModelConfig, SamplingConfig
 from tensorrt_llm.runtime.session import Session, TensorInfo
 
-from whisper_trt.types import DEFAULT_NUM_BEAMS
+from whisper_trt.custom_types import DEFAULT_NUM_BEAMS
 from whisper_trt.utils import read_config, remove_tensor_padding
 
 

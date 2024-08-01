@@ -36,6 +36,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
+from truss.custom_types import Example, PatchDetails, PatchRequest
 from truss.decorators import proxy_to_shadow_if_scattered
 from truss.docker import (
     Docker,
@@ -51,9 +52,9 @@ from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.notebook import is_notebook_or_ipython
 from truss.patch.calc_patch import calc_truss_patch
+from truss.patch.custom_types import TrussSignature
 from truss.patch.hash import directory_content_hash
 from truss.patch.signature import calc_truss_signature
-from truss.patch.types import TrussSignature
 from truss.readme_generator import generate_readme
 from truss.templates.shared.serialization import (
     truss_msgpack_deserialize,
@@ -62,7 +63,6 @@ from truss.templates.shared.serialization import (
 from truss.trt_llm.validation import validate
 from truss.truss_config import BaseImage, ExternalData, ExternalDataItem, TrussConfig
 from truss.truss_spec import TrussSpec
-from truss.types import Example, PatchDetails, PatchRequest
 from truss.util.path import (
     copy_file_path,
     copy_tree_path,

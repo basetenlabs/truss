@@ -7,7 +7,7 @@ import sigint_patch
 # which breaks because we do not use the main thread.
 sigint_patch.patch()
 from whisper_trt import WhisperModel
-from whisper_trt.types import WhisperResult
+from whisper_trt.custom_types import WhisperResult
 
 
 class Model:

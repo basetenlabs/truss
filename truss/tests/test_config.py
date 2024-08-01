@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from truss.config.trt_llm import TrussTRTLLMQuantizationType
+from truss.custom_types import ModelFrameworkType
 from truss.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
@@ -22,7 +23,6 @@ from truss.truss_config import (
     TrussConfig,
 )
 from truss.truss_handle import TrussHandle
-from truss.types import ModelFrameworkType
 
 
 @pytest.fixture

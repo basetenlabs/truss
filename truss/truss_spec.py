@@ -5,9 +5,9 @@ from typing import Dict, List, Optional
 import yaml
 
 from truss.constants import CONFIG_FILE
+from truss.custom_types import Example, ModelFrameworkType
 from truss.errors import ValidationError
 from truss.truss_config import ExternalData, ModelServer, TrussConfig
-from truss.types import Example, ModelFrameworkType
 from truss.validation import validate_memory_spec
 
 

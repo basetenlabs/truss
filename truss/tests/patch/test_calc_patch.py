@@ -6,7 +6,7 @@ import pytest
 import yaml
 from truss.patch.calc_patch import calc_truss_patch, calc_unignored_paths
 from truss.patch.signature import calc_truss_signature
-from truss.templates.control.control.helpers.types import (
+from truss.templates.control.control.helpers.custom_types import (
     Action,
     ConfigPatch,
     EnvVarPatch,

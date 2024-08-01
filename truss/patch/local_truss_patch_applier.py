@@ -3,16 +3,16 @@ import subprocess
 from pathlib import Path
 from typing import List
 
-from truss.templates.control.control.helpers.errors import UnsupportedPatch
-from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
-    apply_code_patch,
-)
-from truss.templates.control.control.helpers.types import (
+from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
     Patch,
     PythonRequirementPatch,
     SystemPackagePatch,
+)
+from truss.templates.control.control.helpers.errors import UnsupportedPatch
+from truss.templates.control.control.helpers.truss_patch.model_code_patch_applier import (
+    apply_code_patch,
 )
 from truss.truss_config import TrussConfig
 
