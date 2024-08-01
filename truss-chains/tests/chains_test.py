@@ -22,7 +22,7 @@ def test_chain():
                 chain_name="integration-test",
                 user_env={"test_env_key": "test_env_value"},
             )
-            service = deploy.deploy_remotely(entrypoint, options)
+            service = deploy.Deployer(options).deploy(entrypoint)
 
         url = service.run_url.replace("host.docker.internal", "localhost")
 
@@ -140,12 +140,12 @@ def test_raises_without_depends():
 
 class Chainlet1(chains.ChainletBase):
     def run_remote(self) -> str:
-        return self.__class__.__name__
+        return self.__class__.name
 
 
 class Chainlet2(chains.ChainletBase):
     def run_remote(self) -> str:
-        return self.__class__.__name__
+        return self.__class__.name
 
 
 class InitInInit(chains.ChainletBase):
@@ -172,7 +172,7 @@ class InitWithFn(chains.ChainletBase):
         foo()
 
     def run_remote(self) -> str:
-        return self.__class__.__name__
+        return self.__class__.name
 
 
 def test_raises_init_in_init():

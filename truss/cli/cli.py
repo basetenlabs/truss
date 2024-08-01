@@ -503,7 +503,8 @@ def deploy(
             user_env=user_env_parsed,
             remote=remote,
         )
-        service = chains_deploy.deploy_remotely(entrypoint_cls, options)
+        service = chains_deploy.Deployer(options).deploy(entrypoint_cls)
+        assert isinstance(service, chains_deploy.BasetenChainService)
 
     console.print("\n")
     if dryrun:

@@ -119,7 +119,8 @@ def deploy_remotely(
     promote: bool = True,
     user_env: Optional[Mapping[str, str]] = None,
     only_generate_trusses: bool = False,
-) -> deploy.ChainService:
+    remote: Optional[str] = None,
+) -> deploy.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
 
@@ -147,8 +148,11 @@ def deploy_remotely(
         promote=promote,
         user_env=user_env or {},
         only_generate_trusses=only_generate_trusses,
+        remote=remote,
     )
-    return deploy.deploy_remotely(entrypoint, options)
+    service = deploy.Deployer(options).deploy(entrypoint)
+    assert isinstance(service, deploy.BasetenChainService)  # Per options above.
+    return service
 
 
 def run_local(

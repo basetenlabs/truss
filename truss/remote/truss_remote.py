@@ -188,6 +188,10 @@ class TrussRemote(ABC):
     def __init__(self, remote_url: str, **kwargs) -> None:
         self._remote_url = remote_url
 
+    @property
+    def remote_url(self) -> str:
+        return self._remote_url
+
     @abstractmethod
     def push(self, truss_handle: TrussHandle, **kwargs) -> TrussService:
         """
