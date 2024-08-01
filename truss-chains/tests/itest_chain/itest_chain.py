@@ -12,8 +12,10 @@ IMAGE_BASETEN = chains.DockerImage(
 )
 
 IMAGE_CUSTOM = chains.DockerImage(
+    # TODO: Specifying py path gives a weird error during remote build (works locally)
+    #   0.037 /bin/sh: 1: pip: Too many levels of symbolic links
     base_image=chains.CustomImage(
-        image="python:3.11-slim", python_executable_path="/usr/local/bin/python"
+        image="python:3.11-slim"  # , python_executable_path="/usr/local/bin/python"
     ),
     pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
@@ -25,7 +27,9 @@ IMAGE_STR = chains.DockerImage(
 
 
 class GenerateData(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_BASETEN)
+    remote_config = chains.RemoteConfig(
+        docker_image=IMAGE_BASETEN, name="GENERATE_DATA"
+    )
 
     def run_remote(self, length: int) -> str:
         template = "erodfd"

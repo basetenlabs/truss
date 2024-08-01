@@ -375,11 +375,15 @@ class BasetenRemote(TrussRemote):
         console: "rich_console.Console",
         error_console: "rich_console.Console",
     ):
-        result = self._patch(
-            watch_path,
-            truss_ignore_patterns,
-        )
+        result = self._patch(watch_path, truss_ignore_patterns)
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
         else:
             error_console.print(result.message)
+
+    def patch_for_chainlet(
+        self,
+        watch_path: Path,
+        truss_ignore_patterns: List[str],
+    ) -> PatchResult:
+        return self._patch(watch_path, truss_ignore_patterns, console=None)

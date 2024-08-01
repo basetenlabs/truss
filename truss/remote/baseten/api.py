@@ -268,6 +268,21 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["chains"]
 
+    def get_chain_deployments(self, chain_id: str):
+        query_string = f"""
+        {{
+          chain(id: "{chain_id}") {{
+            deployments {{
+              id
+              created
+              is_draft
+            }}
+          }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["chain"]["deployments"]
+
     def get_chainlets_by_deployment_id(self, chain_deployment_id: str):
         query_string = f"""
         {{
@@ -276,7 +291,13 @@ class BasetenApi:
                     name
                     id
                     is_entrypoint
+                    oracle {{
+                        id
+                        name
+                    }}
                     oracle_version {{
+                        id
+                        is_draft
                         current_model_deployment_status {{
                             status
                         }}
@@ -357,8 +378,12 @@ class BasetenApi:
         {{
             model_version(id: "{model_version_id}") {{
                 id
+                is_draft
+                truss_hash
+                truss_signature
                 oracle{{
                     id
+                    name
                 }}
             }}
           }}
@@ -384,7 +409,10 @@ class BasetenApi:
         }}
         """
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["patch_draft_truss"]
+        result = resp["data"]["patch_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Unsuccessful response: {result}")
+        return result
 
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
         headers = self._auth_token.header()

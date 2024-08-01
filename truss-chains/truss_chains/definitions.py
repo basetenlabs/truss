@@ -102,6 +102,10 @@ class ChainsRuntimeError(Exception):
     """Raised when components are not used the expected way at runtime."""
 
 
+class ChainsDeploymentError(Exception):
+    """Raised when components are not used the expected way at runtime."""
+
+
 class AbsPath:
     _abs_file_path: str
     _creating_module: str
