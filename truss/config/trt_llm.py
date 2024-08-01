@@ -76,6 +76,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         if isinstance(v, int):
             if v != 1:
                 raise ValueError("max_beam_width must be unary")
+        return v
 
 
 class TrussTRTLLMServingConfiguration(BaseModel):
