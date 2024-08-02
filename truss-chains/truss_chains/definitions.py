@@ -4,12 +4,12 @@ import enum
 import logging
 import pathlib
 import traceback
-from types import GenericAlias
-from typing import (
+from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     Any,
     Callable,
     ClassVar,
     Generic,
+    GenericAlias,  # This causes above type error.
     Iterable,
     Literal,
     Mapping,
@@ -126,7 +126,7 @@ class AbsPath:
     @property
     def abs_path(self) -> str:
         if self._abs_file_path != self._original_path:
-            logging.info(
+            logging.debug(
                 f"Using abs path `{self._abs_file_path}` for path specified as "
                 f"`{self._original_path}` (in `{self._creating_module}`)."
             )
@@ -293,8 +293,8 @@ class Assets:
         from truss import truss_config
 
         mistral_cache = truss_config.ModelRepo(
-          repo_id="mistralai/Mistral-7B-Instruct-v0.2",
-          allow_patterns=["*.json", "*.safetensors", ".model"]
+            repo_id="mistralai/Mistral-7B-Instruct-v0.2",
+            allow_patterns=["*.json", "*.safetensors", ".model"]
           )
         chains.Assets(cached=[mistral_cache], ...)
 
@@ -345,7 +345,7 @@ class RemoteConfig(SafeModelNonSerializable):
             class MyChainlet(chains.ChainletBase):
                 remote_config = chains.RemoteConfig(
                     docker_image=chains.DockerImage(
-                        pip_requirements=["torch==2.0.1", ... ]
+                        pip_requirements=["torch==2.0.1", ...]
                     ),
                     compute=chains.Compute(cpu_count=2, gpu="A10G", ...),
                     assets=chains.Assets(secret_keys=["hf_access_token"], ...),
@@ -398,7 +398,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
-        user_env: These values can be provided during
+        user_env: These values can be provided to
           the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
     """

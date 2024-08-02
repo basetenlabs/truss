@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 import requests
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
 from truss.truss_handle import TrussHandle
 
 
@@ -205,7 +208,6 @@ class TrussRemote(ABC):
             **kwargs: Additional keyword arguments for the push operation.
 
         """
-        pass
 
     @abstractmethod
     def get_service(self, **kwargs) -> TrussService:
@@ -220,11 +222,14 @@ class TrussRemote(ABC):
             **kwargs: Keyword arguments for the get_service operation.
 
         """
-        pass
 
     @abstractmethod
     def sync_truss_to_dev_version_by_name(
-        self, model_name: str, target_directory: str
+        self,
+        model_name: str,
+        target_directory: str,
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
     ) -> None:
         """
         This method watches for changes to files in the `target_directory`,
@@ -234,9 +239,9 @@ class TrussRemote(ABC):
         Args:
             model_name: The name of the model to sync to the dev version
             target_directory: The directory to sync the model to
+            console: For printing informative output.
+            error_console: For printing errors.
         """
-
-        pass
 
 
 @dataclass

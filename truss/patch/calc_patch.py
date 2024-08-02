@@ -117,7 +117,7 @@ def calc_truss_patch(
                 )
             )
         elif _under_unsupported_patch_dir(path):
-            logger.warn(f"Patching not supported for removing {path}")
+            logger.warning(f"Patching not supported for removing {path}")
             return None
 
     has_calculated_config = False

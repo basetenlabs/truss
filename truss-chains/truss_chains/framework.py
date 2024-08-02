@@ -764,7 +764,7 @@ def import_target(
     # registration has to stay at least until the deployment command has finished.
     if module_name in sys.modules:
         raise ImportError(
-            f"{import_error_msg}. There is already a module in `sys.modules` "
+            f"{import_error_msg} There is already a module in `sys.modules` "
             f"with name `{module_name}`. Overwriting that value is unsafe. "
             "Try renaming your source file."
         )
@@ -776,9 +776,11 @@ def import_target(
     chainlets_after = set()
     modules_after = set()
     try:
-        spec.loader.exec_module(module)
-        chainlets_after = global_chainlet_registry.get_chainlet_names()
-        modules_after = set(sys.modules.keys())
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            modules_after = set(sys.modules.keys())
+            chainlets_after = global_chainlet_registry.get_chainlet_names()
 
         if target_name:
             target_cls = getattr(module, target_name, None)
@@ -813,7 +815,6 @@ def import_target(
                 )
 
         yield target_cls
-
     finally:
         for chainlet_name in chainlets_after - chainlets_before:
             global_chainlet_registry.unregister_chainlet(chainlet_name)

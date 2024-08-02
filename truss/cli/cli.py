@@ -15,10 +15,9 @@ import rich.spinner
 import rich.table
 import rich_click as click
 from InquirerPy import inquirer
+from rich.console import Console
 
 import truss
-from truss.cli.console import console
-from truss.cli.create import ask_name
 from truss.config.trt_llm import TrussTRTLLMQuantizationType
 from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
@@ -78,6 +77,11 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
+console = Console()
+
+error_console = Console(stderr=True, style="bold red")
+
+
 def error_handling(f: Callable[..., object]):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -117,20 +121,15 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
     root_logger.setLevel(level)
 
     if log_level == _HUMANFRIENDLY_LOG_LEVEL:
-        # Don't use rich logging for humanfriendly because it adds a lot of clutter.
-        formatter = logging.Formatter(fmt="%(message)s")
-        if root_logger.handlers:
-            for handler in root_logger.handlers:
-                handler.setFormatter(formatter)
-        else:
-            handler = logging.StreamHandler()
-            handler.setFormatter(formatter)
-            root_logger.addHandler(handler)
+        rich_handler = rich.logging.RichHandler(
+            show_time=False, show_level=False, show_path=False
+        )
     else:
         # Rich handler adds time, levels, file location etc.
-        root_logger.handlers = []  # Clear existing handlers
-        handler = rich.logging.RichHandler()
-        root_logger.addHandler(handler)
+        rich_handler = rich.logging.RichHandler()
+
+    root_logger.handlers = []  # Clear existing handlers
+    root_logger.addHandler(rich_handler)
 
 
 def log_level_option(f):
@@ -177,20 +176,6 @@ def image():
     """Subcommands for truss image"""
 
 
-class ChainsGroup(click.Group):
-    def invoke(self, ctx: click.Context) -> None:
-        # This import raises error messages if pydantic v2 or python older than 3.9
-        # are installed.
-        import truss_chains  # noqa: F401
-
-        super().invoke(ctx)
-
-
-@click.group(cls=ChainsGroup)
-def chains():
-    """Subcommands for truss chains"""
-
-
 @truss_cli.command()
 @click.argument("target_directory", required=True)
 @click.option(
@@ -218,7 +203,7 @@ def init(target_directory, backend, name) -> None:
     if name:
         model_name = name
     else:
-        model_name = ask_name()
+        model_name = inquire_model_name()
     truss.init(
         target_directory=target_directory,
         build_config=build_config,
@@ -347,7 +332,26 @@ def watch(
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
     rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
-    remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
+    remote_provider.sync_truss_to_dev_version_by_name(
+        model_name, target_directory, console, error_console
+    )
+
+
+# Chains Stuff #########################################################################
+
+
+class ChainsGroup(click.Group):
+    def invoke(self, ctx: click.Context) -> None:
+        # This import raises error messages if pydantic v2 or python older than 3.9
+        # are installed.
+        import truss_chains  # noqa: F401
+
+        super().invoke(ctx)
+
+
+@click.group(cls=ChainsGroup)
+def chains():
+    """Subcommands for truss chains"""
 
 
 def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
@@ -456,7 +460,10 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     "--user_env",
     required=False,
     type=str,
-    help="Key-value-pairs (as JSON str) that can be used to control deployment-specific chainlet behavior.",
+    help=(
+        "Key-value-pairs (as JSON str) that can be used to control "
+        "deployment-specific chainlet behavior."
+    ),
 )
 @log_level_option
 @error_handling
@@ -484,6 +491,8 @@ def deploy(
     from truss_chains import deploy as chains_deploy
     from truss_chains import framework
 
+    console.print("\n")
+
     if user_env:
         try:
             user_env_parsed = json.loads(user_env)
@@ -507,7 +516,7 @@ def deploy(
             user_env=user_env_parsed,
             remote=remote,
         )
-        service = chains_deploy.Deployer(options).deploy(entrypoint_cls)
+        service = chains_deploy.deploy_remotely(entrypoint_cls, options)
         assert isinstance(service, chains_deploy.BasetenChainService)
 
     console.print("\n")
@@ -543,6 +552,7 @@ def deploy(
                     break
                 time.sleep(status_check_wait_sec)
         _set_logging_level(log_level_before)
+
         # Print must be outside `Live` context.
         if success:
             console.print("Deployment succeeded.", style="bold green")
@@ -608,6 +618,9 @@ def _load_example_chainlet_code() -> str:
 
     source = Path(example_chainlet.__file__).read_text()
     return source
+
+
+# End Chains Stuff #####################################################################
 
 
 def _extract_and_validate_model_identifier(

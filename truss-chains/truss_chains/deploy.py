@@ -194,8 +194,8 @@ class ChainService(abc.ABC):
         """Queries the statuses of all chainlets in the chain.
 
         Returns:
-            List of ``DeployedChainlet``, ``(name, is_entrypoint, status, logs_url)``),
-                for each chainlet."""
+            List of ``DeployedChainlet``, ``(name, is_entrypoint, status, logs_url)``
+            for each chainlet."""
 
     @property
     def entrypoint_fake_json_data(self) -> Any:
@@ -318,7 +318,7 @@ def _get_chain_root(
 
 def _create_baseten_chain(
     baseten_options: definitions.DeploymentOptionsBaseten,
-    chainlet_services: list["Deployer.ChainEntry"],
+    chainlet_services: list["_Deployer.ChainEntry"],
     entrypoint_service: b10_service.BasetenService,
 ):
     chainlet_data = []
@@ -360,7 +360,7 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
         )
 
 
-class Deployer:
+class _Deployer:
     class ChainEntry(NamedTuple):
         service: b10_service.TrussService
         chainlet_display_name: str
@@ -383,7 +383,7 @@ class Deployer:
     ) -> Optional[ChainService]:
         chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
         chainlet_display_name_to_url: MutableMapping[str, str] = {}
-        chainlet_services: list[Deployer.ChainEntry] = []
+        chainlet_services: list[_Deployer.ChainEntry] = []
         entrypoint_service = None
         for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
             model_base_name = chainlet_descriptor.display_name
@@ -391,6 +391,9 @@ class Deployer:
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
             model_name = f"{model_base_name}-{model_suffix}"
+            logging.info(
+                f"Generating truss chainlet model for `{chainlet_descriptor.name}`."
+            )
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
                 self._gen_root,
@@ -412,7 +415,7 @@ class Deployer:
                 service.predict_url
             )
             chainlet_services.append(
-                Deployer.ChainEntry(
+                _Deployer.ChainEntry(
                     service, chainlet_descriptor.display_name, is_entrypoint
                 )
             )
@@ -434,3 +437,12 @@ class Deployer:
             return DockerChainService(self._options.chain_name, entrypoint_service)
         else:
             raise NotImplementedError(self._options)
+
+
+def deploy_remotely(
+    entrypoint: Type[definitions.ABCChainlet],
+    options: definitions.DeploymentOptions,
+    non_entrypoint_root_dir: Optional[str] = None,
+    gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
+) -> Optional[ChainService]:
+    return _Deployer(options, gen_root).deploy(entrypoint, non_entrypoint_root_dir)

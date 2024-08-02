@@ -22,7 +22,7 @@ def test_chain():
                 chain_name="integration-test",
                 user_env={"test_env_key": "test_env_value"},
             )
-            service = deploy.Deployer(options).deploy(entrypoint)
+            service = deploy.deploy_remotely(entrypoint, options)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
 

@@ -631,7 +631,6 @@ def gen_truss_chainlet(
     chainlet_display_name_to_url: Mapping[str, str],
     user_env: Mapping[str, str],
 ) -> pathlib.Path:
-    logging.info(f"Generating truss chainlet model for `{chainlet_descriptor.name}`.")
     dependencies = framework.global_chainlet_registry.get_dependencies(
         chainlet_descriptor
     )

@@ -131,7 +131,7 @@ def deploy_remotely(
           draft deployment otherwise)
         promote: Whether to promote the chain to be the production deployment (this
           implies publishing as well).
-        user_env: These values can be provided during
+        user_env: These values can be provided to
           the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
         only_generate_trusses: Used for debugging purposes. If set to True, only the
@@ -150,7 +150,7 @@ def deploy_remotely(
         only_generate_trusses=only_generate_trusses,
         remote=remote,
     )
-    service = deploy.Deployer(options).deploy(entrypoint)
+    service = deploy.deploy_remotely(entrypoint, options)
     assert isinstance(service, deploy.BasetenChainService)  # Per options above.
     return service
 
@@ -179,7 +179,7 @@ def run_local(
 
 
         class HelloWorld(chains.ChainletBase):
-          ...
+            ...
 
 
         if __name__ == "__main__":

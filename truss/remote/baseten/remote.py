@@ -1,12 +1,16 @@
+import enum
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
 import click
 import rich
 import yaml
 from requests import ReadTimeout
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
@@ -36,6 +40,17 @@ from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns
 from watchfiles import watch
+
+
+class PatchStatus(enum.Enum):
+    SUCCESS = enum.auto()
+    FAILED = enum.auto()
+    SKIPPED = enum.auto()
+
+
+class PatchResult(NamedTuple):
+    status: PatchStatus
+    message: str
 
 
 class BasetenRemote(TrussRemote):
@@ -233,6 +248,8 @@ class BasetenRemote(TrussRemote):
         self,
         model_name: str,
         target_directory: str,
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
     ) -> None:
         # verify that development deployment exists for given model name
         dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
@@ -254,87 +271,115 @@ class BasetenRemote(TrussRemote):
         logging.getLogger("watchfiles.main").disabled = True
 
         rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        self.patch(watch_path, truss_ignore_patterns)
+        self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
         rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
-            self.patch(watch_path, truss_ignore_patterns)
+            self.patch(watch_path, truss_ignore_patterns, console, error_console)
+
+    def _patch(
+        self,
+        watch_path: Path,
+        truss_ignore_patterns: List[str],
+        console: Optional["rich_console.Console"] = None,
+    ) -> PatchResult:
+        try:
+            truss_handle = TrussHandle(watch_path)
+        except yaml.parser.ParserError:
+            return PatchResult(PatchStatus.FAILED, "Unable to parse config file.")
+        except ValueError:
+            return PatchResult(
+                PatchStatus.FAILED,
+                f"Error when reading truss from directory {watch_path}.",
+            )
+
+        model_name = truss_handle.spec.config.model_name
+        dev_version = get_dev_version(self._api, model_name)  # type: ignore
+        if not dev_version:
+            return PatchResult(
+                PatchStatus.FAILED,
+                f"No development deployment found for model: {model_name}.",
+            )
+
+        truss_hash = dev_version.get("truss_hash", None)
+        truss_signature = dev_version.get("truss_signature", None)
+        if not (truss_hash and truss_signature):
+            return PatchResult(
+                PatchStatus.FAILED,
+                (
+                    "Failed to inspect a running remote deployment to watch for "
+                    "changes.  Ensure that there exists a running remote deployment"
+                    " before attempting to watch for changes."
+                ),
+            )
+
+        LocalConfigHandler.add_signature(truss_hash, truss_signature)
+        try:
+            patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
+        except Exception:
+            return PatchResult(PatchStatus.FAILED, "Failed to calculate patch.")
+        if not patch_request:
+            return PatchResult(
+                PatchStatus.FAILED,
+                "Failed to calculate patch. Change type might not be supported.",
+            )
+
+        if (
+            patch_request.prev_hash == patch_request.next_hash
+            or len(patch_request.patch_ops) == 0
+        ):
+            return PatchResult(
+                PatchStatus.SKIPPED, "No changes observed, skipping patching."
+            )
+        try:
+            if console:
+                with console.status("Applying patch..."):
+                    resp = self._api.patch_draft_truss(model_name, patch_request)
+            else:
+                resp = self._api.patch_draft_truss(model_name, patch_request)
+
+        except ReadTimeout:
+            return PatchResult(
+                PatchStatus.FAILED, "Read Timeout when attempting to patch remote."
+            )
+        except Exception as e:
+            return PatchResult(
+                PatchStatus.FAILED, f"Failed to patch draft deployment. {e}"
+            )
+        if not resp["succeeded"]:
+            needs_full_deploy = resp.get("needs_full_deploy", None)
+            if needs_full_deploy:
+                message = (
+                    f"Model {model_name} is not able to be patched, "
+                    f"use `truss push` to deploy."
+                )
+            else:
+                message = (
+                    f"Failed to patch: `{resp['error']}`. "
+                    "Model left in original state"
+                )
+            return PatchResult(PatchStatus.FAILED, message)
+        else:
+            return PatchResult(
+                PatchStatus.SUCCESS,
+                resp.get(
+                    "success_message",
+                    f"Model {model_name} patched successfully.",
+                ),
+            )
 
     def patch(
         self,
         watch_path: Path,
         truss_ignore_patterns: List[str],
-    ) -> None:
-        from truss.cli.console import console, error_console
-
-        try:
-            truss_handle = TrussHandle(watch_path)
-        except yaml.parser.ParserError:
-            error_console.print("Unable to parse config file")
-            return
-        except ValueError:
-            error_console.print(f"Error when reading truss from directory {watch_path}")
-            return
-        model_name = truss_handle.spec.config.model_name
-        dev_version = get_dev_version(self._api, model_name)  # type: ignore
-        if not dev_version:
-            error_console.print(
-                f"No development deployment found with model name: {model_name}"
-            )
-            return
-        truss_hash = dev_version.get("truss_hash", None)
-        truss_signature = dev_version.get("truss_signature", None)
-        if not (truss_hash and truss_signature):
-            error_console.print(
-                "Failed to inspect a running remote deployment to watch for changes. "
-                "Ensure that there exists a running remote deployment before "
-                "attempting to watch for changes"
-            )
-            return
-        LocalConfigHandler.add_signature(truss_hash, truss_signature)
-        try:
-            patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
-        except Exception:
-            error_console.print("Failed to calculate patch, bailing on patching")
-            return
-        if patch_request:
-            if (
-                patch_request.prev_hash == patch_request.next_hash
-                or len(patch_request.patch_ops) == 0
-            ):
-                console.print("No changes observed, skipping patching")
-                return
-            try:
-                with console.status("Applying patch..."):
-                    resp = self._api.patch_draft_truss(model_name, patch_request)
-            except ReadTimeout:
-                error_console.print(
-                    "Read Timeout when attempting to connect to remote. "
-                    "Bailing on patching"
-                )
-                return
-            except Exception:
-                error_console.print(
-                    "Failed to patch draft deployment, bailing on patching"
-                )
-                return
-            if not resp["succeeded"]:
-                needs_full_deploy = resp.get("needs_full_deploy", None)
-                if needs_full_deploy:
-                    error_console.print(
-                        f"Model {model_name} is not able to be patched, use "
-                        "`truss push` to deploy"
-                    )
-                else:
-                    error_console.print(
-                        f"Failed to patch: `{resp['error']}`. "
-                        "Model left in original state"
-                    )
-            else:
-                console.print(
-                    resp.get(
-                        "success_message",
-                        f"Model {model_name} patched successfully",
-                    ),
-                    style="green",
-                )
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ):
+        result = self._patch(
+            watch_path,
+            truss_ignore_patterns,
+        )
+        if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
+            console.print(result.message, style="green")
+        else:
+            error_console.print(result.message)
