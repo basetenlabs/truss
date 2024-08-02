@@ -1,0 +1,24 @@
+build_commands: []
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: tmp
+python_version: py39
+requirements: []
+resources:
+  accelerator: A10G
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: true
+secrets: {}
+system_packages: []
+trt_llm:
+  build:
+    base_model: llama
+    checkpoint_repository:
+      repo: ''
+      source: HF
+    max_batch_size: 1
+    max_beam_width: 1
+    max_input_len: 1024
+    max_output_len: 1024

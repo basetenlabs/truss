@@ -93,7 +93,9 @@ class TRTLLMConfiguration(BaseModel):
         if not self.serve and not self.build:
             raise ValueError("Either serve or build configurations must be provided")
         if self.serve and self.build:
-            raise ValueError("Both serve and build configurations cannot be provided")
+            raise ValueError(
+                "One of serve XOR build configurations must be provided, not both"
+            )
         if self.serve is not None:
             if (self.serve.engine_repository is None) ^ (
                 self.serve.tokenizer_repository is None
