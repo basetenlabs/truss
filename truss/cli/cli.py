@@ -191,9 +191,10 @@ def chains():
     default=ModelServer.TrussServer.value,
     type=click.Choice([server.value for server in ModelServer]),
 )
+@click.option("-n", "--name", type=click.STRING)
 @log_level_option
 @error_handling
-def init(target_directory, backend) -> None:
+def init(target_directory, backend, name) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -205,7 +206,10 @@ def init(target_directory, backend) -> None:
         )
     tr_path = Path(target_directory)
     build_config = Build(model_server=ModelServer[backend])
-    model_name = ask_name()
+    if name:
+        model_name = name
+    else:
+        model_name = ask_name()
     truss.init(
         target_directory=target_directory,
         build_config=build_config,
