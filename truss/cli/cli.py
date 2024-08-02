@@ -6,10 +6,11 @@ import sys
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
+import rich.logging
 import rich.spinner
 import rich.table
 import rich_click as click
@@ -77,14 +78,6 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-def echo_output(f: Callable[..., object]):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        click.echo(f(*args, **kwargs))
-
-    return wrapper
-
-
 def error_handling(f: Callable[..., object]):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -101,6 +94,8 @@ def error_handling(f: Callable[..., object]):
 _HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
 _log_level_str_to_level = {
     _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,
+    "W": logging.WARNING,
+    "WARNING": logging.WARNING,
     "I": logging.INFO,
     "INFO": logging.INFO,
     "D": logging.DEBUG,
@@ -108,24 +103,33 @@ _log_level_str_to_level = {
 }
 
 
-def _set_logging_level(log_level: str) -> None:
-    level = _log_level_str_to_level[log_level]
+def _get_logging_level() -> int:
+    root_logger = logging.getLogger()
+    return root_logger.level
+
+
+def _set_logging_level(log_level: Union[str, int]) -> None:
+    if isinstance(log_level, str):
+        level = _log_level_str_to_level[log_level]
+    else:
+        level = log_level
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
-    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
-        formatter = logging.Formatter(fmt="%(message)s")
-    else:
-        # Absl-inspired logging for technical output.
-        log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
-        date_format = "%m%d %H:%M:%S"
-        formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
 
-    if root_logger.handlers:
-        for handler in root_logger.handlers:
+    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
+        # Don't use rich logging for humanfriendly because it adds a lot of clutter.
+        formatter = logging.Formatter(fmt="%(message)s")
+        if root_logger.handlers:
+            for handler in root_logger.handlers:
+                handler.setFormatter(formatter)
+        else:
+            handler = logging.StreamHandler()
             handler.setFormatter(formatter)
+            root_logger.addHandler(handler)
     else:
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
+        # Rich handler adds time, levels, file location etc.
+        root_logger.handlers = []  # Clear existing handlers
+        handler = rich.logging.RichHandler()
         root_logger.addHandler(handler)
 
 
@@ -511,7 +515,7 @@ def deploy(
         return
 
     run_help_msg = (
-        f"curl -X POST '{service.run_url}' \\\n"
+        f"curl -X POST '{service.run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
         "    -d '<JSON_INPUT>'"
     )
@@ -522,6 +526,10 @@ def deploy(
         num_services = len(statuses)
         success = False
         num_failed = 0
+        # Logging inferences with live display (even when using richHandler)
+        # -> set logging to warning while showing the live status table.
+        log_level_before = _get_logging_level()
+        _set_logging_level("W")
         with rich.live.Live(table, console=console, refresh_per_second=4) as live:
             while True:
                 table, statuses = _create_chains_table(service)
@@ -534,6 +542,7 @@ def deploy(
                 elif num_failed := num_services - num_active - num_deploying:
                     break
                 time.sleep(status_check_wait_sec)
+        _set_logging_level(log_level_before)
         # Print must be outside `Live` context.
         if success:
             console.print("Deployment succeeded.", style="bold green")
@@ -691,7 +700,6 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     help="ID of model to call",
 )
 @log_level_option
-@echo_output
 def predict(
     target_directory: str,
     remote: str,

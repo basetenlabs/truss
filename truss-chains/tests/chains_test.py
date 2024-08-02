@@ -24,7 +24,7 @@ def test_chain():
             )
             service = deploy.Deployer(options).deploy(entrypoint)
 
-        url = service.run_url.replace("host.docker.internal", "localhost")
+        url = service.run_remote_url.replace("host.docker.internal", "localhost")
 
         # Call without providing values for default arguments.
         response = requests.post(url, json={"length": 30, "num_partitions": 3})

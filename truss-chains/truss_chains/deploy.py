@@ -55,6 +55,8 @@ def _deploy_to_baseten(
 
 
 class DockerTrussService(b10_service.TrussService):
+    """This service is for Chainlets (not for Chains)."""
+
     def __init__(self, remote_url: str, is_draft: bool, **kwargs):
         super().__init__(remote_url, is_draft, **kwargs)
 
@@ -176,9 +178,9 @@ class ChainService(abc.ABC):
         """Link to status page on Baseten."""
 
     @property
-    def run_url(self) -> str:
+    @abc.abstractmethod
+    def run_remote_url(self) -> str:
         """URL to invoke the entrypoint."""
-        return self._entrypoint_service.predict_url
 
     def run_remote(self, json: Dict) -> Any:
         """Invokes the entrypoint with JSON data.
@@ -219,13 +221,24 @@ class BasetenChainService(ChainService):
     def __init__(
         self,
         name: str,
-        entrypoint_service: b10_service.TrussService,
+        entrypoint_service: b10_service.BasetenService,
         chain_deployment_handle: b10_core.ChainDeploymentHandle,
         remote: b10_remote.BasetenRemote,
     ) -> None:
         super().__init__(name, entrypoint_service)
         self._chain_deployment_handle = chain_deployment_handle
         self._remote = remote
+
+    @property
+    def run_remote_url(self) -> str:
+        """URL to invoke the entrypoint."""
+        return b10_service.make_invocation_url(
+            self._remote.api.rest_api_url,
+            b10_service.URLConfig.CHAIN,
+            self._chain_deployment_handle.chain_id,
+            self._chain_deployment_handle.chain_deployment_id,
+            self._chain_deployment_handle.is_draft,
+        )
 
     @property
     def status_page_url(self) -> str:
@@ -269,8 +282,13 @@ class BasetenChainService(ChainService):
 
 
 class DockerChainService(ChainService):
-    def __init__(self, name: str, entrypoint_service: b10_service.TrussService) -> None:
+    def __init__(self, name: str, entrypoint_service: DockerTrussService) -> None:
         super().__init__(name, entrypoint_service)
+
+    @property
+    def run_remote_url(self) -> str:
+        """URL to invoke the entrypoint."""
+        return self._entrypoint_service.predict_url
 
     @property
     def status_page_url(self) -> str:
@@ -412,6 +430,7 @@ class Deployer:
                 self._options, chainlet_services, entrypoint_service
             )
         elif isinstance(self._options, definitions.DeploymentOptionsLocalDocker):
+            assert isinstance(entrypoint_service, DockerTrussService)
             return DockerChainService(self._options.chain_name, entrypoint_service)
         else:
             raise NotImplementedError(self._options)

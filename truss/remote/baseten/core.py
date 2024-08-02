@@ -21,6 +21,7 @@ ACTIVE_STATUS = "ACTIVE"
 class ChainDeploymentHandle(typing.NamedTuple):
     chain_id: str
     chain_deployment_id: str
+    is_draft: bool
 
 
 class ModelIdentifier:
@@ -101,6 +102,7 @@ def create_chain(
     return ChainDeploymentHandle(
         chain_id=response["chain_id"],
         chain_deployment_id=response["chain_deployment_id"],
+        is_draft=is_draft,
     )
 
 

@@ -49,7 +49,7 @@ class BasetenApi:
         self._auth_token = self._auth_service.authenticate()
 
     @property
-    def remote_url(self) -> str:
+    def app_url(self) -> str:
         return self._remote_url
 
     @property
