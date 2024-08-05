@@ -18,6 +18,7 @@ from InquirerPy import inquirer
 import truss
 from truss.cli.console import console
 from truss.cli.create import ask_name
+from truss.config.trt_llm import TrussTRTLLMQuantizationType
 from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -909,21 +910,37 @@ def push(
         console.print(not_trusted_text, style="red")
 
     # trt-llm engine builder checks
-    if not check_secrets_for_trt_llm_builder(tr):
-        missing_token_text = (
-            "`hf_access_token` must be provided in secrets to build a gated model. "
-            "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
-        )
-        console.print(missing_token_text, style="red")
-        sys.exit(1)
-    if not check_and_update_memory_for_trt_llm_builder(tr):
-        console.print(
-            f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
-        )
-    if uses_trt_llm_builder(tr) and not publish:
-        live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
-        console.print(live_reload_disabled_text, style="red")
-        sys.exit(1)
+    if uses_trt_llm_builder(tr):
+        if not publish:
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+            console.print(live_reload_disabled_text, style="red")
+            sys.exit(1)
+        if not check_secrets_for_trt_llm_builder(tr):
+            missing_token_text = (
+                "`hf_access_token` must be provided in secrets to build a gated model. "
+                "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
+            )
+            console.print(missing_token_text, style="red")
+            sys.exit(1)
+        if not check_and_update_memory_for_trt_llm_builder(tr):
+            console.print(
+                f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
+            )
+        config = tr.spec.config
+        if (
+            config.trt_llm.build.quantization_type
+            in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+            and not config.trt_llm.build.num_builder_gpus
+        ):
+            fp8_and_num_builder_gpus_text = (
+                "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
+                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
+                "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+            )
+            console.print(
+                fp8_and_num_builder_gpus_text,
+                style="yellow",
+            )
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
