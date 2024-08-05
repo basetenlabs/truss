@@ -4,6 +4,26 @@ import truss
 from truss.api import definitions
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
+from truss.remote.truss_remote import RemoteConfig
+
+
+def login(api_key: str):
+    """
+    Logs user into Baseten account. Persists information to ~/.trussrc file,
+    so only needs to be invoked once.
+    Args:
+        api_key: Baseten API Key
+    """
+    remote_url = "https://app.baseten.co"
+    remote_config = RemoteConfig(
+        name="baseten",
+        configs={
+            "remote_provider": "baseten",
+            "api_key": api_key,
+            "remote_url": remote_url,
+        },
+    )
+    RemoteFactory.update_remote_config(remote_config)
 
 
 def push(

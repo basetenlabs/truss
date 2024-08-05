@@ -29,7 +29,11 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
-from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
+from truss.remote.remote_cli import (
+    inquire_model_name,
+    inquire_remote_config,
+    inquire_remote_name,
+)
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
@@ -282,6 +286,24 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
             f"Container already exists at {urls}. Are you sure you want to continue?"
         )
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
+
+
+@truss_cli.command()
+@click.option(
+    "--api-key",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to patch changes to",
+)
+@error_handling
+def login(api_key: Optional[str]):
+    from truss.api import login
+
+    if not api_key:
+        remote_config = inquire_remote_config()
+        RemoteFactory.update_remote_config(remote_config)
+    else:
+        login(api_key)
 
 
 @truss_cli.command()
