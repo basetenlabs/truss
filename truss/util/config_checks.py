@@ -9,7 +9,7 @@ from truss.truss_handle import TrussHandle
 
 
 def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    if tr.spec.config.trt_llm is not None and tr.spec.config.trt_llm.build is not None:
+    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
         source = tr.spec.config.trt_llm.build.checkpoint_repository.source
         hf_model_id = tr.spec.config.trt_llm.build.checkpoint_repository.repo
         if (
