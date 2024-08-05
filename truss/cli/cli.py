@@ -934,7 +934,7 @@ def push(
         ):
             fp8_and_num_builder_gpus_text = (
                 "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
-                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures at during the engine build phase. "
+                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
                 "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
             )
             console.print(
