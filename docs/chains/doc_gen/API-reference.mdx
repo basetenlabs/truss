@@ -11,8 +11,7 @@ APIs for creating user-defined Chainlets.
 
 Base class for all chainlets.
 
-Inheriting from this class adds validations to make sure subclasses adhere to
-the
+Inheriting from this class adds validations to make sure subclasses adhere to the
 chainlet pattern and facilitates remote chainlet deployment.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
@@ -39,10 +38,10 @@ chainlet instance is provided.
 
 **Parameters:**
 
-| Name | Type                 | Description |
-|------|----------------------|-------------|
-| `chainlet_cls` | *Type[ChainletBase]* | The chainlet class of the dependency. |
-| `retries` | *int*                | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). |
+| Name           | Type                 | Description                                                                                                  |
+|----------------|----------------------|--------------------------------------------------------------------------------------------------------------|
+| `chainlet_cls` | *Type[ChainletBase]* | The chainlet class of the dependency.                                                                        |
+| `retries`      | *int*                | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). |
 
 * **Returns:**
   A “symbolic marker” to be used as a default argument in a chainlet’s
@@ -87,7 +86,7 @@ an access token for downloading model weights).
 | `secrets`             | *Mapping[str,str]*                                                        | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet.                                              |
 | `user_env`            | *Mapping[str,str]*                                                        | These values can be provided to the deploy command and customize the behavior of deployed chainlets. E.g. for differentiating between prod and dev version of the same chain.                          |
 
-#### chainlet_to_service *:
+#### chainlet_to_service:
 Mapping[str, [ServiceDescriptor](#class-truss-chains-servicedescriptor)]*
 
 #### data_dir *: Path | None*
@@ -157,14 +156,13 @@ class MyChainlet(ChainletBase):
 
 # Remote Configuration
 
-These data structures specify for each chainlet how it gets deployed remotely,
-e.g. dependencies and compute resources.
+These data structures specify for each chainlet how it gets deployed remotely, e.g. dependencies and compute resources.
 
 ### *class* `truss_chains.RemoteConfig`
 
 Bases: `pydantic.BaseModel`
 
-Bundles config values needed to deploy a chainlet remotely..
+Bundles config values needed to deploy a chainlet remotely.
 
 This is specified as a class variable for each chainlet class, e.g.:
 
@@ -248,8 +246,8 @@ Specifies which compute resources a chainlet has in the *remote* deployment.
 
 <Note>
 Not all combinations can be exactly satisfied by available hardware, in some
-cases more powerful machine types are chosen to make sure requirements are met or
-over-provisioned. Refer to the
+cases more powerful machine types are chosen to make sure requirements are met
+or over-provisioned. Refer to the
 [baseten instance reference](https://docs.baseten.co/performance/instances).
 </Note>
 
@@ -288,7 +286,7 @@ from truss import truss_config
 mistral_cache = truss_config.ModelRepo(
     repo_id="mistralai/Mistral-7B-Instruct-v0.2",
     allow_patterns=["*.json", "*.safetensors", ".model"]
-)
+  )
 chains.Assets(cached=[mistral_cache], ...)
 ```
 
@@ -326,6 +324,46 @@ Deploys a chain remotely (with all dependent chainlets).
   A chain service handle to the deployed chain.
 * **Return type:**
   [*ChainService*](#class-truss-chains-deploy-chainservice)
+
+### *class* `truss_chains.deploy.ChainService`
+
+Handle for a deployed chain.
+
+A `ChainService` is created and returned when using `deploy_remotely`. It
+bundles the individual services for each chainlet in the chain, and provides
+utilities to query their status, invoke the entrypoint etc.
+
+#### get_info()
+
+Queries the statuses of all chainlets in the chain.
+
+* **Returns:**
+  List of `DeployedChainlet`, `(name, is_entrypoint, status, logs_url)`
+  for each chainlet.
+* **Return type:**
+  list[*DeployedChainlet*]
+
+#### *property* name *: str*
+
+#### run_remote(json)
+
+Invokes the entrypoint with JSON data.
+
+
+**Parameters:**
+
+| Name   | Type                 | Description                  |
+|--------|----------------------|------------------------------|
+| `json` | *JSON dict*          | Input data to the entrypoint |
+
+* **Returns:**
+  The JSON response.
+* **Return type:**
+  *Any*
+
+#### *property* run_remote_url *: str*
+
+URL to invoke the entrypoint.
 
 #### *property* status_page_url *: str*
 
@@ -388,7 +426,7 @@ foo("./somewhere")
 |-------------|-------|----------------------------|
 | `file_path` | *str* | Absolute or relative path. |
 
-*
+
 * **Return type:**
   *AbsPath*
 
@@ -396,10 +434,9 @@ foo("./somewhere")
 
 Context manager local debug execution of a chain.
 
-The arguments only need to be provided if the chainlets explicitly access any
-the
-corresponding fields
-of [`DeploymentContext`](#class-truss-chains-deploymentcontext-generic-userconfigt).
+The arguments only need to be provided if the chainlets explicitly access any the
+corresponding fields of
+[`DeploymentContext`](#class-truss-chains-deploymentcontext-generic-userconfigt).
 
 **Parameters:**
 
@@ -441,8 +478,8 @@ if __name__ == "__main__":
     print(result)
 ```
 
-Refer to
-the [local debugging guide](https://docs.baseten.co/chains/guide#test-a-chain-locally)
+Refer to the
+[local debugging guide](https://docs.baseten.co/chains/guide#test-a-chain-locally)
 for more details.
 
 ### *class* `truss_chains.ServiceDescriptor`
@@ -482,7 +519,7 @@ class DeployedWhisper(chains.StubBase):
     async def run_remote(self, audio_b64: str) -> WhisperOutput:
         resp = await self._remote.predict_async(
             json_payload={"audio": audio_b64})
-        return WhisperOutput(text=resp["text"], language == resp["language"])
+        return WhisperOutput(text=resp["text"], language=resp["language"])
 
 
 class MyChainlet(chains.ChainletBase):

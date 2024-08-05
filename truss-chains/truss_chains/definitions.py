@@ -4,11 +4,12 @@ import enum
 import logging
 import pathlib
 import traceback
-from types import GenericAlias
-from typing import (
+from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     Any,
+    Callable,
     ClassVar,
     Generic,
+    GenericAlias,  # This causes above type error.
     Iterable,
     Literal,
     Mapping,
@@ -41,6 +42,21 @@ REMOTE_CONFIG_NAME = "remote_config"
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
+
+
+C = TypeVar("C")
+
+
+class _classproperty(Generic[C, V]):
+    def __init__(self, fget: Callable[[Type[C]], V]) -> None:
+        self._fget = fget
+
+    def __get__(self, instance: object, owner: Type[C]) -> V:
+        return self._fget.__get__(None, owner)()
+
+
+def classproperty(fget: Callable[[Type[C]], V]) -> _classproperty[C, V]:
+    return _classproperty(fget)
 
 
 @runtime_checkable
@@ -110,7 +126,7 @@ class AbsPath:
     @property
     def abs_path(self) -> str:
         if self._abs_file_path != self._original_path:
-            logging.info(
+            logging.debug(
                 f"Using abs path `{self._abs_file_path}` for path specified as "
                 f"`{self._original_path}` (in `{self._creating_module}`)."
             )
@@ -194,8 +210,8 @@ class Compute:
 
     Note:
         Not all combinations can be exactly satisfied by available hardware, in some
-        cases more powerful machine types are chosen to make sure requirements are met or
-        over-provisioned. Refer to the
+        cases more powerful machine types are chosen to make sure requirements are met
+        or over-provisioned. Refer to the
         `baseten instance reference <https://docs.baseten.co/performance/instances>`_.
     """
 
@@ -256,7 +272,7 @@ class Compute:
         )
 
     def get_spec(self) -> ComputeSpec:
-        return self._spec.copy(deep=True)
+        return self._spec.model_copy(deep=True)
 
 
 class AssetSpec(SafeModel):
@@ -277,8 +293,8 @@ class Assets:
         from truss import truss_config
 
         mistral_cache = truss_config.ModelRepo(
-          repo_id="mistralai/Mistral-7B-Instruct-v0.2",
-          allow_patterns=["*.json", "*.safetensors", ".model"]
+            repo_id="mistralai/Mistral-7B-Instruct-v0.2",
+            allow_patterns=["*.json", "*.safetensors", ".model"]
           )
         chains.Assets(cached=[mistral_cache], ...)
 
@@ -319,7 +335,7 @@ class Assets:
 
 
 class RemoteConfig(SafeModelNonSerializable):
-    """Bundles config values needed to deploy a chainlet remotely..
+    """Bundles config values needed to deploy a chainlet remotely.
 
     This is specified as a class variable for each chainlet class, e.g.::
 
@@ -329,7 +345,7 @@ class RemoteConfig(SafeModelNonSerializable):
             class MyChainlet(chains.ChainletBase):
                 remote_config = chains.RemoteConfig(
                     docker_image=chains.DockerImage(
-                        pip_requirements=["torch==2.0.1", ... ]
+                        pip_requirements=["torch==2.0.1", ...]
                     ),
                     compute=chains.Compute(cpu_count=2, gpu="A10G", ...),
                     assets=chains.Assets(secret_keys=["hf_access_token"], ...),
@@ -382,7 +398,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
-        user_env: These values can be provided during
+        user_env: These values can be provided to
           the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
     """
@@ -437,6 +453,16 @@ class ABCChainlet(abc.ABC):
     def has_custom_init(cls) -> bool:
         return cls.__init__ is not object.__init__
 
+    @classproperty
+    @classmethod
+    def name(cls) -> str:
+        return cls.__name__
+
+    @classproperty
+    @classmethod
+    def display_name(cls) -> str:
+        return cls.remote_config.name or cls.name
+
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
     # @abc.abstractmethod
@@ -478,7 +504,11 @@ class DependencyDescriptor(SafeModelNonSerializable):
 
     @property
     def name(self) -> str:
-        return self.chainlet_cls.__name__
+        return self.chainlet_cls.name
+
+    @property
+    def display_name(self) -> str:
+        return self.chainlet_cls.display_name
 
 
 class ChainletAPIDescriptor(SafeModelNonSerializable):
@@ -494,7 +524,11 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
 
     @property
     def name(self) -> str:
-        return self.chainlet_cls.__name__
+        return self.chainlet_cls.name
+
+    @property
+    def display_name(self) -> str:
+        return self.chainlet_cls.display_name
 
 
 class StackFrame(SafeModel):

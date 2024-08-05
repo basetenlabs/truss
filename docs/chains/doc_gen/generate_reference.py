@@ -172,10 +172,7 @@ def _apply_patch(
             temp_output_file_path.unlink()
 
 
-def generate_sphinx_docs(
-    output_dir: pathlib.Path,
-    snippets_dir: pathlib.Path,
-) -> None:
+def generate_sphinx_docs(output_dir: pathlib.Path) -> None:
     _clean_build_directory(output_dir)
     config_file = pathlib.Path(__file__).parent / "sphinx_config.py"
     docs_dir = output_dir / "docs"
@@ -210,8 +207,6 @@ def generate_sphinx_docs(
 
 
 if __name__ == "__main__":
-    snippets_dir = pathlib.Path(__file__).parent.parent.parent.absolute() / "snippets"
     generate_sphinx_docs(
         output_dir=pathlib.Path("/tmp/doc_gen"),
-        snippets_dir=snippets_dir,
     )

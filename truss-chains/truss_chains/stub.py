@@ -93,25 +93,26 @@ class StubBase(abc.ABC):
         import truss_chains as chains
 
         class WhisperOutput(pydantic.BaseModel):
-          ...
+            ...
 
 
         class DeployedWhisper(chains.StubBase):
 
             async def run_remote(self, audio_b64: str) -> WhisperOutput:
-                resp = await self._remote.predict_async(json_payload={"audio": audio_b64})
-                return WhisperOutput(text=resp["text"], language==resp["language"])
+                resp = await self._remote.predict_async(
+                    json_payload={"audio": audio_b64})
+                return WhisperOutput(text=resp["text"], language=resp["language"])
 
 
         class MyChainlet(chains.ChainletBase):
 
-           def __init__(self, ..., context = chains.depends_context()):
-               ...
-               self._whisper = DeployedWhisper.from_url(
-                WHISPER_URL,
-                context,
-                options=chains.RPCOptions(retries=3),
-            )
+            def __init__(self, ..., context=chains.depends_context()):
+                ...
+                self._whisper = DeployedWhisper.from_url(
+                    WHISPER_URL,
+                    context,
+                    options=chains.RPCOptions(retries=3),
+                )
 
     """
 

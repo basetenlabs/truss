@@ -24,7 +24,7 @@ def test_chain():
             )
             service = deploy.deploy_remotely(entrypoint, options)
 
-        url = service.run_url.replace("host.docker.internal", "localhost")
+        url = service.run_remote_url.replace("host.docker.internal", "localhost")
 
         # Call without providing values for default arguments.
         response = requests.post(url, json={"length": 30, "num_partitions": 3})
@@ -140,12 +140,12 @@ def test_raises_without_depends():
 
 class Chainlet1(chains.ChainletBase):
     def run_remote(self) -> str:
-        return self.__class__.__name__
+        return self.__class__.name
 
 
 class Chainlet2(chains.ChainletBase):
     def run_remote(self) -> str:
-        return self.__class__.__name__
+        return self.__class__.name
 
 
 class InitInInit(chains.ChainletBase):
@@ -172,7 +172,7 @@ class InitWithFn(chains.ChainletBase):
         foo()
 
     def run_remote(self) -> str:
-        return self.__class__.__name__
+        return self.__class__.name
 
 
 def test_raises_init_in_init():
