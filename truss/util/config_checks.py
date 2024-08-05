@@ -9,7 +9,7 @@ from truss.truss_handle import TrussHandle
 
 
 def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
+    if tr.spec.config.trt_llm is not None and tr.spec.config.trt_llm.build is not None:
         source = tr.spec.config.trt_llm.build.checkpoint_repository.source
         hf_model_id = tr.spec.config.trt_llm.build.checkpoint_repository.repo
         if (
@@ -22,7 +22,7 @@ def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
 
 
 def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
+    if uses_trt_llm_builder(tr):
         if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_GI * 1024**3:
             tr.spec.config.resources.memory = f"{TRTLLM_MIN_MEMORY_REQUEST_GI}Gi"
             tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)

@@ -75,7 +75,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     def check_max_beam_width(cls, v: int):
         if isinstance(v, int):
             if v != 1:
-                raise ValueError("max_beam_width must be unary")
+                raise ValueError(
+                    "max_beam_width greater than 1 is not currently supported"
+                )
         return v
 
 
@@ -93,7 +95,6 @@ class TRTLLMConfiguration(BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
-        self._validate_fp8_and_num_builder_gpus()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -108,19 +109,6 @@ class TRTLLMConfiguration(BaseModel):
             ):
                 raise ValueError(
                     "Both engine_repository and tokenizer_repository must be provided"
-                )
-        return self
-
-    def _validate_fp8_and_num_builder_gpus(self):
-        if self.build is not None:
-            if (
-                self.build.quantization_type
-                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-                and not self.build.num_builder_gpus
-            ):
-                console.print(
-                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build gpus",
-                    style="red",
                 )
         return self
 
