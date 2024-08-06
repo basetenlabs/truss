@@ -6,13 +6,14 @@ import sys
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
 import rich.logging
 import rich.spinner
 import rich.table
+import rich.traceback
 import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
@@ -90,8 +91,8 @@ def error_handling(f: Callable[..., object]):
             f(*args, **kwargs)
         except click.UsageError as e:
             raise e  # You can re-raise the exception or handle it different
-        except Exception as e:
-            click.secho(f"ERROR ({type(e)}: {e}", fg="red")
+        except Exception:
+            console.print_exception(show_locals=True)
 
     return wrapper
 
@@ -337,12 +338,24 @@ def watch(
 
 
 class ChainsGroup(click.Group):
-    def invoke(self, ctx: click.Context) -> None:
+    _ALIASES = {"deploy": "push"}  # Alias `deploy` to push for backwards compat.
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        if cmd_name in self._ALIASES:
+            cmd_name = self._ALIASES[cmd_name]
+
+        return super().get_command(ctx, cmd_name)
+
+    def list_commands(self, ctx: click.Context) -> List[str]:
+        commands = super().list_commands(ctx)
+        return commands + list(self._ALIASES.keys())
+
+    def invoke(self, ctx: click.Context) -> Any:
         # This import raises error messages if pydantic v2 or python older than 3.9
         # are installed.
         import truss_chains  # noqa: F401
 
-        super().invoke(ctx)
+        return super().invoke(ctx)
 
 
 @click.group(cls=ChainsGroup)
@@ -350,7 +363,7 @@ def chains():
     """Subcommands for truss chains"""
 
 
-def make_chains_curl_snippet(run_remote_url: str) -> str:
+def _make_chains_curl_snippet(run_remote_url: str) -> str:
     return (
         f"curl -X POST '{run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
@@ -359,18 +372,22 @@ def make_chains_curl_snippet(run_remote_url: str) -> str:
 
 
 def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
-    """Creates a status table e.g.
+    """Creates a status table similar to:
 
-                                                     Deployments
-    ╭──────────────────────┬──────────────────────┬────────────────────────────╮
-    │ Status               │ Chainlet             │                   Logs URL │
-    ├──────────────────────┼──────────────────────┼────────────────────────────┤
-    │  👾 DEPLOYING        │ SplitText            │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ GenerateData         │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ MistralLLM           │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ TextToNum            │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ Chain                │ https://app.baseten.co/... │
-    ╰──────────────────────┴──────────────────────┴────────────────────────────╯
+                                          ⛓️   ItestChain - Chain  ⛓️
+
+                         🌐 Status page: https://app.baseten.co/chains/p7qrm93v/overview
+    ╭──────────────────────┬──────────────────────────────┬─────────────────────────────────────────────╮
+    │ Status               │ Chainlet                     │ Logs URL                                   │
+    ├──────────────────────┼──────────────────────────────┼────────────────────────────────────────────┤
+    │ 🛠️  BUILDING         │ ItestChain (entrypoint)      │ https://app.baseten.co/chains/.../logs/... │
+    ├──────────────────────┼──────────────────────────────┼────────────────────────────────────────────┤
+    │ 👾  DEPLOYING        │ GENERATE_DATA (internal)     │ https://app.baseten.co/chains/.../logs/... │
+    │ 👾  DEPLOYING        │ SplitTextFailOnce (internal) │ https://app.baseten.co/chains/.../logs/... │
+    │ 👾  DEPLOYING        │ TextReplicator (internal)    │ https://app.baseten.co/chains/.../logs/... │
+    │ 🛠️  BUILDING         │ TextToNum (internal)         │ https://app.baseten.co/chains/.../logs/... │
+    ╰──────────────────────┴──────────────────────────────┴────────────────────────────────────────────╯
+
     """
     title = (
         f"⛓️   {service.name} - Chain  ⛓️\n\n "
@@ -420,7 +437,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     return table, statuses
 
 
-@chains.command()  # type: ignore
+@chains.command(name="push")  # type: ignore
 @click.argument("source", type=Path, required=True)
 @click.argument("entrypoint", type=str, required=False)
 @click.option(
@@ -482,7 +499,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @log_level_option
 @error_handling
-def deploy(
+def push_chain(
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
@@ -504,8 +521,8 @@ def deploy(
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import definitions as chains_def
-    from truss_chains import deploy as chains_deploy
     from truss_chains import framework
+    from truss_chains import remote as chains_remote
 
     console.print("")  # Print a newline.
 
@@ -535,7 +552,7 @@ def deploy(
 
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
-        options = chains_def.DeploymentOptionsBaseten.create(
+        options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
             promote=promote,
             publish=publish,
@@ -543,14 +560,14 @@ def deploy(
             user_env=user_env_parsed,
             remote=remote,
         )
-        service = chains_deploy.deploy_remotely(entrypoint_cls, options)
-        assert isinstance(service, chains_deploy.BasetenChainService)
+        service = chains_remote.push(entrypoint_cls, options)
+        assert isinstance(service, chains_remote.BasetenChainService)
 
     console.print("\n")
     if dryrun:
         return
 
-    curl_snippet = make_chains_curl_snippet(service.run_remote_url)
+    curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
@@ -586,7 +603,7 @@ def deploy(
             console.print("Deployment succeeded.", style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
-                chains_deploy.watch(
+                chains_remote.watch(
                     source,
                     entrypoint,
                     name,
@@ -649,7 +666,7 @@ def watch_chains(
     if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import deploy as chains_deploy
+    from truss_chains import remote as chains_remote
 
     console.print("")  # Print a newline.
 
@@ -666,7 +683,7 @@ def watch_chains(
     else:
         user_env_parsed = {}
 
-    chains_deploy.watch(
+    chains_remote.watch(
         source, entrypoint, name, remote, user_env_parsed, console, error_console
     )
 
@@ -675,7 +692,7 @@ def watch_chains(
 @click.argument("directory", type=Path, required=False)
 @log_level_option
 @error_handling
-def chains_init(
+def init_chain(
     directory: Optional[Path],
 ) -> None:
     """

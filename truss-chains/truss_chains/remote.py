@@ -41,8 +41,8 @@ from truss_chains import code_gen, definitions, framework, utils
 _MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
 
 
-def _deploy_to_baseten(
-    truss_dir: pathlib.Path, options: definitions.DeploymentOptionsBaseten
+def _push_to_baseten(
+    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten
 ) -> b10_service.BasetenService:
     truss_handle = truss.load(str(truss_dir))
     model_name = truss_handle.spec.config.model_name
@@ -51,7 +51,7 @@ def _deploy_to_baseten(
     if options.promote and not options.publish:
         logging.info("`promote=True` overrides `publish` to `True`.")
     logging.info(
-        f"Deploying chainlet `{model_name}` as a truss model on Baseten "
+        f"Pushing chainlet `{model_name}` as a truss model on Baseten "
         f"(publish={options.publish}, promote={options.promote})."
     )
     # Models must be trusted to use the API KEY secret.
@@ -99,13 +99,13 @@ class DockerTrussService(b10_service.TrussService):
         raise NotImplementedError()
 
 
-def _deploy_service(
+def _push_service(
     truss_dir: pathlib.Path,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    options: definitions.DeploymentOptions,
+    options: definitions.PushOptions,
 ) -> b10_service.TrussService:
     service: b10_service.TrussService
-    if isinstance(options, definitions.DeploymentOptionsLocalDocker):
+    if isinstance(options, definitions.PushOptionsLocalDocker):
         logging.info(
             f"Running in docker container `{chainlet_descriptor.display_name}` "
         )
@@ -125,14 +125,14 @@ def _deploy_service(
         service = DockerTrussService(
             f"http://host.docker.internal:{port}", is_draft=True
         )
-    elif isinstance(options, definitions.DeploymentOptionsBaseten):
+    elif isinstance(options, definitions.PushOptionsBaseten):
         with utils.log_level(logging.INFO):
-            service = _deploy_to_baseten(truss_dir, options)
+            service = _push_to_baseten(truss_dir, options)
     else:
         raise NotImplementedError(options)
 
     logging.info(
-        f"Deployed `{chainlet_descriptor.display_name}` @ {service.predict_url}."
+        f"Pushed `{chainlet_descriptor.display_name}` @ {service.predict_url}."
     )
     return service
 
@@ -166,7 +166,7 @@ def _get_ordered_dependencies(
 class ChainService(abc.ABC):
     """Handle for a deployed chain.
 
-    A ``ChainService`` is created and returned when using ``deploy_remotely``. It
+    A ``ChainService`` is created and returned when using ``push``. It
     bundles the individual services for each chainlet in the chain, and provides
     utilities to query their status, invoke the entrypoint etc.
     """
@@ -332,8 +332,8 @@ def _get_chain_root(
 
 
 def _create_baseten_chain(
-    baseten_options: definitions.DeploymentOptionsBaseten,
-    chainlet_services: list["_Deployer.ChainEntry"],
+    baseten_options: definitions.PushOptionsBaseten,
+    chainlet_services: list["_Pusher.ChainEntry"],
     entrypoint_service: b10_service.BasetenService,
 ):
     chainlet_data = []
@@ -375,7 +375,7 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
         )
 
 
-class _Deployer:
+class _Pusher:
     class ChainEntry(NamedTuple):
         service: b10_service.TrussService
         chainlet_display_name: str
@@ -383,26 +383,26 @@ class _Deployer:
 
     def __init__(
         self,
-        options: definitions.DeploymentOptions,
+        options: definitions.PushOptions,
         gen_root: Optional[pathlib.Path] = None,
     ) -> None:
         self._options = options
         self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
-        if isinstance(self._options, definitions.DeploymentOptionsBaseten):
+        if isinstance(self._options, definitions.PushOptionsBaseten):
             _create_chains_secret_if_missing(self._options.remote_provider)
 
-    def deploy(
+    def push(
         self,
         entrypoint: Type[definitions.ABCChainlet],
         non_entrypoint_root_dir: Optional[str] = None,
     ) -> Optional[ChainService]:
         chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
         chainlet_display_name_to_url: MutableMapping[str, str] = {}
-        chainlet_services: list[_Deployer.ChainEntry] = []
+        chainlet_services: list[_Pusher.ChainEntry] = []
         entrypoint_service = None
         for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
             model_base_name = chainlet_descriptor.display_name
-            # Since we are deploying a distinct model for each deployment of the chain,
+            # Since we are creating a distinct model for each deployment of the chain,
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
             model_name = f"{model_base_name}-{model_suffix}"
@@ -425,12 +425,12 @@ class _Deployer:
                 continue
 
             is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint
-            service = _deploy_service(chainlet_dir, chainlet_descriptor, self._options)
+            service = _push_service(chainlet_dir, chainlet_descriptor, self._options)
             chainlet_display_name_to_url[chainlet_descriptor.display_name] = (
                 service.predict_url
             )
             chainlet_services.append(
-                _Deployer.ChainEntry(
+                _Pusher.ChainEntry(
                     service, chainlet_descriptor.display_name, is_entrypoint
                 )
             )
@@ -442,25 +442,25 @@ class _Deployer:
             return None
         assert entrypoint_service is not None
 
-        if isinstance(self._options, definitions.DeploymentOptionsBaseten):
+        if isinstance(self._options, definitions.PushOptionsBaseten):
             assert isinstance(entrypoint_service, b10_service.BasetenService)
             return _create_baseten_chain(
                 self._options, chainlet_services, entrypoint_service
             )
-        elif isinstance(self._options, definitions.DeploymentOptionsLocalDocker):
+        elif isinstance(self._options, definitions.PushOptionsLocalDocker):
             assert isinstance(entrypoint_service, DockerTrussService)
             return DockerChainService(self._options.chain_name, entrypoint_service)
         else:
             raise NotImplementedError(self._options)
 
 
-def deploy_remotely(
+def push(
     entrypoint: Type[definitions.ABCChainlet],
-    options: definitions.DeploymentOptions,
+    options: definitions.PushOptions,
     non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
 ) -> Optional[ChainService]:
-    return _Deployer(options, gen_root).deploy(entrypoint, non_entrypoint_root_dir)
+    return _Pusher(options, gen_root).push(entrypoint, non_entrypoint_root_dir)
 
 
 # Watch / Live Patching ################################################################
@@ -491,7 +491,7 @@ def _map_chainlet_data(
     return chainlet_data
 
 
-class _LivePatcher:
+class _Watcher:
     _source: pathlib.Path
     _entrypoint: Optional[str]
     _deployed_chain_name: str
@@ -747,5 +747,5 @@ def watch(
         ),
         style="blue",
     )
-    patcher = _LivePatcher(source, entrypoint, name, remote, console, error_console)
+    patcher = _Watcher(source, entrypoint, name, remote, console, error_console)
     patcher.watch(user_env)

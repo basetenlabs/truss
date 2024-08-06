@@ -135,8 +135,8 @@ Options to customize RPCs to dependency chainlets.
 Decorator to mark a chainlet as the entrypoint of a chain.
 
 This decorator can be applied to *one* chainlet in a source file and then the
-CLI deploy command simplifies because only the file, but not the chainlet class
-in the file needs to be specified.
+CLI push command simplifies because only the file, but not the chainlet class
+in the file, needs to be specified.
 
 Example usage:
 
@@ -361,7 +361,7 @@ Returns parsed and validated assets.
 
 General framework and helper functions.
 
-### `truss_chains.deploy_remotely`
+### `truss_chains.push`
 
 Deploys a chain remotely (with all dependent chainlets).
 
@@ -374,22 +374,42 @@ Deploys a chain remotely (with all dependent chainlets).
 | `chain_name` | *str* | The name of the chain. |
 | `publish` | *bool* | Whether to publish the chain as a published deployment (it is a draft deployment otherwise) |
 | `promote` | *bool* | Whether to promote the chain to be the production deployment (this implies publishing as well). |
-| `user_env` | *Mapping[str,str]\|None* | These values can be provided to the deploy command and customize the behavior of deployed chainlets. E.g. for differentiating between prod and dev version of the same chain. |
+| `user_env` | *Mapping[str,str]\|None* | These values can be provided to the push command and customize the behavior of deployed chainlets. E.g. for differentiating between prod and dev version of the same chain. |
 | `only_generate_trusses` | *bool* | Used for debugging purposes. If set to True, only the the underlying truss models for the chainlets are generated in `/tmp/.chains_generated`. |
-| `remote` | *str\|None* |  |
+| `remote` | *str\|None* | name of a remote config in .trussrc. If not provided, it will be inquired. |
 
 * **Returns:**
   A chain service handle to the deployed chain.
 * **Return type:**
   *BasetenChainService*
 
-### *class* `truss_chains.deploy.ChainService`
+### `truss_chains.deploy_remotely`
+
+Deprecated, use `push` instead.
+
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `entrypoint` | *Type[ABCChainlet]* |  |
+| `chain_name` | *str* |  |
+| `publish` | *bool* |  |
+| `promote` | *bool* |  |
+| `user_env` | *Mapping[str,str]\|None* |  |
+| `only_generate_trusses` | *bool* |  |
+| `remote` | *str\|None* |  |
+
+* **Return type:**
+  *BasetenChainService*
+
+### *class* `truss_chains.remote.ChainService`
 
 Bases: `ABC`
 
 Handle for a deployed chain.
 
-A `ChainService` is created and returned when using `deploy_remotely`. It
+A `ChainService` is created and returned when using `push`. It
 bundles the individual services for each chainlet in the chain, and provides
 utilities to query their status, invoke the entrypoint etc.
 

@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
-import click
 import yaml
 from requests import ReadTimeout
 
@@ -31,7 +30,7 @@ from truss.remote.baseten.core import (
     get_prod_version_from_versions,
     upload_truss,
 )
-from truss.remote.baseten.error import ApiError
+from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
@@ -164,7 +163,7 @@ class BasetenRemote(TrussRemote):
             # Return the development model version.
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
-                raise click.UsageError(
+                raise RemoteError(
                     "No development model found. Run `truss push` then try again."
                 )
             return dev_version
@@ -172,7 +171,7 @@ class BasetenRemote(TrussRemote):
         # Return the production deployment version.
         prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
-            raise click.UsageError(
+            raise RemoteError(
                 "No production model found. Run `truss push --publish` then try again."
             )
         return prod_version
@@ -185,9 +184,7 @@ class BasetenRemote(TrussRemote):
             try:
                 model_version = api.get_model_version_by_id(model_identifier.value)
             except ApiError:
-                raise click.UsageError(
-                    f"Model version {model_identifier.value} not found."
-                )
+                raise RemoteError(f"Model version {model_identifier.value} not found.")
             model_version_id = model_version["model_version"]["id"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
@@ -206,13 +203,13 @@ class BasetenRemote(TrussRemote):
             try:
                 model = api.get_model_by_id(model_identifier.value)
             except ApiError:
-                raise click.UsageError(f"Model {model_identifier.value} not found.")
+                raise RemoteError(f"Model {model_identifier.value} not found.")
             model_id = model["model"]["id"]
             model_version_id = model["model"]["primary_version"]["id"]
             service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
-            raise click.UsageError(
+            raise RemoteError(
                 "You must either be inside of a Truss directory, or provide "
                 "--model-deployment or --model options."
             )
@@ -253,7 +250,7 @@ class BasetenRemote(TrussRemote):
         # verify that development deployment exists for given model name
         dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
         if not dev_version:
-            raise click.UsageError(
+            raise RemoteError(
                 "No development model found. Run `truss push` then try again."
             )
 
