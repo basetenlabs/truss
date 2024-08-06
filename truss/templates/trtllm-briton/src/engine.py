@@ -9,7 +9,9 @@ from itertools import count
 import briton_pb2
 import briton_pb2_grpc
 import grpc
+from fastapi import HTTPException
 from transformers import AutoTokenizer
+
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
@@ -192,8 +194,10 @@ class Engine:
             if words in model_input:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
-
-        self.validate_input(model_input)
+        try:
+            self.validate_input(model_input)
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
 
         resp_iter = self._stub.Infer(request)
 
@@ -214,7 +218,7 @@ class Engine:
                 return await build_response()
         except grpc.RpcError as ex:
             if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
-                print(ex.details())
+                raise HTTPException(status_code=400, detail=ex.details())
         except Exception as ex:
             print(f"An error has occurred: {ex}")
             raise ex
