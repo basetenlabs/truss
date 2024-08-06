@@ -31,7 +31,9 @@ def depends_context() -> definitions.DeploymentContext:
 
 
 def depends(
-    chainlet_cls: Type[framework.ChainletT], retries: int = 1
+    chainlet_cls: Type[framework.ChainletT],
+    retries: int = 1,
+    timeout_sec: int = definitions.DEFAULT_TIMEOUT_SEC,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
     dependency of another chainlet. The return value of ``depends`` is intended to be
@@ -53,12 +55,13 @@ def depends(
         chainlet_cls: The chainlet class of the dependency.
         retries: The number of times to retry the remote chainlet in case of failures
           (e.g. due to transient network issues).
+        timeout_sec: Timeout for the HTTP request to this chainlet.
 
     Returns:
         A "symbolic marker" to be used as a default argument in a chainlet's
         initializer.
     """
-    options = definitions.RPCOptions(retries=retries)
+    options = definitions.RPCOptions(retries=retries, timeout_sec=timeout_sec)
     # The type error is silenced to because chains framework will at runtime inject
     # a corresponding instance. Nonetheless, we want to use a type annotation here,
     # to facilitate type inference, code-completion and type checking within the code

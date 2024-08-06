@@ -2,6 +2,10 @@ This generation process of the documentation is *extremely* scrappy and just
 an interim solution. It requires significant manual oversight and the code
 quality in this directory is non-existent.
 
+Extra deps required:
+`sphinx sphinx_rtd_theme sphinx_markdown_builder sphinx-pydantic`
+
+
 The general process is:
 1. Document as much as possible in the code, including usage examples, links
    etc.

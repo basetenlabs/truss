@@ -369,10 +369,13 @@ class RemoteConfig(SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
+DEFAULT_TIMEOUT_SEC = 600
+
+
 class RPCOptions(SafeModel):
     """Options to customize RPCs to dependency chainlets."""
 
-    timeout_sec: int = 600
+    timeout_sec: int = DEFAULT_TIMEOUT_SEC
     retries: int = 1
 
 

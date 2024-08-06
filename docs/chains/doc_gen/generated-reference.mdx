@@ -42,6 +42,7 @@ chainlet instance is provided.
 |------|------|-------------|
 | `chainlet_cls` | *Type[ChainletT]* | The chainlet class of the dependency. |
 | `retries` | *int* | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). |
+| `timeout_sec` | *int* | Timeout for the HTTP request to this chainlet. |
 
 * **Returns:**
   A “symbolic marker” to be used as a default argument in a chainlet’s
