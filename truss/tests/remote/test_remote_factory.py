@@ -28,7 +28,6 @@ remote_provider=test_remote
 class TrussTestRemote(TrussRemote):
     def __init__(self, api_key, remote_url):
         self.api_key = api_key
-        self.remote_url = remote_url
 
     def authenticate(self):
         return {"Authorization": self.api_key}

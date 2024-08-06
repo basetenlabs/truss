@@ -16,9 +16,9 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
+from truss.custom_types import Example
 from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.truss_handle import TrussHandle
-from truss.types import Example
 
 CUSTOM_MODEL_CODE = """
 class Model:
@@ -392,7 +392,6 @@ def custom_model_trt_llm(tmp_path):
                     "max_input_len": 1024,
                     "max_output_len": 1024,
                     "max_batch_size": 512,
-                    "max_beam_width": 1,
                     "checkpoint_repository": {
                         "source": "HF",
                         "repo": "meta/llama4-500B",

@@ -6,18 +6,19 @@ import sys
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
+import rich.logging
 import rich.spinner
 import rich.table
 import rich_click as click
 from InquirerPy import inquirer
+from rich.console import Console
 
 import truss
-from truss.cli.console import console
-from truss.cli.create import ask_name
+from truss.config.trt_llm import TrussTRTLLMQuantizationType
 from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
@@ -29,7 +30,11 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
-from truss.remote.remote_cli import inquire_model_name, inquire_remote_name
+from truss.remote.remote_cli import (
+    inquire_model_name,
+    inquire_remote_config,
+    inquire_remote_name,
+)
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
@@ -72,12 +77,9 @@ click.rich_click.COMMAND_GROUPS = {
 }
 
 
-def echo_output(f: Callable[..., object]):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        click.echo(f(*args, **kwargs))
+console = Console()
 
-    return wrapper
+error_console = Console(stderr=True, style="bold red")
 
 
 def error_handling(f: Callable[..., object]):
@@ -96,6 +98,8 @@ def error_handling(f: Callable[..., object]):
 _HUMANFRIENDLY_LOG_LEVEL = "humanfriendly"
 _log_level_str_to_level = {
     _HUMANFRIENDLY_LOG_LEVEL: logging.INFO,
+    "W": logging.WARNING,
+    "WARNING": logging.WARNING,
     "I": logging.INFO,
     "INFO": logging.INFO,
     "D": logging.DEBUG,
@@ -103,25 +107,29 @@ _log_level_str_to_level = {
 }
 
 
-def _set_logging_level(log_level: str) -> None:
-    level = _log_level_str_to_level[log_level]
+def _get_logging_level() -> int:
+    root_logger = logging.getLogger()
+    return root_logger.level
+
+
+def _set_logging_level(log_level: Union[str, int]) -> None:
+    if isinstance(log_level, str):
+        level = _log_level_str_to_level[log_level]
+    else:
+        level = log_level
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
-    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
-        formatter = logging.Formatter(fmt="%(message)s")
-    else:
-        # Absl-inspired logging for technical output.
-        log_format = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
-        date_format = "%m%d %H:%M:%S"
-        formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
 
-    if root_logger.handlers:
-        for handler in root_logger.handlers:
-            handler.setFormatter(formatter)
+    if log_level == _HUMANFRIENDLY_LOG_LEVEL:
+        rich_handler = rich.logging.RichHandler(
+            show_time=False, show_level=False, show_path=False
+        )
     else:
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
-        root_logger.addHandler(handler)
+        # Rich handler adds time, levels, file location etc.
+        rich_handler = rich.logging.RichHandler()
+
+    root_logger.handlers = []  # Clear existing handlers
+    root_logger.addHandler(rich_handler)
 
 
 def log_level_option(f):
@@ -168,20 +176,6 @@ def image():
     """Subcommands for truss image"""
 
 
-class ChainsGroup(click.Group):
-    def invoke(self, ctx: click.Context) -> None:
-        # This import raises error messages if pydantic v2 or python older than 3.9
-        # are installed.
-        import truss_chains  # noqa: F401
-
-        super().invoke(ctx)
-
-
-@click.group(cls=ChainsGroup)
-def chains():
-    """Subcommands for truss chains"""
-
-
 @truss_cli.command()
 @click.argument("target_directory", required=True)
 @click.option(
@@ -191,9 +185,10 @@ def chains():
     default=ModelServer.TrussServer.value,
     type=click.Choice([server.value for server in ModelServer]),
 )
+@click.option("-n", "--name", type=click.STRING)
 @log_level_option
 @error_handling
-def init(target_directory, backend) -> None:
+def init(target_directory, backend, name) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -205,7 +200,10 @@ def init(target_directory, backend) -> None:
         )
     tr_path = Path(target_directory)
     build_config = Build(model_server=ModelServer[backend])
-    model_name = ask_name()
+    if name:
+        model_name = name
+    else:
+        model_name = inquire_model_name()
     truss.init(
         target_directory=target_directory,
         build_config=build_config,
@@ -281,6 +279,24 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
 
 
 @truss_cli.command()
+@click.option(
+    "--api-key",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to patch changes to",
+)
+@error_handling
+def login(api_key: Optional[str]):
+    from truss.api import login
+
+    if not api_key:
+        remote_config = inquire_remote_config()
+        RemoteFactory.update_remote_config(remote_config)
+    else:
+        login(api_key)
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
@@ -316,7 +332,26 @@ def watch(
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
     rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
-    remote_provider.sync_truss_to_dev_version_by_name(model_name, target_directory)
+    remote_provider.sync_truss_to_dev_version_by_name(
+        model_name, target_directory, console, error_console
+    )
+
+
+# Chains Stuff #########################################################################
+
+
+class ChainsGroup(click.Group):
+    def invoke(self, ctx: click.Context) -> None:
+        # This import raises error messages if pydantic v2 or python older than 3.9
+        # are installed.
+        import truss_chains  # noqa: F401
+
+        super().invoke(ctx)
+
+
+@click.group(cls=ChainsGroup)
+def chains():
+    """Subcommands for truss chains"""
 
 
 def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
@@ -425,7 +460,10 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     "--user_env",
     required=False,
     type=str,
-    help="Key-value-pairs (as JSON str) that can be used to control deployment-specific chainlet behavior.",
+    help=(
+        "Key-value-pairs (as JSON str) that can be used to control "
+        "deployment-specific chainlet behavior."
+    ),
 )
 @log_level_option
 @error_handling
@@ -453,6 +491,8 @@ def deploy(
     from truss_chains import deploy as chains_deploy
     from truss_chains import framework
 
+    console.print("\n")
+
     if user_env:
         try:
             user_env_parsed = json.loads(user_env)
@@ -477,13 +517,14 @@ def deploy(
             remote=remote,
         )
         service = chains_deploy.deploy_remotely(entrypoint_cls, options)
+        assert isinstance(service, chains_deploy.BasetenChainService)
 
     console.print("\n")
     if dryrun:
         return
 
     run_help_msg = (
-        f"curl -X POST '{service.run_url}' \\\n"
+        f"curl -X POST '{service.run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
         "    -d '<JSON_INPUT>'"
     )
@@ -494,6 +535,10 @@ def deploy(
         num_services = len(statuses)
         success = False
         num_failed = 0
+        # Logging inferences with live display (even when using richHandler)
+        # -> set logging to warning while showing the live status table.
+        log_level_before = _get_logging_level()
+        _set_logging_level("W")
         with rich.live.Live(table, console=console, refresh_per_second=4) as live:
             while True:
                 table, statuses = _create_chains_table(service)
@@ -506,6 +551,8 @@ def deploy(
                 elif num_failed := num_services - num_active - num_deploying:
                     break
                 time.sleep(status_check_wait_sec)
+        _set_logging_level(log_level_before)
+
         # Print must be outside `Live` context.
         if success:
             console.print("Deployment succeeded.", style="bold green")
@@ -571,6 +618,9 @@ def _load_example_chainlet_code() -> str:
 
     source = Path(example_chainlet.__file__).read_text()
     return source
+
+
+# End Chains Stuff #####################################################################
 
 
 def _extract_and_validate_model_identifier(
@@ -663,7 +713,6 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     help="ID of model to call",
 )
 @log_level_option
-@echo_output
 def predict(
     target_directory: str,
     remote: str,
@@ -883,21 +932,37 @@ def push(
         console.print(not_trusted_text, style="red")
 
     # trt-llm engine builder checks
-    if not check_secrets_for_trt_llm_builder(tr):
-        missing_token_text = (
-            "`hf_access_token` must be provided in secrets to build a gated model. "
-            "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
-        )
-        console.print(missing_token_text, style="red")
-        sys.exit(1)
-    if not check_and_update_memory_for_trt_llm_builder(tr):
-        console.print(
-            f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
-        )
-    if uses_trt_llm_builder(tr) and not publish:
-        live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
-        console.print(live_reload_disabled_text, style="red")
-        sys.exit(1)
+    if uses_trt_llm_builder(tr):
+        if not publish:
+            live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
+            console.print(live_reload_disabled_text, style="red")
+            sys.exit(1)
+        if not check_secrets_for_trt_llm_builder(tr):
+            missing_token_text = (
+                "`hf_access_token` must be provided in secrets to build a gated model. "
+                "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
+            )
+            console.print(missing_token_text, style="red")
+            sys.exit(1)
+        if not check_and_update_memory_for_trt_llm_builder(tr):
+            console.print(
+                f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
+            )
+        config = tr.spec.config
+        if (
+            config.trt_llm.build.quantization_type
+            in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+            and not config.trt_llm.build.num_builder_gpus
+        ):
+            fp8_and_num_builder_gpus_text = (
+                "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
+                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
+                "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+            )
+            console.print(
+                fp8_and_num_builder_gpus_text,
+                style="yellow",
+            )
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(

@@ -1,6 +1,13 @@
+import enum
 import time
 import urllib.parse
-from typing import Any, Dict, Iterator, Optional
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    NamedTuple,
+    Optional,
+)
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
@@ -19,6 +26,35 @@ def _add_model_subdomain(rest_api_url: str, model_subdomain: str) -> str:
     new_netloc = f"{model_subdomain}.{parsed_url.netloc}"
     model_url = parsed_url._replace(netloc=new_netloc)
     return str(urllib.parse.urlunparse(model_url))
+
+
+class URLConfig(enum.Enum):
+    class Data(NamedTuple):
+        prefix: str
+        endpoint: str
+
+    MODEL = Data("model", "predict")
+    CHAIN = Data("chain", "run_remote")
+
+
+# Create unified module / interface for all URLs, models, chains, logs, status page...
+def make_invocation_url(
+    api_url: str,
+    config: URLConfig,
+    entity_id: str,
+    entity_version_id: str,
+    is_draft,
+) -> str:
+    """Get the URL for the predict/run_remote endpoint."""
+    # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
+    url = _add_model_subdomain(api_url, f"{config.value.prefix}-{entity_id}")
+    if is_draft:
+        # "https://model-{model_id}.api.baseten.co/development".
+        url = f"{url}/development/{config.value.endpoint}"
+    else:
+        # "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
+        url = f"{url}/deployment/{entity_version_id}/{config.value.endpoint}"
+    return url
 
 
 class BasetenService(TrussService):
@@ -97,24 +133,19 @@ class BasetenService(TrussService):
     @property
     def logs_url(self) -> str:
         return (
-            f"{self._api.remote_url}/models/{self._model_id}/"
+            f"{self._api.app_url}/models/{self._model_id}/"
             f"logs/{self._model_version_id}"
         )
 
     @property
     def predict_url(self) -> str:
-        """
-        Get the URL for the prediction endpoint.
-        """
-        # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
-        url = _add_model_subdomain(self._api.rest_api_url, f"model-{self.model_id}")
-        if self.is_draft:
-            # "https://model-{model_id}.api.baseten.co/development".
-            url = f"{url}/development/predict"
-        else:
-            # "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
-            url = f"{url}/deployment/{self.model_version_id}/predict"
-        return url
+        return make_invocation_url(
+            self._api.app_url,
+            URLConfig.MODEL,
+            self.model_id,
+            self._model_version_id,
+            self.is_draft,
+        )
 
     @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
     def _fetch_deployment(self) -> Any:

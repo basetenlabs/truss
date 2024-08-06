@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from rich.console import Console
 
 logging.basicConfig(level=logging.INFO)
@@ -53,7 +53,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     max_input_len: int
     max_output_len: int
     max_batch_size: int
-    max_beam_width: int
+    max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
     gather_all_token_logits: bool = False
@@ -70,6 +70,16 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
 
+    @field_validator("max_beam_width", mode="after")
+    @classmethod
+    def check_max_beam_width(cls, v: int):
+        if isinstance(v, int):
+            if v != 1:
+                raise ValueError(
+                    "max_beam_width greater than 1 is not currently supported"
+                )
+        return v
+
 
 class TrussTRTLLMServingConfiguration(BaseModel):
     engine_repository: str
@@ -85,7 +95,6 @@ class TRTLLMConfiguration(BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
-        self._validate_fp8_and_num_builder_gpus()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -103,19 +112,6 @@ class TRTLLMConfiguration(BaseModel):
                 )
         return self
 
-    def _validate_fp8_and_num_builder_gpus(self):
-        if self.build is not None:
-            if (
-                self.build.quantization_type
-                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-                and not self.build.num_builder_gpus
-            ):
-                console.print(
-                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build gpus",
-                    style="red",
-                )
-        return self
-
     @property
     def requires_build(self):
         if self.build is not None:
@@ -125,4 +121,4 @@ class TRTLLMConfiguration(BaseModel):
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
     def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
+        return json.loads(self.model_dump_json(exclude_unset=not verbose))

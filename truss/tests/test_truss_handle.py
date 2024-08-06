@@ -8,10 +8,11 @@ import requests
 from python_on_whales.exceptions import DockerException
 from tenacity import RetryError
 
+from truss.custom_types import Example, PatchRequest
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.templates.control.control.helpers.types import (
+from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
     Patch,
@@ -22,7 +23,6 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     kill_all_with_retries,
 )
 from truss.truss_handle import TrussHandle, wait_for_truss
-from truss.types import Example, PatchRequest
 
 
 def test_spec(custom_model_truss_dir_with_pre_and_post):

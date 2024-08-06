@@ -8,6 +8,7 @@ import inspect
 import logging
 import os
 import pathlib
+import pprint
 import sys
 import types
 from typing import (
@@ -72,12 +73,12 @@ class ChainletDependencyMarker(_BaseProvisionMarker):
         self.options = options
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}({self.chainlet_cls.__name__})"
+        return f"{self.__class__.__name__}({self.chainlet_cls.name})"
 
     def __getattr__(self, item: str) -> Any:
         logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
         raise definitions.ChainsRuntimeError(
-            f"It seems `chains.depends({self.chainlet_cls.__name__})` was used, but "
+            f"It seems `chains.depends({self.chainlet_cls.name})` was used, but "
             "not as an argument to the `__init__` method of a chainlet - This is not "
             "supported. Dependency chainlets must be passed as init arguments.\n"
             f"See {_DOCS_URL_CHAINING}.\n"
@@ -105,7 +106,7 @@ def _example_chainlet_code() -> str:
         logging.error("example_chainlet` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_chainlet.HelloWorld.__name__
+    example_name = example_chainlet.HelloWorld.name
     source = pathlib.Path(example_chainlet.__file__).read_text()
     tree = ast.parse(source)
     class_code = ""
@@ -221,22 +222,22 @@ def _validate_and_describe_endpoint(
     """
     if not hasattr(cls, definitions.ENDPOINT_METHOD_NAME):
         raise definitions.ChainsUsageError(
-            f"`{cls.__name__}` must have a {definitions.ENDPOINT_METHOD_NAME}` method."
+            f"`{cls.name}` must have a {definitions.ENDPOINT_METHOD_NAME}` method."
         )
     # This is the unbound method.
     endpoint_method = getattr(cls, definitions.ENDPOINT_METHOD_NAME)
     if not inspect.isfunction(endpoint_method):
         raise definitions.ChainsUsageError(
-            f"`{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}` must be a method."
+            f"`{cls.name}.{definitions.ENDPOINT_METHOD_NAME}` must be a method."
         )
     signature = inspect.signature(endpoint_method)
     input_args = _validate_endpoint_params(
-        list(signature.parameters.values()), cls.__name__
+        list(signature.parameters.values()), cls.name
     )
     if signature.return_annotation == inspect.Parameter.empty:
         raise definitions.ChainsUsageError(
             "Return values of endpoints must be type annotated. Got:\n"
-            f"{cls.__name__}.{definitions.ENDPOINT_METHOD_NAME}{signature} -> !MISSING!"
+            f"{cls.name}.{definitions.ENDPOINT_METHOD_NAME}{signature} -> !MISSING!"
         )
     if get_origin(signature.return_annotation) is tuple:
         output_types = list(
@@ -462,7 +463,9 @@ def check_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
         src_path=os.path.abspath(inspect.getfile(cls)),
         user_config_type=definitions.TypeDescriptor(raw=type(cls.default_user_config)),
     )
-    logging.debug(f"Descriptor for {cls}:\n{chainlet_descriptor}\n")
+    logging.debug(
+        f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"
+    )
     global_chainlet_registry.register_chainlet(chainlet_descriptor)
 
 
@@ -504,6 +507,10 @@ class _ChainletRegistry:
         self._chainlets[chainlet_descriptor.chainlet_cls] = chainlet_descriptor
         self._name_to_cls[chainlet_descriptor.name] = chainlet_descriptor.chainlet_cls
 
+    def unregister_chainlet(self, chainlet_name: str) -> None:
+        chainlet_cls = self._name_to_cls.pop(chainlet_name)
+        self._chainlets.pop(chainlet_cls)
+
     @property
     def chainlet_descriptors(self) -> list[definitions.ChainletAPIDescriptor]:
         return list(self._chainlets.values())
@@ -520,6 +527,9 @@ class _ChainletRegistry:
             self._chainlets[dep.chainlet_cls]
             for dep in self._chainlets[chainlet.chainlet_cls].dependencies.values()
         ]
+
+    def get_chainlet_names(self) -> set[str]:
+        return set(self._name_to_cls.keys())
 
 
 global_chainlet_registry = _ChainletRegistry()
@@ -543,19 +553,17 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
         if name == definitions.CONTEXT_ARG_NAME:
             if not isinstance(value, definitions.DeploymentContext):
                 logging.error(
-                    f"When initializing Chainlet `{cls.__name__}`, for context "
+                    f"When initializing Chainlet `{cls.name}`, for context "
                     f"argument an incompatible value was passed, value: `{value}`."
                 )
-                raise definitions.ChainsRuntimeError(
-                    _instantiation_error_msg(cls.__name__)
-                )
+                raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
         # The argument is a dependency chainlet.
         elif isinstance(value, _BaseProvisionMarker):
             logging.error(
-                f"When initializing Chainlet `{cls.__name__}`, for dependency chainlet"
+                f"When initializing Chainlet `{cls.name}`, for dependency chainlet"
                 f"argument `{name}` an incompatible value was passed, value: `{value}`."
             )
-            raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.__name__))
+            raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
 
 
 # Local Deployment #####################################################################
@@ -728,6 +736,11 @@ def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
 def import_target(
     module_path: pathlib.Path, target_name: Optional[str]
 ) -> Iterator[Type[definitions.ABCChainlet]]:
+    """The context manager ensures that modules imported by the chain and
+    chainlets registered in ``global_chainlet_registry`` are removed upon exit.
+
+    I.e. aiming at making the import idempotent for common usages, although there could
+    be additional side-effects not accounted for by this implementation."""
     module_path = pathlib.Path(module_path).resolve()
     module_name = module_path.stem  # Use the file's name as the module name
     if not os.path.isfile(module_path):
@@ -751,7 +764,7 @@ def import_target(
     # registration has to stay at least until the deployment command has finished.
     if module_name in sys.modules:
         raise ImportError(
-            f"{import_error_msg}. There is already a module in `sys.modules` "
+            f"{import_error_msg} There is already a module in `sys.modules` "
             f"with name `{module_name}`. Overwriting that value is unsafe. "
             "Try renaming your source file."
         )
@@ -759,8 +772,15 @@ def import_target(
     sys.modules[module_name] = module
     # Add path for making absolute imports relative to the source_module's dir.
     sys.path.insert(0, str(module_path.parent))
+    chainlets_before = global_chainlet_registry.get_chainlet_names()
+    chainlets_after = set()
+    modules_after = set()
     try:
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            modules_after = set(sys.modules.keys())
+            chainlets_after = global_chainlet_registry.get_chainlet_names()
 
         if target_name:
             target_cls = getattr(module, target_name, None)
@@ -795,9 +815,11 @@ def import_target(
                 )
 
         yield target_cls
-
     finally:
-        modules_to_delete = set(sys.modules.keys()) - modules_before
+        for chainlet_name in chainlets_after - chainlets_before:
+            global_chainlet_registry.unregister_chainlet(chainlet_name)
+
+        modules_to_delete = modules_after - modules_before
         logging.debug(
             f"Deleting modules when exiting import context: {modules_to_delete}"
         )

@@ -50,12 +50,14 @@ def make_abs_path_here(file_path: str) -> definitions.AbsPath:
             def foo(path: AbsPath):
                 abs_path = path.abs_path
 
+
             foo(make_abs_path_here("./somewhere"))
 
         Not Ok::
 
             def foo(path: str):
                 dangerous_value = make_abs_path_here(path).abs_path
+
 
             foo("./somewhere")
 

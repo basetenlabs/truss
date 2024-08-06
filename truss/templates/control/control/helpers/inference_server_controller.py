@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Optional
 
+from helpers.custom_types import Patch, PatchType
 from helpers.errors import (
     InadmissiblePatch,
     PatchFailedRecoverable,
@@ -12,7 +13,6 @@ from helpers.errors import (
 )
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
-from helpers.types import Patch, PatchType
 
 INFERENCE_SERVER_CHECK_INTERVAL_SECS = 10
 

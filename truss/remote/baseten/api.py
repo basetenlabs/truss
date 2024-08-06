@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import requests
-from truss.remote.baseten import types as b10_types
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
@@ -49,7 +49,7 @@ class BasetenApi:
         self._auth_token = self._auth_service.authenticate()
 
     @property
-    def remote_url(self) -> str:
+    def app_url(self) -> str:
         return self._remote_url
 
     @property

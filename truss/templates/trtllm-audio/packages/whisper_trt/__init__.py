@@ -10,9 +10,7 @@ from torch import Tensor
 
 from whisper_trt.assets import download_assets
 from whisper_trt.batching import WhisperBatchProcessor
-from whisper_trt.modeling import WhisperDecoding, WhisperEncoding
-from whisper_trt.tokenizer import REVERSED_LANGUAGES, get_tokenizer
-from whisper_trt.types import (
+from whisper_trt.custom_types import (
     DEFAULT_MAX_NEW_TOKENS,
     DEFAULT_NUM_BEAMS,
     SUPPORTED_SAMPLE_RATE,
@@ -20,6 +18,8 @@ from whisper_trt.types import (
     Segment,
     WhisperResult,
 )
+from whisper_trt.modeling import WhisperDecoding, WhisperEncoding
+from whisper_trt.tokenizer import REVERSED_LANGUAGES, get_tokenizer
 from whisper_trt.utils import log_mel_spectrogram
 
 SEGMENTS_PATTERN = re.compile(r"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>")
