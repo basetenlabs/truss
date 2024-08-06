@@ -11,7 +11,6 @@ import briton_pb2_grpc
 import grpc
 from fastapi import HTTPException
 from transformers import AutoTokenizer
-
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
