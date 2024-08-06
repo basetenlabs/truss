@@ -333,6 +333,21 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
     assert config.to_dict(verbose=True)["model_cache"][1].get("revision") == "not-main2"
 
 
+def test_build_arg_to_secret_mapping(default_config):
+    new_config = default_config
+    new_config["build"] = {}
+    new_config["build"]["build_arg_to_secret_mapping"] = {"FOO": "bar"}
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        build={
+            "build_arg_to_secret_mapping": {"FOO": "bar"},
+        },
+    )
+
+    assert new_config == config.to_dict(verbose=False)
+
+
 def test_empty_config(default_config):
     config = TrussConfig()
     new_config = default_config
@@ -394,6 +409,32 @@ def test_from_yaml_python_version():
 
         result = TrussConfig.from_yaml(yaml_path)
         assert result.python_version == "py39"
+
+
+def test_build_arg_to_secret_mapping_correct_type(default_config):
+    data = {
+        "description": "this is a test",
+        "build": {"build_arg_to_secret_mapping": {"FOO": "bar"}},
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        truss_config = TrussConfig.from_yaml(yaml_path)
+        assert truss_config.build.build_arg_to_secret_mapping == {"FOO": "bar"}
+
+
+def test_build_arg_to_secret_mapping_incorrect_type(default_config):
+    data = {
+        "description": "this is a test",
+        "build": {"build_arg_to_secret_mapping": ["something else"]},
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        with pytest.raises(ValueError):
+            TrussConfig.from_yaml(yaml_path)
 
 
 def test_max_beam_width_check(trtllm_config):
