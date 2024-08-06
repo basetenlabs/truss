@@ -1,15 +1,20 @@
 import abc
+import concurrent.futures
 import inspect
 import logging
 import pathlib
 import re
 import tempfile
+import textwrap
 import uuid
 from typing import (
+    TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterable,
     Iterator,
+    Mapping,
     MutableMapping,
     NamedTuple,
     Optional,
@@ -19,10 +24,17 @@ from typing import (
 
 import tenacity
 import truss
+import watchfiles
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
+from truss.remote import remote_cli, remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
+from truss.util import log_utils
+from truss.util import path as truss_path
 
 from truss_chains import code_gen, definitions, framework, utils
 
@@ -214,6 +226,10 @@ class ChainService(abc.ABC):
         self._entrypoint_fake_json_data = fake_data
 
 
+def _chain_status_page_url(remote_url: str, chain_id: str) -> str:
+    return f"{remote_url}/chains/{chain_id}/overview"
+
+
 class BasetenChainService(ChainService):
     _chain_deployment_handle: b10_core.ChainDeploymentHandle
     _remote: b10_remote.BasetenRemote
@@ -243,9 +259,8 @@ class BasetenChainService(ChainService):
     @property
     def status_page_url(self) -> str:
         """Link to status page on Baseten."""
-        return (
-            f"{self._remote.remote_url}/chains/"
-            f"{self._chain_deployment_handle.chain_id}/overview"
+        return _chain_status_page_url(
+            self._remote.remote_url, self._chain_deployment_handle.chain_id
         )
 
     @tenacity.retry(
@@ -446,3 +461,291 @@ def deploy_remotely(
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
 ) -> Optional[ChainService]:
     return _Deployer(options, gen_root).deploy(entrypoint, non_entrypoint_root_dir)
+
+
+# Watch / Live Patching ################################################################
+
+
+class _ChainletData(NamedTuple):
+    oracle_name: str  # This contains the random has suffix.
+    oracle_version_id: str
+    oracle_predict_url: str
+
+
+def _map_chainlet_data(
+    deployed_chainlets: list[dict],
+) -> Mapping[str, _ChainletData]:
+    chainlet_data = {}
+    for chainlet in deployed_chainlets:
+        display_name = chainlet["name"]
+        oracle_id = chainlet["oracle"]["id"]
+        version_id = chainlet["oracle_version"]["id"]
+        # Using `development` instead of deployment ID, because this is what is
+        # used in initially deployed chainlets.
+        url = f"https://model-{oracle_id}.api.baseten.co/development/predict"
+        chainlet_data[display_name] = _ChainletData(
+            oracle_name=chainlet["oracle"]["name"],
+            oracle_version_id=version_id,
+            oracle_predict_url=url,
+        )
+    return chainlet_data
+
+
+class _LivePatcher:
+    _source: pathlib.Path
+    _entrypoint: Optional[str]
+    _deployed_chain_name: str
+    _remote_provider: b10_remote.BasetenRemote
+    _chainlet_data: Mapping[str, _ChainletData]
+    _watch_filter: Callable[[watchfiles.Change, str], bool]
+    _console: "rich_console.Console"
+    _error_console: "rich_console.Console"
+
+    def __init__(
+        self,
+        source: pathlib.Path,
+        entrypoint: Optional[str],
+        name: Optional[str],
+        remote: Optional[str],
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ) -> None:
+        self._source = source
+        self._entrypoint = entrypoint
+        self._console = console
+        self._error_console = error_console
+        if not remote:
+            remote = remote_cli.inquire_remote_name(
+                remote_factory.RemoteFactory.get_available_config_names()
+            )
+        self._remote_provider = cast(
+            b10_remote.BasetenRemote,
+            remote_factory.RemoteFactory.create(remote=remote),
+        )
+        with framework.import_target(source, entrypoint) as entrypoint_cls:
+            self._deployed_chain_name = name or entrypoint_cls.__name__
+            self._chain_root = _get_chain_root(entrypoint_cls)
+            chainlet_names = set(
+                desc.display_name
+                for desc in _get_ordered_dependencies([entrypoint_cls])
+            )
+
+        chain_id = b10_core.get_chain_id_by_name(
+            self._remote_provider.api, self._deployed_chain_name
+        )
+        if not chain_id:
+            raise definitions.ChainsDeploymentError(
+                f"Chain `{chain_id}` was not found."
+            )
+        self._status_page_url = _chain_status_page_url(
+            self._remote_provider.remote_url, chain_id
+        )
+        chain_deployment = b10_core.get_dev_chain_deployment(
+            self._remote_provider.api, chain_id
+        )
+        if chain_deployment is None:
+            raise definitions.ChainsDeploymentError(
+                f"No development deployment was found for Chain `{chain_id}`. "
+                "You cannot live-patch production deployments. Check the Chain's "
+                f"status page for available deployments: {self._status_page_url}."
+            )
+        deployed_chainlets = self._remote_provider.get_chainlets(chain_deployment["id"])
+        non_draft_chainlets = [
+            chainlet["name"]
+            for chainlet in deployed_chainlets
+            if not chainlet["oracle_version"]["is_draft"]
+        ]
+        assert not (
+            non_draft_chainlets
+        ), "If the chain is draft, the oracles must be draft."
+
+        self._chainlet_data = _map_chainlet_data(deployed_chainlets)
+        self._assert_chainlet_names_same(chainlet_names)
+        self._ignore_patterns = truss_path.load_trussignore_patterns()
+
+        def watch_filter(_: watchfiles.Change, path: str) -> bool:
+            return not truss_path.is_ignored(pathlib.Path(path), self._ignore_patterns)
+
+        logging.getLogger("watchfiles.main").disabled = True
+        self._watch_filter = watch_filter
+
+    @property
+    def _original_chainlet_names(self) -> set[str]:
+        return set(self._chainlet_data.keys())
+
+    @property
+    def _chainlet_display_name_to_url(self) -> Mapping[str, str]:
+        return {k: v.oracle_predict_url for k, v in self._chainlet_data.items()}
+
+    def _assert_chainlet_names_same(self, new_names: set[str]) -> None:
+        missing = self._original_chainlet_names - new_names
+        added = new_names - self._original_chainlet_names
+        if not (missing or added):
+            return
+        msg_parts = [
+            "The deployed Chainlets and the Chainlets in the current workspace differ. "
+            "Live patching is not possible if the set of Chainlet names differ."
+        ]
+        if missing:
+            msg_parts.append(f"Chainlets missing in current workspace: {list(missing)}")
+        if added:
+            msg_parts.append(f"Chainlets added in current workspace: {list(added)}")
+
+        raise definitions.ChainsDeploymentError("\n".join(msg_parts))
+
+    def _code_gen_and_patch_thread(
+        self, descr: definitions.ChainletAPIDescriptor, user_env: Mapping[str, str]
+    ) -> tuple[b10_remote.PatchResult, list[str]]:
+        with log_utils.LogInterceptor() as log_interceptor:
+            # TODO: Maybe try-except code_gen errors explicitly.
+            chainlet_dir = code_gen.gen_truss_chainlet(
+                self._chain_root,
+                pathlib.Path(tempfile.gettempdir()),
+                self._deployed_chain_name,
+                descr,
+                self._chainlet_data[descr.display_name].oracle_name,
+                self._chainlet_display_name_to_url,
+                user_env,
+            )
+            patch_result = self._remote_provider.patch_for_chainlet(
+                chainlet_dir, self._ignore_patterns
+            )
+            logs = log_interceptor.get_logs()
+        return patch_result, logs
+
+    def _patch(
+        self,
+        executor: concurrent.futures.Executor,
+        user_env: Optional[Mapping[str, str]],
+    ) -> None:
+        exception_raised = None
+        with log_utils.LogInterceptor() as log_interceptor, self._console.status(
+            " Live Patching Chain.\n", spinner="arrow3"
+        ):
+            # Handle import errors gracefully (e.g. if user saved file, but there
+            # are syntax errors, undefined symbols etc.).
+            try:
+                with framework.import_target(
+                    self._source, self._entrypoint
+                ) as entrypoint_cls:
+                    chainlet_descriptors = _get_ordered_dependencies([entrypoint_cls])
+                    chain_root_new = _get_chain_root(entrypoint_cls)
+                    assert chain_root_new == self._chain_root
+                    self._assert_chainlet_names_same(
+                        set(desc.display_name for desc in chainlet_descriptors)
+                    )
+                    future_to_display_name = {}
+                    for chainlet_descr in chainlet_descriptors:
+                        future = executor.submit(
+                            self._code_gen_and_patch_thread,
+                            chainlet_descr,
+                            user_env or {},
+                        )
+                        future_to_display_name[future] = chainlet_descr.display_name
+                    # Threads need to finish while inside the `import_target`-context.
+                    done_futures = {
+                        future_to_display_name[future]: future
+                        for future in concurrent.futures.as_completed(
+                            future_to_display_name
+                        )
+                    }
+            except Exception as e:
+                exception_raised = e
+            finally:
+                logs = log_interceptor.get_logs()
+
+        if logs:
+            formatted_logs = textwrap.indent("\n".join(logs), " " * 4)
+            self._console.print(
+                f"Intercepted logs from importing chain source code:\n{formatted_logs}"
+            )
+
+        if exception_raised:
+            self._error_console.print(
+                "Source files were changed, but pre-conditions for "
+                "live patching are not given. Most likely there is a "
+                "syntax in the source files or chainlet names changed. "
+                f"Try to fix the issue and save the file. Error:\n{exception_raised}."
+            )
+            self._console.print(
+                "The watcher will continue and if you can resolve the "
+                "issue, subsequent patches might succeed.",
+                style="blue",
+            )
+            return
+
+        self._check_patch_results(done_futures)
+
+    def _check_patch_results(
+        self,
+        display_name_to_done_future: Mapping[
+            str, concurrent.futures.Future[tuple[b10_remote.PatchResult, list[str]]]
+        ],
+    ) -> None:
+        has_errors = False
+        for display_name, future in display_name_to_done_future.items():
+            # It is not expected that code_gen_and_patch raises an exception, errors
+            # should be handled by setting `b10_remote.PatchStatus`.
+            # If an exception is raised anyway, it should bubble up the default way.
+            patch_result, logs = future.result()
+            if logs:
+                formatted_logs = textwrap.indent("\n".join(logs), " " * 4)
+                logs_output = f" [grey70]Intercepted logs:\n{formatted_logs}[grey70]"
+            else:
+                logs_output = ""
+
+            if patch_result.status == b10_remote.PatchStatus.SUCCESS:
+                self._console.print(
+                    f"Patched Chainlet `{display_name}`.{logs_output}", style="green"
+                )
+            elif patch_result.status == b10_remote.PatchStatus.SKIPPED:
+                self._console.print(
+                    f"Nothing to do for Chainlet `{display_name}`.{logs_output}",
+                    style="grey50",
+                )
+            else:
+                has_errors = True
+                self._error_console.print(
+                    f"Failed to patch Chainlet `{display_name}`. "
+                    f"{patch_result.message}{logs_output}"
+                )
+
+        if has_errors:
+            msg = (
+                "Some Chainlets could not be live patched. See above error messages. "
+                "The watcher will continue, and try patching new changes. However, the "
+                "safest way to proceed and ensure a consistent state is to re-deploy "
+                "the the entire development Chain."
+            )
+            self._error_console.print(msg)
+
+    def watch(self, user_env: Optional[Mapping[str, str]]) -> None:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Perform one initial patch at startup.
+            self._patch(executor, user_env)
+            self._console.print("👀 Watching for new changes.", style="blue")
+            for _ in watchfiles.watch(
+                self._chain_root, watch_filter=self._watch_filter, raise_interrupt=False
+            ):
+                self._patch(executor, user_env)
+                self._console.print("👀 Watching for new changes.", style="blue")
+
+
+def watch(
+    source: pathlib.Path,
+    entrypoint: Optional[str],
+    name: Optional[str],
+    remote: Optional[str],
+    user_env: Optional[Mapping[str, str]],
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+) -> None:
+    console.print(
+        (
+            "👀 Starting to watch for Chain source code and applying live patches "
+            "when changes are detected."
+        ),
+        style="blue",
+    )
+    patcher = _LivePatcher(source, entrypoint, name, remote, console, error_console)
+    patcher.watch(user_env)
