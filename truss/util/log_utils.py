@@ -3,6 +3,7 @@ import threading
 from typing import List, Optional
 
 
+# TODO: add test.
 class LogInterceptor(logging.Handler):
     """This context manager intercepts logs at root level and allows to retrieve them
     later. It uses the formatter of the first root handler (if present).
@@ -13,15 +14,17 @@ class LogInterceptor(logging.Handler):
     """
 
     _formatter: Optional[logging.Formatter]
+    _original_handlers: List[logging.Handler]
     _log_messages: List[str]
     _thread_local = threading.local()
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self._log_messages = []
         self._formatter = None
+        self._log_messages = []
+        self._original_handlers = []
 
-    def __enter__(self):
+    def __enter__(self) -> "LogInterceptor":
         if not hasattr(LogInterceptor._thread_local, "handlers"):
             LogInterceptor._thread_local.handlers = []
         LogInterceptor._thread_local.handlers.append(self)
@@ -32,11 +35,11 @@ class LogInterceptor(logging.Handler):
         )
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         logging.root.handlers = self._original_handlers
         LogInterceptor._thread_local.handlers.pop()
 
-    def emit(self, record: logging.LogRecord):
+    def emit(self, record: logging.LogRecord) -> None:
         if hasattr(LogInterceptor._thread_local, "handlers"):
             current_handler = LogInterceptor._thread_local.handlers[-1]
             if self._formatter:
@@ -44,9 +47,6 @@ class LogInterceptor(logging.Handler):
             else:
                 formatted_record = self.format(record)
             current_handler._log_messages.append(formatted_record)
-
-    def format(self, record: logging.LogRecord) -> str:
-        return super().format(record)
 
     def get_logs(self) -> List[str]:
         return self._log_messages

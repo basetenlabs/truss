@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
 import click
-import rich
 import yaml
 from requests import ReadTimeout
 
@@ -270,10 +269,10 @@ class BasetenRemote(TrussRemote):
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
-        rich.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
+        console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
         self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
-        rich.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
+        console.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
             self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
@@ -285,12 +284,12 @@ class BasetenRemote(TrussRemote):
     ) -> PatchResult:
         try:
             truss_handle = TrussHandle(watch_path)
-        except yaml.parser.ParserError:
-            return PatchResult(PatchStatus.FAILED, "Unable to parse config file.")
-        except ValueError:
+        except yaml.parser.ParserError as e:
+            return PatchResult(PatchStatus.FAILED, f"Unable to parse config file. {e}")
+        except ValueError as e:
             return PatchResult(
                 PatchStatus.FAILED,
-                f"Error when reading truss from directory {watch_path}.",
+                f"Error when reading truss from directory {watch_path}. {e}",
             )
 
         model_name = truss_handle.spec.config.model_name
@@ -316,8 +315,8 @@ class BasetenRemote(TrussRemote):
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
-        except Exception:
-            return PatchResult(PatchStatus.FAILED, "Failed to calculate patch.")
+        except Exception as e:
+            return PatchResult(PatchStatus.FAILED, f"Failed to calculate patch. {e}")
         if not patch_request:
             return PatchResult(
                 PatchStatus.FAILED,
@@ -355,8 +354,8 @@ class BasetenRemote(TrussRemote):
                 )
             else:
                 message = (
-                    f"Failed to patch: `{resp['error']}`. "
-                    "Model left in original state"
+                    f"Failed to patch. Server error: `{resp['error']}`. "
+                    "Model left in original state."
                 )
             return PatchResult(PatchStatus.FAILED, message)
         else:

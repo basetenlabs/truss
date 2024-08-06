@@ -563,7 +563,7 @@ class _LivePatcher:
         self._assert_chainlet_names_same(chainlet_names)
         self._ignore_patterns = truss_path.load_trussignore_patterns()
 
-        def watch_filter(_, path):
+        def watch_filter(_: watchfiles.Change, path: str) -> bool:
             return not truss_path.is_ignored(pathlib.Path(path), self._ignore_patterns)
 
         logging.getLogger("watchfiles.main").disabled = True
@@ -664,7 +664,7 @@ class _LivePatcher:
             self._error_console.print(
                 "Source files were changed, but pre-conditions for "
                 "live patching are not given. Most likely there is a "
-                "syntax in the source files or chainlet names changed."
+                "syntax in the source files or chainlet names changed. "
                 f"Try to fix the issue and save the file. Error:\n{exception_raised}."
             )
             self._console.print(
@@ -707,7 +707,7 @@ class _LivePatcher:
                 has_errors = True
                 self._error_console.print(
                     f"Failed to patch Chainlet `{display_name}`. "
-                    f"{patch_result.message}\n{logs_output}"
+                    f"{patch_result.message}{logs_output}"
                 )
 
         if has_errors:
@@ -721,13 +721,14 @@ class _LivePatcher:
 
     def watch(self, user_env: Optional[Mapping[str, str]]) -> None:
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            # Perform one initial patch at statup..
+            # Perform one initial patch at startup.
             self._patch(executor, user_env)
+            self._console.print("👀 Watching for new changes.", style="blue")
             for _ in watchfiles.watch(
                 self._chain_root, watch_filter=self._watch_filter, raise_interrupt=False
             ):
                 self._patch(executor, user_env)
-                self._console.print("Watching for new changes.", style="blue")
+                self._console.print("👀 Watching for new changes.", style="blue")
 
 
 def watch(
@@ -741,7 +742,7 @@ def watch(
 ) -> None:
     console.print(
         (
-            "Starting to watch for Chain source code and applying live patches "
+            "👀 Starting to watch for Chain source code and applying live patches "
             "when changes are detected."
         ),
         style="blue",
