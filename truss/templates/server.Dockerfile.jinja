@@ -4,6 +4,11 @@
 
 {% extends "base.Dockerfile.jinja" %}
 
+{% for build_arg, secret in config.build.build_arg_to_secret_mapping.items() %}
+ARG {{build_arg}}=""
+
+{% endfor %}
+
 {% block base_image_patch %}
 # If user base image is supplied in config, apply build commands from truss base image
 {% if config.base_image %}
