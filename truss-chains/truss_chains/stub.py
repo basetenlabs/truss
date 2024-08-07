@@ -1,6 +1,8 @@
 import abc
+import asyncio
 import logging
 import ssl
+import threading
 import time
 from typing import Any, ClassVar, Mapping, Optional, Type, TypeVar, final
 
@@ -34,6 +36,8 @@ class BasetenSession:
         self._service_descriptor = service_descriptor
         self._cached_sync_client = None
         self._cached_async_client = None
+        self._sync_lock = threading.Lock()
+        self._async_lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -45,29 +49,35 @@ class BasetenSession:
             or (int(time.time()) - cached_client[1]) > self._client_cycle_time_sec
         )
 
-    @property
     def _client_sync(self) -> httpx.Client:
+        # Check `_client_cycle_needed` before and after locking to avoid
+        # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_sync_client):
-            self._cached_sync_client = (
-                httpx.Client(
-                    headers=self._auth_header,
-                    timeout=self._service_descriptor.options.timeout_sec,
-                ),
-                int(time.time()),
-            )
+            with self._sync_lock:
+                if self._client_cycle_needed(self._cached_sync_client):
+                    self._cached_sync_client = (
+                        httpx.Client(
+                            headers=self._auth_header,
+                            timeout=self._service_descriptor.options.timeout_sec,
+                        ),
+                        int(time.time()),
+                    )
         assert self._cached_sync_client is not None
         return self._cached_sync_client[0]
 
-    @property
-    def _client_async(self) -> httpx.AsyncClient:
+    async def _client_async(self) -> httpx.AsyncClient:
+        # Check `_client_cycle_needed` before and after locking to avoid
+        # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_async_client):
-            self._cached_async_client = (
-                httpx.AsyncClient(
-                    headers=self._auth_header,
-                    timeout=self._service_descriptor.options.timeout_sec,
-                ),
-                int(time.time()),
-            )
+            async with self._async_lock:
+                if self._client_cycle_needed(self._cached_async_client):
+                    self._cached_async_client = (
+                        httpx.AsyncClient(
+                            headers=self._auth_header,
+                            timeout=self._service_descriptor.options.timeout_sec,
+                        ),
+                        int(time.time()),
+                    )
         assert self._cached_async_client is not None
         return self._cached_async_client[0]
 
@@ -82,11 +92,13 @@ class BasetenSession:
                 if (num := attempt.retry_state.attempt_number) > 1:
                     logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
                 try:
-                    resp = self._client_sync.post(
+                    resp = self._client_sync().post(
                         self._service_descriptor.predict_url, json=json_payload
                     )
                     return utils.handle_response(resp, self.name)
-                except ssl.SSLError:  # Invalidate client.
+                # As a special case we invalidate the client in case of certificate
+                # errors. This has happened in the past and is a defensive measure.
+                except ssl.SSLError:
                     self._cached_sync_client = None
                     raise
 
@@ -101,11 +113,13 @@ class BasetenSession:
                 if (num := attempt.retry_state.attempt_number) > 1:
                     logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
                 try:
-                    resp = await self._client_async.post(
+                    resp = await (await self._client_async()).post(
                         self._service_descriptor.predict_url, json=json_payload
                     )
                     return utils.handle_response(resp, self.name)
-                except ssl.SSLError:  # Invalidate client.
+                # As a special case we invalidate the client in case of certificate
+                # errors. This has happened in the past and is a defensive measure.
+                except ssl.SSLError:
                     self._cached_async_client = None
                     raise
 
