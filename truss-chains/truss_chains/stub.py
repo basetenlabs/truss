@@ -1,5 +1,6 @@
 import abc
 import logging
+import ssl
 import time
 from typing import Any, ClassVar, Mapping, Optional, Type, TypeVar, final
 
@@ -79,15 +80,15 @@ class BasetenSession:
         for attempt in retrying:
             with attempt:
                 if (num := attempt.retry_state.attempt_number) > 1:
-                    logging.info(
-                        f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
-                    )
-                return utils.handle_response(
-                    self._client_sync.post(
+                    logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
+                try:
+                    resp = self._client_sync.post(
                         self._service_descriptor.predict_url, json=json_payload
-                    ),
-                    self.name,
-                )
+                    )
+                    return utils.handle_response(resp, self.name)
+                except ssl.SSLError:  # Invalidate client.
+                    self._cached_sync_client = None
+                    raise
 
     async def predict_async(self, json_payload):
         retrying = tenacity.AsyncRetrying(
@@ -98,15 +99,15 @@ class BasetenSession:
         async for attempt in retrying:
             with attempt:
                 if (num := attempt.retry_state.attempt_number) > 1:
-                    logging.info(
-                        f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
-                    )
-                return utils.handle_response(
-                    await self._client_async.post(
+                    logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
+                try:
+                    resp = await self._client_async.post(
                         self._service_descriptor.predict_url, json=json_payload
-                    ),
-                    self.name,
-                )
+                    )
+                    return utils.handle_response(resp, self.name)
+                except ssl.SSLError:  # Invalidate client.
+                    self._cached_async_client = None
+                    raise
 
 
 class StubBase(abc.ABC):
