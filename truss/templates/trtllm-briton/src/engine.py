@@ -11,6 +11,7 @@ import briton_pb2_grpc
 import grpc
 from fastapi import HTTPException
 from transformers import AutoTokenizer
+
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
@@ -143,12 +144,12 @@ class Engine:
         # Briton explicitly sets streaming to true in britonToTbRequest().
         # https://github.com/basetenlabs/baseten/blob/1c2c9cbe1adafc0c736566bd012abbe7d7e2c2da/briton/src/briton.cpp#L272
         if beam_width is not None and beam_width != 1:
-            raise ValueError("TensorRT-LLM requires beam_width to equal 1")
+            raise HTTPException(status_code=400, detail="TensorRT-LLM requires beam_width to equal 1")
 
         # If Beam width != max_beam_width, TensorRt-LLM will fail an assert.
         # Since Briton sets streaming, the max_beam_width must aslo equal 1.
         if self._max_beam_width != 1:
-            raise ValueError("TensorRT-LLM requires max_beam_width to equal 1.")
+            raise HTTPException(status_code=400, detail="TensorRT-LLM requires max_beam_width to equal 1.")
 
     async def predict(self, model_input):
         """
@@ -193,10 +194,8 @@ class Engine:
             if words in model_input:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
-        try:
-            self.validate_input(model_input)
-        except ValueError as ex:
-            raise HTTPException(status_code=400, detail=str(ex))
+
+        self.validate_input(model_input)
 
         resp_iter = self._stub.Infer(request)
 
