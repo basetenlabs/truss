@@ -206,8 +206,7 @@ class ChainService(abc.ABC):
         """Queries the statuses of all chainlets in the chain.
 
         Returns:
-            List of ``DeployedChainlet``, ``(name, is_entrypoint, status, logs_url)``
-            for each chainlet."""
+            List of ``DeployedChainlet`` for each chainlet."""
 
     @property
     def entrypoint_fake_json_data(self) -> Any:
@@ -224,10 +223,6 @@ class ChainService(abc.ABC):
     @entrypoint_fake_json_data.setter
     def entrypoint_fake_json_data(self, fake_data: Any) -> None:
         self._entrypoint_fake_json_data = fake_data
-
-
-def _chain_status_page_url(remote_url: str, chain_id: str) -> str:
-    return f"{remote_url}/chains/{chain_id}/overview"
 
 
 class BasetenChainService(ChainService):
@@ -248,7 +243,7 @@ class BasetenChainService(ChainService):
     @property
     def run_remote_url(self) -> str:
         """URL to invoke the entrypoint."""
-        return b10_service.make_invocation_url(
+        return b10_service.URLConfig.invocation_url(
             self._remote.api.rest_api_url,
             b10_service.URLConfig.CHAIN,
             self._chain_deployment_handle.chain_id,
@@ -259,8 +254,10 @@ class BasetenChainService(ChainService):
     @property
     def status_page_url(self) -> str:
         """Link to status page on Baseten."""
-        return _chain_status_page_url(
-            self._remote.remote_url, self._chain_deployment_handle.chain_id
+        return b10_service.URLConfig.status_page_url(
+            self._remote.remote_url,
+            b10_service.URLConfig.CHAIN,
+            self._chain_deployment_handle.chain_id,
         )
 
     @tenacity.retry(
@@ -270,29 +267,9 @@ class BasetenChainService(ChainService):
         """Queries the statuses of all chainlets in the chain.
 
         Returns:
-            List of ``DeployedChainlet``, ``(name, is_entrypoint, status, logs_url)``,
-                for each chainlet."""
-        chainlets = self._remote.get_chainlets(
-            chain_deployment_id=self._chain_deployment_handle.chain_deployment_id
-        )
-        return [
-            b10_types.DeployedChainlet(
-                name=chainlet["name"],
-                is_entrypoint=chainlet["is_entrypoint"],
-                status=chainlet["oracle_version"]["current_model_deployment_status"][
-                    "status"
-                ],
-                logs_url=self._chainlet_logs_url(
-                    chainlet["id"],
-                ),
-            )
-            for chainlet in chainlets
-        ]
-
-    def _chainlet_logs_url(self, chainlet_id: str) -> str:
-        return (
-            f"{self._remote.remote_url}/chains/{self._chain_deployment_handle.chain_id}"
-            f"/logs/{self._chain_deployment_handle.chain_deployment_id}/{chainlet_id}"
+            List of ``DeployedChainlet`` for each chainlet."""
+        return self._remote.get_chainlets(
+            self._chain_deployment_handle.chain_deployment_id
         )
 
 
@@ -311,7 +288,7 @@ class DockerChainService(ChainService):
         raise NotImplementedError()
 
     def get_info(self) -> list[b10_types.DeployedChainlet]:
-        """Not Implemented.."""
+        """Not Implemented."""
         raise NotImplementedError()
 
 
@@ -466,37 +443,12 @@ def push(
 # Watch / Live Patching ################################################################
 
 
-class _ChainletData(NamedTuple):
-    oracle_name: str  # This contains the random has suffix.
-    oracle_version_id: str
-    oracle_predict_url: str
-
-
-def _map_chainlet_data(
-    deployed_chainlets: list[dict],
-) -> Mapping[str, _ChainletData]:
-    chainlet_data = {}
-    for chainlet in deployed_chainlets:
-        display_name = chainlet["name"]
-        oracle_id = chainlet["oracle"]["id"]
-        version_id = chainlet["oracle_version"]["id"]
-        # Using `development` instead of deployment ID, because this is what is
-        # used in initially deployed chainlets.
-        url = f"https://model-{oracle_id}.api.baseten.co/development/predict"
-        chainlet_data[display_name] = _ChainletData(
-            oracle_name=chainlet["oracle"]["name"],
-            oracle_version_id=version_id,
-            oracle_predict_url=url,
-        )
-    return chainlet_data
-
-
 class _Watcher:
     _source: pathlib.Path
     _entrypoint: Optional[str]
     _deployed_chain_name: str
     _remote_provider: b10_remote.BasetenRemote
-    _chainlet_data: Mapping[str, _ChainletData]
+    _chainlet_data: Mapping[str, b10_types.DeployedChainlet]
     _watch_filter: Callable[[watchfiles.Change, str], bool]
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
@@ -537,8 +489,8 @@ class _Watcher:
             raise definitions.ChainsDeploymentError(
                 f"Chain `{chain_id}` was not found."
             )
-        self._status_page_url = _chain_status_page_url(
-            self._remote_provider.remote_url, chain_id
+        self._status_page_url = b10_service.URLConfig.status_page_url(
+            self._remote_provider.remote_url, b10_service.URLConfig.CHAIN, chain_id
         )
         chain_deployment = b10_core.get_dev_chain_deployment(
             self._remote_provider.api, chain_id
@@ -551,15 +503,13 @@ class _Watcher:
             )
         deployed_chainlets = self._remote_provider.get_chainlets(chain_deployment["id"])
         non_draft_chainlets = [
-            chainlet["name"]
-            for chainlet in deployed_chainlets
-            if not chainlet["oracle_version"]["is_draft"]
+            chainlet.name for chainlet in deployed_chainlets if not chainlet.is_draft
         ]
         assert not (
             non_draft_chainlets
         ), "If the chain is draft, the oracles must be draft."
 
-        self._chainlet_data = _map_chainlet_data(deployed_chainlets)
+        self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
         self._ignore_patterns = truss_path.load_trussignore_patterns()
 

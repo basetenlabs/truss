@@ -287,7 +287,7 @@ class BasetenApi:
         query_string = f"""
         {{
             chain_deployment(id:"{chain_deployment_id}") {{
-                chainlets{{
+                chainlets {{
                     name
                     id
                     is_entrypoint
@@ -302,12 +302,18 @@ class BasetenApi:
                             status
                         }}
                     }}
-                 }}
+                }}
+                chain {{
+                  id
+                }}
             }}
         }}
         """
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["chain_deployment"]["chainlets"]
+        chainlets = resp["data"]["chain_deployment"]["chainlets"]
+        for chainlet in chainlets:
+            chainlet["chain"] = {"id": resp["data"]["chain_deployment"]["chain"]["id"]}
+        return chainlets
 
     def models(self):
         query_string = """

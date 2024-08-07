@@ -321,14 +321,16 @@ def watch(
     tr = _get_truss_from_directory(target_directory=target_directory)
     model_name = tr.spec.config.model_name
     if not model_name:
-        rich.print(
+        console.print(
             "🧐 NoneType model_name provided in config.yaml. "
             "Please check that you have the correct model name in your config file."
         )
         sys.exit(1)
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
-    rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
+    console.print(
+        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+    )
     remote_provider.sync_truss_to_dev_version_by_name(
         model_name, target_directory, console, error_console
     )
@@ -718,10 +720,10 @@ def init_chain(
         default="my_chain.py",
     ).execute()
     filepath = directory / str(filename).strip()
-    rich.print(f"Creating and populating {filepath}...\n")
+    console.print(f"Creating and populating {filepath}...\n")
     source_code = _load_example_chainlet_code()
     filepath.write_text(source_code)
-    rich.print(
+    console.print(
         "Next steps:\n",
         f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
         "execution.\n"
@@ -881,7 +883,7 @@ def predict(
 
     # Log deployment ID for Baseten models.
     if isinstance(service, BasetenService):
-        rich.print(
+        console.print(
             f"Calling predict on {'[cyan]development[/cyan] ' if service.is_draft else ''}"
             f"deployment ID {service.model_version_id}..."
         )
@@ -891,7 +893,7 @@ def predict(
         for chunk in result:
             click.echo(chunk, nl=False)
         return
-    rich.print_json(data=result)
+    console.print_json(data=result)
 
 
 @truss_cli.command()
@@ -1120,7 +1122,9 @@ def push(
         )
         console.print(promotion_text, style="green")
 
-    rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
+    console.print(
+        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+    )
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
