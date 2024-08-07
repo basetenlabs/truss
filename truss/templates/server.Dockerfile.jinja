@@ -65,7 +65,7 @@ RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
 
 {%- if build_commands %}
 {% for command in build_commands %}
-RUN {{ command }}
+RUN {% for secret in config.secrets.keys() %} --mount=type=secret,id={{secret}}{% endfor %} {{ command }}
 {% endfor %}
 {%- endif  %}
 
