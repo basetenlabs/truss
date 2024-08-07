@@ -27,7 +27,6 @@ packages = [
 "Baseten" = "https://baseten.co"
 
 [tool.poetry.dependencies]
-ruff = "^0.4.8" # Not a dev dep, needed for chains code gen.
 blake3 = "^0.3.3"
 boto3 = "^1.34.85"
 fastapi = ">=0.109.1"
@@ -54,6 +53,7 @@ python-on-whales = "^0.68.0"
 PyYAML = ">=6.0"
 rich = "^13.4.2"
 rich-click = "^1.6.1"
+ruff = "^0.4.8" # Not a dev dep, needed for chains code gen.
 single-source = "^0.3.0"
 tenacity = "^8.0.1"
 watchfiles = "^0.19.0"
