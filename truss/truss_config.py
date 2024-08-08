@@ -180,11 +180,17 @@ class ModelServer(Enum):
 class Build:
     model_server: ModelServer = ModelServer.TrussServer
     arguments: Dict = field(default_factory=dict)
+    secret_to_path_mapping: Dict = field(default_factory=dict)
 
     @staticmethod
     def from_dict(d):
         model_server = ModelServer[d.get("model_server", "TrussServer")]
         arguments = d.get("arguments", {})
+        secret_to_path_mapping = d.get("secret_to_path_mapping", {})
+        if not isinstance(secret_to_path_mapping, dict):
+            raise ValueError(
+                "Please pass a valid mapping for `secret_to_path_mapping`."
+            )
 
         return Build(
             model_server=model_server,
