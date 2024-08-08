@@ -100,7 +100,7 @@ class BasetenRemote(TrussRemote):
                     chainlet["id"],
                 ),
                 oracle_predict_url=URLConfig.invocation_url(
-                    self.remote_url,
+                    self._api.rest_api_url,
                     URLConfig.MODEL,
                     chainlet["oracle"]["id"],
                     chainlet["oracle_version"]["id"],

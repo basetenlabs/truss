@@ -170,7 +170,7 @@ class BasetenService(TrussService):
     @property
     def predict_url(self) -> str:
         return URLConfig.invocation_url(
-            self._api.app_url,
+            self._api.rest_api_url,
             URLConfig.MODEL,
             self.model_id,
             self._model_version_id,
