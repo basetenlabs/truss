@@ -28,6 +28,13 @@ from shared.serialization import (
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv.resource import ResourceAttributes
+
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
 
 # [IMPORTANT] A lot of things depend on this currently.
 # Please consider the following when increasing this:
@@ -83,6 +90,23 @@ class BasetenEndpoints:
 
     def __init__(self, model: ModelWrapper) -> None:
         self._model = model
+    # Create a Resource object to set the service name
+        resource = Resource(attributes={
+            ResourceAttributes.SERVICE_NAME: self._model._config.get("model_name").split("-")[0]
+        })
+
+        # Create a TracerProvider
+        trace_provider = TracerProvider(resource=resource)
+        # THIS DOES NOT WORK, WE NEED TO FIND A WAY TO LET THE USER DEFINE IT.
+        span_processor = self._model._model.span_processor
+        if self._model._model.span_processor is not None:
+            trace_provider.add_span_processor(span_processor)
+
+        # Set the TracerProvider as the global provider
+        trace.set_tracer_provider(trace_provider)
+
+        # Get a tracer
+        self._tracer = trace.get_tracer(__name__)
 
     def _safe_lookup_model(self, model_name: str) -> ModelWrapper:
         if model_name != self._model.name:
@@ -124,29 +148,37 @@ class BasetenEndpoints:
     async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        """
-        This method calls the user-provided predict method
-        """
-        model: ModelWrapper = self._safe_lookup_model(model_name)
+        headers = dict(request.headers)
+        print(headers)
+        ctx = None
+        if 'traceparent' in headers:
+            print("ADDING TRACE")
+            carrier = {'traceparent': headers['traceparent']}
+            ctx = TraceContextTextMapPropagator().extract(carrier=carrier)
+        print("DOING PREDICTION")
+        with self._tracer.start_as_current_span(name="predict", context=ctx):
+            """
+            This method calls the user-provided predict method
+            """
+            model: ModelWrapper = self._safe_lookup_model(model_name)
 
-        self.check_healthy(model)
+            self.check_healthy(model)
 
-        body: Dict
-        if self.is_binary(request):
-            body = truss_msgpack_deserialize(body_raw)
-        else:
-            try:
-                body = json.loads(body_raw)
-            except json.JSONDecodeError as e:
-                error_message = f"Invalid JSON payload: {str(e)}"
-                logging.error(error_message)
-                raise HTTPException(status_code=400, detail=error_message)
-
-        # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Union[Dict, Generator] = await model(
-            body,
-            headers=utils.transform_keys(request.headers, lambda key: key.lower()),
-        )
+            body: Dict
+            if self.is_binary(request):
+                body = truss_msgpack_deserialize(body_raw)
+            else:
+                try:
+                    body = json.loads(body_raw)
+                except json.JSONDecodeError as e:
+                    error_message = f"Invalid JSON payload: {str(e)}"
+                    logging.error(error_message)
+                    raise HTTPException(status_code=400, detail=error_message)
+            # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
+                response: Union[Dict, Generator] = await model(
+                    body,
+                    headers=utils.transform_keys(request.headers, lambda key: key.lower()),
+                )
 
         # In the case that the model returns a Generator object, return a
         # StreamingResponse instead.

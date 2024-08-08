@@ -7,6 +7,10 @@ import httpx
 import tenacity
 
 from truss_chains import definitions, utils
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry import trace
+tracer = trace.get_tracer(__name__)
+from opentelemetry import context
 
 
 class BasetenSession:
@@ -55,12 +59,19 @@ class BasetenSession:
                     logging.info(
                         f"Retrying `{self._service_descriptor.name}`, " f"attempt {num}"
                     )
-                return utils.handle_response(
-                    self._client_sync.post(
-                        self._service_descriptor.predict_url, json=json_payload
-                    ),
-                    self.name,
-                )
+                with tracer.start_as_current_span(name="predict_remote") as span:
+                    span.set_attribute("remote_model", self._service_descriptor.name)
+                    headers = {}
+                    ctx = context.get_current()
+                    TraceContextTextMapPropagator().inject(headers, ctx) 
+                    response = utils.handle_response(
+                        self._client_sync.post(
+                            self._service_descriptor.predict_url, json=json_payload, headers=headers
+                        ),
+                        self.name,
+                        
+                    )
+                    return response
 
     async def predict_async(self, json_payload):
         retrying = tenacity.AsyncRetrying(

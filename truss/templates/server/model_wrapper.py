@@ -34,7 +34,7 @@ from pydantic import BaseModel
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
 from typing_extensions import ParamSpec
-
+from opentelemetry import trace
 MODEL_BASENAME = "model"
 
 NUM_LOAD_RETRIES = int(os.environ.get("NUM_LOAD_RETRIES_TRUSS", "1"))
@@ -45,6 +45,7 @@ EXTENSION_CLASS_NAME = "Extension"
 EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
 
+tracer = trace.get_tracer(__name__)
 
 class DeferredSemaphoreManager:
     """
@@ -93,6 +94,7 @@ class ModelWrapper:
 
     def __init__(self, config: Dict):
         self._config = config
+        print("CONFIG", config)
         self._logger = logging.getLogger()
         self.name = MODEL_BASENAME
         self.ready = False
@@ -329,11 +331,12 @@ class ModelWrapper:
                 raise HTTPException(
                     status_code=400, detail=f"Request Validation Error, {str(e)}"
                 ) from e
-
-        payload = await self.preprocess(body, headers)
+        with tracer.start_as_current_span(name="preprocess"):
+            payload = await self.preprocess(body, headers)
 
         async with deferred_semaphore(self._predict_semaphore) as semaphore_manager:
-            response = await self.predict(payload, headers)
+            with tracer.start_as_current_span(name="process"):
+                response = await self.predict(payload, headers)
 
             # Streaming cases
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
@@ -386,8 +389,8 @@ class ModelWrapper:
                         yield chunk.value
 
                 return _response_generator()
-
-        processed_response = await self.postprocess(response)
+        with tracer.start_as_current_span(name="postprocess"):
+            processed_response = await self.postprocess(response)
 
         if isinstance(processed_response, BaseModel):
             # If we return a pydantic object, convert it back to a dict
