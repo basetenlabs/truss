@@ -1,6 +1,6 @@
 import math
 import re
-from pathlib import PosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Dict, Pattern
 
 from truss.constants import REGISTRY_BUILD_SECRET_PREFIX
@@ -91,14 +91,24 @@ def _is_numeric(number_like: str) -> bool:
     except ValueError:
         return False
 
-
 def validate_python_executable_path(path: str) -> None:
     """
     This python executable path determines the python executable
     used to run the inference server - check to see that it is an absolute path.
-    We use PosixPath -- TrussServer always runs on a Posix machine.
+    We use PurePosixPath for POSIX systems (Linux and macOS) and PureWindowsPath for Windows.
     """
-    if path and not PosixPath(path).is_absolute():
-        raise ValidationError(
-            f"Invalid relative python executable path {path}. Provide an absolute path"
-        )
+    if not path:
+        return
+
+    if sys.platform.startswith('win'):
+        if not PureWindowsPath(path).is_absolute():
+            raise ValidationError(
+                f"Invalid relative python executable path {path}. Provide an absolute path"
+            )
+    elif sys.platform.startswith(('linux', 'darwin')):  # Linux or macOS
+        if not PurePosixPath(path).is_absolute():
+            raise ValidationError(
+                f"Invalid relative python executable path {path}. Provide an absolute path"
+            )
+    else:
+        raise ValidationError(f"Unsupported operating system: {sys.platform}")
