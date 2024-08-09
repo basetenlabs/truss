@@ -34,8 +34,8 @@ class URLConfig(enum.Enum):
         invoke_endpoint: str
         app_endpoint: str
 
-    MODEL = Data("model", "predict", "chains")
-    CHAIN = Data("chain", "run_remote", "models")
+    MODEL = Data("model", "predict", "models")
+    CHAIN = Data("chain", "run_remote", "chain")
 
     @staticmethod
     def invocation_url(
