@@ -83,6 +83,8 @@ console = Console()
 
 error_console = Console(stderr=True, style="bold red")
 
+is_humanfriendly_log_level = True
+
 
 def error_handling(f: Callable[..., object]):
     @wraps(f)
@@ -91,8 +93,11 @@ def error_handling(f: Callable[..., object]):
             f(*args, **kwargs)
         except click.UsageError as e:
             raise e  # You can re-raise the exception or handle it different
-        except Exception:
-            console.print_exception(show_locals=True)
+        except Exception as e:
+            if is_humanfriendly_log_level:
+                click.secho(f"ERROR: {type(e).__name__}: {e}", fg="red")
+            else:
+                console.print_exception(show_locals=True)
 
     return wrapper
 
@@ -124,6 +129,8 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
     else:
         # Rich handler adds time, levels, file location etc.
         rich_handler = rich.logging.RichHandler()
+        global is_humanfriendly_log_level
+        is_humanfriendly_log_level = False
 
     root_logger.handlers = []  # Clear existing handlers
     root_logger.addHandler(rich_handler)
