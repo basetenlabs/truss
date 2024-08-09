@@ -31,30 +31,61 @@ def _add_model_subdomain(rest_api_url: str, model_subdomain: str) -> str:
 class URLConfig(enum.Enum):
     class Data(NamedTuple):
         prefix: str
-        endpoint: str
+        invoke_endpoint: str
+        app_endpoint: str
 
-    MODEL = Data("model", "predict")
-    CHAIN = Data("chain", "run_remote")
+    MODEL = Data("model", "predict", "chains")
+    CHAIN = Data("chain", "run_remote", "models")
 
+    @staticmethod
+    def invocation_url(
+        api_url: str,  # E.g. https://api.baseten.co
+        config: "URLConfig",
+        entity_id: str,
+        entity_version_id: str,
+        is_draft,
+    ) -> str:
+        """Get the URL for the predict/run_remote endpoint."""
+        # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
+        url = _add_model_subdomain(api_url, f"{config.value.prefix}-{entity_id}")
+        if is_draft:
+            # "https://model-{model_id}.api.baseten.co/development".
+            url = f"{url}/development/{config.value.invoke_endpoint}"
+        else:
+            # "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
+            url = f"{url}/deployment/{entity_version_id}/{config.value.invoke_endpoint}"
+        return url
 
-# Create unified module / interface for all URLs, models, chains, logs, status page...
-def make_invocation_url(
-    api_url: str,
-    config: URLConfig,
-    entity_id: str,
-    entity_version_id: str,
-    is_draft,
-) -> str:
-    """Get the URL for the predict/run_remote endpoint."""
-    # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
-    url = _add_model_subdomain(api_url, f"{config.value.prefix}-{entity_id}")
-    if is_draft:
-        # "https://model-{model_id}.api.baseten.co/development".
-        url = f"{url}/development/{config.value.endpoint}"
-    else:
-        # "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
-        url = f"{url}/deployment/{entity_version_id}/{config.value.endpoint}"
-    return url
+    @staticmethod
+    def status_page_url(
+        app_url: str,  # E.g. https://app.baseten.co/
+        config: "URLConfig",
+        entity_id: str,
+    ) -> str:
+        return f"{app_url}/{config.value.app_endpoint}/{entity_id}/overview/"
+
+    @staticmethod
+    def model_logs_url(
+        app_url: str,  # E.g. https://app.baseten.co/
+        model_id: str,
+        model_version_id: str,
+    ) -> str:
+        return (
+            f"{app_url}/{URLConfig.MODEL.value.app_endpoint}/{model_id}/logs/"
+            f"{model_version_id}"
+        )
+
+    @staticmethod
+    def chainlet_logs_url(
+        app_url: str,  # E.g. https://app.baseten.co/
+        chain_id: str,
+        chain_deployment_id: str,
+        chainlet_id: str,
+    ) -> str:
+        return (
+            f"{app_url}/{URLConfig.CHAIN.value.app_endpoint}/{chain_id}/logs/"
+            f"{chain_deployment_id}/{chainlet_id}"
+        )
 
 
 class BasetenService(TrussService):
@@ -132,15 +163,14 @@ class BasetenService(TrussService):
 
     @property
     def logs_url(self) -> str:
-        return (
-            f"{self._api.app_url}/models/{self._model_id}/"
-            f"logs/{self._model_version_id}"
+        return URLConfig.model_logs_url(
+            self._api.app_url, self.model_id, self.model_version_id
         )
 
     @property
     def predict_url(self) -> str:
-        return make_invocation_url(
-            self._api.app_url,
+        return URLConfig.invocation_url(
+            self._api.rest_api_url,
             URLConfig.MODEL,
             self.model_id,
             self._model_version_id,

@@ -505,7 +505,7 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
-    build_commands: Optional[List[str]] = field(default_factory=list)
+    build_commands: List[str] = field(default_factory=list)
 
     @property
     def canonical_python_version(self) -> str:

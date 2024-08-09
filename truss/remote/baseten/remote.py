@@ -10,7 +10,7 @@ from requests import ReadTimeout
 if TYPE_CHECKING:
     from rich import console as rich_console
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.remote.baseten import custom_types as b10_types
+from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
@@ -31,7 +31,7 @@ from truss.remote.baseten.core import (
     upload_truss,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
-from truss.remote.baseten.service import BasetenService
+from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
 from truss.truss_config import ModelServer
@@ -64,7 +64,7 @@ class BasetenRemote(TrussRemote):
     def create_chain(
         self,
         chain_name: str,
-        chainlets: List[b10_types.ChainletData],
+        chainlets: List[custom_types.ChainletData],
         publish: bool = False,
         promote: bool = False,
     ) -> ChainDeploymentHandle:
@@ -82,8 +82,36 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
         )
 
-    def get_chainlets(self, chain_deployment_id: str) -> List[dict]:
-        return self._api.get_chainlets_by_deployment_id(chain_deployment_id)
+    def get_chainlets(
+        self, chain_deployment_id: str
+    ) -> List[custom_types.DeployedChainlet]:
+        return [
+            custom_types.DeployedChainlet(
+                name=chainlet["name"],
+                is_entrypoint=chainlet["is_entrypoint"],
+                is_draft=chainlet["oracle_version"]["is_draft"],
+                status=chainlet["oracle_version"]["current_model_deployment_status"][
+                    "status"
+                ],
+                logs_url=URLConfig.chainlet_logs_url(
+                    self.remote_url,
+                    chainlet["chain"]["id"],
+                    chain_deployment_id,
+                    chainlet["id"],
+                ),
+                oracle_predict_url=URLConfig.invocation_url(
+                    self._api.rest_api_url,
+                    URLConfig.MODEL,
+                    chainlet["oracle"]["id"],
+                    chainlet["oracle_version"]["id"],
+                    chainlet["oracle_version"]["is_draft"],
+                ),
+                oracle_name=chainlet["oracle"]["name"],
+            )
+            for chainlet in self._api.get_chainlets_by_deployment_id(
+                chain_deployment_id
+            )
+        ]
 
     def push(  # type: ignore
         self,
@@ -94,7 +122,7 @@ class BasetenRemote(TrussRemote):
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
-        origin: Optional[b10_types.ModelOrigin] = None,
+        origin: Optional[custom_types.ModelOrigin] = None,
     ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")

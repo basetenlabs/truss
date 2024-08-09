@@ -89,6 +89,7 @@ def calc_truss_patch(
         return _strictly_under(path, [data_dir_path])
 
     patches = []
+
     for path in changed_paths["removed"]:
         if _strictly_under(path, [model_module_path]):
             logger.info(f"Created patch to remove model code file: {path}")
