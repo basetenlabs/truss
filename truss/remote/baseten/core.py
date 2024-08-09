@@ -1,3 +1,4 @@
+import datetime
 import logging
 import typing
 from typing import IO, List, Optional, Tuple
@@ -58,6 +59,19 @@ def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
 
     chain_name_id_mapping = {chain["name"]: chain["id"] for chain in chains}
     return chain_name_id_mapping.get(chain_name)
+
+
+def get_dev_chain_deployment(api: BasetenApi, chain_id: str):
+    chain_deployments = api.get_chain_deployments(chain_id)
+    dev_deployments = [
+        deployment for deployment in chain_deployments if deployment["is_draft"]
+    ]
+    if not dev_deployments:
+        return None
+    newest_draft_deployment = max(
+        dev_deployments, key=lambda d: datetime.datetime.fromisoformat(d["created"])
+    )
+    return newest_draft_deployment
 
 
 def create_chain(

@@ -2,7 +2,8 @@ import functools
 import pathlib
 from typing import ContextManager, Mapping, Optional, Type, Union
 
-from truss_chains import definitions, deploy, framework
+from truss_chains import definitions, framework
+from truss_chains import remote as chains_remote
 
 
 def depends_context() -> definitions.DeploymentContext:
@@ -31,7 +32,9 @@ def depends_context() -> definitions.DeploymentContext:
 
 
 def depends(
-    chainlet_cls: Type[framework.ChainletT], retries: int = 1
+    chainlet_cls: Type[framework.ChainletT],
+    retries: int = 1,
+    timeout_sec: int = definitions.DEFAULT_TIMEOUT_SEC,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
     dependency of another chainlet. The return value of ``depends`` is intended to be
@@ -53,12 +56,13 @@ def depends(
         chainlet_cls: The chainlet class of the dependency.
         retries: The number of times to retry the remote chainlet in case of failures
           (e.g. due to transient network issues).
+        timeout_sec: Timeout for the HTTP request to this chainlet.
 
     Returns:
         A "symbolic marker" to be used as a default argument in a chainlet's
         initializer.
     """
-    options = definitions.RPCOptions(retries=retries)
+    options = definitions.RPCOptions(retries=retries, timeout_sec=timeout_sec)
     # The type error is silenced to because chains framework will at runtime inject
     # a corresponding instance. Nonetheless, we want to use a type annotation here,
     # to facilitate type inference, code-completion and type checking within the code
@@ -98,8 +102,8 @@ def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]
     """Decorator to mark a chainlet as the entrypoint of a chain.
 
     This decorator can be applied to *one* chainlet in a source file and then the
-    CLI deploy command simplifies because only the file, but not the chainlet class
-    in the file needs to be specified.
+    CLI push command simplifies because only the file, but not the chainlet class
+    in the file, needs to be specified.
 
     Example usage::
 
@@ -112,7 +116,7 @@ def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]
     return framework.entrypoint(cls)
 
 
-def deploy_remotely(
+def push(
     entrypoint: Type[definitions.ABCChainlet],
     chain_name: str,
     publish: bool = True,
@@ -120,7 +124,7 @@ def deploy_remotely(
     user_env: Optional[Mapping[str, str]] = None,
     only_generate_trusses: bool = False,
     remote: Optional[str] = None,
-) -> deploy.BasetenChainService:
+) -> chains_remote.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
 
@@ -132,17 +136,19 @@ def deploy_remotely(
         promote: Whether to promote the chain to be the production deployment (this
           implies publishing as well).
         user_env: These values can be provided to
-          the deploy command and customize the behavior of deployed chainlets. E.g.
+          the push command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
         only_generate_trusses: Used for debugging purposes. If set to True, only the
           the underlying truss models for the chainlets are generated in
           ``/tmp/.chains_generated``.
+        remote: name of a remote config in `.trussrc`. If not provided, it will be
+          inquired.
 
     Returns:
         A chain service handle to the deployed chain.
 
     """
-    options = definitions.DeploymentOptionsBaseten.create(
+    options = definitions.PushOptionsBaseten.create(
         chain_name=chain_name,
         publish=publish,
         promote=promote,
@@ -150,9 +156,30 @@ def deploy_remotely(
         only_generate_trusses=only_generate_trusses,
         remote=remote,
     )
-    service = deploy.deploy_remotely(entrypoint, options)
-    assert isinstance(service, deploy.BasetenChainService)  # Per options above.
+    service = chains_remote.push(entrypoint, options)
+    assert isinstance(service, chains_remote.BasetenChainService)  # Per options above.
     return service
+
+
+def deploy_remotely(
+    entrypoint: Type[definitions.ABCChainlet],
+    chain_name: str,
+    publish: bool = True,
+    promote: bool = True,
+    user_env: Optional[Mapping[str, str]] = None,
+    only_generate_trusses: bool = False,
+    remote: Optional[str] = None,
+) -> chains_remote.BasetenChainService:
+    """Deprecated, use ``push`` instead."""
+    return push(
+        entrypoint,
+        chain_name,
+        publish,
+        promote,
+        user_env,
+        only_generate_trusses,
+        remote,
+    )
 
 
 def run_local(

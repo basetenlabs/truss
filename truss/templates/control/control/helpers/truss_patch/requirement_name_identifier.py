@@ -13,4 +13,4 @@ def identify_requirement_name(req: str) -> str:
 
 
 def reqs_by_name(reqs: List[str]) -> Dict[str, str]:
-    return {identify_requirement_name(req): req for req in reqs}
+    return {identify_requirement_name(req): req for req in reqs if req.strip()}

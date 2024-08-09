@@ -21,3 +21,7 @@ class AuthorizationError(Error):
     """Raised in places where the user needs to be logged in and is not."""
 
     pass
+
+
+class RemoteError(Error):
+    pass

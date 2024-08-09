@@ -1,7 +1,7 @@
-import click
 import pytest
 import requests_mock
 from truss.remote.baseten.core import ModelId, ModelName, ModelVersionId
+from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import BasetenRemote
 from truss.truss_handle import TrussHandle
 
@@ -39,7 +39,7 @@ def test_get_service_by_version_id_no_version():
             _TEST_REMOTE_GRAPHQL_PATH,
             json=model_version_response,
         )
-        with pytest.raises(click.UsageError):
+        with pytest.raises(RemoteError):
             remote.get_service(model_identifier=ModelVersionId("version_id"))
 
 
@@ -113,7 +113,7 @@ def test_get_service_by_model_name_no_dev_version():
 
         # Since no development version exists, calling get_service with
         # published=False should raise an error.
-        with pytest.raises(click.UsageError):
+        with pytest.raises(RemoteError):
             remote.get_service(
                 model_identifier=ModelName("model_name"), published=False
             )
@@ -143,7 +143,7 @@ def test_get_service_by_model_name_no_prod_version():
 
         # Since no production version exists, calling get_service with
         # published=True should raise an error.
-        with pytest.raises(click.UsageError):
+        with pytest.raises(RemoteError):
             remote.get_service(model_identifier=ModelName("model_name"), published=True)
 
         # Check that the development version is returned when published is False.
@@ -186,7 +186,7 @@ def test_get_service_by_model_id_no_model():
             _TEST_REMOTE_GRAPHQL_PATH,
             json=model_response,
         )
-        with pytest.raises(click.UsageError):
+        with pytest.raises(RemoteError):
             remote.get_service(model_identifier=ModelId("model_id"))
 
 

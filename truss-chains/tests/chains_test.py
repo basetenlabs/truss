@@ -7,7 +7,7 @@ import requests
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 
 import truss_chains as chains
-from truss_chains import definitions, deploy, framework, public_api, utils
+from truss_chains import definitions, framework, public_api, remote, utils
 
 utils.setup_dev_logging(logging.DEBUG)
 
@@ -18,11 +18,11 @@ def test_chain():
         root = Path(__file__).parent.resolve()
         chain_root = root / "itest_chain" / "itest_chain.py"
         with framework.import_target(chain_root, "ItestChain") as entrypoint:
-            options = definitions.DeploymentOptionsLocalDocker(
+            options = definitions.PushOptionsLocalDocker(
                 chain_name="integration-test",
                 user_env={"test_env_key": "test_env_value"},
             )
-            service = deploy.deploy_remotely(entrypoint, options)
+            service = remote.push(entrypoint, options)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
 

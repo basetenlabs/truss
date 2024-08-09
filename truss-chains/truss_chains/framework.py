@@ -127,7 +127,7 @@ def _instantiation_error_msg(cls_name: str):
         f"add them as init argument. See {_DOCS_URL_CHAINING}.\n"
         f"2. For local / debug execution, use the `{run_local.__name__}`-"
         f"context. See {_DOCS_URL_LOCAL}.\n"
-        "3. Deploy the chain and call the remote endpoint.\n"
+        "3. Push the chain and call the remote endpoint.\n"
         "Example of correct `__init__` with dependencies:\n"
         f"{_example_chainlet_code()}"
     )
@@ -566,7 +566,7 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
             raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
 
 
-# Local Deployment #####################################################################
+# Local Execution ######################################################################
 
 # A variable to track the stack depth relative to `run_local` context manager.
 run_local_stack_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
@@ -761,7 +761,7 @@ def import_target(
     # Since the framework depends on tracking the source files via `inspect` and this
     # depends on the modules bein properly registered in `sys.modules`, we have to
     # manually do this here (because importlib does not do it automatically). This
-    # registration has to stay at least until the deployment command has finished.
+    # registration has to stay at least until the push command has finished.
     if module_name in sys.modules:
         raise ImportError(
             f"{import_error_msg} There is already a module in `sys.modules` "
