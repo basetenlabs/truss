@@ -103,7 +103,7 @@ class ChainsRuntimeError(Exception):
 
 
 class ChainsDeploymentError(Exception):
-    """Raised when components are not used the expected way at runtime."""
+    """Raised when interaction with a Chain deployment are not possible."""
 
 
 class AbsPath:

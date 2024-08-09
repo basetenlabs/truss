@@ -35,7 +35,7 @@ class URLConfig(enum.Enum):
         app_endpoint: str
 
     MODEL = Data("model", "predict", "models")
-    CHAIN = Data("chain", "run_remote", "chain")
+    CHAIN = Data("chain", "run_remote", "chains")
 
     @staticmethod
     def invocation_url(
@@ -62,7 +62,7 @@ class URLConfig(enum.Enum):
         config: "URLConfig",
         entity_id: str,
     ) -> str:
-        return f"{app_url}/{config.value.app_endpoint}/{entity_id}/overview/"
+        return f"{app_url}/{config.value.app_endpoint}/{entity_id}/overview"
 
     @staticmethod
     def model_logs_url(
