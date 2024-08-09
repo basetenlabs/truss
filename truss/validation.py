@@ -25,6 +25,20 @@ MEMORY_UNITS: Dict[str, int] = {
 }
 
 
+def validate_secret_to_path_mapping(secret_to_path_mapping: Dict[str, str]) -> None:
+    if not isinstance(secret_to_path_mapping, dict):
+        raise ValueError("Please pass a valid mapping for `secret_to_path_mapping`.")
+
+    for secret_name, path in secret_to_path_mapping.items():
+        validate_secret_name(secret_name)
+        k8s_valid_name = re.sub("[^0-9a-zA-Z]+", "-", secret_name)
+        if secret_name != k8s_valid_name:
+            raise ValueError(
+                f"Secrets used in builds must follow Kubernetes object naming conventions.  Name `{secret_name}` is not valid. "
+                f"Please use only alphanumeric characters and `-`."
+            )
+
+
 def validate_secret_name(secret_name: str) -> None:
     if secret_name is None or not isinstance(secret_name, str) or secret_name == "":
         raise ValueError(f"Invalid secret name `{secret_name}`")
