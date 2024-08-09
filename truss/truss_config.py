@@ -195,6 +195,7 @@ class Build:
         return Build(
             model_server=model_server,
             arguments=arguments,
+            secret_to_path_mapping=secret_to_path_mapping,
         )
 
     def to_dict(self):
