@@ -16,6 +16,7 @@ from truss.validation import (
     validate_memory_spec,
     validate_python_executable_path,
     validate_secret_name,
+    validate_secret_to_path_mapping,
 )
 
 DEFAULT_MODEL_FRAMEWORK_TYPE = ModelFrameworkType.CUSTOM
@@ -187,6 +188,7 @@ class Build:
         model_server = ModelServer[d.get("model_server", "TrussServer")]
         arguments = d.get("arguments", {})
         secret_to_path_mapping = d.get("secret_to_path_mapping", {})
+        validate_secret_to_path_mapping(secret_to_path_mapping)
         if not isinstance(secret_to_path_mapping, dict):
             raise ValueError(
                 "Please pass a valid mapping for `secret_to_path_mapping`."

@@ -409,6 +409,19 @@ def test_secret_to_path_mapping_correct_type(default_config):
         assert truss_config.build.secret_to_path_mapping == {"foo": "/bar"}
 
 
+def test_secret_to_path_mapping_invalid_secret_name(default_config):
+    data = {
+        "description": "this is a test",
+        "build": {"secret_to_path_mapping": {"foo_bar": "/bar"}},
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        with pytest.raises(ValueError):
+            TrussConfig.from_yaml(yaml_path)
+
+
 def test_secret_to_path_mapping_incorrect_type(default_config):
     data = {
         "description": "this is a test",
