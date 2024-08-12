@@ -6,8 +6,11 @@ import pydantic
 class DeployedChainlet(pydantic.BaseModel):
     name: str
     is_entrypoint: bool
+    is_draft: bool
     status: str
     logs_url: str
+    oracle_predict_url: str
+    oracle_name: str
 
 
 class ChainletData(pydantic.BaseModel):

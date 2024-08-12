@@ -102,6 +102,10 @@ class ChainsRuntimeError(Exception):
     """Raised when components are not used the expected way at runtime."""
 
 
+class ChainsDeploymentError(Exception):
+    """Raised when interaction with a Chain deployment are not possible."""
+
+
 class AbsPath:
     _abs_file_path: str
     _creating_module: str
@@ -365,10 +369,13 @@ class RemoteConfig(SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
+DEFAULT_TIMEOUT_SEC = 600
+
+
 class RPCOptions(SafeModel):
     """Options to customize RPCs to dependency chainlets."""
 
-    timeout_sec: int = 600
+    timeout_sec: int = DEFAULT_TIMEOUT_SEC
     retries: int = 1
 
 
@@ -592,13 +599,13 @@ class GenericRemoteException(Exception): ...
 ########################################################################################
 
 
-class DeploymentOptions(SafeModelNonSerializable):
+class PushOptions(SafeModelNonSerializable):
     chain_name: str
     user_env: Mapping[str, str]
     only_generate_trusses: bool = False
 
 
-class DeploymentOptionsBaseten(DeploymentOptions):
+class PushOptionsBaseten(PushOptions):
     remote_provider: baseten_remote.BasetenRemote
     publish: bool
     promote: bool
@@ -612,7 +619,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
         only_generate_trusses: bool,
         user_env: Mapping[str, str],
         remote: Optional[str] = None,
-    ) -> "DeploymentOptionsBaseten":
+    ) -> "PushOptionsBaseten":
         if not remote:
             remote = remote_cli.inquire_remote_name(
                 remote_factory.RemoteFactory.get_available_config_names()
@@ -621,7 +628,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
             baseten_remote.BasetenRemote,
             remote_factory.RemoteFactory.create(remote=remote),
         )
-        return DeploymentOptionsBaseten(
+        return PushOptionsBaseten(
             remote_provider=remote_provider,
             chain_name=chain_name,
             publish=publish,
@@ -631,7 +638,7 @@ class DeploymentOptionsBaseten(DeploymentOptions):
         )
 
 
-class DeploymentOptionsLocalDocker(DeploymentOptions):
+class PushOptionsLocalDocker(PushOptions):
     # Local docker-to-docker requests don't need auth, but we need to set a
     # value different from `SECRET_DUMMY` to not trigger the check that the secret
     # is unset. Additionally, if local docker containers make calls to models deployed

@@ -6,13 +6,14 @@ import sys
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
 import rich.logging
 import rich.spinner
 import rich.table
+import rich.traceback
 import rich_click as click
 from InquirerPy import inquirer
 from rich.console import Console
@@ -43,6 +44,7 @@ from truss.util.config_checks import (
     uses_trt_llm_builder,
 )
 from truss.util.errors import RemoteNetworkError
+from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
 rich.spinner.SPINNERS["building"] = {"interval": 500, "frames": ["🛠️ ", " 🛠️"]}
@@ -81,6 +83,8 @@ console = Console()
 
 error_console = Console(stderr=True, style="bold red")
 
+is_humanfriendly_log_level = True
+
 
 def error_handling(f: Callable[..., object]):
     @wraps(f)
@@ -90,7 +94,10 @@ def error_handling(f: Callable[..., object]):
         except click.UsageError as e:
             raise e  # You can re-raise the exception or handle it different
         except Exception as e:
-            click.secho(f"ERROR ({type(e)}: {e}", fg="red")
+            if is_humanfriendly_log_level:
+                click.secho(f"ERROR: {type(e).__name__}: {e}", fg="red")
+            else:
+                console.print_exception(show_locals=True)
 
     return wrapper
 
@@ -105,11 +112,6 @@ _log_level_str_to_level = {
     "D": logging.DEBUG,
     "DEBUG": logging.DEBUG,
 }
-
-
-def _get_logging_level() -> int:
-    root_logger = logging.getLogger()
-    return root_logger.level
 
 
 def _set_logging_level(log_level: Union[str, int]) -> None:
@@ -127,6 +129,8 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
     else:
         # Rich handler adds time, levels, file location etc.
         rich_handler = rich.logging.RichHandler()
+        global is_humanfriendly_log_level
+        is_humanfriendly_log_level = False
 
     root_logger.handlers = []  # Clear existing handlers
     root_logger.addHandler(rich_handler)
@@ -324,14 +328,16 @@ def watch(
     tr = _get_truss_from_directory(target_directory=target_directory)
     model_name = tr.spec.config.model_name
     if not model_name:
-        rich.print(
+        console.print(
             "🧐 NoneType model_name provided in config.yaml. "
             "Please check that you have the correct model name in your config file."
         )
         sys.exit(1)
 
     service = remote_provider.get_service(model_identifier=ModelName(model_name))
-    rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
+    console.print(
+        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+    )
     remote_provider.sync_truss_to_dev_version_by_name(
         model_name, target_directory, console, error_console
     )
@@ -341,12 +347,24 @@ def watch(
 
 
 class ChainsGroup(click.Group):
-    def invoke(self, ctx: click.Context) -> None:
+    _ALIASES = {"deploy": "push"}  # Alias `deploy` to push for backwards compat.
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        if cmd_name in self._ALIASES:
+            cmd_name = self._ALIASES[cmd_name]
+
+        return super().get_command(ctx, cmd_name)
+
+    def list_commands(self, ctx: click.Context) -> List[str]:
+        commands = super().list_commands(ctx)
+        return commands + list(self._ALIASES.keys())
+
+    def invoke(self, ctx: click.Context) -> Any:
         # This import raises error messages if pydantic v2 or python older than 3.9
         # are installed.
         import truss_chains  # noqa: F401
 
-        super().invoke(ctx)
+        return super().invoke(ctx)
 
 
 @click.group(cls=ChainsGroup)
@@ -354,19 +372,31 @@ def chains():
     """Subcommands for truss chains"""
 
 
-def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
-    """Creates a status table e.g.
+def _make_chains_curl_snippet(run_remote_url: str) -> str:
+    return (
+        f"curl -X POST '{run_remote_url}' \\\n"
+        '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
+        "    -d '<JSON_INPUT>'"
+    )
 
-                                                     Deployments
-    ╭──────────────────────┬──────────────────────┬────────────────────────────╮
-    │ Status               │ Chainlet             │                   Logs URL │
-    ├──────────────────────┼──────────────────────┼────────────────────────────┤
-    │  👾 DEPLOYING        │ SplitText            │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ GenerateData         │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ MistralLLM           │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ TextToNum            │ https://app.baseten.co/... │
-    │  👾 DEPLOYING        │ Chain                │ https://app.baseten.co/... │
-    ╰──────────────────────┴──────────────────────┴────────────────────────────╯
+
+def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
+    """Creates a status table similar to:
+
+                                          ⛓️   ItestChain - Chain  ⛓️
+
+                         🌐 Status page: https://app.baseten.co/chains/p7qrm93v/overview
+    ╭──────────────────────┬──────────────────────────────┬─────────────────────────────────────────────╮
+    │ Status               │ Chainlet                     │ Logs URL                                   │
+    ├──────────────────────┼──────────────────────────────┼────────────────────────────────────────────┤
+    │ 🛠️  BUILDING         │ ItestChain (entrypoint)      │ https://app.baseten.co/chains/.../logs/... │
+    ├──────────────────────┼──────────────────────────────┼────────────────────────────────────────────┤
+    │ 👾  DEPLOYING        │ GENERATE_DATA (internal)     │ https://app.baseten.co/chains/.../logs/... │
+    │ 👾  DEPLOYING        │ SplitTextFailOnce (internal) │ https://app.baseten.co/chains/.../logs/... │
+    │ 👾  DEPLOYING        │ TextReplicator (internal)    │ https://app.baseten.co/chains/.../logs/... │
+    │ 🛠️  BUILDING         │ TextToNum (internal)         │ https://app.baseten.co/chains/.../logs/... │
+    ╰──────────────────────┴──────────────────────────────┴────────────────────────────────────────────╯
+
     """
     title = (
         f"⛓️   {service.name} - Chain  ⛓️\n\n "
@@ -416,7 +446,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     return table, statuses
 
 
-@chains.command()  # type: ignore
+@chains.command(name="push")  # type: ignore
 @click.argument("source", type=Path, required=True)
 @click.argument("entrypoint", type=str, required=False)
 @click.option(
@@ -444,6 +474,17 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Wait until all chainlets are ready (or deployment failed).",
 )
 @click.option(
+    "--watch/--no-watch",
+    type=bool,
+    default=False,
+    help=(
+        "Watches the chains source code and applies live patches. Using this option "
+        "will wait for the chain to be deployed (i.e. `--wait` flag is applied), "
+        "before starting to watch for changes. This option required the deployment "
+        "to be a development deployment (i.e. `--no-promote` and `--no-publish`."
+    ),
+)
+@click.option(
     "--dryrun",
     type=bool,
     default=False,
@@ -467,13 +508,14 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 )
 @log_level_option
 @error_handling
-def deploy(
+def push_chain(
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
     publish: bool,
     promote: bool,
     wait: bool,
+    watch: bool,
     dryrun: bool,
     user_env: Optional[str],
     remote: Optional[str],
@@ -488,10 +530,21 @@ def deploy(
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import definitions as chains_def
-    from truss_chains import deploy as chains_deploy
     from truss_chains import framework
+    from truss_chains import remote as chains_remote
 
-    console.print("\n")
+    console.print("")  # Print a newline.
+
+    if watch:
+        if publish or promote:
+            raise ValueError(
+                "When using `--watch`, the deployment cannot be published or promoted."
+            )
+        if not wait:
+            console.print(
+                "`--watch` is used. Will wait for deployment before watching files."
+            )
+            wait = True
 
     if user_env:
         try:
@@ -508,7 +561,7 @@ def deploy(
 
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
-        options = chains_def.DeploymentOptionsBaseten.create(
+        options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
             promote=promote,
             publish=publish,
@@ -516,18 +569,14 @@ def deploy(
             user_env=user_env_parsed,
             remote=remote,
         )
-        service = chains_deploy.deploy_remotely(entrypoint_cls, options)
-        assert isinstance(service, chains_deploy.BasetenChainService)
+        service = chains_remote.push(entrypoint_cls, options)
+        assert isinstance(service, chains_remote.BasetenChainService)
 
     console.print("\n")
     if dryrun:
         return
 
-    run_help_msg = (
-        f"curl -X POST '{service.run_remote_url}' \\\n"
-        '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
-        "    -d '<JSON_INPUT>'"
-    )
+    curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
@@ -536,10 +585,10 @@ def deploy(
         success = False
         num_failed = 0
         # Logging inferences with live display (even when using richHandler)
-        # -> set logging to warning while showing the live status table.
-        log_level_before = _get_logging_level()
-        _set_logging_level("W")
-        with rich.live.Live(table, console=console, refresh_per_second=4) as live:
+        # -> capture logs and print later.
+        with LogInterceptor() as log_interceptor, rich.live.Live(
+            table, console=console, refresh_per_second=4
+        ) as live:
             while True:
                 table, statuses = _create_chains_table(service)
                 live.update(table)
@@ -551,27 +600,108 @@ def deploy(
                 elif num_failed := num_services - num_active - num_deploying:
                     break
                 time.sleep(status_check_wait_sec)
-        _set_logging_level(log_level_before)
 
-        # Print must be outside `Live` context.
+            intercepted_logs = log_interceptor.get_logs()
+
+        # Prints must be outside `Live` context.
+        if intercepted_logs:
+            console.print("Logs intercepted during waiting:", style="blue")
+            for log in intercepted_logs:
+                console.print(f"\t{log}")
         if success:
             console.print("Deployment succeeded.", style="bold green")
-            console.print(f"You can run the chain with:\n{run_help_msg}")
+            console.print(f"You can run the chain with:\n{curl_snippet}")
+            if watch:  # Note that this command will print a startup message.
+                chains_remote.watch(
+                    source,
+                    entrypoint,
+                    name,
+                    remote,
+                    user_env_parsed,
+                    console,
+                    error_console,
+                )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
     else:
         console.print(table)
         console.print(
             "Once all chainlets are deployed, "
-            f"you can run the chain with:\n\n{run_help_msg}"
+            f"you can run the chain with:\n\n{curl_snippet}"
         )
+
+
+@chains.command(name="watch")  # type: ignore
+@click.argument("source", type=Path, required=True)
+@click.argument("entrypoint", type=str, required=False)
+@click.option(
+    "--name",
+    type=str,
+    required=False,
+    help="Name of the chain to be deployed, if not given, the entrypoint name is used.",
+)
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to.",
+)
+@click.option(
+    "--user_env",
+    required=False,
+    type=str,
+    help=(
+        "Key-value-pairs (as JSON str) that can be used to control "
+        "deployment-specific chainlet behavior."
+    ),
+)
+@log_level_option
+@error_handling
+def watch_chains(
+    source: Path,
+    entrypoint: Optional[str],
+    name: Optional[str],
+    user_env: Optional[str],
+    remote: Optional[str],
+) -> None:
+    """
+    Watches the chains source code and applies live patches to a development deployment.
+
+    The development deployment must have been deployed before running this command.
+
+    SOURCE: Path to a python file that contains the entrypoint chainlet.
+
+    ENTRYPOINT: Class name of the entrypoint chainlet in source file. May be omitted
+    if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
+    """
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains import remote as chains_remote
+
+    console.print("")  # Print a newline.
+
+    if user_env:
+        try:
+            user_env_parsed = json.loads(user_env)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Invalid JSON string for user_env: `{user_env}`.\n"
+                f"user_env must be a JSON dict with string values and string keys.\n"
+                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
+                f"Error: {e}"
+            )
+    else:
+        user_env_parsed = {}
+
+    chains_remote.watch(
+        source, entrypoint, name, remote, user_env_parsed, console, error_console
+    )
 
 
 @chains.command(name="init")  # type: ignore
 @click.argument("directory", type=Path, required=False)
 @log_level_option
 @error_handling
-def chains_init(
+def init_chain(
     directory: Optional[Path],
 ) -> None:
     """
@@ -597,10 +727,10 @@ def chains_init(
         default="my_chain.py",
     ).execute()
     filepath = directory / str(filename).strip()
-    rich.print(f"Creating and populating {filepath}...\n")
+    console.print(f"Creating and populating {filepath}...\n")
     source_code = _load_example_chainlet_code()
     filepath.write_text(source_code)
-    rich.print(
+    console.print(
         "Next steps:\n",
         f"💻 Run [bold green]`python {filepath}`[/bold green] for local debug "
         "execution.\n"
@@ -760,7 +890,7 @@ def predict(
 
     # Log deployment ID for Baseten models.
     if isinstance(service, BasetenService):
-        rich.print(
+        console.print(
             f"Calling predict on {'[cyan]development[/cyan] ' if service.is_draft else ''}"
             f"deployment ID {service.model_version_id}..."
         )
@@ -770,7 +900,7 @@ def predict(
         for chunk in result:
             click.echo(chunk, nl=False)
         return
-    rich.print_json(data=result)
+    console.print_json(data=result)
 
 
 @truss_cli.command()
@@ -999,7 +1129,9 @@ def push(
         )
         console.print(promotion_text, style="green")
 
-    rich.print(f"🪵  View logs for your deployment at {_format_link(service.logs_url)}")
+    console.print(
+        f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
+    )
     if wait:
         start_time = time.time()
         with console.status("[bold green]Deploying...") as status:
