@@ -1,0 +1,19 @@
+build_commands: []
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: test
+python_version: py39
+requirements: [
+'opentelemetry-api==1.25.0',
+'opentelemetry-sdk==1.25.0',
+'opentelemetry-exporter-otlp==1.25.0'
+]
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets:
+  honeycomb_token: null
+system_packages: []

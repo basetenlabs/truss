@@ -91,22 +91,7 @@ class BasetenEndpoints:
     def __init__(self, model: ModelWrapper) -> None:
         self._model = model
     # Create a Resource object to set the service name
-        resource = Resource(attributes={
-            ResourceAttributes.SERVICE_NAME: self._model._config.get("model_name").split("-")[0]
-        })
-
-        # Create a TracerProvider
-        trace_provider = TracerProvider(resource=resource)
-        # THIS DOES NOT WORK, WE NEED TO FIND A WAY TO LET THE USER DEFINE IT.
-        span_processor = self._model._model.span_processor
-        if self._model._model.span_processor is not None:
-            trace_provider.add_span_processor(span_processor)
-
-        # Set the TracerProvider as the global provider
-        trace.set_tracer_provider(trace_provider)
-
-        # Get a tracer
-        self._tracer = trace.get_tracer(__name__)
+    
 
     def _safe_lookup_model(self, model_name: str) -> ModelWrapper:
         if model_name != self._model.name:
@@ -156,7 +141,8 @@ class BasetenEndpoints:
             carrier = {'traceparent': headers['traceparent']}
             ctx = TraceContextTextMapPropagator().extract(carrier=carrier)
         print("DOING PREDICTION")
-        with self._tracer.start_as_current_span(name="predict", context=ctx):
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(name="predict", context=ctx):
             """
             This method calls the user-provided predict method
             """

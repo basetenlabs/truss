@@ -10,6 +10,10 @@ from contextlib import asynccontextmanager
 from enum import Enum
 from multiprocessing import Lock
 from pathlib import Path
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv.resource import ResourceAttributes
 from threading import Thread
 from typing import (
     Any,
@@ -33,6 +37,8 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from typing_extensions import ParamSpec
 from opentelemetry import trace
 MODEL_BASENAME = "model"
@@ -211,6 +217,29 @@ class ModelWrapper:
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
+        resource = Resource(attributes={
+            ResourceAttributes.SERVICE_NAME: self._config.get("model_name").split("-")[0]
+        })
+
+        # Create a TracerProvider
+        trace_provider = TracerProvider(resource=resource)
+        # THIS DOES NOT WORK, WE NEED TO FIND A WAY TO LET THE USER DEFINE IT.
+        print(secrets)
+        honeycomb_exporter = OTLPSpanExporter(
+            endpoint="https://api.honeycomb.io/v1/traces",
+            headers={
+                "x-honeycomb-team": "API_KEY",
+                "x-honeycomb-dataset": "production"
+            }
+        )
+
+        # Create a SimpleSpanProcessor using the Honeycomb exporter
+        span_processor = SimpleSpanProcessor(honeycomb_exporter)
+       
+        trace_provider.add_span_processor(span_processor)
+
+        # Set the TracerProvider as the global provider
+        trace.set_tracer_provider(trace_provider)
 
     def set_truss_schema(self):
         parameters = (

@@ -1,1 +1,4 @@
-git+https://github.com/basetenlabs/truss.git
+git+https://github.com/basetenlabs/truss.git@a7129411a86c6e33cc3c8517b4a6516a85403115
+opentelemetry-api==1.25.0
+opentelemetry-sdk==1.25.0
+opentelemetry-exporter-otlp==1.25.0
