@@ -1,4 +1,4 @@
-name: main - post-commit
+name: Main - post-commit
 
 on:
   workflow_dispatch: # Allows running from actions tab
@@ -62,28 +62,7 @@ jobs:
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
     if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        split_group: [ "1", "2", "3", "4", "5" ]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss/tests --durations=0 -m 'integration' --splits 5 --group ${{ matrix.split_group }}
-
-  chain-integration-tests:
-    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss-chains/tests -s --log-cli-level=INFO  --durations=0 -m 'integration'
+    uses: ./.github/workflows/_integration_test_shared.yml
 
   publish-to-pypi:
     needs: [detect-version-changed]
