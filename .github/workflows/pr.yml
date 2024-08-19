@@ -33,7 +33,20 @@ jobs:
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - name: run tests (poetry run pytest...)
-        run: poetry run pytest -v --cov=truss -m 'not integration'
+        run: poetry run pytest -v --cov=truss -m 'not integration' --junitxml=report.xml
+
+      - name: Store Test Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: report.xml
+          path: report.xml
+
+      - name: Publish Test Report  # Not sure how to display this in the UI for non PRs.
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+           commit: ${{github.event.workflow_run.head_sha}}  # Doest that work outside PR?
+           report_paths: "report.xml"
 
   markdown-link-check:
     runs-on: ubuntu-20.04
