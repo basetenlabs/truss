@@ -615,7 +615,8 @@ class _Watcher:
                 "Source files were changed, but pre-conditions for "
                 "live patching are not given. Most likely there is a "
                 "syntax in the source files or chainlet names changed. "
-                f"Try to fix the issue and save the file. Error:\n{exception_raised}."
+                "Try to fix the issue and save the file. Error:\n"
+                f"{textwrap.indent(str(exception_raised), ' ' * 4)}"
             )
             self._console.print(
                 "The watcher will continue and if you can resolve the "
