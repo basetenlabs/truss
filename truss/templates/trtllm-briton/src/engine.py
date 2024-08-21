@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import signal
 import socket
@@ -10,6 +12,8 @@ import briton_pb2
 import briton_pb2_grpc
 import grpc
 from fastapi import HTTPException
+from outlines.models.transformers import TransformerTokenizer
+from outlines.processors.structured import JSONLogitsProcessor
 from transformers import AutoTokenizer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
@@ -98,11 +102,19 @@ class Engine:
         self._tokenizer = AutoTokenizer.from_pretrained(
             self._tokenizer_repository, token=self._hf_token
         )
+
+        # The cache dir is used to allow Briton to access the FSM generated for a schema
+        self._fsm_cache_dir = (self._data_dir / "fsm_cache").resolve()
+        if not os.path.exists(self._fsm_cache_dir):
+            os.makedirs(self._fsm_cache_dir)
+        self._fsm_cache = set(os.listdir(self._fsm_cache_dir))
+
         # Start engine
         config_str = f"""
     engine_path: "{self._data_dir.resolve()}"
     hf_tokenizer: "{self._tokenizer_repository}"
     kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
+    fsm_cache_dir: "{self._fsm_cache_dir}"
 """
         config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()
         config_pbtxt_path.write_text(config_str)
@@ -176,6 +188,32 @@ class Engine:
         if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
             prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
+        self.validate_input(model_input)
+
+        schema_hash = None
+        if "response_format" in model_input:
+            response_format = model_input["response_format"]
+            if (
+                "type" not in response_format
+                or response_format["type"] != "json_schema"
+            ):
+                raise ValueError('response_format["type"] must be json_schema.')
+            if "json_schema" not in response_format:
+                raise ValueError('response_format["json_schema"] must be provided.')
+            json_schema = response_format["json_schema"]
+            if "schema" not in json_schema:
+                raise ValueError(
+                    'response_format["json_schema"]["schema"] must be provided.'
+                )
+            schema = json.dumps(json_schema["schema"])
+            schema_hash = hashlib.sha256(schema.encode()).hexdigest()
+            if schema_hash not in self._fsm_cache:
+                fsm = create_fsm(schema, self._tokenizer)
+                with open(os.path.join(self._fsm_cache_dir, schema_hash), "wb") as f:
+                    f.write(fsm.SerializeToString())
 
         request_id = int(str(os.getpid()) + str(next(self._request_id_counter)))
         request = briton_pb2.InferenceRequest(
@@ -198,8 +236,9 @@ class Engine:
             if words in model_input:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
-
-        self.validate_input(model_input)
+        # Add output schema hash
+        if schema_hash is not None:
+            request.output_schema_hash = schema_hash
 
         resp_iter = self._stub.Infer(request)
 
@@ -224,6 +263,24 @@ class Engine:
         except Exception as ex:
             print(f"An error has occurred: {ex}")
             raise ex
+
+
+def create_fsm(schema: str, tokenizer) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
+    outlines_tokenizer = TransformerTokenizer(tokenizer)
+    logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
+    guide = logits_processor.fsm
+
+    states_to_tokens = {}
+    for state, token_to_next_state in guide.states_to_token_maps.items():
+        states_to_tokens[state] = briton_pb2.TokenToNextState(  # type: ignore[attr-defined]
+            token_to_next_state=token_to_next_state
+        )
+    states_to_tokens_pb = briton_pb2.StatesToTokens(  # type: ignore[attr-defined]
+        states_to_tokens=states_to_tokens,
+        vocab_size=len(tokenizer.vocab),
+        eos_token_id=tokenizer.eos_token_id,
+    )
+    return states_to_tokens_pb
 
 
 def set_briton_request_fields_from_model_input(model_input, briton_request):
