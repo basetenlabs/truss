@@ -69,6 +69,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
+    paged_context_fmha: bool = False
 
     @field_validator("max_beam_width", mode="after")
     @classmethod
