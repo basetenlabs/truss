@@ -4,14 +4,13 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
-import click
 import yaml
 from requests import ReadTimeout
 
 if TYPE_CHECKING:
     from rich import console as rich_console
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.remote.baseten import custom_types as b10_types
+from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
@@ -31,8 +30,8 @@ from truss.remote.baseten.core import (
     get_prod_version_from_versions,
     upload_truss,
 )
-from truss.remote.baseten.error import ApiError
-from truss.remote.baseten.service import BasetenService
+from truss.remote.baseten.error import ApiError, RemoteError
+from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
 from truss.truss_config import ModelServer
@@ -65,7 +64,7 @@ class BasetenRemote(TrussRemote):
     def create_chain(
         self,
         chain_name: str,
-        chainlets: List[b10_types.ChainletData],
+        chainlets: List[custom_types.ChainletData],
         publish: bool = False,
         promote: bool = False,
     ) -> ChainDeploymentHandle:
@@ -83,8 +82,36 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
         )
 
-    def get_chainlets(self, chain_deployment_id: str) -> List[dict]:
-        return self._api.get_chainlets_by_deployment_id(chain_deployment_id)
+    def get_chainlets(
+        self, chain_deployment_id: str
+    ) -> List[custom_types.DeployedChainlet]:
+        return [
+            custom_types.DeployedChainlet(
+                name=chainlet["name"],
+                is_entrypoint=chainlet["is_entrypoint"],
+                is_draft=chainlet["oracle_version"]["is_draft"],
+                status=chainlet["oracle_version"]["current_model_deployment_status"][
+                    "status"
+                ],
+                logs_url=URLConfig.chainlet_logs_url(
+                    self.remote_url,
+                    chainlet["chain"]["id"],
+                    chain_deployment_id,
+                    chainlet["id"],
+                ),
+                oracle_predict_url=URLConfig.invocation_url(
+                    self._api.rest_api_url,
+                    URLConfig.MODEL,
+                    chainlet["oracle"]["id"],
+                    chainlet["oracle_version"]["id"],
+                    chainlet["oracle_version"]["is_draft"],
+                ),
+                oracle_name=chainlet["oracle"]["name"],
+            )
+            for chainlet in self._api.get_chainlets_by_deployment_id(
+                chain_deployment_id
+            )
+        ]
 
     def push(  # type: ignore
         self,
@@ -95,7 +122,7 @@ class BasetenRemote(TrussRemote):
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
-        origin: Optional[b10_types.ModelOrigin] = None,
+        origin: Optional[custom_types.ModelOrigin] = None,
     ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -164,7 +191,7 @@ class BasetenRemote(TrussRemote):
             # Return the development model version.
             dev_version = get_dev_version_from_versions(model_versions)
             if not dev_version:
-                raise click.UsageError(
+                raise RemoteError(
                     "No development model found. Run `truss push` then try again."
                 )
             return dev_version
@@ -172,7 +199,7 @@ class BasetenRemote(TrussRemote):
         # Return the production deployment version.
         prod_version = get_prod_version_from_versions(model_versions)
         if not prod_version:
-            raise click.UsageError(
+            raise RemoteError(
                 "No production model found. Run `truss push --publish` then try again."
             )
         return prod_version
@@ -185,9 +212,7 @@ class BasetenRemote(TrussRemote):
             try:
                 model_version = api.get_model_version_by_id(model_identifier.value)
             except ApiError:
-                raise click.UsageError(
-                    f"Model version {model_identifier.value} not found."
-                )
+                raise RemoteError(f"Model version {model_identifier.value} not found.")
             model_version_id = model_version["model_version"]["id"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
@@ -206,13 +231,13 @@ class BasetenRemote(TrussRemote):
             try:
                 model = api.get_model_by_id(model_identifier.value)
             except ApiError:
-                raise click.UsageError(f"Model {model_identifier.value} not found.")
+                raise RemoteError(f"Model {model_identifier.value} not found.")
             model_id = model["model"]["id"]
             model_version_id = model["model"]["primary_version"]["id"]
             service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
-            raise click.UsageError(
+            raise RemoteError(
                 "You must either be inside of a Truss directory, or provide "
                 "--model-deployment or --model options."
             )
@@ -253,7 +278,7 @@ class BasetenRemote(TrussRemote):
         # verify that development deployment exists for given model name
         dev_version = get_dev_version(self._api, model_name)  # pylint: disable=protected-access
         if not dev_version:
-            raise click.UsageError(
+            raise RemoteError(
                 "No development model found. Run `truss push` then try again."
             )
 

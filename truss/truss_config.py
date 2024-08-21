@@ -16,6 +16,7 @@ from truss.validation import (
     validate_memory_spec,
     validate_python_executable_path,
     validate_secret_name,
+    validate_secret_to_path_mapping,
 )
 
 DEFAULT_MODEL_FRAMEWORK_TYPE = ModelFrameworkType.CUSTOM
@@ -180,15 +181,23 @@ class ModelServer(Enum):
 class Build:
     model_server: ModelServer = ModelServer.TrussServer
     arguments: Dict = field(default_factory=dict)
+    secret_to_path_mapping: Dict = field(default_factory=dict)
 
     @staticmethod
     def from_dict(d):
         model_server = ModelServer[d.get("model_server", "TrussServer")]
         arguments = d.get("arguments", {})
+        secret_to_path_mapping = d.get("secret_to_path_mapping", {})
+        validate_secret_to_path_mapping(secret_to_path_mapping)
+        if not isinstance(secret_to_path_mapping, dict):
+            raise ValueError(
+                "Please pass a valid mapping for `secret_to_path_mapping`."
+            )
 
         return Build(
             model_server=model_server,
             arguments=arguments,
+            secret_to_path_mapping=secret_to_path_mapping,
         )
 
     def to_dict(self):
@@ -499,7 +508,7 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
-    build_commands: Optional[List[str]] = field(default_factory=list)
+    build_commands: List[str] = field(default_factory=list)
 
     @property
     def canonical_python_version(self) -> str:
