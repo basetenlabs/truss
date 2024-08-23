@@ -117,15 +117,20 @@ class TRTLLMConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def validate_kv_cache_flags(self) -> Self:
-        if not self.build.plugin_configuration.paged_kv_cache and (self.build.plugin_configuration.use_paged_context_fmha or self.build.plugin_configuration.use_fp8_context_fmha):
-            raise ValueError(
-                "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
-            )
-        if self.build.plugin_configuration.use_fp8_context_fmha and not self.build.plugin_configuration.use_paged_context_fmha:
-            raise ValueError(
-                "Using fp8 context fmha requires paged context fmha"
-            )
-        return self
+        if self.build is not None:
+            if not self.build.plugin_configuration.paged_kv_cache and (
+                self.build.plugin_configuration.use_paged_context_fmha
+                or self.build.plugin_configuration.use_fp8_context_fmha
+            ):
+                raise ValueError(
+                    "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
+                )
+            if (
+                self.build.plugin_configuration.use_fp8_context_fmha
+                and not self.build.plugin_configuration.use_paged_context_fmha
+            ):
+                raise ValueError("Using fp8 context fmha requires paged context fmha")
+            return self
 
     @property
     def requires_build(self):
