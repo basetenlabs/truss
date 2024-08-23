@@ -97,7 +97,7 @@ def validate_provided_parameters_with_model(
         model_class: The model class to validate against
         provided_parameters: The parameters to validate
     """
-    if type(model_class) == ClassDef:
+    if type(model_class) is ClassDef:
         named_args, required_args = _infer_model_init_parameters_ast(model_class)
     else:
         named_args, required_args = _infer_model_init_parameters(model_class)
