@@ -12,6 +12,7 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
+
 from truss.config.trt_llm import TrussTRTLLMModel
 from truss.constants import (
     AUDIO_MODEL_TRTLLM_REQUIREMENTS,
@@ -338,6 +339,43 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+
+        if config.docker_server is not None:
+            copy_tree_path(truss_dir, build_dir)
+
+            if not build_dir.exists():
+                build_dir.mkdir(parents=True)
+
+            dockerfile_template = read_template_from_fs(
+                TEMPLATES_DIR, "docker_server/docker_server.Dockerfile.jinja"
+            )
+            nginx_template = read_template_from_fs(
+                TEMPLATES_DIR, "docker_server/proxy.conf.jinja"
+            )
+
+            dockerfile_content = dockerfile_template.render(
+                base_image_name_and_tag=config.base_image.image,
+                config=config,
+            )
+            dockerfile_filepath = build_dir / "Dockerfile"
+            dockerfile_filepath.write_text(dockerfile_content)
+
+            nginx_content = nginx_template.render(
+                server_endpoint=config.docker_server.predict_endpoint,
+                readiness_endpoint=config.docker_server.readiness_endpoint,
+            )
+            nginx_filepath = build_dir / "proxy.conf"
+            nginx_filepath.write_text(nginx_content)
+
+            supervisord_template = read_template_from_fs(
+                TEMPLATES_DIR, "docker_server/supervisord.conf.jinja"
+            )
+            supervisord_contents = supervisord_template.render(
+                start_command=config.docker_server.start_command
+            )
+            supervisord_filepath = build_dir / "supervisord.conf"
+            supervisord_filepath.write_text(supervisord_contents)
+            return
 
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
