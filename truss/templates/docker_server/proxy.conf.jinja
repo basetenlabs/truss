@@ -3,7 +3,7 @@ server {
     listen 8080;
 
     # Liveness
-    location / {
+    location = / {
         add_header Content-Type text/plain;
         return 200 "";
     }
@@ -24,6 +24,14 @@ server {
         proxy_read_timeout 300s;
 
         rewrite ^/v1/models/model:predict$ {{server_endpoint}} break;
+
+        proxy_pass http://127.0.0.1:{{server_port}};
+    }
+
+    # Forward all other paths
+    location / {
+        proxy_redirect off;
+        proxy_read_timeout 300s;
 
         proxy_pass http://127.0.0.1:{{server_port}};
     }
