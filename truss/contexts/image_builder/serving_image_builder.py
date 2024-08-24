@@ -12,7 +12,6 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
-
 from truss.config.trt_llm import TrussTRTLLMModel
 from truss.constants import (
     AUDIO_MODEL_TRTLLM_REQUIREMENTS,
@@ -363,6 +362,7 @@ class ServingImageBuilder(ImageBuilder):
             nginx_content = nginx_template.render(
                 server_endpoint=config.docker_server.predict_endpoint,
                 readiness_endpoint=config.docker_server.readiness_endpoint,
+                server_port=config.docker_server.server_port,
             )
             nginx_filepath = build_dir / "proxy.conf"
             nginx_filepath.write_text(nginx_content)

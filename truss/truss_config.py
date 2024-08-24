@@ -393,6 +393,7 @@ class BaseImage:
 @dataclass
 class DockerServer:
     start_command: str
+    server_port: int
     readiness_endpoint: str
     predict_endpoint: str
 
@@ -400,6 +401,7 @@ class DockerServer:
     def from_dict(d: Dict[str, str]) -> "DockerServer":
         return DockerServer(
             start_command=d.get("start_command", ""),
+            server_port=d.get("server_port", 8000),
             readiness_endpoint=d.get("readiness_endpoint", ""),
             predict_endpoint=d.get("predict_endpoint", ""),
         )
@@ -407,6 +409,7 @@ class DockerServer:
     def to_dict(self) -> Dict[str, str]:
         return {
             "start_command": self.start_command,
+            "server_port": self.server_port,
             "readiness_endpoint": self.readiness_endpoint,
             "predict_endpoint": self.predict_endpoint,
         }
