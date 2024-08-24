@@ -698,7 +698,6 @@ DATACLASS_TO_REQ_KEYS_MAP = {
         "build_commands",
     },
     BaseImage: {"image", "python_executable_path"},
-    DockerServer: {"start_command", "readiness_endpoint", "predict_endpoint"},
 }
 
 
