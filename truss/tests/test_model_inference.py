@@ -779,6 +779,35 @@ def test_truss_with_user_errors():
 
 
 @pytest.mark.integration
+def test_truss_with_custom_status_code():
+    """Test that user-code can set a custom status code."""
+    model = """
+
+    from fastapi.responses import Response
+    from fastapi import status
+
+    class Model:
+        def predict(self, request):
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+    """
+
+    config = "model_name: custom-status-code-truss"
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={})
+        assert response.status_code == 204
+
+
+@pytest.mark.integration
 def test_slow_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
