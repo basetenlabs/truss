@@ -804,20 +804,20 @@ def test_async_load_truss():
         truss_server_addr = "http://localhost:8090"
 
         def _test_liveness_probe(expected_code):
-            live = requests.get(f"{truss_server_addr}/")
+            live = requests.get(f"{truss_server_addr}/", timeout=1)
             assert live.status_code == expected_code
 
         def _test_readiness_probe(expected_code):
-            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            ready = requests.get(f"{truss_server_addr}/v1/models/model", timeout=1)
             assert ready.status_code == expected_code
 
         def _test_ping(expected_code):
-            ping = requests.get(f"{truss_server_addr}/ping")
+            ping = requests.get(f"{truss_server_addr}/ping", timeout=1)
             assert ping.status_code == expected_code
 
         def _test_predict(expected_code):
             invocations = requests.post(
-                f"{truss_server_addr}/v1/models/model:predict", json={}
+                f"{truss_server_addr}/v1/models/model:predict", json={}, timeout=1
             )
             assert invocations.status_code == expected_code
 
