@@ -441,6 +441,33 @@ def test_max_beam_width_check(trtllm_config):
         TrussConfig.from_dict(trtllm_config)
 
 
+def test_plugin_paged_context_fmha_check(trtllm_config):
+    trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
+        "paged_kv_cache": False,
+        "use_paged_context_fmha": True,
+        "use_fp8_context_fmha": False,
+    }
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
+def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
+    trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
+        "paged_kv_cache": False,
+        "use_paged_context_fmha": False,
+        "use_fp8_context_fmha": True,
+    }
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+    trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
+        "paged_kv_cache": True,
+        "use_paged_context_fmha": False,
+        "use_fp8_context_fmha": True,
+    }
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
     assert (
