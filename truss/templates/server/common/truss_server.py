@@ -216,7 +216,7 @@ class TrussServer:
         if INFERENCE_SERVER_FAILED_FILE.exists():
             INFERENCE_SERVER_FAILED_FILE.unlink()
 
-    def on_startup(self):
+    async def on_startup(self):
         """
         This method will be started inside the main process, so here is where we want to setup our logging and model
         """
@@ -225,7 +225,7 @@ class TrussServer:
         if self._setup_json_logger:
             setup_logging()
 
-        self._model.start_load()
+        await self._model.start_load()
 
     def create_application(self):
         app = FastAPI(

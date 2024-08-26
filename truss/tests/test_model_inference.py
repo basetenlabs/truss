@@ -779,6 +779,72 @@ def test_truss_with_user_errors():
 
 
 @pytest.mark.integration
+def test_async_load_truss():
+    model = """
+    import asyncio
+
+    class Model:
+        async def load(self):
+            await asyncio.sleep(5)
+
+        def predict(self, request):
+            return {"a": "b"}
+    """
+
+    config = "model_name: async-load-truss"
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+
+        truss_server_addr = "http://localhost:8090"
+
+        def _test_liveness_probe(expected_code):
+            live = requests.get(f"{truss_server_addr}/")
+            assert live.status_code == expected_code
+
+        def _test_readiness_probe(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == expected_code
+
+        def _test_ping(expected_code):
+            ping = requests.get(f"{truss_server_addr}/ping")
+            assert ping.status_code == expected_code
+
+        def _test_predict(expected_code):
+            invocations = requests.post(
+                f"{truss_server_addr}/v1/models/model:predict", json={}
+            )
+            assert invocations.status_code == expected_code
+
+        SERVER_WARMUP_TIME = 3
+        LOAD_TEST_TIME = 4
+        LOAD_BUFFER_TIME = 5
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(SERVER_WARMUP_TIME)
+
+        # The truss takes about 5 seconds to load.
+        # We want to make sure that it's not ready for that time.
+        for _ in range(LOAD_TEST_TIME):
+            _test_liveness_probe(200)
+            _test_readiness_probe(503)
+            _test_ping(503)
+            _test_predict(503)
+            time.sleep(1)
+
+        time.sleep(LOAD_BUFFER_TIME)
+        _test_liveness_probe(200)
+        _test_readiness_probe(200)
+        _test_ping(200)
+        _test_predict(200)
+
+
+@pytest.mark.integration
 def test_slow_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"

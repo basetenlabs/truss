@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 from enum import Enum
 from multiprocessing import Lock
 from pathlib import Path
-from threading import Thread
 from typing import (
     Any,
     AsyncGenerator,
@@ -27,7 +26,7 @@ from typing import (
 import pydantic
 from anyio import Semaphore, to_thread
 from common.patches import apply_patches
-from common.retry import retry
+from common.retry import retry, retry_async
 from common.schema import TrussSchema
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -106,7 +105,7 @@ class ModelWrapper:
         self._background_tasks: Set[asyncio.Task] = set()
         self.truss_schema: TrussSchema = None
 
-    def load(self) -> bool:
+    async def load(self) -> bool:
         if self.ready:
             return self.ready
 
@@ -119,7 +118,7 @@ class ModelWrapper:
 
             try:
                 start_time = time.perf_counter()
-                self.try_load()
+                await self.try_load()
                 self.ready = True
                 self._status = ModelWrapper.Status.READY
                 self._logger.info(
@@ -133,10 +132,9 @@ class ModelWrapper:
 
         return self.ready
 
-    def start_load(self):
+    async def start_load(self):
         if self.should_load():
-            thread = Thread(target=self.load)
-            thread.start()
+            asyncio.create_task(self.load())
 
     def load_failed(self) -> bool:
         return self._status == ModelWrapper.Status.FAILED
@@ -145,7 +143,7 @@ class ModelWrapper:
         # don't retry failed loads
         return not self._status == ModelWrapper.Status.FAILED and not self.ready
 
-    def try_load(self):
+    def _initialize_model(self):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
 
@@ -201,14 +199,28 @@ class ModelWrapper:
 
         self.set_truss_schema()
 
+    async def try_load(self):
+        await to_thread.run_sync(self._initialize_model)
+
         if hasattr(self._model, "load"):
-            retry(
-                self._model.load,
-                NUM_LOAD_RETRIES,
-                self._logger.warn,
-                "Failed to load model.",
-                gap_seconds=1.0,
-            )
+            if inspect.iscoroutinefunction(self._model.load):
+                await retry_async(
+                    self._model.load,
+                    NUM_LOAD_RETRIES,
+                    self._logger.warn,
+                    "Failed to load model.",
+                    gap_seconds=1.0,
+                )
+                await self._model.load()
+            else:
+                await to_thread.run_sync(
+                    retry,
+                    self._model.load,
+                    NUM_LOAD_RETRIES,
+                    self._logger.warn,
+                    "Failed to load model.",
+                    1.0,
+                )
 
     def set_truss_schema(self):
         parameters = (
