@@ -23,6 +23,7 @@ from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry.sdk import trace as sdk_trace
 from shared.logging import setup_logging
+from shared.secrets_resolver import SecretsResolver
 from shared.serialization import (
     DeepNumpyEncoder,
     truss_msgpack_deserialize,
@@ -173,16 +174,19 @@ class BasetenEndpoints:
 
             response_headers = {}
             if self.is_binary(request):
-                response_headers["Content-Type"] = "application/octet-stream"
-                return Response(
-                    content=truss_msgpack_serialize(response), headers=response_headers
-                )
+                with tracing.section_as_event(span, "binary-serialize"):
+                    response_headers["Content-Type"] = "application/octet-stream"
+                    return Response(
+                        content=truss_msgpack_serialize(response),
+                        headers=response_headers,
+                    )
             else:
-                response_headers["Content-Type"] = "application/json"
-                return Response(
-                    content=json.dumps(response, cls=DeepNumpyEncoder),
-                    headers=response_headers,
-                )
+                with tracing.section_as_event(span, "json-serialize"):
+                    response_headers["Content-Type"] = "application/json"
+                    return Response(
+                        content=json.dumps(response, cls=DeepNumpyEncoder),
+                        headers=response_headers,
+                    )
 
     async def schema(self, model_name: str) -> Dict:
         model: ModelWrapper = self._safe_lookup_model(model_name)
@@ -223,7 +227,8 @@ class TrussServer:
         config: Dict,
         setup_json_logger: bool = True,
     ):
-        tracer = tracing.get_truss_tracer()
+        secrets = SecretsResolver.get_secrets(config)
+        tracer = tracing.get_truss_tracer(secrets)
         self.http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config, tracer)

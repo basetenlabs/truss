@@ -20,7 +20,6 @@ from typing import (
     Mapping,
     NoReturn,
     Optional,
-    Set,
     TypeVar,
     Union,
 )
@@ -50,38 +49,26 @@ EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
 
 
-def aprint(msg: str):
-    task_id = str(hash(id(asyncio.current_task())))[:3]
-    print(f"Task[ {task_id} ]: {msg}")
-
-
 @asynccontextmanager
 async def deferred_semaphore_and_span(
-    semaphore: Semaphore, span: sdk_trace.Span
+    semaphore: Semaphore, span: trace.Span
 ) -> AsyncGenerator[Callable[[], Callable[[], None]], None]:
     """
     Context manager that allows deferring the release of a semaphore and the ending of a
     trace span.
 
-    Yields a function that, when called, releases the semaphore and ends the span. If
-    that function is not called, the resources are cleand up when exiting the context.
+    Yields a function that, when called, releases the semaphore and ends the span.
+    If that function is not called, the resources are cleand up when exiting.
     """
-    val_before = semaphore.value
-    aprint("requesting semaphore")
     await semaphore.acquire()
-    val_after = semaphore.value
-    aprint(f"acquired semaphore. {val_before} -> {val_after}")
     trace.use_span(span, end_on_exit=False)
     deferred = False
 
     def release_and_end() -> None:
-        aprint("called release.")
         semaphore.release()
         span.end()
-        aprint("releases semaphore.")
 
     def defer() -> Callable[[], None]:
-        aprint("called defer.")
         nonlocal deferred
         deferred = True
         return release_and_end
@@ -89,12 +76,8 @@ async def deferred_semaphore_and_span(
     try:
         yield defer
     finally:
-        aprint("ending context.")
         if not deferred:
-            aprint("ending context - release.")
             release_and_end()
-        else:
-            aprint("ending context - keep.")
 
 
 class ModelWrapper:
@@ -119,7 +102,6 @@ class ModelWrapper:
                 "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
             )
         )
-        self._background_tasks: Set[asyncio.Task] = set()
         self.truss_schema: TrussSchema = None
 
     def load(self) -> bool:
@@ -305,12 +287,13 @@ class ModelWrapper:
         )
 
     async def write_response_to_queue(
-        self, queue: asyncio.Queue, generator: AsyncGenerator, span: sdk_trace.Span
+        self, queue: asyncio.Queue, generator: AsyncGenerator, span: trace.Span
     ):
         with tracing.section_as_event(span, "write_response_to_queue"):
-            aprint("start-write_response_to_queue")
             try:
                 async for chunk in generator:
+                    # TODO: consider checking `request.is_disconnected()` for
+                    #   client-side cancellations and freeing resources.
                     await queue.put(ResponseChunk(chunk))
             except Exception as e:
                 self._logger.exception(
@@ -318,12 +301,12 @@ class ModelWrapper:
                 )
             finally:
                 await queue.put(None)
-                aprint("end-write_response_to_queue")
 
-    async def _gather_generator(self, response: Any, span: sdk_trace.Span) -> str:
-        # In the case of gathering, it might make more sense to apply the post-process
+    async def _gather_generator(self, response: Any, span: trace.Span) -> str:
+        # In the case of gathering, it might make more sense to apply the postprocess
         # to the gathered result, but that would be inconsistent with streaming.
-        # In general it might even be better to forbid postprocessing completely.
+        # In general, it might even be better to strictly forbid postprocessing
+        # for generators.
         if hasattr(self._model, "postprocess"):
             logging.warning(
                 "Predict returned a streaming response, while a postprocess is defined."
@@ -341,7 +324,7 @@ class ModelWrapper:
     async def _stream_with_background_task(
         self,
         response: Any,
-        span: sdk_trace.Span,
+        span: trace.Span,
         release_and_end: Callable[[], None],
     ):
         # The streaming read timeout is the amount of time in between streamed chunk
@@ -358,28 +341,23 @@ class ModelWrapper:
         response_queue: asyncio.Queue = asyncio.Queue()
 
         # `write_response_to_queue` keeps running the background until completion.
-        task = asyncio.create_task(
+        gen_task = asyncio.create_task(
             self.write_response_to_queue(response_queue, async_generator, span)
         )
-        # We add the task to the ModelWrapper instance to ensure it does
-        # not get garbage collected after the predict method completes,
-        # and continues running.
-        self._background_tasks.add(task)
         # Defer the release of the semaphore until the write_response_to_queue task.
-        task.add_done_callback(lambda _: release_and_end())
-        task.add_done_callback(self._background_tasks.discard)
+        gen_task.add_done_callback(lambda _: release_and_end)
 
         # The gap between responses in a stream must be < streaming_read_timeout
         async def _response_generator():
-            with tracing.section_as_event(span, "response_generator"):
-                aprint("start-response_generator")
+            # `span` is tied to the "producer" `gen_task` which might complete before
+            #  "consume" part here finishes, therefore a dedicated span is required.
+            with self._tracer.start_as_current_span("response_generator"):
                 while True:
                     chunk = await asyncio.wait_for(
                         response_queue.get(),
                         timeout=streaming_read_timeout,
                     )
                     if chunk is None:
-                        aprint("done-response_generator")
                         return
                     yield chunk.value
 
@@ -399,24 +377,28 @@ class ModelWrapper:
             Generator: In case of streaming response
             String: in case of non-streamed generator (the string is the JSON result).
         """
-        with self._tracer.start_as_current_span("predict-call-pre") as span:
+        with self._tracer.start_as_current_span("call-pre") as span_pre:
             if self.truss_schema is not None:
                 try:
-                    with tracing.section_as_event(span, "parse-pydantic"):
+                    with tracing.section_as_event(span_pre, "parse-pydantic"):
                         body = self.truss_schema.input_type(**body)
                 except pydantic.ValidationError as e:
                     self._logger.info("Request Validation Error")
                     raise HTTPException(
                         status_code=400, detail=f"Request Validation Error, {str(e)}"
                     ) from e
-            with tracing.section_as_event(span, "preprocess"), tracing.detach_context():
+            with tracing.section_as_event(
+                span_pre, "preprocess"
+            ), tracing.detach_context():
                 payload = await self.preprocess(body)
 
-        span = self._tracer.start_span("predict-call-predict")
+        span_predict = self._tracer.start_span("call-predict")
         async with deferred_semaphore_and_span(
-            self._predict_semaphore, span
+            self._predict_semaphore, span_predict
         ) as get_defer_fn:
-            with tracing.section_as_event(span, "predict"), tracing.detach_context():
+            with tracing.section_as_event(
+                span_predict, "predict"
+            ), tracing.detach_context():
                 # To prevent span pollution, we need to make sure spans created by user
                 # code don't inherit context from our spans (which happens even if
                 # different tracer instances are used).
@@ -430,29 +412,27 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
-                aprint("start-predict")
                 response = await self.predict(payload)
-                aprint("done-predict")
 
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
                 if headers and headers.get("accept") == "application/json":
                     # In the case of a streaming response, consume stream
                     # if the http accept header is set, and json is requested.
-                    return await self._gather_generator(response, span)
+                    return await self._gather_generator(response, span_predict)
                 else:
                     return await self._stream_with_background_task(
-                        response, span, release_and_end=get_defer_fn()
+                        response, span_predict, release_and_end=get_defer_fn()
                     )
 
-        with self._tracer.start_as_current_span("predict-call-post") as span:
+        with self._tracer.start_as_current_span("call-post") as span_post:
             with tracing.section_as_event(
-                span, "postprocess"
+                span_post, "postprocess"
             ), tracing.detach_context():
                 processed_response = await self.postprocess(response)
 
             if isinstance(processed_response, BaseModel):
                 # If we return a pydantic object, convert it back to a dict
-                with tracing.section_as_event(span, "dump-pydantic"):
+                with tracing.section_as_event(span_post, "dump-pydantic"):
                     processed_response = processed_response.dict()
             return processed_response
 

@@ -1,19 +1,25 @@
 import contextlib
-import functools
 import json
 import logging
 import os
 import pathlib
 import time
-from typing import Iterator, List, Sequence
+from typing import Iterator, List, Optional, Sequence
 
-import opentelemetry.exporter.otlp.proto.grpc.trace_exporter as oltp_exporter
+import opentelemetry.exporter.otlp.proto.http.trace_exporter as oltp_exporter
 import opentelemetry.sdk.resources as resources
 import opentelemetry.sdk.trace as sdk_trace
 import opentelemetry.sdk.trace.export as trace_export
 from opentelemetry import context, trace
+from shared import secrets_resolver
 
 logger = logging.getLogger(__name__)
+
+ATTR_NAME_DURATION = "duration_sec"
+OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+OTEL_TRACING_NDJSON_FILE = "OTEL_TRACING_NDJSON_FILE"
+HONEYCOMB_DATASET = "HONEYCOMB_DATASET"
+HONEYCOMB_API_KEY = "HONEYCOMB_API_KEY"
 
 
 class JSONFileExporter(trace_export.SpanExporter):
@@ -36,8 +42,10 @@ class JSONFileExporter(trace_export.SpanExporter):
         self._file.close()
 
 
-@functools.lru_cache(maxsize=1)
-def get_truss_tracer() -> trace.Tracer:
+_truss_tracer: Optional[trace.Tracer] = None
+
+
+def get_truss_tracer(secrets: secrets_resolver.SecretsResolver) -> trace.Tracer:
     """Creates a cached tracer (i.e. runtime-singleton) to be used for truss
     internal tracing.
 
@@ -45,16 +53,38 @@ def get_truss_tracer() -> trace.Tracer:
     completely from potential user-defined tracing - see also `detach_context` below.
 
     """
+    global _truss_tracer
+    if _truss_tracer:
+        return _truss_tracer
+
     span_processors: List[sdk_trace.SpanProcessor] = []
-    if otlp_endpoint := os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+    if otlp_endpoint := os.getenv(OTEL_EXPORTER_OTLP_ENDPOINT):
+        logger.info(f"Exporting trace data to {OTEL_EXPORTER_OTLP_ENDPOINT}.")
         otlp_exporter = oltp_exporter.OTLPSpanExporter(endpoint=otlp_endpoint)
         otlp_processor = sdk_trace.export.BatchSpanProcessor(otlp_exporter)
         span_processors.append(otlp_processor)
 
-    if tracing_log_file := os.getenv("OTEL_TRACING_NDJSON_FILE"):
+    if tracing_log_file := os.getenv(OTEL_TRACING_NDJSON_FILE):
+        logger.info("Exporting trace data to `tracing_log_file`.")
         json_file_exporter = JSONFileExporter(pathlib.Path(tracing_log_file))
         file_processor = sdk_trace.export.SimpleSpanProcessor(json_file_exporter)
         span_processors.append(file_processor)
+
+    if honeycomb_dataset := os.getenv(HONEYCOMB_DATASET):
+        if HONEYCOMB_API_KEY in secrets:
+            honeycomb_api_key = secrets[HONEYCOMB_API_KEY]
+            logger.info("Exporting trace data to honeycomb.")
+            honeycomb_exporter = oltp_exporter.OTLPSpanExporter(
+                endpoint="https://api.honeycomb.io/v1/traces",
+                headers={
+                    "x-honeycomb-team": honeycomb_api_key,
+                    "x-honeycomb-dataset": honeycomb_dataset,
+                },
+            )
+            honeycomb_processor = sdk_trace.export.BatchSpanProcessor(
+                honeycomb_exporter
+            )
+            span_processors.append(honeycomb_processor)
 
     if span_processors:
         logger.info("Instantiating truss tracer.")
@@ -67,7 +97,8 @@ def get_truss_tracer() -> trace.Tracer:
         logger.info("Using no-op tracing.")
         tracer = sdk_trace.NoOpTracer()
 
-    return tracer
+    _truss_tracer = tracer
+    return _truss_tracer
 
 
 @contextlib.contextmanager
@@ -82,14 +113,9 @@ def detach_context() -> Iterator[None]:
     be wrapped in this context for isolation.
     """
     current_context = context.get_current()
-    # Set the current context to an invalid span context, effectively clearing it.
-    # This makes sure inside the context a new root is context is created.
-    transient_token = context.attach(
-        trace.set_span_in_context(
-            trace.INVALID_SPAN,
-            trace.INVALID_SPAN_CONTEXT,  # type: ignore[arg-type]
-        )
-    )
+    # Create an invalid tracing context. This forces that tracing code inside this
+    # context manager creates a new root tracing context.
+    transient_token = context.attach(trace.set_span_in_context(trace.INVALID_SPAN))
     try:
         yield
     finally:
@@ -105,9 +131,11 @@ def section_as_event(span: sdk_trace.Span, section_name: str) -> Iterator[None]:
     Note that events are much cheaper to create than dedicated spans.
     """
     t0 = time.time()
-    span.add_event(f"start-{section_name}")
+    span.add_event(f"start: {section_name}")
     try:
         yield
     finally:
         t1 = time.time()
-        span.add_event(f"done-{section_name}", attributes={"duration_sec": t1 - t0})
+        span.add_event(
+            f"done: {section_name}", attributes={ATTR_NAME_DURATION: t1 - t0}
+        )

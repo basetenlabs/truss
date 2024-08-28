@@ -57,7 +57,7 @@ class Model:
         with tracer.start_as_current_span("start-predict") as span:
 
             def inner():
-                time.sleep(2)
+                time.sleep(0.02)
                 for i in range(5):
                     span.add_event("yield")
                     yield str(i)
