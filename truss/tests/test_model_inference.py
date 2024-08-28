@@ -808,6 +808,49 @@ def test_truss_with_custom_status_code():
 
 
 @pytest.mark.integration
+def test_sse_streaming_truss():
+    model = """from starlette.responses import StreamingResponse
+class Model:
+    def predict(self, model_input):
+        def text_generator():
+            for i in range(3):
+                yield f"data: {i}\\n\\n"
+
+        return StreamingResponse(text_generator(), media_type="text/event-stream")
+    """
+
+    config = "model_name: sse-truss"
+
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+
+        create_truss(truss_dir, config, textwrap.dedent(model))
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        truss_server_addr = "http://localhost:8090"
+        predict_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        # A request for which response is not completely read
+        predict_response = requests.post(predict_url, json={}, stream=True)
+        assert (
+            predict_response.headers["Content-Type"]
+            == "text/event-stream; charset=utf-8"
+        )
+
+        lines = predict_response.text.strip().split("\n")
+        assert lines == [
+            "data: 0",
+            "",
+            "data: 1",
+            "",
+            "data: 2",
+        ]
+
+
+@pytest.mark.integration
 def test_slow_truss():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
