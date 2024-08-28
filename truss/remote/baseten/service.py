@@ -44,7 +44,6 @@ class URLConfig(enum.Enum):
         prefix: str
         invoke_endpoint: str
         app_endpoint: str
-        remote_base_domain: Optional[str] = None
 
     MODEL = Data("model", "predict", "models")
     CHAIN = Data("chain", "run_remote", "chains")
@@ -56,13 +55,14 @@ class URLConfig(enum.Enum):
         entity_id: str,
         entity_version_id: str,
         is_draft,
+        remote_base_domain: Optional[str] = None,
     ) -> str:
         """Get the URL for the predict/run_remote endpoint."""
         # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
         url = _add_model_domain(
             api_url,
             f"{config.value.prefix}-{entity_id}",
-            config.value.remote_base_domain,
+            remote_base_domain,
         )
         if is_draft:
             # "https://model-{model_id}.api.baseten.co/development".
@@ -192,6 +192,7 @@ class BasetenService(TrussService):
             self.model_id,
             self._model_version_id,
             self.is_draft,
+            self.remote_inference_base_domain,
         )
 
     @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
