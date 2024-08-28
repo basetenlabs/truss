@@ -29,6 +29,9 @@ asdf plugin add python
 asdf plugin add poetry
 asdf install
 
+# Create a new shell session within the context of the virtual environment
+poetry shell
+
 # Install poetry dependencies
 poetry install
 

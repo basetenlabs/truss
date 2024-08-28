@@ -52,10 +52,17 @@ class PatchResult(NamedTuple):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str, **kwargs):
+    def __init__(
+        self,
+        remote_url: str,
+        api_key: str,
+        remote_inference_base_domain: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(remote_url, **kwargs)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
+        self.remote_inference_base_domain = remote_inference_base_domain
 
     @property
     def api(self) -> BasetenApi:
@@ -182,6 +189,7 @@ class BasetenRemote(TrussRemote):
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
+            remote_inference_base_domain=self.remote_inference_base_domain,
             api=self._api,
         )
 
@@ -265,6 +273,7 @@ class BasetenRemote(TrussRemote):
             is_draft=not published,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}{service_url_path}",
+            remote_inference_base_domain=self.remote_inference_base_domain,
             api=self._api,
         )
 

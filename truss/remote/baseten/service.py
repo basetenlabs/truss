@@ -20,10 +20,21 @@ from truss.util.errors import RemoteNetworkError
 DEFAULT_STREAM_ENCODING = "utf-8"
 
 
-def _add_model_subdomain(rest_api_url: str, model_subdomain: str) -> str:
-    """E.g. `https://api.baseten.co` -> `https://{model_subdomain}.api.baseten.co`"""
+def _add_model_domain(
+    rest_api_url: str, model_subdomain: str, model_base_domain: Optional[str]
+) -> str:
+    """E.g. `https://api.baseten.co` -> `https://{model_subdomain}.api.baseten.{model_base_domain}`"""
     parsed_url = urllib.parse.urlparse(rest_api_url)
     new_netloc = f"{model_subdomain}.{parsed_url.netloc}"
+
+    if model_base_domain:
+        # Extract the existing subdomain parts and root domain parts
+        netloc_parts = parsed_url.netloc.split(".")
+        subdomain_parts = netloc_parts[:-1]
+        subdomain = ".".join(subdomain_parts) if subdomain_parts else ""
+        # Replace the root domain with the new base domain
+        new_netloc = f"{subdomain + '.' if subdomain else ''}{model_base_domain}"
+
     model_url = parsed_url._replace(netloc=new_netloc)
     return str(urllib.parse.urlunparse(model_url))
 
@@ -33,6 +44,7 @@ class URLConfig(enum.Enum):
         prefix: str
         invoke_endpoint: str
         app_endpoint: str
+        remote_base_domain: Optional[str] = None
 
     MODEL = Data("model", "predict", "models")
     CHAIN = Data("chain", "run_remote", "chains")
@@ -47,7 +59,11 @@ class URLConfig(enum.Enum):
     ) -> str:
         """Get the URL for the predict/run_remote endpoint."""
         # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
-        url = _add_model_subdomain(api_url, f"{config.value.prefix}-{entity_id}")
+        url = _add_model_domain(
+            api_url,
+            f"{config.value.prefix}-{entity_id}",
+            config.value.remote_base_domain,
+        )
         if is_draft:
             # "https://model-{model_id}.api.baseten.co/development".
             url = f"{url}/development/{config.value.invoke_endpoint}"
@@ -97,12 +113,14 @@ class BasetenService(TrussService):
         api_key: str,
         service_url: str,
         api: BasetenApi,
+        remote_inference_base_domain: Optional[str] = None,
         truss_handle: Optional[TrussHandle] = None,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
         self._model_id = model_id
         self._model_version_id = model_version_id
         self._auth_service = AuthService(api_key=api_key)
+        self.remote_inference_base_domain = remote_inference_base_domain
         self._api = api
         self._truss_handle = truss_handle
 
@@ -131,7 +149,6 @@ class BasetenService(TrussService):
         response = self._send_request(
             self.predict_url, "POST", data=model_request_body, stream=True
         )
-
         if response.headers.get("transfer-encoding") == "chunked":
             # Case of streaming response, the backend does not set an encoding, so
             # manually decode to the contents to utf-8 here.

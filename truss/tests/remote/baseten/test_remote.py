@@ -7,10 +7,13 @@ from truss.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
+_TEST_REMOTE_INFERENCE_BASE_DOMAIN = "test_remote_base.co"
 
 
 def test_get_service_by_version_id():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
 
     version = {
         "id": "version_id",
@@ -44,7 +47,9 @@ def test_get_service_by_version_id_no_version():
 
 
 def test_get_service_by_model_name():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
 
     versions = [
         {"id": "1", "is_draft": False, "is_primary": False},
@@ -120,7 +125,9 @@ def test_get_service_by_model_name_no_dev_version():
 
 
 def test_get_service_by_model_name_no_prod_version():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
 
     versions = [
         {"id": "1", "is_draft": True, "is_primary": False},
@@ -155,7 +162,9 @@ def test_get_service_by_model_name_no_prod_version():
 
 
 def test_get_service_by_model_id():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
 
     model_response = {
         "data": {
@@ -179,7 +188,9 @@ def test_get_service_by_model_id():
 
 
 def test_get_service_by_model_id_no_model():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
     model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
         m.post(
@@ -193,7 +204,9 @@ def test_get_service_by_model_id_no_model():
 def test_push_raised_value_error_when_deployment_name_and_not_publish(
     custom_model_truss_dir_with_pre_and_post,
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
     model_response = {
         "data": {
             "model": {
@@ -220,7 +233,9 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
 def test_push_raised_value_error_when_deployment_name_is_not_valid(
     custom_model_truss_dir_with_pre_and_post,
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
     model_response = {
         "data": {
             "model": {
@@ -247,7 +262,9 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
 def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promote(
     custom_model_truss_dir_with_pre_and_post,
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    remote = BasetenRemote(
+        _TEST_REMOTE_URL, "api_key", _TEST_REMOTE_INFERENCE_BASE_DOMAIN
+    )
     model_response = {
         "data": {
             "model": {
