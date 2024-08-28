@@ -14,11 +14,14 @@ from typing import AsyncGenerator, Dict, List, Optional, Union
 import common.errors as errors
 import shared.util as utils
 import uvicorn
+from common import tracing
 from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
+from opentelemetry import propagate as otel_propagate
+from opentelemetry.sdk import trace as sdk_trace
 from shared.logging import setup_logging
 from shared.serialization import (
     DeepNumpyEncoder,
@@ -81,8 +84,9 @@ class BasetenEndpoints:
     to functions will rename unused except for backwards compatibility checks.
     """
 
-    def __init__(self, model: ModelWrapper) -> None:
+    def __init__(self, model: ModelWrapper, tracer: sdk_trace.Tracer) -> None:
         self._model = model
+        self._tracer = tracer
 
     def _safe_lookup_model(self, model_name: str) -> ModelWrapper:
         if model_name != self._model.name:
@@ -130,42 +134,55 @@ class BasetenEndpoints:
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
+        # TODO: warn (or skip tracing), if no parent info was found?
+        trace_ctx = otel_propagate.extract(request.headers)
+        # This is the top-level span in the truss-server, so we set the context here.
+        # Nested spans "inherit" context automatically.
+        with self._tracer.start_as_current_span(
+            "predict-endpoint", context=trace_ctx
+        ) as span:
+            body: Dict
+            if self.is_binary(request):
+                with tracing.section_as_event(span, "binary-deserialize"):
+                    body = truss_msgpack_deserialize(body_raw)
+            else:
+                try:
+                    with tracing.section_as_event(span, "json-deserialize"):
+                        body = json.loads(body_raw)
+                except json.JSONDecodeError as e:
+                    error_message = f"Invalid JSON payload: {str(e)}"
+                    logging.error(error_message)
+                    raise HTTPException(status_code=400, detail=error_message)
 
-        body: Dict
-        if self.is_binary(request):
-            body = truss_msgpack_deserialize(body_raw)
-        else:
-            try:
-                body = json.loads(body_raw)
-            except json.JSONDecodeError as e:
-                error_message = f"Invalid JSON payload: {str(e)}"
-                logging.error(error_message)
-                raise HTTPException(status_code=400, detail=error_message)
+            # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
+            with tracing.section_as_event(span, "model-call"):
+                response: Union[Dict, Generator] = await model(
+                    body,
+                    headers=utils.transform_keys(
+                        request.headers, lambda key: key.lower()
+                    ),
+                )
 
-        # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
-        response: Union[Dict, Generator] = await model(
-            body,
-            headers=utils.transform_keys(request.headers, lambda key: key.lower()),
-        )
+            # In the case that the model returns a Generator object, return a
+            # StreamingResponse instead.
+            if isinstance(response, (AsyncGenerator, Generator)):
+                # media_type in StreamingResponse sets the Content-Type header
+                return StreamingResponse(
+                    response, media_type="application/octet-stream"
+                )
 
-        # In the case that the model returns a Generator object, return a
-        # StreamingResponse instead.
-        if isinstance(response, (AsyncGenerator, Generator)):
-            # media_type in StreamingResponse sets the Content-Type header
-            return StreamingResponse(response, media_type="application/octet-stream")
-
-        response_headers = {}
-        if self.is_binary(request):
-            response_headers["Content-Type"] = "application/octet-stream"
-            return Response(
-                content=truss_msgpack_serialize(response), headers=response_headers
-            )
-        else:
-            response_headers["Content-Type"] = "application/json"
-            return Response(
-                content=json.dumps(response, cls=DeepNumpyEncoder),
-                headers=response_headers,
-            )
+            response_headers = {}
+            if self.is_binary(request):
+                response_headers["Content-Type"] = "application/octet-stream"
+                return Response(
+                    content=truss_msgpack_serialize(response), headers=response_headers
+                )
+            else:
+                response_headers["Content-Type"] = "application/json"
+                return Response(
+                    content=json.dumps(response, cls=DeepNumpyEncoder),
+                    headers=response_headers,
+                )
 
     async def schema(self, model_name: str) -> Dict:
         model: ModelWrapper = self._safe_lookup_model(model_name)
@@ -206,10 +223,11 @@ class TrussServer:
         config: Dict,
         setup_json_logger: bool = True,
     ):
+        tracer = tracing.get_truss_tracer()
         self.http_port = http_port
         self._config = config
-        self._model = ModelWrapper(self._config)
-        self._endpoints = BasetenEndpoints(self._model)
+        self._model = ModelWrapper(self._config, tracer)
+        self._endpoints = BasetenEndpoints(self._model, tracer)
         self._setup_json_logger = setup_json_logger
 
     def cleanup(self):
@@ -344,7 +362,7 @@ class TrussServer:
         # Call this so uvloop gets used
         cfg.setup_event_loop()
 
-        async def serve():
+        async def serve() -> None:
             serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             serversocket.bind((cfg.host, cfg.port))

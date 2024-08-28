@@ -12,6 +12,7 @@ from truss.custom_types import Example, PatchRequest
 from truss.docker import Docker, DockerStates
 from truss.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
+from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
@@ -821,13 +822,15 @@ def _read_readme(filename: str) -> str:
 
 
 def generate_default_config():
+    # The test fixture varies with host version.
+    python_version = map_to_supported_python_version(infer_python_version())
     config = {
         "build_commands": [],
         "environment_variables": {},
         "external_package_dirs": [],
         "model_metadata": {},
         "model_name": None,
-        "python_version": "py39",
+        "python_version": python_version,
         "requirements": [],
         "resources": {
             "accelerator": None,

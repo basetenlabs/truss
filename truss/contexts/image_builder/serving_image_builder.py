@@ -459,6 +459,7 @@ class ServingImageBuilder(ImageBuilder):
         # are detected and cause a build failure. If there are no
         # requirements provided, we just pass an empty string,
         # as there's no need to install anything.
+        # TODO: above reasoning leads to inconsistencies. Needs revisit.
         user_provided_python_requirements = (
             base_server_requirements + spec.requirements_txt
             if spec.requirements
