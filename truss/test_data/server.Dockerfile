@@ -35,6 +35,7 @@ WORKDIR $APP_HOME
 COPY ./data /app/data
 COPY ./server /app
 COPY ./config.yaml /app/config.yaml
+COPY ./model /app/model
 
 COPY ./packages /packages
 
