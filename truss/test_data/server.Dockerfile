@@ -34,7 +34,6 @@ WORKDIR $APP_HOME
 # Copy data before code for better caching
 COPY ./data /app/data
 COPY ./server /app
-COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
 
 COPY ./packages /packages
