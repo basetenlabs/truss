@@ -135,8 +135,7 @@ class BasetenEndpoints:
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
-        # TODO: warn (or skip tracing), if no parent info was found?
-        trace_ctx = otel_propagate.extract(request.headers)
+        trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
         with self._tracer.start_as_current_span(

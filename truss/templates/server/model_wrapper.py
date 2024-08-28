@@ -203,7 +203,7 @@ class ModelWrapper:
             retry(
                 self._model.load,
                 NUM_LOAD_RETRIES,
-                self._logger.warn,
+                self._logger.warning,
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
@@ -325,6 +325,7 @@ class ModelWrapper:
         self,
         response: Any,
         span: trace.Span,
+        trace_ctx: trace.Context,
         release_and_end: Callable[[], None],
     ):
         # The streaming read timeout is the amount of time in between streamed chunk
@@ -345,13 +346,17 @@ class ModelWrapper:
             self.write_response_to_queue(response_queue, async_generator, span)
         )
         # Defer the release of the semaphore until the write_response_to_queue task.
-        gen_task.add_done_callback(lambda _: release_and_end)
+        gen_task.add_done_callback(lambda _: release_and_end())
 
         # The gap between responses in a stream must be < streaming_read_timeout
         async def _response_generator():
             # `span` is tied to the "producer" `gen_task` which might complete before
-            #  "consume" part here finishes, therefore a dedicated span is required.
-            with self._tracer.start_as_current_span("response_generator"):
+            # "consume" part here finishes, therefore a dedicated span is required.
+            # Because all of this code is inside a `detach_context` block, we
+            # explicitly propagate the tracing context for this span.
+            with self._tracer.start_as_current_span(
+                "response_generator", context=trace_ctx
+            ):
                 while True:
                     chunk = await asyncio.wait_for(
                         response_queue.get(),
@@ -398,7 +403,7 @@ class ModelWrapper:
         ) as get_defer_fn:
             with tracing.section_as_event(
                 span_predict, "predict"
-            ), tracing.detach_context():
+            ), tracing.detach_context() as detached_ctx:
                 # To prevent span pollution, we need to make sure spans created by user
                 # code don't inherit context from our spans (which happens even if
                 # different tracer instances are used).
@@ -421,7 +426,10 @@ class ModelWrapper:
                     return await self._gather_generator(response, span_predict)
                 else:
                     return await self._stream_with_background_task(
-                        response, span_predict, release_and_end=get_defer_fn()
+                        response,
+                        span_predict,
+                        detached_ctx,
+                        release_and_end=get_defer_fn(),
                     )
 
         with self._tracer.start_as_current_span("call-post") as span_post:

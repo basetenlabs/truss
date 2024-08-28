@@ -102,7 +102,7 @@ def get_truss_tracer(secrets: secrets_resolver.SecretsResolver) -> trace.Tracer:
 
 
 @contextlib.contextmanager
-def detach_context() -> Iterator[None]:
+def detach_context() -> Iterator[trace.Context]:
     """Breaks opentelemetry's context propagation.
 
     The goal is to separate truss-internal tracing instrumentation
@@ -117,7 +117,7 @@ def detach_context() -> Iterator[None]:
     # context manager creates a new root tracing context.
     transient_token = context.attach(trace.set_span_in_context(trace.INVALID_SPAN))
     try:
-        yield
+        yield current_context
     finally:
         # Reattach original context.
         context.detach(transient_token)
