@@ -302,11 +302,7 @@ class ModelWrapper:
             finally:
                 await queue.put(None)
 
-    async def _gather_generator(self, response: Any, span: trace.Span) -> str:
-        # In the case of gathering, it might make more sense to apply the postprocess
-        # to the gathered result, but that would be inconsistent with streaming.
-        # In general, it might even be better to strictly forbid postprocessing
-        # for generators.
+    async def _streaming_post_process(self, response: Any, span: trace.Span) -> Any:
         if hasattr(self._model, "postprocess"):
             logging.warning(
                 "Predict returned a streaming response, while a postprocess is defined."
@@ -317,6 +313,14 @@ class ModelWrapper:
             ), tracing.detach_context():
                 response = await self.postprocess(response)
 
+        return response
+
+    async def _gather_generator(self, response: Any, span: trace.Span) -> str:
+        # In the case of gathering, it might make more sense to apply the postprocess
+        # to the gathered result, but that would be inconsistent with streaming.
+        # In general, it might even be better to strictly forbid postprocessing
+        # for generators.
+        response = await self._streaming_post_process(response, span)
         return await _convert_streamed_response_to_string(
             _force_async_generator(response)
         )
@@ -333,6 +337,7 @@ class ModelWrapper:
         streaming_read_timeout = self._config.get("runtime", {}).get(
             "streaming_read_timeout", STREAMING_RESPONSE_QUEUE_READ_TIMEOUT_SECS
         )
+        response = await self._streaming_post_process(response, span)
         async_generator = _force_async_generator(response)
         # To ensure that a partial read from a client does not keep  the semaphore
         # claimed, we write all the data from the stream to the queue as it is produced,
@@ -349,13 +354,13 @@ class ModelWrapper:
         gen_task.add_done_callback(lambda _: release_and_end())
 
         # The gap between responses in a stream must be < streaming_read_timeout
-        async def _response_generator():
+        async def _buffered_response_generator():
             # `span` is tied to the "producer" `gen_task` which might complete before
             # "consume" part here finishes, therefore a dedicated span is required.
             # Because all of this code is inside a `detach_context` block, we
             # explicitly propagate the tracing context for this span.
             with self._tracer.start_as_current_span(
-                "response_generator", context=trace_ctx
+                "buffered-response-generator", context=trace_ctx
             ):
                 while True:
                     chunk = await asyncio.wait_for(
@@ -366,7 +371,7 @@ class ModelWrapper:
                         return
                     yield chunk.value
 
-        return _response_generator()
+        return _buffered_response_generator()
 
     async def __call__(
         self, body: Any, headers: Optional[Mapping[str, str]] = None

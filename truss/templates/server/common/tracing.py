@@ -21,6 +21,8 @@ OTEL_TRACING_NDJSON_FILE = "OTEL_TRACING_NDJSON_FILE"
 HONEYCOMB_DATASET = "HONEYCOMB_DATASET"
 HONEYCOMB_API_KEY = "HONEYCOMB_API_KEY"
 
+DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with truss_config.py.
+
 
 class JSONFileExporter(trace_export.SpanExporter):
     """Writes spans to newline-delimited JSON file for debugging / testing."""
@@ -45,7 +47,7 @@ class JSONFileExporter(trace_export.SpanExporter):
 _truss_tracer: Optional[trace.Tracer] = None
 
 
-def get_truss_tracer(secrets: secrets_resolver.SecretsResolver) -> trace.Tracer:
+def get_truss_tracer(secrets: secrets_resolver.SecretsResolver, config) -> trace.Tracer:
     """Creates a cached tracer (i.e. runtime-singleton) to be used for truss
     internal tracing.
 
@@ -53,6 +55,10 @@ def get_truss_tracer(secrets: secrets_resolver.SecretsResolver) -> trace.Tracer:
     completely from potential user-defined tracing - see also `detach_context` below.
 
     """
+    enable_tracing_data = config.get("runtime", {}).get(
+        "enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA
+    )
+
     global _truss_tracer
     if _truss_tracer:
         return _truss_tracer
@@ -65,28 +71,27 @@ def get_truss_tracer(secrets: secrets_resolver.SecretsResolver) -> trace.Tracer:
         span_processors.append(otlp_processor)
 
     if tracing_log_file := os.getenv(OTEL_TRACING_NDJSON_FILE):
-        logger.info("Exporting trace data to `tracing_log_file`.")
+        logger.info(f"Exporting trace data to file `{tracing_log_file}`.")
         json_file_exporter = JSONFileExporter(pathlib.Path(tracing_log_file))
         file_processor = sdk_trace.export.SimpleSpanProcessor(json_file_exporter)
         span_processors.append(file_processor)
 
-    if honeycomb_dataset := os.getenv(HONEYCOMB_DATASET):
-        if HONEYCOMB_API_KEY in secrets:
-            honeycomb_api_key = secrets[HONEYCOMB_API_KEY]
-            logger.info("Exporting trace data to honeycomb.")
-            honeycomb_exporter = oltp_exporter.OTLPSpanExporter(
-                endpoint="https://api.honeycomb.io/v1/traces",
-                headers={
-                    "x-honeycomb-team": honeycomb_api_key,
-                    "x-honeycomb-dataset": honeycomb_dataset,
-                },
-            )
-            honeycomb_processor = sdk_trace.export.BatchSpanProcessor(
-                honeycomb_exporter
-            )
-            span_processors.append(honeycomb_processor)
+    if (
+        honeycomb_dataset := os.getenv(HONEYCOMB_DATASET)
+    ) and HONEYCOMB_API_KEY in secrets:
+        honeycomb_api_key = secrets[HONEYCOMB_API_KEY]
+        logger.info("Exporting trace data to honeycomb.")
+        honeycomb_exporter = oltp_exporter.OTLPSpanExporter(
+            endpoint="https://api.honeycomb.io/v1/traces",
+            headers={
+                "x-honeycomb-team": honeycomb_api_key,
+                "x-honeycomb-dataset": honeycomb_dataset,
+            },
+        )
+        honeycomb_processor = sdk_trace.export.BatchSpanProcessor(honeycomb_exporter)
+        span_processors.append(honeycomb_processor)
 
-    if span_processors:
+    if span_processors and enable_tracing_data:
         logger.info("Instantiating truss tracer.")
         resource = resources.Resource.create({resources.SERVICE_NAME: "TrussServer"})
         trace_provider = sdk_trace.TracerProvider(resource=resource)
@@ -94,7 +99,13 @@ def get_truss_tracer(secrets: secrets_resolver.SecretsResolver) -> trace.Tracer:
             trace_provider.add_span_processor(sp)
         tracer = trace_provider.get_tracer("truss_server")
     else:
-        logger.info("Using no-op tracing.")
+        if enable_tracing_data:
+            logger.info(
+                "Using no-op tracing (tracing is enabled, but no exporters confiugred)."
+            )
+        else:
+            logger.info("Using no-op tracing (tracing was disabled).")
+
         tracer = sdk_trace.NoOpTracer()
 
     _truss_tracer = tracer

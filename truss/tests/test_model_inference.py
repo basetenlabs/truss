@@ -1,4 +1,5 @@
 import concurrent
+import dataclasses
 import inspect
 import json
 import logging
@@ -878,11 +879,20 @@ def _make_otel_headers() -> Mapping[str, str]:
 
 
 @pytest.mark.integration
-def test_streaming_truss_with_user_tracing():
+@pytest.mark.parametrize("enable_tracing_data", [True, False])
+def test_streaming_truss_with_user_tracing(enable_tracing_data):
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
         truss_dir = truss_root / "test_data" / "test_streaming_truss_with_tracing"
         tr = TrussHandle(truss_dir)
+
+        def enable_gpu_fn(conf):
+            new_runtime = dataclasses.replace(
+                conf.runtime, enable_tracing_data=enable_tracing_data
+            )
+            return dataclasses.replace(conf, runtime=new_runtime)
+
+        tr._update_config(enable_gpu_fn)
 
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -930,11 +940,10 @@ def test_streaming_truss_with_user_tracing():
                 json.loads(s) for s in user_traces_file.read_text().splitlines()
             ]
 
-        # for x in truss_traces:
-        #     print(x)
-        # print("#" * 30)
-        # for x in user_traces:
-        #     print(x)
+        if not enable_tracing_data:
+            assert len(truss_traces) == 0
+            assert len(user_traces) > 0
+            return
 
         assert sum(1 for x in truss_traces if x["name"] == "predict-endpoint") == 3
         assert sum(1 for x in user_traces if x["name"] == "load_model") == 1

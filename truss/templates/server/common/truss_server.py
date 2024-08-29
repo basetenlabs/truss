@@ -227,7 +227,7 @@ class TrussServer:
         setup_json_logger: bool = True,
     ):
         secrets = SecretsResolver.get_secrets(config)
-        tracer = tracing.get_truss_tracer(secrets)
+        tracer = tracing.get_truss_tracer(secrets, config)
         self.http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config, tracer)
