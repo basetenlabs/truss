@@ -11,7 +11,7 @@ URL_PATTERN = re.compile(r"^(https?|git|svn|hg|bzr)\+")
 
 
 def is_url_based_requirement(req: str) -> bool:
-    return bool(URL_PATTERN.match(req))
+    return bool(URL_PATTERN.match(req.strip()))
 
 
 def identify_requirement_name(req: str) -> str:
