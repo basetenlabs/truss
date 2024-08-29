@@ -10,8 +10,16 @@ from truss.templates.control.control.helpers.truss_patch.requirement_name_identi
     [
         ("pytorch", "pytorch"),
         (
+            "git+https://github.com/huggingface/transformers.git#egg=transformers",
+            "git+github.com/huggingface/transformers.git",
+        ),
+        (
             "git+https://github.com/huggingface/transformers.git",
-            "git+https://github.com/huggingface/transformers.git",
+            "git+github.com/huggingface/transformers.git",
+        ),
+        (
+            "git+https://github.com/huggingface/transformers.git@main#egg=transformers",
+            "git+github.com/huggingface/transformers.git",
         ),
         (
             " git+https://github.com/huggingface/transformers.git ",
@@ -31,5 +39,6 @@ def test_reqs_by_name():
         "pytorch",
         " ",
         "jinja==1.0",
+        "git+https://github.com/huggingface/transformers.git@abcd123",
     ]
-    assert reqs_by_name(reqs) == {"pytorch": "pytorch", "jinja": "jinja==1.0"}
+    assert reqs_by_name(reqs) == {"pytorch": "pytorch", "jinja": "jinja==1.0", "git+github.com/huggingface/transformers.git": "git+https://github.com/huggingface/transformers.git@abcd123"}
