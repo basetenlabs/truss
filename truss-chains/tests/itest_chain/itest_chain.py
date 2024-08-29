@@ -54,14 +54,27 @@ class TextReplicator(chains.ChainletBase):
         return data * self.user_config.multiplier
 
 
+class SideEffectOnly(chains.ChainletBase):
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
+    default_user_config = DummyUserConfig(multiplier=2)
+
+    def __init__(self, context=chains.depends_context()):
+        self.user_config = context.user_config
+
+    def run_remote(self) -> None:
+        print("I'm have no input and no outputs, I just print.")
+
+
 class TextToNum(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_STR)
 
     def __init__(
         self,
         replicator: TextReplicator = chains.depends(TextReplicator),
+        side_effect=chains.depends(SideEffectOnly),
     ) -> None:
         self._replicator = replicator
+        self._side_effect = side_effect
 
     def run_remote(self, data: str) -> int:
         number = 0
@@ -69,6 +82,7 @@ class TextToNum(chains.ChainletBase):
         for char in generated_text:
             number += ord(char)
 
+        self._side_effect.run_remote()
         return number
 
 

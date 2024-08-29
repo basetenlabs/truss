@@ -582,12 +582,12 @@ def push_chain(
             remote=remote,
         )
         service = chains_remote.push(entrypoint_cls, options)
-        assert isinstance(service, chains_remote.BasetenChainService)
 
     console.print("\n")
     if dryrun:
         return
 
+    assert isinstance(service, chains_remote.BasetenChainService)
     curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
 
     table, statuses = _create_chains_table(service)
