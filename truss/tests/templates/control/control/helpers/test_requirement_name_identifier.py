@@ -23,7 +23,7 @@ from truss.templates.control.control.helpers.truss_patch.requirement_name_identi
         ),
         (
             " git+https://github.com/huggingface/transformers.git ",
-            "git+https://github.com/huggingface/transformers.git",
+            "git+github.com/huggingface/transformers.git",
         ),
         ("pytorch==1.0", "pytorch"),
         ("pytorch>=1.0", "pytorch"),
