@@ -1,25 +1,30 @@
-from typing import Dict, List
-from urllib.parse import urlparse, parse_qs
-import re
 import logging
+import re
+from typing import Dict, List
+from urllib.parse import parse_qs, urlparse
 
 from packaging import requirements  # type: ignore
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 URL_PATTERN = re.compile(r"^(https?|git|svn|hg|bzr)\+")
 
+
 def is_url_based_requirement(req: str) -> bool:
     return bool(URL_PATTERN.match(req))
 
+
 def identify_requirement_name(req: str) -> str:
     try:
-                # parse as a url requirement
+        # parse as a url requirement
         req = req.strip()
         if is_url_based_requirement(req):
             parsed_url = urlparse(req)
             fragments = parse_qs(parsed_url.fragment)
-            if 'egg' not in fragments:
-                logger.warning(f'Url-based requirement "{req}" is missing egg tag. Removal during `truss watch` will be ignored')
+            if "egg" not in fragments:
+                logger.warning(
+                    f'Url-based requirement "{req}" is missing egg tag. Removal during `truss watch` will be ignored'
+                )
 
             # Identify the package by it's unique components. We can't reliably id a package name
             # via URL, so we fallback on this instead.

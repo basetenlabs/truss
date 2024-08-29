@@ -41,4 +41,8 @@ def test_reqs_by_name():
         "jinja==1.0",
         "git+https://github.com/huggingface/transformers.git@abcd123",
     ]
-    assert reqs_by_name(reqs) == {"pytorch": "pytorch", "jinja": "jinja==1.0", "git+github.com/huggingface/transformers.git": "git+https://github.com/huggingface/transformers.git@abcd123"}
+    assert reqs_by_name(reqs) == {
+        "pytorch": "pytorch",
+        "jinja": "jinja==1.0",
+        "git+github.com/huggingface/transformers.git": "git+https://github.com/huggingface/transformers.git@abcd123",
+    }

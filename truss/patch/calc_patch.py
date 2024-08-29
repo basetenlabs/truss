@@ -21,8 +21,8 @@ from truss.templates.control.control.helpers.custom_types import (
     SystemPackagePatch,
 )
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
-    reqs_by_name,
     is_url_based_requirement,
+    reqs_by_name,
 )
 from truss.templates.control.control.helpers.truss_patch.system_packages import (
     system_packages_set,
@@ -389,8 +389,10 @@ def _calc_python_requirements_patches(
         if is_url_based_requirement(removed_raw_req):
             parsed_url = urlparse(removed_raw_req)
             fragments = parse_qs(parsed_url.fragment)
-            if 'egg' not in fragments:
-                logger.warning(f'url-based requirement "{removed_raw_req}" is missing egg tag. Ignoring removal. Use `truss push` if you want to remove this requirement.')
+            if "egg" not in fragments:
+                logger.warning(
+                    f'url-based requirement "{removed_raw_req}" is missing egg tag. Ignoring removal. Use `truss push` if you want to remove this requirement.'
+                )
                 continue
             # make sure that the egg tag is included when removing the requirement
             patches.append(_mk_python_requirement_patch(Action.REMOVE, removed_raw_req))

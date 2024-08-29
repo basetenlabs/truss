@@ -576,14 +576,21 @@ def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: P
             ),
         ),
     ]
-    
-def test_calc_config_patches_update_python_url_requirement_with_egg_tag(custom_model_truss_dir: Path):
+
+
+def test_calc_config_patches_update_python_url_requirement_with_egg_tag(
+    custom_model_truss_dir: Path,
+):
     def update_requests_version(config: TrussConfig):
-        config.requirements[0] = "git+https://github.com/huggingface/transformers.git#egg=transformers"
+        config.requirements[0] = (
+            "git+https://github.com/huggingface/transformers.git#egg=transformers"
+        )
 
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
-        config_pre_op=lambda config: config.requirements.append("git+https://github.com/huggingface/transformers.git"),
+        config_pre_op=lambda config: config.requirements.append(
+            "git+https://github.com/huggingface/transformers.git"
+        ),
         config_op=update_requests_version,
     )
     assert len(patches) == 2
@@ -604,14 +611,20 @@ def test_calc_config_patches_update_python_url_requirement_with_egg_tag(custom_m
         ),
     ]
 
-    
-def test_calc_config_patches_update_python_url_requirement_with_revision_tag(custom_model_truss_dir: Path):
+
+def test_calc_config_patches_update_python_url_requirement_with_revision_tag(
+    custom_model_truss_dir: Path,
+):
     def update_requests_version(config: TrussConfig):
-        config.requirements[0] = "git+https://github.com/huggingface/transformers.git@111111"
+        config.requirements[0] = (
+            "git+https://github.com/huggingface/transformers.git@111111"
+        )
 
     patches = _apply_config_change_and_calc_patches(
         custom_model_truss_dir,
-        config_pre_op=lambda config: config.requirements.append("git+https://github.com/huggingface/transformers.git@000000"),
+        config_pre_op=lambda config: config.requirements.append(
+            "git+https://github.com/huggingface/transformers.git@000000"
+        ),
         config_op=update_requests_version,
     )
     assert len(patches) == 2
@@ -631,6 +644,7 @@ def test_calc_config_patches_update_python_url_requirement_with_revision_tag(cus
             ),
         ),
     ]
+
 
 def test_calc_config_patches_ignores_removal_of_url_based_requirements_without_egg_tag(
     custom_model_truss_dir: Path,
