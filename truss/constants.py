@@ -108,10 +108,11 @@ TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
-    "transformers==4.43.2",
+    "transformers==4.44.2",
     "truss==0.9.30rc3",
     "outlines==0.0.46",
     "torch==2.4.0",
+    "sentencepiece==0.2.0",
 ]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
