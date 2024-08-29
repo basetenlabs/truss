@@ -14,11 +14,12 @@ def is_url_based_requirement(req: str) -> bool:
 def identify_requirement_name(req: str) -> str:
     try:
                 # parse as a url requirement
+        req = req.strip()
         if is_url_based_requirement(req):
             parsed_url = urlparse(req)
             fragments = parse_qs(parsed_url.fragment)
             if 'egg' not in fragments:
-                logger.warning(f'url-based requirement "{req}" is missing egg tag. Subsequent removal will be ignored by `truss watch`')
+                logger.warning(f'Url-based requirement "{req}" is missing egg tag. Removal during `truss watch` will be ignored')
 
             # Identify the package by it's unique components. We can't reliably id a package name
             # via URL, so we fallback on this instead.
