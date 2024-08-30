@@ -830,7 +830,21 @@ def import_target(
         for chainlet_name in chainlets_after - chainlets_before:
             global_chainlet_registry.unregister_chainlet(chainlet_name)
 
-        modules_to_delete = modules_after - modules_before
+        modules_diff = modules_after - modules_before
+        # Apparently torch import leaves some side effects that cannot be reverted
+        # by deleting the modules and would lead to a crash when another import
+        # is attempted. Since torch is a common lib, we make this explicit special
+        # case and just leave those modules.
+        # TODO: this seems still brittle and other modules might cause similar problems.
+        #  it would be good to find a more principled solution.
+        modules_to_delete = {
+            s for s in modules_diff if not (s.startswith("torch.") or s == "torch")
+        }
+        if torch_modules := modules_diff - modules_to_delete:
+            logging.debug(
+                f"Keeping torch modules after import context: {torch_modules}"
+            )
+
         logging.debug(
             f"Deleting modules when exiting import context: {modules_to_delete}"
         )

@@ -632,6 +632,7 @@ def push_chain(
                     user_env_parsed,
                     console,
                     error_console,
+                    show_stack_trace=not is_humanfriendly_log_level,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -705,7 +706,14 @@ def watch_chains(
         user_env_parsed = {}
 
     chains_remote.watch(
-        source, entrypoint, name, remote, user_env_parsed, console, error_console
+        source,
+        entrypoint,
+        name,
+        remote,
+        user_env_parsed,
+        console,
+        error_console,
+        show_stack_trace=not is_humanfriendly_log_level,
     )
 
 
