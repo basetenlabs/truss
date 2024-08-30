@@ -90,6 +90,9 @@ class Engine:
         self._kv_cache_free_gpu_mem_fraction = (
             truss_trtllm_build_config.kv_cache_free_gpu_mem_fraction
         )
+        self._enable_kv_cache_reuse = (
+            truss_trtllm_build_config.plugin_configuration.use_paged_context_fmha
+        )
 
         self._hf_token = None
         try:
@@ -115,6 +118,7 @@ class Engine:
     engine_path: "{self._data_dir.resolve()}"
     hf_tokenizer: "{self._tokenizer_repository}"
     kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
+    enable_kv_cache_reuse: {"true" if self._enable_kv_cache_reuse else "false"}
     fsm_cache_dir: "{FSM_CACHE_DIR}"
 """
         config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()

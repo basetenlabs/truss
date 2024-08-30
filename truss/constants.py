@@ -109,7 +109,7 @@ BASE_TRTLLM_REQUIREMENTS = [
     "grpcio==1.64.0",
     "grpcio-tools==1.64.0",
     "transformers==4.43.2",
-    "truss==0.9.30rc1",
+    "truss==0.9.30rc3",
     "outlines==0.0.46",
     "torch==2.4.0",
 ]
