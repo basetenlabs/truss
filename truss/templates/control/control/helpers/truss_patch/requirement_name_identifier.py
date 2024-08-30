@@ -1,12 +1,9 @@
-import logging
 import re
 from dataclasses import dataclass
 from typing import List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from packaging import requirements  # type: ignore
-
-logger: logging.Logger = logging.getLogger(__name__)
 
 URL_PATTERN = re.compile(r"^(https?|git|svn|hg|bzr)\+")
 
