@@ -396,7 +396,7 @@ def _calc_python_requirements_patches(
         if removed_req_meta.is_url_based_requirement:
             if not removed_req_meta.egg_tag:
                 logger.warning(
-                    f'url-based requirement "{removed_req_meta.requirement}" is missing egg tag. Ignoring removal. Use `truss push` if you want to remove this requirement.'
+                    f"Url-based requirement `{removed_req_meta.requirement}` is missing egg tag. Ignoring removal. Use `truss push` if you want to remove this requirement."
                 )
                 continue
             # make sure that the egg tag is included when removing the requirement
@@ -414,7 +414,7 @@ def _calc_python_requirements_patches(
     for new_req in new_reqs_map.values():
         if new_req.is_url_based_requirement and not new_req.egg_tag:
             logger.warning(
-                f'url-based requirement "{new_req.requirement}" is missing egg tag. Removal will be ignored by `truss watch`'
+                f"Url-based requirement `{new_req.requirement}` is missing egg tag. Removal will be ignored by `truss watch`"
             )
     added_req_names = new_req_names.difference(prev_req_names)
     for added_req_name in added_req_names:
