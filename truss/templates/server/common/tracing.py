@@ -16,8 +16,15 @@ from shared import secrets_resolver
 logger = logging.getLogger(__name__)
 
 ATTR_NAME_DURATION = "duration_sec"
+# "New" Jaeger exporter.
 OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+# "Old" Honeycomb exporter. We might want to temporarily export to both, but
+# eventually remove this one.
+OTEL_EXPORTER_OTLP_ENDPOINT_LEGACY = "OTEL_EXPORTER_OTLP_ENDPOINT_LEGACY"
+# Writing trace data to a file is only intended for testing / debugging.
 OTEL_TRACING_NDJSON_FILE = "OTEL_TRACING_NDJSON_FILE"
+# Exporting trace data to a public honeycomb instance (not our cluster collector)
+# is intended only for testing / debugging.
 HONEYCOMB_DATASET = "HONEYCOMB_DATASET"
 HONEYCOMB_API_KEY = "HONEYCOMB_API_KEY"
 
@@ -70,6 +77,12 @@ def get_truss_tracer(secrets: secrets_resolver.SecretsResolver, config) -> trace
         otlp_processor = sdk_trace.export.BatchSpanProcessor(otlp_exporter)
         span_processors.append(otlp_processor)
 
+    if otlp_endpoint := os.getenv(OTEL_EXPORTER_OTLP_ENDPOINT_LEGACY):
+        logger.info(f"Exporting trace data to {OTEL_EXPORTER_OTLP_ENDPOINT_LEGACY}.")
+        otlp_exporter = oltp_exporter.OTLPSpanExporter(endpoint=otlp_endpoint)
+        otlp_processor = sdk_trace.export.BatchSpanProcessor(otlp_exporter)
+        span_processors.append(otlp_processor)
+
     if tracing_log_file := os.getenv(OTEL_TRACING_NDJSON_FILE):
         logger.info(f"Exporting trace data to file `{tracing_log_file}`.")
         json_file_exporter = JSONFileExporter(pathlib.Path(tracing_log_file))
@@ -101,7 +114,7 @@ def get_truss_tracer(secrets: secrets_resolver.SecretsResolver, config) -> trace
     else:
         if enable_tracing_data:
             logger.info(
-                "Using no-op tracing (tracing is enabled, but no exporters confiugred)."
+                "Using no-op tracing (tracing is enabled, but no exporters configured)."
             )
         else:
             logger.info("Using no-op tracing (tracing was disabled).")
