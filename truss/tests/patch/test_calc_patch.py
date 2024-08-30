@@ -4,7 +4,11 @@ from typing import Any, Callable, List, Optional
 
 import pytest
 import yaml
-from truss.patch.calc_patch import calc_truss_patch, calc_unignored_paths
+from truss.patch.calc_patch import (
+    _calc_python_requirements_patches,
+    calc_truss_patch,
+    calc_unignored_paths,
+)
 from truss.patch.signature import calc_truss_signature
 from truss.templates.control.control.helpers.custom_types import (
     Action,
@@ -1015,3 +1019,35 @@ def _apply_config_change_and_calc_patches(
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     modify_config(config_op)
     return calc_truss_patch(custom_model_truss_dir, prev_sign)
+
+
+@pytest.mark.parametrize(
+    "desc, prev_raw_reqs, new_raw_reqs, expected_patches",
+    [
+        (
+            "handles single update",
+            ["requests==1.0.0"],
+            ["requests==2.0.0"],
+            [
+                Patch(
+                    type=PatchType.PYTHON_REQUIREMENT,
+                    body=PythonRequirementPatch(
+                        action=Action.UPDATE,
+                        requirement="requests==2.0.0",
+                    ),
+                )
+            ],
+        ),
+        (
+            "ignores url-based requirement without egg tag",
+            ["git+https://github.com/huggingface/transformers.git@000000"],
+            [],
+            [],
+        ),
+    ],
+)
+def test_calc_python_requirements_patches(
+    desc, prev_raw_reqs, new_raw_reqs, expected_patches
+):
+    actual = _calc_python_requirements_patches(prev_raw_reqs, new_raw_reqs)
+    assert actual == expected_patches, desc
