@@ -104,7 +104,7 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ) as mock_init_extension:
             model_wrapper = model_wrapper_class(config)
-            model_wrapper.load()
+            await model_wrapper.load()
             called_with_specific_extension = any(
                 call_args[0][0] == "trt_llm"
                 for call_args in mock_init_extension.call_args_list
@@ -141,7 +141,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
             model_wrapper = model_wrapper_class(config)
-            model_wrapper.load()
+            await model_wrapper.load()
             resp = await model_wrapper.predict({})
             mock_extension.load.assert_called()
             mock_extension.model_args.assert_called()
@@ -178,7 +178,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
             model_wrapper = model_wrapper_class(config)
-            model_wrapper.load()
+            await model_wrapper.load()
             resp = await model_wrapper.predict({})
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
