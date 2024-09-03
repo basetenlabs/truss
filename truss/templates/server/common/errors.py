@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from typing import Optional
+from typing import Mapping, Optional
 
 from fastapi.responses import JSONResponse
 
@@ -57,14 +57,24 @@ class ModelNotReady(RuntimeError):
         return self.error_msg
 
 
+def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
+    # The source of truth for these constants is in
+    # go/beefeater/shared/error_propagated.go
+    TrussServerServiceID = "04"
+    return {
+        "X-BASETEN-ERROR-SOURCE": TrussServerServiceID,
+        "X-BASETEN-ERROR-CODE": str(error_code),
+    }
+
+
 async def exception_handler(_, exc):
     return JSONResponse(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content={"error": str(exc)}
     )
 
 
-async def invalid_input_handler(_, exc):
-    return JSONResponse(status_code=HTTPStatus.BAD_REQUEST, content={"error": str(exc)})
+# async def invalid_input_handler(_, exc):
+#     return JSONResponse(status_code=HTTPStatus.BAD_REQUEST, content={"error": str(exc)})
 
 
 async def inference_error_handler(_, exc):
