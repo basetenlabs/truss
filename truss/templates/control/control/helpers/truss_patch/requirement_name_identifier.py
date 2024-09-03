@@ -7,6 +7,7 @@ from packaging import requirements  # type: ignore
 
 URL_PATTERN = re.compile(r"^(https?|git|svn|hg|bzr)(\+|:\/\/)")
 
+
 def is_url_based_requirement(req: str) -> bool:
     return bool(URL_PATTERN.match(req.strip()))
 
