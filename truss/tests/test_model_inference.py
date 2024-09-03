@@ -262,6 +262,41 @@ def test_async_streaming():
 
 
 @pytest.mark.integration
+def test_async_streaming_with_cancel():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = (
+            truss_root
+            / "test_data"
+            / "test_streaming_async_cancellable_generator_truss"
+        )
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        response = requests.post(full_url, json={}, stream=True)
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["0", "1", "2", "3", "4"]
+
+        print("POST")
+        predict_non_stream_response = requests.post(
+            full_url,
+            json={},
+            stream=True,
+            headers={"accept": "application/json"},
+            timeout=0.01,
+        )
+        assert "transfer-encoding" not in predict_non_stream_response.headers
+        assert predict_non_stream_response.json() == "01234"
+
+
+@pytest.mark.integration
 def test_async_streaming_timeout():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
