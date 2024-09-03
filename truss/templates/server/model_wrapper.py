@@ -14,6 +14,7 @@ from threading import Thread
 from typing import (
     Any,
     AsyncGenerator,
+    Awaitable,
     Callable,
     Coroutine,
     Dict,
@@ -238,8 +239,7 @@ class ModelWrapper:
             )
 
     async def predict(
-        self,
-        payload: Any,
+        self, payload: Any, is_cancelled_fn: Callable[[], Awaitable[bool]]
     ) -> Any:
         # It's possible for the user's predict function to be a:
         #   1. Generator function (function that returns a generator)
@@ -252,13 +252,15 @@ class ModelWrapper:
         if inspect.isasyncgenfunction(
             self._model.predict
         ) or inspect.isgeneratorfunction(self._model.predict):
-            return self._model.predict(payload)
+            return self._model.predict(payload, is_cancelled_fn)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(self._model.predict)(payload)
+            return await _intercept_exceptions_async(self._model.predict)(
+                payload, is_cancelled_fn
+            )
 
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.predict), payload
+            _intercept_exceptions_sync(self._model.predict), payload, is_cancelled_fn
         )
 
     async def postprocess(
@@ -291,6 +293,8 @@ class ModelWrapper:
     ):
         with tracing.section_as_event(span, "write_response_to_queue"):
             try:
+                # Special case for writer: the triton client checks for canellations
+                # in each iteration.
                 async for chunk in generator:
                     # TODO: consider checking `request.is_disconnected()` for
                     #   client-side cancellations and freeing resources.
@@ -374,7 +378,10 @@ class ModelWrapper:
         return _buffered_response_generator()
 
     async def __call__(
-        self, body: Any, headers: Optional[Mapping[str, str]] = None
+        self,
+        body: Any,
+        is_cancelled_fn: Callable[[], Awaitable[bool]],
+        headers: Optional[Mapping[str, str]] = None,
     ) -> Union[Dict, Generator, AsyncGenerator, str]:
         """Method to call predictor or explainer with the given input.
 
@@ -422,7 +429,7 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
-                response = await self.predict(payload)
+                response = await self.predict(payload, is_cancelled_fn)
 
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
                 if headers and headers.get("accept") == "application/json":

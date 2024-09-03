@@ -158,6 +158,7 @@ class BasetenEndpoints:
             with tracing.section_as_event(span, "model-call"):
                 response: Union[Dict, Generator] = await model(
                     body,
+                    request.is_disconnected,
                     headers=utils.transform_keys(
                         request.headers, lambda key: key.lower()
                     ),
