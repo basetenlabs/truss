@@ -2,6 +2,7 @@ import pytest
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
     RequirementMeta,
     identify_requirement_name,
+    reqs_by_name,
 )
 
 
@@ -32,6 +33,15 @@ from truss.templates.control.control.helpers.truss_patch.requirement_name_identi
 )
 def test_identify_requirement_name(req, expected_name):
     assert expected_name == identify_requirement_name(req)
+
+
+def test_reqs_by_name():
+    reqs = [
+        "pytorch",
+        " ",
+        "jinja==1.0",
+    ]
+    assert reqs_by_name(reqs) == {"pytorch": "pytorch", "jinja": "jinja==1.0"}
 
 
 @pytest.mark.parametrize(
