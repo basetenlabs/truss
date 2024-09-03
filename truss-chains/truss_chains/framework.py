@@ -133,7 +133,7 @@ def _instantiation_error_msg(cls_name: str):
     )
 
 
-def _validate_io_type(param: inspect.Parameter) -> None:
+def _validate_io_type(annotation: Any, name: str) -> None:
     """
     For Chainlet I/O (both data or parameters), we allow simple types
     (int, str, float...) and `list` or `dict` containers of these.
@@ -142,29 +142,29 @@ def _validate_io_type(param: inspect.Parameter) -> None:
     containers_str = [c.__name__ for c in _SIMPLE_CONTAINERS]
     types_str = [c.__name__ if c is not None else "None" for c in _SIMPLE_TYPES]
     error_msg = (
-        f"Unsupported I/O type `{param}`. Supported are:\n"
+        f"Unsupported I/O type `{name}` of type `{annotation}`. Supported are:\n"
         f"\t* simple types: {types_str}\n"
         f"\t* containers of these simple types, with annotated items: {containers_str}"
         ", e.g. `dict[str, int]` (use built-in types, not `typing.Dict`).\n"
         "\t* For complicated / nested data structures: `pydantic` models."
     )
-    anno = param.annotation
-    if isinstance(anno, str):
+    if isinstance(annotation, str):
         raise definitions.ChainsUsageError(
-            f"A string-valued type annotation was found: `{param}`. Use only actual "
-            "types and avoid `from __future__ import annotations` (upgrade python)."
+            f"A string-valued type annotation was found for `{name}` of type "
+            f"`{annotation}`. Use only actual types and avoid `from __future__ import "
+            "annotations` (upgrade python)."
         )
-    if anno in _SIMPLE_TYPES:
+    if annotation in _SIMPLE_TYPES:
         return
-    if isinstance(anno, types.GenericAlias):
-        if get_origin(anno) not in _SIMPLE_CONTAINERS:
+    if isinstance(annotation, types.GenericAlias):
+        if get_origin(annotation) not in _SIMPLE_CONTAINERS:
             raise definitions.ChainsUsageError(error_msg)
-        args = get_args(anno)
+        args = get_args(annotation)
         for arg in args:
             if arg not in _SIMPLE_TYPES:
                 raise definitions.ChainsUsageError(error_msg)
         return
-    if utils.issubclass_safe(anno, pydantic.BaseModel):
+    if utils.issubclass_safe(annotation, pydantic.BaseModel):
         return
 
     raise definitions.ChainsUsageError(error_msg)
@@ -191,7 +191,7 @@ def _validate_endpoint_params(
                 f"`{cls_name}.{definitions.ENDPOINT_METHOD_NAME}` parameter "
                 f"`{param.name}` has no type annotation."
             )
-        _validate_io_type(param)
+        _validate_io_type(param.annotation, param.name)
         type_descriptor = definitions.TypeDescriptor(raw=param.annotation)
         is_optional = param.default != inspect.Parameter.empty
         input_args.append(
@@ -200,6 +200,25 @@ def _validate_endpoint_params(
             )
         )
     return input_args
+
+
+def _validate_endpoint_output_types(
+    annotation: Any, cls_name: str, signature
+) -> list[definitions.TypeDescriptor]:
+    if annotation == inspect.Parameter.empty:
+        raise definitions.ChainsUsageError(
+            "Return values of endpoints must be type annotated. Got:\n"
+            f"{cls_name}.{definitions.ENDPOINT_METHOD_NAME}{signature} -> !MISSING!"
+        )
+    if get_origin(annotation) is tuple:
+        output_types = []
+        for i, arg in enumerate(get_args(annotation)):
+            _validate_io_type(arg, f"return_type[{i}]")
+            output_types.append(definitions.TypeDescriptor(raw=arg))
+    else:
+        _validate_io_type(annotation, "return_type")
+        output_types = [definitions.TypeDescriptor(raw=annotation)]
+    return output_types
 
 
 def _validate_and_describe_endpoint(
@@ -234,18 +253,10 @@ def _validate_and_describe_endpoint(
     input_args = _validate_endpoint_params(
         list(signature.parameters.values()), cls.name
     )
-    if signature.return_annotation == inspect.Parameter.empty:
-        raise definitions.ChainsUsageError(
-            "Return values of endpoints must be type annotated. Got:\n"
-            f"{cls.name}.{definitions.ENDPOINT_METHOD_NAME}{signature} -> !MISSING!"
-        )
-    if get_origin(signature.return_annotation) is tuple:
-        output_types = list(
-            definitions.TypeDescriptor(raw=arg)
-            for arg in get_args(signature.return_annotation)
-        )
-    else:
-        output_types = [definitions.TypeDescriptor(raw=signature.return_annotation)]
+
+    output_types = _validate_endpoint_output_types(
+        signature.return_annotation, cls.name, signature
+    )
 
     if inspect.isasyncgenfunction(endpoint_method):
         is_async = True
@@ -819,7 +830,21 @@ def import_target(
         for chainlet_name in chainlets_after - chainlets_before:
             global_chainlet_registry.unregister_chainlet(chainlet_name)
 
-        modules_to_delete = modules_after - modules_before
+        modules_diff = modules_after - modules_before
+        # Apparently torch import leaves some side effects that cannot be reverted
+        # by deleting the modules and would lead to a crash when another import
+        # is attempted. Since torch is a common lib, we make this explicit special
+        # case and just leave those modules.
+        # TODO: this seems still brittle and other modules might cause similar problems.
+        #  it would be good to find a more principled solution.
+        modules_to_delete = {
+            s for s in modules_diff if not (s.startswith("torch.") or s == "torch")
+        }
+        if torch_modules := modules_diff - modules_to_delete:
+            logging.debug(
+                f"Keeping torch modules after import context: {torch_modules}"
+            )
+
         logging.debug(
             f"Deleting modules when exiting import context: {modules_to_delete}"
         )

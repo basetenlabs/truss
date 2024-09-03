@@ -9,7 +9,8 @@ def test_api_key():
     assert key.header() == {"Authorization": "Api-Key test_key"}
 
 
-def test_auth_service_no_key():
+def test_auth_service_no_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("BASETEN_API_KEY", raising=False)
     auth_service = AuthService()
     with pytest.raises(AuthorizationError):
         auth_service.authenticate()
