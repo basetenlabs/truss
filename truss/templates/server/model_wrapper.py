@@ -209,7 +209,6 @@ class ModelWrapper:
                     "Failed to load model.",
                     gap_seconds=1.0,
                 )
-                await self._model.load()
             else:
                 await to_thread.run_sync(
                     retry,
