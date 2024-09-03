@@ -3,9 +3,8 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, field_validator
 from rich.console import Console
-from typing_extensions import Self
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,8 +35,6 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
     gemm_plugin: str = "auto"
     use_paged_context_fmha: bool = False
     use_fp8_context_fmha: bool = False
-
-    # add class validation for
 
 
 class CheckpointSource(str, Enum):
@@ -99,9 +96,12 @@ class TRTLLMConfiguration(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
+        self._validate_minimum_required_configuration()
+        self._validate_kv_cache_flags()
 
-    @model_validator(mode="after")
-    def validate_minimum_required_configuration(self) -> Self:
+    # In pydantic v2 this would be `@model_validator(mode="after")` and
+    # the __init__ override can be removed.
+    def _validate_minimum_required_configuration(self):
         if not self.serve and not self.build:
             raise ValueError("Either serve or build configurations must be provided")
         if self.serve and self.build:
@@ -115,8 +115,7 @@ class TRTLLMConfiguration(BaseModel):
                 )
         return self
 
-    @model_validator(mode="after")
-    def validate_kv_cache_flags(self) -> Self:
+    def _validate_kv_cache_flags(self):
         if self.build is None:
             return self
         if not self.build.plugin_configuration.paged_kv_cache and (
