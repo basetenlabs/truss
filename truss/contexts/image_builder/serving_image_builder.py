@@ -459,9 +459,9 @@ class ServingImageBuilder(ImageBuilder):
         # are detected and cause a build failure. If there are no
         # requirements provided, we just pass an empty string,
         # as there's no need to install anything.
-        # TODO: above reasoning leads to inconsistencies. To get consistent images
-        #  tentatively add server requirements always. This whole point needs more
-        #  thought and potentially a re-design.
+        # TODO (BT-10217): above reasoning leads to inconsistencies. To get consistent
+        #  images tentatively add server requirements always. This whole point needs
+        #  more thought and potentially a re-design.
         user_provided_python_requirements = (
             base_server_requirements + spec.requirements_txt
             if spec.requirements
