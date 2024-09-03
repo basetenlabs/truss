@@ -411,17 +411,16 @@ def _calc_python_requirements_patches(
             )
 
     # warn for new reqs
-    for new_req in new_reqs_map.values():
-        if new_req.is_url_based_requirement and not new_req.egg_tag:
-            logger.warning(
-                f"Url-based requirement `{new_req.requirement}` is missing egg tag. Removal will be ignored by `truss watch`"
-            )
     added_req_names = new_req_names.difference(prev_req_names)
     for added_req_name in added_req_names:
         added_req_meta = new_reqs_map[added_req_name]
         patches.append(
             _mk_python_requirement_patch(Action.ADD, added_req_meta.requirement)
         )
+        if added_req_meta.is_url_based_requirement and not added_req_meta.egg_tag:
+            logger.warning(
+                f"Url-based requirement `{added_req_meta.requirement}` is missing egg tag. Removal will be ignored by `truss watch`"
+            )
     for req_name in new_req_names.intersection(prev_req_names):
         if prev_reqs_map[req_name].requirement != new_reqs_map[req_name].requirement:
             patches.append(
