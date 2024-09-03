@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from packaging import requirements  # type: ignore
@@ -18,6 +18,10 @@ def get_egg_tag(req: str) -> Optional[List[str]]:
         fragments = parse_qs(parsed_url.fragment)
         return fragments.get("egg", None)
     return None
+
+
+def reqs_by_name(reqs: List[str]) -> Dict[str, str]:
+    return {identify_requirement_name(req): req for req in reqs if req.strip()}
 
 
 def identify_requirement_name(req: str) -> str:
