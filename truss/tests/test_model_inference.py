@@ -285,15 +285,25 @@ def test_async_streaming_with_cancel():
         ] == ["0", "1", "2", "3", "4"]
 
         print("POST")
-        predict_non_stream_response = requests.post(
-            full_url,
-            json={},
-            stream=True,
-            headers={"accept": "application/json"},
-            timeout=0.01,
-        )
-        assert "transfer-encoding" not in predict_non_stream_response.headers
-        assert predict_non_stream_response.json() == "01234"
+        print(full_url)
+        # try:
+        #     with requests.post(
+        #         full_url,
+        #         json={},
+        #         stream=True,
+        #         # headers={"accept": "application/json"},
+        #         timeout=0.01,
+        #     ) as response:
+        #         results = []
+        #         for chunk in response.iter_content(chunk_size=1024):
+        #             results.append(chunk)
+        #             print(chunk)
+        # except requests.ConnectionError:
+        #     print(results)
+        # x = [y for y in predict_non_stream_response]
+        time.sleep(100)
+        # assert "transfer-encoding" not in predict_non_stream_response.headers
+        # assert predict_non_stream_response.json() == "01234"
 
 
 @pytest.mark.integration

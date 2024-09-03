@@ -429,6 +429,9 @@ class ModelWrapper:
                 if headers and headers.get("accept") == "application/json":
                     # In the case of a streaming response, consume stream
                     # if the http accept header is set, and json is requested.
+                    # TODO: cancellation does not work for this case.
+                    #  This is unexpected, because `is_cancelled_fn` should still be
+                    #  called in this code branch.
                     return await self._gather_generator(response, span_predict)
                 else:
                     return await self._stream_with_background_task(
