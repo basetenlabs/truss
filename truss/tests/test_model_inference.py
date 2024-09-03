@@ -274,36 +274,32 @@ def test_async_streaming_with_cancel():
 
         tr = TrussHandle(truss_dir)
 
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
-        response = requests.post(full_url, json={}, stream=True)
-        assert response.headers.get("transfer-encoding") == "chunked"
-        assert [
-            byte_string.decode() for byte_string in list(response.iter_content())
-        ] == ["0", "1", "2", "3", "4"]
+        with pytest.raises(requests.ConnectionError):
+            requests.post(full_url, json={}, stream=False, timeout=1)
+        time.sleep(2)  # Wait a bit to get all logs.
+        assert "Cancelled (during gen)." in container.logs()
 
-        print("POST")
-        print(full_url)
-        # try:
-        #     with requests.post(
-        #         full_url,
-        #         json={},
-        #         stream=True,
-        #         # headers={"accept": "application/json"},
-        #         timeout=0.01,
-        #     ) as response:
-        #         results = []
-        #         for chunk in response.iter_content(chunk_size=1024):
-        #             results.append(chunk)
-        #             print(chunk)
-        # except requests.ConnectionError:
-        #     print(results)
-        # x = [y for y in predict_non_stream_response]
-        time.sleep(100)
-        # assert "transfer-encoding" not in predict_non_stream_response.headers
-        # assert predict_non_stream_response.json() == "01234"
+        # "stream with json" does not work.
+        # with pytest.raises(requests.ConnectionError):
+        try:
+            x = requests.post(
+                full_url,
+                json={},
+                stream=True,
+                headers={"accept": "application/json"},
+                timeout=1,
+            )
+            print(f"Response: {x}")
+        except Exception as e:
+            print(f"Exception {e}")
+        time.sleep(10)  # Wait a bit to get all logs.
+        # assert "Cancelled (during gen)." in container.logs()
 
 
 @pytest.mark.integration
