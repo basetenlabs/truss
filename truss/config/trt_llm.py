@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, validator
 from rich.console import Console
 
 logging.basicConfig(level=logging.INFO)
@@ -72,8 +72,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
 
-    @field_validator("max_beam_width", mode="after")
-    @classmethod
+    @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
         if isinstance(v, int):
             if v != 1:
@@ -141,4 +140,4 @@ class TRTLLMConfiguration(BaseModel):
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
     def to_json_dict(self, verbose=True):
-        return json.loads(self.model_dump_json(exclude_unset=not verbose))
+        return json.loads(self.json(exclude_unset=not verbose))
