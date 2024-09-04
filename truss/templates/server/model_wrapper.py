@@ -82,6 +82,7 @@ async def deferred_semaphore_and_span(
 
 class ModelWrapper:
     _tracer: sdk_trace.Tracer
+    _predict_cancellable: bool
 
     class Status(Enum):
         NOT_READY = 0
@@ -103,6 +104,7 @@ class ModelWrapper:
             )
         )
         self.truss_schema: TrussSchema = None
+        self._predict_cancellable = False
 
     def load(self) -> bool:
         if self.ready:
@@ -193,6 +195,7 @@ class ModelWrapper:
             raise RuntimeError("No module class file found")
 
         self.set_truss_schema()
+        self._set_predict_cancellable()
 
         if hasattr(self._model, "load"):
             retry(
@@ -217,6 +220,13 @@ class ModelWrapper:
         )
 
         self.truss_schema = TrussSchema.from_signature(parameters, outputs_annotation)
+
+    def _set_predict_cancellable(self):
+        sig = inspect.signature(self._model.predict)
+        params = list(sig.parameters.values())
+        if len(params) < 2:
+            return False
+        self._predict_cancellable = params[1].name == "is_cancelled_fn"
 
     async def preprocess(
         self,
@@ -243,18 +253,15 @@ class ModelWrapper:
         #   3. Coroutine -- in this case, await the predict function as it is async
         #   4. Normal function -- in this case, offload to a separate thread to prevent
         #      blocking the main event loop
+        args = (payload, is_cancelled_fn) if self._predict_cancellable else (payload,)
         if inspect.isasyncgenfunction(
             self._model.predict
         ) or inspect.isgeneratorfunction(self._model.predict):
-            return self._model.predict(payload, is_cancelled_fn)
-
+            return self._model.predict(*args)
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(self._model.predict)(
-                payload, is_cancelled_fn
-            )
-
+            return await _intercept_exceptions_async(self._model.predict)(*args)
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.predict), payload, is_cancelled_fn
+            _intercept_exceptions_sync(self._model.predict), *args
         )
 
     async def postprocess(
