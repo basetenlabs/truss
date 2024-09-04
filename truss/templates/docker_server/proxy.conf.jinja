@@ -33,7 +33,7 @@ server {
     }
 
     # Forward all other paths
-    location ~ ^/v1 {
+    location / {
         proxy_redirect off;
         proxy_read_timeout 300s;
 

@@ -395,6 +395,7 @@ class DockerServer:
     start_command: str
     server_port: int
     readiness_endpoint: str
+    liveness_endpoint: str
     predict_endpoint: str
 
     @staticmethod
@@ -403,6 +404,7 @@ class DockerServer:
             start_command=d.get("start_command", ""),
             server_port=d.get("server_port", 8000),
             readiness_endpoint=d.get("readiness_endpoint", ""),
+            liveness_endpoint=d.get("liveness_endpoint", ""),
             predict_endpoint=d.get("predict_endpoint", ""),
         )
 
@@ -411,6 +413,7 @@ class DockerServer:
             "start_command": self.start_command,
             "server_port": self.server_port,
             "readiness_endpoint": self.readiness_endpoint,
+            "liveness_endpoint": self.liveness_endpoint,
             "predict_endpoint": self.predict_endpoint,
         }
 

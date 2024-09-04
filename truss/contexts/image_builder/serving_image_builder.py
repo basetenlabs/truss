@@ -362,6 +362,7 @@ class ServingImageBuilder(ImageBuilder):
             nginx_content = nginx_template.render(
                 server_endpoint=config.docker_server.predict_endpoint,
                 readiness_endpoint=config.docker_server.readiness_endpoint,
+                liveness_endpoint=config.docker_server.liveness_endpoint,
                 server_port=config.docker_server.server_port,
             )
             nginx_filepath = build_dir / "proxy.conf"
