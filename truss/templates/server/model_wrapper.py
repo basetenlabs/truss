@@ -28,7 +28,6 @@ import opentelemetry.sdk.trace as sdk_trace
 import pydantic
 from anyio import Semaphore, to_thread
 from common import tracing
-from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
 from fastapi import HTTPException
@@ -154,11 +153,6 @@ class ModelWrapper:
 
         secrets = SecretsResolver.get_secrets(self._config)
         lazy_data_resolver = LazyDataResolver(data_dir)
-
-        apply_patches(
-            self._config.get("apply_library_patches", True),
-            self._config["requirements"],
-        )
 
         extensions = _init_extensions(
             self._config, data_dir, secrets, lazy_data_resolver
