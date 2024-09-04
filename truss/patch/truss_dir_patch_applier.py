@@ -29,6 +29,9 @@ from truss.truss_config import TrussConfig
 class TrussDirPatchApplier:
     """Applies patches to a truss directory.
     This should be compatible with ModelContainerPatchApplier.
+
+    Note: This class imported via old_build_setup.sh.jinja in the baseten
+    repository
     """
 
     def __init__(self, truss_dir: Path, logger: logging.Logger) -> None:

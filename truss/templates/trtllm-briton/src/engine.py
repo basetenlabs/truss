@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import signal
 import socket
@@ -5,10 +7,15 @@ import subprocess
 import threading
 import time
 from itertools import count
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 import briton_pb2
 import briton_pb2_grpc
 import grpc
+from fastapi import HTTPException
+from outlines.models.transformers import TransformerTokenizer
+from outlines.processors.structured import JSONLogitsProcessor
 from transformers import AutoTokenizer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
@@ -27,6 +34,9 @@ MODEL_INPUT_TO_BRITON_FIELD = {
     "runtime_top_k": "runtime_top_k",
     "runtime_top_p": "runtime_top_p",
 }
+
+# Use a directory that can be picked up by baseten-fs
+FSM_CACHE_DIR = "/cache/model/fsm_cache"
 
 
 def is_port_available(port, host="localhost"):
@@ -80,6 +90,9 @@ class Engine:
         self._kv_cache_free_gpu_mem_fraction = (
             truss_trtllm_build_config.kv_cache_free_gpu_mem_fraction
         )
+        self._enable_kv_cache_reuse = (
+            truss_trtllm_build_config.plugin_configuration.use_paged_context_fmha
+        )
 
         self._hf_token = None
         try:
@@ -97,11 +110,16 @@ class Engine:
         self._tokenizer = AutoTokenizer.from_pretrained(
             self._tokenizer_repository, token=self._hf_token
         )
+
+        self._fsm_cache = FsmCache(Path(FSM_CACHE_DIR), self._tokenizer)
+
         # Start engine
         config_str = f"""
     engine_path: "{self._data_dir.resolve()}"
     hf_tokenizer: "{self._tokenizer_repository}"
     kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
+    enable_kv_cache_reuse: {"true" if self._enable_kv_cache_reuse else "false"}
+    fsm_cache_dir: "{FSM_CACHE_DIR}"
 """
         config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()
         config_pbtxt_path.write_text(config_str)
@@ -142,12 +160,17 @@ class Engine:
         # Briton explicitly sets streaming to true in britonToTbRequest().
         # https://github.com/basetenlabs/baseten/blob/1c2c9cbe1adafc0c736566bd012abbe7d7e2c2da/briton/src/briton.cpp#L272
         if beam_width is not None and beam_width != 1:
-            raise ValueError("TensorRT-LLM requires beam_width to equal 1")
+            raise HTTPException(
+                status_code=400, detail="TensorRT-LLM requires beam_width to equal 1"
+            )
 
         # If Beam width != max_beam_width, TensorRt-LLM will fail an assert.
         # Since Briton sets streaming, the max_beam_width must aslo equal 1.
         if self._max_beam_width != 1:
-            raise ValueError("TensorRT-LLM requires max_beam_width to equal 1.")
+            raise HTTPException(
+                status_code=400,
+                detail="TensorRT-LLM requires max_beam_width to equal 1.",
+            )
 
     async def predict(self, model_input):
         """
@@ -170,6 +193,10 @@ class Engine:
         if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
             prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
+        if prompt is None or len(prompt) == 0:
+            raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
+        self.validate_input(model_input)
 
         request_id = int(str(os.getpid()) + str(next(self._request_id_counter)))
         request = briton_pb2.InferenceRequest(
@@ -187,13 +214,15 @@ class Engine:
             and self._tokenizer.pad_token_id is not None
         ):
             request.pad_id = self._tokenizer.pad_token_id
+        # Add output schema hash if response_format is provided
+        schema_hash = self._fsm_cache.add_schema_from_input(model_input)
+        if schema_hash is not None:
+            request.output_schema_hash = schema_hash
         set_briton_request_fields_from_model_input(model_input, request)
         for words in ["bad_words", "stop_words"]:
             if words in model_input:
                 for word in model_input[words].split(","):
                     getattr(request, words).append(word)
-
-        self.validate_input(model_input)
 
         resp_iter = self._stub.Infer(request)
 
@@ -214,10 +243,70 @@ class Engine:
                 return await build_response()
         except grpc.RpcError as ex:
             if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
-                print(ex.details())
+                raise HTTPException(status_code=400, detail=ex.details())
         except Exception as ex:
-            print(f"An error has occurred: {ex}")
-            raise ex
+            raise HTTPException(status_code=500, detail=f"An error has occurred: {ex}")
+
+
+class FsmCache:
+    def __init__(self, cache_dir: Path, tokenizer: AutoTokenizer):
+        self._cache_dir = cache_dir
+        if not self._cache_dir.exists():
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cache = set(f.name for f in self._cache_dir.iterdir() if f.is_file())
+        self._tokenizer = tokenizer
+
+    def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
+        schema = self._extract_schema(model_input)
+        if schema is None:
+            return None
+        schema_str = json.dumps(schema)
+        schema_hash = hashlib.sha256(schema_str.encode()).hexdigest()
+        if schema_hash not in self._cache:
+            fsm = self._create_fsm(schema_str)
+            (self._cache_dir / schema_hash).write_bytes(fsm.SerializeToString())
+            self._cache.add(schema_hash)
+        return schema_hash
+
+    def _create_fsm(self, schema: str) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
+        outlines_tokenizer = TransformerTokenizer(self._tokenizer)
+        logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
+        guide = logits_processor.fsm
+
+        states_to_tokens = {}
+        for state, token_to_next_state in guide.states_to_token_maps.items():
+            states_to_tokens[state] = briton_pb2.TokenToNextState(  # type: ignore[attr-defined]
+                token_to_next_state=token_to_next_state
+            )
+        states_to_tokens_pb = briton_pb2.StatesToTokens(  # type: ignore[attr-defined]
+            states_to_tokens=states_to_tokens,
+            vocab_size=len(self._tokenizer.vocab),
+            eos_token_id=self._tokenizer.eos_token_id,
+        )
+        return states_to_tokens_pb
+
+    @staticmethod
+    def _extract_schema(model_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if "response_format" not in model_input:
+            return None
+        response_format = model_input["response_format"]
+        if "type" not in response_format or response_format["type"] != "json_schema":
+            raise HTTPException(
+                status_code=400,
+                detail='response_format["type"] must be json_schema.',
+            )
+        if "json_schema" not in response_format:
+            raise HTTPException(
+                status_code=400,
+                detail='response_format["json_schema"] must be provided.',
+            )
+        json_schema = response_format["json_schema"]
+        if "schema" not in json_schema:
+            raise HTTPException(
+                status_code=400,
+                detail='response_format["json_schema"]["schema"] must be provided.',
+            )
+        return json_schema["schema"]
 
 
 def set_briton_request_fields_from_model_input(model_input, briton_request):

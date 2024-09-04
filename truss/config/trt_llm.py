@@ -33,6 +33,8 @@ class TrussTRTLLMQuantizationType(str, Enum):
 class TrussTRTLLMPluginConfiguration(BaseModel):
     paged_kv_cache: bool = True
     gemm_plugin: str = "auto"
+    use_paged_context_fmha: bool = False
+    use_fp8_context_fmha: bool = False
 
 
 class CheckpointSource(str, Enum):
@@ -95,6 +97,7 @@ class TRTLLMConfiguration(BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
+        self._validate_kv_cache_flags()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -110,6 +113,23 @@ class TRTLLMConfiguration(BaseModel):
                 raise ValueError(
                     "Both engine_repository and tokenizer_repository must be provided"
                 )
+        return self
+
+    def _validate_kv_cache_flags(self):
+        if self.build is None:
+            return self
+        if not self.build.plugin_configuration.paged_kv_cache and (
+            self.build.plugin_configuration.use_paged_context_fmha
+            or self.build.plugin_configuration.use_fp8_context_fmha
+        ):
+            raise ValueError(
+                "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
+            )
+        if (
+            self.build.plugin_configuration.use_fp8_context_fmha
+            and not self.build.plugin_configuration.use_paged_context_fmha
+        ):
+            raise ValueError("Using fp8 context fmha requires paged context fmha")
         return self
 
     @property

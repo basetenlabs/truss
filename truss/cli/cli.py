@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import warnings
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -134,6 +135,10 @@ def _set_logging_level(log_level: Union[str, int]) -> None:
 
     root_logger.handlers = []  # Clear existing handlers
     root_logger.addHandler(rich_handler)
+    # Enable deprecation warnings raised in this module.
+    warnings.filterwarnings(
+        "default", category=DeprecationWarning, module="^truss\.cli\\b"
+    )
 
 
 def log_level_option(f):
@@ -351,6 +356,13 @@ class ChainsGroup(click.Group):
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
         if cmd_name in self._ALIASES:
+            if cmd_name == "deploy":
+                warnings.warn(
+                    "`truss chains deploy` is deprecated and will be removed in a "
+                    "future version. Please use `truss chains push` instead.",
+                    DeprecationWarning,
+                    stacklevel=1,
+                )
             cmd_name = self._ALIASES[cmd_name]
 
         return super().get_command(ctx, cmd_name)
@@ -570,12 +582,12 @@ def push_chain(
             remote=remote,
         )
         service = chains_remote.push(entrypoint_cls, options)
-        assert isinstance(service, chains_remote.BasetenChainService)
 
     console.print("\n")
     if dryrun:
         return
 
+    assert isinstance(service, chains_remote.BasetenChainService)
     curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
 
     table, statuses = _create_chains_table(service)
@@ -620,6 +632,7 @@ def push_chain(
                     user_env_parsed,
                     console,
                     error_console,
+                    show_stack_trace=not is_humanfriendly_log_level,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -693,7 +706,14 @@ def watch_chains(
         user_env_parsed = {}
 
     chains_remote.watch(
-        source, entrypoint, name, remote, user_env_parsed, console, error_console
+        source,
+        entrypoint,
+        name,
+        remote,
+        user_env_parsed,
+        console,
+        error_console,
+        show_stack_trace=not is_humanfriendly_log_level,
     )
 
 

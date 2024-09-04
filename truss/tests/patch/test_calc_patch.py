@@ -4,7 +4,11 @@ from typing import Any, Callable, List, Optional
 
 import pytest
 import yaml
-from truss.patch.calc_patch import calc_truss_patch, calc_unignored_paths
+from truss.patch.calc_patch import (
+    _calc_python_requirements_patches,
+    calc_truss_patch,
+    calc_unignored_paths,
+)
 from truss.patch.signature import calc_truss_signature
 from truss.templates.control.control.helpers.custom_types import (
     Action,
@@ -578,6 +582,106 @@ def test_calc_config_patches_update_python_requirement(custom_model_truss_dir: P
     ]
 
 
+def test_calc_config_patches_update_python_url_requirement_with_egg_tag(
+    custom_model_truss_dir: Path,
+):
+    def update_requests_version(config: TrussConfig):
+        config.requirements[0] = (
+            "git+https://github.com/huggingface/transformers.git#egg=transformers"
+        )
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_pre_op=lambda config: config.requirements.append(
+            "git+https://github.com/huggingface/transformers.git"
+        ),
+        config_op=update_requests_version,
+    )
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE,
+                requirement="git+https://github.com/huggingface/transformers.git#egg=transformers",
+            ),
+        ),
+    ]
+
+
+def test_calc_config_patches_update_python_url_requirement_with_revision_tag(
+    custom_model_truss_dir: Path,
+):
+    def update_requests_version(config: TrussConfig):
+        config.requirements[0] = (
+            "git+https://github.com/huggingface/transformers.git@111111"
+        )
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_pre_op=lambda config: config.requirements.append(
+            "git+https://github.com/huggingface/transformers.git@000000"
+        ),
+        config_op=update_requests_version,
+    )
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.CONFIG,
+            body=ConfigPatch(
+                action=Action.UPDATE,
+                config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.UPDATE,
+                requirement="git+https://github.com/huggingface/transformers.git@111111",
+            ),
+        ),
+    ]
+
+
+def test_calc_config_patches_ignores_removal_of_url_based_requirements_without_egg_tag(
+    custom_model_truss_dir: Path,
+):
+    def config_pre_op(config: TrussConfig):
+        config.requirements = [
+            "requests==1.0.0",
+            "git+https://github.com/huggingface/transformers.git@111111",
+        ]
+
+    def config_op(config: TrussConfig):
+        config.requirements = [
+            "requests==1.0.0",
+        ]
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_pre_op=config_pre_op,
+        config_op=config_op,
+    )
+    assert len(patches) == 1
+    assert patches[0] == Patch(
+        type=PatchType.CONFIG,
+        body=ConfigPatch(
+            action=Action.UPDATE,
+            config=yaml.safe_load((custom_model_truss_dir / "config.yaml").open()),
+        ),
+    )
+    patches = patches[1:]
+    patches.sort(key=lambda patch: patch.body.requirement)
+    assert patches == []
+
+
 def test_calc_config_patches_add_remove_and_update_python_requirement(
     custom_model_truss_dir: Path,
 ):
@@ -585,6 +689,7 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
         config.requirements = [
             "requests==1.0.0",
             "jinja==4.0.0",
+            "git+https://github.com/huggingface/transformers.git@111111#egg=transformers",
         ]
 
     def config_op(config: TrussConfig):
@@ -598,7 +703,7 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
         config_pre_op=config_pre_op,
         config_op=config_op,
     )
-    assert len(patches) == 4
+    assert len(patches) == 5
     assert patches[0] == Patch(
         type=PatchType.CONFIG,
         body=ConfigPatch(
@@ -609,6 +714,13 @@ def test_calc_config_patches_add_remove_and_update_python_requirement(
     patches = patches[1:]
     patches.sort(key=lambda patch: patch.body.requirement)
     assert patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.REMOVE,
+                requirement="git+https://github.com/huggingface/transformers.git@111111#egg=transformers",
+            ),
+        ),
         Patch(
             type=PatchType.PYTHON_REQUIREMENT,
             body=PythonRequirementPatch(
@@ -907,3 +1019,35 @@ def _apply_config_change_and_calc_patches(
     prev_sign = calc_truss_signature(custom_model_truss_dir)
     modify_config(config_op)
     return calc_truss_patch(custom_model_truss_dir, prev_sign)
+
+
+@pytest.mark.parametrize(
+    "desc, prev_raw_reqs, new_raw_reqs, expected_patches",
+    [
+        (
+            "handles single update",
+            ["requests==1.0.0"],
+            ["requests==2.0.0"],
+            [
+                Patch(
+                    type=PatchType.PYTHON_REQUIREMENT,
+                    body=PythonRequirementPatch(
+                        action=Action.UPDATE,
+                        requirement="requests==2.0.0",
+                    ),
+                )
+            ],
+        ),
+        (
+            "ignores url-based requirement without egg tag",
+            ["git+https://github.com/huggingface/transformers.git@000000"],
+            [],
+            [],
+        ),
+    ],
+)
+def test_calc_python_requirements_patches(
+    desc, prev_raw_reqs, new_raw_reqs, expected_patches
+):
+    actual = _calc_python_requirements_patches(prev_raw_reqs, new_raw_reqs)
+    assert actual == expected_patches, desc

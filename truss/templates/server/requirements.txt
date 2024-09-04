@@ -8,6 +8,9 @@ joblib==1.2.0
 loguru==0.7.2
 msgpack-numpy==0.4.8
 msgpack==1.0.2
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp>=1.25.0
 psutil==5.9.4
 python-json-logger==2.0.2
 pyyaml==6.0.0

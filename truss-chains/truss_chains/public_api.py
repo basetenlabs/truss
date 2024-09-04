@@ -1,5 +1,6 @@
 import functools
 import pathlib
+import warnings
 from typing import ContextManager, Mapping, Optional, Type, Union
 
 from truss_chains import definitions, framework
@@ -171,6 +172,12 @@ def deploy_remotely(
     remote: Optional[str] = None,
 ) -> chains_remote.BasetenChainService:
     """Deprecated, use ``push`` instead."""
+    warnings.warn(
+        "Chains `deploy_remotely()` is deprecated and will be removed in a "
+        "future version. Please use `push()` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return push(
         entrypoint,
         chain_name,

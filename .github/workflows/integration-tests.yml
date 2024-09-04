@@ -36,10 +36,10 @@ jobs:
         job_type: ["server"]
     steps:
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -59,40 +59,4 @@ jobs:
   integration-tests:
     needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
     if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-      matrix:
-        split_group: [ "1", "2", "3", "4", "5" ]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss/tests --durations=0 -m 'integration' --splits 5 --group ${{ matrix.split_group }} -k "not test_requirements_pydantic[1]"
-
-  # Running `test_requirements_pydantic[1]` started failing when running together with the other tests.
-  # We could pin down the issue to the fact that the built image had v2 installed, despite v1 in `requirements.txt`
-  # The test passes locally and when running in its own env, suggesting that there is a bug in docker caching / hash
-  # computation that makes the test falsely run with the wrong version in the image. As a stop gap solution, separating
-  # this particular test in its own job made it pass again.
-  integration-tests-pydantic-v1:
-    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss/tests/test_model_inference.py::test_requirements_pydantic[1]
-
-  chain-integration-tests:
-    needs: [detect-version-changed, build-and-push-truss-base-images-if-needed]
-    if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
-    runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-python/
-      - run: poetry install
-      - run: poetry run pytest truss-chains/tests -s --log-cli-level=INFO  --durations=0 -m 'integration'
+    uses: ./.github/workflows/_integration_test_shared.yml
