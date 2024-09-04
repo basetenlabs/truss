@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Dict, List
 
 
 class Model:
@@ -13,19 +13,15 @@ class Model:
         # Load model here and assign to self._model.
         pass
 
-    async def predict(
-        self, model_input: Any, is_cancelled_fn: Callable[[], Awaitable[bool]]
-    ) -> Dict[str, List]:
-        # Invoke model on model_input and calculate predictions here.
+    async def predict(self, model_input: Any) -> Dict[str, List]:
         await asyncio.sleep(1)
-        if await is_cancelled_fn():
-            print("Cancelled (before gen).")
-            return
-
-        for i in range(5):
-            await asyncio.sleep(1.0)
-            print(i)
-            yield str(i)
-            if await is_cancelled_fn():
-                print("Cancelled (during gen).")
-                return
+        n = 10
+        i = 0
+        try:
+            for i in range(n):
+                await asyncio.sleep(1.0)
+                print(i)
+                yield str(i)
+        finally:
+            if i < n:
+                print(f"Generation stopped in iteration {i}")

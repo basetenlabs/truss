@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import json
 import logging
 import multiprocessing
@@ -155,20 +154,11 @@ class BasetenEndpoints:
                     logging.error(error_message)
                     raise HTTPException(status_code=400, detail=error_message)
 
-            async def is_disconnected() -> bool:
-                result = await request.is_disconnected()
-                # Get the previous frame in the stack, which is the calling function
-                caller_frame = inspect.currentframe().f_back  # type: ignore[union-attr]
-                # Get the name of the calling function
-                caller_name = caller_frame.f_code.co_name  # type: ignore[union-attr]
-                print(f"Called from: {caller_name} -> {result}")
-                return result
-
             # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
             with tracing.section_as_event(span, "model-call"):
                 response: Union[Dict, Generator] = await model(
                     body,
-                    is_disconnected,
+                    request.is_disconnected,
                     headers=utils.transform_keys(
                         request.headers, lambda key: key.lower()
                     ),

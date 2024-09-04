@@ -279,27 +279,10 @@ def test_async_streaming_with_cancel():
         )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
-
         with pytest.raises(requests.ConnectionError):
-            requests.post(full_url, json={}, stream=False, timeout=1)
+            requests.post(full_url, json={}, stream=False, timeout=(1.99, 1.99))
         time.sleep(2)  # Wait a bit to get all logs.
-        assert "Cancelled (during gen)." in container.logs()
-
-        # "stream with json" does not work.
-        # with pytest.raises(requests.ConnectionError):
-        try:
-            x = requests.post(
-                full_url,
-                json={},
-                stream=True,
-                headers={"accept": "application/json"},
-                timeout=1,
-            )
-            print(f"Response: {x}")
-        except Exception as e:
-            print(f"Exception {e}")
-        time.sleep(10)  # Wait a bit to get all logs.
-        # assert "Cancelled (during gen)." in container.logs()
+        assert "Generation stopped" in container.logs()
 
 
 @pytest.mark.integration

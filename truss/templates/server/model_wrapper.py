@@ -238,9 +238,7 @@ class ModelWrapper:
                 _intercept_exceptions_sync(self._model.preprocess), payload
             )
 
-    async def predict(
-        self, payload: Any, is_cancelled_fn: Callable[[], Awaitable[bool]]
-    ) -> Any:
+    async def predict(self, payload: Any) -> Any:
         # It's possible for the user's predict function to be a:
         #   1. Generator function (function that returns a generator)
         #   2. Async generator (function that returns async generator)
@@ -252,15 +250,13 @@ class ModelWrapper:
         if inspect.isasyncgenfunction(
             self._model.predict
         ) or inspect.isgeneratorfunction(self._model.predict):
-            return self._model.predict(payload, is_cancelled_fn)
+            return self._model.predict(payload)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(self._model.predict)(
-                payload, is_cancelled_fn
-            )
+            return await _intercept_exceptions_async(self._model.predict)(payload)
 
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.predict), payload, is_cancelled_fn
+            _intercept_exceptions_sync(self._model.predict), payload
         )
 
     async def postprocess(
@@ -288,14 +284,23 @@ class ModelWrapper:
             _intercept_exceptions_sync(self._model.postprocess), response
         )
 
-    async def write_response_to_queue(
-        self, queue: asyncio.Queue, generator: AsyncGenerator, span: trace.Span
+    async def _write_response_to_queue(
+        self,
+        queue: asyncio.Queue,
+        generator: AsyncGenerator,
+        span: trace.Span,
+        is_cancelled_fn: Callable[[], Awaitable[bool]],
     ):
         with tracing.section_as_event(span, "write_response_to_queue"):
             try:
                 # Special case for writer: the triton client checks for canellations
                 # in each iteration.
                 async for chunk in generator:
+                    if await is_cancelled_fn():
+                        self._logger.info("Request cancelled. Closing generator.")
+                        await generator.aclose()
+                        break
+
                     # TODO: consider checking `request.is_disconnected()` for
                     #   client-side cancellations and freeing resources.
                     await queue.put(ResponseChunk(chunk))
@@ -334,6 +339,7 @@ class ModelWrapper:
         response: Any,
         span: trace.Span,
         trace_ctx: trace.Context,
+        is_cancelled_fn: Callable[[], Awaitable[bool]],
         release_and_end: Callable[[], None],
     ):
         # The streaming read timeout is the amount of time in between streamed chunk
@@ -352,7 +358,9 @@ class ModelWrapper:
 
         # `write_response_to_queue` keeps running the background until completion.
         gen_task = asyncio.create_task(
-            self.write_response_to_queue(response_queue, async_generator, span)
+            self._write_response_to_queue(
+                response_queue, async_generator, span, is_cancelled_fn
+            )
         )
         # Defer the release of the semaphore until the write_response_to_queue task.
         gen_task.add_done_callback(lambda _: release_and_end())
@@ -429,7 +437,7 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
-                response = await self.predict(payload, is_cancelled_fn)
+                response = await self.predict(payload)
 
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
                 if headers and headers.get("accept") == "application/json":
@@ -444,6 +452,7 @@ class ModelWrapper:
                         response,
                         span_predict,
                         detached_ctx,
+                        is_cancelled_fn,
                         release_and_end=get_defer_fn(),
                     )
 
