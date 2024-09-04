@@ -295,6 +295,10 @@ class ModelWrapper:
             try:
                 # Special case for writer: the triton client checks for canellations
                 # in each iteration.
+                if await is_cancelled_fn():
+                    self._logger.info("Request cancelled. Closing generator.")
+                    await generator.aclose()
+
                 async for chunk in generator:
                     if await is_cancelled_fn():
                         self._logger.info("Request cancelled. Closing generator.")
