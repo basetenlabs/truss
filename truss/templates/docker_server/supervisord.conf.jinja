@@ -20,3 +20,9 @@ autorestart=true
 stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
 redirect_stderr=true
+
+[eventlistener:vllm_server_health_check]
+command=supervisor_vllm_check -g vllm-server -n vllm_server_health_check -R /version -L /health -t 30 -r 3 -p 8000
+events=TICK_60
+stderr_logfile = /var/log/supervisor/supervisor_vllm_check-stderr.log
+stdout_logfile = /var/log/supervisor/supervisor_vllm_check-stdout.log
