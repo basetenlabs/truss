@@ -58,6 +58,7 @@ setup(
             'supervisor_memory_check=supervisor_checks.bin.memory_check:main',
             'supervisor_cpu_check=supervisor_checks.bin.cpu_check:main',
             'supervisor_http_check=supervisor_checks.bin.http_check:main',
+            'supervisor_vllm_check=supervisor_checks.bin.vllm_check:main',
             'supervisor_tcp_check=supervisor_checks.bin.tcp_check:main',
             'supervisor_xmlrpc_check=supervisor_checks.bin.xmlrpc_check:main',
             'supervisor_complex_check=supervisor_checks.bin.complex_check:main',
