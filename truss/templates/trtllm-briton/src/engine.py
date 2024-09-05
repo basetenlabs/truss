@@ -189,10 +189,19 @@ class Engine:
             channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
             self._stub = briton_pb2_grpc.BritonStub(channel)
 
+        function_calling_schema = None
+        tools = model_input.get("tools", None)
+        if tools is not None:
+            function_calling_schema = {
+                "anyOf": [create_tool_schema(tool) for tool in tools],
+            }
+
         prompt = model_input.get("prompt", None)
         if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
-            prompt = self._tokenizer.apply_chat_template(messages, tokenize=False)
+            prompt = self._tokenizer.apply_chat_template(
+                messages, tools=tools, tokenize=False, add_generation_prompt=True
+            )
         if prompt is None or len(prompt) == 0:
             raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
@@ -214,8 +223,12 @@ class Engine:
             and self._tokenizer.pad_token_id is not None
         ):
             request.pad_id = self._tokenizer.pad_token_id
-        # Add output schema hash if response_format is provided
-        schema_hash = self._fsm_cache.add_schema_from_input(model_input)
+        # Add output schema hash if we're function calling or response_format is provided
+        schema_hash = (
+            self._fsm_cache.add_schema(function_calling_schema)
+            if function_calling_schema is not None
+            else self._fsm_cache.add_schema_from_input(model_input)
+        )
         if schema_hash is not None:
             request.output_schema_hash = schema_hash
         set_briton_request_fields_from_model_input(model_input, request)
@@ -248,6 +261,17 @@ class Engine:
             raise HTTPException(status_code=500, detail=f"An error has occurred: {ex}")
 
 
+def create_tool_schema(tool_json: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "name": {"const": tool_json["function"]["name"]},
+            "parameters": tool_json["function"]["parameters"],
+        },
+        "required": ["name", "parameters"],
+    }
+
+
 class FsmCache:
     def __init__(self, cache_dir: Path, tokenizer: AutoTokenizer):
         self._cache_dir = cache_dir
@@ -256,19 +280,23 @@ class FsmCache:
         self._cache = set(f.name for f in self._cache_dir.iterdir() if f.is_file())
         self._tokenizer = tokenizer
 
-    def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
-        schema = self._extract_schema(model_input)
-        if schema is None:
-            return None
+    def add_schema(self, schema: Dict[str, Any]) -> str:
         schema_str = json.dumps(schema)
         schema_hash = hashlib.sha256(schema_str.encode()).hexdigest()
         if schema_hash not in self._cache:
-            fsm = self._create_fsm(schema_str)
+            fsm = self._create_fsm(schema)
             (self._cache_dir / schema_hash).write_bytes(fsm.SerializeToString())
             self._cache.add(schema_hash)
         return schema_hash
 
-    def _create_fsm(self, schema: str) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
+    def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
+        schema_hash = None
+        schema = self._extract_schema(model_input)
+        if schema is not None:
+            schema_hash = self.add_schema(schema)
+        return schema_hash
+
+    def _create_fsm(self, schema: Dict[str, Any]) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
         outlines_tokenizer = TransformerTokenizer(self._tokenizer)
         logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
         guide = logits_processor.fsm
