@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-"""Example configuration:
+r"""Example configuration:
 
 [eventlistener:example_check]
 command=/usr/local/bin/supervisor_complex_check -n example_check -g example_service -c '{"memory":{"cumulative":true,"max_rss":4194304},"http":{"timeout":15,"port":8090,"url":"\/ping","num_retries":3}}'

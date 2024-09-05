@@ -222,8 +222,6 @@ class CheckRunner(object):
         """Signal handler.
         """
 
-        self._log('Got signal %s', signum)
-
         self._stop_event.set()
 
     def _wait_for_supervisor_event(self):
