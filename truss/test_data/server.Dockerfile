@@ -28,6 +28,10 @@ RUN apt update && \
 COPY ./base_server_requirements.txt base_server_requirements.txt
 RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
+COPY ./requirements.txt requirements.txt
+RUN cat requirements.txt
+RUN pip install -r requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+
 ENV APP_HOME /app
 WORKDIR $APP_HOME
 

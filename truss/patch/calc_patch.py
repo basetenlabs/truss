@@ -20,7 +20,7 @@ from truss.templates.control.control.helpers.custom_types import (
     SystemPackagePatch,
 )
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
-    reqs_by_name,
+    RequirementMeta,
 )
 from truss.templates.control.control.helpers.truss_patch.system_packages import (
     system_packages_set,
@@ -377,21 +377,57 @@ def _calc_python_requirements_patches(
     Empty list means no relevant differences found.
     """
     patches = []
-    prev_reqs = reqs_by_name(prev_raw_reqs)
-    prev_req_names = set(prev_reqs.keys())
-    new_reqs = reqs_by_name(new_raw_reqs)
-    new_req_names = set(new_reqs.keys())
-    removed_reqs = prev_req_names.difference(new_req_names)
-    for removed_req in removed_reqs:
-        patches.append(_mk_python_requirement_patch(Action.REMOVE, removed_req))
 
-    added_reqs = new_req_names.difference(prev_req_names)
-    for added_req in added_reqs:
-        patches.append(_mk_python_requirement_patch(Action.ADD, new_reqs[added_req]))
+    def create_requirement_map(raw_reqs: List[str]) -> Dict[str, RequirementMeta]:
+        req_map = {}
+        for raw_req in raw_reqs:
+            meta = RequirementMeta.from_req(raw_req)
+            req_map[meta.name] = meta
+        return req_map
 
-    for req in new_req_names.intersection(prev_req_names):
-        if new_reqs[req] != prev_reqs[req]:
-            patches.append(_mk_python_requirement_patch(Action.UPDATE, new_reqs[req]))
+    prev_reqs_map = create_requirement_map(prev_raw_reqs)
+    new_reqs_map = create_requirement_map(new_raw_reqs)
+    prev_req_names = set(prev_reqs_map.keys())
+    new_req_names = set(new_reqs_map.keys())
+
+    removed_req_names = prev_req_names.difference(new_req_names)
+    for removed_req_name in removed_req_names:
+        removed_req_meta = prev_reqs_map[removed_req_name]
+        if removed_req_meta.is_url_based_requirement:
+            if not removed_req_meta.egg_tag:
+                logger.warning(
+                    f"Url-based requirement `{removed_req_meta.requirement}` is missing egg tag. Ignoring removal. Use `truss push` if you want to remove this requirement."
+                )
+                continue
+            # make sure that the egg tag is included when removing the requirement
+            patches.append(
+                _mk_python_requirement_patch(
+                    Action.REMOVE, removed_req_meta.requirement
+                )
+            )
+        else:
+            patches.append(
+                _mk_python_requirement_patch(Action.REMOVE, removed_req_meta.name)
+            )
+
+    # warn for new reqs
+    added_req_names = new_req_names.difference(prev_req_names)
+    for added_req_name in added_req_names:
+        added_req_meta = new_reqs_map[added_req_name]
+        patches.append(
+            _mk_python_requirement_patch(Action.ADD, added_req_meta.requirement)
+        )
+        if added_req_meta.is_url_based_requirement and not added_req_meta.egg_tag:
+            logger.warning(
+                f"Url-based requirement `{added_req_meta.requirement}` is missing egg tag. Removal will be ignored by `truss watch`"
+            )
+    for req_name in new_req_names.intersection(prev_req_names):
+        if prev_reqs_map[req_name].requirement != new_reqs_map[req_name].requirement:
+            patches.append(
+                _mk_python_requirement_patch(
+                    Action.UPDATE, new_reqs_map[req_name].requirement
+                )
+            )
 
     return patches
 

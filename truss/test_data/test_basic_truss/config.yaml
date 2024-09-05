@@ -1,4 +1,5 @@
-environment_variables: {}
+environment_variables:
+  OTEL_TRACING_NDJSON_FILE: "/tmp/otel_traces.ndjson"
 external_package_dirs: []
 model_metadata: {}
 model_name: basic truss

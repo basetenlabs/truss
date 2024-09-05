@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
 
+import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
 
@@ -103,7 +104,7 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
         with patch.object(
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ) as mock_init_extension:
-            model_wrapper = model_wrapper_class(config)
+            model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
             called_with_specific_extension = any(
                 call_args[0][0] == "trt_llm"
@@ -140,7 +141,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
         with patch.object(
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
-            model_wrapper = model_wrapper_class(config)
+            model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
             resp = await model_wrapper.predict({})
             mock_extension.load.assert_called()
@@ -177,7 +178,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
         with patch.object(
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
-            model_wrapper = model_wrapper_class(config)
+            model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
             resp = await model_wrapper.predict({})
             mock_extension.load.assert_called()
