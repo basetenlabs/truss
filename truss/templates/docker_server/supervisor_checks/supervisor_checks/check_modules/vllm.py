@@ -29,8 +29,8 @@ class VLLMCheck(base.BaseCheck):
 
         try:
             port = utils.get_port(self._config['port'], process_spec['name'])
-            if self._http_check(process_spec['name'], self._config['readiness_url'], port):
-                return self._http_check(process_spec['name'], self._config['liveness_url'], port)
+            if self._http_check(process_spec['name'], port, self._config['readiness_url']):
+                return self._http_check(process_spec['name'], port, self._config['liveness_url'])
             else:
                 self._log('Readiness check failed, skip health check for process %s', process_spec['name'])
                 return True
@@ -45,7 +45,7 @@ class VLLMCheck(base.BaseCheck):
 
         return False
 
-    def _http_check(self, url, process_name, port):
+    def _http_check(self, process_name, port, url):
 
         self._log('Querying URL http://%s:%s%s for process %s',
                   LOCALHOST, port, url,
