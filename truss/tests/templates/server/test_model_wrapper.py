@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import os
 import sys
@@ -143,7 +144,9 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            resp = await model_wrapper.predict({})
+            resp = await model_wrapper.predict(
+                {}, is_cancelled_fn=lambda: asyncio.sleep(0, result=False)
+            )
             mock_extension.load.assert_called()
             mock_extension.model_args.assert_called()
             assert mock_predict_called
@@ -180,7 +183,9 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            resp = await model_wrapper.predict({})
+            resp = await model_wrapper.predict(
+                {}, is_cancelled_fn=lambda: asyncio.sleep(0, result=False)
+            )
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
             assert mock_predict_called

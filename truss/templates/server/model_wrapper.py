@@ -14,6 +14,7 @@ from threading import Thread
 from typing import (
     Any,
     AsyncGenerator,
+    Awaitable,
     Callable,
     Coroutine,
     Dict,
@@ -81,6 +82,7 @@ async def deferred_semaphore_and_span(
 
 class ModelWrapper:
     _tracer: sdk_trace.Tracer
+    _predict_cancellable: bool
 
     class Status(Enum):
         NOT_READY = 0
@@ -102,6 +104,7 @@ class ModelWrapper:
             )
         )
         self.truss_schema: TrussSchema = None
+        self._predict_cancellable = False
 
     def load(self) -> bool:
         if self.ready:
@@ -192,6 +195,7 @@ class ModelWrapper:
             raise RuntimeError("No module class file found")
 
         self.set_truss_schema()
+        self._set_predict_cancellable()
 
         if hasattr(self._model, "load"):
             retry(
@@ -217,6 +221,13 @@ class ModelWrapper:
 
         self.truss_schema = TrussSchema.from_signature(parameters, outputs_annotation)
 
+    def _set_predict_cancellable(self):
+        sig = inspect.signature(self._model.predict)
+        params = list(sig.parameters.values())
+        if len(params) < 2:
+            return False
+        self._predict_cancellable = params[1].name == "is_cancelled_fn"
+
     async def preprocess(
         self,
         payload: Any,
@@ -232,8 +243,7 @@ class ModelWrapper:
             )
 
     async def predict(
-        self,
-        payload: Any,
+        self, payload: Any, is_cancelled_fn: Callable[[], Awaitable[bool]]
     ) -> Any:
         # It's possible for the user's predict function to be a:
         #   1. Generator function (function that returns a generator)
@@ -243,16 +253,15 @@ class ModelWrapper:
         #   3. Coroutine -- in this case, await the predict function as it is async
         #   4. Normal function -- in this case, offload to a separate thread to prevent
         #      blocking the main event loop
+        args = (payload, is_cancelled_fn) if self._predict_cancellable else (payload,)
         if inspect.isasyncgenfunction(
             self._model.predict
         ) or inspect.isgeneratorfunction(self._model.predict):
-            return self._model.predict(payload)
-
+            return self._model.predict(*args)
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(self._model.predict)(payload)
-
+            return await _intercept_exceptions_async(self._model.predict)(*args)
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.predict), payload
+            _intercept_exceptions_sync(self._model.predict), *args
         )
 
     async def postprocess(
@@ -285,6 +294,8 @@ class ModelWrapper:
     ):
         with tracing.section_as_event(span, "write_response_to_queue"):
             try:
+                # Special case for writer: the triton client checks for canellations
+                # in each iteration.
                 async for chunk in generator:
                     # TODO: consider checking `request.is_disconnected()` for
                     #   client-side cancellations and freeing resources.
@@ -368,7 +379,10 @@ class ModelWrapper:
         return _buffered_response_generator()
 
     async def __call__(
-        self, body: Any, headers: Optional[Mapping[str, str]] = None
+        self,
+        body: Any,
+        is_cancelled_fn: Callable[[], Awaitable[bool]],
+        headers: Optional[Mapping[str, str]] = None,
     ) -> Union[Dict, Generator, AsyncGenerator, str]:
         """Method to call predictor or explainer with the given input.
 
@@ -416,12 +430,15 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
-                response = await self.predict(payload)
+                response = await self.predict(payload, is_cancelled_fn)
 
             if inspect.isgenerator(response) or inspect.isasyncgen(response):
                 if headers and headers.get("accept") == "application/json":
                     # In the case of a streaming response, consume stream
                     # if the http accept header is set, and json is requested.
+                    # TODO: cancellation does not work for this case.
+                    #  This is unexpected, because `is_cancelled_fn` should still be
+                    #  called in this code branch.
                     return await self._gather_generator(response, span_predict)
                 else:
                     return await self._stream_with_background_task(
