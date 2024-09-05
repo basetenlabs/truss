@@ -294,11 +294,7 @@ class ModelWrapper:
     ):
         with tracing.section_as_event(span, "write_response_to_queue"):
             try:
-                # Special case for writer: the triton client checks for canellations
-                # in each iteration.
                 async for chunk in generator:
-                    # TODO: consider checking `request.is_disconnected()` for
-                    #   client-side cancellations and freeing resources.
                     await queue.put(ResponseChunk(chunk))
             except Exception as e:
                 self._logger.exception(
