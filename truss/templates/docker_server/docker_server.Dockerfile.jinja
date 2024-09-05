@@ -5,9 +5,13 @@ RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Suppli
 EXPOSE 8080-9000
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl nginx supervisor && \
+        curl nginx supervisor python3-pip && \
         rm -rf /var/lib/apt/lists/*
 
+# Install supervisor_checks using pip
+RUN pip3 install supervisor_checks
+
+ENV SUPERVISOR_SERVER_URL http://localhost:8080
 
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 
