@@ -262,6 +262,31 @@ def test_async_streaming():
 
 
 @pytest.mark.integration
+def test_async_streaming_with_cancel():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = (
+            truss_root
+            / "test_data"
+            / "test_streaming_async_cancellable_generator_truss"
+        )
+
+        tr = TrussHandle(truss_dir)
+
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        with pytest.raises(requests.ConnectionError):
+            requests.post(full_url, json={}, stream=False, timeout=1)
+        time.sleep(2)  # Wait a bit to get all logs.
+        assert "Cancelled (during gen)." in container.logs()
+
+
+@pytest.mark.integration
 def test_async_streaming_timeout():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
