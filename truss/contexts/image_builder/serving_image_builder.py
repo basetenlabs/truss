@@ -341,6 +341,10 @@ class ServingImageBuilder(ImageBuilder):
 
         if config.docker_server is not None:
             copy_tree_path(truss_dir, build_dir)
+            copy_tree_path(
+                TEMPLATES_DIR / "docker_server" / "supervisor_checks",
+                build_dir / "supervisor_checks",
+            )
 
             if not build_dir.exists():
                 build_dir.mkdir(parents=True)

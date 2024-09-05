@@ -8,8 +8,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         curl nginx supervisor python3-pip && \
         rm -rf /var/lib/apt/lists/*
 
+COPY ./supervisor_checks /app/supervisor_checks
+
 # Install supervisor_checks using pip
-RUN pip3 install supervisor_checks
+RUN pip3 install /app/supervisor_checks
 
 ENV SUPERVISOR_SERVER_URL http://localhost:8080
 
