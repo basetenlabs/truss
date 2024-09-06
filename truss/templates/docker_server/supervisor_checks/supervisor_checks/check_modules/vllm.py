@@ -29,21 +29,32 @@ class VLLMCheck(base.BaseCheck):
 
         try:
             port = utils.get_port(self._config['port'], process_spec['name'])
-            if self._http_check(process_spec['name'], port, self._config['readiness_url']):
-                return self._http_check(process_spec['name'], port, self._config['liveness_url'])
+            try:
+                readiness_pass = self._http_check(process_spec['name'], port, self._config['readiness_url'])
+            except Exception as exc:
+                self._log('Readiness check failed: %s', exc)
+                readiness_pass = False
+                
+            try:
+                liveness_pass = self._http_check(process_spec['name'], port, self._config['liveness_url'])
+            except Exception as exc:
+                self._log('Liveness check failed: %s', exc)
+                liveness_pass = False
+
+            if readiness_pass:
+                return liveness_pass
             else:
                 self._log('Readiness check failed, skip health check for process %s', process_spec['name'])
                 return True
+            
         except errors.InvalidPortSpec:
             self._log('ERROR: Could not extract the HTTP port for process '
                       'name %s using port specification %s.',
                       process_spec['name'], self._config['port'])
-
-            return True
         except Exception as exc:
             self._log('Check failed: %s', exc)
 
-        return False
+        return True
 
     def _http_check(self, process_name, port, url):
 
