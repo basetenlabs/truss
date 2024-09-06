@@ -231,6 +231,7 @@ class Engine:
                 if function_calling_schema is not None
                 else self._fsm_cache.add_schema_from_input(model_input)
             )
+        # If the input schema is invalid, we should return a 400
         except NotImplementedError as ex:
             raise HTTPException(status_code=400, detail=str(ex))
         if schema_hash is not None:
@@ -285,6 +286,7 @@ class Engine:
         except grpc.RpcError as ex:
             if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
                 raise HTTPException(status_code=400, detail=ex.details())
+            # If the error is another GRPC exception like NotImplemented, we should return a 500
             else:
                 raise HTTPException(
                     status_code=500, detail=f"An error has occurred: {ex}"
