@@ -11,10 +11,9 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Union
 
-import common.errors as errors
-import shared.util as utils
+import pydantic
 import uvicorn
-from common import tracing
+from common import errors, tracing
 from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
@@ -22,6 +21,7 @@ from fastapi.routing import APIRoute as FastAPIRoute
 from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry.sdk import trace as sdk_trace
+from shared import util
 from shared.logging import setup_logging
 from shared.secrets_resolver import SecretsResolver
 from shared.serialization import (
@@ -41,6 +41,8 @@ DEFAULT_NUM_WORKERS = 1
 DEFAULT_NUM_SERVER_PROCESSES = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
+INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 async def parse_body(request: Request) -> bytes:
@@ -53,12 +55,6 @@ async def parse_body(request: Request) -> bytes:
         error_message = "Client disconnected"
         logging.error(error_message)
         raise HTTPException(status_code=499, detail=error_message) from exc
-
-
-FORMAT = "%(asctime)s.%(msecs)03d %(name)s %(levelname)s [%(funcName)s():%(lineno)s] %(message)s"
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
-logging.basicConfig(level=logging.INFO, format=FORMAT, datefmt=DATE_FORMAT)
 
 
 class UvicornCustomServer(multiprocessing.Process):
@@ -145,20 +141,38 @@ class BasetenEndpoints:
             if self.is_binary(request):
                 with tracing.section_as_event(span, "binary-deserialize"):
                     body = truss_msgpack_deserialize(body_raw)
+                if model.truss_schema:
+                    try:
+                        with tracing.section_as_event(span, "parse-pydantic"):
+                            body = model.truss_schema.input_type.parse(**body)
+                    except pydantic.ValidationError as e:
+                        raise errors.InputParsingError(
+                            f"Could not parse pydantic: {str(e)}"
+                        )
             else:
-                try:
-                    with tracing.section_as_event(span, "json-deserialize"):
-                        body = json.loads(body_raw)
-                except json.JSONDecodeError as e:
-                    error_message = f"Invalid JSON payload: {str(e)}"
-                    logging.error(error_message)
-                    raise HTTPException(status_code=400, detail=error_message)
+                if model.truss_schema:
+                    if model.truss_schema:
+                        try:
+                            with tracing.section_as_event(span, "parse-pydantic"):
+                                body = model.truss_schema.input_type.parse_raw(body_raw)
+                        except pydantic.ValidationError as e:
+                            raise errors.InputParsingError(
+                                f"Could not parse pydantic: {str(e)}"
+                            )
+                else:
+                    try:
+                        with tracing.section_as_event(span, "json-deserialize"):
+                            body = json.loads(body_raw)
+                    except json.JSONDecodeError as e:
+                        raise errors.InputParsingError(
+                            f"Invalid JSON payload: {str(e)}"
+                        )
 
             # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
             with tracing.section_as_event(span, "model-call"):
                 response: Union[Dict, Generator] = await model(
                     body,
-                    headers=utils.transform_keys(
+                    headers=util.transform_keys(
                         request.headers, lambda key: key.lower()
                     ),
                 )
@@ -192,7 +206,6 @@ class BasetenEndpoints:
 
         if model.truss_schema is None:
             # If there is not a TrussSchema, we return a 404.
-
             if model.ready:
                 raise HTTPException(status_code=404, detail="No schema found")
             else:
@@ -289,20 +302,13 @@ class TrussServer:
                     methods=["POST"],
                 ),
             ],
-            exception_handlers={
-                errors.InferenceError: errors.inference_error_handler,
-                errors.ModelNotFound: errors.model_not_found_handler,
-                errors.ModelNotReady: errors.model_not_ready_handler,
-                NotImplementedError: errors.not_implemented_error_handler,
-                HTTPException: errors.http_exception_handler,
-                Exception: errors.generic_exception_handler,
-            },
+            exception_handlers={Exception: errors.error_handler},
         )
 
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
-            utils.kill_child_processes(os.getpid())
+            util.kill_child_processes(os.getpid())
             sys.exit()
 
         termination_handler_middleware = TerminationHandlerMiddleware(
@@ -395,7 +401,7 @@ class TrussServer:
                 )
                 for _ in range(termination_check_attempts):
                     time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
-                    if utils.all_processes_dead(servers):
+                    if util.all_processes_dead(servers):
                         return
 
             for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
