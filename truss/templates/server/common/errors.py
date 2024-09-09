@@ -78,39 +78,50 @@ async def generic_exception_handler(_, exc):
     )
 
 
-async def exception_handler(
-    request: fastapi.Request, exc: Exception
-) -> fastapi.Response:
+async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Response:
     if isinstance(exc, ModelMissingError):
-        return _make_baseten_response(HTTPStatus.NOT_FOUND, exc)
+        return _make_baseten_response(HTTPStatus.NOT_FOUND.value, exc)
     if isinstance(exc, ModelNotReady):
-        return _make_baseten_response(HTTPStatus.SERVICE_UNAVAILABLE, exc)
+        return _make_baseten_response(HTTPStatus.SERVICE_UNAVAILABLE.value, exc)
     if isinstance(exc, NotImplementedError):
-        return _make_baseten_response(HTTPStatus.NOT_IMPLEMENTED, exc)
+        return _make_baseten_response(HTTPStatus.NOT_IMPLEMENTED.value, exc)
     if isinstance(exc, InputParsingError):
-        return _make_baseten_response(HTTPStatus.BAD_REQUEST, exc)
+        return _make_baseten_response(HTTPStatus.BAD_REQUEST.value, exc)
     if isinstance(exc, UserCodeError):
         # TODO: need a specific code?
         return _make_baseten_response(
-            HTTPStatus.INTERNAL_SERVER_ERROR, "Internal Server Error"
+            HTTPStatus.INTERNAL_SERVER_ERROR.value, "Internal Server Error"
         )
     if isinstance(exc, fastapi.HTTPException):
         # This is a pass through, but additionally adds our custom error headers.
         return _make_baseten_response(exc.status_code, exc.detail)
 
     # Any other exceptions will be turned into "internal server error".
-    return _make_baseten_response(HTTPStatus.INTERNAL_SERVER_ERROR, exc)
+    #
+    msg = f"{type(exc).__name__}: {str(exc)}"
+    return _make_baseten_response(HTTPStatus.INTERNAL_SERVER_ERROR.value, msg)
 
 
-def _handle_exception(exc: Exception, logger: logging.Logger) -> NoReturn:
+HANDLED_EXCEPTIONS = {
+    ModelMissingError,
+    ModelNotReady,
+    NotImplementedError,
+    InputParsingError,
+    UserCodeError,
+    fastapi.HTTPException,
+}
+
+
+def _intercept_user_exception(exc: Exception, logger: logging.Logger) -> NoReturn:
     # Note that logger.exception logs the stacktrace, such that the user can
-    # debug this error from the logs. We use this decorator to ensure that we
-    # only log the stack trace from here and not include all the server code above.
+    # debug this error from the logs.
+    # TODO: consider removing the wrapper function from the stack trace.
+
     if isinstance(exc, HTTPException):
-        logger.exception("Model raised HTTPException")
+        logger.exception("Model raised HTTPException", stacklevel=2)
         raise exc
     else:
-        logger.exception("Internal Server Error")
+        logger.exception("Internal Server Error", stacklevel=2)
         raise UserCodeError(str(exc))
 
 
@@ -143,7 +154,7 @@ def intercept_exceptions(
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
-                _handle_exception(e, logger)
+                _intercept_user_exception(e, logger)
 
         return inner_async  # type: ignore[return-value]
     else:
@@ -152,6 +163,6 @@ def intercept_exceptions(
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                _handle_exception(e, logger)
+                _intercept_user_exception(e, logger)
 
         return inner_sync

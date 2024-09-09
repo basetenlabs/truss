@@ -147,7 +147,7 @@ class BasetenEndpoints:
                             body = model.truss_schema.input_type.parse(**body)
                     except pydantic.ValidationError as e:
                         raise errors.InputParsingError(
-                            f"Could not parse pydantic: {str(e)}"
+                            f"Request Validation Error, {str(e)}"
                         ) from e
             else:
                 if model.truss_schema:
@@ -157,7 +157,7 @@ class BasetenEndpoints:
                                 body = model.truss_schema.input_type.parse_raw(body_raw)
                         except pydantic.ValidationError as e:
                             raise errors.InputParsingError(
-                                f"Could not parse pydantic: {str(e)}"
+                                f"Request Validation Error, {str(e)}"
                             ) from e
                 else:
                     try:
@@ -303,7 +303,9 @@ class TrussServer:
                     methods=["POST"],
                 ),
             ],
-            exception_handlers={Exception: errors.exception_handler},
+            exception_handlers={
+                exc: errors.exception_handler for exc in errors.HANDLED_EXCEPTIONS
+            },
         )
 
         def exit_self():

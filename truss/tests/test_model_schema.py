@@ -35,6 +35,8 @@ def test_truss_with_no_annotations():
         assert schema_response.status_code == 404
 
         assert schema_response.json()["error"] == "No schema found"
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "404"
 
 
 @pytest.mark.integration
@@ -58,8 +60,9 @@ class Model:
 
         schema_response = requests.get(SCHEMA_URL)
         assert schema_response.status_code == 404
-
         assert schema_response.json()["error"] == "No schema found"
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "404"
 
 
 @pytest.mark.integration
@@ -120,6 +123,9 @@ def test_truss_with_annotated_inputs_outputs():
             "\nprompt\n  Field required [type=missing, input_value={'bad_key': 'value'}, input_type=dict]\n"
             in response.json()["error"]
         )
+
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "400"
 
         schema_response = requests.get(SCHEMA_URL)
 
