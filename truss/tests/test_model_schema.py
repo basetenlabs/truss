@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import requests
 
+from truss.templates.shared import serialization
 from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle import TrussHandle
@@ -105,39 +106,44 @@ def test_truss_with_annotated_inputs_outputs():
 
     with ensure_kill_all():
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-
-        response = requests.post(INFERENCE_URL, json={"prompt": "value"})
+        # Valid JSON input
+        json_input = {"prompt": "value"}
+        response = requests.post(INFERENCE_URL, json=json_input)
         assert response.json() == {
             "generated_text": "value",
         }
 
+        # Valid binary input
+        byte_input = serialization.truss_msgpack_serialize(json_input)
+        print(byte_input)
+        response = requests.post(
+            INFERENCE_URL,
+            data=byte_input,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert response.content == b"\x81\xaegenerated_text\xa5value"
+
         # An invalid input
-
         response = requests.post(INFERENCE_URL, json={"bad_key": "value"})
-
         assert response.status_code == 400
         assert "error" in response.json()
-
         assert (
             "Request Validation Error, 1 validation error for ModelInput"
             "\nprompt\n  Field required [type=missing, input_value={'bad_key': 'value'}, input_type=dict]\n"
             in response.json()["error"]
         )
-
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "400"
 
+        # Schema response
         schema_response = requests.get(SCHEMA_URL)
-
         schema = schema_response.json()
-
         assert schema["input_schema"] == {
             "properties": {"prompt": {"title": "Prompt", "type": "string"}},
             "required": ["prompt"],
             "title": "ModelInput",
             "type": "object",
         }
-
         assert schema["output_schema"] == {
             "properties": {
                 "generated_text": {"title": "Generated Text", "type": "string"}

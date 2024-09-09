@@ -144,7 +144,7 @@ class BasetenEndpoints:
                 if model.truss_schema:
                     try:
                         with tracing.section_as_event(span, "parse-pydantic"):
-                            body = model.truss_schema.input_type.parse(**body)
+                            body = model.truss_schema.input_type.parse_obj(body)
                     except pydantic.ValidationError as e:
                         raise errors.InputParsingError(
                             f"Request Validation Error, {str(e)}"

@@ -71,13 +71,6 @@ def _make_baseten_response(
     )
 
 
-async def generic_exception_handler(_, exc):
-    return JSONResponse(
-        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-        content={"error": f"{type(exc).__name__} : {str(exc)}"},
-    )
-
-
 async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Response:
     if isinstance(exc, ModelMissingError):
         return _make_baseten_response(HTTPStatus.NOT_FOUND.value, exc)
