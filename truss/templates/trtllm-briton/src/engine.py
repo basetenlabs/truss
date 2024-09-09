@@ -1,5 +1,8 @@
+import asyncio
+import concurrent.futures
 import hashlib
 import json
+import multiprocessing
 import os
 import signal
 import socket
@@ -20,6 +23,9 @@ from transformers import AutoTokenizer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
+# Set the start method to spawn to avoid issues with GRPC and fork
+multiprocessing.set_start_method("spawn", force=True)
+
 BRITON_PORT = 50051
 
 MODEL_INPUT_TO_BRITON_FIELD = {
@@ -38,6 +44,11 @@ MODEL_INPUT_TO_BRITON_FIELD = {
 # Use a directory that can be picked up by baseten-fs
 FSM_CACHE_DIR = "/cache/model/fsm_cache"
 
+TOOL_CALL_IDS = {
+    "llama": 128010,  # <|python_tag|>
+    "mistral": 5,  # [TOOL_CALLS]
+}
+
 
 def is_port_available(port, host="localhost"):
     try:
@@ -52,13 +63,31 @@ def is_port_available(port, host="localhost"):
 
 def briton_monitor(briton_process):
     while True:
-        if briton_process.poll() is not None:
+        if briton_process.exitcode is not None:
             print(
-                f"Briton process has exited with code {briton_process.returncode}, exiting truss server"
+                f"Briton process has exited with code {briton_process.exitcode}, exiting truss server"
             )
             pid = os.getpid()
             os.kill(pid, signal.SIGKILL)
         time.sleep(1)
+
+
+def start_briton(config_pbtxt_path, briton_env, tp_count):
+    if tp_count is None or tp_count == 1:
+        subprocess.run(["Briton", "--config", str(config_pbtxt_path)], env=briton_env)
+    else:
+        subprocess.run(
+            [
+                "mpirun",
+                "--allow-run-as-root",
+                "-n",
+                f"{tp_count}",
+                "Briton",
+                "--config",
+                str(config_pbtxt_path),
+            ],
+            env=briton_env,
+        )
 
 
 class Engine:
@@ -83,6 +112,7 @@ class Engine:
         truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
             **trtllm_config.get("build")
         )
+        self._base_model = truss_trtllm_build_config.base_model
         self._tp_count = truss_trtllm_build_config.tensor_parallel_count
         self._tokenizer_repository = (
             truss_trtllm_build_config.checkpoint_repository.repo
@@ -126,26 +156,15 @@ class Engine:
         briton_env = os.environ.copy()
         if self._hf_token is not None:
             briton_env["HF_ACCESS_TOKEN"] = self._hf_token
-        if self._tp_count is None or self._tp_count == 1:
-            self._briton_process = subprocess.Popen(
-                ["Briton", "--config", str(config_pbtxt_path)], env=briton_env
-            )
-        else:
-            self._briton_process = subprocess.Popen(
-                [
-                    "mpirun",
-                    "--allow-run-as-root",
-                    "-n",
-                    f"{self._tp_count}",
-                    "Briton",
-                    "--config",
-                    str(config_pbtxt_path),
-                ],
-                env=briton_env,
-            )
+
+        self._briton_process = multiprocessing.Process(
+            target=start_briton, args=(config_pbtxt_path, briton_env, self._tp_count)
+        )
+        self._briton_process.start()
+
         while is_port_available(BRITON_PORT):
             print("Waiting for Briton to start")
-            time.sleep(1)
+            time.sleep(10)
 
         briton_monitor_thread = threading.Thread(
             target=briton_monitor, args=(self._briton_process,)
@@ -190,13 +209,82 @@ class Engine:
             self._stub = briton_pb2_grpc.BritonStub(channel)
 
         function_calling_schema = None
-        tools = model_input.get("tools", None)
+        tools = model_input.get("tools")
+        tool_choice = model_input.get("tool_choice")
+        force_tools = None
+        if tool_choice is not None:
+            if not (
+                tool_choice in ["none", "required", "auto"]
+                or isinstance(tool_choice, dict)
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="tool_choice must be 'none', 'required', 'auto', or an object of the form {'type': 'function', 'function': {'name': 'function_name'}}.",
+                )
+            if tool_choice == "none":
+                tools = None
+                tool_choice = None
+            elif tool_choice == "required":
+                if tools is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="tool_choice is 'required' but no tools provided.",
+                    )
+                force_tools = True
         if tools is not None:
+            if model_input.get("response_format") is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="response_format is not allowed when tools are provided, unless tool_choice is 'none'.",
+                )
+            tool_schemas = {
+                tool["function"]["name"]: create_tool_schema(tool) for tool in tools
+            }
+            if isinstance(tool_choice, dict):
+                if tool_choice.get("type") != "function":
+                    raise HTTPException(
+                        status_code=400, detail="tool_choice['type'] must be function."
+                    )
+                if tool_choice.get("function") is None:
+                    raise HTTPException(
+                        status_code=400, detail="tool_choice['function'] required."
+                    )
+                if not isinstance(tool_choice["function"], dict):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="tool_choice['function'] must be an object.",
+                    )
+                if tool_choice["function"].get("name") is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="tool_choice['function']['name'] required.",
+                    )
+                if tool_choice["function"]["name"] not in tool_schemas:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Tool choice function {tool_choice['function']['name']} not in tools.",
+                    )
+                tool_schemas = {
+                    tool_choice["function"]["name"]: tool_schemas[
+                        tool_choice["function"]["name"]
+                    ]
+                }
+                force_tools = True
+            elif tool_choice is None or tool_choice == "auto":
+                force_tools = False
             function_calling_schema = {
-                "anyOf": [create_tool_schema(tool) for tool in tools],
+                "type": "array",
+                "items": {
+                    "anyOf": list(tool_schemas.values()),
+                },
             }
 
         prompt = model_input.get("prompt", None)
+        if prompt is not None and tools is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="tools can only be provided in chat mode. Please set messages instead of prompt, remove tools, or set tool_choice to 'none'.",
+            )
         if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
             prompt = self._tokenizer.apply_chat_template(
@@ -227,15 +315,18 @@ class Engine:
         schema_hash = None
         try:
             schema_hash = (
-                self._fsm_cache.add_schema(function_calling_schema)
+                await self._fsm_cache.add_schema(function_calling_schema)
                 if function_calling_schema is not None
-                else self._fsm_cache.add_schema_from_input(model_input)
+                else await self._fsm_cache.add_schema_from_input(model_input)
             )
         # If the input schema is invalid, we should return a 400
         except NotImplementedError as ex:
             raise HTTPException(status_code=400, detail=str(ex))
         if schema_hash is not None:
             request.output_schema_hash = schema_hash
+        if force_tools is not None:
+            request.tools_id = TOOL_CALL_IDS[self._base_model]
+            request.force_tools = force_tools
         set_briton_request_fields_from_model_input(model_input, request)
         for words in ["bad_words", "stop_words"]:
             if words in model_input:
@@ -313,26 +404,30 @@ class FsmCache:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache = set(f.name for f in self._cache_dir.iterdir() if f.is_file())
         self._tokenizer = tokenizer
+        self._executor = concurrent.futures.ProcessPoolExecutor()
 
-    def add_schema(self, schema: Dict[str, Any]) -> str:
+    async def add_schema(self, schema: Dict[str, Any]) -> str:
         schema_str = json.dumps(schema)
         schema_hash = hashlib.sha256(schema_str.encode()).hexdigest()
         if schema_hash not in self._cache:
-            fsm = self._create_fsm(schema)
+            fsm = await self._create_fsm(schema)
             (self._cache_dir / schema_hash).write_bytes(fsm.SerializeToString())
             self._cache.add(schema_hash)
         return schema_hash
 
-    def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
+    async def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
         schema_hash = None
         schema = self._extract_schema(model_input)
         if schema is not None:
-            schema_hash = self.add_schema(schema)
+            schema_hash = await self.add_schema(schema)
         return schema_hash
 
-    def _create_fsm(self, schema: Dict[str, Any]) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
+    async def _create_fsm(self, schema: Dict[str, Any]) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
+        loop = asyncio.get_running_loop()
         outlines_tokenizer = TransformerTokenizer(self._tokenizer)
-        logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
+        logits_processor = await loop.run_in_executor(
+            self._executor, JSONLogitsProcessor, schema, outlines_tokenizer
+        )
         guide = logits_processor.fsm
 
         states_to_tokens = {}
