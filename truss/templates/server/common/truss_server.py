@@ -148,7 +148,7 @@ class BasetenEndpoints:
                     except pydantic.ValidationError as e:
                         raise errors.InputParsingError(
                             f"Could not parse pydantic: {str(e)}"
-                        )
+                        ) from e
             else:
                 if model.truss_schema:
                     if model.truss_schema:
@@ -158,7 +158,7 @@ class BasetenEndpoints:
                         except pydantic.ValidationError as e:
                             raise errors.InputParsingError(
                                 f"Could not parse pydantic: {str(e)}"
-                            )
+                            ) from e
                 else:
                     try:
                         with tracing.section_as_event(span, "json-deserialize"):
@@ -166,9 +166,10 @@ class BasetenEndpoints:
                     except json.JSONDecodeError as e:
                         raise errors.InputParsingError(
                             f"Invalid JSON payload: {str(e)}"
-                        )
+                        ) from e
 
-            # calls ModelWrapper.__call__, which runs validate, preprocess, predict, and postprocess
+            # Calls ModelWrapper.__call__, which runs validate, preprocess, predict,
+            # and postprocess.
             with tracing.section_as_event(span, "model-call"):
                 response: Union[Dict, Generator] = await model(
                     body,
@@ -302,7 +303,7 @@ class TrussServer:
                     methods=["POST"],
                 ),
             ],
-            exception_handlers={Exception: errors.error_handler},
+            exception_handlers={Exception: errors.exception_handler},
         )
 
         def exit_self():

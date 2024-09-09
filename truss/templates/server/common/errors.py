@@ -56,13 +56,18 @@ def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
 
 
 def _make_baseten_response(
-    http_status: int, info: Union[str, Exception]
+    http_status: int,
+    info: Union[str, Exception],
+    baseten_error_code: Optional[int] = None,
 ) -> fastapi.Response:
     msg = str(info) if isinstance(info, Exception) else info
+
+    error_code = baseten_error_code if baseten_error_code is not None else http_status
+
     return JSONResponse(
         status_code=http_status,
         content={"error": msg},
-        headers=_make_baseten_error_headers(http_status),
+        headers=_make_baseten_error_headers(error_code),
     )
 
 
@@ -85,19 +90,22 @@ async def exception_handler(
     if isinstance(exc, InputParsingError):
         return _make_baseten_response(HTTPStatus.BAD_REQUEST, exc)
     if isinstance(exc, UserCodeError):
+        # TODO: need a specific code?
         return _make_baseten_response(
             HTTPStatus.INTERNAL_SERVER_ERROR, "Internal Server Error"
         )
     if isinstance(exc, fastapi.HTTPException):
-        # This is a pass through, but still adds our headers.
+        # This is a pass through, but additionally adds our custom error headers.
         return _make_baseten_response(exc.status_code, exc.detail)
-    # Any other exceptions will be turned into internal server errors.
+
+    # Any other exceptions will be turned into "internal server error".
     return _make_baseten_response(HTTPStatus.INTERNAL_SERVER_ERROR, exc)
 
 
 def _handle_exception(exc: Exception, logger: logging.Logger) -> NoReturn:
     # Note that logger.exception logs the stacktrace, such that the user can
-    # debug this error from the logs.
+    # debug this error from the logs. We use this decorator to ensure that we
+    # only log the stack trace from here and not include all the server code above.
     if isinstance(exc, HTTPException):
         logger.exception("Model raised HTTPException")
         raise exc
@@ -115,6 +123,8 @@ _R_async = TypeVar("_R_async", bound=Coroutine)  # Return type for async functio
 def intercept_exceptions(
     func: Callable[_P, _R], logger: logging.Logger
 ) -> Callable[_P, _R]: ...
+
+
 @overload
 def intercept_exceptions(
     func: Callable[_P, _R_async], logger: logging.Logger
