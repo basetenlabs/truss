@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MULTIPART_THRESHOLD = 50 * 1024 * 1024
 MAX_CONCURRENCY = 10
 CHUNK_SIZE = 8 * 1024 * 1024
+MULTI_THREAD_WORKERS = 10
 
 config = TransferConfig(
     multipart_threshold=MULTIPART_THRESHOLD,
@@ -73,7 +74,7 @@ def download_model_directory(s3, bucket_name, prefix, local_dir):
         for obj in page['Contents']:
             file_keys.append(obj['Key'])
     
-    with ThreadPoolExecutor(max_workers=len(file_keys)) as executor:
+    with ThreadPoolExecutor(max_workers=MULTI_THREAD_WORKERS) as executor:
         print(f"Downloading {len(file_keys)} files from {bucket_name}/{prefix} to {local_dir}...")
         future_to_key = {}
         for key in file_keys:
