@@ -412,6 +412,7 @@ def test_from_yaml_environment_variables():
             "int": "0",
         }
 
+
 def test_secret_to_path_mapping_correct_type(default_config):
     data = {
         "description": "this is a test",
@@ -436,6 +437,7 @@ def test_secret_to_path_mapping_invalid_secret_name(default_config):
 
         with pytest.raises(ValueError):
             TrussConfig.from_yaml(yaml_path)
+
 
 def test_secret_to_path_mapping_incorrect_type(default_config):
     data = {

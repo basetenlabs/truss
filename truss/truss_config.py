@@ -660,7 +660,7 @@ class TrussConfig:
         self._validate_quant_format_and_accelerator_for_trt_llm_builder()
 
 
-def _handle_env_vars(env_vars: Dict[str, any]) -> Dict[str, str]:
+def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:
     new_env_vars = {}
     for k, v in env_vars.items():
         if isinstance(v, bool):
