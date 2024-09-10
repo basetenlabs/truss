@@ -396,6 +396,22 @@ def test_from_yaml_python_version():
         assert result.python_version == "py39"
 
 
+def test_from_yaml_environment_variables():
+    data = {
+        "description": "this is a test",
+        "environment_variables": {"foo": "bar", "bool": True, "int": 0},
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        result = TrussConfig.from_yaml(yaml_path)
+        assert result.environment_variables == {
+            "foo": "bar",
+            "bool": "true",
+            "int": "0",
+        }
+
 def test_secret_to_path_mapping_correct_type(default_config):
     data = {
         "description": "this is a test",
@@ -420,7 +436,6 @@ def test_secret_to_path_mapping_invalid_secret_name(default_config):
 
         with pytest.raises(ValueError):
             TrussConfig.from_yaml(yaml_path)
-
 
 def test_secret_to_path_mapping_incorrect_type(default_config):
     data = {

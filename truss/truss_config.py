@@ -543,7 +543,7 @@ class TrussConfig:
             requirements_file=d.get("requirements_file", None),
             requirements=d.get("requirements", []),
             system_packages=d.get("system_packages", []),
-            environment_variables=d.get("environment_variables", {}),
+            environment_variables=_handle_env_vars(d.get("environment_variables", {})),
             resources=Resources.from_dict(d.get("resources", {})),
             runtime=Runtime.from_dict(d.get("runtime", {})),
             build=Build.from_dict(d.get("build", {})),
@@ -658,6 +658,16 @@ class TrussConfig:
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
         self._validate_quant_format_and_accelerator_for_trt_llm_builder()
+
+
+def _handle_env_vars(env_vars: Dict[str, any]) -> Dict[str, str]:
+    new_env_vars = {}
+    for k, v in env_vars.items():
+        if isinstance(v, bool):
+            new_env_vars[k] = str(v).lower()
+        else:
+            new_env_vars[k] = str(v)
+    return new_env_vars
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {
