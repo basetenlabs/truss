@@ -80,6 +80,7 @@ class BasetenRemote(TrussRemote):
             chain_name=chain_name,
             chainlets=chainlets,
             is_draft=not publish,
+            promote=promote,
         )
 
     def get_chainlets(
