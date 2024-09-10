@@ -1,12 +1,24 @@
+from urllib import parse
+
 import pytest
 import requests_mock
 from truss.remote.baseten.core import ModelId, ModelName, ModelVersionId
+from truss.remote.baseten.custom_types import ChainletData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import BasetenRemote
 from truss.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
+
+
+def match_graphql_request(request, expected_query):
+    unescaped_content = parse.unquote_plus(request.text)
+
+    # Remove 'query=' prefix and any leading/trailing whitespace
+    graphql_query = unescaped_content.replace("query=", "").strip()
+
+    assert graphql_query == expected_query
 
 
 def test_get_service_by_version_id():
@@ -269,3 +281,318 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
             match="preserve-previous-production-deployment can only be used with the '--promote' option",
         ):
             remote.push(th, "model_name", False, False, False, True)
+
+
+def test_create_chain_with_no_publish():
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+
+    with requests_mock.Mocker() as m:
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": {"data": {"chains": []}}},
+                {
+                    "json": {
+                        "data": {
+                            "deploy_draft_chain": {
+                                "chain_id": "new-chain-id",
+                                "chain_deployment_id": "new-chain-deployment-id",
+                            }
+                        }
+                    }
+                },
+            ],
+        )
+
+        deployment_handle = remote.create_chain(
+            "draft_chain",
+            [
+                ChainletData(
+                    name="chainlet-1",
+                    oracle_version_id="some-ov-id",
+                    is_entrypoint=True,
+                )
+            ],
+            publish=False,
+            promote=False,
+        )
+
+        get_chains_graphql_request = m.request_history[0]
+        create_chain_graphql_request = m.request_history[1]
+
+        expected_get_chains_query = """
+        {
+            chains {
+                id
+                name
+            }
+        }
+        """.strip()
+
+        match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
+        # Note that if publish=False and promote=True, we set publish to True and create
+        # a non-draft deployment
+        expected_create_chain_mutation = """
+        mutation {
+        deploy_draft_chain(
+            name: "draft_chain",
+            chainlets: [
+        {
+            name: "chainlet-1",
+            oracle_version_id: "some-ov-id",
+            is_entrypoint: true
+        }
+        ]
+        ) {
+            chain_id
+            chain_deployment_id
+        }
+        }
+        """.strip()
+
+        match_graphql_request(
+            create_chain_graphql_request, expected_create_chain_mutation
+        )
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_no_existing_chain():
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+
+    with requests_mock.Mocker() as m:
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {"json": {"data": {"chains": []}}},
+                {
+                    "json": {
+                        "data": {
+                            "deploy_chain": {
+                                "id": "new-chain-id",
+                                "chain_id": "new-chain-id",
+                                "chain_deployment_id": "new-chain-deployment-id",
+                            }
+                        }
+                    }
+                },
+            ],
+        )
+
+        deployment_handle = remote.create_chain(
+            "new_chain",
+            [
+                ChainletData(
+                    name="chainlet-1",
+                    oracle_version_id="some-ov-id",
+                    is_entrypoint=True,
+                )
+            ],
+            publish=True,
+        )
+
+        get_chains_graphql_request = m.request_history[0]
+        create_chain_graphql_request = m.request_history[1]
+
+        expected_get_chains_query = """
+        {
+            chains {
+                id
+                name
+            }
+        }
+        """.strip()
+
+        match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
+
+        expected_create_chain_mutation = """
+        mutation {
+        deploy_chain(
+            name: "new_chain",
+            chainlets: [
+        {
+            name: "chainlet-1",
+            oracle_version_id: "some-ov-id",
+            is_entrypoint: true
+        }
+        ]
+        ) {
+            id
+            chain_id
+            chain_deployment_id
+        }
+        }
+        """.strip()
+
+        match_graphql_request(
+            create_chain_graphql_request, expected_create_chain_mutation
+        )
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_with_existing_chain_promote_true_publish_false():
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+
+    with requests_mock.Mocker() as m:
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {
+                    "json": {
+                        "data": {
+                            "chains": [{"id": "old-chain-id", "name": "old_chain"}]
+                        }
+                    }
+                },
+                {
+                    "json": {
+                        "data": {
+                            "deploy_chain_deployment": {
+                                "id": "new-chain-id",
+                                "chain_id": "new-chain-id",
+                                "chain_deployment_id": "new-chain-deployment-id",
+                            }
+                        }
+                    }
+                },
+            ],
+        )
+
+        deployment_handle = remote.create_chain(
+            "old_chain",
+            [
+                ChainletData(
+                    name="chainlet-1",
+                    oracle_version_id="some-ov-id",
+                    is_entrypoint=True,
+                )
+            ],
+            publish=False,
+            promote=True,
+        )
+
+        get_chains_graphql_request = m.request_history[0]
+        create_chain_graphql_request = m.request_history[1]
+
+        expected_get_chains_query = """
+        {
+            chains {
+                id
+                name
+            }
+        }
+        """.strip()
+
+        match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
+        # Note that if publish=False and promote=True, we set publish to True and create
+        # a non-draft deployment
+        expected_create_chain_mutation = """
+        mutation {
+        deploy_chain_deployment(
+            chain_id: "old-chain-id",
+            chainlets: [
+        {
+            name: "chainlet-1",
+            oracle_version_id: "some-ov-id",
+            is_entrypoint: true
+        }
+        ],
+            promote_after_deploy: true,
+        ) {
+            chain_id
+            chain_deployment_id
+        }
+        }
+        """.strip()
+
+        match_graphql_request(
+            create_chain_graphql_request, expected_create_chain_mutation
+        )
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+def test_create_chain_existing_chain_publish_true_promote_false():
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+
+    with requests_mock.Mocker() as m:
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            [
+                {
+                    "json": {
+                        "data": {
+                            "chains": [{"id": "old-chain-id", "name": "old_chain"}]
+                        }
+                    }
+                },
+                {
+                    "json": {
+                        "data": {
+                            "deploy_chain_deployment": {
+                                "id": "new-chain-id",
+                                "chain_id": "new-chain-id",
+                                "chain_deployment_id": "new-chain-deployment-id",
+                            }
+                        }
+                    }
+                },
+            ],
+        )
+
+        deployment_handle = remote.create_chain(
+            "old_chain",
+            [
+                ChainletData(
+                    name="chainlet-1",
+                    oracle_version_id="some-ov-id",
+                    is_entrypoint=True,
+                )
+            ],
+            publish=True,
+            promote=False,
+        )
+
+        get_chains_graphql_request = m.request_history[0]
+        create_chain_graphql_request = m.request_history[1]
+
+        expected_get_chains_query = """
+        {
+            chains {
+                id
+                name
+            }
+        }
+        """.strip()
+
+        match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
+        # Note promote_after_deploy is false
+        expected_create_chain_mutation = """
+        mutation {
+        deploy_chain_deployment(
+            chain_id: "old-chain-id",
+            chainlets: [
+        {
+            name: "chainlet-1",
+            oracle_version_id: "some-ov-id",
+            is_entrypoint: true
+        }
+        ],
+            promote_after_deploy: false,
+        ) {
+            chain_id
+            chain_deployment_id
+        }
+        }
+        """.strip()
+
+        match_graphql_request(
+            create_chain_graphql_request, expected_create_chain_mutation
+        )
+
+        assert deployment_handle.chain_id == "new-chain-id"
+        assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"

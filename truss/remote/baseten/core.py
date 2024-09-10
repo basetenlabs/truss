@@ -79,8 +79,8 @@ def create_chain(
     chain_id: Optional[str],
     chain_name: str,
     chainlets: List[b10_types.ChainletData],
-    is_draft: bool = False,
-    promote: bool = True,
+    is_draft: bool,
+    promote: bool,
 ) -> ChainDeploymentHandle:
     if is_draft:
         response = api.deploy_draft_chain(chain_name, chainlets)
