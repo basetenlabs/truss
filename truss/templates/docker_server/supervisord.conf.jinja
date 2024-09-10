@@ -3,10 +3,19 @@ nodaemon=true
 logfile=/dev/null
 logfile_maxbytes=0
 
+[program:download-model]
+command=python3 /app/download_model.py --bucket_name baseten-tianshuc-test --model_key meta-llama-Meta-Llama-3.1-8B-Instruct --local_path /data/meta-llama-Meta-Llama-3.1-8B-Instruct
+startsecs=10
+autostart=true
+autorestart=unexpected
+stdout_logfile=/dev/fd/1
+stdout_logfile_maxbytes=0
+redirect_stderr=true
+
 [program:vllm-server]
 command={{start_command}}
 startsecs=30
-autostart=true
+autostart=false
 autorestart=true
 stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
@@ -26,3 +35,9 @@ command=supervisor_vllm_check -g vllm-server -n vllm_server_health_check -R /ver
 events=TICK_60
 stderr_logfile = /var/log/supervisor/supervisor_vllm_check-stderr.log
 stdout_logfile = /var/log/supervisor/supervisor_vllm_check-stdout.log
+
+[eventlistener:model_ready_check]
+command=python3 /app/model_ready_check.py --first download-model --second vllm-server
+events=PROCESS_STATE_EXITED
+stderr_logfile = /var/log/supervisor/model_ready_check-stderr.log
+stdout_logfile = /var/log/supervisor/model_ready_check-stderr.log

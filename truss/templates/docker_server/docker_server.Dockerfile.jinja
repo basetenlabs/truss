@@ -26,4 +26,10 @@ ENV {{ env_var_name }} {{ env_var_value }}
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 
+RUN pip3 install boto3
+
+COPY ./download_model.py /app/download_model.py
+
+COPY ./model_ready_check.py /app/model_ready_check.py
+
 ENTRYPOINT ["/usr/bin/supervisord"]
