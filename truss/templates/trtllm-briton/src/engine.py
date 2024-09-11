@@ -3,7 +3,6 @@ import concurrent.futures
 import fcntl
 import hashlib
 import json
-import math
 import multiprocessing
 import os
 import signal
@@ -119,14 +118,15 @@ class Engine:
         self._max_input_len = truss_trtllm_build_config.max_input_len
         self._max_beam_width = truss_trtllm_build_config.max_beam_width
 
-        runtime = self._config.get("runtime", {})
-        predict_concurrency = runtime.get("predict_concurrency", 1)
-        cpu_count = os.cpu_count()
-        self._max_fsm_workers = (
-            min(predict_concurrency, math.ceil(cpu_count / 2))
-            if cpu_count
-            else predict_concurrency
-        )
+        # runtime = self._config.get("runtime", {})
+        # predict_concurrency = runtime.get("predict_concurrency", 1)
+        # cpu_count = os.cpu_count()
+        # self._max_fsm_workers = (
+        #     min(predict_concurrency, math.ceil(cpu_count / 2))
+        #     if cpu_count
+        #     else predict_concurrency
+        # )
+        self._max_fsm_workers = 1
         print(f"Using {self._max_fsm_workers} workers for FSM schema generation")
 
     def load(self):
