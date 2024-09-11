@@ -3,6 +3,7 @@ import concurrent.futures
 import fcntl
 import hashlib
 import json
+import math
 import multiprocessing
 import os
 import signal
@@ -122,8 +123,11 @@ class Engine:
         predict_concurrency = runtime.get("predict_concurrency", 1)
         cpu_count = os.cpu_count()
         self._max_fsm_workers = (
-            min(predict_concurrency, cpu_count) if cpu_count else predict_concurrency
+            min(predict_concurrency, math.ceil(cpu_count / 2))
+            if cpu_count
+            else predict_concurrency
         )
+        print(f"Using {self._max_fsm_workers} workers for FSM schema generation")
 
     def load(self):
         if self._loaded:
@@ -424,10 +428,15 @@ def worker(vocab_size: int, end_id: int, schema: Dict[str, Any], output_path: Pa
         vocab_size=vocab_size,
         eos_token_id=end_id,
     )
-    with open(output_path, "wb") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(states_to_tokens_pb.SerializeToString())
-        fcntl.flock(f, fcntl.LOCK_UN)
+    if not output_path.exists():
+        try:
+            fd = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "wb") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.write(states_to_tokens_pb.SerializeToString())
+                fcntl.flock(f, fcntl.LOCK_UN)
+        except FileExistsError:
+            pass
 
 
 def dummy_task():
