@@ -15,28 +15,22 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
-    Coroutine,
     Dict,
     Mapping,
-    NoReturn,
     Optional,
-    TypeVar,
     Union,
 )
 
 import opentelemetry.sdk.trace as sdk_trace
-import pydantic
 from anyio import Semaphore, to_thread
-from common import tracing
+from common import errors, tracing
 from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
-from fastapi import HTTPException
 from opentelemetry import trace
 from pydantic import BaseModel
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
-from typing_extensions import ParamSpec
 
 MODEL_BASENAME = "model"
 
@@ -231,10 +225,13 @@ class ModelWrapper:
             return payload
 
         if inspect.iscoroutinefunction(self._model.preprocess):
-            return await _intercept_exceptions_async(self._model.preprocess)(payload)
+            return await errors.intercept_exceptions(
+                self._model.preprocess, self._logger
+            )(payload)
         else:
             return await to_thread.run_sync(
-                _intercept_exceptions_sync(self._model.preprocess), payload
+                errors.intercept_exceptions(self._model.preprocess, self._logger),
+                payload,
             )
 
     async def predict(
@@ -255,10 +252,12 @@ class ModelWrapper:
             return self._model.predict(payload)
 
         if inspect.iscoroutinefunction(self._model.predict):
-            return await _intercept_exceptions_async(self._model.predict)(payload)
+            return await errors.intercept_exceptions(self._model.predict, self._logger)(
+                payload
+            )
 
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.predict), payload
+            errors.intercept_exceptions(self._model.predict, self._logger), payload
         )
 
     async def postprocess(
@@ -280,10 +279,12 @@ class ModelWrapper:
             return self._model.postprocess(response)
 
         if inspect.iscoroutinefunction(self._model.postprocess):
-            return await _intercept_exceptions_async(self._model.postprocess)(response)
+            return await errors.intercept_exceptions(
+                self._model.postprocess, self._logger
+            )(response)
 
         return await to_thread.run_sync(
-            _intercept_exceptions_sync(self._model.postprocess), response
+            errors.intercept_exceptions(self._model.postprocess, self._logger), response
         )
 
     async def write_response_to_queue(
@@ -304,7 +305,7 @@ class ModelWrapper:
 
     async def _streaming_post_process(self, response: Any, span: trace.Span) -> Any:
         if hasattr(self._model, "postprocess"):
-            logging.warning(
+            self._logger.warning(
                 "Predict returned a streaming response, while a postprocess is defined."
                 "Note that in this case, the postprocess will run within the predict lock."
             )
@@ -388,15 +389,6 @@ class ModelWrapper:
             String: in case of non-streamed generator (the string is the JSON result).
         """
         with self._tracer.start_as_current_span("call-pre") as span_pre:
-            if self.truss_schema is not None:
-                try:
-                    with tracing.section_as_event(span_pre, "parse-pydantic"):
-                        body = self.truss_schema.input_type(**body)
-                except pydantic.ValidationError as e:
-                    self._logger.info("Request Validation Error")
-                    raise HTTPException(
-                        status_code=400, detail=f"Request Validation Error, {str(e)}"
-                    ) from e
             with tracing.section_as_event(
                 span_pre, "preprocess"
             ), tracing.detach_context():
@@ -498,43 +490,6 @@ def _signature_accepts_kwargs(signature: inspect.Signature) -> bool:
 
 def _elapsed_ms(since_micro_seconds: float) -> int:
     return int((time.perf_counter() - since_micro_seconds) * 1000)
-
-
-def _handle_exception(exception: Exception) -> NoReturn:
-    # Note that logger.exception logs the stacktrace, such that the user can
-    # debug this error from the logs.
-    if isinstance(exception, HTTPException):
-        logging.exception("Model raised HTTPException")
-        raise exception
-    else:
-        logging.exception("Internal Server Error")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-
-
-def _intercept_exceptions_sync(func: Callable[_P, _R]) -> Callable[_P, _R]:
-    def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e)
-
-    return inner
-
-
-def _intercept_exceptions_async(
-    func: Callable[_P, Coroutine[Any, Any, _R]],
-) -> Callable[_P, Coroutine[Any, Any, _R]]:
-    async def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e)
-
-    return inner
 
 
 def _init_extensions(config, data_dir, secrets, lazy_data_resolver):
