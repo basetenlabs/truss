@@ -476,7 +476,7 @@ secrets:
         assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -754,7 +754,7 @@ def test_truss_with_errors():
 
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration

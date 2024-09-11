@@ -17,6 +17,12 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from typing_extensions import ParamSpec
 
+# See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
+_TRUSS_SERVER_SERVICE_ID = 4
+_BASETEN_UNEXPECTED_ERROR = 500
+_BASETEN_DOWNSTREAM_ERROR_CODE = 600
+_BASETEN_CLIENT_ERROR_CODE = 700
+
 
 class ModelMissingError(Exception):
     def __init__(self, path):
@@ -46,20 +52,10 @@ class UserCodeError(Exception):
 
 
 def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
-    # The source of truth for these constants is in
-    # go/beefeater/shared/error_propagated.go
-    truss_server_service_id = "04"
     return {
-        "X-BASETEN-ERROR-SOURCE": truss_server_service_id,
-        "X-BASETEN-ERROR-CODE": str(error_code),
+        "X-BASETEN-ERROR-SOURCE": f"{_TRUSS_SERVER_SERVICE_ID:02}",
+        "X-BASETEN-ERROR-CODE": f"{error_code:03}",
     }
-
-
-# See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
-_BASETEN_UNEXPECTED_ERROR = 500
-_BASETEN_DOWNSTREAM_ERROR_CODE = 600
-_BASETEN_CLIENT_ERROR_CODE = 700
-_USER_RAISED_HTTP_EXCEPTION_ATTR = "_USER_RAISED_HTTP_EXCEPTION_ATTR"
 
 
 def _make_baseten_response(
@@ -103,8 +99,7 @@ async def exception_handler(
         return _make_baseten_response(
             exc.status_code, exc.detail, _BASETEN_DOWNSTREAM_ERROR_CODE
         )
-
-    # This case should never happen
+    # Fallback case.
     return _make_baseten_response(
         HTTPStatus.INTERNAL_SERVER_ERROR.value,
         f"Unhandled exception: {type(exc).__name__}: {str(exc)}",
@@ -128,7 +123,6 @@ def _intercept_user_exception(exc: Exception, logger: logging.Logger) -> NoRetur
     # TODO: consider removing the wrapper function from the stack trace.
     if isinstance(exc, HTTPException):
         logger.exception("Model raised HTTPException", stacklevel=2)
-        setattr(exc, _USER_RAISED_HTTP_EXCEPTION_ATTR, True)
         raise exc
     else:
         logger.exception("Internal Server Error", stacklevel=2)
@@ -159,7 +153,7 @@ def intercept_exceptions(
     If exception is already `HTTPException`, re-raises exception as is.
     """
     if asyncio.iscoroutinefunction(func):
-        # Handle asynchronous function
+
         async def inner_async(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             try:
                 return await func(*args, **kwargs)
@@ -168,7 +162,7 @@ def intercept_exceptions(
 
         return inner_async  # type: ignore[return-value]
     else:
-        # Handle synchronous function
+
         def inner_sync(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             try:
                 return func(*args, **kwargs)

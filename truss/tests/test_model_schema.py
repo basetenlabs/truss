@@ -106,14 +106,14 @@ def test_truss_with_annotated_inputs_outputs():
 
     with ensure_kill_all():
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        # Valid JSON input
+        # Valid JSON input.
         json_input = {"prompt": "value"}
         response = requests.post(INFERENCE_URL, json=json_input)
         assert response.json() == {
             "generated_text": "value",
         }
 
-        # Valid binary input
+        # Valid binary input.
         byte_input = serialization.truss_msgpack_serialize(json_input)
         print(byte_input)
         response = requests.post(
@@ -135,7 +135,7 @@ def test_truss_with_annotated_inputs_outputs():
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "700"
 
-        # Schema response
+        # Schema response.
         schema_response = requests.get(SCHEMA_URL)
         schema = schema_response.json()
         assert schema["input_schema"] == {
