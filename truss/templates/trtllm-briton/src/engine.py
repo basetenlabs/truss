@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import fcntl
 import hashlib
 import json
 import multiprocessing
@@ -23,9 +24,6 @@ from transformers import AutoTokenizer
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
-# Set the start method to spawn to avoid issues with GRPC and fork
-multiprocessing.set_start_method("spawn", force=True)
-
 BRITON_PORT = 50051
 
 MODEL_INPUT_TO_BRITON_FIELD = {
@@ -45,8 +43,13 @@ MODEL_INPUT_TO_BRITON_FIELD = {
 FSM_CACHE_DIR = "/cache/model/fsm_cache"
 
 TOOL_CALL_IDS = {
-    "llama": 128010,  # <|python_tag|>
-    "mistral": 5,  # [TOOL_CALLS]
+    "llama": 128010,
+    "mistral": 5,
+}
+
+TOOL_CALL_TOKENS = {
+    "llama": "<|python_tag|>",
+    "mistral": "[TOOL_CALLS]",
 }
 
 
@@ -133,6 +136,13 @@ class Engine:
         self._max_input_len = truss_trtllm_build_config.max_input_len
         self._max_beam_width = truss_trtllm_build_config.max_beam_width
 
+        runtime = self._config.get("runtime", {})
+        predict_concurrency = runtime.get("predict_concurrency", 1)
+        cpu_count = os.cpu_count()
+        self._max_fsm_workers = (
+            min(predict_concurrency, cpu_count) if cpu_count else predict_concurrency
+        )
+
     def load(self):
         if self._loaded:
             return
@@ -141,7 +151,9 @@ class Engine:
             self._tokenizer_repository, token=self._hf_token
         )
 
-        self._fsm_cache = FsmCache(Path(FSM_CACHE_DIR), self._tokenizer)
+        self._fsm_cache = FsmCache(
+            Path(FSM_CACHE_DIR), self._tokenizer, self._max_fsm_workers
+        )
 
         # Start engine
         config_str = f"""
@@ -164,7 +176,7 @@ class Engine:
 
         while is_port_available(BRITON_PORT):
             print("Waiting for Briton to start")
-            time.sleep(10)
+            time.sleep(1)
 
         briton_monitor_thread = threading.Thread(
             target=briton_monitor, args=(self._briton_process,)
@@ -341,11 +353,14 @@ class Engine:
                 if hasattr(self._tokenizer, "eos_token")
                 else None
             )
+            tool_call_token = TOOL_CALL_TOKENS.get(self._base_model)
             async for response in resp_iter:
+                output_text = response.output_text
+                if tool_call_token:
+                    output_text = output_text.removeprefix(tool_call_token)
                 if eos_token:
-                    yield response.output_text.removesuffix(eos_token)
-                else:
-                    yield response.output_text
+                    output_text = output_text.removesuffix(eos_token)
+                yield output_text
 
         async def build_response():
             eos_token = (
@@ -353,13 +368,15 @@ class Engine:
                 if hasattr(self._tokenizer, "eos_token")
                 else None
             )
+            tool_call_token = TOOL_CALL_TOKENS.get(self._base_model)
             full_text = ""
             async for delta in resp_iter:
                 full_text += delta.output_text
+            if tool_call_token:
+                full_text = full_text.removeprefix(tool_call_token)
             if eos_token:
-                return full_text.removesuffix(eos_token)
-            else:
-                return full_text
+                full_text = full_text.removesuffix(eos_token)
+            return full_text
 
         try:
             if model_input.get("stream", True):
@@ -397,22 +414,72 @@ def create_tool_schema(tool_json: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+outlines_tokenizer = None
+
+
+def worker(vocab_size: int, end_id: int, schema: Dict[str, Any], output_path: Path):
+    logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
+    guide = logits_processor.fsm
+    states_to_tokens = {}
+    for state, token_to_next_state in guide.states_to_token_maps.items():
+        states_to_tokens[state] = briton_pb2.TokenToNextState(  # type: ignore[attr-defined]
+            token_to_next_state=token_to_next_state
+        )
+    states_to_tokens_pb = briton_pb2.StatesToTokens(  # type: ignore[attr-defined]
+        states_to_tokens=states_to_tokens,
+        vocab_size=vocab_size,
+        eos_token_id=end_id,
+    )
+    with open(output_path, "wb") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(states_to_tokens_pb.SerializeToString())
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def dummy_task():
+    pass
+
+
 class FsmCache:
-    def __init__(self, cache_dir: Path, tokenizer: AutoTokenizer):
+    def __init__(self, cache_dir: Path, tokenizer: AutoTokenizer, max_workers: int):
         self._cache_dir = cache_dir
         if not self._cache_dir.exists():
             self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache = set(f.name for f in self._cache_dir.iterdir() if f.is_file())
+        self._lock = threading.Lock()
         self._tokenizer = tokenizer
-        self._executor = concurrent.futures.ProcessPoolExecutor()
+
+        # Concurrent FSM generation initialization
+        # Make sure we fork because (1) it's faster and (2) it seems that spawning
+        # ends up being sequential
+        multiprocessing.set_start_method("fork", force=True)
+        global outlines_tokenizer
+        outlines_tokenizer = TransformerTokenizer(tokenizer)
+        # This is very important. The first time JSONLogitsProcessor is called, some library-wide
+        # initializations are done in memory (that take 5s). By doing it before we fork, we avoid paying
+        # that cost for each forked process.
+        _ = JSONLogitsProcessor({"properties": {}}, outlines_tokenizer)
+        self._executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+        # We must create all processes BEFORE the GRPC python client is started to avoid errors
+        # forking from the process GRPC is running in
+        for _ in range(max_workers):
+            self._executor.submit(dummy_task)
 
     async def add_schema(self, schema: Dict[str, Any]) -> str:
         schema_str = json.dumps(schema)
         schema_hash = hashlib.sha256(schema_str.encode()).hexdigest()
         if schema_hash not in self._cache:
-            fsm = await self._create_fsm(schema)
-            (self._cache_dir / schema_hash).write_bytes(fsm.SerializeToString())
-            self._cache.add(schema_hash)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                self._executor,
+                worker,
+                len(self._tokenizer.vocab),
+                self._tokenizer.eos_token_id,
+                schema,
+                self._cache_dir / schema_hash,
+            )
+            with self._lock:
+                self._cache.add(schema_hash)
         return schema_hash
 
     async def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
@@ -421,26 +488,6 @@ class FsmCache:
         if schema is not None:
             schema_hash = await self.add_schema(schema)
         return schema_hash
-
-    async def _create_fsm(self, schema: Dict[str, Any]) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
-        loop = asyncio.get_running_loop()
-        outlines_tokenizer = TransformerTokenizer(self._tokenizer)
-        logits_processor = await loop.run_in_executor(
-            self._executor, JSONLogitsProcessor, schema, outlines_tokenizer
-        )
-        guide = logits_processor.fsm
-
-        states_to_tokens = {}
-        for state, token_to_next_state in guide.states_to_token_maps.items():
-            states_to_tokens[state] = briton_pb2.TokenToNextState(  # type: ignore[attr-defined]
-                token_to_next_state=token_to_next_state
-            )
-        states_to_tokens_pb = briton_pb2.StatesToTokens(  # type: ignore[attr-defined]
-            states_to_tokens=states_to_tokens,
-            vocab_size=len(self._tokenizer.vocab),
-            eos_token_id=self._tokenizer.eos_token_id,
-        )
-        return states_to_tokens_pb
 
     @staticmethod
     def _extract_schema(model_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
