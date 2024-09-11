@@ -66,31 +66,13 @@ def is_port_available(port, host="localhost"):
 
 def briton_monitor(briton_process):
     while True:
-        if briton_process.exitcode is not None:
+        if briton_process.poll() is not None:
             print(
-                f"Briton process has exited with code {briton_process.exitcode}, exiting truss server"
+                f"Briton process has exited with code {briton_process.returncode}, exiting truss server"
             )
             pid = os.getpid()
             os.kill(pid, signal.SIGKILL)
         time.sleep(1)
-
-
-def start_briton(config_pbtxt_path, briton_env, tp_count):
-    if tp_count is None or tp_count == 1:
-        subprocess.run(["Briton", "--config", str(config_pbtxt_path)], env=briton_env)
-    else:
-        subprocess.run(
-            [
-                "mpirun",
-                "--allow-run-as-root",
-                "-n",
-                f"{tp_count}",
-                "Briton",
-                "--config",
-                str(config_pbtxt_path),
-            ],
-            env=briton_env,
-        )
 
 
 class Engine:
@@ -168,12 +150,23 @@ class Engine:
         briton_env = os.environ.copy()
         if self._hf_token is not None:
             briton_env["HF_ACCESS_TOKEN"] = self._hf_token
-
-        self._briton_process = multiprocessing.Process(
-            target=start_briton, args=(config_pbtxt_path, briton_env, self._tp_count)
-        )
-        self._briton_process.start()
-
+        if self._tp_count is None or self._tp_count == 1:
+            self._briton_process = subprocess.Popen(
+                ["Briton", "--config", str(config_pbtxt_path)], env=briton_env
+            )
+        else:
+            self._briton_process = subprocess.Popen(
+                [
+                    "mpirun",
+                    "--allow-run-as-root",
+                    "-n",
+                    f"{self._tp_count}",
+                    "Briton",
+                    "--config",
+                    str(config_pbtxt_path),
+                ],
+                env=briton_env,
+            )
         while is_port_available(BRITON_PORT):
             print("Waiting for Briton to start")
             time.sleep(1)
