@@ -346,13 +346,14 @@ class ServingImageBuilder(ImageBuilder):
                 TEMPLATES_DIR / "docker_server" / "supervisor_checks",
                 build_dir / "supervisor_checks",
             )
+            # TODO: to remove
+            # copy_file_path(
+            #     TEMPLATES_DIR / "docker_server" / "download_model.py",
+            #     build_dir / "download_model.py",
+            # )
             copy_file_path(
-                TEMPLATES_DIR / "docker_server" / "download_model.py",
-                build_dir / "download_model.py",
-            )
-            copy_file_path(
-                TEMPLATES_DIR / "docker_server" / "model_ready_check.py",
-                build_dir / "model_ready_check.py",
+                TEMPLATES_DIR / "docker_server" / "setup_ready_check.py",
+                build_dir / "setup_ready_check.py",
             )
 
             if not build_dir.exists():
@@ -385,7 +386,8 @@ class ServingImageBuilder(ImageBuilder):
                 TEMPLATES_DIR, "docker_server/supervisord.conf.jinja"
             )
             supervisord_contents = supervisord_template.render(
-                start_command=config.docker_server.start_command
+                start_command=config.docker_server.start_command,
+                setup_command=config.docker_server.setup_command,
             )
             supervisord_filepath = build_dir / "supervisord.conf"
             supervisord_filepath.write_text(supervisord_contents)

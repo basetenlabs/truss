@@ -8,10 +8,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         curl nginx supervisor python3-pip && \
         rm -rf /var/lib/apt/lists/*
 
+COPY ./{{ config.model_module_dir }} /app/model
+
 COPY ./supervisor_checks /app/supervisor_checks
 
 # Install supervisor_checks using pip
 RUN pip3 install /app/supervisor_checks
+
+RUN pip3 install boto3
 
 ENV SUPERVISOR_SERVER_URL http://localhost:8080
 
@@ -26,10 +30,6 @@ ENV {{ env_var_name }} {{ env_var_value }}
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 
-RUN pip3 install boto3
-
-COPY ./download_model.py /app/download_model.py
-
-COPY ./model_ready_check.py /app/model_ready_check.py
+COPY ./setup_ready_check.py /app/setup_ready_check.py
 
 ENTRYPOINT ["/usr/bin/supervisord"]
