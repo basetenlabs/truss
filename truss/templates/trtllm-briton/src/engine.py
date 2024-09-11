@@ -1,5 +1,9 @@
+import asyncio
+import concurrent.futures
+import fcntl
 import hashlib
 import json
+import multiprocessing
 import os
 import signal
 import socket
@@ -37,6 +41,16 @@ MODEL_INPUT_TO_BRITON_FIELD = {
 
 # Use a directory that can be picked up by baseten-fs
 FSM_CACHE_DIR = "/cache/model/fsm_cache"
+
+TOOL_CALL_IDS = {
+    "llama": 128010,
+    "mistral": 5,
+}
+
+TOOL_CALL_TOKENS = {
+    "llama": "<|python_tag|>",
+    "mistral": "[TOOL_CALLS]",
+}
 
 
 def is_port_available(port, host="localhost"):
@@ -83,6 +97,7 @@ class Engine:
         truss_trtllm_build_config = TrussTRTLLMBuildConfiguration(
             **trtllm_config.get("build")
         )
+        self._base_model = truss_trtllm_build_config.base_model
         self._tp_count = truss_trtllm_build_config.tensor_parallel_count
         self._tokenizer_repository = (
             truss_trtllm_build_config.checkpoint_repository.repo
@@ -103,6 +118,11 @@ class Engine:
         self._max_input_len = truss_trtllm_build_config.max_input_len
         self._max_beam_width = truss_trtllm_build_config.max_beam_width
 
+        # TODO(@bdubayah): configure this based on CPU. But os.cpu_count() returns the
+        # number of CPUs for the entire node, not just the container.
+        self._max_fsm_workers = 10
+        print(f"Using {self._max_fsm_workers} workers for FSM schema generation")
+
     def load(self):
         if self._loaded:
             return
@@ -111,7 +131,9 @@ class Engine:
             self._tokenizer_repository, token=self._hf_token
         )
 
-        self._fsm_cache = FsmCache(Path(FSM_CACHE_DIR), self._tokenizer)
+        self._fsm_cache = FsmCache(
+            Path(FSM_CACHE_DIR), self._tokenizer, self._max_fsm_workers
+        )
 
         # Start engine
         config_str = f"""
@@ -189,14 +211,84 @@ class Engine:
             channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
             self._stub = briton_pb2_grpc.BritonStub(channel)
 
+        # TODO(@bdubayah): refactor into smaller functions
         function_calling_schema = None
-        tools = model_input.get("tools", None)
+        tools = model_input.get("tools")
+        tool_choice = model_input.get("tool_choice")
+        force_tools = None
+        if tool_choice is not None:
+            if not (
+                tool_choice in ["none", "required", "auto"]
+                or isinstance(tool_choice, dict)
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="tool_choice must be 'none', 'required', 'auto', or an object of the form {'type': 'function', 'function': {'name': 'function_name'}}.",
+                )
+            if tool_choice == "none":
+                tools = None
+                tool_choice = None
+            elif tool_choice == "required":
+                if tools is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="tool_choice is 'required' but no tools provided.",
+                    )
+                force_tools = True
         if tools is not None:
+            if model_input.get("response_format") is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="response_format is not allowed when tools are provided, unless tool_choice is 'none'.",
+                )
+            tool_schemas = {
+                tool["function"]["name"]: create_tool_schema(tool) for tool in tools
+            }
+            if isinstance(tool_choice, dict):
+                if tool_choice.get("type") != "function":
+                    raise HTTPException(
+                        status_code=400, detail="tool_choice['type'] must be function."
+                    )
+                if tool_choice.get("function") is None:
+                    raise HTTPException(
+                        status_code=400, detail="tool_choice['function'] required."
+                    )
+                if not isinstance(tool_choice["function"], dict):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="tool_choice['function'] must be an object.",
+                    )
+                if tool_choice["function"].get("name") is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="tool_choice['function']['name'] required.",
+                    )
+                if tool_choice["function"]["name"] not in tool_schemas:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Tool choice function {tool_choice['function']['name']} not in tools.",
+                    )
+                tool_schemas = {
+                    tool_choice["function"]["name"]: tool_schemas[
+                        tool_choice["function"]["name"]
+                    ]
+                }
+                force_tools = True
+            elif tool_choice is None or tool_choice == "auto":
+                force_tools = False
             function_calling_schema = {
-                "anyOf": [create_tool_schema(tool) for tool in tools],
+                "type": "array",
+                "items": {
+                    "anyOf": list(tool_schemas.values()),
+                },
             }
 
         prompt = model_input.get("prompt", None)
+        if prompt is not None and tools is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="tools can only be provided in chat mode. Please set messages instead of prompt, remove tools, or set tool_choice to 'none'.",
+            )
         if prompt is None and "messages" in model_input:
             messages = model_input.pop("messages")
             prompt = self._tokenizer.apply_chat_template(
@@ -227,15 +319,18 @@ class Engine:
         schema_hash = None
         try:
             schema_hash = (
-                self._fsm_cache.add_schema(function_calling_schema)
+                await self._fsm_cache.add_schema(function_calling_schema)
                 if function_calling_schema is not None
-                else self._fsm_cache.add_schema_from_input(model_input)
+                else await self._fsm_cache.add_schema_from_input(model_input)
             )
         # If the input schema is invalid, we should return a 400
         except NotImplementedError as ex:
             raise HTTPException(status_code=400, detail=str(ex))
         if schema_hash is not None:
             request.output_schema_hash = schema_hash
+        if force_tools is not None:
+            request.tools_id = TOOL_CALL_IDS[self._base_model]
+            request.force_tools = force_tools
         set_briton_request_fields_from_model_input(model_input, request)
         for words in ["bad_words", "stop_words"]:
             if words in model_input:
@@ -250,11 +345,14 @@ class Engine:
                 if hasattr(self._tokenizer, "eos_token")
                 else None
             )
+            tool_call_token = TOOL_CALL_TOKENS.get(self._base_model)
             async for response in resp_iter:
+                output_text = response.output_text
+                if tool_call_token:
+                    output_text = output_text.removeprefix(tool_call_token)
                 if eos_token:
-                    yield response.output_text.removesuffix(eos_token)
-                else:
-                    yield response.output_text
+                    output_text = output_text.removesuffix(eos_token)
+                yield output_text
 
         async def build_response():
             eos_token = (
@@ -262,13 +360,15 @@ class Engine:
                 if hasattr(self._tokenizer, "eos_token")
                 else None
             )
+            tool_call_token = TOOL_CALL_TOKENS.get(self._base_model)
             full_text = ""
             async for delta in resp_iter:
                 full_text += delta.output_text
+            if tool_call_token:
+                full_text = full_text.removeprefix(tool_call_token)
             if eos_token:
-                return full_text.removesuffix(eos_token)
-            else:
-                return full_text
+                full_text = full_text.removesuffix(eos_token)
+            return full_text
 
         try:
             if model_input.get("stream", True):
@@ -306,46 +406,85 @@ def create_tool_schema(tool_json: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+outlines_tokenizer = None
+
+
+def worker(vocab_size: int, end_id: int, schema: Dict[str, Any], output_path: Path):
+    logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
+    guide = logits_processor.fsm
+    states_to_tokens = {}
+    for state, token_to_next_state in guide.states_to_token_maps.items():
+        states_to_tokens[state] = briton_pb2.TokenToNextState(  # type: ignore[attr-defined]
+            token_to_next_state=token_to_next_state
+        )
+    states_to_tokens_pb = briton_pb2.StatesToTokens(  # type: ignore[attr-defined]
+        states_to_tokens=states_to_tokens,
+        vocab_size=vocab_size,
+        eos_token_id=end_id,
+    )
+    if not output_path.exists():
+        try:
+            fd = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "wb") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.write(states_to_tokens_pb.SerializeToString())
+                fcntl.flock(f, fcntl.LOCK_UN)
+        except FileExistsError:
+            pass
+
+
+def dummy_task():
+    pass
+
+
 class FsmCache:
-    def __init__(self, cache_dir: Path, tokenizer: AutoTokenizer):
+    def __init__(self, cache_dir: Path, tokenizer: AutoTokenizer, max_workers: int):
         self._cache_dir = cache_dir
         if not self._cache_dir.exists():
             self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache = set(f.name for f in self._cache_dir.iterdir() if f.is_file())
+        self._lock = threading.Lock()
         self._tokenizer = tokenizer
 
-    def add_schema(self, schema: Dict[str, Any]) -> str:
+        # Concurrent FSM generation initialization
+        # Make sure we fork because (1) it's faster and (2) it seems that spawning
+        # ends up being sequential
+        multiprocessing.set_start_method("fork", force=True)
+        global outlines_tokenizer
+        outlines_tokenizer = TransformerTokenizer(tokenizer)
+        # This is very important. The first time JSONLogitsProcessor is called, some library-wide
+        # initializations are done in memory (that take 5s). By doing it before we fork, we avoid paying
+        # that cost for each forked process.
+        _ = JSONLogitsProcessor({"properties": {}}, outlines_tokenizer)
+        self._executor = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+        # We must create all processes BEFORE the GRPC python client is started to avoid errors
+        # forking from the process GRPC is running in
+        for _ in range(max_workers):
+            self._executor.submit(dummy_task)
+
+    async def add_schema(self, schema: Dict[str, Any]) -> str:
         schema_str = json.dumps(schema)
         schema_hash = hashlib.sha256(schema_str.encode()).hexdigest()
         if schema_hash not in self._cache:
-            fsm = self._create_fsm(schema)
-            (self._cache_dir / schema_hash).write_bytes(fsm.SerializeToString())
-            self._cache.add(schema_hash)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                self._executor,
+                worker,
+                len(self._tokenizer.vocab),
+                self._tokenizer.eos_token_id,
+                schema,
+                self._cache_dir / schema_hash,
+            )
+            with self._lock:
+                self._cache.add(schema_hash)
         return schema_hash
 
-    def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
+    async def add_schema_from_input(self, model_input: Dict[str, Any]) -> Optional[str]:
         schema_hash = None
         schema = self._extract_schema(model_input)
         if schema is not None:
-            schema_hash = self.add_schema(schema)
+            schema_hash = await self.add_schema(schema)
         return schema_hash
-
-    def _create_fsm(self, schema: Dict[str, Any]) -> briton_pb2.StatesToTokens:  # type: ignore[name-defined]
-        outlines_tokenizer = TransformerTokenizer(self._tokenizer)
-        logits_processor = JSONLogitsProcessor(schema, outlines_tokenizer)
-        guide = logits_processor.fsm
-
-        states_to_tokens = {}
-        for state, token_to_next_state in guide.states_to_token_maps.items():
-            states_to_tokens[state] = briton_pb2.TokenToNextState(  # type: ignore[attr-defined]
-                token_to_next_state=token_to_next_state
-            )
-        states_to_tokens_pb = briton_pb2.StatesToTokens(  # type: ignore[attr-defined]
-            states_to_tokens=states_to_tokens,
-            vocab_size=len(self._tokenizer.vocab),
-            eos_token_id=self._tokenizer.eos_token_id,
-        )
-        return states_to_tokens_pb
 
     @staticmethod
     def _extract_schema(model_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
