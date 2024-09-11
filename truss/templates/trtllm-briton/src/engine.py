@@ -213,6 +213,7 @@ class Engine:
             channel = grpc.aio.insecure_channel(f"localhost:{BRITON_PORT}")
             self._stub = briton_pb2_grpc.BritonStub(channel)
 
+        # TODO(@bdubayah): refactor into smaller functions
         function_calling_schema = None
         tools = model_input.get("tools")
         tool_choice = model_input.get("tool_choice")
