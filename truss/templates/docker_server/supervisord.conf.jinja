@@ -36,8 +36,8 @@ events=TICK_60
 stderr_logfile = /var/log/supervisor/supervisor_vllm_check-stderr.log
 stdout_logfile = /var/log/supervisor/supervisor_vllm_check-stdout.log
 
-[eventlistener:model_ready_check]
-command=python3 /app/model_ready_check.py --first setup --second vllm-server
+[eventlistener:setup_ready_check]
+command=python3 /app/setup_ready_check.py --first setup --second vllm-server
 events=PROCESS_STATE_EXITED
-stderr_logfile = /var/log/supervisor/model_ready_check-stderr.log
-stdout_logfile = /var/log/supervisor/model_ready_check-stderr.log
+stderr_logfile = /var/log/supervisor/setup_ready_check-stderr.log
+stdout_logfile = /var/log/supervisor/setup_ready_check-stderr.log
