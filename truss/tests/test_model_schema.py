@@ -36,8 +36,8 @@ def test_truss_with_no_annotations():
         assert schema_response.status_code == 404
 
         assert schema_response.json()["error"] == "No schema found"
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "404"
+        assert schema_response.headers["x-baseten-error-source"] == "04"
+        assert schema_response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -62,8 +62,8 @@ class Model:
         schema_response = requests.get(SCHEMA_URL)
         assert schema_response.status_code == 404
         assert schema_response.json()["error"] == "No schema found"
-        assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "404"
+        assert schema_response.headers["x-baseten-error-source"] == "04"
+        assert schema_response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -133,7 +133,7 @@ def test_truss_with_annotated_inputs_outputs():
             in response.json()["error"]
         )
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "400"
+        assert response.headers["x-baseten-error-code"] == "700"
 
         # Schema response
         schema_response = requests.get(SCHEMA_URL)

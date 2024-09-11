@@ -307,6 +307,9 @@ class TrussServer:
                 exc: errors.exception_handler for exc in errors.HANDLED_EXCEPTIONS
             },
         )
+        # Above `exception_handlers` only triggers on exact exception classes.
+        # This here is a fallback to add our custom headers in all other cases.
+        app.add_exception_handler(Exception, errors.exception_handler)
 
         def exit_self():
             # Note that this kills the current process, the worker process, not

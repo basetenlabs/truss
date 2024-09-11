@@ -55,44 +55,61 @@ def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
     }
 
 
+# See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
+_BASETEN_UNEXPECTED_ERROR = 500
+_BASETEN_DOWNSTREAM_ERROR_CODE = 600
+_BASETEN_CLIENT_ERROR_CODE = 700
+_USER_RAISED_HTTP_EXCEPTION_ATTR = "_USER_RAISED_HTTP_EXCEPTION_ATTR"
+
+
 def _make_baseten_response(
     http_status: int,
     info: Union[str, Exception],
-    baseten_error_code: Optional[int] = None,
+    baseten_error_code: int,
 ) -> fastapi.Response:
     msg = str(info) if isinstance(info, Exception) else info
-
-    error_code = baseten_error_code if baseten_error_code is not None else http_status
-
     return JSONResponse(
         status_code=http_status,
         content={"error": msg},
-        headers=_make_baseten_error_headers(error_code),
+        headers=_make_baseten_error_headers(baseten_error_code),
     )
 
 
-async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Response:
+async def exception_handler(
+    request: fastapi.Request, exc: Exception
+) -> fastapi.Response:
     if isinstance(exc, ModelMissingError):
-        return _make_baseten_response(HTTPStatus.NOT_FOUND.value, exc)
-    if isinstance(exc, ModelNotReady):
-        return _make_baseten_response(HTTPStatus.SERVICE_UNAVAILABLE.value, exc)
-    if isinstance(exc, NotImplementedError):
-        return _make_baseten_response(HTTPStatus.NOT_IMPLEMENTED.value, exc)
-    if isinstance(exc, InputParsingError):
-        return _make_baseten_response(HTTPStatus.BAD_REQUEST.value, exc)
-    if isinstance(exc, UserCodeError):
-        # TODO: need a specific code?
         return _make_baseten_response(
-            HTTPStatus.INTERNAL_SERVER_ERROR.value, "Internal Server Error"
+            HTTPStatus.NOT_FOUND.value, exc, _BASETEN_DOWNSTREAM_ERROR_CODE
+        )
+    if isinstance(exc, ModelNotReady):
+        return _make_baseten_response(
+            HTTPStatus.SERVICE_UNAVAILABLE.value, exc, _BASETEN_DOWNSTREAM_ERROR_CODE
+        )
+    if isinstance(exc, InputParsingError):
+        return _make_baseten_response(
+            HTTPStatus.BAD_REQUEST.value,
+            exc,
+            _BASETEN_CLIENT_ERROR_CODE,
+        )
+    if isinstance(exc, UserCodeError):
+        return _make_baseten_response(
+            HTTPStatus.INTERNAL_SERVER_ERROR.value,
+            "Internal Server Error",
+            _BASETEN_DOWNSTREAM_ERROR_CODE,
         )
     if isinstance(exc, fastapi.HTTPException):
         # This is a pass through, but additionally adds our custom error headers.
-        return _make_baseten_response(exc.status_code, exc.detail)
+        return _make_baseten_response(
+            exc.status_code, exc.detail, _BASETEN_DOWNSTREAM_ERROR_CODE
+        )
 
-    # Any other exceptions will be turned into "internal server error".
-    #
-    msg = f"{type(exc).__name__}: {str(exc)}"
-    return _make_baseten_response(HTTPStatus.INTERNAL_SERVER_ERROR.value, msg)
+    # This case should never happen
+    return _make_baseten_response(
+        HTTPStatus.INTERNAL_SERVER_ERROR.value,
+        f"Unhandled exception: {type(exc).__name__}: {str(exc)}",
+        _BASETEN_UNEXPECTED_ERROR,
+    )
 
 
 HANDLED_EXCEPTIONS = {
@@ -109,9 +126,9 @@ def _intercept_user_exception(exc: Exception, logger: logging.Logger) -> NoRetur
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
     # TODO: consider removing the wrapper function from the stack trace.
-
     if isinstance(exc, HTTPException):
         logger.exception("Model raised HTTPException", stacklevel=2)
+        setattr(exc, _USER_RAISED_HTTP_EXCEPTION_ATTR, True)
         raise exc
     else:
         logger.exception("Internal Server Error", stacklevel=2)

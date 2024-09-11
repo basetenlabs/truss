@@ -455,7 +455,7 @@ secrets:
         assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         # Case where the secret is not mounted
@@ -667,7 +667,7 @@ def test_truss_with_errors():
 
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     model_preprocess_error = """
     class Model:
@@ -697,7 +697,7 @@ def test_truss_with_errors():
         assert_logs_contain_error(container.logs(), "ValueError: error")
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     model_postprocess_error = """
     class Model:
@@ -726,7 +726,7 @@ def test_truss_with_errors():
         assert_logs_contain_error(container.logs(), "ValueError: error")
         assert "Internal Server Error" in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     model_async = """
     class Model:
@@ -786,7 +786,7 @@ def test_truss_with_user_errors():
         assert response.status_code == 500
         assert "error" in response.json()
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
         assert_logs_contain_error(
             container.logs(),
@@ -796,7 +796,7 @@ def test_truss_with_user_errors():
 
         assert "My custom message." in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
-        assert response.headers["x-baseten-error-code"] == "500"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
