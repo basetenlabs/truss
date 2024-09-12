@@ -7,6 +7,7 @@
 {% block base_image_patch %}
 # If user base image is supplied in config, apply build commands from truss base image
 {% if config.base_image %}
+    {%- if not config.docker_server %}
 ENV PYTHONUNBUFFERED True
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -23,6 +24,7 @@ RUN apt update && \
 
 COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
 RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
+    {%- endif %}
 
     {%- if config.live_reload %}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \

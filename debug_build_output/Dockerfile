@@ -17,22 +17,6 @@ RUN pip install --upgrade pip --no-cache-dir \
 
 # If user base image is supplied in config, apply build commands from truss base image
 
-ENV PYTHONUNBUFFERED True
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt update && \
-    apt install -y bash \
-                build-essential \
-                git \
-                curl \
-                ca-certificates \
-                software-properties-common \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY ./base_server_requirements.txt base_server_requirements.txt
-RUN pip install -r base_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 
 
 
@@ -64,8 +48,10 @@ WORKDIR $APP_HOME
 
 
 # Copy data before code for better caching
+COPY ./data /app/data
 
 COPY ./server /app
+COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
 
 
