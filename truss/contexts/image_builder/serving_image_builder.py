@@ -20,6 +20,7 @@ from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     CONTROL_SERVER_CODE_DIR,
+    DOCKER_SERVER_DOCKERFILE_TEMPLATE_NAME,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
     OPENAI_COMPATIBLE_TAG,
@@ -341,7 +342,8 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         if config.docker_server is not None:
-            copy_tree_path(truss_dir, build_dir)
+            # copy_tree_path(truss_dir, build_dir)
+            # TODO: move supervisor_checks to better place
             copy_tree_path(
                 TEMPLATES_DIR / "docker_server" / "supervisor_checks",
                 build_dir / "supervisor_checks",
@@ -351,27 +353,27 @@ class ServingImageBuilder(ImageBuilder):
             #     TEMPLATES_DIR / "docker_server" / "download_model.py",
             #     build_dir / "download_model.py",
             # )
-            copy_file_path(
-                TEMPLATES_DIR / "docker_server" / "setup_ready_check.py",
-                build_dir / "setup_ready_check.py",
-            )
+            # copy_file_path(
+            #     TEMPLATES_DIR / "docker_server" / "setup_ready_check.py",
+            #     build_dir / "setup_ready_check.py",
+            # )
 
-            if not build_dir.exists():
-                build_dir.mkdir(parents=True)
+            # if not build_dir.exists():
+            #     build_dir.mkdir(parents=True)
 
-            dockerfile_template = read_template_from_fs(
-                TEMPLATES_DIR, "docker_server/docker_server.Dockerfile.jinja"
-            )
+            # dockerfile_template = read_template_from_fs(
+            #     TEMPLATES_DIR, DOCKER_SERVER_DOCKERFILE_TEMPLATE_NAME
+            # )
             nginx_template = read_template_from_fs(
                 TEMPLATES_DIR, "docker_server/proxy.conf.jinja"
             )
 
-            dockerfile_content = dockerfile_template.render(
-                base_image_name_and_tag=config.base_image.image,
-                config=config,
-            )
-            dockerfile_filepath = build_dir / "Dockerfile"
-            dockerfile_filepath.write_text(dockerfile_content)
+            # dockerfile_content = dockerfile_template.render(
+            #     base_image_name_and_tag=config.base_image.image,
+            #     config=config,
+            # )
+            # dockerfile_filepath = build_dir / "Dockerfile"
+            # dockerfile_filepath.write_text(dockerfile_content)
 
             nginx_content = nginx_template.render(
                 server_endpoint=config.docker_server.predict_endpoint,
@@ -551,9 +553,9 @@ class ServingImageBuilder(ImageBuilder):
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-
+        dockerfile_template_name = SERVER_DOCKERFILE_TEMPLATE_NAME
         dockerfile_template = read_template_from_fs(
-            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
+            TEMPLATES_DIR, dockerfile_template_name
         )
         python_version = to_dotted_python_version(config.python_version)
         if config.base_image:

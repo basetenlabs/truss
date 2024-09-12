@@ -14,10 +14,9 @@ COPY ./{{ config.data_dir }} /app/data
 
 COPY ./supervisor_checks /app/supervisor_checks
 
+# TODO: move supervisor_checks to better place
 # Install supervisor_checks using pip
 RUN pip3 install /app/supervisor_checks
-
-RUN pip3 install boto3
 
 ENV SUPERVISOR_SERVER_URL http://localhost:8080
 
