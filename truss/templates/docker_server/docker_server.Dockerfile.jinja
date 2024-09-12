@@ -32,6 +32,4 @@ ENV {{ env_var_name }} {{ env_var_value }}
 
 ENV SERVER_START_CMD /usr/bin/supervisord
 
-COPY ./setup_ready_check.py /app/setup_ready_check.py
-
 ENTRYPOINT ["/usr/bin/supervisord"]

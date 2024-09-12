@@ -3,19 +3,10 @@ nodaemon=true
 logfile=/dev/null
 logfile_maxbytes=0
 
-[program:setup]
-command={{setup_command}}
-startsecs=0
-autostart=true
-autorestart=unexpected
-stdout_logfile=/dev/fd/1
-stdout_logfile_maxbytes=0
-redirect_stderr=true
-
 [program:vllm-server]
 command={{start_command}}
 startsecs=30
-autostart=false
+autostart=true
 autorestart=true
 stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
@@ -35,9 +26,3 @@ command=supervisor_vllm_check -g vllm-server -n vllm_server_health_check -R /ver
 events=TICK_60
 stderr_logfile = /var/log/supervisor/supervisor_vllm_check-stderr.log
 stdout_logfile = /var/log/supervisor/supervisor_vllm_check-stdout.log
-
-[eventlistener:setup_ready_check]
-command=python3 /app/setup_ready_check.py --first setup --second vllm-server
-events=PROCESS_STATE_EXITED
-stderr_logfile = /var/log/supervisor/setup_ready_check-stderr.log
-stdout_logfile = /var/log/supervisor/setup_ready_check-stderr.log
