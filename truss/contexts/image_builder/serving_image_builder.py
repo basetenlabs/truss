@@ -391,7 +391,6 @@ class ServingImageBuilder(ImageBuilder):
             )
             supervisord_filepath = build_dir / "supervisord.conf"
             supervisord_filepath.write_text(supervisord_contents)
-            return
 
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
