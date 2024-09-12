@@ -88,6 +88,9 @@ RUN python3 -m venv /control/.env \
 
 {% block run %}
     {%- if config.docker_server %}
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl nginx supervisor python3-pip && \
+        rm -rf /var/lib/apt/lists/*
 COPY ./supervisor_checks /app/supervisor_checks
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 RUN mkdir -p /var/log/supervisor

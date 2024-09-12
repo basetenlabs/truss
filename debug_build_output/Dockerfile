@@ -64,10 +64,8 @@ WORKDIR $APP_HOME
 
 
 # Copy data before code for better caching
-COPY ./data /app/data
 
 COPY ./server /app
-COPY ./model /app/model
 COPY ./config.yaml /app/config.yaml
 
 
@@ -83,11 +81,13 @@ ENV VLLM_LOGGING_LEVEL DEBUG
 
 
 
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl nginx supervisor python3-pip && \
+        rm -rf /var/lib/apt/lists/*
 COPY ./supervisor_checks /app/supervisor_checks
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-# TODO: move supervisor_checks to better place
 RUN pip3 install /app/supervisor_checks
 ENV SUPERVISOR_SERVER_URL http://localhost:8080
 ENV SERVER_START_CMD /usr/bin/supervisord
