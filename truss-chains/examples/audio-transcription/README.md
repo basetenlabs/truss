@@ -14,15 +14,15 @@ whisper transcription model (which has slower deployment times), they are in
 the current setup deployed separately:
 
 ```bash
-truss chains deploy whisper_chainlet.py
+truss chains push whisper_chainlet.py
 ```
 
-Insert the predict URL for the Whisper Chainlet (printed by above deploy
+Insert the predict URL for the Whisper Chainlet (printed by above push
 command or can be found on the status page) as a value for
-`WHISPER_PREDICT_URL` in `transcribe.py`. The deploy the transcribe chain.
+`WHISPER_PREDICT_URL` in `transcribe.py`. Then push the transcribe chain.
 
 ```bash
-truss chains deploy transcribe.py
+truss chains push transcribe.py
 ```
 
 An example local invocation of the chain is given in the main-section of
