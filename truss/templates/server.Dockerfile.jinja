@@ -26,7 +26,7 @@ COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename
 RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 
-    {%- if config.live_reload %}
+    {%- if config.live_reload  and not config.docker_server%}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
     || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
     && add-apt-repository -y ppa:deadsnakes/ppa \
@@ -81,7 +81,7 @@ COPY ./server /app
 COPY ./{{ config.model_module_dir }} /app/model
 {%- endif %}
 COPY ./config.yaml /app/config.yaml
-    {%- if config.live_reload %}
+    {%- if config.live_reload and not config.docker_server%}
 COPY ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
