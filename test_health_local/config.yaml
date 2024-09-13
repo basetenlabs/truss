@@ -1,5 +1,5 @@
 base_image:
-  image: vllm/vllm-openai:v0.5.5
+  image: vllm/vllm-openai:v0.6.1
 docker_server:
   start_command: vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct --port 8000 --max-model-len 1024
   readiness_endpoint: /health
@@ -12,7 +12,6 @@ requirements:
   - boto3
 model_name: docker server llama 8B tp 1
 environment_variables:
-  HF_TOKEN: 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
   VLLM_LOGGING_LEVEL: DEBUG
 runtime:
   predict_concurrency: 512
