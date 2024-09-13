@@ -47,7 +47,7 @@ python rag_chain.py
 Deploy the Chain to production:
 
 ```sh
-truss chains deploy rag_chain.py
+truss chains push rag_chain.py
 ```
 
 Note that this command will print you with an example cURL command how to
@@ -57,7 +57,7 @@ For example a chain invocation might look like this (you need to update the
 URL):
 
 ```sh
-curl -X POST 'https://model-5wo86nn3.api.baseten.co/development/predict' \
+curl -X POST 'https://chain-<CHAIN_ID>.api.baseten.co/development/run_remote' \
     -H "Authorization: Api-Key $BASETEN_API_KEY" \
     -d '{"new_bio": "Sam just moved to Manhattan for his new job at a large bank.In college, he enjoyed building sets for student plays."}'
 ```

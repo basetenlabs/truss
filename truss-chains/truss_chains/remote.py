@@ -132,9 +132,8 @@ def _push_service(
     else:
         raise NotImplementedError(options)
 
-    logging.info(
-        f"Pushed `{chainlet_descriptor.display_name}` @ {service.predict_url}."
-    )
+    logging.info(f"Pushed `{chainlet_descriptor.display_name}`")
+    logging.debug(f"Internal model endpoint: `{service.predict_url}`")
     return service
 
 
