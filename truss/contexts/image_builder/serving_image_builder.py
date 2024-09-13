@@ -509,16 +509,21 @@ class ServingImageBuilder(ImageBuilder):
         with open(base_truss_server_reqs_filepath, "r") as f:
             base_server_requirements = f.read()
 
-        # If the user has provided python requirements,
-        # append the truss server requirements, so that any conflicts
-        # are detected and cause a build failure. If there are no
-        # requirements provided, we just pass an empty string,
-        # as there's no need to install anything.
-        user_provided_python_requirements = (
-            base_server_requirements + spec.requirements_txt
-            if spec.requirements
-            else ""
-        )
+        if config.docker_server:
+            # when docker server is enabled, no need to install truss requirements
+            # only install user-provided python requirements
+            user_provided_python_requirements = spec.requirements_txt
+        else:
+            # If the user has provided python requirements,
+            # append the truss server requirements, so that any conflicts
+            # are detected and cause a build failure. If there are no
+            # requirements provided, we just pass an empty string,
+            # as there's no need to install anything.
+            user_provided_python_requirements = (
+                base_server_requirements + spec.requirements_txt
+                if spec.requirements
+                else ""
+            )
         if spec.requirements_file is not None:
             copy_into_build_dir(
                 truss_dir / spec.requirements_file,
