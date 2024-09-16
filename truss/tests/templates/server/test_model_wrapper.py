@@ -5,11 +5,12 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import opentelemetry.sdk.trace as sdk_trace
 import pytest
 import yaml
+from starlette.requests import Request
 
 
 @pytest.fixture
@@ -49,7 +50,7 @@ def test_model_wrapper_load_error_once(app_path):
     model_wrapper.load()
     # Allow load thread to execute
     time.sleep(1)
-    output = model_wrapper.predict({})
+    output = model_wrapper.predict({}, MagicMock(spec=Request))
     assert output == {}
     assert model_wrapper._model.load_count == 3
 
@@ -143,7 +144,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            resp = await model_wrapper.predict({})
+            resp = await model_wrapper.predict({}, MagicMock(spec=Request))
             mock_extension.load.assert_called()
             mock_extension.model_args.assert_called()
             assert mock_predict_called
@@ -171,7 +172,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
             mock_predict_called = True
             return expected_predict_response
 
-        mock_engine = Mock(predict=mock_predict)
+        mock_engine = Mock(predict=mock_predict, spec=["predict"])
         mock_extension = Mock()
         mock_extension.load = Mock()
         mock_extension.model_override = Mock(return_value=mock_engine)
@@ -180,7 +181,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
             model_wrapper.load()
-            resp = await model_wrapper.predict({})
+            resp = await model_wrapper.predict({}, MagicMock(spec=Request))
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
             assert mock_predict_called

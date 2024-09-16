@@ -35,7 +35,7 @@ class ControlServer:
                 "inference_server_home": self._inf_serv_home,
                 "inference_server_process_args": [
                     self._python_executable_path,
-                    f"{self._inf_serv_home}/inference_server.py",
+                    f"{self._inf_serv_home}/main.py",
                 ],
                 "control_server_host": "0.0.0.0",
                 "control_server_port": self._control_server_port,

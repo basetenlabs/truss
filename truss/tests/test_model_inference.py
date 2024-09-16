@@ -1,4 +1,5 @@
 import concurrent
+import contextlib
 import dataclasses
 import inspect
 import json
@@ -10,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
-from typing import Mapping
+from typing import Iterator, Mapping
 
 import opentelemetry.trace.propagation.tracecontext as tracecontext
 import pytest
@@ -62,6 +63,14 @@ class PropagatingThread(Thread):
         if self.exc:
             raise self.exc
         return self.ret
+
+
+@contextlib.contextmanager
+def temp_truss(model_src: str, config_src: str) -> Iterator[TrussHandle]:
+    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
+        truss_dir = Path(tmp_work_dir, "truss")
+        create_truss(truss_dir, config_src, textwrap.dedent(model_src))
+        yield TrussHandle(truss_dir)
 
 
 @pytest.mark.parametrize(
@@ -284,6 +293,7 @@ def test_async_streaming_timeout():
                 pass
 
         # Check to ensure the Timeout error is in the container logs
+        # TODO: maybe intercept this error better?
         assert_logs_contain_error(
             container.logs(),
             error="raise exceptions.TimeoutError()",
@@ -418,12 +428,7 @@ secrets:
   * Secret 'secret' is defined in the 'secrets' section of the Truss config file
   * The model was pushed with the --trusted flag"""
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
-
-        tr = TrussHandle(truss_dir)
+    with ensure_kill_all(), temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.set_secret("secret", "secret_value")
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
         truss_server_addr = "http://localhost:8090"
@@ -433,14 +438,10 @@ secrets:
 
         assert response.json() == "secret_value"
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        # Case where the secret is not specified in the config
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(
-            truss_dir, config_with_no_secret, textwrap.dedent(inspect.getsource(Model))
-        )
-        tr = TrussHandle(truss_dir)
+    # Case where the secret is not specified in the config
+    with ensure_kill_all(), temp_truss(
+        inspect.getsource(Model), config_with_no_secret
+    ) as tr:
         LocalConfigHandler.set_secret("secret", "secret_value")
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -457,12 +458,8 @@ secrets:
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "600"
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        # Case where the secret is not mounted
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(inspect.getsource(Model)))
-        tr = TrussHandle(truss_dir)
+    # Case where the secret is not mounted
+    with ensure_kill_all(), temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.remove_secret("secret")
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -502,19 +499,21 @@ def test_postprocess_with_streaming_predict():
     """
 
     config = "model_name: error-truss"
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model))
-
-        tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
         response = requests.post(full_url, json={}, stream=True)
-        # Note that the postprocess function is applied to the
-        # streamed response.
-        assert response.content == b"0 modified1 modified"
+        print(response.content)
+        assert_logs_contain_error(
+            container.logs(),
+            "ModelDefinitionError: If the predict function returns a generator (streaming), you cannot use postprocessing.",
+        )
+        assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -539,13 +538,8 @@ def test_streaming_postprocess():
             return ["0", "1"]
     """
 
-    config = "model_name: error-truss"
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model))
-
-        tr = TrussHandle(truss_dir)
+    config = "model_name: streaming-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
@@ -602,13 +596,8 @@ def test_postprocess():
 
     """
 
-    config = "model_name: error-truss"
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model))
-
-        tr = TrussHandle(truss_dir)
+    config = "model_name: postprocess-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
@@ -647,12 +636,7 @@ def test_truss_with_errors():
 
     config = "model_name: error-truss"
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model))
-
-        tr = TrussHandle(truss_dir)
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
@@ -678,12 +662,7 @@ def test_truss_with_errors():
             return {"a": "b"}
     """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model_preprocess_error))
-
-        tr = TrussHandle(truss_dir)
+    with ensure_kill_all(), temp_truss(model_preprocess_error, config) as tr:
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
@@ -708,12 +687,7 @@ def test_truss_with_errors():
             raise ValueError("error")
     """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model_postprocess_error))
-
-        tr = TrussHandle(truss_dir)
+    with ensure_kill_all(), temp_truss(model_postprocess_error, config) as tr:
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
@@ -734,12 +708,7 @@ def test_truss_with_errors():
             raise ValueError("error")
     """
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model_async))
-
-        tr = TrussHandle(truss_dir)
+    with ensure_kill_all(), temp_truss(model_async, config) as tr:
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
@@ -770,12 +739,7 @@ def test_truss_with_user_errors():
 
     config = "model_name: error-truss"
 
-    with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
-        truss_dir = Path(tmp_work_dir, "truss")
-
-        create_truss(truss_dir, config, textwrap.dedent(model))
-
-        tr = TrussHandle(truss_dir)
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )

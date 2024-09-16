@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, TypeVar
+from typing import List, TypeVar
 
 import psutil
 import requests
@@ -83,10 +83,6 @@ def kill_child_processes(parent_pid: int):
 X = TypeVar("X")
 Y = TypeVar("Y")
 Z = TypeVar("Z")
-
-
-def transform_keys(d: Dict[X, Z], fn: Callable[[X], Y]) -> Dict[Y, Z]:
-    return {fn(key): value for key, value in d.items()}
 
 
 def download_from_url_using_requests(URL: str, download_to: Path):

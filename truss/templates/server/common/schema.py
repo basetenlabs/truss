@@ -26,7 +26,7 @@ class TrussSchema(BaseModel):
     supports_streaming: bool
 
     @classmethod
-    def from_signature(
+    def from_parameters(
         cls, input_parameters: MappingProxyType, output_annotation: Any
     ) -> Optional["TrussSchema"]:
         """

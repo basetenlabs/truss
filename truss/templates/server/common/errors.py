@@ -1,21 +1,21 @@
-import asyncio
+import contextlib
 import logging
+import sys
+import traceback
 from http import HTTPStatus
+from types import TracebackType
 from typing import (
-    Callable,
-    Coroutine,
+    Generator,
     Mapping,
-    NoReturn,
     Optional,
-    TypeVar,
+    Tuple,
+    Type,
     Union,
-    overload,
 )
 
 import fastapi
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-from typing_extensions import ParamSpec
 
 # See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
 _TRUSS_SERVER_SERVICE_ID = 4
@@ -49,6 +49,10 @@ class InputParsingError(ValueError):
 
 class UserCodeError(Exception):
     pass
+
+
+class ModelDefinitionError(TypeError):
+    """When the user-defined truss model does not meet the contract."""
 
 
 def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
@@ -88,6 +92,12 @@ async def exception_handler(
             exc,
             _BASETEN_CLIENT_ERROR_CODE,
         )
+    if isinstance(exc, ModelDefinitionError):
+        return _make_baseten_response(
+            HTTPStatus.PRECONDITION_FAILED.value,
+            f"{type(exc).__name__}: {str(exc)}",
+            _BASETEN_DOWNSTREAM_ERROR_CODE,
+        )
     if isinstance(exc, UserCodeError):
         return _make_baseten_response(
             HTTPStatus.INTERNAL_SERVER_ERROR.value,
@@ -113,60 +123,67 @@ HANDLED_EXCEPTIONS = {
     NotImplementedError,
     InputParsingError,
     UserCodeError,
+    ModelDefinitionError,
     fastapi.HTTPException,
 }
 
 
-def _intercept_user_exception(exc: Exception, logger: logging.Logger) -> NoReturn:
+def _filter_traceback() -> (
+    Union[
+        Tuple[Type[BaseException], BaseException, TracebackType],
+        Tuple[None, None, None],
+    ]
+):
+    exc_type, exc_value, tb = sys.exc_info()
+    if tb is None:
+        return exc_type, exc_value, tb  # type: ignore[return-value]
+    extracted_tb = traceback.extract_tb(tb)
+    # Find the first frame with 'model.py' and slice from that frame onward.
+    for idx, frame in enumerate(extracted_tb):
+        if frame.filename.endswith("model.py"):
+            # Slice from the 'model.py' frame onward
+            filtered_tb = extracted_tb[idx:]
+            break
+    else:
+        # No 'model.py' found, return full traceback
+        return exc_type, exc_value, tb  # type: ignore[return-value]
+
+    return exc_type, exc_value, _build_filtered_traceback(tb, filtered_tb)  # type: ignore[return-value]
+
+
+def _build_filtered_traceback(
+    original_tb: TracebackType, filtered_tb
+) -> Optional[TracebackType]:
+    current_tb: Optional[TracebackType] = original_tb
+    filtered_traceback = None
+    # We iterate the original traceback and map it to the filtered frames
+    for frame_summary in reversed(filtered_tb):
+        while (
+            current_tb
+            and current_tb.tb_frame.f_code.co_filename != frame_summary.filename
+        ):
+            current_tb = current_tb.tb_next
+        if current_tb:
+            filtered_traceback = TracebackType(
+                tb_next=filtered_traceback,
+                tb_frame=current_tb.tb_frame,
+                tb_lasti=current_tb.tb_lasti,
+                tb_lineno=current_tb.tb_lineno,
+            )
+            current_tb = current_tb.tb_next
+
+    return filtered_traceback
+
+
+@contextlib.contextmanager
+def intercept_exceptions(logger: logging.Logger) -> Generator[None, None, None]:
+    try:
+        yield
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
-    # TODO: consider removing the wrapper function from the stack trace.
-    if isinstance(exc, HTTPException):
-        logger.exception("Model raised HTTPException", stacklevel=2)
-        raise exc
-    else:
-        logger.exception("Internal Server Error", stacklevel=2)
+    except HTTPException:
+        logger.error("Model raised HTTPException", exc_info=_filter_traceback())
+        raise
+    except Exception as exc:
+        logger.error("Internal Server Error", exc_info=_filter_traceback())
         raise UserCodeError(str(exc))
-
-
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-_R_async = TypeVar("_R_async", bound=Coroutine)  # Return type for async functions
-
-
-@overload
-def intercept_exceptions(
-    func: Callable[_P, _R], logger: logging.Logger
-) -> Callable[_P, _R]: ...
-
-
-@overload
-def intercept_exceptions(
-    func: Callable[_P, _R_async], logger: logging.Logger
-) -> Callable[_P, _R_async]: ...
-
-
-def intercept_exceptions(
-    func: Callable[_P, _R], logger: logging.Logger
-) -> Callable[_P, _R]:
-    """Converts all exceptions to 500-`HTTPException` and logs them.
-    If exception is already `HTTPException`, re-raises exception as is.
-    """
-    if asyncio.iscoroutinefunction(func):
-
-        async def inner_async(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-            try:
-                return await func(*args, **kwargs)
-            except Exception as e:
-                _intercept_user_exception(e, logger)
-
-        return inner_async  # type: ignore[return-value]
-    else:
-
-        def inner_sync(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                _intercept_user_exception(e, logger)
-
-        return inner_sync
