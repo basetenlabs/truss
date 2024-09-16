@@ -93,6 +93,7 @@ RUN python3 -m venv /control/.env \
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx python3-pip && \
         rm -rf /var/lib/apt/lists/*
+RUN pip3 install supervisor==4.2.5
 COPY ./proxy.conf /etc/nginx/conf.d/proxy.conf
 RUN mkdir -p /var/log/supervisor
 ENV SUPERVISOR_CONFIG_FILE "/etc/supervisor/supervisord.conf"
