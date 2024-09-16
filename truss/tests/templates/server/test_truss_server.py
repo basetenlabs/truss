@@ -20,7 +20,7 @@ def test_truss_server_termination(truss_container_fs):
         app_path = truss_container_fs / "app"
         sys.path.append(str(app_path))
 
-        from common.truss_server import TrussServer
+        from truss_server import TrussServer
 
         config = yaml.safe_load((app_path / "config.yaml").read_text())
         server = TrussServer(http_port=port, config=config)
