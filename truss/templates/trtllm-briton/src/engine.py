@@ -281,6 +281,7 @@ class Engine:
                 "items": {
                     "anyOf": list(tool_schemas.values()),
                 },
+                "minItems": 1,
             }
 
         prompt = model_input.get("prompt", None)
@@ -384,12 +385,15 @@ class Engine:
             else:
                 return await build_response()
         except grpc.RpcError as ex:
-            if ex.code() == grpc.StatusCode.INVALID_ARGUMENT:
+            if (
+                ex.code() == grpc.StatusCode.INVALID_ARGUMENT
+                or ex.code() == grpc.StatusCode.UNIMPLEMENTED
+            ):
                 raise HTTPException(status_code=400, detail=ex.details())
-            # If the error is another GRPC exception like NotImplemented, we should return a 500
+            # If the error is another type of gRPC error, we should return a 500
             else:
                 raise HTTPException(
-                    status_code=500, detail=f"An error has occurred: {ex}"
+                    status_code=500, detail=f"An error has occurred: {ex.details()}"
                 )
         except Exception as ex:
             raise HTTPException(status_code=500, detail=f"An error has occurred: {ex}")
