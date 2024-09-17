@@ -1,7 +1,9 @@
 import logging
 import re
 from pathlib import Path
+from typing import List
 
+import pydantic
 import pytest
 import requests
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -213,3 +215,23 @@ def test_raises_depends_usage():
         with chains.run_local():
             chain = InlinedDepends()
             chain.run_remote()
+
+
+class SomeModel(pydantic.BaseModel):
+    foo: int
+
+
+def test_raises_unsupported_arg_type_list_object():
+    with pytest.raises(definitions.ChainsUsageError, match="Unsupported I/O type"):
+
+        class UnsupportedArgType(chains.ChainletBase):
+            def run_remote(self) -> list[pydantic.BaseModel]:
+                return [SomeModel(foo=0)]
+
+
+def test_raises_unsupported_arg_type_list_object_legacy():
+    with pytest.raises(definitions.ChainsUsageError, match="Unsupported I/O type"):
+
+        class UnsupportedArgType(chains.ChainletBase):
+            def run_remote(self) -> List[pydantic.BaseModel]:
+                return [SomeModel(foo=0)]

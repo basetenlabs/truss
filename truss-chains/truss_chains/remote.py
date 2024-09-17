@@ -6,6 +6,7 @@ import pathlib
 import re
 import tempfile
 import textwrap
+import traceback
 import uuid
 from typing import (
     TYPE_CHECKING,
@@ -131,9 +132,8 @@ def _push_service(
     else:
         raise NotImplementedError(options)
 
-    logging.info(
-        f"Pushed `{chainlet_descriptor.display_name}` @ {service.predict_url}."
-    )
+    logging.info(f"Pushed `{chainlet_descriptor.display_name}`")
+    logging.debug(f"Internal model endpoint: `{service.predict_url}`")
     return service
 
 
@@ -452,6 +452,7 @@ class _Watcher:
     _watch_filter: Callable[[watchfiles.Change, str], bool]
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
+    _show_stack_trace: bool
 
     def __init__(
         self,
@@ -461,11 +462,13 @@ class _Watcher:
         remote: Optional[str],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
+        show_stack_trace: bool,
     ) -> None:
         self._source = source
         self._entrypoint = entrypoint
         self._console = console
         self._error_console = error_console
+        self._show_stack_trace = show_stack_trace
         if not remote:
             remote = remote_cli.inquire_remote_name(
                 remote_factory.RemoteFactory.get_available_config_names()
@@ -569,6 +572,7 @@ class _Watcher:
         user_env: Optional[Mapping[str, str]],
     ) -> None:
         exception_raised = None
+        stack_trace = ""
         with log_utils.LogInterceptor() as log_interceptor, self._console.status(
             " Live Patching Chain.\n", spinner="arrow3"
         ):
@@ -601,6 +605,7 @@ class _Watcher:
                     }
             except Exception as e:
                 exception_raised = e
+                stack_trace = traceback.format_exc()
             finally:
                 logs = log_interceptor.get_logs()
 
@@ -618,6 +623,9 @@ class _Watcher:
                 "Try to fix the issue and save the file. Error:\n"
                 f"{textwrap.indent(str(exception_raised), ' ' * 4)}"
             )
+            if self._show_stack_trace:
+                self._error_console.print(stack_trace)
+
             self._console.print(
                 "The watcher will continue and if you can resolve the "
                 "issue, subsequent patches might succeed.",
@@ -690,6 +698,7 @@ def watch(
     user_env: Optional[Mapping[str, str]],
     console: "rich_console.Console",
     error_console: "rich_console.Console",
+    show_stack_trace: bool,
 ) -> None:
     console.print(
         (
@@ -698,5 +707,7 @@ def watch(
         ),
         style="blue",
     )
-    patcher = _Watcher(source, entrypoint, name, remote, console, error_console)
+    patcher = _Watcher(
+        source, entrypoint, name, remote, console, error_console, show_stack_trace
+    )
     patcher.watch(user_env)

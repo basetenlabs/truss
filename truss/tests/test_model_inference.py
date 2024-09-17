@@ -1,16 +1,21 @@
 import concurrent
+import dataclasses
 import inspect
 import json
 import logging
+import pathlib
 import tempfile
 import textwrap
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
+from typing import Mapping
 
+import opentelemetry.trace.propagation.tracecontext as tracecontext
 import pytest
 import requests
+from opentelemetry import context, trace
 from requests.exceptions import RequestException
 
 from truss.local.local_config_handler import LocalConfigHandler
@@ -449,6 +454,8 @@ secrets:
 
         assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     with ensure_kill_all(), tempfile.TemporaryDirectory(dir=".") as tmp_work_dir:
         # Case where the secret is not mounted
@@ -468,6 +475,8 @@ secrets:
 
         assert_logs_contain_error(container.logs(), missing_secret_error_message)
         assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -657,6 +666,8 @@ def test_truss_with_errors():
         assert_logs_contain_error(container.logs(), "ValueError: error")
 
         assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     model_preprocess_error = """
     class Model:
@@ -685,6 +696,8 @@ def test_truss_with_errors():
 
         assert_logs_contain_error(container.logs(), "ValueError: error")
         assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     model_postprocess_error = """
     class Model:
@@ -712,6 +725,8 @@ def test_truss_with_errors():
         assert "error" in response.json()
         assert_logs_contain_error(container.logs(), "ValueError: error")
         assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
     model_async = """
     class Model:
@@ -738,6 +753,8 @@ def test_truss_with_errors():
         assert_logs_contain_error(container.logs(), "ValueError: error")
 
         assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -768,6 +785,8 @@ def test_truss_with_user_errors():
         response = requests.post(full_url, json={})
         assert response.status_code == 500
         assert "error" in response.json()
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
         assert_logs_contain_error(
             container.logs(),
@@ -776,6 +795,8 @@ def test_truss_with_user_errors():
         )
 
         assert "My custom message." in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
 
 
 @pytest.mark.integration
@@ -843,3 +864,113 @@ def test_slow_truss():
         predict_call.join()
 
         _test_invocations(200)
+
+
+# Tracing ##############################################################################
+
+
+def _make_otel_headers() -> Mapping[str, str]:
+    """
+    Create and return a mapping with OpenTelemetry trace context headers.
+
+    This function starts a new span and injects the trace context into the headers,
+    which can be used to propagate tracing information in outgoing HTTP requests.
+
+    Returns:
+        Mapping[str, str]: A mapping containing the trace context headers.
+    """
+    # Initialize a tracer
+    tracer = trace.get_tracer(__name__)
+
+    # Create a dictionary to hold the headers
+    headers: dict[str, str] = {}
+
+    # Start a new span
+    with tracer.start_as_current_span("outgoing-request-span"):
+        # Use the TraceContextTextMapPropagator to inject the trace context into the headers
+        propagator = tracecontext.TraceContextTextMapPropagator()
+        propagator.inject(headers, context=context.get_current())
+
+    return headers
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("enable_tracing_data", [True, False])
+def test_streaming_truss_with_user_tracing(enable_tracing_data):
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "test_streaming_truss_with_tracing"
+        tr = TrussHandle(truss_dir)
+
+        def enable_gpu_fn(conf):
+            new_runtime = dataclasses.replace(
+                conf.runtime, enable_tracing_data=enable_tracing_data
+            )
+            return dataclasses.replace(conf, runtime=new_runtime)
+
+        tr._update_config(enable_gpu_fn)
+
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+
+        truss_server_addr = "http://localhost:8090"
+        predict_url = f"{truss_server_addr}/v1/models/model:predict"
+        print(predict_url)
+
+        # A request for which response is not completely read
+        headers_0 = _make_otel_headers()
+        predict_response = requests.post(
+            predict_url, json={}, stream=True, headers=headers_0
+        )
+        # We just read the first part and leave it hanging here
+        next(predict_response.iter_content())
+
+        headers_1 = _make_otel_headers()
+        predict_response = requests.post(
+            predict_url, json={}, stream=True, headers=headers_1
+        )
+        assert predict_response.headers.get("transfer-encoding") == "chunked"
+
+        # When accept is set to application/json, the response is not streamed.
+        headers_2 = _make_otel_headers()
+        predict_non_stream_response = requests.post(
+            predict_url,
+            json={},
+            stream=True,
+            headers={**headers_2, "accept": "application/json"},
+        )
+        assert "transfer-encoding" not in predict_non_stream_response.headers
+        assert predict_non_stream_response.json() == "01234"
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            truss_traces_file = pathlib.Path(tmp_dir) / "otel_traces.ndjson"
+            container.copy_from("/tmp/otel_traces.ndjson", truss_traces_file)
+            truss_traces = [
+                json.loads(s) for s in truss_traces_file.read_text().splitlines()
+            ]
+
+            user_traces_file = pathlib.Path(tmp_dir) / "otel_user_traces.ndjson"
+            container.copy_from("/tmp/otel_user_traces.ndjson", user_traces_file)
+            user_traces = [
+                json.loads(s) for s in user_traces_file.read_text().splitlines()
+            ]
+
+        if not enable_tracing_data:
+            assert len(truss_traces) == 0
+            assert len(user_traces) > 0
+            return
+
+        assert sum(1 for x in truss_traces if x["name"] == "predict-endpoint") == 3
+        assert sum(1 for x in user_traces if x["name"] == "load_model") == 1
+        assert sum(1 for x in user_traces if x["name"] == "predict") == 3
+
+        user_parents = set(x["parent_id"] for x in user_traces)
+        truss_spans = set(x["context"]["span_id"] for x in truss_traces)
+        truss_parents = set(x["parent_id"] for x in truss_traces)
+        # Make sure there is no context creep into user traces. No user trace should
+        # have a truss trace as parent.
+        assert user_parents & truss_spans == set()
+        # But make sure traces have parents at all.
+        assert len(user_parents) > 3
+        assert len(truss_parents) > 3

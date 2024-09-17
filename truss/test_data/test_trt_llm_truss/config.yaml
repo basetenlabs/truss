@@ -12,3 +12,5 @@ trt_llm:
     checkpoint_repository:
       repo: TinyLlama/TinyLlama-1.1B-Chat-v1.0
       source: HF
+environment_variables:
+  OTEL_TRACING_NDJSON_FILE: "/tmp/otel_traces.ndjson"

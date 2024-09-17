@@ -2,8 +2,8 @@ import os
 from typing import Dict
 
 import yaml
-from common.truss_server import TrussServer  # noqa: E402
 from shared.logging import setup_logging
+from truss_server import TrussServer  # noqa: E402
 
 CONFIG_FILE = "config.yaml"
 

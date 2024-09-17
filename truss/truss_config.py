@@ -34,6 +34,7 @@ DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 DEFAULT_NUM_WORKERS = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
+DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
 
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
@@ -143,6 +144,7 @@ class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
     num_workers: int = DEFAULT_NUM_WORKERS
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
+    enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
 
     @staticmethod
     def from_dict(d):
@@ -151,11 +153,13 @@ class Runtime:
         streaming_read_timeout = d.get(
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
+        enable_tracing_data = d.get("enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA)
 
         return Runtime(
             predict_concurrency=predict_concurrency,
             num_workers=num_workers,
             streaming_read_timeout=streaming_read_timeout,
+            enable_tracing_data=enable_tracing_data,
         )
 
     def to_dict(self):
@@ -163,6 +167,7 @@ class Runtime:
             "predict_concurrency": self.predict_concurrency,
             "num_workers": self.num_workers,
             "streaming_read_timeout": self.streaming_read_timeout,
+            "enable_tracing_data": self.enable_tracing_data,
         }
 
 
@@ -570,7 +575,7 @@ class TrussConfig:
             requirements_file=d.get("requirements_file", None),
             requirements=d.get("requirements", []),
             system_packages=d.get("system_packages", []),
-            environment_variables=d.get("environment_variables", {}),
+            environment_variables=_handle_env_vars(d.get("environment_variables", {})),
             resources=Resources.from_dict(d.get("resources", {})),
             runtime=Runtime.from_dict(d.get("runtime", {})),
             build=Build.from_dict(d.get("build", {})),
@@ -688,6 +693,16 @@ class TrussConfig:
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
         self._validate_quant_format_and_accelerator_for_trt_llm_builder()
+
+
+def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:
+    new_env_vars = {}
+    for k, v in env_vars.items():
+        if isinstance(v, bool):
+            new_env_vars[k] = str(v).lower()
+        else:
+            new_env_vars[k] = str(v)
+    return new_env_vars
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {

@@ -77,16 +77,18 @@ COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
 COPY ./server /app
-{%- if model_dir_exists %}
-COPY ./{{ config.model_module_dir }} /app/model
-{%- endif %}
+
 COPY ./config.yaml /app/config.yaml
     {%- if config.live_reload and not config.docker_server%}
 COPY ./control /control
 RUN python3 -m venv /control/.env \
     && /control/.env/bin/pip3 install -r /control/requirements.txt
     {%- endif %}
+{%- if model_dir_exists %}
+COPY ./{{ config.model_module_dir }} /app/model
+{%- endif %}
 {% endblock %}
+
 
 {% block run %}
     {%- if config.docker_server %}

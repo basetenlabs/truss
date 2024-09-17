@@ -165,7 +165,11 @@ def _gen_truss_input_pydantic(
         else:
             fields.append(f"{arg.name}: {type_ref.src}")
 
-    field_block = _indent("\n".join(fields))
+    if fields:
+        field_block = _indent("\n".join(fields))
+    else:
+        field_block = _indent("pass")
+
     model_name = _get_input_model_name(chainlet_descriptor.name)
     src = f"class {model_name}(pydantic.BaseModel):\n{field_block}"
     return _Source(src=src, imports=imports)
@@ -653,10 +657,19 @@ def gen_truss_chainlet(
         model_name,
         user_env,
     )
-    # TODO This assume all imports are absolute w.r.t chain root (or site-packages).
+    # TODO This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(
         chain_root, chainlet_dir / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR
     )
+    for file in chain_root.glob("*.py"):
+        if "-" in file.name:
+            raise definitions.ChainsUsageError(
+                f"Python file `{file}` contains `-`, use `_` instead."
+            )
+        if file.name == _MODEL_FILENAME:
+            raise definitions.ChainsUsageError(
+                f"Python file name `{_MODEL_FILENAME}` is reserved and cannot be used."
+            )
     chainlet_file = _gen_truss_chainlet_file(
         chainlet_dir, chainlet_descriptor, dependencies
     )
