@@ -1,4 +1,0 @@
-psutil
-
-[test]
-psutil
