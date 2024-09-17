@@ -56,7 +56,6 @@ from truss.truss_spec import TrussSpec
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
-    copy_file_path,
     copy_tree_or_file,
     copy_tree_path,
     load_trussignore_patterns,
