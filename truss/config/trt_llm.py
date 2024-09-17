@@ -99,7 +99,7 @@ class TRTLLMConfiguration(BaseModel):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
         self._validate_kv_cache_flags()
-        if self.build.checkpoint_repository.source == "HF":
+        if self.build.checkpoint_repository.source == CheckpointSource.HF:
             self._validate_hf_repo_id()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
@@ -139,7 +139,9 @@ class TRTLLMConfiguration(BaseModel):
         try:
             validate_repo_id(self.build.checkpoint_repository.repo)
         except HFValidationError as e:
-            raise ValueError(f"Validation failed: {str(e)}") from e
+            raise ValueError(
+                f"HuggingFace repository validation failed: {str(e)}"
+            ) from e
 
     @property
     def requires_build(self):
