@@ -528,9 +528,8 @@ class ServingImageBuilder(ImageBuilder):
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-        dockerfile_template_name = SERVER_DOCKERFILE_TEMPLATE_NAME
         dockerfile_template = read_template_from_fs(
-            TEMPLATES_DIR, dockerfile_template_name
+            TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
         python_version = to_dotted_python_version(config.python_version)
         if config.base_image:
