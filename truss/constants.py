@@ -50,7 +50,6 @@ FILENAME_CONSTANTS_MAP = {
 }
 
 SERVER_DOCKERFILE_TEMPLATE_NAME = "server.Dockerfile.jinja"
-DOCKER_SERVER_DOCKERFILE_TEMPLATE_NAME = "docker_server.Dockerfile.jinja"
 MODEL_DOCKERFILE_NAME = "Dockerfile"
 
 README_TEMPLATE_NAME = "README.md.jinja"
