@@ -24,4 +24,3 @@ redirect_stderr=true
 [eventlistener:quit_on_failure]
 events=PROCESS_STATE_FATAL
 command=sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'
-
