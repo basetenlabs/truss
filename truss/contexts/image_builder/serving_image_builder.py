@@ -342,38 +342,9 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         if config.docker_server is not None:
-            # copy_tree_path(truss_dir, build_dir)
-            # TODO: move supervisor_checks to better place
-            copy_tree_path(
-                TEMPLATES_DIR / "docker_server" / "supervisor_checks",
-                build_dir / "supervisor_checks",
-            )
-            # TODO: to remove
-            # copy_file_path(
-            #     TEMPLATES_DIR / "docker_server" / "download_model.py",
-            #     build_dir / "download_model.py",
-            # )
-            # copy_file_path(
-            #     TEMPLATES_DIR / "docker_server" / "setup_ready_check.py",
-            #     build_dir / "setup_ready_check.py",
-            # )
-
-            # if not build_dir.exists():
-            #     build_dir.mkdir(parents=True)
-
-            # dockerfile_template = read_template_from_fs(
-            #     TEMPLATES_DIR, DOCKER_SERVER_DOCKERFILE_TEMPLATE_NAME
-            # )
             nginx_template = read_template_from_fs(
                 TEMPLATES_DIR, "docker_server/proxy.conf.jinja"
             )
-
-            # dockerfile_content = dockerfile_template.render(
-            #     base_image_name_and_tag=config.base_image.image,
-            #     config=config,
-            # )
-            # dockerfile_filepath = build_dir / "Dockerfile"
-            # dockerfile_filepath.write_text(dockerfile_content)
 
             nginx_content = nginx_template.render(
                 server_endpoint=config.docker_server.predict_endpoint,
