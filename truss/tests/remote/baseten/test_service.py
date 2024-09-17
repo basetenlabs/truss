@@ -29,6 +29,18 @@ def test_chain_invocation_url_draft():
     assert url == "https://chain-abc.api.baseten.co/development/run_remote"
 
 
+def test_model_invocation_url_self_hosted():
+    url = service.URLConfig.invocation_url(
+        "https://api.baseten.co",
+        service.URLConfig.MODEL,
+        "abc",
+        "666",
+        is_draft=True,
+        remote_base_domain="testbase.com",
+    )
+    assert url == "https://api.baseten.testbase.com/development/predict"
+
+
 def test_model_status_page_url():
     url = service.URLConfig.status_page_url(
         "https://app.baseten.co",

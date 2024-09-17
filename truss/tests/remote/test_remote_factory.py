@@ -24,10 +24,19 @@ SAMPLE_TRUSSRC_NO_PARAMS = """
 remote_provider=test_remote
 """
 
+SAMPLE_TRUSSRC_WITH_REMOTE_INFERENCE_BASE_DOMAIN = """
+[test]
+remote_provider=test_remote_base_domain
+api_key=test_key
+remote_url=http://test.com
+remote_base_domain=testbasedomain.co
+"""
+
 
 class TrussTestRemote(TrussRemote):
-    def __init__(self, api_key, remote_url):
+    def __init__(self, api_key, remote_url, remote_base_domain=None):
         self.api_key = api_key
+        self.remote_base_domain = remote_base_domain
 
     def authenticate(self):
         return {"Authorization": self.api_key}
@@ -130,3 +139,22 @@ def test_load_remote_config_no_params(mock_exists, mock_open):
     service = RemoteFactory.load_remote_config("test")
     with pytest.raises(ValueError):
         RemoteFactory.validate_remote_config(service.configs, "test")
+
+
+@mock.patch.dict(
+    RemoteFactory.REGISTRY, {"test_remote_base_domain": TrussTestRemote}, clear=True
+)
+@mock.patch(
+    "builtins.open",
+    new_callable=mock.mock_open,
+    read_data=SAMPLE_TRUSSRC_WITH_REMOTE_INFERENCE_BASE_DOMAIN,
+)
+@mock.patch("pathlib.Path.exists", return_value=True)
+def test_load_remote_config_with_remote_base_domain(mock_exists, mock_open):
+    service = RemoteFactory.load_remote_config("test")
+    assert service.configs == {
+        "remote_provider": "test_remote_base_domain",
+        "api_key": "test_key",
+        "remote_url": "http://test.com",
+        "remote_base_domain": "testbasedomain.co",
+    }
