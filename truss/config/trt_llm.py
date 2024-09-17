@@ -3,6 +3,8 @@ import logging
 from enum import Enum
 from typing import Optional
 
+from huggingface_hub.errors import HFValidationError
+from huggingface_hub.utils import validate_repo_id
 from pydantic import BaseModel, validator
 from rich.console import Console
 
@@ -97,6 +99,8 @@ class TRTLLMConfiguration(BaseModel):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
         self._validate_kv_cache_flags()
+        if self.build.checkpoint_repository.source == "HF":
+            self._validate_hf_repo_id()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -130,6 +134,12 @@ class TRTLLMConfiguration(BaseModel):
         ):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
         return self
+
+    def _validate_hf_repo_id(self):
+        try:
+            validate_repo_id(self.build.checkpoint_repository.repo)
+        except HFValidationError as e:
+            raise ValueError(f"Validation failed: {str(e)}") from e
 
     @property
     def requires_build(self):

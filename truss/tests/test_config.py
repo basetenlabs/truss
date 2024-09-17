@@ -468,6 +468,24 @@ def test_plugin_paged_context_fmha_check(trtllm_config):
         TrussConfig.from_dict(trtllm_config)
 
 
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "./llama-3.1-8b",
+        "../my-model-is-in-parent-directory",
+        "~/.huggingface/my--model--cache/model",
+        "foo.git",
+        "datasets/foo/bar",
+        ".repo_id" "other..repo..id",
+    ],
+)
+def test_invalid_hf_repo(trtllm_config, repo):
+    trtllm_config["trt_llm"]["build"]["checkpoint_repository"]["source"] = "HF"
+    trtllm_config["trt_llm"]["build"]["checkpoint_repository"]["repo"] = repo
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
 def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
     trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
         "paged_kv_cache": False,
