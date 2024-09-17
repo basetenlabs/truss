@@ -405,7 +405,7 @@ class DockerServer:
     predict_endpoint: str
 
     @staticmethod
-    def from_dict(d: Dict[str, str]) -> "DockerServer":
+    def from_dict(d) -> "DockerServer":
         return DockerServer(
             setup_command=d.get("setup_command", ""),
             start_command=d.get("start_command", ""),
@@ -415,7 +415,7 @@ class DockerServer:
             predict_endpoint=d.get("predict_endpoint", ""),
         )
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self):
         return {
             "setup_command": self.setup_command,
             "start_command": self.start_command,
