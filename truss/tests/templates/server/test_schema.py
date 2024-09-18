@@ -24,7 +24,7 @@ def test_truss_schema_pydantic_empty_annotations():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None
 
@@ -39,7 +39,7 @@ def test_truss_schema_pydantic_input_and_output():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema.input_type == ModelInput
     assert schema.output_type == ModelOutput
@@ -56,7 +56,7 @@ def test_truss_schema_non_pydantic_input():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None
 
@@ -71,7 +71,7 @@ def test_truss_schema_non_pydantic_output():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None
 
@@ -86,7 +86,7 @@ def test_truss_schema_list_types():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None
 
@@ -101,7 +101,7 @@ def test_truss_schema_dict_types():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None
 
@@ -116,7 +116,7 @@ def test_truss_schema_async():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema.input_type == ModelInput
     assert schema.output_type == ModelOutput
@@ -133,7 +133,7 @@ def test_truss_schema_streaming():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema.input_type == ModelInput
     assert schema.output_type is None
@@ -150,7 +150,7 @@ def test_truss_schema_streaming_async():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema.input_type == ModelInput
     assert schema.output_type is None
@@ -172,7 +172,7 @@ def test_truss_schema_union_sync():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema.input_type == ModelInput
     assert schema.output_type == ModelOutput
     assert schema.supports_streaming
@@ -199,7 +199,7 @@ def test_truss_schema_union_async():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema.input_type == ModelInput
     assert schema.output_type is ModelOutput
     assert schema.supports_streaming
@@ -218,7 +218,7 @@ def test_truss_schema_union_async_non_pydantic():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema is None
 
 
@@ -232,7 +232,7 @@ def test_truss_schema_union_non_pydantic():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None
 
@@ -247,7 +247,7 @@ def test_truss_schema_async_non_pydantic():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
     assert schema is None
 
 
@@ -268,6 +268,6 @@ def test_truss_schema_union_three_arms():
     input_signature = inspect.signature(model.predict).parameters
     output_signature = inspect.signature(model.predict).return_annotation
 
-    schema = TrussSchema.from_parameters(input_signature, output_signature)
+    schema = TrussSchema.from_signature(input_signature, output_signature)
 
     assert schema is None

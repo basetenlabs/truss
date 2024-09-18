@@ -232,7 +232,7 @@ class ModelDescriptor:
             preprocess=preprocess,
             predict=predict,
             postprocess=postprocess,
-            truss_schema=TrussSchema.from_parameters(parameters, return_annotation),
+            truss_schema=TrussSchema.from_signature(parameters, return_annotation),
         )
 
 

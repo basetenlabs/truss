@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Thread
 from typing import Iterator, Mapping
 
+import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
 import pytest
 import requests
@@ -1109,3 +1110,39 @@ def test_truss_forbid_postprocessing_with_response():
             "If the predict function returns a response object, you cannot "
             "use postprocessing.",
         )
+
+
+@pytest.mark.integration
+def test_async_streaming_with_cancellation():
+    model = """
+    import fastapi, asyncio, logging
+
+    class Model:
+        async def predict(self, inputs, request: fastapi.Request):
+            await asyncio.sleep(1)
+            if await request.is_disconnected():
+                logging.warning("Cancelled (before gen).")
+                return
+
+            for i in range(5):
+                await asyncio.sleep(1.0)
+                logging.warning(i)
+                yield str(i)
+                if await request.is_disconnected():
+                    logging.warning("Cancelled (during gen).")
+                    return
+    """
+    with ensure_kill_all(), temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        # For hard cancellation we need to use httpx, requests' timeouts don't work.
+        with pytest.raises(httpx.ReadTimeout):
+            with httpx.Client(
+                timeout=httpx.Timeout(1.0, connect=1.0, read=1.0)
+            ) as client:
+                response = client.post(PREDICT_URL, json={}, timeout=1.0)
+                response.raise_for_status()
+
+        time.sleep(2)  # Wait a bit to get all logs.
+        assert "Cancelled (during gen)." in container.logs()
