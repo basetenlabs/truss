@@ -1,7 +1,6 @@
 import contextlib
 import logging
 import sys
-import traceback
 from http import HTTPStatus
 from types import TracebackType
 from typing import (
@@ -140,42 +139,18 @@ def _filter_traceback() -> (
     exc_type, exc_value, tb = sys.exc_info()
     if tb is None:
         return exc_type, exc_value, tb  # type: ignore[return-value]
-    extracted_tb = traceback.extract_tb(tb)
-    # Find the first frame with 'model.py' and slice from that frame onward.
-    for idx, frame in enumerate(extracted_tb):
-        if frame.filename.endswith("model.py"):
-            # Slice from the 'model.py' frame onward
-            filtered_tb = extracted_tb[idx:]
-            break
-    else:
-        # No 'model.py' found, return full traceback
-        return exc_type, exc_value, tb  # type: ignore[return-value]
 
-    return exc_type, exc_value, _build_filtered_traceback(tb, filtered_tb)  # type: ignore[return-value]
+    # Walk the traceback until we find the frame ending with 'model.py'
+    current_tb: Optional[TracebackType] = tb
+    while current_tb is not None:
+        filename = current_tb.tb_frame.f_code.co_filename
+        if filename.endswith("model.py"):
+            # Return exception info with traceback starting from current_tb
+            return exc_type, exc_value, current_tb  # type: ignore[return-value]
+        current_tb = current_tb.tb_next
 
-
-def _build_filtered_traceback(
-    original_tb: TracebackType, filtered_tb
-) -> Optional[TracebackType]:
-    current_tb: Optional[TracebackType] = original_tb
-    filtered_traceback = None
-    # We iterate the original traceback and map it to the filtered frames
-    for frame_summary in reversed(filtered_tb):
-        while (
-            current_tb
-            and current_tb.tb_frame.f_code.co_filename != frame_summary.filename
-        ):
-            current_tb = current_tb.tb_next
-        if current_tb:
-            filtered_traceback = TracebackType(
-                tb_next=filtered_traceback,
-                tb_frame=current_tb.tb_frame,
-                tb_lasti=current_tb.tb_lasti,
-                tb_lineno=current_tb.tb_lineno,
-            )
-            current_tb = current_tb.tb_next
-
-    return filtered_traceback
+    # If 'model.py' not found, return the original exception info
+    return exc_type, exc_value, tb  # type: ignore[return-value]
 
 
 @contextlib.contextmanager
