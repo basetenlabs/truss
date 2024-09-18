@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 from pathlib import Path
@@ -43,6 +44,20 @@ async def generic_error_handler(_, exc):
 async def handle_model_load_failed(_, error):
     # Model load failures should result in 503 status
     return JSONResponse({"error": str(error)}, 503)
+
+
+@contextlib.asynccontextmanager
+async def lifespan_context(app: FastAPI):
+    # Before start.
+    yield  # Run.
+    # Shutdown.
+    # FastApi handles the term signal to start the shutdown flow. Here we
+    # make sure that the inference server is stopeed when control server
+    # shuts down. Inference server has logic to wait until all requests are
+    # finished before exiting. By waiting on that, we inherit the same
+    # behavior for control server.
+    app.state.logger.info("Term signal received, shutting down.")
+    app.state.inference_server_process_controller.terminate_with_wait()
 
 
 def create_app(base_config: Dict):
@@ -99,19 +114,10 @@ def create_app(base_config: Dict):
             ModelLoadFailed: handle_model_load_failed,
             Exception: generic_error_handler,
         },
+        lifespan=lifespan_context,
     )
     app.state = app_state
     app.include_router(control_app)
-
-    @app.on_event("shutdown")
-    def on_shutdown():
-        # FastApi handles the term signal to start the shutdown flow. Here we
-        # make sure that the inference server is stopeed when control server
-        # shuts down. Inference server has logic to wait until all requests are
-        # finished before exiting. By waiting on that, we inherit the same
-        # behavior for control server.
-        app.state.logger.info("Term signal received, shutting down.")
-        app.state.inference_server_process_controller.terminate_with_wait()
 
     return app
 

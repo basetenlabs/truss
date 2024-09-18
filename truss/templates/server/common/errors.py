@@ -14,6 +14,7 @@ from typing import (
 )
 
 import fastapi
+import starlette.responses
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
@@ -62,6 +63,10 @@ def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
     }
 
 
+def add_error_headers_to_user_response(response: starlette.responses.Response) -> None:
+    response.headers.update(_make_baseten_error_headers(_BASETEN_CLIENT_ERROR_CODE))
+
+
 def _make_baseten_response(
     http_status: int,
     info: Union[str, Exception],
@@ -75,9 +80,7 @@ def _make_baseten_response(
     )
 
 
-async def exception_handler(
-    request: fastapi.Request, exc: Exception
-) -> fastapi.Response:
+async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Response:
     if isinstance(exc, ModelMissingError):
         return _make_baseten_response(
             HTTPStatus.NOT_FOUND.value, exc, _BASETEN_DOWNSTREAM_ERROR_CODE

@@ -119,10 +119,10 @@ class ArgConfig(enum.Enum):
                 if _is_request_type(param1.annotation):
                     raise errors.ModelDefinitionError(
                         f"`{method_name}` method with two arguments is not allowed to "
-                        "have only request as first argument, must be second. "
+                        "have request as first argument, request must be second. "
                         f"Got: {signature}"
                     )
-            if not (param2.annotation and _is_request_type(param1.annotation)):
+            if not (param2.annotation and _is_request_type(param2.annotation)):
                 raise errors.ModelDefinitionError(
                     f"`{method_name}` method with two arguments must have request as "
                     f"second argument (type annotated). Got: {signature} "
@@ -130,7 +130,7 @@ class ArgConfig(enum.Enum):
             return cls.INPUTS_AND_REQUEST
         else:
             raise errors.ModelDefinitionError(
-                f"`{method_name}` method cannot have more than to arguments. "
+                f"`{method_name}` method cannot have more than two arguments. "
                 f"Got: {signature}"
             )
 
@@ -545,7 +545,8 @@ class ModelWrapper:
                     with errors.intercept_exceptions(self._logger):
                         raise errors.ModelDefinitionError(
                             "If the predict function returns a generator (streaming), "
-                            "you cannot use postprocessing."
+                            "you cannot use postprocessing. Include all processing in "
+                            "the predict method."
                         )
 
                 if request.headers.get("accept") == "application/json":
@@ -564,8 +565,8 @@ class ModelWrapper:
             if self.model_descriptor.postprocess:
                 with errors.intercept_exceptions(self._logger):
                     raise errors.ModelDefinitionError(
-                        "If the predict function returns a response object, "
-                        "you cannot use postprocessing."
+                        "If the predict function returns a response object, you cannot "
+                        "use postprocessing."
                     )
             else:
                 return predict_result

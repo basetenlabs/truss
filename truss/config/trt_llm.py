@@ -1,12 +1,16 @@
 import json
 import logging
+import warnings
 from enum import Enum
 from typing import Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, PydanticDeprecatedSince20, validator
 from rich.console import Console
+
+# Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
+warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

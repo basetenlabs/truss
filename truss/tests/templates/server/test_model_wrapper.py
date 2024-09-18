@@ -75,6 +75,7 @@ def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
         assert model_wrapper.load_failed()
 
 
+@pytest.mark.anyio
 @pytest.mark.integration
 async def test_model_wrapper_streaming_timeout(app_path):
     if "model_wrapper" in sys.modules:
@@ -92,7 +93,7 @@ async def test_model_wrapper_streaming_timeout(app_path):
     assert model_wrapper._config.get("runtime").get("streaming_read_timeout") == 5
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
@@ -116,7 +117,7 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
             ), "Expected extension_name was not called"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
@@ -151,7 +152,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
             assert resp == expected_predict_response
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     (app_path / "model" / "model.py").unlink()

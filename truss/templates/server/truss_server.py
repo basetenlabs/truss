@@ -7,6 +7,7 @@ import signal
 import socket
 import sys
 import time
+from http import HTTPStatus
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -195,6 +196,8 @@ class BasetenEndpoints:
                 # media_type in StreamingResponse sets the Content-Type header
                 return StreamingResponse(result, media_type="application/octet-stream")
             elif isinstance(result, Response):
+                if result.status_code >= HTTPStatus.MULTIPLE_CHOICES.value:
+                    errors.add_error_headers_to_user_response(result)
                 return result
 
             response_headers = {}
