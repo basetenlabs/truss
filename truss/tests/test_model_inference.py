@@ -28,7 +28,6 @@ from truss.truss_handle import TrussHandle
 logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_ERROR = "Internal Server Error"
-
 PREDICT_URL = "http://localhost:8090/v1/models/model:predict"
 
 
