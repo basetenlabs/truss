@@ -192,6 +192,27 @@ def test_requirements_file_truss():
         assert response.status_code == 200
         assert response.json() is False
 
+@pytest.mark.integration
+def test_docker_server_truss():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+
+        truss_dir = truss_root / "test_data" / "test_docker_server_truss"
+
+        tr = TrussHandle(truss_dir)
+
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        truss_server_addr = "http://localhost:8090"
+        full_url = f"{truss_server_addr}/v1/models/model:predict"
+
+        try:
+            response = requests.post(full_url, json={})
+            print(f"response: {response}")
+        except requests.exceptions.ConnectionError:
+            pytest.fail("ConnectionError: Could not connect to the server")
+        assert response.status_code == 200
+        assert response.json() == {"message": "Hello World", "is_torch_cuda_available": False}
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize("pydantic_major_version", ["1", "2"])
