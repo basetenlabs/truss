@@ -296,6 +296,7 @@ def update_config_and_gather_files(
 ):
     return get_files_to_cache(config, truss_dir, build_dir)
 
+
 def generate_docker_server_nginx_config(build_dir: Path, config: TrussConfig):
     nginx_template = read_template_from_fs(
         DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
@@ -309,6 +310,7 @@ def generate_docker_server_nginx_config(build_dir: Path, config: TrussConfig):
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
+
 
 def generate_docker_server_supervisord_config(build_dir: Path, config: TrussConfig):
     supervisord_template = read_template_from_fs(
