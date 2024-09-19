@@ -2,9 +2,11 @@ import asyncio
 import dataclasses
 import enum
 import importlib
+import importlib.util
 import inspect
 import logging
 import os
+import pathlib
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -357,11 +359,23 @@ class ModelWrapper:
             / self._config["model_class_filename"]
         )
         if model_class_file_path.exists():
-            model_module_path = Path(self._config["model_class_filename"])
-            model_module_name = str(model_module_path.with_suffix(""))
-            module = importlib.import_module(
-                f"{self._config['model_module_dir']}.{model_module_name}"
-            )
+            self._logger.info("Loading truss model from file.")
+            module_path = pathlib.Path(model_class_file_path).resolve()
+            module_name = module_path.stem  # Use the file's name as the module name
+            if not os.path.isfile(module_path):
+                raise ImportError(
+                    f"`{module_path}` is not a file. You must point to a python file where "
+                    "the entrypoint chainlet is defined."
+                )
+            import_error_msg = f"Could not import `{module_path}`. Check path."
+            spec = importlib.util.spec_from_file_location(module_name, module_path)
+            if not spec:
+                raise ImportError(import_error_msg)
+            if not spec.loader:
+                raise ImportError(import_error_msg)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
             model_class = getattr(module, self._config["model_class_name"])
             model_init_params = _prepare_init_args(
                 model_class,
@@ -377,6 +391,7 @@ class ModelWrapper:
             self._maybe_model = model_class(**model_init_params)
 
         elif TRT_LLM_EXTENSION_NAME in extensions:
+            self._logger.info("Loading TRT LLM extension as model.")
             # trt_llm extension allows model.py to be absent. It supplies its
             # own model class in that case.
             trt_llm_extension = extensions["trt_llm"]

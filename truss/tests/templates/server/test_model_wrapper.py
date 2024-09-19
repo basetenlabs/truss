@@ -54,7 +54,7 @@ async def test_model_wrapper_load_error_once(app_path):
     model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
     model_wrapper.load()
     # Allow load thread to execute
-    time.sleep(2)
+    time.sleep(1)
     output = await model_wrapper.predict({}, MagicMock(spec=Request))
     assert output == {}
     assert model_wrapper._model.load_count == 2
