@@ -206,11 +206,7 @@ def test_docker_server_truss():
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
-        try:
-            response = requests.post(full_url, json={})
-            print(f"response: {response}")
-        except requests.exceptions.ConnectionError:
-            pytest.fail("ConnectionError: Could not connect to the server")
+        response = requests.post(full_url, json={})
         assert response.status_code == 200
         assert response.json() == {
             "message": "Hello World",
