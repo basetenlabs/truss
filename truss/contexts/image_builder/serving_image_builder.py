@@ -20,6 +20,7 @@ from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     CONTROL_SERVER_CODE_DIR,
+    DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
     MODEL_DOCKERFILE_NAME,
     OPENAI_COMPATIBLE_TAG,
@@ -295,6 +296,31 @@ def update_config_and_gather_files(
 ):
     return get_files_to_cache(config, truss_dir, build_dir)
 
+def generate_docker_server_nginx_config(build_dir: Path, config: TrussConfig):
+    nginx_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
+    )
+
+    nginx_content = nginx_template.render(
+        server_endpoint=config.docker_server.predict_endpoint,
+        readiness_endpoint=config.docker_server.readiness_endpoint,
+        liveness_endpoint=config.docker_server.liveness_endpoint,
+        server_port=config.docker_server.server_port,
+    )
+    nginx_filepath = build_dir / "proxy.conf"
+    nginx_filepath.write_text(nginx_content)
+
+def generate_docker_server_supervisord_config(build_dir: Path, config: TrussConfig):
+    supervisord_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(
+        start_command=config.docker_server.start_command,
+        setup_command=config.docker_server.setup_command,
+    )
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
+
 
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
@@ -345,28 +371,9 @@ class ServingImageBuilder(ImageBuilder):
                 "docker_server_requirements.txt",
             )
 
-            nginx_template = read_template_from_fs(
-                TEMPLATES_DIR, "docker_server/proxy.conf.jinja"
-            )
+            generate_docker_server_nginx_config(build_dir, config)
 
-            nginx_content = nginx_template.render(
-                server_endpoint=config.docker_server.predict_endpoint,
-                readiness_endpoint=config.docker_server.readiness_endpoint,
-                liveness_endpoint=config.docker_server.liveness_endpoint,
-                server_port=config.docker_server.server_port,
-            )
-            nginx_filepath = build_dir / "proxy.conf"
-            nginx_filepath.write_text(nginx_content)
-
-            supervisord_template = read_template_from_fs(
-                TEMPLATES_DIR, "docker_server/supervisord.conf.jinja"
-            )
-            supervisord_contents = supervisord_template.render(
-                start_command=config.docker_server.start_command,
-                setup_command=config.docker_server.setup_command,
-            )
-            supervisord_filepath = build_dir / "supervisord.conf"
-            supervisord_filepath.write_text(supervisord_contents)
+            generate_docker_server_supervisord_config(build_dir, config)
 
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
