@@ -22,6 +22,8 @@ from truss.constants import (
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
+    MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
+    MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MODEL_DOCKERFILE_NAME,
     OPENAI_COMPATIBLE_TAG,
     REQUIREMENTS_TXT_FILENAME,
@@ -569,9 +571,31 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+
+        max_supported_python_version_in_custom_base_image = (
+            MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE
+        )
+        min_supported_python_version_in_custom_base_image = (
+            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE
+        )
+        max_supported_python_minor_version_in_custom_base_image = (
+            MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[1]
+        )
+        min_supported_python_minor_version_in_custom_base_image = (
+            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[1]
+        )
+        supported_python_major_version_in_custom_base_image = (
+            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[0]
+        )
+
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
+            max_supported_python_version_in_custom_base_image=max_supported_python_version_in_custom_base_image,
+            min_supported_python_version_in_custom_base_image=min_supported_python_version_in_custom_base_image,
+            max_supported_python_minor_version_in_custom_base_image=max_supported_python_minor_version_in_custom_base_image,
+            min_supported_python_minor_version_in_custom_base_image=min_supported_python_minor_version_in_custom_base_image,
+            supported_python_major_version_in_custom_base_image=supported_python_major_version_in_custom_base_image,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
             should_install_user_requirements_file=should_install_user_requirements_file,
