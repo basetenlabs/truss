@@ -90,6 +90,14 @@ _ArgsType = Union[
 ]
 
 
+class _Sentinel:
+    def __repr__(self) -> str:
+        return "<Sentinel End of Queue>"
+
+
+SENTINEL = _Sentinel()
+
+
 def _is_request_type(obj: Any) -> bool:
     return isinstance(obj, type) and issubclass(obj, starlette.requests.Request)
 
@@ -288,6 +296,10 @@ class ModelWrapper:
     def ready(self) -> bool:
         return self._status == ModelWrapper.Status.READY
 
+    @property
+    def _model_file_name(self) -> str:
+        return self._config["model_class_filename"]
+
     def start_load_thread(self):
         # Don't retry failed loads.
         if self._status == ModelWrapper.Status.NOT_READY:
@@ -295,7 +307,7 @@ class ModelWrapper:
             thread.start()
 
     def load(self) -> bool:
-        if self._status == ModelWrapper.Status.READY:
+        if self.ready:
             return True
 
         # if we are already loading, block on aquiring the lock;
@@ -393,7 +405,7 @@ class ModelWrapper:
             return inputs
 
         args = ArgConfig.prepare_args(descriptor, inputs, request)
-        with errors.intercept_exceptions(self._logger):
+        with errors.intercept_exceptions(self._logger, self._model_file_name):
             if descriptor.is_async:
                 return await self._model.preprocess(*args)
             else:
@@ -409,7 +421,7 @@ class ModelWrapper:
         # must convert the result to something serializable.
         descriptor = self.model_descriptor.predict
         args = ArgConfig.prepare_args(descriptor, inputs, request)
-        with errors.intercept_exceptions(self._logger):
+        with errors.intercept_exceptions(self._logger, self._model_file_name):
             if descriptor.is_generator:
                 # Even for async generators, don't await here.
                 return self._model.predict(*args)
@@ -432,7 +444,7 @@ class ModelWrapper:
             return result
 
         args = ArgConfig.prepare_args(descriptor, result, request)
-        with errors.intercept_exceptions(self._logger):
+        with errors.intercept_exceptions(self._logger, self._model_file_name):
             if descriptor.is_async:
                 return await self._model.postprocess(*args)
             # Offload sync functions to thread, to not block event loop.
@@ -453,7 +465,7 @@ class ModelWrapper:
                     "Exception while reading stream response: " + str(e)
                 )
             finally:
-                await queue.put(None)
+                await queue.put(SENTINEL)
 
     async def _stream_with_background_task(
         self,
@@ -496,7 +508,7 @@ class ModelWrapper:
                         response_queue.get(),
                         timeout=streaming_read_timeout,
                     )
-                    if chunk is None:
+                    if chunk == SENTINEL:
                         return
                     yield chunk
 
@@ -542,7 +554,9 @@ class ModelWrapper:
                 predict_result
             ):
                 if self.model_descriptor.postprocess:
-                    with errors.intercept_exceptions(self._logger):
+                    with errors.intercept_exceptions(
+                        self._logger, self._model_file_name
+                    ):
                         raise errors.ModelDefinitionError(
                             "If the predict function returns a generator (streaming), "
                             "you cannot use postprocessing. Include all processing in "
@@ -563,7 +577,7 @@ class ModelWrapper:
 
         if isinstance(predict_result, starlette.responses.Response):
             if self.model_descriptor.postprocess:
-                with errors.intercept_exceptions(self._logger):
+                with errors.intercept_exceptions(self._logger, self._model_file_name):
                     raise errors.ModelDefinitionError(
                         "If the predict function returns a response object, you cannot "
                         "use postprocessing."
@@ -606,15 +620,14 @@ def _force_async_generator(gen: Union[Generator, AsyncGenerator]) -> AsyncGenera
         Runs each iteration of the generator in an offloaded thread, to ensure
         the main loop is not blocked, and yield to create an async generator.
         """
-        FINAL_GENERATOR_VALUE = object()
         while True:
             # Note that this is the equivalent of running:
             # next(gen, FINAL_GENERATOR_VALUE) on a separate thread,
             # ensuring that if there is anything blocking in the generator,
             # it does not block the main loop.
-            chunk = await to_thread.run_sync(next, gen, FINAL_GENERATOR_VALUE)
-            if chunk == FINAL_GENERATOR_VALUE:
-                break
+            chunk = await to_thread.run_sync(next, gen, SENTINEL)
+            if chunk == SENTINEL:
+                return
             yield chunk
 
     return _convert_generator_to_async()

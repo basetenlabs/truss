@@ -130,12 +130,12 @@ HANDLED_EXCEPTIONS = {
 }
 
 
-def _filter_traceback() -> (
-    Union[
-        Tuple[Type[BaseException], BaseException, TracebackType],
-        Tuple[None, None, None],
-    ]
-):
+def _filter_traceback(
+    model_file_name: str,
+) -> Union[
+    Tuple[Type[BaseException], BaseException, TracebackType],
+    Tuple[None, None, None],
+]:
     exc_type, exc_value, tb = sys.exc_info()
     if tb is None:
         return exc_type, exc_value, tb  # type: ignore[return-value]
@@ -144,24 +144,30 @@ def _filter_traceback() -> (
     current_tb: Optional[TracebackType] = tb
     while current_tb is not None:
         filename = current_tb.tb_frame.f_code.co_filename
-        if filename.endswith("model.py"):
+        if filename.endswith(model_file_name):
             # Return exception info with traceback starting from current_tb
             return exc_type, exc_value, current_tb  # type: ignore[return-value]
         current_tb = current_tb.tb_next
 
-    # If 'model.py' not found, return the original exception info
+    # If `model_file_name` not found, return the original exception info
     return exc_type, exc_value, tb  # type: ignore[return-value]
 
 
 @contextlib.contextmanager
-def intercept_exceptions(logger: logging.Logger) -> Generator[None, None, None]:
+def intercept_exceptions(
+    logger: logging.Logger, model_file_name: str
+) -> Generator[None, None, None]:
     try:
         yield
     # Note that logger.exception logs the stacktrace, such that the user can
     # debug this error from the logs.
     except HTTPException:
-        logger.error("Model raised HTTPException", exc_info=_filter_traceback())
+        logger.error(
+            "Model raised HTTPException", exc_info=_filter_traceback(model_file_name)
+        )
         raise
     except Exception as exc:
-        logger.error("Internal Server Error", exc_info=_filter_traceback())
+        logger.error(
+            "Internal Server Error", exc_info=_filter_traceback(model_file_name)
+        )
         raise UserCodeError(str(exc))

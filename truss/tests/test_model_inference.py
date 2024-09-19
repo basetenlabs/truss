@@ -274,12 +274,14 @@ def test_async_streaming_timeout():
 
 
 @pytest.mark.integration
-def test_streaming_with_error():
+def test_streaming_with_error_and_stacktrace():
     with ensure_kill_all():
         truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
         truss_dir = truss_root / "test_data" / "test_streaming_truss_with_error"
         tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
 
         predict_error_response = requests.post(
             PREDICT_URL, json={"throw_error": True}, stream=True, timeout=2
@@ -308,6 +310,32 @@ def test_streaming_with_error():
             "3",
             "4",
         ]
+
+        expected_stack_trace = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/model_wrapper.py", line 462, in _write_response_to_queue\n'
+            "    async for chunk in generator:\n"
+            '  File "/app/model_wrapper.py", line 627, in _convert_generator_to_async\n'
+            "    chunk = await to_thread.run_sync(next, gen, SENTINEL)\n"
+            '  File "/usr/local/lib/python3.9/site-packages/anyio/to_thread.py", line 56, in run_sync\n'
+            "    return await get_async_backend().run_sync_in_worker_thread(\n"
+            '  File "/usr/local/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2144, in run_sync_in_worker_thread\n'
+            "    return await future\n"
+            '  File "/usr/local/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 851, in run\n'
+            "    result = context.run(func, *args)\n"
+            '  File "/app/model/model.py", line 11, in inner\n'
+            "    helpers_1.foo(123)\n"
+            '  File "/packages/helpers_1.py", line 5, in foo\n'
+            "    return helpers_2.bar(x)\n"
+            '  File "/packages/helpers_2.py", line 2, in bar\n'
+            '    raise Exception("Crashed in `bar`.")\n'
+            "Exception: Crashed in `bar`."
+        )
+        assert_logs_contain_error(
+            container.logs(),
+            error=expected_stack_trace,
+            message="Exception while reading stream response: Crashed in `bar`.",
+        )
 
 
 @pytest.mark.integration
@@ -701,6 +729,41 @@ def test_truss_with_user_errors():
         assert "My custom message." in response.json()["error"]
         assert response.headers["x-baseten-error-source"] == "04"
         assert response.headers["x-baseten-error-code"] == "600"
+
+
+@pytest.mark.integration
+def test_truss_with_error_stacktrace():
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "test_truss_with_error"
+        tr = TrussHandle(truss_dir)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+
+        response = requests.post(PREDICT_URL, json={})
+        assert response.status_code == 500
+        assert "error" in response.json()
+
+        assert "Internal Server Error" in response.json()["error"]
+        assert response.headers["x-baseten-error-source"] == "04"
+        assert response.headers["x-baseten-error-code"] == "600"
+
+        expected_stack_trace = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/model/model.py", line 8, in predict\n'
+            "    return helpers_1.foo(123)\n"
+            '  File "/packages/helpers_1.py", line 5, in foo\n'
+            "    return helpers_2.bar(x)\n"
+            '  File "/packages/helpers_2.py", line 2, in bar\n'
+            '    raise Exception("Crashed in `bar`.")\n'
+            "Exception: Crashed in `bar`."
+        )
+        assert_logs_contain_error(
+            container.logs(),
+            error=expected_stack_trace,
+            message="Internal Server Error",
+        )
 
 
 @pytest.mark.integration
