@@ -340,9 +340,9 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         if config.docker_server is not None:
-
             copy_into_build_dir(
-                TEMPLATES_DIR / "docker_server_requirements.txt", "docker_server_requirements.txt"
+                TEMPLATES_DIR / "docker_server_requirements.txt",
+                "docker_server_requirements.txt",
             )
 
             nginx_template = read_template_from_fs(
