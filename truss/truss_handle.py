@@ -3,6 +3,7 @@ import glob
 import json
 import logging
 import sys
+import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -1075,7 +1076,20 @@ def _wait_for_docker_build(container) -> None:
     ),
 )
 def _wait_for_model_server(url: str) -> Response:
-    return requests.get(url)
+    logger.info(f"Waiting for model server to be ready at {url}")
+    waiting_seconds = 0
+    while True:
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                break
+        except requests.exceptions.ConnectionError:
+            logger.debug("Connection error, waiting for model server to be ready.")
+        finally:
+            time.sleep(1)
+            waiting_seconds += 1
+            logger.debug(f"Waiting for model server to be ready for {waiting_seconds} seconds...")
+    return response
 
 
 def wait_for_truss(

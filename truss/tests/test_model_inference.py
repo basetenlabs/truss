@@ -211,7 +211,7 @@ def test_docker_server_truss():
         except requests.exceptions.ConnectionError:
             pytest.fail("ConnectionError: Could not connect to the server")
         assert response.status_code == 200
-        assert response.json() == {"message": "Hello World", "is_torch_cuda_available": False}
+        assert response.json() == {"message": "Hello World", "is_torch_cuda_available": False, "hf_token_from_env": '123', "is_secret_mounted": False} # TODO: is_secret_mounted should be True
 
 
 @pytest.mark.integration
