@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import List, TypeVar
+from typing import List
 
 import psutil
 import requests
@@ -78,11 +78,6 @@ def kill_child_processes(parent_pid: int):
     )
     for process in alive:
         process.kill()
-
-
-X = TypeVar("X")
-Y = TypeVar("Y")
-Z = TypeVar("Z")
 
 
 def download_from_url_using_requests(URL: str, download_to: Path):

@@ -477,7 +477,8 @@ class ModelWrapper:
                     await queue.put(chunk)
             except Exception as e:
                 self._logger.exception(
-                    "Exception while generating streamed response: " + str(e)
+                    "Exception while generating streamed response: " + str(e),
+                    exc_info=errors.filter_traceback(self._model_file_name),
                 )
             finally:
                 await queue.put(SENTINEL)

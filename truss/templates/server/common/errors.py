@@ -130,7 +130,7 @@ HANDLED_EXCEPTIONS = {
 }
 
 
-def _filter_traceback(
+def filter_traceback(
     model_file_name: str,
 ) -> Union[
     Tuple[Type[BaseException], BaseException, TracebackType],
@@ -159,15 +159,15 @@ def intercept_exceptions(
 ) -> Generator[None, None, None]:
     try:
         yield
-    # Note that logger.exception logs the stacktrace, such that the user can
+    # Note that logger.error logs the stacktrace, such that the user can
     # debug this error from the logs.
     except HTTPException:
         logger.error(
-            "Model raised HTTPException", exc_info=_filter_traceback(model_file_name)
+            "Model raised HTTPException", exc_info=filter_traceback(model_file_name)
         )
         raise
     except Exception as exc:
         logger.error(
-            "Internal Server Error", exc_info=_filter_traceback(model_file_name)
+            "Internal Server Error", exc_info=filter_traceback(model_file_name)
         )
         raise UserCodeError(str(exc))

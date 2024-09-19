@@ -41,7 +41,6 @@ def inference_server_startup_flow(
     for attempt in Retrying(
         stop=stop_after_attempt(15),
         wait=wait_exponential(multiplier=2, min=1, max=4),
-        reraise=True,
     ):
         with attempt:
             try:

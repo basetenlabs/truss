@@ -310,20 +310,9 @@ def test_streaming_with_error_and_stacktrace():
             "3",
             "4",
         ]
-
         expected_stack_trace = (
             "Traceback (most recent call last):\n"
-            '  File "/app/model_wrapper.py", line 462, in _write_response_to_queue\n'
-            "    async for chunk in generator:\n"
-            '  File "/app/model_wrapper.py", line 627, in _convert_generator_to_async\n'
-            "    chunk = await to_thread.run_sync(next, gen, SENTINEL)\n"
-            '  File "/usr/local/lib/python3.9/site-packages/anyio/to_thread.py", line 56, in run_sync\n'
-            "    return await get_async_backend().run_sync_in_worker_thread(\n"
-            '  File "/usr/local/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2144, in run_sync_in_worker_thread\n'
-            "    return await future\n"
-            '  File "/usr/local/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 851, in run\n'
-            "    result = context.run(func, *args)\n"
-            '  File "/app/model/model.py", line 11, in inner\n'
+            '  File "/app/model/model.py", line 12, in inner\n'
             "    helpers_1.foo(123)\n"
             '  File "/packages/helpers_1.py", line 5, in foo\n'
             "    return helpers_2.bar(x)\n"
