@@ -57,6 +57,7 @@ async def proxy(request: Request):
         ),
         stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
         wait=wait_fixed(1),
+        reraise=True,
     ):
         with attempt:
             try:

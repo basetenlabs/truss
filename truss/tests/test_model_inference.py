@@ -334,7 +334,7 @@ def test_streaming_with_error_and_stacktrace():
         assert_logs_contain_error(
             container.logs(),
             error=expected_stack_trace,
-            message="Exception while reading stream response: Crashed in `bar`.",
+            message="Exception while generating streamed response: Crashed in `bar`.",
         )
 
 
