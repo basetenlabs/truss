@@ -215,7 +215,7 @@ def test_docker_server_truss():
         assert response.json() == {
             "message": "Hello World",
             "is_torch_cuda_available": False,
-            "hf_token_from_env": "123",
+            "is_env_var_passed": True,
             "is_secret_mounted": False,
         }  # TODO: is_secret_mounted should be True
 
