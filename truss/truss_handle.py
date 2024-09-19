@@ -1088,7 +1088,9 @@ def _wait_for_model_server(url: str) -> Response:
         finally:
             time.sleep(1)
             waiting_seconds += 1
-            logger.debug(f"Waiting for model server to be ready for {waiting_seconds} seconds...")
+            logger.debug(
+                f"Waiting for model server to be ready for {waiting_seconds} seconds..."
+            )
     return response
 
 
