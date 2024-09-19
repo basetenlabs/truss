@@ -201,7 +201,7 @@ def test_docker_server_truss():
         truss_dir = truss_root / "test_data" / "test_docker_server_truss"
 
         tr = TrussHandle(truss_dir)
-
+        LocalConfigHandler.set_secret("hf_access_token", "123")
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
@@ -216,8 +216,8 @@ def test_docker_server_truss():
             "message": "Hello World",
             "is_torch_cuda_available": False,
             "is_env_var_passed": True,
-            "is_secret_mounted": False,
-        }  # TODO: is_secret_mounted should be True
+            "is_secret_mounted": True,
+        }
 
 
 @pytest.mark.integration

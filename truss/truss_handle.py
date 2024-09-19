@@ -1071,27 +1071,12 @@ def _wait_for_docker_build(container) -> None:
     stop=stop_after_delay(120),
     wait=wait_fixed(2),
     retry=(
-        retry_if_result(lambda response: response.status_code == 503)
+        retry_if_result(lambda response: response.status_code in [502, 503])
         | retry_if_exception_type(exceptions.ConnectionError)
     ),
 )
 def _wait_for_model_server(url: str) -> Response:
-    logger.info(f"Waiting for model server to be ready at {url}")
-    waiting_seconds = 0
-    while True:
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                break
-        except requests.exceptions.ConnectionError:
-            logger.debug("Connection error, waiting for model server to be ready.")
-        finally:
-            time.sleep(1)
-            waiting_seconds += 1
-            logger.debug(
-                f"Waiting for model server to be ready for {waiting_seconds} seconds..."
-            )
-    return response
+    return requests.get(url)
 
 
 def wait_for_truss(
