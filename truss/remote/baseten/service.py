@@ -1,6 +1,7 @@
 import enum
 import time
 import urllib.parse
+import warnings
 from typing import (
     Any,
     Dict,
@@ -16,6 +17,9 @@ from truss.remote.baseten.auth import AuthService
 from truss.remote.truss_remote import TrussService
 from truss.truss_handle import TrussHandle
 from truss.util.errors import RemoteNetworkError
+
+# "classes created inside an enum will not become a member" -> intended here anyway.
+warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*enum.*")
 
 DEFAULT_STREAM_ENCODING = "utf-8"
 
