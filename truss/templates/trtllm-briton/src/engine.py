@@ -12,7 +12,7 @@ import threading
 import time
 from itertools import count
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import briton_pb2
 import briton_pb2_grpc
@@ -20,7 +20,7 @@ import grpc
 from fastapi import HTTPException
 from outlines.models.transformers import TransformerTokenizer
 from outlines.processors.structured import JSONLogitsProcessor
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerFast
 from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
 from truss.constants import OPENAI_COMPATIBLE_TAG
 
@@ -135,14 +135,34 @@ class Engine:
             Path(FSM_CACHE_DIR), self._tokenizer, self._max_fsm_workers
         )
 
-        # Start engine
+        # We only support Llama and mistral with Briton, for which this should
+        # apply.
+        assert isinstance(self._tokenizer, PreTrainedTokenizerFast)
+
+        # These are tokens outside of tokenizer.json. We need to pass these to
+        # Briton, to pass to rust tokenizer.
+        added_token_decoders = self._tokenizer.added_tokens_decoder
+        added_tokens = [token for token in added_token_decoders.values()]
+
+        self._saved_tokenizer_dir = str(self._data_dir / "saved_tokenizer")
+        self._tokenizer.save_pretrained(self._saved_tokenizer_dir)
+
+        # Pass tokenizer file to Briton for the rust tokenizer.
+        tokenizer_file = Path(self._saved_tokenizer_dir) / "tokenizer.json"
         config_str = f"""
-    engine_path: "{self._data_dir.resolve()}"
-    hf_tokenizer: "{self._tokenizer_repository}"
-    kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
-    enable_kv_cache_reuse: {"true" if self._enable_kv_cache_reuse else "false"}
-    fsm_cache_dir: "{FSM_CACHE_DIR}"
+engine_path: "{self._data_dir.resolve()}"
+hf_tokenizer: "{tokenizer_file.resolve()}"
+kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
+enable_kv_cache_reuse: {"true" if self._enable_kv_cache_reuse else "false"}
+fsm_cache_dir: "{FSM_CACHE_DIR}"
 """
+
+        # Pass added tokens to Briton for the rust tokenizer.
+        if len(added_tokens) > 0:
+            config_str += "\n" + "\n".join(
+                _serialize_added_tokens_to_config(added_tokens)
+            )
+
         config_pbtxt_path = (self._data_dir / "briton_config.pbtxt").resolve()
         config_pbtxt_path.write_text(config_str)
         briton_env = os.environ.copy()
@@ -399,6 +419,33 @@ class Engine:
             raise HTTPException(status_code=500, detail=f"An error has occurred: {ex}")
 
 
+def _serialize_added_tokens_to_config(added_tokens: list) -> List[str]:
+    """Serialize to pbtxt format."""
+    lines = ["added_tokens {"]
+    for added_token in added_tokens:
+        token_lines = _serialize_added_token_to_config(added_token)
+        lines.extend([f"  {line}" for line in token_lines])
+    lines.append("}")
+    return lines
+
+
+def _serialize_added_token_to_config(added_token) -> List[str]:
+    """Serialize to pbtxt format."""
+    fields = [
+        f'content: "{added_token.content}"',
+        f"single_word: {added_token.single_word}",
+        f"lstrip: {added_token.lstrip}",
+        f"rstrip: {added_token.rstrip}",
+        f"normalized: {added_token.normalized}",
+        f"special: {added_token.special}",
+    ]
+    return [
+        "tokens {",
+        *[f"  {field}" for field in fields],
+        "}",
+    ]
+
+
 def create_tool_schema(tool_json: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "type": "object",
@@ -428,6 +475,10 @@ def worker(vocab_size: int, end_id: int, schema: Dict[str, Any], output_path: Pa
     )
     if not output_path.exists():
         try:
+            # Open the file with flags to protect against concurrent writes.
+            # O_CREAT: Create the file if it does not exist.
+            # O_EXCL: Ensure that this call creates the file exclusively. If the file already exists, the call will fail.
+            # O_WRONLY: Open the file for write-only access.
             fd = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             with os.fdopen(fd, "wb") as f:
                 fcntl.flock(f, fcntl.LOCK_EX)
