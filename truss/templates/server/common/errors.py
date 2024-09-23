@@ -1,21 +1,21 @@
-import asyncio
+import contextlib
 import logging
+import sys
 from http import HTTPStatus
+from types import TracebackType
 from typing import (
-    Callable,
-    Coroutine,
+    Generator,
     Mapping,
-    NoReturn,
     Optional,
-    TypeVar,
+    Tuple,
+    Type,
     Union,
-    overload,
 )
 
 import fastapi
+import starlette.responses
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-from typing_extensions import ParamSpec
 
 # See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
 _TRUSS_SERVER_SERVICE_ID = 4
@@ -51,11 +51,19 @@ class UserCodeError(Exception):
     pass
 
 
+class ModelDefinitionError(TypeError):
+    """When the user-defined truss model does not meet the contract."""
+
+
 def _make_baseten_error_headers(error_code: int) -> Mapping[str, str]:
     return {
         "X-BASETEN-ERROR-SOURCE": f"{_TRUSS_SERVER_SERVICE_ID:02}",
         "X-BASETEN-ERROR-CODE": f"{error_code:03}",
     }
+
+
+def add_error_headers_to_user_response(response: starlette.responses.Response) -> None:
+    response.headers.update(_make_baseten_error_headers(_BASETEN_CLIENT_ERROR_CODE))
 
 
 def _make_baseten_response(
@@ -71,9 +79,7 @@ def _make_baseten_response(
     )
 
 
-async def exception_handler(
-    request: fastapi.Request, exc: Exception
-) -> fastapi.Response:
+async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Response:
     if isinstance(exc, ModelMissingError):
         return _make_baseten_response(
             HTTPStatus.NOT_FOUND.value, exc, _BASETEN_DOWNSTREAM_ERROR_CODE
@@ -87,6 +93,12 @@ async def exception_handler(
             HTTPStatus.BAD_REQUEST.value,
             exc,
             _BASETEN_CLIENT_ERROR_CODE,
+        )
+    if isinstance(exc, ModelDefinitionError):
+        return _make_baseten_response(
+            HTTPStatus.PRECONDITION_FAILED.value,
+            f"{type(exc).__name__}: {str(exc)}",
+            _BASETEN_DOWNSTREAM_ERROR_CODE,
         )
     if isinstance(exc, UserCodeError):
         return _make_baseten_response(
@@ -113,60 +125,49 @@ HANDLED_EXCEPTIONS = {
     NotImplementedError,
     InputParsingError,
     UserCodeError,
+    ModelDefinitionError,
     fastapi.HTTPException,
 }
 
 
-def _intercept_user_exception(exc: Exception, logger: logging.Logger) -> NoReturn:
-    # Note that logger.exception logs the stacktrace, such that the user can
+def filter_traceback(
+    model_file_name: str,
+) -> Union[
+    Tuple[Type[BaseException], BaseException, TracebackType],
+    Tuple[None, None, None],
+]:
+    exc_type, exc_value, tb = sys.exc_info()
+    if tb is None:
+        return exc_type, exc_value, tb  # type: ignore[return-value]
+
+    # Walk the traceback until we find the frame ending with 'model.py'
+    current_tb: Optional[TracebackType] = tb
+    while current_tb is not None:
+        filename = current_tb.tb_frame.f_code.co_filename
+        if filename.endswith(model_file_name):
+            # Return exception info with traceback starting from current_tb
+            return exc_type, exc_value, current_tb  # type: ignore[return-value]
+        current_tb = current_tb.tb_next
+
+    # If `model_file_name` not found, return the original exception info
+    return exc_type, exc_value, tb  # type: ignore[return-value]
+
+
+@contextlib.contextmanager
+def intercept_exceptions(
+    logger: logging.Logger, model_file_name: str
+) -> Generator[None, None, None]:
+    try:
+        yield
+    # Note that logger.error logs the stacktrace, such that the user can
     # debug this error from the logs.
-    # TODO: consider removing the wrapper function from the stack trace.
-    if isinstance(exc, HTTPException):
-        logger.exception("Model raised HTTPException", stacklevel=2)
-        raise exc
-    else:
-        logger.exception("Internal Server Error", stacklevel=2)
+    except HTTPException:
+        logger.error(
+            "Model raised HTTPException", exc_info=filter_traceback(model_file_name)
+        )
+        raise
+    except Exception as exc:
+        logger.error(
+            "Internal Server Error", exc_info=filter_traceback(model_file_name)
+        )
         raise UserCodeError(str(exc))
-
-
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-_R_async = TypeVar("_R_async", bound=Coroutine)  # Return type for async functions
-
-
-@overload
-def intercept_exceptions(
-    func: Callable[_P, _R], logger: logging.Logger
-) -> Callable[_P, _R]: ...
-
-
-@overload
-def intercept_exceptions(
-    func: Callable[_P, _R_async], logger: logging.Logger
-) -> Callable[_P, _R_async]: ...
-
-
-def intercept_exceptions(
-    func: Callable[_P, _R], logger: logging.Logger
-) -> Callable[_P, _R]:
-    """Converts all exceptions to 500-`HTTPException` and logs them.
-    If exception is already `HTTPException`, re-raises exception as is.
-    """
-    if asyncio.iscoroutinefunction(func):
-
-        async def inner_async(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-            try:
-                return await func(*args, **kwargs)
-            except Exception as e:
-                _intercept_user_exception(e, logger)
-
-        return inner_async  # type: ignore[return-value]
-    else:
-
-        def inner_sync(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                _intercept_user_exception(e, logger)
-
-        return inner_sync

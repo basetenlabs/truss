@@ -33,7 +33,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
       - run: poetry install
       - name: run tests
-        run: poetry run pytest -v --cov=truss -m 'not integration' --junitxml=report.xml
+        run: poetry run pytest --durations=0  -m 'not integration' --junitxml=report.xml
       - name: Publish Test Report  # Not sure how to display this in the UI for non PRs.
         uses: mikepenz/action-junit-report@v4
         if: always()
