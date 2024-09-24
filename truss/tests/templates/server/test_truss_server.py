@@ -8,7 +8,6 @@ from multiprocessing import Process
 from pathlib import Path
 
 import pytest
-import yaml
 
 
 @pytest.mark.integration
@@ -22,8 +21,7 @@ def test_truss_server_termination(truss_container_fs):
 
         from truss_server import TrussServer
 
-        config = yaml.safe_load((app_path / "config.yaml").read_text())
-        server = TrussServer(http_port=port, config=config)
+        server = TrussServer(http_port=port, config_or_path=app_path / "config.yaml")
         server.start()
 
     stdout_capture_file = tempfile.NamedTemporaryFile()

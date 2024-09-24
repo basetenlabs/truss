@@ -1,8 +1,8 @@
 {% if use_gpu %}
 FROM nvidia/cuda:12.2.2-base-ubuntu20.04
-ENV CUDNN_VERSION=8.9.5.29
-ENV CUDA=12.2
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV CUDNN_VERSION="8.9.5.29"
+ENV CUDA="12.2"
+ENV LD_LIBRARY_PATH="/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub && \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -21,8 +21,8 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
     rm -rf /var/lib/apt/lists/*
 
 # Allow statements and log messages to immediately appear in the Knative logs
-ENV PYTHONUNBUFFERED True
-ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED="True"
+ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN apt update && \
     apt install -y bash \
@@ -49,7 +49,7 @@ FROM python:{{python_version}}
 RUN apt update && apt install -y
 
 # Allow statements and log messages to immediately appear in the Knative logs
-ENV PYTHONUNBUFFERED True
+ENV PYTHONUNBUFFERED="True"
 {% endif %}
 
 

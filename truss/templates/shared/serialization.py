@@ -2,11 +2,54 @@ import json
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any, Callable, Dict, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Union,
+)
+
+import pydantic
+import starlette.responses
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+
+JSONType = Union[str, int, float, bool, None, List["JSONType"], Dict[str, "JSONType"]]
+MsgPackType = Union[
+    str,
+    int,
+    float,
+    bool,
+    None,
+    date,
+    Decimal,
+    datetime,
+    time,
+    timedelta,
+    uuid.UUID,
+    "NDArray",
+    List["MsgPackType"],
+    Dict[str, "MsgPackType"],
+]
+InputType = Union[JSONType, MsgPackType, pydantic.BaseModel]
+OutputType = Union[
+    JSONType,
+    MsgPackType,
+    Generator[bytes, None, None],
+    AsyncGenerator[bytes, None],
+    starlette.responses.Response,
+]
 
 
 # mostly cribbed from django.core.serializer.DjangoJSONEncoder
-def truss_msgpack_encoder(
+def _truss_msgpack_encoder(
     obj: Union[Decimal, date, time, timedelta, uuid.UUID, Dict],
     chain: Optional[Callable] = None,
 ) -> Dict:
@@ -36,7 +79,7 @@ def truss_msgpack_encoder(
         return obj if chain is None else chain(obj)
 
 
-def truss_msgpack_decoder(obj: Any, chain=None):
+def _truss_msgpack_decoder(obj: Any, chain=None):
     try:
         if b"__dt_datetime_iso__" in obj:
             return datetime.fromisoformat(obj[b"data"])
@@ -58,7 +101,7 @@ def truss_msgpack_decoder(obj: Any, chain=None):
 
 
 # this json object is JSONType + np.array + datetime
-def is_truss_serializable(obj) -> bool:
+def is_truss_serializable(obj: Any) -> bool:
     import numpy as np
 
     # basic JSON types
@@ -72,21 +115,21 @@ def is_truss_serializable(obj) -> bool:
         return False
 
 
-def truss_msgpack_serialize(obj):
+def truss_msgpack_serialize(obj: MsgPackType) -> bytes:
     import msgpack
     import msgpack_numpy as mp_np
 
     return msgpack.packb(
-        obj, default=lambda x: truss_msgpack_encoder(x, chain=mp_np.encode)
+        obj, default=lambda x: _truss_msgpack_encoder(x, chain=mp_np.encode)
     )
 
 
-def truss_msgpack_deserialize(obj):
+def truss_msgpack_deserialize(data: bytes) -> MsgPackType:
     import msgpack
     import msgpack_numpy as mp_np
 
     return msgpack.unpackb(
-        obj, object_hook=lambda x: truss_msgpack_decoder(x, chain=mp_np.decode)
+        data, object_hook=lambda x: _truss_msgpack_decoder(x, chain=mp_np.decode)
     )
 
 
@@ -101,4 +144,4 @@ class DeepNumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         else:
-            return super(DeepNumpyEncoder, self).default(obj)
+            return super().default(obj)

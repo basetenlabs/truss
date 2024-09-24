@@ -17,6 +17,7 @@ from huggingface_hub import (
     list_repo_refs,
 )
 from huggingface_hub.utils import filter_repo_objects
+from truss import constants
 from truss.config.trt_llm import TrussTRTLLMModel
 from truss.constants import (
     AUDIO_MODEL_TRTLLM_REQUIREMENTS,
@@ -75,7 +76,6 @@ USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
 
-HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
 CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
@@ -565,7 +565,7 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
         )
 
-        hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+        hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,

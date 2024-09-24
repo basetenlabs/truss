@@ -1,11 +1,12 @@
 import inspect
 
 try:
+    from configparser import DEFAULTSECT, ConfigParser  # type: ignore
+except ImportError:
+    # We need to do this for old python.
     from configparser import DEFAULTSECT
     from configparser import SafeConfigParser as ConfigParser
-except ImportError:
-    # We need to do this for py312 and onwards.
-    from configparser import DEFAULTSECT, ConfigParser  # type: ignore
+
 
 from functools import partial
 from operator import is_not
