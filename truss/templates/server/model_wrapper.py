@@ -9,6 +9,7 @@ import os
 import pathlib
 import sys
 import time
+import weakref
 from contextlib import asynccontextmanager
 from enum import Enum
 from functools import cached_property
@@ -511,6 +512,8 @@ class ModelWrapper:
         gen_task.add_done_callback(lambda _: release_and_end())
 
         # The gap between responses in a stream must be < streaming_read_timeout
+        # TODO: this whole buffering might be superfluous and sufficiently done by
+        #   by the FastAPI server already. See `test_limit_concurrency_with_sse`.
         async def _buffered_response_generator() -> AsyncGenerator[bytes, None]:
             # `span` is tied to the "producer" `gen_task` which might complete before
             # "consume" part here finishes, therefore a dedicated span is required.
@@ -591,14 +594,23 @@ class ModelWrapper:
                         release_and_end=get_defer_fn(),
                     )
 
-        if isinstance(predict_result, starlette.responses.Response):
-            if self.model_descriptor.postprocess:
-                with errors.intercept_exceptions(self._logger, self._model_file_name):
-                    raise errors.ModelDefinitionError(
-                        "If the predict function returns a response object, you cannot "
-                        "use postprocessing."
-                    )
-            else:
+            if isinstance(predict_result, starlette.responses.Response):
+                if self.model_descriptor.postprocess:
+                    with errors.intercept_exceptions(
+                        self._logger, self._model_file_name
+                    ):
+                        raise errors.ModelDefinitionError(
+                            "If the predict function returns a response object, "
+                            "you cannot use postprocessing."
+                        )
+                if isinstance(predict_result, starlette.responses.StreamingResponse):
+                    # Defer the semaphore release, using a weakref on the response.
+                    # This might keep the semaphore longer than using "native" truss
+                    # streaming, because here the criterion is not the production of
+                    # data by the generator, but the span of handling the request by
+                    # the fastAPI server.
+                    weakref.finalize(predict_result, get_defer_fn())
+
                 return predict_result
 
         with self._tracer.start_as_current_span("call-post") as span_post:
