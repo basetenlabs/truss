@@ -203,7 +203,7 @@ def hf_cache_file_from_location(path: str):
     return cache_file
 
 
-def _get_hf_commit_from_main(repo_id: str) -> Optional[str]:
+def get_hf_commit_from_main(repo_id: str) -> Optional[str]:
     """
     Find the commit associated with the "main" branch of the repo.
     """
@@ -226,7 +226,7 @@ class HuggingFaceCache(RemoteCache):
             #
             # We do this so that the Docker commands to fetch the
             # the model weights are fully deterministic.
-            self.revision = _get_hf_commit_from_main(repo_name)
+            self.revision = get_hf_commit_from_main(repo_name)
 
     def list_files(self):
         return list_repo_files(self.repo_name, revision=self.revision)
