@@ -319,7 +319,7 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
 
             remote_model_files[repo_id] = {
                 "files": remote_filtered_files,
-                #
+                # We use the `model_cache.revision` in case no revision was provided.
                 "revision": model_cache.revision,
             }
 

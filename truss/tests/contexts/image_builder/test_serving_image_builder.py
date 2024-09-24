@@ -286,7 +286,7 @@ def test_truss_server_caching_truss_with_revision():
     TODO: Update this to a Baseten-owned repo so that this does
     not break.
     """
-    latest_commit = "2439f60ef33a0d46d85da5001d52aeda5b00ce9f"
+    commit = "2439f60ef33a0d46d85da5001d52aeda5b00ce9f"
     with ensure_kill_all():
         truss_root = (
             Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
@@ -302,7 +302,7 @@ def test_truss_server_caching_truss_with_revision():
         time.sleep(15)
         assert "Downloading model.safetensors:" not in container.logs()
         assert (
-            f"/root/.cache/huggingface/hub/models--julien-c--EsperBERTo-small/snapshots/{latest_commit}"
+            f"/root/.cache/huggingface/hub/models--julien-c--EsperBERTo-small/snapshots/{commit}"
             in container.logs()
         )
 
