@@ -328,68 +328,6 @@ def test_streaming_with_error_and_stacktrace():
 
 
 @pytest.mark.integration
-def test_streaming_truss():
-    with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_streaming_truss"
-        tr = TrussHandle(truss_dir)
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-
-        # A request for which response is not completely read
-        predict_response = requests.post(PREDICT_URL, json={}, stream=True)
-        # We just read the first part and leave it hanging here
-        next(predict_response.iter_content())
-
-        predict_response = requests.post(PREDICT_URL, json={}, stream=True)
-
-        assert predict_response.headers.get("transfer-encoding") == "chunked"
-        assert [
-            byte_string.decode()
-            for byte_string in list(predict_response.iter_content())
-        ] == [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-        ]
-
-        # When accept is set to application/json, the response is not streamed.
-        predict_non_stream_response = requests.post(
-            PREDICT_URL,
-            json={},
-            stream=True,
-            headers={"accept": "application/json"},
-        )
-        assert "transfer-encoding" not in predict_non_stream_response.headers
-        assert predict_non_stream_response.json() == "01234"
-
-        # Test that concurrency work correctly. The streaming Truss has a configured
-        # concurrency of 1, so only one request can be in flight at a time. Each request
-        # takes 2 seconds, so with a timeout of 3 seconds, we expect the first request to
-        # succeed and for the second to timeout.
-        #
-        # Note that with streamed requests, requests.post raises a ReadTimeout exception if
-        # `timeout` seconds has passed since receiving any data from the server.
-        def make_request(delay: int):
-            # For streamed responses, requests does not start receiving content from server until
-            # `iter_content` is called, so we must call this in order to get an actual timeout.
-            time.sleep(delay)
-            list(requests.post(PREDICT_URL, json={}, stream=True).iter_content())
-
-        with ThreadPoolExecutor() as e:
-            # We use concurrent.futures.wait instead of the timeout property
-            # on requests, since requests timeout property has a complex interaction
-            # with streaming.
-            first_request = e.submit(make_request, 0)
-            second_request = e.submit(make_request, 0.2)
-            futures = [first_request, second_request]
-            done, not_done = concurrent.futures.wait(futures, timeout=3)
-            assert first_request in done
-            assert second_request in not_done
-
-
-@pytest.mark.integration
 def test_secrets_truss():
     class Model:
         def __init__(self, **kwargs):
@@ -1198,3 +1136,73 @@ def test_async_streaming_with_cancellation():
 
         time.sleep(2)  # Wait a bit to get all logs.
         assert "Cancelled (during gen)." in container.logs()
+
+
+@pytest.mark.integration
+def test_limit_concurrency_with_sse():
+    # It seems that the "builtin" functionality of the FastAPI server already buffers
+    # the generator, so that it doesn't keep hanging around if the client doesn't
+    # consume data. `_buffered_response_generator` might be redundant.
+    # This can be observed by waiting for a long time in `make_request`: the server will
+    # print `Done` for the tasks, while we still wait and hold the unconsumed response.
+    # For testing we need to have actually slow generation to keep the server busy.
+    model = """
+    import asyncio
+
+    class Model:
+        async def predict(self, request):
+            print(f"Starting {request}")
+            for i in range(5):
+                await asyncio.sleep(0.1)
+                yield str(i)
+            print(f"Done {request}")
+
+    """
+
+    config = """runtime:
+  predict_concurrency: 2"""
+
+    def make_request(consume_chunks, timeout, task_id):
+        t0 = time.time()
+        with httpx.Client() as client:
+            with client.stream(
+                "POST", PREDICT_URL, json={"task_id": task_id}
+            ) as response:
+                assert response.status_code == 200
+                if consume_chunks:
+                    chunks = [chunk for chunk in response.iter_text()]
+                    print(f"consumed chunks ({task_id}): {chunks}")
+                    assert len(chunks) > 0
+                    t1 = time.time()
+                    if t1 - t0 > timeout:
+                        raise httpx.ReadTimeout("Timeout")
+                    return chunks
+                else:
+                    print(f"waiting ({task_id})")
+                    time.sleep(0.5)  # Hold the connection.
+                    print(f"waiting done ({task_id})")
+
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        # Processing full request takes 0.5s.
+        print("Make warmup request")
+        make_request(consume_chunks=True, timeout=0.55, task_id=0)
+
+        with ThreadPoolExecutor() as executor:
+            # Start two requests and hold them without consuming all chunks
+            # Each takes for 0.5 s. Semaphore should be claimed, with 0 remaining.
+            print("Start two tasks.")
+            task1 = executor.submit(make_request, False, 0.55, 1)
+            task2 = executor.submit(make_request, False, 0.55, 2)
+            print("Wait for tasks to start.")
+            time.sleep(0.05)
+            print("Make a request while server is busy.")
+            with pytest.raises(httpx.ReadTimeout):
+                make_request(True, timeout=0.55, task_id=3)
+
+            task1.result()
+            task2.result()
+            print("Task 1 and 2 completed. Server should be free again.")
+
+        result = make_request(True, timeout=0.55, task_id=4)
+        print(f"Final chunks: {result}")

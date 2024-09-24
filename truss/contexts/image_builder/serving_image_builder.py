@@ -10,7 +10,12 @@ import yaml
 from botocore import UNSIGNED
 from botocore.client import Config
 from google.cloud import storage
-from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
+from huggingface_hub import (
+    get_hf_file_metadata,
+    hf_hub_url,
+    list_repo_files,
+    list_repo_refs,
+)
 from huggingface_hub.utils import filter_repo_objects
 from truss import constants
 from truss.config.trt_llm import TrussTRTLLMModel
@@ -79,13 +84,15 @@ HF_CACHE_DIR = Path("/root/.cache/huggingface/hub/")
 
 
 class RemoteCache(ABC):
-    def __init__(self, repo_name, data_dir, revision=None):
+    def __init__(self, repo_name: str, data_dir: Path, revision: Optional[str] = None):
         self.repo_name = repo_name
         self.data_dir = data_dir
         self.revision = revision
 
     @staticmethod
-    def from_repo(repo_name: str, data_dir: Path) -> "RemoteCache":
+    def from_repo(
+        repo_name: str, data_dir: Path, revision: Optional[str] = None
+    ) -> "RemoteCache":
         repository_class: Type["RemoteCache"]
         if repo_name.startswith("gs://"):
             repository_class = GCSCache
@@ -93,12 +100,12 @@ class RemoteCache(ABC):
             repository_class = S3Cache
         else:
             repository_class = HuggingFaceCache
-        return repository_class(repo_name, data_dir)
+        return repository_class(repo_name, data_dir, revision)
 
     def filter(self, allow_patterns, ignore_patterns):
         return list(
             filter_repo_objects(
-                items=self.list_files(revision=self.revision),
+                items=self.list_files(),
                 allow_patterns=allow_patterns,
                 ignore_patterns=ignore_patterns,
             )
@@ -114,7 +121,7 @@ class RemoteCache(ABC):
 
 
 class GCSCache(RemoteCache):
-    def list_files(self, revision=None):
+    def list_files(self):
         gcs_credentials_file = self.data_dir / GCS_CREDENTIALS
 
         if gcs_credentials_file.exists():
@@ -148,7 +155,7 @@ class GCSCache(RemoteCache):
 
 
 class S3Cache(RemoteCache):
-    def list_files(self, revision=None):
+    def list_files(self):
         s3_credentials_file = self.data_dir / S3_CREDENTIALS
 
         if s3_credentials_file.exists():
@@ -196,15 +203,39 @@ def hf_cache_file_from_location(path: str):
     return cache_file
 
 
+def get_hf_commit_from_main(repo_id: str) -> Optional[str]:
+    """
+    Find the commit associated with the "main" branch of the repo.
+    """
+    commit_info = list_repo_refs(repo_id)
+    main_branch_reference = next(
+        (ref for ref in commit_info.branches if ref.name == "main"), None
+    )
+    if main_branch_reference is None:
+        return None
+
+    return main_branch_reference.target_commit
+
+
 class HuggingFaceCache(RemoteCache):
-    def list_files(self, revision=None):
-        return list_repo_files(self.repo_name, revision=revision)
+    def __init__(self, repo_name, data_dir, revision=None):
+        super().__init__(repo_name, data_dir, revision)
+        if not revision:
+            # If there is no revision provided, pass the commit
+            # that is currently associated with the "main" branch.
+            #
+            # We do this so that the Docker commands to fetch the
+            # the model weights are fully deterministic.
+            self.revision = get_hf_commit_from_main(repo_name)
+
+    def list_files(self):
+        return list_repo_files(self.repo_name, revision=self.revision)
 
     def prepare_for_cache(self, filenames):
         files_to_cache = []
         repo_folder_name = f"models--{self.repo_name.replace('/', '--')}"
         for filename in filenames:
-            hf_url = hf_hub_url(self.repo_name, filename)
+            hf_url = hf_hub_url(self.repo_name, filename, revision=self.revision)
             hf_file_metadata = get_hf_file_metadata(hf_url)
 
             files_to_cache.append(
@@ -218,8 +249,12 @@ class HuggingFaceCache(RemoteCache):
             hf_cache_file_from_location(f"{repo_folder_name}/snapshots/")
         )
 
-        # refs just has files with revision commit hashes
-        files_to_cache.append(hf_cache_file_from_location(f"{repo_folder_name}/refs/"))
+        if not self.revision:
+            # "refs" just has files with revision commit hashes.
+            # If repos are downloaded with a revision provided, refs is not present
+            files_to_cache.append(
+                hf_cache_file_from_location(f"{repo_folder_name}/refs/")
+            )
 
         files_to_cache.append(hf_cache_file_from_location("version.txt"))
 
@@ -270,18 +305,22 @@ def get_files_to_cache(config: TrussConfig, truss_dir: Path, build_dir: Path):
         copy_into_build_dir(curr_dir / "cache_warmer.py", "cache_warmer.py")
         for model in config.model_cache.models:
             repo_id = model.repo_id
-            revision = model.revision
+            provided_revision = model.revision
 
             allow_patterns = model.allow_patterns
             ignore_patterns = model.ignore_patterns
 
-            model_cache = RemoteCache.from_repo(repo_id, truss_dir / config.data_dir)
+            model_cache = RemoteCache.from_repo(
+                repo_id, truss_dir / config.data_dir, provided_revision
+            )
+
             remote_filtered_files = model_cache.filter(allow_patterns, ignore_patterns)
             local_files_to_cache += model_cache.prepare_for_cache(remote_filtered_files)
 
             remote_model_files[repo_id] = {
                 "files": remote_filtered_files,
-                "revision": revision,
+                # We use the `model_cache.revision` in case no revision was provided.
+                "revision": model_cache.revision,
             }
 
     copy_into_build_dir(
