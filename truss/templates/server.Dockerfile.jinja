@@ -90,7 +90,6 @@ COPY ./{{ config.model_module_dir }} /app/model
 
 
 {% block run %}
-<<<<<<< HEAD
     {%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx python3-pip && \
@@ -104,20 +103,9 @@ RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf 
 COPY ./proxy.conf {{ proxy_config_path }}
 RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
-ENV SUPERVISOR_SERVER_URL={{ supervisor_server_url }}
+ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="/usr/local/bin/supervisord -c {{ supervisor_config_path }}"
 ENTRYPOINT ["/usr/local/bin/supervisord", "-c", "{{ supervisor_config_path }}"]
-    {%- elif config.live_reload %}
-ENV HASH_TRUSS={{truss_hash}}
-ENV CONTROL_SERVER_PORT=8080
-ENV INFERENCE_SERVER_PORT=8090
-ENV SERVER_START_CMD="/control/.env/bin/python3 /control/control/server.py"
-ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
-    {%- else %}
-ENV INFERENCE_SERVER_PORT=8080
-ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/inference_server.py"}}"
-ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/inference_server.py"]
-=======
     {%- if config.live_reload %}
 ENV HASH_TRUSS="{{truss_hash}}"
 ENV CONTROL_SERVER_PORT="8080"
@@ -128,6 +116,5 @@ ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
 ENV INFERENCE_SERVER_PORT="8080"
 ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/main.py"}}"
 ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/main.py"]
->>>>>>> origin/main
     {%- endif %}
 {% endblock %}
