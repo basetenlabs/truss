@@ -1,7 +1,7 @@
 ARG PYVERSION={{config.python_version}}
-FROM {{base_image_name_and_tag}} as truss_server
+FROM {{base_image_name_and_tag}} AS truss_server
 
-ENV PYTHON_EXECUTABLE={{ config.base_image.python_executable_path or 'python3' }}
+ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
 
 {% block fail_fast %}
 RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
@@ -52,7 +52,11 @@ RUN pip install -r {{config_requirements_filename}} --no-cache-dir && rm -rf /ro
 
 
 
+<<<<<<< HEAD
 ENV APP_HOME=/app
+=======
+ENV APP_HOME="/app"
+>>>>>>> origin/main
 WORKDIR $APP_HOME
 
 
@@ -68,7 +72,11 @@ COPY ./{{config.bundled_packages_dir}} /packages
 
 
 {% for env_var_name, env_var_value in config.environment_variables.items() %}
+<<<<<<< HEAD
 ENV {{ env_var_name }}={{ env_var_value }}
+=======
+ENV {{ env_var_name }}="{{ env_var_value }}"
+>>>>>>> origin/main
 {% endfor %}
 
 {% block run %}

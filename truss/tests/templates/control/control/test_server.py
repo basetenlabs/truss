@@ -45,7 +45,7 @@ def app(truss_container_fs, truss_original_hash):
         control_app = create_app(
             {
                 "inference_server_home": inf_serv_home,
-                "inference_server_process_args": ["python", "inference_server.py"],
+                "inference_server_process_args": ["python", "main.py"],
                 "control_server_host": "*",
                 "control_server_port": 8081,
                 "inference_server_port": 8082,

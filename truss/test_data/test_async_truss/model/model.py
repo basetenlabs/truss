@@ -15,8 +15,8 @@ class Model:
     async def preprocess(self, model_input: Dict):
         return {"preprocess_value": "value", **model_input}
 
-    async def postprocess(self, response: Dict):
-        return {"postprocess_value": "value", **response}
-
     async def predict(self, model_input: Any) -> Dict[str, List]:
         return model_input
+
+    async def postprocess(self, response: Dict):
+        return {"postprocess_value": "value", **response}

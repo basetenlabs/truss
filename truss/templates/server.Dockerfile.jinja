@@ -7,9 +7,8 @@
 {% block base_image_patch %}
 # If user base image is supplied in config, apply build commands from truss base image
 {% if config.base_image %}
-    {%- if not config.docker_server %}
-ENV PYTHONUNBUFFERED=True
-ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED="True"
+ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN apt update && \
     apt install -y bash \
@@ -91,6 +90,7 @@ COPY ./{{ config.model_module_dir }} /app/model
 
 
 {% block run %}
+<<<<<<< HEAD
     {%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx python3-pip && \
@@ -117,5 +117,17 @@ ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
 ENV INFERENCE_SERVER_PORT=8080
 ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/inference_server.py"}}"
 ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/inference_server.py"]
+=======
+    {%- if config.live_reload %}
+ENV HASH_TRUSS="{{truss_hash}}"
+ENV CONTROL_SERVER_PORT="8080"
+ENV INFERENCE_SERVER_PORT="8090"
+ENV SERVER_START_CMD="/control/.env/bin/python3 /control/control/server.py"
+ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
+    {%- else %}
+ENV INFERENCE_SERVER_PORT="8080"
+ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/main.py"}}"
+ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/main.py"]
+>>>>>>> origin/main
     {%- endif %}
 {% endblock %}
