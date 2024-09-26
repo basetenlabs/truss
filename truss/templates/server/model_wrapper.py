@@ -375,7 +375,20 @@ class ModelWrapper:
             if not spec.loader:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            try:
+                spec.loader.exec_module(module)
+            except ImportError as e:
+                if "attempted relative import" in str(e):
+                    raise ImportError(
+                        f"During import of `{model_class_file_path}`."
+                        f"Since Truss v0.9.36 relative imports (starting with '.') in "
+                        "the top-level model file are no longer supported. Please "
+                        "replace them with absolute imports. For guidance on importing "
+                        "custom packages refer to our documentation "
+                        "https://docs.baseten.co/truss-reference/config#packages"
+                    ) from e
+
+                raise
 
             model_class = getattr(module, self._config["model_class_name"])
             model_init_params = _prepare_init_args(
