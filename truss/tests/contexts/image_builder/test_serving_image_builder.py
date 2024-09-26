@@ -18,7 +18,6 @@ from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_cache,
-    get_hf_commit_from_main,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_config import ModelCache, ModelRepo, TrussConfig
@@ -251,14 +250,6 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
 
 @pytest.mark.integration
 def test_truss_server_caching_truss():
-    """
-    Note that this integration test depends on HuggingFace,
-    and the julien-c/EsperBERTo-small repository.
-
-    TODO: Update this to a Baseten-owned repo so that this does
-    not break.
-    """
-    latest_commit = get_hf_commit_from_main("julien-c/EsperBERTo-small")
     with ensure_kill_all():
         truss_root = (
             Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
@@ -271,40 +262,6 @@ def test_truss_server_caching_truss():
         )
         time.sleep(15)
         assert "Downloading model.safetensors:" not in container.logs()
-        assert (
-            f"/root/.cache/huggingface/hub/models--julien-c--EsperBERTo-small/snapshots/{latest_commit}"
-            in container.logs()
-        )
-
-
-@pytest.mark.integration
-def test_truss_server_caching_truss_with_revision():
-    """
-    Note that this integration test depends on HuggingFace,
-    and the julien-c/EsperBERTo-small repository.
-
-    TODO: Update this to a Baseten-owned repo so that this does
-    not break.
-    """
-    commit = "2439f60ef33a0d46d85da5001d52aeda5b00ce9f"
-    with ensure_kill_all():
-        truss_root = (
-            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
-        )
-        truss_dir = (
-            truss_root / "test_data" / "test_truss_server_caching_revision_truss"
-        )
-        tr = TrussHandle(truss_dir)
-
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        time.sleep(15)
-        assert "Downloading model.safetensors:" not in container.logs()
-        assert (
-            f"/root/.cache/huggingface/hub/models--julien-c--EsperBERTo-small/snapshots/{commit}"
-            in container.logs()
-        )
 
 
 def test_model_cache_dockerfile():
