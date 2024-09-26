@@ -3,7 +3,7 @@
 aiocontextvars==0.2.2
 argparse==1.4.0
 cython==3.0.5
-fastapi==0.109.1
+fastapi==0.114.1
 joblib==1.2.0
 loguru==0.7.2
 msgpack-numpy==0.4.8
