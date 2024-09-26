@@ -380,7 +380,7 @@ class ModelWrapper:
             except ImportError as e:
                 if "attempted relative import" in str(e):
                     raise ImportError(
-                        f"During import of `{model_class_file_path}`."
+                        f"During import of `{model_class_file_path}`. "
                         f"Since Truss v0.9.36 relative imports (starting with '.') in "
                         "the top-level model file are no longer supported. Please "
                         "replace them with absolute imports. For guidance on importing "
