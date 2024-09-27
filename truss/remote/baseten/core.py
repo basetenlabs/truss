@@ -3,7 +3,9 @@ import logging
 import typing
 from typing import IO, List, Optional, Tuple
 
+import requests
 import truss
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
+REQUIRES_PRODUCITON_DEPLOYMENT_ERROR = "Cannot promote deployment to environment if there is no existing production deployment. Please promote a deployment to production first"
 
 
 class ModelIdentifier:
@@ -224,12 +227,12 @@ def create_truss_service(
     config: str,
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
-    promote: bool = False,
     preserve_previous_prod_deployment: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
+    environment: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -263,6 +266,8 @@ def create_truss_service(
         return model_version_json["id"], model_version_json["version_id"]
 
     if model_id is None:
+        if environment != PRODUCTION_ENVIRONMENT_NAME:
+            raise ValueError(REQUIRES_PRODUCITON_DEPLOYMENT_ERROR)
         model_version_json = api.create_model_from_truss(
             model_name=model_name,
             s3_key=s3_key,
@@ -272,10 +277,22 @@ def create_truss_service(
             is_trusted=is_trusted,
             deployment_name=deployment_name,
             origin=origin,
+            environment=environment,
         )
         return model_version_json["id"], model_version_json["version_id"]
 
     # Case where there is a model id already, create another version
+    has_production_deployment = True
+    try:
+        # this function will raise on a non 200
+        api.get_deployment(model_id, PRODUCTION_ENVIRONMENT_NAME)
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            has_production_deployment = False
+        else:
+            raise e
+    if not has_production_deployment and environment != PRODUCTION_ENVIRONMENT_NAME:
+        raise ValueError(REQUIRES_PRODUCITON_DEPLOYMENT_ERROR)
     model_version_json = api.create_model_version_from_truss(
         model_id=model_id,
         s3_key=s3_key,
@@ -283,9 +300,9 @@ def create_truss_service(
         semver_bump=semver_bump,
         client_version=f"truss=={truss.version()}",
         is_trusted=is_trusted,
-        promote=promote,
         preserve_previous_prod_deployment=preserve_previous_prod_deployment,
         deployment_name=deployment_name,
+        environment=environment,
     )
     model_version_id = model_version_json["id"]
     return model_id, model_version_id

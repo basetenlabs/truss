@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
 import yaml
 from requests import ReadTimeout
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
@@ -123,6 +124,7 @@ class BasetenRemote(TrussRemote):
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
+        environment: Optional[str] = None,
     ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -134,7 +136,10 @@ class BasetenRemote(TrussRemote):
             publish = True
 
         if promote:
-            # If we are promoting a model after deploy, it must be published.
+            environment = PRODUCTION_ENVIRONMENT_NAME
+
+        if environment:
+            # If there is a target environment, it must be published.
             # Draft models cannot be promoted.
             publish = True
 
@@ -169,10 +174,10 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             model_id=model_id,
             is_trusted=trusted,
-            promote=promote,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
             origin=origin,
+            environment=environment,
         )
 
         return BasetenService(

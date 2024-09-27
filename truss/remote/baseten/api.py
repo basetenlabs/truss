@@ -107,6 +107,7 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
+        environment: str,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
@@ -119,6 +120,7 @@ class BasetenApi:
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
+                environment: "{environment}",
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
             ) {{
@@ -140,7 +142,7 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
-        promote: bool = False,
+        environment: str,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
     ):
@@ -152,8 +154,8 @@ class BasetenApi:
                 config: "{config}",
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
+                environment: "{environment}",
                 is_trusted: {'true' if is_trusted else 'false'},
-                promote_after_deploy: {'true' if promote else 'false'},
                 scale_down_old_production: {'false' if preserve_previous_prod_deployment else 'true'},
                 {f'name: "{deployment_name}"' if deployment_name else ""}
             ) {{

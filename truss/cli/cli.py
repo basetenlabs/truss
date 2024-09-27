@@ -21,7 +21,7 @@ from rich.console import Console
 
 import truss
 from truss.config.trt_llm import TrussTRTLLMQuantizationType
-from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -1048,6 +1048,7 @@ def push(
     deployment_name: Optional[str] = None,
     wait: bool = False,
     timeout_seconds: Optional[int] = None,
+    environment: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1065,6 +1066,8 @@ def push(
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = inquire_model_name()
+    if promote and not environment:
+        environment = PRODUCTION_ENVIRONMENT_NAME
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1123,6 +1126,7 @@ def push(
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
+        environment=environment,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -1144,8 +1148,8 @@ def push(
 
     if promote:
         promotion_text = (
-            "Your Truss has been deployed as a production model. After it successfully "
-            "deploys, it will become the next production deployment of your model."
+            f"Your Truss has been deployed into the {environment} environment. After it successfully "
+            f"deploys, it will become the next {environment} deployment of your model."
         )
         console.print(promotion_text, style="green")
 
