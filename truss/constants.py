@@ -15,6 +15,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODE_DIR = pathlib.Path(BASE_DIR, "truss")
 
 TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates")
+DOCKER_SERVER_TEMPLATES_DIR = pathlib.Path(CODE_DIR, "templates", "docker_server")
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"
@@ -26,6 +27,8 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
 CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 
 SUPPORTED_PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
+MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.12"
+MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.8"
 
 TRTLLM_PREDICT_CONCURRENCY = 512
 TRTLLM_MIN_MEMORY_REQUEST_GI = 24
