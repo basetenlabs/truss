@@ -1109,6 +1109,7 @@ def test_async_streaming_with_cancellation():
 
     class Model:
         async def predict(self, inputs, request: fastapi.Request):
+            logging.warning("Starting sleep.")
             await asyncio.sleep(1)
             if await request.is_disconnected():
                 logging.warning("Cancelled (before gen).")
@@ -1145,10 +1146,13 @@ def test_async_streaming_with_cancellation_before_generation():
 
     class Model:
         async def predict(self, inputs, request: fastapi.Request):
+            logging.info("start sleep")
             await asyncio.sleep(2)
+            logging.info("done sleep, check request.")
             if await request.is_disconnected():
                 logging.warning("Cancelled (before gen).")
                 return
+            logging.info("not cancelled.")
             return "Done"
     """
     with ensure_kill_all(), temp_truss(model, "") as tr:

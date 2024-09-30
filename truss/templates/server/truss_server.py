@@ -27,7 +27,6 @@ from opentelemetry.sdk import trace as sdk_trace
 from shared import serialization, util
 from shared.logging import setup_logging
 from shared.secrets_resolver import SecretsResolver
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
@@ -168,8 +167,13 @@ class BasetenEndpoints:
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
         """
-        This method calls the user-provided predict method
+        This method calls the user-provided predict method.
         """
+        if await request.is_disconnected():
+            msg = "Skipping `predict`, client disconnected."
+            logging.info(msg)
+            raise ClientDisconnect(msg)
+
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
@@ -336,11 +340,7 @@ class TrussServer:
             util.kill_child_processes(os.getpid())
             sys.exit()
 
-        termination_handler_middleware = TerminationHandlerMiddleware(
-            on_stop=lambda: None,
-            on_term=exit_self,
-        )
-        app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
+        app.add_middleware(TerminationHandlerMiddleware, on_term=exit_self)
         return app
 
     def start(self):

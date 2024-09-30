@@ -1,64 +1,71 @@
 import asyncio
+import logging
 import signal
 from typing import Callable
 
-from fastapi import Request
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # This is to allow the last request's response to finish handling. There may be more
 # middlewares that the response goes through, and then there's the time for the bytes
-# to be pushed to the caller.
+# to be sent to the caller.
 DEFAULT_TERM_DELAY_SECS = 5.0
 
 
 class TerminationHandlerMiddleware:
     """
+    Implements https://www.starlette.io/middleware/#pure-asgi-middleware
+
     This middleware allows for swiftly and safely terminating the server. It
-    listens to a set of termination signals. On receiving such a signal, it
-    first informs on the on_stop callback, then waits for currently executing
-    requests to finish, before informing on the on_term callback.
-
-    Stop means that the process to stop the server has started. As soon as
-    outstading requests go to zero after this, on_term will be called.
-
-    Term means that this is the right time to terminate the server process, no
-    outstanding requests at this point.
-
-    The caller would typically handle on_stop by stop sending more requests to
-    the FastApi server. And on_term by exiting the server process.
+    listens to a set of termination signals. On receiving such a signal, it terminates
+    immediately if there are no outstanding requests and otherwise "marks" the server
+    to be terminated when all outstanding requests are done.
     """
 
     def __init__(
         self,
-        on_stop: Callable[[], None],
-        on_term: Callable[[], None],
+        app: ASGIApp,
+        on_termination: Callable[[], None],
         termination_delay_secs: float = DEFAULT_TERM_DELAY_SECS,
     ):
-        self._outstanding_request_count = 0
-        self._on_stop = on_stop
-        self._on_term = on_term
+        self._app = app
+        self._outstanding_requests_semaphore = asyncio.Semaphore(0)
+        self._on_termination = on_termination
         self._termination_delay_secs = termination_delay_secs
-        self._stopped = False
+        self._should_terminate_soon = False
+
+        loop = asyncio.get_event_loop()
         for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-            signal.signal(sig, self._stop)
+            loop.add_signal_handler(sig, self._handle_stop_signal)
 
-    async def __call__(self, request: Request, call_next):
-        self._outstanding_request_count += 1
-        try:
-            response = await call_next(request)
-        finally:
-            self._outstanding_request_count -= 1
-            if self._outstanding_request_count == 0 and self._stopped:
-                # There's a delay in term to allow some time for current
-                # response flow to finish.
-                asyncio.create_task(self._term())
-        return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            self._outstanding_requests_semaphore.release()  # Increment.
+            try:
+                await self._app(scope, receive, send)
+            finally:
+                await self._outstanding_requests_semaphore.acquire()  # Decrement.
+                # Check if it's time to terminate after all requests finish
+                if (
+                    self._should_terminate_soon
+                    and self._outstanding_requests_semaphore.locked()
+                ):
+                    logging.info("Termination after finishing outstanding requests.")
+                    # Run in background, to not block the current request handling.
+                    asyncio.create_task(self._terminate())
+        else:
+            await self._app(scope, receive, send)
 
-    def _stop(self, sig, frame):
-        self._on_stop()
-        self._stopped = True
-        if self._outstanding_request_count == 0:
-            self._on_term()
+    def _handle_stop_signal(self) -> None:
+        logging.info("Received termination signal.")
+        self._should_terminate_soon = True
+        if self._outstanding_requests_semaphore.locked():
+            logging.info("No outstanding requests. Terminate immediately.")
+            asyncio.create_task(self._terminate())
+        else:
+            logging.info("Will terminate when all requests are processed.")
 
-    async def _term(self):
+    async def _terminate(self) -> None:
+        logging.info("Sleeping before termination.")
         await asyncio.sleep(self._termination_delay_secs)
-        self._on_term()
+        logging.info("Terminating")
+        self._on_termination()

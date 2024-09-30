@@ -1,93 +1,185 @@
+import asyncio
+import logging
 import multiprocessing
+import os
+import signal
+import socket
+import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Awaitable, Callable, List
 
+import httpx
 import pytest
-from truss.templates.server.common.termination_handler_middleware import (
-    TerminationHandlerMiddleware,
-)
+from fastapi import FastAPI
+from starlette.responses import PlainTextResponse
 
 
-async def noop(*args, **kwargs):
-    return
+def _get_free_port() -> int:
+    """Find and return a free port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))  # Bind to localhost on an arbitrary free port
+        return s.getsockname()[1]  # Return the assigned port
 
 
-@pytest.mark.integration
-def test_termination_sequence_no_pending_requests(tmp_path):
-    # Create middleware in separate process, on sending term signal to process,
-    # it should print the right messages.
-    def main_coro_gen(middleware: TerminationHandlerMiddleware):
-        import asyncio
-
-        async def main(*args, **kwargs):
-            await middleware(1, call_next=noop)
-            await asyncio.sleep(1)
-            print("should not print due to termination")
-
-        return main()
-
-    _verify_term(main_coro_gen, ["stopped", "terminated"])
+HOST = "localhost"
+PORT = _get_free_port()
 
 
-@pytest.mark.integration
-def test_termination_sequence_with_pending_requests(tmp_path):
-    def main_coro_gen(middleware: TerminationHandlerMiddleware):
-        import asyncio
+async def _mock_asgi_app():
+    await asyncio.sleep(1)
+    return PlainTextResponse("OK")
 
-        async def main(*args, **kwargs):
-            async def call_next(req):
-                await asyncio.sleep(1.0)
-                return "call_next_called"
 
-            resp = await middleware(1, call_next=call_next)
-            print(f"call_next response: {resp}")
-            await asyncio.sleep(1)
-            print("should not print due to termination")
+def _on_termination():
+    from truss.templates.shared import util
 
-        return main()
+    logging.info("Server is shutting down...")
+    util.kill_child_processes(os.getpid())
+    os.kill(os.getpid(), signal.SIGKILL)
 
-    _verify_term(
-        main_coro_gen,
-        [
-            "stopped",
-            "call_next response: call_next_called",
-            "terminated",
-        ],
+
+def run_server(log_file_path: Path):
+    import logging
+
+    logging.basicConfig(
+        filename=log_file_path,
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",  # Add timestamps
+        datefmt="%Y-%m-%d %H:%M:%S",  # Optional: specify date format
+        force=True,  # Force reconfiguration of logging if already configured
+    )
+    import uvicorn
+    from truss.templates.server.common.termination_handler_middleware import (
+        TerminationHandlerMiddleware,
     )
 
+    app = FastAPI()
+    app.get("/")(_mock_asgi_app)
+    app.add_middleware(
+        TerminationHandlerMiddleware,
+        on_termination=_on_termination,
+        termination_delay_secs=1,
+    )
+    # Simple hack to get *all* output to a file.
+    sys.stderr = open(log_file_path, "a+")
+    sys.stdout = open(log_file_path, "a+")
+    uvicorn.run(app, host=HOST, port=PORT)
 
-def _verify_term(
-    main_coro_gen: Callable[[TerminationHandlerMiddleware], Awaitable],
-    expected_lines: List[str],
-):
-    def run(stdout_capture_file_path):
-        import asyncio
-        import os
-        import signal
-        import sys
 
-        sys.stdout = open(stdout_capture_file_path, "w")
-
-        def term():
-            print("terminated", flush=True)
-            os.kill(os.getpid(), signal.SIGKILL)
-
-        middleware = TerminationHandlerMiddleware(
-            on_stop=lambda: print("stopped", flush=True),
-            on_term=term,
-            termination_delay_secs=0.1,
+@pytest.mark.asyncio
+async def test_no_outstanding_requests_immediate_termination():
+    """Test that the server terminates immediately when no outstanding requests."""
+    with tempfile.NamedTemporaryFile(
+        delete=False, prefix="test-term.", suffix=".txt"
+    ) as tmp_log:
+        log_file_path = Path(tmp_log.name)
+        server_process = multiprocessing.Process(
+            target=run_server, args=(log_file_path,)
         )
-        asyncio.run(main_coro_gen(middleware))
+        server_process.start()
+        time.sleep(1)
+        server_process.terminate()
+        server_process.join()
 
-    stdout_capture_file = tempfile.NamedTemporaryFile()
-    proc = multiprocessing.Process(target=run, args=(stdout_capture_file.name,))
-    proc.start()
-    time.sleep(1)
-    proc.terminate()
-    proc.join(timeout=6.0)
-    with Path(stdout_capture_file.name).open() as file:
-        lines = [line.strip() for line in file]
+        with log_file_path.open() as log:
+            log_lines = log.readlines()
+            assert any("Received termination signal." in line for line in log_lines)
+            assert any(
+                "No outstanding requests. Terminate immediately." in line
+                for line in log_lines
+            )
+            assert any("Terminating" in line for line in log_lines)
+            assert any("Server is shutting down" in line for line in log_lines)
 
-    assert lines == expected_lines
+
+@pytest.mark.asyncio
+async def test_outstanding_requests_delayed_termination():
+    """Test that the server waits for outstanding requests to finish before terminating."""
+    with tempfile.NamedTemporaryFile(
+        delete=False, prefix="test-term.", suffix=".txt"
+    ) as tmp_log:
+        log_file_path = Path(tmp_log.name)
+
+        server_process = multiprocessing.Process(
+            target=run_server, args=(log_file_path,)
+        )
+        server_process.start()
+        time.sleep(1)
+
+        # Send a long-running request to the server
+        async with httpx.AsyncClient() as client:
+            task = asyncio.create_task(client.get(f"http://{HOST}:{PORT}/"))
+            # Give the request some time to be in progress
+            await asyncio.sleep(0.5)
+            # Send termination signal (SIGTERM) during the request
+            server_process.terminate()
+            response = await task
+            assert response.status_code == 200
+
+        server_process.join()
+        with log_file_path.open() as log:
+            log_lines = log.readlines()
+            assert any("Received termination signal." in line for line in log_lines)
+            assert any(
+                "Will terminate when all requests are processed." in line
+                for line in log_lines
+            )
+            assert any("Terminating" in line for line in log_lines)
+            assert any("Server is shutting down" in line for line in log_lines)
+
+
+@pytest.mark.asyncio
+async def test_multiple_outstanding_requests():
+    """Test that the server waits for multiple concurrent requests before terminating.
+
+    Logs something like:
+
+    INFO:     Started server process [1820944]
+    INFO:     Waiting for application startup.
+    INFO:     Application startup complete.
+    INFO:     Uvicorn running on http://localhost:37311 (Press CTRL+C to quit)
+    2024-09-30 15:03:05 - root - INFO - Received termination signal.
+    2024-09-30 15:03:05 - root - INFO - Will terminate when all requests are processed.
+    INFO:     127.0.0.1:58184 - "GET / HTTP/1.1" 200 OK
+    INFO:     127.0.0.1:58192 - "GET / HTTP/1.1" 200 OK
+    2024-09-30 15:03:06 - root - INFO - Termination after finishing outstanding requests.
+    2024-09-30 15:03:06 - root - INFO - Sleeping before termination.
+    2024-09-30 15:03:07 - root - INFO - Terminating
+    2024-09-30 15:03:07 - root - INFO - Server is shutting down...
+    """
+    with tempfile.NamedTemporaryFile(
+        delete=False, prefix="test-term.", suffix=".txt"
+    ) as tmp_log:
+        log_file_path = Path(tmp_log.name)
+
+        server_process = multiprocessing.Process(
+            target=run_server, args=(log_file_path,)
+        )
+        server_process.start()
+        time.sleep(1)
+
+        # Send multiple concurrent long-running requests
+        async with httpx.AsyncClient() as client:
+            tasks = [
+                asyncio.create_task(client.get(f"http://{HOST}:{PORT}/")),
+                asyncio.create_task(client.get(f"http://{HOST}:{PORT}/")),
+            ]
+            # Give the requests some time to be in progress
+            await asyncio.sleep(0.5)
+            server_process.terminate()
+            # Wait for both requests to finish
+            results = await asyncio.gather(*tasks)
+            for r in results:
+                assert r.status_code == 200
+
+        server_process.join()
+        with log_file_path.open() as log:
+            log_lines = log.readlines()
+            assert any("Received termination signal." in line for line in log_lines)
+            assert any(
+                "Will terminate when all requests are processed." in line
+                for line in log_lines
+            )
+            assert any("Terminating" in line for line in log_lines)
+            assert any("Server is shutting down" in line for line in log_lines)
