@@ -340,7 +340,7 @@ class TrussServer:
             util.kill_child_processes(os.getpid())
             sys.exit()
 
-        app.add_middleware(TerminationHandlerMiddleware, on_term=exit_self)
+        app.add_middleware(TerminationHandlerMiddleware, on_termination=exit_self)
         return app
 
     def start(self):
