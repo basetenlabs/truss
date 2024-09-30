@@ -102,7 +102,11 @@ SENTINEL = _Sentinel()
 
 
 def _is_request_type(obj: Any) -> bool:
-    return isinstance(obj, type) and issubclass(obj, starlette.requests.Request)
+    # issubclass raises an error (instead of returning False) if `obj` is not a type.
+    try:
+        return issubclass(obj, starlette.requests.Request)
+    except Exception:
+        return False
 
 
 class ArgConfig(enum.Enum):

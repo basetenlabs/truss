@@ -1,0 +1,27 @@
+[supervisord]
+nodaemon=true                ; Run supervisord in the foreground (useful for containers)
+logfile=/dev/null            ; Disable logging to file (send logs to /dev/null)
+logfile_maxbytes=0           ; No size limit on logfile (since logging is disabled)
+
+[program:model-server]
+command={{start_command}}    ; Command to start the model server (provided by Jinja variable)
+startsecs=30                 ; Wait 30 seconds before assuming the server is running
+autostart=true               ; Automatically start the program when supervisord starts
+autorestart=true             ; Always restart the program if it exits, no matter what the exit code
+stdout_logfile=/dev/fd/1     ; Send stdout to the first file descriptor (stdout)
+stdout_logfile_maxbytes=0    ; No size limit on stdout log
+redirect_stderr=true         ; Redirect stderr to stdout
+
+[program:nginx]
+command=nginx -g "daemon off;" ; Command to start nginx without daemonizing (keeps it in the foreground)
+startsecs=0                   ; Assume nginx starts immediately
+autostart=true                ; Automatically start nginx when supervisord starts
+autorestart=true              ; Always restart the program if it exits, no matter what the exit code
+stdout_logfile=/dev/fd/1      ; Send nginx stdout to the first file descriptor (stdout)
+stdout_logfile_maxbytes=0     ; No size limit on stdout log
+redirect_stderr=true          ; Redirect nginx stderr to stdout
+
+[eventlistener:quit_on_failure]
+events=PROCESS_STATE_FATAL    ; Listen for fatal process state events
+command=sh -c 'echo "READY"; read line; kill -15 1; echo "RESULT 2";'
+                              ; Stop supervisord if a fatal event occurs (by sending SIGTERM to PID 1)
