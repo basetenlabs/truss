@@ -57,11 +57,11 @@ class TerminationHandlerMiddleware:
 
     def _handle_stop_signal(self) -> None:
         logging.info("Received termination signal.")
-        self._should_terminate_soon = True
         if self._outstanding_requests_semaphore.locked():
             logging.info("No outstanding requests. Terminate immediately.")
             self._on_termination()
         else:
+            self._should_terminate_soon = True
             logging.info("Will terminate when all requests are processed.")
 
     async def _terminate_with_sleep(self) -> None:

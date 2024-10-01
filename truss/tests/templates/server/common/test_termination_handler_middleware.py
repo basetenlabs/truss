@@ -132,7 +132,7 @@ async def test_outstanding_requests_delayed_termination():
 async def test_multiple_outstanding_requests():
     """Test that the server waits for multiple concurrent requests before terminating.
 
-    Logs something like:
+    Logs something like (note termination signal before processing requests):
 
     INFO:     Started server process [1820944]
     INFO:     Waiting for application startup.

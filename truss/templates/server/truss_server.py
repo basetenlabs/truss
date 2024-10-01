@@ -338,7 +338,10 @@ class TrussServer:
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
             util.kill_child_processes(os.getpid())
-            sys.exit()
+            try:
+                sys.exit(0)
+            except SystemExit:
+                pass  # Exit cleanly without printing the stack trace
 
         app.add_middleware(TerminationHandlerMiddleware, on_termination=exit_self)
         return app
