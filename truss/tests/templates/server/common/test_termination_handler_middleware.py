@@ -89,7 +89,6 @@ async def test_no_outstanding_requests_immediate_termination():
                 "No outstanding requests. Terminate immediately." in line
                 for line in log_lines
             )
-            assert any("Terminating" in line for line in log_lines)
             assert any("Server is shutting down" in line for line in log_lines)
 
 

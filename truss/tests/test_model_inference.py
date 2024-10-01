@@ -1140,19 +1140,19 @@ def test_async_streaming_with_cancellation():
 
 
 @pytest.mark.integration
-def test_async_streaming_with_cancellation_before_generation():
+def test_async_non_streaming_with_cancellation():
     model = """
     import fastapi, asyncio, logging
 
     class Model:
         async def predict(self, inputs, request: fastapi.Request):
-            logging.info("start sleep")
+            logging.info("Start sleep")
             await asyncio.sleep(2)
             logging.info("done sleep, check request.")
             if await request.is_disconnected():
                 logging.warning("Cancelled (before gen).")
                 return
-            logging.info("not cancelled.")
+            logging.info("Not cancelled.")
             return "Done"
     """
     with ensure_kill_all(), temp_truss(model, "") as tr:

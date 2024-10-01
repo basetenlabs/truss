@@ -51,7 +51,7 @@ class TerminationHandlerMiddleware:
                 ):
                     logging.info("Termination after finishing outstanding requests.")
                     # Run in background, to not block the current request handling.
-                    asyncio.create_task(self._terminate())
+                    asyncio.create_task(self._terminate_with_sleep())
         else:
             await self._app(scope, receive, send)
 
@@ -60,11 +60,11 @@ class TerminationHandlerMiddleware:
         self._should_terminate_soon = True
         if self._outstanding_requests_semaphore.locked():
             logging.info("No outstanding requests. Terminate immediately.")
-            asyncio.create_task(self._terminate())
+            self._on_termination()
         else:
             logging.info("Will terminate when all requests are processed.")
 
-    async def _terminate(self) -> None:
+    async def _terminate_with_sleep(self) -> None:
         logging.info("Sleeping before termination.")
         await asyncio.sleep(self._termination_delay_secs)
         logging.info("Terminating")
