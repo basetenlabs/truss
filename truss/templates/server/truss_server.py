@@ -169,6 +169,7 @@ class BasetenEndpoints:
         """
         This method calls the user-provided predict method.
         """
+        logging.warning("Marius006")
         if await request.is_disconnected():
             msg = "Skipping `predict`, client disconnected."
             logging.info(msg)
