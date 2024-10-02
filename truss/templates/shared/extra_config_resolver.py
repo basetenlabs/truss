@@ -19,6 +19,3 @@ class ExtraConfigResolver:
     @staticmethod
     def _extra_config_mount_dir_path():
         return Path(ExtraConfigResolver.EXTRA_CONFIG_MOUNT_DIR)
-
-
-# Implement caching of config KV pairs
