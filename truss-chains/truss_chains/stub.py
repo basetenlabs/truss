@@ -15,7 +15,10 @@ from truss_chains import definitions, utils
 class BasetenSession:
     """Helper to invoke predict method on Baseten deployments."""
 
-    _client_cycle_time_sec: ClassVar[int] = 3600 * 8  # 8 hours.
+    _client_cycle_time_sec: ClassVar[int] = 3600 * 1  # 1 hour.
+    _client_limits: ClassVar[httpx.Limits] = httpx.Limits(
+        max_connections=1000, max_keepalive_connections=400
+    )
 
     _auth_header: Mapping[str, str]
     _service_descriptor: definitions.ServiceDescriptor
@@ -38,10 +41,21 @@ class BasetenSession:
         self._cached_async_client = None
         self._sync_lock = threading.Lock()
         self._async_lock = asyncio.Lock()
+        self._sync_num_requests = utils.ThreadSafeCounter()
+        self._async_num_requests = utils.AsyncSafeCounter()
 
     @property
     def name(self) -> str:
         return self._service_descriptor.name
+
+    def _maybe_warn_for_overload(self, num_requests: int) -> None:
+        if num_requests > self._client_limits.max_connections * 0.8:  # type: ignore[operator]
+            logging.warning(
+                f"High number of concurrently outgoing http connections: "
+                f"`{num_requests}`. Close to reaching connections limit of "
+                f"`{self._client_limits.max_connections}`. To avoid overload, use "
+                "more replicas/autoscaling for this chainlet."
+            )
 
     def _client_cycle_needed(self, cached_client: Optional[tuple[Any, int]]) -> bool:
         return (
@@ -59,6 +73,7 @@ class BasetenSession:
                         httpx.Client(
                             headers=self._auth_header,
                             timeout=self._service_descriptor.options.timeout_sec,
+                            limits=self._client_limits,
                         ),
                         int(time.time()),
                     )
@@ -75,6 +90,7 @@ class BasetenSession:
                         httpx.AsyncClient(
                             headers=self._auth_header,
                             timeout=self._service_descriptor.options.timeout_sec,
+                            limits=self._client_limits,
                         ),
                         int(time.time()),
                     )
@@ -92,9 +108,11 @@ class BasetenSession:
                 if (num := attempt.retry_state.attempt_number) > 1:
                     logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
                 try:
-                    resp = self._client_sync().post(
-                        self._service_descriptor.predict_url, json=json_payload
-                    )
+                    with self._sync_num_requests as num_requests:
+                        self._maybe_warn_for_overload(num_requests)
+                        resp = self._client_sync().post(
+                            self._service_descriptor.predict_url, json=json_payload
+                        )
                     return utils.handle_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
                 # errors. This has happened in the past and is a defensive measure.
@@ -113,9 +131,12 @@ class BasetenSession:
                 if (num := attempt.retry_state.attempt_number) > 1:
                     logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
                 try:
-                    resp = await (await self._client_async()).post(
-                        self._service_descriptor.predict_url, json=json_payload
-                    )
+                    client = await self._client_async()
+                    with self._sync_num_requests as num_requests:
+                        self._maybe_warn_for_overload(num_requests)
+                        resp = await client.post(
+                            self._service_descriptor.predict_url, json=json_payload
+                        )
                     return utils.handle_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
                 # errors. This has happened in the past and is a defensive measure.
