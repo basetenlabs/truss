@@ -68,4 +68,6 @@ class TerminationHandlerMiddleware:
         logging.info("Sleeping before termination.")
         await asyncio.sleep(self._termination_delay_secs)
         logging.info("Terminating")
+        loop = asyncio.get_event_loop()
+        loop.stop()  # Stop the event loop gracefully
         self._on_termination()

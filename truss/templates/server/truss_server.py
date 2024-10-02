@@ -30,6 +30,8 @@ from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
+# from starlette.routing import Lifespan
+
 if sys.version_info >= (3, 9):
     from typing import AsyncGenerator, Generator
 else:
@@ -73,6 +75,15 @@ class UvicornCustomServer(multiprocessing.Process):
     def run(self):
         server = uvicorn.Server(config=self.config)
         asyncio.run(server.serve(sockets=self.sockets))
+
+
+# class CustomLifespan(Lifespan):
+#     async def __call__(self, scope, receive, send):
+#         try:
+#             await super().__call__(scope, receive, send)
+#         except asyncio.CancelledError:
+#             # Handle asyncio cancellation error gracefully
+#             pass
 
 
 class BasetenEndpoints:
@@ -338,11 +349,10 @@ class TrussServer:
         def exit_self():
             # Note that this kills the current process, the worker process, not
             # the main truss_server process.
+            # loop = asyncio.get_event_loop()
+            # loop.stop()  # Stop the event loop gracefully
             util.kill_child_processes(os.getpid())
-            try:
-                sys.exit(0)
-            except SystemExit:
-                pass  # Exit cleanly without printing the stack trace
+            sys.exit(0)
 
         app.add_middleware(TerminationHandlerMiddleware, on_termination=exit_self)
         return app
