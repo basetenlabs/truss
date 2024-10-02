@@ -5,7 +5,6 @@ import contextvars
 import functools
 import importlib.util
 import inspect
-import json
 import logging
 import os
 import pathlib
@@ -28,7 +27,6 @@ from typing import (
 )
 
 import pydantic
-from truss.templates.shared import extra_config_resolver
 
 from truss_chains import definitions, utils
 
@@ -635,18 +633,18 @@ def _create_modified_init_for_local(
             chainlet_descriptor.has_context
             and definitions.CONTEXT_ARG_NAME not in kwargs_mod
         ):
-            chainlet_service_config = (
-                extra_config_resolver.ExtraConfigResolver.get_config_value(
-                    "chainlet_service_config"
-                )
-            )
-            if chainlet_service_config:
-                chainlet_service_config_json = json.loads(chainlet_service_config)
-                for chainlet_name, service_descriptor in chainlet_to_service.items():
-                    if chainlet_name in chainlet_service_config_json:
-                        service_descriptor["predict_url"] = (
-                            chainlet_service_config_json[chainlet_name]["predict_url"]
-                        )
+            # chainlet_service_config = (
+            #     extra_config_resolver.ExtraConfigResolver.get_config_value(
+            #         "chainlet_service_config"
+            #     )
+            # )
+            # if chainlet_service_config:
+            #     chainlet_service_config_json = json.loads(chainlet_service_config)
+            #     for chainlet_name, service_descriptor in chainlet_to_service.items():
+            #         if chainlet_name in chainlet_service_config_json:
+            #             service_descriptor["predict_url"] = (
+            #                 chainlet_service_config_json[chainlet_name]["predict_url"]
+            #             )
 
             kwargs_mod[definitions.CONTEXT_ARG_NAME] = definitions.DeploymentContext(
                 user_config=chainlet_descriptor.chainlet_cls.default_user_config,
