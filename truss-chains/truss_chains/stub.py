@@ -15,7 +15,7 @@ from truss_chains import definitions, utils
 class BasetenSession:
     """Helper to invoke predict method on Baseten deployments."""
 
-    _client_cycle_time_sec: ClassVar[int] = 3600 * 8  # 8 hours.
+    _client_cycle_time_sec: ClassVar[int] = 15 * 60  # 15 minutes.
 
     _auth_header: Mapping[str, str]
     _service_descriptor: definitions.ServiceDescriptor
