@@ -1,11 +1,14 @@
+import json
 import logging
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List
 
 import pydantic
 import pytest
 import requests
+from truss.templates.shared.extra_config_resolver import ExtraConfigResolver
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 
 import truss_chains as chains
@@ -82,12 +85,47 @@ def test_chain():
         assert response.status_code == 500
 
 
+@contextmanager
+def _extra_config_mount_dir(path: Path):
+    orig_extra_config_mount_dir = ExtraConfigResolver.EXTRA_CONFIG_MOUNT_DIR
+    ExtraConfigResolver.EXTRA_CONFIG_MOUNT_DIR = str(path)
+    try:
+        yield
+    finally:
+        ExtraConfigResolver.EXTRA_CONFIG_MOUNT_DIR = orig_extra_config_mount_dir
+
+
 @pytest.mark.asyncio
-async def test_chain_local():
+async def test_chain_local(tmp_path):
     root = Path(__file__).parent.resolve()
     chain_root = root / "itest_chain" / "itest_chain.py"
+    with (tmp_path / "chainlet_service_config").open("w") as f:
+        f.write(
+            json.dumps(
+                {
+                    "GenerateData": {
+                        "name": "GenerateData",
+                        "predict_url": "does this override",
+                    }
+                }
+            )
+        )
     with framework.import_target(chain_root, "ItestChain") as entrypoint:
-        with public_api.run_local(user_env={"test_env_key": "test_env_value"}):
+        with _extra_config_mount_dir(tmp_path), public_api.run_local(
+            user_env={"test_env_key": "test_env_value"},
+            chainlet_to_service={
+                "GenerateData": {
+                    "name": "RandInt",
+                    "options": {"retries": 3, "timeout_sec": 600},
+                    "predict_url": "https://model-zq8ekgqo.api.staging.baseten.co/deployment/q84lldw/predict",
+                },
+                "HelloWorld": {
+                    "name": "HelloWorld",
+                    "options": {"retries": 3, "timeout_sec": 600},
+                    "predict_url": "another predict url that wont override",
+                },
+            },
+        ):
             with pytest.raises(ValueError):
                 # First time `SplitTextFailOnce` raises an error and
                 # currently local mode does not have retries.
