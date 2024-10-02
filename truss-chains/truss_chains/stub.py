@@ -19,7 +19,6 @@ class BasetenSession:
     _client_limits: ClassVar[httpx.Limits] = httpx.Limits(
         max_connections=1000, max_keepalive_connections=400
     )
-
     _auth_header: Mapping[str, str]
     _service_descriptor: definitions.ServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
@@ -49,12 +48,14 @@ class BasetenSession:
         return self._service_descriptor.name
 
     def _maybe_warn_for_overload(self, num_requests: int) -> None:
-        if num_requests > self._client_limits.max_connections * 0.8:  # type: ignore[operator]
+        if self._client_limits.max_connections is None:
+            return
+        if num_requests > self._client_limits.max_connections * 0.8:
             logging.warning(
-                f"High number of concurrently outgoing http connections: "
-                f"`{num_requests}`. Close to reaching connections limit of "
-                f"`{self._client_limits.max_connections}`. To avoid overload, use "
-                "more replicas/autoscaling for this chainlet."
+                f"High number of concurrently outgoing HTTP connections: "
+                f"`{num_requests}`. Close to or above connection limit of "
+                f"`{self._client_limits.max_connections}`. To avoid overload and "
+                f"timeouts, use more replicas/autoscaling for this chainlet."
             )
 
     def _client_cycle_needed(self, cached_client: Optional[tuple[Any, int]]) -> bool:
@@ -132,7 +133,7 @@ class BasetenSession:
                     logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
                 try:
                     client = await self._client_async()
-                    with self._sync_num_requests as num_requests:
+                    async with self._async_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
                         resp = await client.post(
                             self._service_descriptor.predict_url, json=json_payload
