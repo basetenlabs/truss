@@ -144,7 +144,6 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
     ):
-
         query_string = f"""
         mutation {{
             create_model_version_from_truss(
