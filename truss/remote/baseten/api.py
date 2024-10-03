@@ -140,9 +140,9 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
-        environment: str,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
+        environment: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
