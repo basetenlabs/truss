@@ -6,7 +6,6 @@ import os
 import signal
 import socket
 import sys
-import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -16,7 +15,6 @@ import uvicorn
 import yaml
 from common import errors, tracing
 from common.schema import TrussSchema
-from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
@@ -24,10 +22,9 @@ from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
-from shared import serialization, util
+from shared import serialization
 from shared.logging import setup_logging
 from shared.secrets_resolver import SecretsResolver
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
@@ -40,8 +37,6 @@ else:
 # Please consider the following when increasing this:
 # 1. Self-termination on model load fail.
 # 2. Graceful termination.
-DEFAULT_NUM_WORKERS = 1
-DEFAULT_NUM_SERVER_PROCESSES = 1
 WORKER_TERMINATION_TIMEOUT_SECS = 120.0
 WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
@@ -331,20 +326,10 @@ class TrussServer:
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
 
-        def exit_self():
-            # Note that this kills the current process, the worker process, not
-            # the main truss_server process.
-            util.kill_child_processes(os.getpid())
-            sys.exit()
-
-        termination_handler_middleware = TerminationHandlerMiddleware(
-            on_stop=lambda: None,
-            on_term=exit_self,
-        )
-        app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app
 
     def start(self):
+        log_level = "DEBUG" if self._config["runtime"]["enable_debug_logs"] else "INFO"
         cfg = uvicorn.Config(
             self.create_application(),
             # We hard-code the http parser as h11 (the default) in case the user has
@@ -353,7 +338,7 @@ class TrussServer:
             http="h11",
             host="0.0.0.0",
             port=self.http_port,
-            workers=DEFAULT_NUM_WORKERS,
+            workers=1,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -384,7 +369,7 @@ class TrussServer:
                     },
                 },
                 "loggers": {
-                    "uvicorn": {"handlers": ["default"], "level": "INFO"},
+                    "uvicorn": {"handlers": ["default"], "level": log_level},
                     "uvicorn.error": {"level": "INFO"},
                     "uvicorn.access": {
                         "handlers": ["access"],
@@ -394,47 +379,6 @@ class TrussServer:
                 },
             },
         )
-
-        # Call this so uvloop gets used
-        cfg.setup_event_loop()
-
-        async def serve() -> None:
-            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            serversocket.bind((cfg.host, cfg.port))
-            serversocket.listen(5)
-
-            num_server_procs = self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
-            )
-            logging.info(f"starting {num_server_procs} uvicorn server processes")
-            servers: List[UvicornCustomServer] = []
-            for _ in range(num_server_procs):
-                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
-                server.start()
-                servers.append(server)
-
-            def stop_servers():
-                # Send stop signal, then wait for all to exit
-                for server in servers:
-                    # Sends term signal to the process, which should be handled
-                    # by the termination handler.
-                    server.stop()
-
-                termination_check_attempts = int(
-                    WORKER_TERMINATION_TIMEOUT_SECS
-                    / WORKER_TERMINATION_CHECK_INTERVAL_SECS
-                )
-                for _ in range(termination_check_attempts):
-                    time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
-                    if util.all_processes_dead(servers):
-                        return
-
-            for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-                signal.signal(sig, lambda sig, frame: stop_servers())
-
-        async def servers_task():
-            servers = [serve()]
-            await asyncio.gather(*servers)
-
-        asyncio.run(servers_task())
+        cfg.setup_event_loop()  # Call this so uvloop gets used
+        server = UvicornCustomServer(config=cfg)
+        server.run()
