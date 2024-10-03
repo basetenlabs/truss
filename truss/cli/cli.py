@@ -1075,6 +1075,10 @@ def push(
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = inquire_model_name()
+
+    if promote and environment:
+        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        console.print(promote_warning, style="yellow")
     if promote and not environment:
         environment = PRODUCTION_ENVIRONMENT_NAME
 
