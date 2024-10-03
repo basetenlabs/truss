@@ -1,14 +1,12 @@
 import asyncio
 import json
 import logging
-import multiprocessing
 import os
 import signal
-import socket
 import sys
 from http import HTTPStatus
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 import pydantic
 import uvicorn
@@ -33,12 +31,8 @@ if sys.version_info >= (3, 9):
 else:
     from typing_extensions import AsyncGenerator, Generator
 
-# [IMPORTANT] A lot of things depend on this currently.
-# Please consider the following when increasing this:
-# 1. Self-termination on model load fail.
-# 2. Graceful termination.
-WORKER_TERMINATION_TIMEOUT_SECS = 120.0
-WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
+# [IMPORTANT] A lot of things depend on this currently, change with extreme care.
+TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -53,22 +47,6 @@ async def parse_body(request: Request) -> bytes:
         error_message = "Client disconnected"
         logging.error(error_message)
         raise HTTPException(status_code=499, detail=error_message) from exc
-
-
-class UvicornCustomServer(multiprocessing.Process):
-    def __init__(
-        self, config: uvicorn.Config, sockets: Optional[List[socket.socket]] = None
-    ):
-        super().__init__()
-        self.sockets = sockets
-        self.config = config
-
-    def stop(self):
-        self.terminate()
-
-    def run(self):
-        server = uvicorn.Server(config=self.config)
-        asyncio.run(server.serve(sockets=self.sockets))
 
 
 class BasetenEndpoints:
@@ -243,6 +221,8 @@ class TrussServer:
     main loop.
     """
 
+    _server: Optional[uvicorn.Server]
+
     def __init__(
         self,
         http_port: int,
@@ -258,10 +238,11 @@ class TrussServer:
         secrets = SecretsResolver.get_secrets(config)
         tracer = tracing.get_truss_tracer(secrets, config)
         self._setup_json_logger = setup_json_logger
-        self.http_port = http_port
+        self._http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config, tracer)
         self._endpoints = BasetenEndpoints(self._model, tracer)
+        self._server = None
 
     def cleanup(self):
         if INFERENCE_SERVER_FAILED_FILE.exists():
@@ -276,7 +257,17 @@ class TrussServer:
         if self._setup_json_logger:
             setup_logging()
         self._model.start_load_thread()
+        asyncio.create_task(self._shutdown_if_load_fails())
         self._model.setup_polling_for_environment_updates()
+
+    async def _shutdown_if_load_fails(self):
+        while not self._model.ready:
+            await asyncio.sleep(0.5)
+            if self._model.load_failed:
+                assert self._server is not None
+                logging.info("Trying shut down.")
+                self._server.should_exit = True
+                return
 
     def create_application(self):
         app = FastAPI(
@@ -337,8 +328,9 @@ class TrussServer:
             # of uvicorn.
             http="h11",
             host="0.0.0.0",
-            port=self.http_port,
+            port=self._http_port,
             workers=1,
+            timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -380,5 +372,6 @@ class TrussServer:
             },
         )
         cfg.setup_event_loop()  # Call this so uvloop gets used
-        server = UvicornCustomServer(config=cfg)
-        server.run()
+        server = uvicorn.Server(config=cfg)
+        self._server = server
+        asyncio.run(server.serve())
