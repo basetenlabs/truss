@@ -152,10 +152,10 @@ class BasetenApi:
                 config: "{config}",
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
-                environment_name: "{environment}",
                 is_trusted: {'true' if is_trusted else 'false'},
                 scale_down_old_production: {'false' if preserve_previous_prod_deployment else 'true'},
                 {f'name: "{deployment_name}"' if deployment_name else ""}
+                {f'environment_name: "{environment}"' if environment else ""}
             ) {{
                 id
             }}

@@ -990,6 +990,15 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
+    "--environment",
+    type=str,
+    required=False,
+    help=(
+        "Push the truss as a published deployment to the specified environment."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+    ),
+)
+@click.option(
     "--preserve-previous-production-deployment",
     type=bool,
     is_flag=True,
@@ -1146,7 +1155,7 @@ def push(
 
         click.echo(draft_model_text)
 
-    if promote:
+    if environment:
         promotion_text = (
             f"Your Truss has been deployed into the {environment} environment. After it successfully "
             f"deploys, it will become the next {environment} deployment of your model."

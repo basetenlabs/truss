@@ -285,16 +285,23 @@ def create_truss_service(
         )
         return model_version_json["id"], model_version_json["version_id"]
 
-    model_version_json = api.create_model_version_from_truss(
-        model_id=model_id,
-        s3_key=s3_key,
-        config=config,
-        semver_bump=semver_bump,
-        client_version=f"truss=={truss.version()}",
-        is_trusted=is_trusted,
-        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-        deployment_name=deployment_name,
-        environment=environment,
-    )
+    try:
+        model_version_json = api.create_model_version_from_truss(
+            model_id=model_id,
+            s3_key=s3_key,
+            config=config,
+            semver_bump=semver_bump,
+            client_version=f"truss=={truss.version()}",
+            is_trusted=is_trusted,
+            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+            deployment_name=deployment_name,
+            environment=environment,
+        )
+    except ApiError as e:
+        if "Environment matching query does not exist" in e.message:
+            raise ValueError(
+                f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
+            ) from e
+        raise e
     model_version_id = model_version_json["id"]
     return model_id, model_version_id
