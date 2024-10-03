@@ -145,6 +145,7 @@ class Runtime:
     num_workers: int = DEFAULT_NUM_WORKERS
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
+    enable_debug_logs: bool = False
 
     @staticmethod
     def from_dict(d):
