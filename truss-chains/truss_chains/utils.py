@@ -1,3 +1,4 @@
+import asyncio
 import builtins
 import contextlib
 import enum
@@ -8,6 +9,7 @@ import random
 import socket
 import sys
 import textwrap
+import threading
 import traceback
 from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 
@@ -337,3 +339,47 @@ def issubclass_safe(x: Any, cls: type) -> bool:
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
     """Like `BaseModel.model_dump(exclude_unset=True), but only top-level."""
     return {name: getattr(obj, name) for name in obj.__fields_set__}
+
+
+class AsyncSafeCounter:
+    def __init__(self, initial: int = 0) -> None:
+        self._counter = initial
+        self._lock = asyncio.Lock()
+
+    async def increment(self) -> int:
+        async with self._lock:
+            self._counter += 1
+            return self._counter
+
+    async def decrement(self) -> int:
+        async with self._lock:
+            self._counter -= 1
+            return self._counter
+
+    async def __aenter__(self) -> int:
+        return await self.increment()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.decrement()
+
+
+class ThreadSafeCounter:
+    def __init__(self, initial: int = 0) -> None:
+        self._counter = initial
+        self._lock = threading.Lock()
+
+    def increment(self) -> int:
+        with self._lock:
+            self._counter += 1
+            return self._counter
+
+    def decrement(self) -> int:
+        with self._lock:
+            self._counter -= 1
+            return self._counter
+
+    def __enter__(self) -> int:
+        return self.increment()
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.decrement()

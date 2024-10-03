@@ -1,11 +1,16 @@
 import json
 import logging
+import warnings
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, field_validator, model_validator
+from huggingface_hub.errors import HFValidationError
+from huggingface_hub.utils import validate_repo_id
+from pydantic import BaseModel, PydanticDeprecatedSince20, validator
 from rich.console import Console
-from typing_extensions import Self
+
+# Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
+warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,8 +41,6 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
     gemm_plugin: str = "auto"
     use_paged_context_fmha: bool = False
     use_fp8_context_fmha: bool = False
-
-    # add class validation for
 
 
 class CheckpointSource(str, Enum):
@@ -75,8 +78,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
 
-    @field_validator("max_beam_width", mode="after")
-    @classmethod
+    @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
         if isinstance(v, int):
             if v != 1:
@@ -99,9 +101,14 @@ class TRTLLMConfiguration(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
+        self._validate_minimum_required_configuration()
+        self._validate_kv_cache_flags()
+        if self.build.checkpoint_repository.source == CheckpointSource.HF:
+            self._validate_hf_repo_id()
 
-    @model_validator(mode="after")
-    def validate_minimum_required_configuration(self) -> Self:
+    # In pydantic v2 this would be `@model_validator(mode="after")` and
+    # the __init__ override can be removed.
+    def _validate_minimum_required_configuration(self):
         if not self.serve and not self.build:
             raise ValueError("Either serve or build configurations must be provided")
         if self.serve and self.build:
@@ -115,8 +122,7 @@ class TRTLLMConfiguration(BaseModel):
                 )
         return self
 
-    @model_validator(mode="after")
-    def validate_kv_cache_flags(self) -> Self:
+    def _validate_kv_cache_flags(self):
         if self.build is None:
             return self
         if not self.build.plugin_configuration.paged_kv_cache and (
@@ -133,6 +139,14 @@ class TRTLLMConfiguration(BaseModel):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
         return self
 
+    def _validate_hf_repo_id(self):
+        try:
+            validate_repo_id(self.build.checkpoint_repository.repo)
+        except HFValidationError as e:
+            raise ValueError(
+                f"HuggingFace repository validation failed: {str(e)}"
+            ) from e
+
     @property
     def requires_build(self):
         if self.build is not None:
@@ -142,4 +156,4 @@ class TRTLLMConfiguration(BaseModel):
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
     def to_json_dict(self, verbose=True):
-        return json.loads(self.model_dump_json(exclude_unset=not verbose))
+        return json.loads(self.json(exclude_unset=not verbose))

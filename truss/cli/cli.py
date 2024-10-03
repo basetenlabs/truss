@@ -470,7 +470,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 @click.option(
     "--publish/--no-publish",
     type=bool,
-    default=True,
+    default=False,
     help="Create chainlets as published deployments.",
 )
 @click.option(

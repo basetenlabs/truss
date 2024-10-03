@@ -396,6 +396,23 @@ def test_from_yaml_python_version():
         assert result.python_version == "py39"
 
 
+def test_from_yaml_environment_variables():
+    data = {
+        "description": "this is a test",
+        "environment_variables": {"foo": "bar", "bool": True, "int": 0},
+    }
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as yaml_file:
+        yaml_path = Path(yaml_file.name)
+        yaml.safe_dump(data, yaml_file)
+
+        result = TrussConfig.from_yaml(yaml_path)
+        assert result.environment_variables == {
+            "foo": "bar",
+            "bool": "true",
+            "int": "0",
+        }
+
+
 def test_secret_to_path_mapping_correct_type(default_config):
     data = {
         "description": "this is a test",
@@ -447,6 +464,24 @@ def test_plugin_paged_context_fmha_check(trtllm_config):
         "use_paged_context_fmha": True,
         "use_fp8_context_fmha": False,
     }
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "./llama-3.1-8b",
+        "../my-model-is-in-parent-directory",
+        "~/.huggingface/my--model--cache/model",
+        "foo.git",
+        "datasets/foo/bar",
+        ".repo_id" "other..repo..id",
+    ],
+)
+def test_invalid_hf_repo(trtllm_config, repo):
+    trtllm_config["trt_llm"]["build"]["checkpoint_repository"]["source"] = "HF"
+    trtllm_config["trt_llm"]["build"]["checkpoint_repository"]["repo"] = repo
     with pytest.raises(ValueError):
         TrussConfig.from_dict(trtllm_config)
 

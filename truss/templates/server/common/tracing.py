@@ -54,7 +54,7 @@ class JSONFileExporter(trace_export.SpanExporter):
 _truss_tracer: Optional[trace.Tracer] = None
 
 
-def get_truss_tracer(secrets: secrets_resolver.SecretsResolver, config) -> trace.Tracer:
+def get_truss_tracer(secrets: secrets_resolver.Secrets, config) -> trace.Tracer:
     """Creates a cached tracer (i.e. runtime-singleton) to be used for truss
     internal tracing.
 
