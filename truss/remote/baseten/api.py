@@ -144,6 +144,13 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
     ):
+        optional_args = []
+        if deployment_name:
+            optional_args.append(f'name: "{deployment_name}"')
+        if environment:
+            optional_args.append(f'environment_name: "{environment}"')
+        optional_args_str = ",\n".join(optional_args)
+
         query_string = f"""
         mutation {{
             create_model_version_from_truss(
@@ -154,8 +161,7 @@ class BasetenApi:
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
                 scale_down_old_production: {'false' if preserve_previous_prod_deployment else 'true'},
-                {f'name: "{deployment_name}"' if deployment_name else ""}
-                {f'environment_name: "{environment}"' if environment else ""}
+                {f"{optional_args_str}" if optional_args_str else ""}
             ) {{
                 id
             }}
