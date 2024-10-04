@@ -429,6 +429,15 @@ def temp_dir(directory):
 
 
 @pytest.fixture
+def dynamic_config_mount_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "truss.templates.shared.dynamic_config_resolver.DYNAMIC_CONFIG_MOUNT_DIR",
+        str(tmp_path),
+    )
+    yield
+
+
+@pytest.fixture
 def custom_model_truss_dir_with_pre_and_post_no_example(tmp_path):
     dir_path = tmp_path / "custom_truss_with_pre_post_no_example"
     handle = init(str(dir_path))

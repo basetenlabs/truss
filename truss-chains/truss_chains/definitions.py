@@ -33,6 +33,7 @@ BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
+DYNAMIC_CONFIG_CHAINLET_URL_MAP_KEY = "chainlet_url_map"
 
 # Below arg names must correspond to `definitions.ABCChainlet`.
 ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
@@ -412,7 +413,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT
-    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    chainlet_to_service: dict[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
     user_env: Mapping[str, str]
 
@@ -447,7 +448,7 @@ class TrussMetadata(SafeModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     user_config: UserConfigT
-    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    chainlet_to_service: dict[str, ServiceDescriptor]
     user_env: Mapping[str, str]
 
 

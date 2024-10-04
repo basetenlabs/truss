@@ -3,6 +3,7 @@ import builtins
 import contextlib
 import enum
 import inspect
+import json
 import logging
 import os
 import random
@@ -16,6 +17,7 @@ from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
 import fastapi
 import httpx
 import pydantic
+from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
 
@@ -126,6 +128,24 @@ def get_free_port() -> int:
         s.listen(1)  # Not necessary but included for completeness.
         port = s.getsockname()[1]  # Retrieve the port number assigned.
         return port
+
+
+def override_chainlet_to_service_metadata(
+    chainlet_to_service: dict[str, definitions.ServiceDescriptor],
+) -> dict[str, definitions.ServiceDescriptor]:
+    # Override chainlet_to_service if chainlet_url_map exists in dynamic config
+    chainlet_url_map_str = dynamic_config_resolver.get_dynamic_config_value(
+        definitions.DYNAMIC_CONFIG_CHAINLET_URL_MAP_KEY
+    )
+    if chainlet_url_map_str:
+        chainlet_url_map = json.loads(chainlet_url_map_str)
+        for (
+            chainlet_name,
+            service_descriptor,
+        ) in chainlet_to_service.items():
+            if chainlet_name in chainlet_url_map:
+                service_descriptor.predict_url = chainlet_url_map[chainlet_name]
+    return chainlet_to_service
 
 
 # Error Propagation Utils. #############################################################

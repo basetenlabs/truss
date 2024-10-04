@@ -1,10 +1,10 @@
-import json
 import pathlib
 
 import pydantic
-from truss.templates.shared import extra_config_resolver, secrets_resolver
+from truss.templates.shared import secrets_resolver
 
 from truss_chains import definitions
+from truss_chains.utils import override_chainlet_to_service_metadata
 
 # Better: in >=3.10 use `TypeAlias`.
 UserConfigT = pydantic.BaseModel
@@ -25,26 +25,13 @@ class TrussChainletModel:
             )
         )
 
-        # Override chainlet_to_service if chainlet_service_config exists in extra config
-        chainlet_service_config = (
-            extra_config_resolver.ExtraConfigResolver.get_config_value(
-                "chainlet_service_config"
-            )
+        chainlet_to_service = override_chainlet_to_service_metadata(
+            truss_metadata.chainlet_to_service
         )
-        if chainlet_service_config:
-            chainlet_service_config_json = json.loads(chainlet_service_config)
-            for (
-                chainlet_name,
-                service_descriptor,
-            ) in truss_metadata.chainlet_to_service.items():
-                if chainlet_name in chainlet_service_config_json:
-                    service_descriptor.predict_url = chainlet_service_config_json[
-                        chainlet_name
-                    ]["predict_url"]
 
         self._context = definitions.DeploymentContext[UserConfigT](
             user_config=truss_metadata.user_config,
-            chainlet_to_service=truss_metadata.chainlet_to_service,
+            chainlet_to_service=chainlet_to_service,
             secrets=secrets,
             data_dir=data_dir,
             user_env=truss_metadata.user_env,
