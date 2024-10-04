@@ -1388,6 +1388,38 @@ def test_async_streaming_with_cancellation():
 
 
 @pytest.mark.integration
+def test_async_non_streaming_with_cancellation():
+    model = """
+    import fastapi, asyncio, logging
+
+    class Model:
+        async def predict(self, inputs, request: fastapi.Request):
+            logging.info("Start sleep")
+            await asyncio.sleep(2)
+            logging.info("done sleep, check request.")
+            if await request.is_disconnected():
+                logging.warning("Cancelled (before gen).")
+                return
+            logging.info("Not cancelled.")
+            return "Done"
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        # For hard cancellation we need to use httpx, requests' timeouts don't work.
+        with pytest.raises(httpx.ReadTimeout):
+            with httpx.Client(
+                timeout=httpx.Timeout(1.0, connect=1.0, read=1.0)
+            ) as client:
+                response = client.post(PREDICT_URL, json={}, timeout=1.0)
+                response.raise_for_status()
+
+        time.sleep(2)  # Wait a bit to get all logs.
+        assert "Cancelled (before gen)." in container.logs()
+
+
+@pytest.mark.integration
 def test_limit_concurrency_with_sse():
     # It seems that the "builtin" functionality of the FastAPI server already buffers
     # the generator, so that it doesn't keep hanging around if the client doesn't
