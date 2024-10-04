@@ -1,3 +1,4 @@
+import copy
 import json
 
 import pytest
@@ -5,9 +6,10 @@ import pytest
 from truss_chains import definitions
 from truss_chains.utils import override_chainlet_to_service_metadata
 
-CHAINLET_URL_MAP_NAME = "chainlet_url_map"
 CHAINLET_URL_MAP_VALUE = {
-    "HelloWorld": "https://model-diff_id.api.baseten.co/deployment/diff_deployment_id/predict"
+    "HelloWorld": {
+        "predict_url": "https://model-diff_id.api.baseten.co/deployment/diff_deployment_id/predict"
+    }
 }
 
 
@@ -21,7 +23,7 @@ def dynamic_config_mount_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_dir):
-    with (tmp_path / CHAINLET_URL_MAP_NAME).open("w") as f:
+    with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
         f.write(json.dumps(CHAINLET_URL_MAP_VALUE))
 
     chainlet_to_service = {
@@ -31,16 +33,18 @@ def test_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_di
             options=definitions.RPCOptions(),
         )
     }
-    new_chainlet_to_service = override_chainlet_to_service_metadata(chainlet_to_service)
+    original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
+    override_chainlet_to_service_metadata(chainlet_to_service)
 
+    assert chainlet_to_service != original_chainlet_to_service
     assert (
-        new_chainlet_to_service["HelloWorld"].predict_url
-        == CHAINLET_URL_MAP_VALUE["HelloWorld"]
+        chainlet_to_service["HelloWorld"].predict_url
+        == CHAINLET_URL_MAP_VALUE["HelloWorld"]["predict_url"]
     )
 
 
 def test_no_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_dir):
-    with (tmp_path / CHAINLET_URL_MAP_NAME).open("w") as f:
+    with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
         f.write(json.dumps(CHAINLET_URL_MAP_VALUE))
 
     chainlet_to_service = {
@@ -50,14 +54,13 @@ def test_no_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount
             options=definitions.RPCOptions(),
         )
     }
-    new_chainlet_to_service = override_chainlet_to_service_metadata(chainlet_to_service)
+    original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
+    override_chainlet_to_service_metadata(chainlet_to_service)
 
-    assert new_chainlet_to_service == chainlet_to_service
+    assert chainlet_to_service == original_chainlet_to_service
 
 
-def test_no_config_override_chainlet_to_service_metadata(
-    tmp_path, dynamic_config_mount_dir
-):
+def test_no_config_override_chainlet_to_service_metadata(dynamic_config_mount_dir):
     chainlet_to_service = {
         "HelloWorld": definitions.ServiceDescriptor(
             name="HelloWorld",
@@ -65,6 +68,7 @@ def test_no_config_override_chainlet_to_service_metadata(
             options=definitions.RPCOptions(),
         )
     }
-    new_chainlet_to_service = override_chainlet_to_service_metadata(chainlet_to_service)
+    original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
+    override_chainlet_to_service_metadata(chainlet_to_service)
 
-    assert new_chainlet_to_service == chainlet_to_service
+    assert chainlet_to_service == original_chainlet_to_service

@@ -132,21 +132,22 @@ def get_free_port() -> int:
 
 def override_chainlet_to_service_metadata(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-) -> Mapping[str, definitions.ServiceDescriptor]:
-    # Override predict_urls in chainlet_to_service ServiceDescriptors if chainlet_url_map exists in dynamic config
-    chainlet_url_map_str = dynamic_config_resolver.get_dynamic_config_value(
-        definitions.DYNAMIC_CONFIG_CHAINLET_URL_MAP_KEY
+):
+    # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
+    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value(
+        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
     )
-    if chainlet_url_map_str:
-        chainlet_url_map = json.loads(chainlet_url_map_str)
+    if dynamic_chainlet_config_str:
+        dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
         for (
             chainlet_name,
             service_descriptor,
         ) in chainlet_to_service.items():
-            if chainlet_name in chainlet_url_map:
-                # We update the predict_url to be the one pulled from the dynamic config url mapping
-                service_descriptor.predict_url = chainlet_url_map[chainlet_name]
-    return chainlet_to_service
+            if chainlet_name in dynamic_chainlet_config:
+                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
+                service_descriptor.predict_url = dynamic_chainlet_config[chainlet_name][
+                    "predict_url"
+                ]
 
 
 # Error Propagation Utils. #############################################################

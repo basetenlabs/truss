@@ -33,7 +33,7 @@ BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
-DYNAMIC_CONFIG_CHAINLET_URL_MAP_KEY = "chainlet_url_map"
+DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 
 # Below arg names must correspond to `definitions.ABCChainlet`.
 ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
