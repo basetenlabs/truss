@@ -242,9 +242,15 @@ def build_context(build_dir, target_directory: str) -> None:
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
 @click.option("--tag", help="Docker image tag")
+@click.option(
+    "--use_host_network",
+    is_flag=True,
+    default=False,
+    help="Use host network for docker build",
+)
 @log_level_option
 @error_handling
-def build(target_directory: str, build_dir: Path, tag) -> None:
+def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None:
     """
     Builds the docker image for a Truss.
 
@@ -255,6 +261,9 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
     tr = _get_truss_from_directory(target_directory=target_directory)
     if build_dir:
         build_dir = Path(build_dir)
+    if use_host_network:
+        tr.build_serving_docker_image(build_dir=build_dir, tag=tag, network="host")
+        return
     tr.build_serving_docker_image(build_dir=build_dir, tag=tag)
 
 
@@ -266,9 +275,17 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
 @click.option(
     "--attach", is_flag=True, default=False, help="Flag for attaching the process"
 )
+@click.option(
+    "--use_host_network",
+    is_flag=True,
+    default=False,
+    help="Use host network for docker build",
+)
 @log_level_option
 @error_handling
-def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
+def run(
+    target_directory: str, build_dir: Path, tag, port, attach, use_host_network
+) -> None:
     """
     Runs the docker image for a Truss.
 
@@ -284,6 +301,15 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
         click.confirm(
             f"Container already exists at {urls}. Are you sure you want to continue?"
         )
+    if use_host_network:
+        tr.docker_run(
+            build_dir=build_dir,
+            tag=tag,
+            local_port=port,
+            detach=not attach,
+            network="host",
+        )
+        return
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
 
 
