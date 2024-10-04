@@ -35,6 +35,7 @@ def push(
     preserve_previous_production_deployment: bool = False,
     trusted: bool = False,
     deployment_name: Optional[str] = None,
+    environment: Optional[str] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -88,6 +89,7 @@ def push(
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
+        environment=environment,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))
