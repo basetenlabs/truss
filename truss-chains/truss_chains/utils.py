@@ -12,7 +12,7 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
+from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
 
 import fastapi
 import httpx
@@ -131,9 +131,9 @@ def get_free_port() -> int:
 
 
 def override_chainlet_to_service_metadata(
-    chainlet_to_service: dict[str, definitions.ServiceDescriptor],
-) -> dict[str, definitions.ServiceDescriptor]:
-    # Override chainlet_to_service if chainlet_url_map exists in dynamic config
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+) -> Mapping[str, definitions.ServiceDescriptor]:
+    # Override predict_urls in chainlet_to_service ServiceDescriptors if chainlet_url_map exists in dynamic config
     chainlet_url_map_str = dynamic_config_resolver.get_dynamic_config_value(
         definitions.DYNAMIC_CONFIG_CHAINLET_URL_MAP_KEY
     )
@@ -144,6 +144,7 @@ def override_chainlet_to_service_metadata(
             service_descriptor,
         ) in chainlet_to_service.items():
             if chainlet_name in chainlet_url_map:
+                # We update the predict_url to be the one pulled from the dynamic config url mapping
                 service_descriptor.predict_url = chainlet_url_map[chainlet_name]
     return chainlet_to_service
 

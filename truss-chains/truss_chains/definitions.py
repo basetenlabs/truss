@@ -413,7 +413,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
 
     data_dir: Optional[pathlib.Path] = None
     user_config: UserConfigT
-    chainlet_to_service: dict[str, ServiceDescriptor]
+    chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
     user_env: Mapping[str, str]
 
@@ -448,7 +448,7 @@ class TrussMetadata(SafeModel, Generic[UserConfigT]):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     user_config: UserConfigT
-    chainlet_to_service: dict[str, ServiceDescriptor]
+    chainlet_to_service: Mapping[str, ServiceDescriptor]
     user_env: Mapping[str, str]
 
 
