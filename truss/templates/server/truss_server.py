@@ -143,6 +143,11 @@ class BasetenEndpoints:
         """
         This method calls the user-provided predict method
         """
+        if await request.is_disconnected():
+            msg = "Client disconnected. Skipping `predict`."
+            logging.info(msg)
+            raise ClientDisconnect(msg)
+
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
