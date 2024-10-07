@@ -141,7 +141,7 @@ class BasetenEndpoints:
                         inputs = truss_schema.input_type.parse_obj(inputs)
                 except pydantic.ValidationError as e:
                     raise errors.InputParsingError(
-                        f"Request Validation Error, {str(e)}"
+                        errors.format_pydantic_validation_error(e)
                     ) from e
         else:
             if truss_schema:
@@ -151,7 +151,7 @@ class BasetenEndpoints:
                             inputs = truss_schema.input_type.parse_raw(body_raw)
                     except pydantic.ValidationError as e:
                         raise errors.InputParsingError(
-                            f"Request Validation Error, {str(e)}"
+                            errors.format_pydantic_validation_error(e)
                         ) from e
             else:
                 try:
