@@ -9,7 +9,11 @@ from truss_chains import definitions
 @pytest.mark.parametrize(
     "config",
     [
-        {"RandInt": "https://model-id.api.baseten.co/deployment/deployment-id/predict"},
+        {
+            "RandInt": {
+                "predict_url": "https://model-id.api.baseten.co/deployment/deployment-id/predict"
+            }
+        },
         {},
         "",
     ],
