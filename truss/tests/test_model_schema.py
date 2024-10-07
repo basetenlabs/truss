@@ -128,8 +128,7 @@ def test_truss_with_annotated_inputs_outputs():
         assert response.status_code == 400
         assert "error" in response.json()
         assert (
-            "Request Validation Error, 1 validation error for ModelInput"
-            "\nprompt\n  Field required [type=missing, input_value={'bad_key': 'value'}, input_type=dict]\n"
+            "Input Parsing Error:\n  `prompt`: Field required."
             in response.json()["error"]
         )
         assert response.headers["x-baseten-error-source"] == "04"
