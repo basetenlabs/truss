@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-DYNAMIC_CONFIG_MOUNT_DIR = "/etc/dynamic_config"
+DYNAMIC_CONFIG_MOUNT_DIR = "/etc/b10_dynamic_config"
 
 
 def get_dynamic_config_value(key: str) -> Optional[str]:
