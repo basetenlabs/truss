@@ -148,6 +148,14 @@ def override_chainlet_to_service_metadata(
                 service_descriptor.predict_url = dynamic_chainlet_config[chainlet_name][
                     "predict_url"
                 ]
+            else:
+                logging.debug(
+                    f"Skipped override for chainlet '{chainlet_name}': not found in {definitions.DYNAMIC_CHAINLET_CONFIG_KEY}."
+                )
+    else:
+        logging.debug(
+            f"No {definitions.DYNAMIC_CHAINLET_CONFIG_KEY} found, skipping overrides."
+        )
 
 
 # Error Propagation Utils. #############################################################
