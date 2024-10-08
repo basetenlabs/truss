@@ -61,6 +61,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     max_input_len: int
     max_output_len: int
     max_batch_size: int
+    max_num_tokens: Optional[int] = None
     max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
@@ -77,6 +78,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
+    enable_chunked_context: bool = False
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
