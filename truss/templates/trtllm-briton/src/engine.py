@@ -108,6 +108,7 @@ class Engine:
         self._enable_kv_cache_reuse = (
             truss_trtllm_build_config.plugin_configuration.use_paged_context_fmha
         )
+        self._enable_chunked_context = truss_trtllm_build_config.enable_chunked_context
 
         self._hf_token = None
         try:
@@ -154,6 +155,7 @@ engine_path: "{self._data_dir.resolve()}"
 hf_tokenizer: "{tokenizer_file.resolve()}"
 kv_cache_free_gpu_mem_fraction: {self._kv_cache_free_gpu_mem_fraction}
 enable_kv_cache_reuse: {"true" if self._enable_kv_cache_reuse else "false"}
+enable_chunked_context: {"true" if self._enable_chunked_context else "false"}
 fsm_cache_dir: "{FSM_CACHE_DIR}"
 """
 
