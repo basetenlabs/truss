@@ -3,6 +3,7 @@ import builtins
 import contextlib
 import enum
 import inspect
+import json
 import logging
 import os
 import random
@@ -11,11 +12,12 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
+from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
 
 import fastapi
 import httpx
 import pydantic
+from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
 
@@ -126,6 +128,34 @@ def get_free_port() -> int:
         s.listen(1)  # Not necessary but included for completeness.
         port = s.getsockname()[1]  # Retrieve the port number assigned.
         return port
+
+
+def override_chainlet_to_service_metadata(
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+):
+    # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
+    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value(
+        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+    )
+    if dynamic_chainlet_config_str:
+        dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
+        for (
+            chainlet_name,
+            service_descriptor,
+        ) in chainlet_to_service.items():
+            if chainlet_name in dynamic_chainlet_config:
+                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
+                service_descriptor.predict_url = dynamic_chainlet_config[chainlet_name][
+                    "predict_url"
+                ]
+            else:
+                logging.debug(
+                    f"Skipped override for chainlet '{chainlet_name}': not found in {definitions.DYNAMIC_CHAINLET_CONFIG_KEY}."
+                )
+    else:
+        logging.debug(
+            f"No {definitions.DYNAMIC_CHAINLET_CONFIG_KEY} found, skipping overrides."
+        )
 
 
 # Error Propagation Utils. #############################################################

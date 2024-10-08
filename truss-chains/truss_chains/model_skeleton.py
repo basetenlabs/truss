@@ -4,6 +4,7 @@ import pydantic
 from truss.templates.shared import secrets_resolver
 
 from truss_chains import definitions
+from truss_chains.utils import override_chainlet_to_service_metadata
 
 # Better: in >=3.10 use `TypeAlias`.
 UserConfigT = pydantic.BaseModel
@@ -23,6 +24,9 @@ class TrussChainletModel:
                 config["model_metadata"][definitions.TRUSS_CONFIG_CHAINS_KEY]
             )
         )
+
+        override_chainlet_to_service_metadata(truss_metadata.chainlet_to_service)
+
         self._context = definitions.DeploymentContext[UserConfigT](
             user_config=truss_metadata.user_config,
             chainlet_to_service=truss_metadata.chainlet_to_service,
