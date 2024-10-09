@@ -282,6 +282,9 @@ class TrussServer:
             setup_logging()
         self._model.start_load_thread()
 
+    def on_close(self):
+        self._model.on_close()
+
     def create_application(self):
         app = FastAPI(
             title="Baseten Inference Server",

@@ -250,7 +250,26 @@ class ModelDescriptor:
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
         )
 
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import time
+from threading import Thread
 
+class WatcherHandler(FileSystemEventHandler):
+    def __init__(self, callback):
+        self.callback = callback
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            print(f"File {event.src_path} has been modified.")
+            self.callback(event.src_path)
+
+    def on_created(self, event):
+        if not event.is_directory:
+            print(f"File {event.src_path} has been created.")
+            self.callback(event.src_path)
+
+FILEPATH = '/etc/b10_dynamic_config/environment'
 class ModelWrapper:
     _config: Dict
     _tracer: sdk_trace.Tracer
@@ -313,6 +332,29 @@ class ModelWrapper:
             thread = Thread(target=self.load)
             thread.start()
 
+
+    def _handle_environment_change(self):
+        with open(FILEPATH, 'r'):
+            ...
+            # marshalling
+            self._on_environment_change_impl(data)
+
+    def start_fs_watcher_thread(self):
+        
+        self.watcher_thread = Thread(target=self._setup_watcher)
+        self.watcher_thread.start()
+    
+    def _setup_watcher(self):
+        event_handler = WatcherHandler(self._handle_environment_change)
+        observer = Observer()
+        observer.schedule(event_handler, path=FILEPATH, recursive=False)
+        observer.start()
+        self.observer = observer
+    
+    def on_close(self):
+        self.observer.join()
+        self.watcher_thread.join()
+        
     def load(self) -> bool:
         if self.ready:
             return True
