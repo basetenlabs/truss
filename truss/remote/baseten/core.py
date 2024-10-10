@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
-    "Model hasn't been deployed yet. No evironments exist."
+    "Model hasn't been deployed yet. The only valid environment is `production`."
 )
 
 
