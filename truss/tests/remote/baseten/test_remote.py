@@ -314,7 +314,6 @@ def test_create_chain_with_no_publish():
                 )
             ],
             publish=False,
-            promote=False,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -433,7 +432,7 @@ def test_create_chain_no_existing_chain():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_with_existing_chain_promote_true_publish_false():
+def test_create_chain_with_existing_chain_promote_to_environment_publish_false():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
     with requests_mock.Mocker() as m:
@@ -471,7 +470,7 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
                 )
             ],
             publish=False,
-            promote=True,
+            environment="production",
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -487,7 +486,7 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
         """.strip()
 
         match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
-        # Note that if publish=False and promote=True, we set publish to True and create
+        # Note that if publish=False and environment!=None, we set publish to True and create
         # a non-draft deployment
         expected_create_chain_mutation = """
         mutation {
@@ -500,7 +499,7 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
             is_entrypoint: true
         }
         ],
-            promote_after_deploy: true,
+            environment_name: "production"
         ) {
             chain_id
             chain_deployment_id
@@ -516,7 +515,7 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_existing_chain_publish_true_promote_false():
+def test_create_chain_existing_chain_publish_true_no_promotion():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
     with requests_mock.Mocker() as m:
@@ -554,7 +553,6 @@ def test_create_chain_existing_chain_publish_true_promote_false():
                 )
             ],
             publish=True,
-            promote=False,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -570,7 +568,7 @@ def test_create_chain_existing_chain_publish_true_promote_false():
         """.strip()
 
         match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
-        # Note promote_after_deploy is false
+        # Note environment_name is omitted
         expected_create_chain_mutation = """
         mutation {
         deploy_chain_deployment(
@@ -582,7 +580,7 @@ def test_create_chain_existing_chain_publish_true_promote_false():
             is_entrypoint: true
         }
         ],
-            promote_after_deploy: false,
+
         ) {
             chain_id
             chain_deployment_id
