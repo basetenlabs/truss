@@ -102,6 +102,8 @@ def create_chain(
                 ) from e
             raise e
     else:
+        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
         response = api.deploy_chain(chain_name, chainlets)
 
     return ChainDeploymentHandle(
