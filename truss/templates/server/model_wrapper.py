@@ -191,6 +191,7 @@ class ModelDescriptor:
     predict: MethodDescriptor
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
+    setup_environment: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -312,6 +313,12 @@ class ModelWrapper:
         if self._status == ModelWrapper.Status.NOT_READY:
             thread = Thread(target=self.load)
             thread.start()
+
+    async def setup_environment(self, data):
+        descriptor = self.model_descriptor.setup_environment
+        if not descriptor:
+            return
+        ...
 
     def load(self) -> bool:
         if self.ready:
