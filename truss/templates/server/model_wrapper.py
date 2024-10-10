@@ -234,6 +234,13 @@ class ModelDescriptor:
         else:
             postprocess = None
 
+        if hasattr(model, "setup_environment"):
+            setup_environment = MethodDescriptor.from_method(
+                model.setup_environment, "setup_environment"
+            )
+        else:
+            setup_environment = None
+
         if preprocess:
             parameters = inspect.signature(model.preprocess).parameters
         else:
@@ -249,6 +256,7 @@ class ModelDescriptor:
             predict=predict,
             postprocess=postprocess,
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
+            setup_environment=setup_environment,
         )
 
 

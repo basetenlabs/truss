@@ -1,5 +1,4 @@
 import asyncio
-import aiofiles
 import json
 import logging
 import multiprocessing
@@ -10,8 +9,9 @@ import sys
 import time
 from http import HTTPStatus
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
+import aiofiles
 import pydantic
 import uvicorn
 import yaml
@@ -398,21 +398,22 @@ class TrussServer:
         # Call this so uvloop gets used
         cfg.setup_event_loop()
 
-        async def poll_directory() -> None: 
+        async def poll_directory() -> None:
             # should be well typed
-            state = { }
+            state: Dict[str, Any] = {}
             # assume we just have one file with a json blob of our data
-            FILENAME = '/etc/b10_dynamic_config/environment'
+            FILENAME = "/etc/b10_dynamic_config/environment"
             SLEEP_TIME_SECONDS = 30
             if os.path.isfile(FILENAME):
                 current_mtime = os.path.getmtime(FILENAME)
-                if not state or state['last_modified'] != current_mtime:
+                if not state or state["last_modified"] != current_mtime:
                     # read in the file
-                    with open(aiofiles.open(FILENAME, 'r')) as f:
+                    async with aiofiles.open(FILENAME, "r") as f:
                         data = await f.read()
-                        state['last_modified'] = current_mtime
-                        state['data'] = data
-                        await self._model.setup_environment(data)
+                        json_data = json.loads(data)
+                        state["last_modified"] = current_mtime
+                        state["data"] = json_data
+                        await self._model.setup_environment(json_data)
 
             await asyncio.sleep(SLEEP_TIME_SECONDS)
 
