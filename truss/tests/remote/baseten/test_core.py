@@ -1,8 +1,11 @@
 from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
+import pytest
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import core
 from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.core import create_truss_service
 from truss.remote.baseten.error import ApiError
 
 
@@ -84,3 +87,111 @@ def test_get_prod_version_from_versions_error():
     ]
     prod_version = core.get_prod_version_from_versions(versions)
     assert prod_version is None
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        None,
+        PRODUCTION_ENVIRONMENT_NAME,
+    ],
+)
+def test_create_truss_service_handles_eligible_environment_values(environment):
+    api = MagicMock()
+    return_value = {
+        "id": "id",
+        "version_id": "model_version_id",
+    }
+    api.create_model_from_truss.return_value = return_value
+    model_id, model_version_id = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        is_trusted=False,
+        preserve_previous_prod_deployment=False,
+        is_draft=False,
+        model_id=None,
+        deployment_name="deployment_name",
+        environment=environment,
+    )
+    assert model_id == return_value["id"]
+    assert model_version_id == return_value["version_id"]
+    api.create_model_from_truss.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "some_model_id",
+        None,
+    ],
+)
+def test_create_truss_services_handles_is_draft(model_id):
+    api = MagicMock()
+    return_value = {
+        "id": "id",
+        "version_id": "model_version_id",
+    }
+    api.create_development_model_from_truss.return_value = return_value
+    model_id, model_version_id = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        is_trusted=False,
+        preserve_previous_prod_deployment=False,
+        is_draft=True,
+        model_id=model_id,
+        deployment_name="deployment_name",
+    )
+    assert model_id == return_value["id"]
+    assert model_version_id == return_value["version_id"]
+    api.create_development_model_from_truss.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        {
+            "environment": None,
+            "deployment_name": "some deployment",
+            "is_trusted": True,
+            "preserve_previous_prod_deployment": False,
+        },
+        {
+            "environment": PRODUCTION_ENVIRONMENT_NAME,
+            "deployment_name": None,
+            "is_trusted": True,
+            "preserve_previous_prod_deployment": False,
+        },
+        {
+            "environment": "staging",
+            "deployment_name": "some_deployment_name",
+            "is_trusted": False,
+            "preserve_previous_prod_deployment": True,
+        },
+    ],
+)
+def test_create_truss_service_handles_existing_model(inputs):
+    api = MagicMock()
+    return_value = {
+        "id": "model_version_id",
+    }
+    api.create_model_version_from_truss.return_value = return_value
+    model_id, model_version_id = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        is_draft=False,
+        model_id="model_id",
+        **inputs,
+    )
+
+    assert model_id == "model_id"
+    assert model_version_id == return_value["id"]
+    api.create_model_version_from_truss.assert_called_once()
+    _, kwargs = api.create_model_version_from_truss.call_args
+    for k, v in inputs.items():
+        assert kwargs[k] == v
