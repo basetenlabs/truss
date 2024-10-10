@@ -24,6 +24,7 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 
 import pydantic
 from truss import truss_config
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
 
@@ -625,6 +626,8 @@ class PushOptionsBaseten(PushOptions):
             remote = remote_cli.inquire_remote_name(
                 remote_factory.RemoteFactory.get_available_config_names()
             )
+        if promote and not environment:
+            environment = PRODUCTION_ENVIRONMENT_NAME
         remote_provider = cast(
             baseten_remote.BasetenRemote,
             remote_factory.RemoteFactory.create(remote=remote),

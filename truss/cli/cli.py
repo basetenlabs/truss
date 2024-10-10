@@ -610,13 +610,12 @@ def push_chain(
     if promote and environment:
         promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
         console.print(promote_warning, style="yellow")
-    if promote and not environment:
-        environment = PRODUCTION_ENVIRONMENT_NAME
 
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
         options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
+            promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
             user_env=user_env_parsed,
