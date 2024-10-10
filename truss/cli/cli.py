@@ -411,7 +411,7 @@ def chains():
     """Subcommands for truss chains"""
 
 
-def _make_chains_curl_snippet(run_remote_url: str, environment: str) -> str:
+def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
     if environment:
         run_remote_url = re.sub(
             r"/deployment/[^/]+/", f"/environments/{environment}/", run_remote_url
@@ -669,13 +669,10 @@ def push_chain(
             for log in intercepted_logs:
                 console.print(f"\t{log}")
         if success:
+            deploy_success_text = "Deployment succeeded."
             if environment:
-                console.print(
-                    f"Your chain has been deployed into the {options.environment} environment.",
-                    style="green",
-                )
-            else:
-                console.print("Deployment succeeded.", style="bold green")
+                deploy_success_text = f"Your chain has been deployed into the {options.environment} environment."
+            console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
                 chains_remote.watch(

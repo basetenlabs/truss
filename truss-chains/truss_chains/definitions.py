@@ -629,6 +629,8 @@ class PushOptionsBaseten(PushOptions):
             )
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
+        if environment:
+            publish = True
         remote_provider = cast(
             baseten_remote.BasetenRemote,
             remote_factory.RemoteFactory.create(remote=remote),

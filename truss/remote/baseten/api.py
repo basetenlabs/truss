@@ -246,14 +246,14 @@ class BasetenApi:
         chainlets_string = ", ".join(chainlet_data_strings)
         query_string = f"""
         mutation {{
-        deploy_chain_deployment(
-            chain_id: "{chain_id}",
-            chainlets: [{chainlets_string}],
-            {f'environment_name: "{environment}"' if environment else ""}
-        ) {{
-            chain_id
-            chain_deployment_id
-        }}
+            deploy_chain_deployment(
+                chain_id: "{chain_id}",
+                chainlets: [{chainlets_string}],
+                {f'environment_name: "{environment}"' if environment else ""}
+            ) {{
+                chain_id
+                chain_deployment_id
+            }}
         }}
         """
         resp = self._post_graphql_query(query_string)
