@@ -488,23 +488,24 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
         match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
         # Note that if publish=False and environment!=None, we set publish to True and create
         # a non-draft deployment
-        expected_create_chain_mutation = """
-        mutation {
-        deploy_chain_deployment(
-            chain_id: "old-chain-id",
-            chainlets: [
+        chainlets_string = """
         {
             name: "chainlet-1",
             oracle_version_id: "some-ov-id",
             is_entrypoint: true
         }
-        ],
-            environment_name: "production"
-        ) {
-            chain_id
-            chain_deployment_id
-        }
-        }
+        """
+        expected_create_chain_mutation = f"""
+        mutation {{
+            deploy_chain_deployment(
+                chain_id: "old-chain-id",
+                chainlets: [{chainlets_string}],
+                environment_name: "production"
+            ) {{
+                chain_id
+                chain_deployment_id
+            }}
+        }}
         """.strip()
 
         match_graphql_request(
@@ -568,24 +569,25 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
         """.strip()
 
         match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
-        # Note environment_name is omitted
-        expected_create_chain_mutation = """
-        mutation {
-        deploy_chain_deployment(
-            chain_id: "old-chain-id",
-            chainlets: [
+        chainlets_string = """
         {
             name: "chainlet-1",
             oracle_version_id: "some-ov-id",
             is_entrypoint: true
         }
-        ],
-
-        ) {
-            chain_id
-            chain_deployment_id
-        }
-        }
+        """
+        environment = None
+        expected_create_chain_mutation = f"""
+        mutation {{
+            deploy_chain_deployment(
+                chain_id: "old-chain-id",
+                chainlets: [{chainlets_string}],
+                {f'environment_name: "{environment}"' if environment else ""}
+            ) {{
+                chain_id
+                chain_deployment_id
+            }}
+        }}
         """.strip()
 
         match_graphql_request(
