@@ -98,12 +98,10 @@ def create_chain(
         except ApiError as e:
             if "Environment matching query does not exist" in e.message:
                 raise ValueError(
-                    f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
+                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
                 ) from e
             raise e
     else:
-        if environment:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
         response = api.deploy_chain(chain_name, chainlets)
 
     return ChainDeploymentHandle(
