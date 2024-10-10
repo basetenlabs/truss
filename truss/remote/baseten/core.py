@@ -18,9 +18,7 @@ logger = logging.getLogger(__name__)
 
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
-NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
-    "Model hasn't been deployed yet. The only valid environment is `production`."
-)
+NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING_TEMPLATE = """The environment "{environment}" doesn't exist yet. Please deploy the model first, then create the environment."""
 
 
 class ModelIdentifier:
@@ -273,7 +271,11 @@ def create_truss_service(
 
     if model_id is None:
         if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
+            raise ValueError(
+                NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING_TEMPLATE.format(
+                    environment=environment
+                )
+            )
         model_version_json = api.create_model_from_truss(
             model_name=model_name,
             s3_key=s3_key,
