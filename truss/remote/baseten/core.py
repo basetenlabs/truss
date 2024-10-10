@@ -84,7 +84,7 @@ def create_chain(
     chain_name: str,
     chainlets: List[b10_types.ChainletData],
     is_draft: bool,
-    promote: bool,
+    environment: Optional[str],
 ) -> ChainDeploymentHandle:
     if is_draft:
         response = api.deploy_draft_chain(chain_name, chainlets)
@@ -93,8 +93,17 @@ def create_chain(
         # if there is no chain already, the first deployment will
         # already be production, and only published deployments can
         # be promoted.
-        response = api.deploy_chain_deployment(chain_id, chainlets, promote)
+        try:
+            response = api.deploy_chain_deployment(chain_id, chainlets, environment)
+        except ApiError as e:
+            if "Environment matching query does not exist" in e.message:
+                raise ValueError(
+                    f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
+                ) from e
+            raise e
     else:
+        if environment:
+            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
         response = api.deploy_chain(chain_name, chainlets)
 
     return ChainDeploymentHandle(

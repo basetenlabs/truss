@@ -506,6 +506,15 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Replace production chainlets with newly deployed chainlets.",
 )
 @click.option(
+    "--environment",
+    type=str,
+    required=False,
+    help=(
+        "Deploy the chain as a published deployment to the specified environment."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+    ),
+)
+@click.option(
     "--wait/--no-wait",
     type=bool,
     default=True,
@@ -557,6 +566,7 @@ def push_chain(
     dryrun: bool,
     user_env: Optional[str],
     remote: Optional[str],
+    environment: Optional[str],
 ) -> None:
     """
     Deploys a chain remotely.
@@ -597,15 +607,21 @@ def push_chain(
     else:
         user_env_parsed = {}
 
+    if promote and environment:
+        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        console.print(promote_warning, style="yellow")
+    if promote and not environment:
+        environment = PRODUCTION_ENVIRONMENT_NAME
+
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
         options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
-            promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
             user_env=user_env_parsed,
             remote=remote,
+            environment=environment,
         )
         service = chains_remote.push(entrypoint_cls, options)
 

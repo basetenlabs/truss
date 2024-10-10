@@ -609,17 +609,17 @@ class PushOptions(SafeModelNonSerializable):
 class PushOptionsBaseten(PushOptions):
     remote_provider: baseten_remote.BasetenRemote
     publish: bool
-    promote: bool
 
     @classmethod
     def create(
         cls,
         chain_name: str,
         publish: bool,
-        promote: bool,
+        promote: Optional[bool],
         only_generate_trusses: bool,
         user_env: Mapping[str, str],
         remote: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
         if not remote:
             remote = remote_cli.inquire_remote_name(
@@ -633,9 +633,9 @@ class PushOptionsBaseten(PushOptions):
             remote_provider=remote_provider,
             chain_name=chain_name,
             publish=publish,
-            promote=promote,
             only_generate_trusses=only_generate_trusses,
             user_env=user_env,
+            environment=environment,
         )
 
 
