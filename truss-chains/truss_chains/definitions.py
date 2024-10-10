@@ -610,6 +610,7 @@ class PushOptions(SafeModelNonSerializable):
 class PushOptionsBaseten(PushOptions):
     remote_provider: baseten_remote.BasetenRemote
     publish: bool
+    environment: Optional[str]
 
     @classmethod
     def create(
