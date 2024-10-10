@@ -76,8 +76,9 @@ jobs:
 
       - name: Enforce acknowledgment in PR description
         if: env.chains_docs_update_needed == 'true'
+        env:
+          DESCRIPTION: ${{ github.event.pull_request.body }}
         run: |
-          DESCRIPTION="${{ github.event.pull_request.body }}"
           if [[ "$DESCRIPTION" != *"UPDATE_DOCS=done"* && "$DESCRIPTION" != *"UPDATE_DOCS=not_needed"* ]]; then
             echo "::error file=truss-chains/examples/::Chains examples were modified and ack not found in PR description. Verify whether docs need to be update (https://github.com/basetenlabs/docs.baseten.co/tree/main/chains) and add an ack tag `UPDATE_DOCS={done|not_needed}` to the PR description."
             exit 1
