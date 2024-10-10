@@ -2,6 +2,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import sys
 import time
 import warnings
@@ -410,7 +411,11 @@ def chains():
     """Subcommands for truss chains"""
 
 
-def _make_chains_curl_snippet(run_remote_url: str) -> str:
+def _make_chains_curl_snippet(run_remote_url: str, environment: str) -> str:
+    if environment:
+        run_remote_url = re.sub(
+            r"/deployment/[^/]+/", f"/environments/{environment}/", run_remote_url
+        )
     return (
         f"curl -X POST '{run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
@@ -629,7 +634,9 @@ def push_chain(
         return
 
     assert isinstance(service, chains_remote.BasetenChainService)
-    curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
+    curl_snippet = _make_chains_curl_snippet(
+        service.run_remote_url, options.environment
+    )
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
@@ -662,7 +669,13 @@ def push_chain(
             for log in intercepted_logs:
                 console.print(f"\t{log}")
         if success:
-            console.print("Deployment succeeded.", style="bold green")
+            if environment:
+                console.print(
+                    f"Your chain has been deployed into the {options.environment} environment.",
+                    style="green",
+                )
+            else:
+                console.print("Deployment succeeded.", style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
                 chains_remote.watch(
