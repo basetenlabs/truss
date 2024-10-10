@@ -281,6 +281,7 @@ class TrussServer:
         if self._setup_json_logger:
             setup_logging()
         self._model.start_load_thread()
+        self._model.setup_watcher()
 
     def on_close(self):
         self._model.on_close()

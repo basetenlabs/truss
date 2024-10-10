@@ -344,7 +344,7 @@ class ModelWrapper:
             await self._setup_environment_impl(data)
 
     
-    def _setup_watcher(self):
+    def setup_watcher(self):
         event_handler = AsyncFileSystemEventHandler(self._handle_environment_change)
         observer = Observer()
         observer.schedule(event_handler, path=FILEPATH, recursive=False)
