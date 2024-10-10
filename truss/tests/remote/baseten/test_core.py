@@ -154,6 +154,12 @@ def test_create_truss_services_handles_is_draft(model_id):
     "inputs",
     [
         {
+            "environment": None,
+            "deployment_name": "some deployment",
+            "is_trusted": True,
+            "preserve_previous_prod_deployment": False,
+        },
+        {
             "environment": PRODUCTION_ENVIRONMENT_NAME,
             "deployment_name": None,
             "is_trusted": True,
