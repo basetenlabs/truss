@@ -1,10 +1,10 @@
 import datetime
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 import logging
 import typing
 from typing import IO, List, Optional, Tuple
 
 import truss
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
