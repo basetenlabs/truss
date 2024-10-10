@@ -4,6 +4,7 @@ import typing
 from typing import IO, List, Optional, Tuple
 
 import truss
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
@@ -271,7 +272,7 @@ def create_truss_service(
         return model_version_json["id"], model_version_json["version_id"]
 
     if model_id is None:
-        if environment:
+        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
             raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
         model_version_json = api.create_model_from_truss(
             model_name=model_name,
