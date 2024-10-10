@@ -235,7 +235,10 @@ class BasetenApi:
         return resp["data"]["deploy_draft_chain"]
 
     def deploy_chain_deployment(
-        self, chain_id: str, chainlet_data: List[b10_types.ChainletData], promote: bool
+        self,
+        chain_id: str,
+        chainlet_data: List[b10_types.ChainletData],
+        environment: Optional[str] = None,
     ):
         chainlet_data_strings = [
             _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
@@ -246,7 +249,7 @@ class BasetenApi:
         deploy_chain_deployment(
             chain_id: "{chain_id}",
             chainlets: [{chainlets_string}],
-            promote_after_deploy: {'true' if promote else 'false'},
+            {f'environment_name: "{environment}"' if environment else ""}
         ) {{
             chain_id
             chain_deployment_id
