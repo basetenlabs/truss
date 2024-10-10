@@ -89,8 +89,8 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
         "client_version",
         False,
         False,
+        False,
         "deployment_name",
-        "production",
     )
 
     gql_mutation = mock_post.call_args[1]["data"]["query"]
@@ -100,9 +100,9 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: false" in gql_mutation
+    assert "promote_after_deploy: false" in gql_mutation
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
-    assert 'environment_name: "production"' in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -116,6 +116,7 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
         "semver_bump",
         "client_version",
         True,
+        True,
         False,
         deployment_name=None,
     )
@@ -127,9 +128,9 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: true" in gql_mutation
+    assert "promote_after_deploy: true" in gql_mutation
     assert "scale_down_old_production: true" in gql_mutation
-    assert " name: " not in gql_mutation
-    assert "environment_name: " not in gql_mutation
+    assert "name: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_version_response())
@@ -144,8 +145,8 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
         "client_version",
         True,
         True,
+        True,
         deployment_name=None,
-        environment="staging",
     )
 
     gql_mutation = mock_post.call_args[1]["data"]["query"]
@@ -155,9 +156,9 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: true" in gql_mutation
+    assert "promote_after_deploy: true" in gql_mutation
     assert "scale_down_old_production: false" in gql_mutation
-    assert " name: " not in gql_mutation
-    assert 'environment_name: "staging"' in gql_mutation
+    assert "name: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())

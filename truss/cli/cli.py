@@ -21,7 +21,7 @@ from rich.console import Console
 
 import truss
 from truss.config.trt_llm import TrussTRTLLMQuantizationType
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -1016,15 +1016,6 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
-    "--environment",
-    type=str,
-    required=False,
-    help=(
-        "Push the truss as a published deployment to the specified environment."
-        "If specified, --publish is implied and the supplied value of --promote will be ignored."
-    ),
-)
-@click.option(
     "--preserve-previous-production-deployment",
     type=bool,
     is_flag=True,
@@ -1083,7 +1074,6 @@ def push(
     deployment_name: Optional[str] = None,
     wait: bool = False,
     timeout_seconds: Optional[int] = None,
-    environment: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1101,12 +1091,6 @@ def push(
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = inquire_model_name()
-
-    if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
-        console.print(promote_warning, style="yellow")
-    if promote and not environment:
-        environment = PRODUCTION_ENVIRONMENT_NAME
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1165,7 +1149,6 @@ def push(
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
-        environment=environment,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -1185,10 +1168,10 @@ def push(
 
         click.echo(draft_model_text)
 
-    if environment:
+    if promote:
         promotion_text = (
-            f"Your Truss has been deployed into the {environment} environment. After it successfully "
-            f"deploys, it will become the next {environment} deployment of your model."
+            "Your Truss has been deployed as a production model. After it successfully "
+            "deploys, it will become the next production deployment of your model."
         )
         console.print(promotion_text, style="green")
 

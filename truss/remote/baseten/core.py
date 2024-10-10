@@ -17,9 +17,6 @@ logger = logging.getLogger(__name__)
 
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
-NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
-    "Model hasn't been deployed yet. No evironments exist."
-)
 
 
 class ModelIdentifier:
@@ -232,12 +229,12 @@ def create_truss_service(
     config: str,
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
+    promote: bool = False,
     preserve_previous_prod_deployment: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
-    environment: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -271,8 +268,6 @@ def create_truss_service(
         return model_version_json["id"], model_version_json["version_id"]
 
     if model_id is None:
-        if environment:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
         model_version_json = api.create_model_from_truss(
             model_name=model_name,
             s3_key=s3_key,
@@ -285,23 +280,17 @@ def create_truss_service(
         )
         return model_version_json["id"], model_version_json["version_id"]
 
-    try:
-        model_version_json = api.create_model_version_from_truss(
-            model_id=model_id,
-            s3_key=s3_key,
-            config=config,
-            semver_bump=semver_bump,
-            client_version=f"truss=={truss.version()}",
-            is_trusted=is_trusted,
-            preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-            deployment_name=deployment_name,
-            environment=environment,
-        )
-    except ApiError as e:
-        if "Environment matching query does not exist" in e.message:
-            raise ValueError(
-                f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
-            ) from e
-        raise e
+    # Case where there is a model id already, create another version
+    model_version_json = api.create_model_version_from_truss(
+        model_id=model_id,
+        s3_key=s3_key,
+        config=config,
+        semver_bump=semver_bump,
+        client_version=f"truss=={truss.version()}",
+        is_trusted=is_trusted,
+        promote=promote,
+        preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+        deployment_name=deployment_name,
+    )
     model_version_id = model_version_json["id"]
     return model_id, model_version_id

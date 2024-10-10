@@ -141,5 +141,3 @@ AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES = [
     "libopenmpi-dev",
 ]
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
-
-PRODUCTION_ENVIRONMENT_NAME = "production"
