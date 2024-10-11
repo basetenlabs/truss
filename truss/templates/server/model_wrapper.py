@@ -330,10 +330,10 @@ class ModelWrapper:
     def _model_file_name(self) -> str:
         return self._config["model_class_filename"]
 
-    def start_load_thread(self):
+    def start_load_thread(self, event_loop):
         # Don't retry failed loads.
         if self._status == ModelWrapper.Status.NOT_READY:
-            thread = Thread(target=self.load)
+            thread = Thread(target=self.load, args=(event_loop,))
             thread.start()
 
     async def setup_environment(self, environment: dict):
@@ -371,7 +371,7 @@ class ModelWrapper:
                     )
             await asyncio.sleep(SLEEP_TIME_SECONDS)
 
-    def load(self) -> bool:
+    def load(self, event_loop) -> bool:
         if self.ready:
             return True
 
@@ -382,7 +382,7 @@ class ModelWrapper:
             self._logger.info("Executing model.load()...")
             try:
                 start_time = time.perf_counter()
-                self._load_impl()
+                self._load_impl(event_loop)
                 self._status = ModelWrapper.Status.READY
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
@@ -394,7 +394,7 @@ class ModelWrapper:
 
         return False
 
-    def _load_impl(self):
+    def _load_impl(self, event_loop):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
 
@@ -476,6 +476,9 @@ class ModelWrapper:
             raise RuntimeError("No module class file found")
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
+        asyncio.run_coroutine_threadsafe(
+            self.poll_for_environment_updates(), event_loop
+        )
 
         if self._maybe_model_descriptor.setup_environment:
             self._initialize_environment_before_load()
@@ -489,6 +492,7 @@ class ModelWrapper:
                 gap_seconds=1.0,
             )
 
+<<<<<<< HEAD
     def setup_polling_for_environment_updates(self):
         self._poll_for_environment_updates_task = asyncio.create_task(
             self.poll_for_environment_updates()
@@ -559,6 +563,8 @@ class ModelWrapper:
                         exc_info=errors.filter_traceback(self._model_file_name),
                     )
 
+=======
+>>>>>>> 89ffea54 (pass event_loop down)
     async def preprocess(
         self,
         inputs: serialization.InputType,
