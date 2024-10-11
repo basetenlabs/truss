@@ -318,12 +318,6 @@ class ModelWrapper:
     def _model_file_name(self) -> str:
         return self._config["model_class_filename"]
 
-    def start_load_thread(self, event_loop):
-        # Don't retry failed loads.
-        if self._status == ModelWrapper.Status.NOT_READY:
-            thread = Thread(target=self.load, args=(event_loop,))
-            thread.start()
-
     async def setup_environment(self, environment: dict):
         descriptor = self.model_descriptor.setup_environment
         if not descriptor:
@@ -359,30 +353,27 @@ class ModelWrapper:
                     )
             await asyncio.sleep(SLEEP_TIME_SECONDS)
 
-    def load(self, event_loop: Optional[Any] = None) -> bool:
+    def load(self) -> bool:
         if self.ready:
             return True
 
-        # if we are already loading, block on aquiring the lock;
-        # this worker will return 503 while the worker with the lock is loading
-        with self._load_lock:
-            self._status = ModelWrapper.Status.LOADING
-            self._logger.info("Executing model.load()...")
-            try:
-                start_time = time.perf_counter()
-                self._load_impl(event_loop)
-                self._status = ModelWrapper.Status.READY
-                self._logger.info(
-                    f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
-                )
-                return True
-            except Exception:
-                self._logger.exception("Exception while loading model")
-                self._status = ModelWrapper.Status.FAILED
+        self._status = ModelWrapper.Status.LOADING
+        self._logger.info("Executing model.load()...")
+        try:
+            start_time = time.perf_counter()
+            self._load_impl()
+            self._status = ModelWrapper.Status.READY
+            self._logger.info(
+                f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
+            )
+            return True
+        except Exception:
+            self._logger.exception("Exception while loading model")
+            self._status = ModelWrapper.Status.FAILED
 
         return False
 
-    def _load_impl(self, event_loop: Optional[Any] = None):
+    def _load_impl(self):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
 
@@ -464,12 +455,21 @@ class ModelWrapper:
             raise RuntimeError("No module class file found")
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
-        if event_loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                self.poll_for_environment_updates(), event_loop
-            )
 
-        if hasattr(self._model, "load"):
+        asyncio.create_task(self.poll_for_environment_updates())
+
+        self.start_load_thread()
+
+    def start_load_thread(self):
+        # Don't retry failed loads.
+        if self._status == ModelWrapper.Status.LOADING and hasattr(self._model, "load"):
+            thread = Thread(target=self._do_load)
+            thread.start()
+
+    def _do_load(self):
+        # if we are already loading, block on aquiring the lock;
+        # this worker will return 503 while the worker with the lock is loading
+        with self._load_lock:
             retry(
                 self._model.load,
                 NUM_LOAD_RETRIES,

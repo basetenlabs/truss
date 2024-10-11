@@ -280,8 +280,7 @@ class TrussServer:
         self.cleanup()
         if self._setup_json_logger:
             setup_logging()
-        loop = asyncio.get_running_loop()
-        self._model.start_load_thread(loop)
+        self._model.load()
 
     def create_application(self):
         app = FastAPI(
