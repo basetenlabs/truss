@@ -336,13 +336,15 @@ class ModelWrapper:
             thread.start()
 
     async def setup_environment(self, environment: dict):
-        descriptor = self.model_descriptor.setup_environment
-        if not descriptor:
-            return
-        if descriptor.is_async:
-            return await self._model.setup_environment(environment)
-        else:
+        if hasattr(self._model, "setup_environment"):
             return await to_thread.run_sync(self._model.setup_environment, environment)
+        # descriptor = self.model_descriptor.setup_environment
+        # if not descriptor:
+        #     return
+        # if descriptor.is_async:
+        #     return await self._model.setup_environment(environment)
+        # else:
+        #     return await to_thread.run_sync(self._model.setup_environment, environment)
 
     def load(self) -> bool:
         if self.ready:
