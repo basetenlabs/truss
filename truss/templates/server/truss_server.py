@@ -281,12 +281,16 @@ class TrussServer:
         if self._setup_json_logger:
             setup_logging()
 <<<<<<< HEAD
+<<<<<<< HEAD
         self._model.start_load_thread()
         self._model.setup_polling_for_environment_updates()
 =======
         loop = asyncio.get_running_loop()
         self._model.start_load_thread(loop)
 >>>>>>> 89ffea54 (pass event_loop down)
+=======
+        self._model.load()
+>>>>>>> 84d53399 (only thread self._model.load)
 
     def create_application(self):
         app = FastAPI(
