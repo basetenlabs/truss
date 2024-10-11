@@ -26,6 +26,7 @@ from typing import (
     Union,
 )
 
+import aiofiles
 import opentelemetry.sdk.trace as sdk_trace
 import starlette.requests
 import starlette.responses
@@ -336,15 +337,39 @@ class ModelWrapper:
             thread.start()
 
     async def setup_environment(self, environment: dict):
-        if hasattr(self._model, "setup_environment"):
+        descriptor = self.model_descriptor.setup_environment
+        if not descriptor:
+            return
+        if descriptor.is_async:
+            return await self._model.setup_environment(environment)
+        else:
             return await to_thread.run_sync(self._model.setup_environment, environment)
-        # descriptor = self.model_descriptor.setup_environment
-        # if not descriptor:
-        #     return
-        # if descriptor.is_async:
-        #     return await self._model.setup_environment(environment)
-        # else:
-        #     return await to_thread.run_sync(self._model.setup_environment, environment)
+
+    async def poll_for_environment_updates(self) -> None:
+        last_modified_time = None
+        ENVIRONMENT_CONFIG_FILENAME = "/tmp/environment"
+        SLEEP_TIME_SECONDS = 10
+        while True:
+            if os.path.isfile(ENVIRONMENT_CONFIG_FILENAME):
+                try:
+                    current_mtime = os.path.getmtime(ENVIRONMENT_CONFIG_FILENAME)
+                    if not last_modified_time or last_modified_time != current_mtime:
+                        # read in the file
+                        async with aiofiles.open(ENVIRONMENT_CONFIG_FILENAME, "r") as f:
+                            environment_str = await f.read()
+                            environment_json = json.loads(environment_str)
+                            last_modified_time = current_mtime
+                            await self.setup_environment(environment_json)
+                except json.JSONDecodeError:
+                    # This will show up in user logs so we should find a better alternative
+                    logging.error(
+                        f"Error decoding JSON from {ENVIRONMENT_CONFIG_FILENAME}"
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"An error occurred while reading {ENVIRONMENT_CONFIG_FILENAME}: {e}"
+                    )
+            await asyncio.sleep(SLEEP_TIME_SECONDS)
 
     def load(self) -> bool:
         if self.ready:

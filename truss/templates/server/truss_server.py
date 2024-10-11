@@ -11,7 +11,6 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-import aiofiles
 import pydantic
 import uvicorn
 import yaml
@@ -101,7 +100,7 @@ class BasetenEndpoints:
             os.kill(os.getpid(), signal.SIGKILL)
 
         if not model.ready:
-            raise errors.ModelNotReady(model.name)
+            raise errors.ModelNotReady(model.name + "_CHECK_HEALTH")
 
     async def model_ready(self, model_name: str) -> Dict[str, Union[str, bool]]:
         self.check_healthy(self._safe_lookup_model(model_name))
@@ -399,37 +398,6 @@ class TrussServer:
         # Call this so uvloop gets used
         cfg.setup_event_loop()
 
-        async def poll_for_environment_updates() -> None:
-            last_modified_time = None
-            ENVIRONMENT_CONFIG_FILENAME = "/tmp/environment"
-            SLEEP_TIME_SECONDS = 30
-            while True:
-                if os.path.isfile(ENVIRONMENT_CONFIG_FILENAME):
-                    try:
-                        current_mtime = os.path.getmtime(ENVIRONMENT_CONFIG_FILENAME)
-                        if (
-                            not last_modified_time
-                            or last_modified_time != current_mtime
-                        ):
-                            # read in the file
-                            async with aiofiles.open(
-                                ENVIRONMENT_CONFIG_FILENAME, "r"
-                            ) as f:
-                                environment_str = await f.read()
-                                environment_json = json.loads(environment_str)
-                                last_modified_time = current_mtime
-                                await self._model.setup_environment(environment_json)
-                    except json.JSONDecodeError:
-                        # This will show up in user logs so we should find a better alternative
-                        logging.error(
-                            f"Error decoding JSON from {ENVIRONMENT_CONFIG_FILENAME}"
-                        )
-                    except Exception as e:
-                        logging.error(
-                            f"An error occurred while reading {ENVIRONMENT_CONFIG_FILENAME}: {e}"
-                        )
-                await asyncio.sleep(SLEEP_TIME_SECONDS)
-
         async def serve() -> None:
             serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -466,7 +434,7 @@ class TrussServer:
                 signal.signal(sig, lambda sig, frame: stop_servers())
 
         async def servers_task():
-            servers = [serve(), poll_for_environment_updates()]
+            servers = [serve()]
             await asyncio.gather(*servers)
 
         asyncio.run(servers_task())
