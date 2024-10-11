@@ -236,6 +236,13 @@ class ModelDescriptor:
         else:
             postprocess = None
 
+        if hasattr(model, "setup_environment"):
+            setup_environment = MethodDescriptor.from_method(
+                model.setup_environment, "setup_environment"
+            )
+        else:
+            setup_environment = None
+
         if preprocess:
             parameters = inspect.signature(model.preprocess).parameters
         else:
@@ -327,6 +334,15 @@ class ModelWrapper:
         if self._status == ModelWrapper.Status.NOT_READY:
             thread = Thread(target=self.load)
             thread.start()
+
+    async def setup_environment(self, environment: dict):
+        descriptor = self.model_descriptor.setup_environment
+        if not descriptor:
+            return
+        if descriptor.is_async:
+            return await self._model.setup_environment(environment)
+        else:
+            return await to_thread.run_sync(self._model.setup_environment, environment)
 
     def load(self) -> bool:
         if self.ready:
