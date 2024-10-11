@@ -359,7 +359,7 @@ class ModelWrapper:
                     )
             await asyncio.sleep(SLEEP_TIME_SECONDS)
 
-    def load(self, event_loop) -> bool:
+    def load(self, event_loop: Optional[Any] = None) -> bool:
         if self.ready:
             return True
 
@@ -382,7 +382,7 @@ class ModelWrapper:
 
         return False
 
-    def _load_impl(self, event_loop):
+    def _load_impl(self, event_loop: Optional[Any] = None):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
 
@@ -464,9 +464,10 @@ class ModelWrapper:
             raise RuntimeError("No module class file found")
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
-        asyncio.run_coroutine_threadsafe(
-            self.poll_for_environment_updates(), event_loop
-        )
+        if event_loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.poll_for_environment_updates(), event_loop
+            )
 
         if hasattr(self._model, "load"):
             retry(
