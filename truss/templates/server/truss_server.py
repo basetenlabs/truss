@@ -100,7 +100,7 @@ class BasetenEndpoints:
             os.kill(os.getpid(), signal.SIGKILL)
 
         if not model.ready:
-            raise errors.ModelNotReady(model.name + "_CHECK_HEALTH")
+            raise errors.ModelNotReady(model.name)
 
     async def model_ready(self, model_name: str) -> Dict[str, Union[str, bool]]:
         self.check_healthy(self._safe_lookup_model(model_name))
