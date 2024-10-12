@@ -76,7 +76,9 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 COPY ./{{config.data_dir}} /app/data
 {%- endif %}
 
+{%- if not config.docker_server %}
 COPY ./server /app
+{%- endif %}
 
 COPY ./config.yaml /app/config.yaml
     {%- if config.live_reload and not config.docker_server%}
