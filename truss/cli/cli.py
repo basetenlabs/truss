@@ -2,7 +2,6 @@ import inspect
 import json
 import logging
 import os
-import re
 import sys
 import time
 import warnings
@@ -413,9 +412,11 @@ def chains():
 
 def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
     if environment:
-        run_remote_url = re.sub(
-            r"/deployment/[^/]+/", f"/environments/{environment}/", run_remote_url
-        )
+        idx = run_remote_url.find("deployment")
+        if idx != -1:
+            run_remote_url = (
+                run_remote_url[:idx] + f"environments/{environment}/run_remote"
+            )
     return (
         f"curl -X POST '{run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
