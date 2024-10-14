@@ -1,0 +1,14 @@
+build_commands: []
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: watcher
+python_version: py39
+requirements: []
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
