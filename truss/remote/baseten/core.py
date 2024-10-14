@@ -96,7 +96,10 @@ def create_chain(
         try:
             response = api.deploy_chain_deployment(chain_id, chainlets, environment)
         except ApiError as e:
-            if "Environment matching query does not exist" in e.message:
+            if (
+                e.graphql_error_code
+                == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+            ):
                 raise ValueError(
                     f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
                 ) from e
@@ -308,7 +311,10 @@ def create_truss_service(
             environment=environment,
         )
     except ApiError as e:
-        if "Environment matching query does not exist" in e.message:
+        if (
+            e.graphql_error_code
+            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+        ):
             raise ValueError(
                 f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
             ) from e
