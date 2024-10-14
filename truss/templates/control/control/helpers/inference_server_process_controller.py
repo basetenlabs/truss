@@ -26,6 +26,7 @@ class InferenceServerProcessController:
         inference_server_port: int,
         app_logger: logging.Logger,
     ) -> None:
+        print("teset")
         self._inference_server_home = inference_server_home
         self._inference_server_process_args = inference_server_process_args
         self._inference_server_port = inference_server_port
