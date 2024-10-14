@@ -768,20 +768,82 @@ def test_setup_environment():
     To do this, we run an inference that modifies the file and then sleep for ten seconds
     to allow for the file watcher to notice the updates to the mounted configmap.
     """
-    with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "file_watcher_truss"
-        tr = TrussHandle(truss_dir)
+    model = """
+    class Model:
+        def setup_environment(self, environment: dict):
+            print("setup_environment called with", environment)
+            environment_name = environment.get("environment_name", None)
+            if environment_name == "production":
+                print("DOING IT LIVE")
+            else:
+                print("DOING IT IN", environment_name)
+
+        def predict(self, model_input):
+            return model_input
+    """
+    config = "model_name: setup-environment-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
         )
 
-        response = requests.post(PREDICT_URL, json={"environment_name": "production"})
-        assert response.status_code == 200
-        assert response.json() == {"environment_name": "production"}
-        time.sleep(10)
-        assert "setup_environment called with" in container.logs()
+        # Mimic environment changing to staging
+        staging_env = {"environment_name": "staging"}
+        staging_env_str = json.dumps(staging_env)
+        container.execute(
+            [
+                "bash",
+                "-c",
+                f"echo '{staging_env_str}' > /etc/b10_dynamic_config/environment",
+            ]
+        )
+        time.sleep(30)
+        assert (
+            f"Executing model.setup_environment with new environment: {staging_env}"
+            in container.logs()
+        )
+        single_quote_staging_env_str = staging_env_str.replace('"', "'")
+        assert (
+            f"setup_environment called with {single_quote_staging_env_str}"
+            in container.logs()
+        )
+        assert "DOING IT IN staging" in container.logs()
+
+        # Mimic environment changing to production
+        prod_env = {"environment_name": "production", "foo": "bar"}
+        prod_env_str = json.dumps(prod_env)
+        container.execute(
+            [
+                "bash",
+                "-c",
+                f"echo '{prod_env_str}' > /etc/b10_dynamic_config/environment",
+            ]
+        )
+        time.sleep(30)
+        assert (
+            f"Executing model.setup_environment with new environment: {prod_env}"
+            in container.logs()
+        )
+        single_quote_prod_env_str = prod_env_str.replace('"', "'")
+        assert (
+            f"setup_environment called with {single_quote_prod_env_str}"
+            in container.logs()
+        )
         assert "DOING IT LIVE" in container.logs()
+
+    # Test a truss with no setup_environment function defined
+    model = """
+    class Model:
+        def predict(self, model_input):
+            return model_input
+    """
+    config = "model_name: no-setup-environment-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        time.sleep(30)
+        assert "No model.setup_environment definition provided" in container.logs()
 
 
 # Tracing ##############################################################################

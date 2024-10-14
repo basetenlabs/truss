@@ -76,6 +76,14 @@ class LocalConfigHandler:
         return bptr_data_dir
 
     @staticmethod
+    def dynamic_config_path():
+        dynamic_config_dir = (
+            LocalConfigHandler.TRUSS_CONFIG_DIR / "etc/b10_dynamic_config"
+        )
+        dynamic_config_dir.mkdir(exist_ok=True, parents=True)
+        return dynamic_config_dir
+
+    @staticmethod
     def _signatures_dir_path():
         return LocalConfigHandler.TRUSS_CONFIG_DIR / "signatures"
 
