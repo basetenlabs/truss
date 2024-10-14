@@ -112,29 +112,29 @@ class Model:
     assert new_model_file_content == mock_model_file_content
 
 
-# @pytest.mark.anyio
-# async def test_patch_model_code_update_predict_on_long_load_time(app, client):
-#     mock_model_file_content = """
-# class Model:
-#     def load(self):
-#         import time
-#         time.sleep(3)
+@pytest.mark.anyio
+async def test_patch_model_code_update_predict_on_long_load_time(app, client):
+    mock_model_file_content = """
+class Model:
+    def load(self):
+        import time
+        time.sleep(3)
 
-#     def predict(self, request):
-#         return {'prediction': [1]}
-# """
-#     patch = Patch(
-#         type=PatchType.MODEL_CODE,
-#         body=ModelCodePatch(
-#             action=Action.UPDATE,
-#             path="model.py",
-#             content=mock_model_file_content,
-#         ),
-#     )
-#     await _verify_apply_patch_success(client, patch)
-#     resp = await client.post("/v1/models/model:predict", json={})
-#     resp.status_code == 200
-#     assert resp.json() == {"prediction": [1]}
+    def predict(self, request):
+        return {'prediction': [1]}
+"""
+    patch = Patch(
+        type=PatchType.MODEL_CODE,
+        body=ModelCodePatch(
+            action=Action.UPDATE,
+            path="model.py",
+            content=mock_model_file_content,
+        ),
+    )
+    await _verify_apply_patch_success(client, patch)
+    resp = await client.post("/v1/models/model:predict", json={})
+    resp.status_code == 200
+    assert resp.json() == {"prediction": [1]}
 
 
 @pytest.mark.anyio
