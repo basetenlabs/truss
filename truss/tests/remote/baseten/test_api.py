@@ -4,6 +4,7 @@ import pytest
 import requests
 from requests import Response
 from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.custom_types import ChainletData
 from truss.remote.baseten.error import ApiError
 
 
@@ -49,6 +50,22 @@ def mock_create_model_response():
     response.status_code = 200
     response.json = mock.Mock(
         return_value={"data": {"create_model_from_truss": {"id": "12345"}}}
+    )
+    return response
+
+
+def mock_deploy_chain_deployment_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={
+            "data": {
+                "deploy_chain_deployment": {
+                    "chain_id": "12345",
+                    "chain_deployment_id": "54321",
+                }
+            }
+        }
     )
     return response
 
@@ -204,3 +221,42 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: true" in gql_mutation
     assert "version_name: " not in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment(mock_post, baseten_api):
+    baseten_api.deploy_chain_deployment(
+        "chain_id",
+        [
+            ChainletData(
+                name="chainlet-1",
+                oracle_version_id="some-ov-id",
+                is_entrypoint=True,
+            )
+        ],
+        "production",
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'chain_id: "chain_id"' in gql_mutation
+    assert "chainlets:" in gql_mutation
+    assert 'environment_name: "production"' in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
+    baseten_api.deploy_chain_deployment(
+        "chain_id",
+        [
+            ChainletData(
+                name="chainlet-1",
+                oracle_version_id="some-ov-id",
+                is_entrypoint=True,
+            )
+        ],
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'chain_id: "chain_id"' in gql_mutation
+    assert "chainlets:" in gql_mutation
+    assert "environment_name" not in gql_mutation

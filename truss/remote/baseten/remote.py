@@ -67,10 +67,10 @@ class BasetenRemote(TrussRemote):
         chain_name: str,
         chainlets: List[custom_types.ChainletData],
         publish: bool = False,
-        promote: bool = False,
+        environment: Optional[str] = None,
     ) -> ChainDeploymentHandle:
-        if promote:
-            # If we are promoting a model after deploy, it must be published.
+        if environment:
+            # If we are promoting a model to an environment after deploy, it must be published.
             # Draft models cannot be promoted.
             publish = True
         # Returns tuple of (chain_id, chain_deployment_id)
@@ -81,7 +81,7 @@ class BasetenRemote(TrussRemote):
             chain_name=chain_name,
             chainlets=chainlets,
             is_draft=not publish,
-            promote=promote,
+            environment=environment,
         )
 
     def get_chainlets(
