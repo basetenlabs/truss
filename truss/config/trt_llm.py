@@ -23,6 +23,7 @@ class TrussTRTLLMModel(str, Enum):
     MISTRAL = "mistral"
     DEEPSEEK = "deepseek"
     WHISPER = "whisper"
+    QWEN = "qwen"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
