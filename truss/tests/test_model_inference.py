@@ -760,6 +760,30 @@ def test_slow_truss():
         _test_invocations(200)
 
 
+@pytest.mark.integration
+def test_setup_environment():
+    """
+    Tests a Truss that has a setup_environment function defined, and ensures that it
+    gets called whenever changes are made to the dynamic_config environment key.
+    To do this, we run an inference that modifies the file and then sleep for ten seconds
+    to allow for the file watcher to notice the updates to the mounted configmap.
+    """
+    with ensure_kill_all():
+        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
+        truss_dir = truss_root / "test_data" / "file_watcher_truss"
+        tr = TrussHandle(truss_dir)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+
+        response = requests.post(PREDICT_URL, json={"environment_name": "production"})
+        assert response.status_code == 200
+        assert response.json() == {"environment_name": "production"}
+        time.sleep(10)
+        assert "setup_environment called with" in container.logs()
+        assert "DOING IT LIVE" in container.logs()
+
+
 # Tracing ##############################################################################
 
 
