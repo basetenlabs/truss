@@ -272,6 +272,7 @@ class ModelWrapper:
     _status: "ModelWrapper.Status"
     _predict_semaphore: Semaphore
     _poll_for_environment_updates_task: Optional[Any]
+    _environment: dict
 
     class Status(Enum):
         NOT_READY = 0
@@ -294,6 +295,7 @@ class ModelWrapper:
             )
         )
         self._poll_for_environment_updates_task = None
+        self._environment = None
 
     @property
     def _model(self) -> Any:
@@ -433,6 +435,15 @@ class ModelWrapper:
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
 
+        if hasattr(self._model, "setup_environment"):
+            environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+                ENVIRONMENT_DYNAMIC_CONFIG_KEY
+            )
+            if environment_str:
+                environment_json = json.loads(environment_str)
+                self._model.setup_environment(environment_json)
+                self._environment = environment_json
+
         if hasattr(self._model, "load"):
             retry(
                 self._model.load,
@@ -488,7 +499,10 @@ class ModelWrapper:
                         if environment_str:
                             last_modified_time = current_mtime
                             environment_json = json.loads(environment_str)
-                            await self.setup_environment(environment_json)
+                            # Avoid rerunning `setup_environment` with the same environment
+                            if self._environment != environment_json:
+                                await self.setup_environment(environment_json)
+                                self._environment = environment_json
                 except Exception as e:
                     logging.error(
                         f"An error occurred while polling for environment updates: {e}"
