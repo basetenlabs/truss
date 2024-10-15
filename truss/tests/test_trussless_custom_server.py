@@ -21,12 +21,7 @@ def test_custom_server_truss():
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
-        try:
-            response = requests.post(full_url, json={})
-            if response.status_code != 200:
-                print(response.text)
-        except:
-            raise Exception(f"Failed to reach {full_url}")
+        response = requests.post(full_url, json={})
         assert response.status_code == 200
         assert response.json() == {
             "message": "Hello World",

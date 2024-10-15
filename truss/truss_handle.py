@@ -1075,13 +1075,7 @@ def _wait_for_docker_build(container) -> None:
     ),
 )
 def _wait_for_model_server(url: str) -> Response:
-    try:
-        response = requests.get(url)
-        print(f"Response: {response}")
-    except Exception as e:
-        print(f"Error: {e}")
-        raise
-    return response
+    return requests.get(url)
 
 
 def wait_for_truss(
