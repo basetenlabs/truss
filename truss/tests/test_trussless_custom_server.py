@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 import requests
+from tenacity import stop_after_delay
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -17,7 +18,7 @@ def test_custom_server_truss():
 
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.set_secret("hf_access_token", "123")
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True, model_server_stop_retry_criteria=stop_after_delay(3))
         truss_server_addr = "http://localhost:8090"
         full_url = f"{truss_server_addr}/v1/models/model:predict"
 
