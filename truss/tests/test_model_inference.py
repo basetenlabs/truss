@@ -821,7 +821,6 @@ def test_setup_environment():
             in container.logs()
         )
         assert "DOING IT IN beta" in container.logs()
-        print(container.logs())
 
     # Test a truss that uses the environment in load()
     model = """
