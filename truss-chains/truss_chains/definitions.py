@@ -24,6 +24,7 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 
 import pydantic
 from truss import truss_config
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
 
@@ -609,22 +610,27 @@ class PushOptions(SafeModelNonSerializable):
 class PushOptionsBaseten(PushOptions):
     remote_provider: baseten_remote.BasetenRemote
     publish: bool
-    promote: bool
+    environment: Optional[str]
 
     @classmethod
     def create(
         cls,
         chain_name: str,
         publish: bool,
-        promote: bool,
+        promote: Optional[bool],
         only_generate_trusses: bool,
         user_env: Mapping[str, str],
         remote: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
         if not remote:
             remote = remote_cli.inquire_remote_name(
                 remote_factory.RemoteFactory.get_available_config_names()
             )
+        if promote and not environment:
+            environment = PRODUCTION_ENVIRONMENT_NAME
+        if environment:
+            publish = True
         remote_provider = cast(
             baseten_remote.BasetenRemote,
             remote_factory.RemoteFactory.create(remote=remote),
@@ -633,9 +639,9 @@ class PushOptionsBaseten(PushOptions):
             remote_provider=remote_provider,
             chain_name=chain_name,
             publish=publish,
-            promote=promote,
             only_generate_trusses=only_generate_trusses,
             user_env=user_env,
+            environment=environment,
         )
 
 
