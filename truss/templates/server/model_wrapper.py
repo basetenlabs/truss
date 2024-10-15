@@ -1,4 +1,5 @@
 import asyncio
+import aiofiles
 import dataclasses
 import enum
 import importlib
@@ -191,6 +192,7 @@ class ModelDescriptor:
     predict: MethodDescriptor
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
+    setup_environment: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -250,7 +252,28 @@ class ModelDescriptor:
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
         )
 
+import asyncio
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
+class AsyncFileSystemEventHandler(FileSystemEventHandler):
+    """
+    An event handler that triggers asynchronous callbacks using asyncio for
+    file system events.
+    """
+    def __init__(self, callback):
+        self.callback = callback
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            asyncio.run(self.callback(event.src_path))
+
+    def on_created(self, event):
+        if not event.is_directory:
+            asyncio.run(self.callback(event.src_path))
+
+
+FILEPATH = '/etc/b10_dynamic_config/environment'
 class ModelWrapper:
     _config: Dict
     _tracer: sdk_trace.Tracer
@@ -280,6 +303,7 @@ class ModelWrapper:
                 "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
             )
         )
+        self.observer: Optional[Observer] = None
 
     @property
     def _model(self) -> Any:
@@ -313,6 +337,24 @@ class ModelWrapper:
             thread = Thread(target=self.load)
             thread.start()
 
+
+    async def _handle_environment_change(self):
+        async with aiofiles.open(FILEPATH, 'r') as f:
+            data = await f.read()
+            await self._setup_environment_impl(data)
+
+    
+    def setup_watcher(self):
+        event_handler = AsyncFileSystemEventHandler(self._handle_environment_change)
+        observer = Observer()
+        observer.schedule(event_handler, path=FILEPATH, recursive=False)
+        observer.start()
+        self.observer = observer
+    
+    def on_close(self):
+        if self.observer:
+            self.observer.stop()
+        
     def load(self) -> bool:
         if self.ready:
             return True
@@ -427,6 +469,15 @@ class ModelWrapper:
                 "Failed to load model.",
                 gap_seconds=1.0,
             )
+
+    async def _setup_environment_impl(
+        self,
+        data: dict,
+    ): 
+        descriptor = self.model_descriptor.setup_environment
+        if not descriptor:
+            return
+        ...
 
     async def preprocess(
         self,
