@@ -1,19 +1,23 @@
+import asyncio
 import builtins
 import contextlib
 import enum
 import inspect
+import json
 import logging
 import os
 import random
 import socket
 import sys
 import textwrap
+import threading
 import traceback
-from typing import Any, Iterable, Iterator, NoReturn, Type, TypeVar, Union
+from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
 
 import fastapi
 import httpx
 import pydantic
+from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
 
@@ -124,6 +128,34 @@ def get_free_port() -> int:
         s.listen(1)  # Not necessary but included for completeness.
         port = s.getsockname()[1]  # Retrieve the port number assigned.
         return port
+
+
+def override_chainlet_to_service_metadata(
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+):
+    # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
+    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value(
+        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+    )
+    if dynamic_chainlet_config_str:
+        dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
+        for (
+            chainlet_name,
+            service_descriptor,
+        ) in chainlet_to_service.items():
+            if chainlet_name in dynamic_chainlet_config:
+                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
+                service_descriptor.predict_url = dynamic_chainlet_config[chainlet_name][
+                    "predict_url"
+                ]
+            else:
+                logging.debug(
+                    f"Skipped override for chainlet '{chainlet_name}': not found in {definitions.DYNAMIC_CHAINLET_CONFIG_KEY}."
+                )
+    else:
+        logging.debug(
+            f"No {definitions.DYNAMIC_CHAINLET_CONFIG_KEY} found, skipping overrides."
+        )
 
 
 # Error Propagation Utils. #############################################################
@@ -337,3 +369,47 @@ def issubclass_safe(x: Any, cls: type) -> bool:
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
     """Like `BaseModel.model_dump(exclude_unset=True), but only top-level."""
     return {name: getattr(obj, name) for name in obj.__fields_set__}
+
+
+class AsyncSafeCounter:
+    def __init__(self, initial: int = 0) -> None:
+        self._counter = initial
+        self._lock = asyncio.Lock()
+
+    async def increment(self) -> int:
+        async with self._lock:
+            self._counter += 1
+            return self._counter
+
+    async def decrement(self) -> int:
+        async with self._lock:
+            self._counter -= 1
+            return self._counter
+
+    async def __aenter__(self) -> int:
+        return await self.increment()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.decrement()
+
+
+class ThreadSafeCounter:
+    def __init__(self, initial: int = 0) -> None:
+        self._counter = initial
+        self._lock = threading.Lock()
+
+    def increment(self) -> int:
+        with self._lock:
+            self._counter += 1
+            return self._counter
+
+    def decrement(self) -> int:
+        with self._lock:
+            self._counter -= 1
+            return self._counter
+
+    def __enter__(self) -> int:
+        return self.increment()
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.decrement()

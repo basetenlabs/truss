@@ -1,10 +1,16 @@
 import json
 import logging
+import warnings
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, validator
+from huggingface_hub.errors import HFValidationError
+from huggingface_hub.utils import validate_repo_id
+from pydantic import BaseModel, PydanticDeprecatedSince20, validator
 from rich.console import Console
+
+# Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
+warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +61,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     max_input_len: int
     max_output_len: int
     max_batch_size: int
+    max_num_tokens: Optional[int] = None
     max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
@@ -71,6 +78,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
+    enable_chunked_context: bool = False
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
@@ -97,6 +105,8 @@ class TRTLLMConfiguration(BaseModel):
         super().__init__(**data)
         self._validate_minimum_required_configuration()
         self._validate_kv_cache_flags()
+        if self.build.checkpoint_repository.source == CheckpointSource.HF:
+            self._validate_hf_repo_id()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
@@ -130,6 +140,14 @@ class TRTLLMConfiguration(BaseModel):
         ):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
         return self
+
+    def _validate_hf_repo_id(self):
+        try:
+            validate_repo_id(self.build.checkpoint_repository.repo)
+        except HFValidationError as e:
+            raise ValueError(
+                f"HuggingFace repository validation failed: {str(e)}"
+            ) from e
 
     @property
     def requires_build(self):

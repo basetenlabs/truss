@@ -21,7 +21,7 @@ from rich.console import Console
 
 import truss
 from truss.config.trt_llm import TrussTRTLLMQuantizationType
-from truss.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -242,9 +242,15 @@ def build_context(build_dir, target_directory: str) -> None:
 @click.argument("target_directory", required=False)
 @click.argument("build_dir", required=False)
 @click.option("--tag", help="Docker image tag")
+@click.option(
+    "--use_host_network",
+    is_flag=True,
+    default=False,
+    help="Use host network for docker build",
+)
 @log_level_option
 @error_handling
-def build(target_directory: str, build_dir: Path, tag) -> None:
+def build(target_directory: str, build_dir: Path, tag, use_host_network) -> None:
     """
     Builds the docker image for a Truss.
 
@@ -255,6 +261,9 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
     tr = _get_truss_from_directory(target_directory=target_directory)
     if build_dir:
         build_dir = Path(build_dir)
+    if use_host_network:
+        tr.build_serving_docker_image(build_dir=build_dir, tag=tag, network="host")
+        return
     tr.build_serving_docker_image(build_dir=build_dir, tag=tag)
 
 
@@ -266,9 +275,17 @@ def build(target_directory: str, build_dir: Path, tag) -> None:
 @click.option(
     "--attach", is_flag=True, default=False, help="Flag for attaching the process"
 )
+@click.option(
+    "--use_host_network",
+    is_flag=True,
+    default=False,
+    help="Use host network for docker build",
+)
 @log_level_option
 @error_handling
-def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
+def run(
+    target_directory: str, build_dir: Path, tag, port, attach, use_host_network
+) -> None:
     """
     Runs the docker image for a Truss.
 
@@ -284,6 +301,15 @@ def run(target_directory: str, build_dir: Path, tag, port, attach) -> None:
         click.confirm(
             f"Container already exists at {urls}. Are you sure you want to continue?"
         )
+    if use_host_network:
+        tr.docker_run(
+            build_dir=build_dir,
+            tag=tag,
+            local_port=port,
+            detach=not attach,
+            network="host",
+        )
+        return
     tr.docker_run(build_dir=build_dir, tag=tag, local_port=port, detach=not attach)
 
 
@@ -470,7 +496,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
 @click.option(
     "--publish/--no-publish",
     type=bool,
-    default=True,
+    default=False,
     help="Create chainlets as published deployments.",
 )
 @click.option(
@@ -990,6 +1016,15 @@ def run_python(script, target_directory):
     ),
 )
 @click.option(
+    "--environment",
+    type=str,
+    required=False,
+    help=(
+        "Push the truss as a published deployment to the specified environment."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+    ),
+)
+@click.option(
     "--preserve-previous-production-deployment",
     type=bool,
     is_flag=True,
@@ -1048,6 +1083,7 @@ def push(
     deployment_name: Optional[str] = None,
     wait: bool = False,
     timeout_seconds: Optional[int] = None,
+    environment: Optional[str] = None,
 ) -> None:
     """
     Pushes a truss to a TrussRemote.
@@ -1065,6 +1101,12 @@ def push(
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         model_name = inquire_model_name()
+
+    if promote and environment:
+        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        console.print(promote_warning, style="yellow")
+    if promote and not environment:
+        environment = PRODUCTION_ENVIRONMENT_NAME
 
     # Write model name to config if it's not already there
     if model_name != tr.spec.config.model_name:
@@ -1123,6 +1165,7 @@ def push(
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
+        environment=environment,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -1142,10 +1185,10 @@ def push(
 
         click.echo(draft_model_text)
 
-    if promote:
+    if environment:
         promotion_text = (
-            "Your Truss has been deployed as a production model. After it successfully "
-            "deploys, it will become the next production deployment of your model."
+            f"Your Truss has been deployed into the {environment} environment. After it successfully "
+            f"deploys, it will become the next {environment} deployment of your model."
         )
         console.print(promotion_text, style="green")
 

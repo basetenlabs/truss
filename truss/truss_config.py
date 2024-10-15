@@ -396,6 +396,37 @@ class BaseImage:
 
 
 @dataclass
+class DockerServer:
+    setup_command: str
+    start_command: str
+    server_port: int
+    readiness_endpoint: str
+    liveness_endpoint: str
+    predict_endpoint: str
+
+    @staticmethod
+    def from_dict(d) -> "DockerServer":
+        return DockerServer(
+            setup_command=d.get("setup_command", ""),
+            start_command=d.get("start_command", ""),
+            server_port=d.get("server_port", 8000),
+            readiness_endpoint=d.get("readiness_endpoint", ""),
+            liveness_endpoint=d.get("liveness_endpoint", ""),
+            predict_endpoint=d.get("predict_endpoint", ""),
+        )
+
+    def to_dict(self):
+        return {
+            "setup_command": self.setup_command,
+            "start_command": self.start_command,
+            "server_port": self.server_port,
+            "readiness_endpoint": self.readiness_endpoint,
+            "liveness_endpoint": self.liveness_endpoint,
+            "predict_endpoint": self.predict_endpoint,
+        }
+
+
+@dataclass
 class TrussConfig:
     """
     `config.yaml` controls Truss config
@@ -511,6 +542,7 @@ class TrussConfig:
     # spec_version is a version string
     spec_version: str = DEFAULT_SPEC_VERSION
     base_image: Optional[BaseImage] = None
+    docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
@@ -543,7 +575,7 @@ class TrussConfig:
             requirements_file=d.get("requirements_file", None),
             requirements=d.get("requirements", []),
             system_packages=d.get("system_packages", []),
-            environment_variables=d.get("environment_variables", {}),
+            environment_variables=_handle_env_vars(d.get("environment_variables", {})),
             resources=Resources.from_dict(d.get("resources", {})),
             runtime=Runtime.from_dict(d.get("runtime", {})),
             build=Build.from_dict(d.get("build", {})),
@@ -562,6 +594,9 @@ class TrussConfig:
                 d.get("external_data"), ExternalData.from_list
             ),
             base_image=transform_optional(d.get("base_image"), BaseImage.from_dict),
+            docker_server=transform_optional(
+                d.get("docker_server"), DockerServer.from_dict
+            ),
             model_cache=transform_optional(
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
@@ -660,6 +695,16 @@ class TrussConfig:
         self._validate_quant_format_and_accelerator_for_trt_llm_builder()
 
 
+def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:
+    new_env_vars = {}
+    for k, v in env_vars.items():
+        if isinstance(v, bool):
+            new_env_vars[k] = str(v).lower()
+        else:
+            new_env_vars[k] = str(v)
+    return new_env_vars
+
+
 DATACLASS_TO_REQ_KEYS_MAP = {
     Resources: {"accelerator", "cpu", "memory", "use_gpu"},
     Runtime: {"predict_concurrency"},
@@ -725,6 +770,10 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, BaseImage):
                 d["base_image"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
+            elif isinstance(field_curr_value, DockerServer):
+                d["docker_server"] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
             elif isinstance(field_curr_value, DockerAuthSettings):

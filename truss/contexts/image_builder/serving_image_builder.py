@@ -12,6 +12,7 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
+from truss import constants
 from truss.config.trt_llm import TrussTRTLLMModel
 from truss.constants import (
     AUDIO_MODEL_TRTLLM_REQUIREMENTS,
@@ -20,7 +21,10 @@ from truss.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     CONTROL_SERVER_CODE_DIR,
+    DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
+    MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
+    MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MODEL_DOCKERFILE_NAME,
     OPENAI_COMPATIBLE_TAG,
     REQUIREMENTS_TXT_FILENAME,
@@ -70,7 +74,6 @@ USER_TRUSS_IGNORE_FILE = ".truss_ignore"
 GCS_CREDENTIALS = "service_account.json"
 S3_CREDENTIALS = "s3_credentials.json"
 
-HF_ACCESS_TOKEN_SECRET_NAME = "hf_access_token"
 HF_ACCESS_TOKEN_FILE_NAME = "hf-access-token"
 
 CLOUD_BUCKET_CACHE = Path("/app/model_cache/")
@@ -296,6 +299,33 @@ def update_config_and_gather_files(
     return get_files_to_cache(config, truss_dir, build_dir)
 
 
+def generate_docker_server_nginx_config(build_dir, config):
+    nginx_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
+    )
+
+    nginx_content = nginx_template.render(
+        server_endpoint=config.docker_server.predict_endpoint,
+        readiness_endpoint=config.docker_server.readiness_endpoint,
+        liveness_endpoint=config.docker_server.liveness_endpoint,
+        server_port=config.docker_server.server_port,
+    )
+    nginx_filepath = build_dir / "proxy.conf"
+    nginx_filepath.write_text(nginx_content)
+
+
+def generate_docker_server_supervisord_config(build_dir, config):
+    supervisord_template = read_template_from_fs(
+        DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
+    )
+    supervisord_contents = supervisord_template.render(
+        start_command=config.docker_server.start_command,
+        setup_command=config.docker_server.setup_command,
+    )
+    supervisord_filepath = build_dir / "supervisord.conf"
+    supervisord_filepath.write_text(supervisord_contents)
+
+
 class ServingImageBuilderContext(TrussContext):
     @staticmethod
     def run(truss_dir: Path):
@@ -338,6 +368,16 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+
+        if config.docker_server is not None:
+            copy_into_build_dir(
+                TEMPLATES_DIR / "docker_server_requirements.txt",
+                "docker_server_requirements.txt",
+            )
+
+            generate_docker_server_nginx_config(build_dir, config)
+
+            generate_docker_server_supervisord_config(build_dir, config)
 
         # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
         # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
@@ -454,19 +494,24 @@ class ServingImageBuilder(ImageBuilder):
         with open(base_truss_server_reqs_filepath, "r") as f:
             base_server_requirements = f.read()
 
-        # If the user has provided python requirements,
-        # append the truss server requirements, so that any conflicts
-        # are detected and cause a build failure. If there are no
-        # requirements provided, we just pass an empty string,
-        # as there's no need to install anything.
-        # TODO (BT-10217): above reasoning leads to inconsistencies. To get consistent
-        #  images tentatively add server requirements always. This whole point needs
-        #  more thought and potentially a re-design.
-        user_provided_python_requirements = (
-            base_server_requirements + spec.requirements_txt
-            if spec.requirements
-            else base_server_requirements
-        )
+        if config.docker_server:
+            # when docker server is enabled, no need to install truss requirements
+            # only install user-provided python requirements
+            user_provided_python_requirements = spec.requirements_txt
+        else:
+            # If the user has provided python requirements,
+            # append the truss server requirements, so that any conflicts
+            # are detected and cause a build failure. If there are no
+            # requirements provided, we just pass an empty string,
+            # as there's no need to install anything.
+            # TODO (BT-10217): above reasoning leads to inconsistencies. To get consistent
+            #  images tentatively add server requirements always. This whole point needs
+            #  more thought and potentially a re-design.
+            user_provided_python_requirements = (
+                base_server_requirements + spec.requirements_txt
+                if spec.requirements
+                else base_server_requirements
+            )
         if spec.requirements_file is not None:
             copy_into_build_dir(
                 truss_dir / spec.requirements_file,
@@ -501,7 +546,6 @@ class ServingImageBuilder(ImageBuilder):
         data_dir = build_dir / config.data_dir
         model_dir = build_dir / config.model_module_dir
         bundled_packages_dir = build_dir / config.bundled_packages_dir
-
         dockerfile_template = read_template_from_fs(
             TEMPLATES_DIR, SERVER_DOCKERFILE_TEMPLATE_NAME
         )
@@ -526,10 +570,31 @@ class ServingImageBuilder(ImageBuilder):
             build_dir / USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME
         )
 
-        hf_access_token = config.secrets.get(HF_ACCESS_TOKEN_SECRET_NAME)
+        max_supported_python_version_in_custom_base_image = (
+            MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE
+        )
+        min_supported_python_version_in_custom_base_image = (
+            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE
+        )
+        max_supported_python_minor_version_in_custom_base_image = (
+            MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[1]
+        )
+        min_supported_python_minor_version_in_custom_base_image = (
+            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[1]
+        )
+        supported_python_major_version_in_custom_base_image = (
+            MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE.split(".")[0]
+        )
+
+        hf_access_token = config.secrets.get(constants.HF_ACCESS_TOKEN_KEY)
         dockerfile_contents = dockerfile_template.render(
             should_install_server_requirements=should_install_server_requirements,
             base_image_name_and_tag=base_image_name_and_tag,
+            max_supported_python_version_in_custom_base_image=max_supported_python_version_in_custom_base_image,
+            min_supported_python_version_in_custom_base_image=min_supported_python_version_in_custom_base_image,
+            max_supported_python_minor_version_in_custom_base_image=max_supported_python_minor_version_in_custom_base_image,
+            min_supported_python_minor_version_in_custom_base_image=min_supported_python_minor_version_in_custom_base_image,
+            supported_python_major_version_in_custom_base_image=supported_python_major_version_in_custom_base_image,
             should_install_system_requirements=should_install_system_requirements,
             should_install_requirements=should_install_python_requirements,
             should_install_user_requirements_file=should_install_user_requirements_file,

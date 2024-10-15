@@ -1,0 +1,22 @@
+base_image:
+  image: baseten/fastapi-test:0.1.1
+docker_server:
+  start_command: fastapi dev /home/app.py
+  readiness_endpoint: /health
+  liveness_endpoint: /health
+  predict_endpoint: /predict
+  server_port: 8000
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+requirements:
+  - torch>=2.0.1
+model_name: Test Docker Server Truss
+secrets:
+  hf_access_token: null
+environment_variables:
+  HF_TOKEN: 123
+runtime:
+  predict_concurrency: 1
