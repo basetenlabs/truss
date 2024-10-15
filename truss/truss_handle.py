@@ -233,7 +233,7 @@ class TrussHandle:
         wait_for_server_ready: bool = True,
         network: Optional[str] = None,
         container_name_prefix: Optional[str] = None,
-        model_server_stop_retry_criteria=stop_after_delay(120),
+        model_server_stop_retry_override=stop_after_delay(120),
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -325,7 +325,7 @@ class TrussHandle:
                 model_base_url,
                 container,
                 wait_for_server_ready,
-                model_server_stop_retry_criteria,
+                model_server_stop_retry_override,
             )
         except ContainerNotFoundError as err:
             raise err
@@ -1070,25 +1070,26 @@ def _wait_for_docker_build(container) -> None:
         with attempt:
             if state != DockerStates.RUNNING:
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
+            
 
-
-@retry(
-    stop=stop_after_delay(120),
-    wait=wait_fixed(2),
-    retry=(
-        retry_if_result(lambda response: response.status_code in [502, 503])
-        | retry_if_exception_type(exceptions.ConnectionError)
-    ),
-)
-def _wait_for_model_server(url: str) -> Response:
-    return requests.get(url)
+def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:
+    for attempt in Retrying(
+        stop=stop,
+        wait=wait_fixed(2),
+        retry=(
+            retry_if_result(lambda response: response.status_code in [502, 503])
+            | retry_if_exception_type(exceptions.ConnectionError)
+        ),
+    ):
+        with attempt:
+            return requests.get(url)
 
 
 def wait_for_truss(
     url: str,
     container: str,
     wait_for_server_ready: bool = True,
-    model_server_stop_retry_criteria=None,
+    model_server_stop_retry_override=None,
 ) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
@@ -1099,15 +1100,8 @@ def wait_for_truss(
     except RetryError as retry_err:
         retry_err.reraise()
     if wait_for_server_ready:
-        if model_server_stop_retry_criteria:
-            _wait_for_model_server.retry_with(  # type: ignore[attr-defined]
-                stop=model_server_stop_retry_criteria,
-                wait=wait_fixed(2),
-                retry=(
-                    retry_if_result(lambda response: response.status_code in [502, 503])
-                    | retry_if_exception_type(exceptions.ConnectionError)
-                ),
-            )(url)
+        if model_server_stop_retry_override:
+            _wait_for_model_server(url, stop=model_server_stop_retry_override)
         else:
             _wait_for_model_server(url)
 
