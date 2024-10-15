@@ -1067,7 +1067,7 @@ def _wait_for_docker_build(container) -> None:
 
 
 @retry(
-    stop=stop_after_delay(120),
+    stop=stop_after_attempt(3),
     wait=wait_fixed(2),
     retry=(
         retry_if_result(lambda response: response.status_code in [502, 503])
@@ -1075,7 +1075,13 @@ def _wait_for_docker_build(container) -> None:
     ),
 )
 def _wait_for_model_server(url: str) -> Response:
-    return requests.get(url)
+    try:
+        response = requests.get(url)
+        print(f"Response: {response}")
+    except Exception as e:
+        print(f"Error: {e}")
+        raise
+    return response
 
 
 def wait_for_truss(
