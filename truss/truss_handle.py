@@ -324,8 +324,8 @@ class TrussHandle:
             wait_for_truss(
                 model_base_url,
                 container,
-                model_server_stop_retry_criteria,
                 wait_for_server_ready,
+                model_server_stop_retry_criteria,
             )
         except ContainerNotFoundError as err:
             raise err
@@ -1087,8 +1087,8 @@ def _wait_for_model_server(url: str) -> Response:
 def wait_for_truss(
     url: str,
     container: str,
-    model_server_stop_retry_criteria,
     wait_for_server_ready: bool = True,
+    model_server_stop_retry_criteria = None
 ) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
@@ -1099,7 +1099,17 @@ def wait_for_truss(
     except RetryError as retry_err:
         retry_err.reraise()
     if wait_for_server_ready:
-        _wait_for_model_server.retry_with(stop=model_server_stop_retry_criteria)(url)
+        if model_server_stop_retry_criteria:
+            _wait_for_model_server.retry_with(
+                stop=model_server_stop_retry_criteria,
+                wait=wait_fixed(2),
+                retry=(
+                    retry_if_result(lambda response: response.status_code in [502, 503])
+                    | retry_if_exception_type(exceptions.ConnectionError)
+                ),
+            )(url)
+        else:
+            _wait_for_model_server(url)
 
 
 def _prepare_secrets_mount_dir() -> Path:
