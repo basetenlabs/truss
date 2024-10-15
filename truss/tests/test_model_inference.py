@@ -809,8 +809,20 @@ def test_setup_environment():
                 "rm -f /etc/b10_dynamic_config/environment",
             ]
         )
+        # Wait for load thread to complete
+        time.sleep(1)
+        # Mimic environment changing to beta
+        beta_env = {"environment_name": "beta"}
+        beta_env_str = json.dumps(beta_env)
+        LocalConfigHandler.set_dynamic_config("environment", beta_env_str)
+        single_quote_beta_env_str = beta_env_str.replace('"', "'")
+        assert (
+            f"setup_environment called with {single_quote_beta_env_str}"
+            in container.logs()
+        )
+        assert "DOING IT IN beta" in container.logs()
+        print(container.logs())
 
-<<<<<<< HEAD
     # Test a truss that uses the environment in load()
     model = """
     from typing import Optional
@@ -840,21 +852,6 @@ def test_setup_environment():
         # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
         assert (
             f"Executing model.setup_environment with environment: {staging_env}"
-=======
-        # Mimic environment changing to staging
-        staging_env = {"environment_name": "staging"}
-        staging_env_str = json.dumps(staging_env)
-        container.execute(
-            [
-                "bash",
-                "-c",
-                f"echo '{staging_env_str}' > /etc/b10_dynamic_config/environment",
-            ]
-        )
-        time.sleep(30)
-        assert (
-            f"Executing model.setup_environment with new environment: {staging_env}"
->>>>>>> e0b2c31d (revert load changes and check model wrapper status instead + tests)
             in container.logs()
         )
         single_quote_staging_env_str = staging_env_str.replace('"', "'")
@@ -862,33 +859,20 @@ def test_setup_environment():
             f"setup_environment called with {single_quote_staging_env_str}"
             in container.logs()
         )
-<<<<<<< HEAD
         assert "in staging environment" in container.logs()
         assert "loading in environment staging" in container.logs()
         # Set environment to None
         no_env = None
         no_env_str = json.dumps(no_env)
-=======
-        assert "DOING IT IN staging" in container.logs()
-
-        # Mimic environment changing to production
-        prod_env = {"environment_name": "production", "foo": "bar"}
-        prod_env_str = json.dumps(prod_env)
->>>>>>> e0b2c31d (revert load changes and check model wrapper status instead + tests)
         container.execute(
             [
                 "bash",
                 "-c",
-<<<<<<< HEAD
                 f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment",
-=======
-                f"echo '{prod_env_str}' > /etc/b10_dynamic_config/environment",
->>>>>>> e0b2c31d (revert load changes and check model wrapper status instead + tests)
             ]
         )
         time.sleep(30)
         assert (
-<<<<<<< HEAD
             f"Executing model.setup_environment with environment: {no_env}"
             in container.logs()
         )
@@ -900,32 +884,6 @@ def test_setup_environment():
                 "rm -f /etc/b10_dynamic_config/environment",
             ]
         )
-=======
-            f"Executing model.setup_environment with new environment: {prod_env}"
-            in container.logs()
-        )
-        single_quote_prod_env_str = prod_env_str.replace('"', "'")
-        assert (
-            f"setup_environment called with {single_quote_prod_env_str}"
-            in container.logs()
-        )
-        assert "DOING IT LIVE" in container.logs()
->>>>>>> e0b2c31d (revert load changes and check model wrapper status instead + tests)
-
-    # Test a truss with no setup_environment function defined
-    model = """
-    class Model:
-        def predict(self, model_input):
-            return model_input
-    """
-    config = "model_name: no-setup-environment-truss"
-    with ensure_kill_all(), temp_truss(model, config) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        time.sleep(30)
-        assert "No model.setup_environment definition provided" in container.logs()
-
 
 # Tracing ##############################################################################
 
