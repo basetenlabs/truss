@@ -1,4 +1,5 @@
 from typing import Any
+import fastapi
 
 
 class Model:
@@ -9,5 +10,5 @@ class Model:
         self._model = None
         self._engine = trt_llm["engine"]
 
-    async def predict(self, model_input: Any) -> Any:
-        return await self._engine.predict(model_input)
+    async def predict(self, model_input: Any, request: fastapi.Request) -> Any:
+        return await self._engine.predict(model_input, request)
