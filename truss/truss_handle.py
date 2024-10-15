@@ -1100,7 +1100,7 @@ def wait_for_truss(
         retry_err.reraise()
     if wait_for_server_ready:
         if model_server_stop_retry_criteria:
-            _wait_for_model_server.retry_with(
+            _wait_for_model_server.retry_with(  # type: ignore[attr-defined]
                 stop=model_server_stop_retry_criteria,
                 wait=wait_fixed(2),
                 retry=(
