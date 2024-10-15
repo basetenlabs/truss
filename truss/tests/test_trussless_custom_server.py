@@ -18,8 +18,13 @@ def test_custom_server_truss():
 
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.set_secret("hf_access_token", "123")
-        try: 
-            _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True, model_server_stop_retry_criteria=stop_after_delay(3))
+        try:
+            _ = tr.docker_run(
+                local_port=8090,
+                detach=True,
+                wait_for_server_ready=True,
+                model_server_stop_retry_criteria=stop_after_delay(3),
+            )
         except Exception as e:
             raise Exception(f"Failed to start container: {e}")
         truss_server_addr = "http://localhost:8090"

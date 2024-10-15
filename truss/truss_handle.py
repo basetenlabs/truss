@@ -233,7 +233,7 @@ class TrussHandle:
         wait_for_server_ready: bool = True,
         network: Optional[str] = None,
         container_name_prefix: Optional[str] = None,
-        model_server_stop_retry_criteria = stop_after_delay(120),
+        model_server_stop_retry_criteria=stop_after_delay(120),
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -321,7 +321,12 @@ class TrussHandle:
             )
         model_base_url = f"http://localhost:{local_port}/v1/models/model"
         try:
-            wait_for_truss(model_base_url, container, model_server_stop_retry_criteria, wait_for_server_ready)
+            wait_for_truss(
+                model_base_url,
+                container,
+                model_server_stop_retry_criteria,
+                wait_for_server_ready,
+            )
         except ContainerNotFoundError as err:
             raise err
         except (ContainerIsDownError, HTTPError, ConnectionError) as err:
@@ -1080,7 +1085,10 @@ def _wait_for_model_server(url: str) -> Response:
 
 
 def wait_for_truss(
-    url: str, container: str, model_server_stop_retry_criteria, wait_for_server_ready: bool = True
+    url: str,
+    container: str,
+    model_server_stop_retry_criteria,
+    wait_for_server_ready: bool = True,
 ) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
