@@ -52,7 +52,7 @@ async def test_model_wrapper_load_error_once(app_path):
     config = yaml.safe_load((app_path / "config.yaml").read_text())
     os.chdir(app_path)
     model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-    model_wrapper.load()
+    await model_wrapper.load()
     # Allow load thread to execute
     time.sleep(1)
     output = await model_wrapper.predict({}, MagicMock(spec=Request))
@@ -109,7 +109,8 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ) as mock_init_extension:
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-            model_wrapper.load()
+            await model_wrapper.load()
+
             called_with_specific_extension = any(
                 call_args[0][0] == "trt_llm"
                 for call_args in mock_init_extension.call_args_list
@@ -146,8 +147,10 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-            model_wrapper.load()
+            await model_wrapper.load()
+
             resp = await model_wrapper.predict({}, MagicMock(spec=Request))
+
             mock_extension.load.assert_called()
             mock_extension.model_args.assert_called()
             assert mock_predict_called
@@ -183,8 +186,10 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
             model_wrapper_module, "_init_extension", return_value=mock_extension
         ):
             model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-            model_wrapper.load()
+            await model_wrapper.load()
+
             resp = await model_wrapper.predict({}, MagicMock(spec=Request))
+
             mock_extension.load.assert_called()
             mock_extension.model_override.assert_called()
             assert mock_predict_called

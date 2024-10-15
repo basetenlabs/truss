@@ -15,7 +15,6 @@ from enum import Enum
 from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
-from threading import Thread
 from typing import (
     Any,
     Callable,
@@ -31,7 +30,7 @@ import starlette.responses
 from anyio import Semaphore, to_thread
 from common import errors, tracing
 from common.patches import apply_patches
-from common.retry import retry
+from common.retry import retry, retry_async
 from common.schema import TrussSchema
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -307,13 +306,7 @@ class ModelWrapper:
     def _model_file_name(self) -> str:
         return self._config["model_class_filename"]
 
-    def start_load_thread(self):
-        # Don't retry failed loads.
-        if self._status == ModelWrapper.Status.NOT_READY:
-            thread = Thread(target=self.load)
-            thread.start()
-
-    def load(self) -> bool:
+    async def load(self) -> bool:
         if self.ready:
             return True
 
@@ -324,7 +317,8 @@ class ModelWrapper:
             self._logger.info("Executing model.load()...")
             try:
                 start_time = time.perf_counter()
-                self._load_impl()
+                await self.try_load()
+
                 self._status = ModelWrapper.Status.READY
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
@@ -336,7 +330,15 @@ class ModelWrapper:
 
         return False
 
-    def _load_impl(self):
+    async def start_load(self):
+        if self.should_load():
+            asyncio.create_task(self.load())
+
+    def should_load(self) -> bool:
+        # don't retry failed loads
+        return not self._status == ModelWrapper.Status.FAILED and not self.ready
+
+    def _initialize_model(self):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
 
@@ -419,14 +421,27 @@ class ModelWrapper:
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
 
+    async def try_load(self):
+        await to_thread.run_sync(self._initialize_model)
+
         if hasattr(self._model, "load"):
-            retry(
-                self._model.load,
-                NUM_LOAD_RETRIES,
-                self._logger.warning,
-                "Failed to load model.",
-                gap_seconds=1.0,
-            )
+            if inspect.iscoroutinefunction(self._model.load):
+                await retry_async(
+                    self._model.load,
+                    NUM_LOAD_RETRIES,
+                    self._logger.warn,
+                    "Failed to load model.",
+                    gap_seconds=1.0,
+                )
+            else:
+                await to_thread.run_sync(
+                    retry,
+                    self._model.load,
+                    NUM_LOAD_RETRIES,
+                    self._logger.warn,
+                    "Failed to load model.",
+                    1.0,
+                )
 
     async def preprocess(
         self,
