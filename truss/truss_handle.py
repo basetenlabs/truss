@@ -1088,7 +1088,7 @@ def wait_for_truss(
     url: str,
     container: str,
     wait_for_server_ready: bool = True,
-    model_server_stop_retry_criteria = None
+    model_server_stop_retry_criteria=None,
 ) -> None:
     from python_on_whales.exceptions import NoSuchContainer
 
