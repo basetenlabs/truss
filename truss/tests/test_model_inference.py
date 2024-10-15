@@ -795,7 +795,6 @@ def test_setup_environment():
             in container.logs()
         )
         assert "DOING IT IN beta" in container.logs()
-        print(container.logs())
 
     # Test a truss that uses the environment in load()
     model = """
@@ -853,7 +852,6 @@ def test_setup_environment():
             in container.logs()
         )
         assert "DOING IT LIVE" in container.logs()
-        print(container.logs())
 
     # Test a truss with no setup_environment() function defined
     model = """
@@ -868,7 +866,6 @@ def test_setup_environment():
         )
         time.sleep(30)
         assert "No model.setup_environment definition provided" in container.logs()
-        print(container.logs())
 
 
 # Tracing ##############################################################################
