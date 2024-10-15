@@ -26,6 +26,7 @@ from truss_chains.definitions import (
     CustomImage,
     DeploymentContext,
     DockerImage,
+    Environment,
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
@@ -63,4 +64,5 @@ __all__ = [
     "mark_entrypoint",
     "push",
     "run_local",
+    "Environment",
 ]

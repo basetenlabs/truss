@@ -394,6 +394,23 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
     return _Source(src=src, imports=imports)
 
 
+def _gen_setup_environment_src(
+    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+) -> _Source:
+    parts: list[str] = []
+    def_str = "async def" if chainlet_descriptor.setup_environment.is_async else "def"
+    parts.append(f"{def_str} setup_environment(self, environment: dict) -> None:")
+    maybe_await = "await " if chainlet_descriptor.setup_environment.is_async else ""
+    environment_typed_input = "definitions.Environment.model_validate(environment)"
+    parts.append(
+        _indent(
+            f"{maybe_await}self._chainlet.setup_environment({environment_typed_input})",
+            2,
+        )
+    )
+    return _Source(src="\n".join(parts))
+
+
 def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates AST for the `predict` method of the truss model."""
     if chainlet_descriptor.endpoint.is_generator:
@@ -461,6 +478,9 @@ def _gen_truss_chainlet_model(
 
     load_src = _gen_load_src(chainlet_descriptor)
     imports.update(load_src.imports)
+    setup_environment_src = None
+    if chainlet_descriptor.setup_environment is not None:
+        setup_environment_src = _gen_setup_environment_src(chainlet_descriptor)
     predict_src = _gen_predict_src(chainlet_descriptor)
     imports.update(predict_src.imports)
 
@@ -468,6 +488,8 @@ def _gen_truss_chainlet_model(
         libcst.parse_statement(load_src.src),
         libcst.parse_statement(predict_src.src),
     ]
+    if setup_environment_src:
+        new_body.extend([libcst.parse_statement(setup_environment_src.src)])
 
     user_chainlet_ref = _gen_chainlet_import_and_ref(chainlet_descriptor)
     imports.update(user_chainlet_ref.imports)
