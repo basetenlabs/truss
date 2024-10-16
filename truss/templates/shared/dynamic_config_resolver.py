@@ -4,6 +4,7 @@ from typing import Optional
 import aiofiles
 
 DYNAMIC_CONFIG_MOUNT_DIR = "/etc/b10_dynamic_config"
+ENVIRONMENT_DYNAMIC_CONFIG_KEY = "environment"
 
 
 def get_dynamic_config_value_sync(key: str) -> Optional[str]:
