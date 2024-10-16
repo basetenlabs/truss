@@ -768,10 +768,7 @@ def test_setup_environment():
         def setup_environment(self, environment: dict):
             print("setup_environment called with", environment)
             self.environment_name = environment.get("environment_name", None)
-            if self.environment_name == "production":
-                print("DOING IT LIVE")
-            else:
-                print("DOING IT IN", self.environment_name)
+            print(f"in {self.environment_name} environment")
 
         def predict(self, model_input):
             return model_input
@@ -794,7 +791,7 @@ def test_setup_environment():
             f"setup_environment called with {single_quote_beta_env_str}"
             in container.logs()
         )
-        assert "DOING IT IN beta" in container.logs()
+        assert "in beta environment" in container.logs()
 
     # Test a truss that uses the environment in load()
     model = """
@@ -802,10 +799,7 @@ def test_setup_environment():
         def setup_environment(self, environment: dict):
             print("setup_environment called with", environment)
             self.environment_name = environment.get("environment_name", None)
-            if self.environment_name == "production":
-                print("DOING IT LIVE")
-            else:
-                print("DOING IT IN", self.environment_name)
+            print(f"in {self.environment_name} environment")
 
         def load(self):
             print("loading in environment", self.environment_name)
@@ -829,7 +823,7 @@ def test_setup_environment():
             f"setup_environment called with {single_quote_staging_env_str}"
             in container.logs()
         )
-        assert "DOING IT IN staging" in container.logs()
+        assert "in staging environment" in container.logs()
         assert "loading in environment staging" in container.logs()
         # Mimic environment changing to production
         prod_env = {"environment_name": "production", "foo": "bar"}
@@ -851,21 +845,7 @@ def test_setup_environment():
             f"setup_environment called with {single_quote_prod_env_str}"
             in container.logs()
         )
-        assert "DOING IT LIVE" in container.logs()
-
-    # Test a truss with no setup_environment() function defined
-    model = """
-    class Model:
-        def predict(self, model_input):
-            return model_input
-    """
-    config = "model_name: no-setup-environment-truss"
-    with ensure_kill_all(), temp_truss(model, config) as tr:
-        container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
-        )
-        time.sleep(30)
-        assert "No model.setup_environment definition provided" in container.logs()
+        assert "in production environment" in container.logs()
 
 
 # Tracing ##############################################################################

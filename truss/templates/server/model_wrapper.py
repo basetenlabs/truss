@@ -270,7 +270,7 @@ class ModelWrapper:
     _logger: logging.Logger
     _status: "ModelWrapper.Status"
     _predict_semaphore: Semaphore
-    _poll_for_environment_updates_task: Optional[Any]
+    _poll_for_environment_updates_task: Optional[asyncio.Task]
     _environment: Optional[dict]
 
     class Status(Enum):
@@ -435,13 +435,7 @@ class ModelWrapper:
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
 
         if hasattr(self._model, "setup_environment"):
-            environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-                dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
-            )
-            if environment_str:
-                environment_json = json.loads(environment_str)
-                self._model.setup_environment(environment_json)
-                self._environment = environment_json
+            self._initialize_environment_before_load()
 
         if hasattr(self._model, "load"):
             retry(
@@ -456,6 +450,15 @@ class ModelWrapper:
         self._poll_for_environment_updates_task = asyncio.create_task(
             self.poll_for_environment_updates()
         )
+
+    def _initialize_environment_before_load(self):
+        environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+        )
+        if environment_str:
+            environment_json = json.loads(environment_str)
+            self._model.setup_environment(environment_json)
+            self._environment = environment_json
 
     async def setup_environment(self, environment: dict):
         descriptor = self.model_descriptor.setup_environment
@@ -472,7 +475,7 @@ class ModelWrapper:
     async def poll_for_environment_updates(self) -> None:
         last_modified_time = None
         environment_config_filename = (
-            await dynamic_config_resolver.get_dynamic_config_file_path_async(
+            dynamic_config_resolver.get_dynamic_config_file_path(
                 dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
             )
         )
@@ -485,7 +488,6 @@ class ModelWrapper:
 
             # Skip polling if no setup_environment implementation provided
             if not self.model_descriptor.setup_environment:
-                self._logger.info("No model.setup_environment definition provided")
                 break
 
             if environment_config_filename.exists():
