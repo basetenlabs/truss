@@ -41,6 +41,8 @@ ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
+SETUP_ENVIRONMENT_METHOD_NAME = "setup_environment"
+ENVIRONMENT_ARG_NAME = "environment"
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
@@ -520,6 +522,17 @@ class DependencyDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
+class Environment(SafeModel):
+    # Represents input to setup_environment
+    environment_name: str
+    # can add more fields here as we add them to dynamic_config configmap
+
+
+class SetupEnvironmentDescriptor(SafeModelNonSerializable):
+    name: str = SETUP_ENVIRONMENT_METHOD_NAME
+    is_async: bool
+
+
 class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
@@ -527,6 +540,7 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
     user_config_type: TypeDescriptor
+    setup_environment: Optional[SetupEnvironmentDescriptor]
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)
