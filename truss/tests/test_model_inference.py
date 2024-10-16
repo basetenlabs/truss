@@ -780,8 +780,8 @@ def test_setup_environment():
             detach=True,
             wait_for_server_ready=True,
         )
-        # Wait for load thread to complete
-        time.sleep(1)
+        # Wait for ModelWrapper to become ready
+        time.sleep(30)
         # Mimic environment changing to beta
         beta_env = {"environment_name": "beta"}
         beta_env_str = json.dumps(beta_env)
@@ -818,6 +818,7 @@ def test_setup_environment():
             detach=True,
             wait_for_server_ready=True,
         )
+        # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
         single_quote_staging_env_str = staging_env_str.replace('"', "'")
         assert (
             f"setup_environment called with {single_quote_staging_env_str}"

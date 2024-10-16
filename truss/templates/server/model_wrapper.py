@@ -481,9 +481,11 @@ class ModelWrapper:
         )
 
         while True:
+            # Give control back to the event loop while waiting for environment updates
+            await asyncio.sleep(POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS)
+
             # Wait for load to finish before checking for environment updates
             if not self.ready:
-                await asyncio.sleep(POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS)
                 continue
 
             # Skip polling if no setup_environment implementation provided
@@ -508,7 +510,6 @@ class ModelWrapper:
                     logging.error(
                         f"An error occurred while polling for environment updates: {e}"
                     )
-            await asyncio.sleep(POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS)
 
     async def preprocess(
         self,
