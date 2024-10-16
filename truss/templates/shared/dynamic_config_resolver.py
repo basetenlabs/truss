@@ -15,13 +15,13 @@ def get_dynamic_config_value_sync(key: str) -> Optional[str]:
     return None
 
 
-async def get_dynamic_config_file_path_async(key: str):
+def get_dynamic_config_file_path(key: str):
     dynamic_config_path = Path(DYNAMIC_CONFIG_MOUNT_DIR) / key
     return dynamic_config_path
 
 
 async def get_dynamic_config_value_async(key: str) -> Optional[str]:
-    dynamic_config_path = await get_dynamic_config_file_path_async(key)
+    dynamic_config_path = get_dynamic_config_file_path(key)
     if dynamic_config_path.exists():
         async with aiofiles.open(dynamic_config_path, "r") as dynamic_config_file:
             return await dynamic_config_file.read()
