@@ -15,6 +15,6 @@ model_name: Test Docker Server Truss
 secrets:
   hf_access_token: null
 environment_variables:
-  HF_TOKEN: 123
+  HF_TOKEN: 123456
 runtime:
   predict_concurrency: 1

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 import requests
-from tenacity import stop_after_delay
+from tenacity import stop_after_attempt
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -23,7 +23,7 @@ def test_custom_server_truss():
                 local_port=8090,
                 detach=True,
                 wait_for_server_ready=True,
-                model_server_stop_retry_override=stop_after_delay(3),
+                model_server_stop_retry_override=stop_after_attempt(5),
             )
         except Exception as e:
             raise Exception(f"Failed to start container: {e}")

@@ -233,7 +233,7 @@ class TrussHandle:
         wait_for_server_ready: bool = True,
         network: Optional[str] = None,
         container_name_prefix: Optional[str] = None,
-        model_server_stop_retry_override=stop_after_delay(120),
+        model_server_stop_retry_override=None,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -1072,7 +1072,7 @@ def _wait_for_docker_build(container) -> None:
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
-def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> None:
+def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:
     for attempt in Retrying(
         stop=stop,
         wait=wait_fixed(2),
@@ -1082,7 +1082,9 @@ def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> None:
         ),
     ):
         with attempt:
-            requests.get(url)
+            response = requests.get(url)
+            print(f"DEBUG response status: {response.status_code}")
+            return response
 
 
 def wait_for_truss(
@@ -1095,15 +1097,15 @@ def wait_for_truss(
 
     try:
         _wait_for_docker_build(container)
+        if wait_for_server_ready:
+            if model_server_stop_retry_override:
+                _wait_for_model_server(url, stop=model_server_stop_retry_override)
+            else:
+                _wait_for_model_server(url)
     except NoSuchContainer:
         raise ContainerNotFoundError(message=f"Container {container} was not found")
     except RetryError as retry_err:
         retry_err.reraise()
-    if wait_for_server_ready:
-        if model_server_stop_retry_override:
-            _wait_for_model_server(url, stop=model_server_stop_retry_override)
-        else:
-            _wait_for_model_server(url)
 
 
 def _prepare_secrets_mount_dir() -> Path:
