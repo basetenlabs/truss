@@ -55,7 +55,6 @@ EXTENSION_CLASS_NAME = "Extension"
 EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
 POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
-ENVIRONMENT_DYNAMIC_CONFIG_KEY = "environment"
 
 
 @asynccontextmanager
@@ -272,7 +271,7 @@ class ModelWrapper:
     _status: "ModelWrapper.Status"
     _predict_semaphore: Semaphore
     _poll_for_environment_updates_task: Optional[Any]
-    _environment: dict
+    _environment: Optional[dict]
 
     class Status(Enum):
         NOT_READY = 0
@@ -437,7 +436,7 @@ class ModelWrapper:
 
         if hasattr(self._model, "setup_environment"):
             environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-                ENVIRONMENT_DYNAMIC_CONFIG_KEY
+                dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
             )
             if environment_str:
                 environment_json = json.loads(environment_str)
@@ -474,7 +473,7 @@ class ModelWrapper:
         last_modified_time = None
         environment_config_filename = (
             await dynamic_config_resolver.get_dynamic_config_file_path_async(
-                ENVIRONMENT_DYNAMIC_CONFIG_KEY
+                dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
             )
         )
 
@@ -494,7 +493,7 @@ class ModelWrapper:
                     current_mtime = os.path.getmtime(environment_config_filename)
                     if not last_modified_time or last_modified_time != current_mtime:
                         environment_str = await dynamic_config_resolver.get_dynamic_config_value_async(
-                            ENVIRONMENT_DYNAMIC_CONFIG_KEY
+                            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
                         )
                         if environment_str:
                             last_modified_time = current_mtime
