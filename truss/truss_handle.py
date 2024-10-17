@@ -1072,7 +1072,7 @@ def _wait_for_docker_build(container) -> None:
                 raise ContainerIsDownError(f"Container stuck in state: {state.value}.")
 
 
-def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:
+def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:  # type: ignore[return]
     for attempt in Retrying(
         stop=stop,
         wait=wait_fixed(2),
@@ -1083,7 +1083,6 @@ def _wait_for_model_server(url: str, stop=stop_after_delay(120)) -> Response:
     ):
         with attempt:
             response = requests.get(url)
-            print(f"DEBUG response status: {response.status_code}")
             return response
 
 

@@ -23,7 +23,7 @@ def test_custom_server_truss():
                 local_port=8090,
                 detach=True,
                 wait_for_server_ready=True,
-                model_server_stop_retry_override=stop_after_attempt(5),
+                model_server_stop_retry_override=stop_after_attempt(3),
             )
         except Exception as e:
             raise Exception(f"Failed to start container: {e}")
