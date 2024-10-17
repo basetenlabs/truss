@@ -75,7 +75,6 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
-    use_fused_mlp: bool = False
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
     enable_chunked_context: bool = False
