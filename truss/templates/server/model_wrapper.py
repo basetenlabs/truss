@@ -434,7 +434,7 @@ class ModelWrapper:
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
 
-        if hasattr(self._model, "setup_environment"):
+        if self._maybe_model_descriptor.setup_environment:
             self._initialize_environment_before_load()
 
         if hasattr(self._model, "load"):
