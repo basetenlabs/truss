@@ -2,7 +2,7 @@ from unittest import mock
 
 import pytest
 from truss.remote.remote_factory import RemoteFactory
-from truss.remote.truss_remote import RemoteConfig, TrussRemote
+from truss.remote.truss_remote import RemoteConfig, RemoteUser, TrussRemote
 
 SAMPLE_CONFIG = {"api_key": "test_key", "remote_url": "http://test.com"}
 
@@ -40,6 +40,9 @@ class TrussTestRemote(TrussRemote):
 
     def sync_truss_to_dev_version_by_name(self, model_name: str, target_directory: str):
         raise NotImplementedError
+
+    def whoami(self) -> RemoteUser:
+        return RemoteUser("test_user", "test_email")
 
 
 def mock_service_config():
