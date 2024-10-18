@@ -460,7 +460,7 @@ class ModelWrapper:
             self._model.setup_environment(environment_json)
             self._environment = environment_json
 
-    async def setup_environment(self, environment: dict):
+    async def setup_environment(self, environment: Optional[dict]):
         descriptor = self.model_descriptor.setup_environment
         if not descriptor:
             return
