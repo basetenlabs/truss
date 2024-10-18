@@ -108,7 +108,7 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.13.0"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
-BASE_TRTLLM_REQUIREMENTS = ["briton==0.1.0"]
+BASE_TRTLLM_REQUIREMENTS = ["briton==0.2.0.dev0"]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
     "tensorrt_cu12_bindings==10.2.0.post1",
