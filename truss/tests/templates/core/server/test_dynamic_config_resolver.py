@@ -39,6 +39,7 @@ def test_get_dynamic_chainlet_config_value_sync(
         },
         {},
         "",
+        None,
     ],
 )
 def test_get_dynamic_config_environment_value_sync(
@@ -99,6 +100,7 @@ async def test_get_dynamic_chainlet_config_value_async(
         },
         {},
         "",
+        None,
     ],
 )
 async def test_get_dynamic_config_environment_value_async(
