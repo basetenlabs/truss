@@ -764,10 +764,11 @@ def test_slow_truss():
 def test_setup_environment():
     # Test truss that uses setup_environment() without load()
     model = """
+    from typing import Optional
     class Model:
-        def setup_environment(self, environment: dict):
+        def setup_environment(self, environment: Optional[dict]):
             print("setup_environment called with", environment)
-            self.environment_name = environment.get("environment_name", None)
+            self.environment_name = environment.get("name") if environment else None
             print(f"in {self.environment_name} environment")
 
         def predict(self, model_input):
@@ -781,11 +782,17 @@ def test_setup_environment():
             wait_for_server_ready=True,
         )
         # Wait for ModelWrapper to become ready
-        time.sleep(30)
+        time.sleep(45)
         # Mimic environment changing to beta
-        beta_env = {"environment_name": "beta"}
+        beta_env = {"name": "beta"}
         beta_env_str = json.dumps(beta_env)
-        LocalConfigHandler.set_dynamic_config("environment", beta_env_str)
+        container.execute(
+            [
+                "bash",
+                "-c",
+                f"echo '{beta_env_str}' > /etc/b10_dynamic_config/environment",
+            ]
+        )
         single_quote_beta_env_str = beta_env_str.replace('"', "'")
         assert (
             f"setup_environment called with {single_quote_beta_env_str}"
@@ -795,10 +802,11 @@ def test_setup_environment():
 
     # Test a truss that uses the environment in load()
     model = """
+    from typing import Optional
     class Model:
-        def setup_environment(self, environment: dict):
+        def setup_environment(self, environment: Optional[dict]):
             print("setup_environment called with", environment)
-            self.environment_name = environment.get("environment_name", None)
+            self.environment_name = environment.get("name") if environment else None
             print(f"in {self.environment_name} environment")
 
         def load(self):
@@ -810,7 +818,7 @@ def test_setup_environment():
     config = "model_name: setup-environment-and-load-truss"
     with ensure_kill_all(), temp_truss(model, config) as tr:
         # Mimic environment changing to staging
-        staging_env = {"environment_name": "staging"}
+        staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
@@ -826,27 +834,29 @@ def test_setup_environment():
         )
         assert "in staging environment" in container.logs()
         assert "loading in environment staging" in container.logs()
-        # Mimic environment changing to production
-        prod_env = {"environment_name": "production", "foo": "bar"}
-        prod_env_str = json.dumps(prod_env)
+        # Set environment to None
+        no_env = None
+        no_env_str = json.dumps(no_env)
         container.execute(
             [
                 "bash",
                 "-c",
-                f"echo '{prod_env_str}' > /etc/b10_dynamic_config/environment",
+                f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment",
             ]
         )
         time.sleep(30)
         assert (
-            f"Executing model.setup_environment with new environment: {prod_env}"
+            f"Executing model.setup_environment with new environment: {no_env}"
             in container.logs()
         )
-        single_quote_prod_env_str = prod_env_str.replace('"', "'")
-        assert (
-            f"setup_environment called with {single_quote_prod_env_str}"
-            in container.logs()
+        assert "setup_environment called with None" in container.logs()
+        container.execute(
+            [
+                "bash",
+                "-c",
+                "rm -f /etc/b10_dynamic_config/environment",
+            ]
         )
-        assert "in production environment" in container.logs()
 
 
 # Tracing ##############################################################################
