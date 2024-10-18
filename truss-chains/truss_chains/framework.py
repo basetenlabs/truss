@@ -276,6 +276,78 @@ def _validate_and_describe_endpoint(
     )
 
 
+def _validate_setup_environment_params(
+    params: list[inspect.Parameter], cls_name: str
+) -> None:
+    if len(params) == 0:
+        raise definitions.ChainsUsageError(
+            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must be a method, i.e. "
+            f"with `{definitions.SELF_ARG_NAME}` argument."
+        )
+    if params[0].name != definitions.SELF_ARG_NAME:
+        raise definitions.ChainsUsageError(
+            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must be a method, i.e. "
+            f"with `{definitions.SELF_ARG_NAME}` argument."
+        )
+    if len(params) == 1:
+        raise definitions.ChainsUsageError(
+            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have an `{definitions.ENVIRONMENT_ARG_NAME}` argument."
+        )
+    if len(params) > 2:
+        raise definitions.ChainsUsageError(
+            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have only two arguments: `{definitions.SELF_ARG_NAME}` and `{definitions.ENVIRONMENT_ARG_NAME}`."
+        )
+    param = params[1]  # Skip self argument.
+    if param.name != definitions.ENVIRONMENT_ARG_NAME:
+        raise definitions.ChainsUsageError(
+            f"Input to `{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must be named `{definitions.ENVIRONMENT_ARG_NAME}`"
+        )
+    if param.annotation == inspect.Parameter.empty:
+        raise definitions.ChainsUsageError(
+            f"Input to `{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have a type annotation. For "
+            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` parameter "
+            f"`{param.name}` has no type annotation."
+        )
+    if param.annotation != definitions.Environment:
+        raise definitions.ChainsUsageError(f"{param.name} must be of type Environment")
+
+
+def _validate_setup_environment(
+    cls: Type[definitions.ABCChainlet],
+) -> Optional[definitions.SetupEnvironmentDescriptor]:
+    """The setup_environment method of a Chainlet must have the following signature:
+
+    ```
+    [async] def setup_environment(self, environment: Environment) -> None:
+    ```
+
+    * The name must be `setup_environment`.
+    * It can be sync or async or def.
+    * Must only define the `environment` parameter with type `Environment`
+    * Must not return anything.
+    """
+    if not hasattr(cls, definitions.SETUP_ENVIRONMENT_METHOD_NAME):
+        return None
+
+    setup_environment_method = getattr(cls, definitions.SETUP_ENVIRONMENT_METHOD_NAME)
+    if not inspect.isfunction(setup_environment_method):
+        raise definitions.ChainsUsageError(
+            f"`{cls.name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must be a method."
+        )
+    signature = inspect.signature(setup_environment_method)
+    _validate_setup_environment_params(list(signature.parameters.values()), cls.name)
+    if signature.return_annotation != inspect.Parameter.empty:
+        raise definitions.ChainsUsageError(
+            f"{cls.name}.{definitions.ENDPOINT_METHOD_NAME}{signature} cannot have a return type."
+        )
+
+    is_async = False
+    if inspect.iscoroutinefunction(setup_environment_method):
+        is_async = True
+
+    return definitions.SetupEnvironmentDescriptor(is_async=is_async)
+
+
 def _get_generic_class_type(var):
     """Extracts `SomeGeneric` from `SomeGeneric` or `SomeGeneric[T]` uniformly."""
     origin = get_origin(var)
@@ -473,6 +545,7 @@ def check_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
         endpoint=_validate_and_describe_endpoint(cls),
         src_path=os.path.abspath(inspect.getfile(cls)),
         user_config_type=definitions.TypeDescriptor(raw=type(cls.default_user_config)),
+        setup_environment=_validate_setup_environment(cls),
     )
     logging.debug(
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"

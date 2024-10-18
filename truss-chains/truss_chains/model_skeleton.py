@@ -48,3 +48,8 @@ class TrussChainletModel:
     #     ):
     #         result = self._chainlet.run_remote(data=inputs.data)
     #     return TextToNumOutput((result,))
+    #
+    # def setup_environment(self, environment: dict) -> None:
+    #     self._chainlet.setup_environment(
+    #         definitions.Environment.model_validate(environment)
+    #     )
