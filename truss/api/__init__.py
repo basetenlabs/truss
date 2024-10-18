@@ -26,6 +26,27 @@ def login(api_key: str):
     RemoteFactory.update_remote_config(remote_config)
 
 
+def whoami(remote: Optional[str] = None):
+    """
+    Returns account information for the current user.
+    """
+    if not remote:
+        available_remotes = RemoteFactory.get_available_config_names()
+        if len(available_remotes) == 1:
+            remote = available_remotes[0]
+        elif len(available_remotes) == 0:
+            raise ValueError(
+                "Please authenticate via truss.login and pass it as an argument."
+            )
+        else:
+            raise ValueError(
+                "Multiple remotes found. Please pass the remote as an argument."
+            )
+
+    remote_provider = RemoteFactory.create(remote=remote)
+    return remote_provider.whoami()
+
+
 def push(
     target_directory: str,
     remote: Optional[str] = None,
