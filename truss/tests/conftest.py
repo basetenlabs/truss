@@ -389,8 +389,7 @@ def custom_model_trt_llm(tmp_path):
             content["trt_llm"] = {
                 "build": {
                     "base_model": "llama",
-                    "max_input_len": 1024,
-                    "max_output_len": 1024,
+                    "max_seq_len": 2048,
                     "max_batch_size": 512,
                     "checkpoint_repository": {
                         "source": "HF",
