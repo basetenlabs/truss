@@ -508,7 +508,7 @@ class ModelWrapper:
                                 self._environment = environment_json
                 except Exception as e:
                     self._logger.exception(
-                        "Exception while polling for environment updates: " + str(e),
+                        "Exception while setting up environment: " + str(e),
                         exc_info=errors.filter_traceback(self._model_file_name),
                     )
 
