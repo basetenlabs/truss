@@ -309,6 +309,45 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
     return response.json()
 
 
+async def handle_async_response(response: httpx.Response, remote_name: str) -> Any:
+    """For successful requests returns JSON, otherwise raises error.
+    """
+    if response.status >= 400:
+        try:
+            response_json = await response.json()
+        except Exception as e:
+            raise ValueError(
+                "Could not get JSON from error response. Status: "
+                f"`{response.status}`."
+            ) from e
+        try:
+            error_json = response_json["error"]
+        except KeyError as e:
+            logging.error(f"response_json: {response_json}")
+            raise ValueError(
+                "Could not get `error` field from JSON from error response"
+            ) from e
+        try:
+            error = definitions.RemoteErrorDetail.model_validate(error_json)
+        except pydantic.ValidationError as e:
+            if isinstance(error_json, str):
+                msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
+                raise definitions.GenericRemoteException(msg) from None
+            raise ValueError(
+                "Could not parse error. Error details are expected to be either a "
+                "plain string (old truss models) or a serialized "
+                f"`definitions.RemoteErrorDetail.__name__`, got:\n{repr(error_json)}"
+            ) from e
+        exception_cls = _resolve_exception_class(error)
+        msg = (
+            f"(showing remote errors, root message at the bottom)\n"
+            f"--> Preceding Remote Cause:\n"
+            f"{textwrap.indent(error.format(), '    ')}"
+        )
+        raise exception_cls(msg)
+    return await response.json()
+
+
 class InjectedError(Exception):
     """Test error for debugging/dev."""
 

@@ -7,6 +7,7 @@ import time
 from typing import Any, ClassVar, Mapping, Optional, Type, TypeVar, final
 
 import httpx
+import aiohttp
 import tenacity
 
 from truss_chains import definitions, utils
@@ -81,17 +82,20 @@ class BasetenSession:
         assert self._cached_sync_client is not None
         return self._cached_sync_client[0]
 
-    async def _client_async(self) -> httpx.AsyncClient:
+    async def _client_async(self) -> aiohttp.ClientSession:
         # Check `_client_cycle_needed` before and after locking to avoid
         # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
+                    connector = aiohttp.TCPConnector(
+                        limit=self._client_limits.max_connections,
+                    )
                     self._cached_async_client = (
-                        httpx.AsyncClient(
+                        aiohttp.ClientSession(
                             headers=self._auth_header,
-                            timeout=self._service_descriptor.options.timeout_sec,
-                            limits=self._client_limits,
+                            connector=connector,
+                            timeout=aiohttp.ClientTimeout(total=self._service_descriptor.options.timeout_sec),
                         ),
                         int(time.time()),
                     )
@@ -138,7 +142,7 @@ class BasetenSession:
                         resp = await client.post(
                             self._service_descriptor.predict_url, json=json_payload
                         )
-                    return utils.handle_response(resp, self.name)
+                    return await utils.handle_async_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
                 # errors. This has happened in the past and is a defensive measure.
                 except ssl.SSLError:
