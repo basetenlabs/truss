@@ -507,8 +507,9 @@ class ModelWrapper:
                                 await self.setup_environment(environment_json)
                                 self._environment = environment_json
                 except Exception as e:
-                    logging.error(
-                        f"An error occurred while polling for environment updates: {e}"
+                    self._logger.exception(
+                        "Exception while polling for environment updates: " + str(e),
+                        exc_info=errors.filter_traceback(self._model_file_name),
                     )
 
     async def preprocess(

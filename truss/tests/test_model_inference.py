@@ -782,7 +782,7 @@ def test_setup_environment():
             wait_for_server_ready=True,
         )
         # Wait for ModelWrapper to become ready
-        time.sleep(45)
+        time.sleep(30)
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
         beta_env_str = json.dumps(beta_env)
