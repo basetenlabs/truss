@@ -274,7 +274,16 @@ def _validate_and_describe_endpoint(
             "`run_remote` must be an async (coroutine) function in future releases. "
             "Replace `def run_remote(...` with `async def run_remote(...`. "
             "Local testing and execution can be done with  "
-            "`asyncio.run(my_chainlet.run_remote(...))`",
+            "`asyncio.run(my_chainlet.run_remote(...))`.\n"
+            "Note on concurrency: previously sync functions were run in threads by the "
+            "Truss server.\bn"
+            "For some frameworks this was **unsafe** (e.g. in torch the CUDA context "
+            "is not thread-safe).\n"
+            "Additionally, python threads hold the GIL and therefore might not give "
+            "actual throughput gains.\n"
+            "To achieve safe and performant concurrency, use framework-specific async "
+            "APIs (e.g. AsyncLLMEngine for vLLM) or generic async batching like such "
+            "as https://github.com/hussein-awala/async-batcher.",
             DeprecationWarning,
             stacklevel=1,
         )
