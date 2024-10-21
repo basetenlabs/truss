@@ -781,8 +781,6 @@ def test_setup_environment():
             detach=True,
             wait_for_server_ready=True,
         )
-        # Wait for ModelWrapper to become ready
-        time.sleep(45)
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
         beta_env_str = json.dumps(beta_env)
@@ -793,6 +791,7 @@ def test_setup_environment():
                 f"echo '{beta_env_str}' > /etc/b10_dynamic_config/environment",
             ]
         )
+        time.sleep(30)
         single_quote_beta_env_str = beta_env_str.replace('"', "'")
         assert (
             f"setup_environment called with {single_quote_beta_env_str}"
