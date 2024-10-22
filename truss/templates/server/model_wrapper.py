@@ -457,6 +457,10 @@ class ModelWrapper:
         )
         if environment_str:
             environment_json = json.loads(environment_str)
+            self._logger.info(
+                f"Executing model.setup_environment with environment: {environment_json}"
+            )
+            # TODO: Support calling an async setup_environment() here once we support async load()
             self._model.setup_environment(environment_json)
             self._environment = environment_json
 
