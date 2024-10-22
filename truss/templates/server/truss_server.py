@@ -281,6 +281,7 @@ class TrussServer:
         if self._setup_json_logger:
             setup_logging()
         self._model.start_load_thread()
+        self._model.setup_polling_for_environment_updates()
 
     def create_application(self):
         app = FastAPI(

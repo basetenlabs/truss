@@ -760,6 +760,119 @@ def test_slow_truss():
         _test_invocations(200)
 
 
+@pytest.mark.integration
+def test_setup_environment():
+    # Test truss that uses setup_environment() without load()
+    model = """
+    from typing import Optional
+    class Model:
+        def setup_environment(self, environment: Optional[dict]):
+            print("setup_environment called with", environment)
+            self.environment_name = environment.get("name") if environment else None
+            print(f"in {self.environment_name} environment")
+
+        def predict(self, model_input):
+            return model_input
+    """
+    config = "model_name: setup-environment-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        container = tr.docker_run(
+            local_port=8090,
+            detach=True,
+            wait_for_server_ready=True,
+        )
+        # Mimic environment changing to beta
+        beta_env = {"name": "beta"}
+        beta_env_str = json.dumps(beta_env)
+        container.execute(
+            [
+                "bash",
+                "-c",
+                f"echo '{beta_env_str}' > /etc/b10_dynamic_config/environment",
+            ]
+        )
+        time.sleep(30)
+        single_quote_beta_env_str = beta_env_str.replace('"', "'")
+        assert (
+            f"Executing model.setup_environment with environment: {single_quote_beta_env_str}"
+            in container.logs()
+        )
+        assert (
+            f"setup_environment called with {single_quote_beta_env_str}"
+            in container.logs()
+        )
+        assert "in beta environment" in container.logs()
+        container.execute(
+            [
+                "bash",
+                "-c",
+                "rm -f /etc/b10_dynamic_config/environment",
+            ]
+        )
+
+    # Test a truss that uses the environment in load()
+    model = """
+    from typing import Optional
+    class Model:
+        def setup_environment(self, environment: Optional[dict]):
+            print("setup_environment called with", environment)
+            self.environment_name = environment.get("name") if environment else None
+            print(f"in {self.environment_name} environment")
+
+        def load(self):
+            print("loading in environment", self.environment_name)
+
+        def predict(self, model_input):
+            return model_input
+    """
+    config = "model_name: setup-environment-and-load-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        # Mimic environment changing to staging
+        staging_env = {"name": "staging"}
+        staging_env_str = json.dumps(staging_env)
+        LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
+        container = tr.docker_run(
+            local_port=8090,
+            detach=True,
+            wait_for_server_ready=True,
+        )
+        # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
+        single_quote_staging_env_str = staging_env_str.replace('"', "'")
+        assert (
+            f"Executing model.setup_environment with environment: {single_quote_staging_env_str}"
+            in container.logs()
+        )
+        assert (
+            f"setup_environment called with {single_quote_staging_env_str}"
+            in container.logs()
+        )
+        assert "in staging environment" in container.logs()
+        assert "loading in environment staging" in container.logs()
+        # Set environment to None
+        no_env = None
+        no_env_str = json.dumps(no_env)
+        container.execute(
+            [
+                "bash",
+                "-c",
+                f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment",
+            ]
+        )
+        time.sleep(30)
+        assert (
+            f"Executing model.setup_environment with new environment: {no_env}"
+            in container.logs()
+        )
+        assert "setup_environment called with None" in container.logs()
+        container.execute(
+            [
+                "bash",
+                "-c",
+                "rm -f /etc/b10_dynamic_config/environment",
+            ]
+        )
+
+
 # Tracing ##############################################################################
 
 
