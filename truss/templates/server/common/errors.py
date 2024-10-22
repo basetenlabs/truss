@@ -177,18 +177,20 @@ def intercept_exceptions(
 
 def _loc_to_dot_sep(loc: Tuple[Union[str, int], ...]) -> str:
     # From https://docs.pydantic.dev/latest/errors/errors/#customize-error-messages.
+    # Chained field access is stylized with `.`-notation (corresponding to str parts)
+    # and array indexing is stylized with `[i]`-notation (corresponding to int parts).
     # E.g. ('items', 1, 'value') -> items[1].value.
-    path = ""
+    parts = []
     for i, x in enumerate(loc):
         if isinstance(x, str):
             if i > 0:
-                path += "."
-            path += x
+                parts.append(".")
+            parts.append(x)
         elif isinstance(x, int):
-            path += f"[{x}]"
+            parts.append(f"[{x}]")
         else:
-            raise TypeError("Unexpected type")
-    return path
+            raise TypeError(f"Unexpected type: {x}.")
+    return "".join(parts)
 
 
 def format_pydantic_validation_error(exc: pydantic.ValidationError) -> str:
