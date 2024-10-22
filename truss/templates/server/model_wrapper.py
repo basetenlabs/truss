@@ -469,7 +469,7 @@ class ModelWrapper:
         if not descriptor:
             return
         self._logger.info(
-            f"Executing model.setup_environment with new environment: {environment}"
+            f"Executing model.setup_environment with environment: {environment}"
         )
         if descriptor.is_async:
             return await self._model.setup_environment(environment)

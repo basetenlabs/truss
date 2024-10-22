@@ -792,11 +792,11 @@ def test_setup_environment():
             ]
         )
         time.sleep(30)
-        single_quote_beta_env_str = beta_env_str.replace('"', "'")
         assert (
-            f"Executing model.setup_environment with environment: {single_quote_beta_env_str}"
+            f"Executing model.setup_environment with environment: {beta_env}"
             in container.logs()
         )
+        single_quote_beta_env_str = beta_env_str.replace('"', "'")
         assert (
             f"setup_environment called with {single_quote_beta_env_str}"
             in container.logs()
@@ -837,11 +837,11 @@ def test_setup_environment():
             wait_for_server_ready=True,
         )
         # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
-        single_quote_staging_env_str = staging_env_str.replace('"', "'")
         assert (
-            f"Executing model.setup_environment with environment: {single_quote_staging_env_str}"
+            f"Executing model.setup_environment with environment: {staging_env}"
             in container.logs()
         )
+        single_quote_staging_env_str = staging_env_str.replace('"', "'")
         assert (
             f"setup_environment called with {single_quote_staging_env_str}"
             in container.logs()
@@ -860,7 +860,7 @@ def test_setup_environment():
         )
         time.sleep(30)
         assert (
-            f"Executing model.setup_environment with new environment: {no_env}"
+            f"Executing model.setup_environment with environment: {no_env}"
             in container.logs()
         )
         assert "setup_environment called with None" in container.logs()
