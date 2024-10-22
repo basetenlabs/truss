@@ -942,7 +942,7 @@ def _patch_termination_timeout(container: Container, truss_container_fs):
     local_server_source = pathlib.Path(truss_server.__file__)
     container_server_source = "/app/truss_server.py"
     modified_content = local_server_source.read_text().replace(
-        "TIMEOUT_GRACEFUL_SHUTDOWN = 120", "TIMEOUT_GRACEFUL_SHUTDOWN = 3"
+        "TIMEOUT_GRACEFUL_SHUTDOWN = 120", f"TIMEOUT_GRACEFUL_SHUTDOWN = {seconds}"
     )
     with tempfile.NamedTemporaryFile() as patched_file:
         patched_file.write(modified_content.encode("utf-8"))
@@ -983,7 +983,9 @@ async def test_graceful_shutdown(truss_container_fs):
         await asyncio.sleep(0.1)  # Yield to event loop to make above task run.
 
         t0 = time.perf_counter()
-        container.stop(30)
+        # Even though the server has 120s grace period, we expect to finish much
+        # faster in the test here, so use 10s.
+        container.stop(10)
         stop_time = time.perf_counter() - t0
         print(f"Stopped in {stop_time} seconds,")
 
@@ -993,7 +995,7 @@ async def test_graceful_shutdown(truss_container_fs):
 
         # Now mess around in the docker container to reduce the grace period to 3 s.
         # (There's not nice way to patch this...)
-        _patch_termination_timeout(container, truss_container_fs)
+        _patch_termination_timeout(container, 3, truss_container_fs)
         # Now only one request should complete.
         container.restart()
         wait_for_truss("http://localhost:8090", container, True)
@@ -1004,7 +1006,7 @@ async def test_graceful_shutdown(truss_container_fs):
         task_3 = asyncio.create_task(predict_request({"seconds": 2, "task": 3}))
         await asyncio.sleep(0.1)  # Yield to event loop to make above task run.
         t0 = time.perf_counter()
-        container.stop(30)
+        container.stop(10)
         stop_time = time.perf_counter() - t0
         print(f"Stopped in {stop_time} seconds,")
         assert 3 < stop_time < 5
