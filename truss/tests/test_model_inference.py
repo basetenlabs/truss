@@ -798,6 +798,13 @@ def test_setup_environment():
             in container.logs()
         )
         assert "in beta environment" in container.logs()
+        container.execute(
+            [
+                "bash",
+                "-c",
+                "rm -f /etc/b10_dynamic_config/environment",
+            ]
+        )
 
     # Test a truss that uses the environment in load()
     model = """
