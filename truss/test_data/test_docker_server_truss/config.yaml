@@ -1,5 +1,5 @@
 base_image:
-  image: baseten/fastapi-test:0.1.1
+  image: baseten/fastapi-test:0.1.2
 docker_server:
   start_command: fastapi dev /home/app.py
   readiness_endpoint: /health
