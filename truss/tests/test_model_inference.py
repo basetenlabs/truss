@@ -860,7 +860,7 @@ def test_setup_environment():
         )
         time.sleep(30)
         assert (
-            f"Executing model.setup_environment with new environment: {no_env}"
+            f"Executing model.setup_environment with environment: {no_env}"
             in container.logs()
         )
         assert "setup_environment called with None" in container.logs()
