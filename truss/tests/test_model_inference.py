@@ -786,7 +786,7 @@ def test_init_environment_parameter():
             return self.environment_name
     """
     config = "model_name: init-environment-truss"
-    with ensure_kill_all(), temp_truss(model, config) as tr:
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
         # Mimic environment changing to staging
         staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
@@ -810,7 +810,7 @@ def test_init_environment_parameter():
 
     # Test a truss deployment with no associated environment
     config = "model_name: init-no-environment-truss"
-    with ensure_kill_all(), temp_truss(model, config) as tr:
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
         container = tr.docker_run(
             local_port=8090,
             detach=True,
@@ -836,8 +836,7 @@ def test_setup_environment():
         def predict(self, model_input):
             return model_input
     """
-    config = "model_name: setup-environment-truss"
-    with ensure_kill_all(), temp_truss(model, config) as tr:
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
         container = tr.docker_run(
             local_port=8090,
             detach=True,
@@ -887,8 +886,7 @@ def test_setup_environment():
         def predict(self, model_input):
             return model_input
     """
-    config = "model_name: setup-environment-and-load-truss"
-    with ensure_kill_all(), temp_truss(model, config) as tr:
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
         # Mimic environment changing to staging
         staging_env = {"name": "staging"}
         staging_env_str = json.dumps(staging_env)
@@ -934,7 +932,8 @@ def test_setup_environment():
             ]
         )
 
-def _patch_termination_timeout(container: Container, truss_container_fs):
+
+def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
     app_path = truss_container_fs / "app"
     sys.path.append(str(app_path))
     import truss_server
