@@ -761,6 +761,31 @@ def test_slow_truss():
 
 
 @pytest.mark.integration
+def test_metrics():
+    model = """
+    from fastapi.responses import Response
+    from prometheus_client import Counter
+
+    class Model:
+        def __init__(self):
+            self.counter = Counter('my_really_cool_metric', 'my really cool metric description')
+
+        def predict(self, model_input):
+            self.counter.inc(10)
+            return model_input
+    """
+    config = "model_name: metrics-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        metrics_url = "http://localhost:8090/metrics"
+        requests.post(PREDICT_URL, json={})
+        resp = requests.get(metrics_url)
+        assert resp.status_code == 200
+        assert "my_really_cool_metric_total 10.0" in resp.text
+        assert "my_really_cool_metric_created" in resp.text
+
+
+@pytest.mark.integration
 def test_setup_environment():
     # Test truss that uses setup_environment() without load()
     model = """
