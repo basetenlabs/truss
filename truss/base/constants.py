@@ -1,4 +1,3 @@
-import os
 import pathlib
 from typing import Set
 
@@ -11,11 +10,10 @@ CUSTOM = "custom"
 HUGGINGFACE_TRANSFORMER = "huggingface_transformer"
 LIGHTGBM = "lightgbm"
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CODE_DIR = pathlib.Path(BASE_DIR, "truss")
+_TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
-TEMPLATES_DIR = pathlib.Path(CODE_DIR, "../templates")
-DOCKER_SERVER_TEMPLATES_DIR = pathlib.Path(CODE_DIR, "../templates", "docker_server")
+TEMPLATES_DIR = _TRUSS_ROOT / "templates"
+DOCKER_SERVER_TEMPLATES_DIR = _TRUSS_ROOT / "templates", "docker_server"
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"
