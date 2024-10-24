@@ -15,6 +15,7 @@ from truss.truss_config import (
     Accelerator,
     AcceleratorSpec,
     BaseImage,
+    CustomMetricConfig,
     DockerAuthSettings,
     DockerAuthType,
     ModelCache,
@@ -124,6 +125,66 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
     parsed_result = Resources.from_dict(input_dict)
     assert parsed_result == expect_resources
     assert parsed_result.to_dict() == output_dict
+
+
+@pytest.mark.parametrize(
+    "input_dict, expect_metrics, output_dict",
+    [
+        (
+            {
+                "name": "metric_name",
+                "display_name": "Metric Name",
+                "type": "histogram",
+                "unit": "ms",
+            },
+            CustomMetricConfig(
+                name="metric_name",
+                display_name="Metric Name",
+                type="histogram",
+                unit="ms",
+            ),
+            {
+                "name": "metric_name",
+                "display_name": "Metric Name",
+                "type": "histogram",
+                "unit": "ms",
+            },
+        ),
+    ],
+)
+def test_parse_custom_metric(input_dict, expect_metrics, output_dict):
+    parsed_result = CustomMetricConfig.from_dict(input_dict)
+    assert parsed_result == expect_metrics
+    assert parsed_result.to_dict() == output_dict
+
+
+def test_config_metrics(default_config):
+    default_config["metrics"] = [
+        {
+            "name": "metric_name",
+            "display_name": "Metric Name",
+            "type": "histogram",
+            "unit": "ms",
+        },
+        {
+            "name": "metric_name2",
+            "display_name": "Metric Name 2",
+            "type": "counter",
+            "unit": "count",
+        },
+    ]
+    config = TrussConfig.from_dict(default_config)
+    assert config.metrics == [
+        CustomMetricConfig(
+            name="metric_name", display_name="Metric Name", type="histogram", unit="ms"
+        ),
+        CustomMetricConfig(
+            name="metric_name2",
+            display_name="Metric Name 2",
+            type="counter",
+            unit="count",
+        ),
+    ]
 
 
 @pytest.mark.parametrize(

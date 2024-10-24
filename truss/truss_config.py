@@ -244,6 +244,31 @@ class Resources:
 
 
 @dataclass
+class CustomMetricConfig:
+    name: str
+    display_name: str
+    type: str
+    unit: str
+
+    @staticmethod
+    def from_dict(d):
+        return CustomMetricConfig(
+            name=d.get("name"),
+            display_name=d.get("display_name"),
+            type=d.get("type"),
+            unit=d.get("unit"),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "display_name": self.display_name,
+            "type": self.type,
+            "unit": self.unit,
+        }
+
+
+@dataclass
 class ExternalDataItem:
     """A piece of remote data, to be made available to the Truss at serving time.
 
@@ -546,6 +571,7 @@ class TrussConfig:
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
+    metrics: List[CustomMetricConfig] = field(default_factory=list)
 
     @property
     def canonical_python_version(self) -> str:
@@ -605,6 +631,9 @@ class TrussConfig:
                 d.get("trt_llm"), lambda x: TRTLLMConfiguration(**x)
             ),
             build_commands=d.get("build_commands", []),
+            metrics=transform_optional(
+                d.get("metrics") or [], lambda x: [CustomMetricConfig(**m) for m in x]
+            ),
         )
         config.validate()
         return config
@@ -780,7 +809,11 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["docker_auth"] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
+            elif field_name == "metrics":
+                d["metrics"] = transform_optional(
+                    field_curr_value,
+                    lambda data: [metric.to_dict() for metric in data] if data else [],
+                )
             else:
                 d[field_name] = field_curr_value
-
     return d
