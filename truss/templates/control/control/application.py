@@ -13,6 +13,7 @@ from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.inference_server_starter import async_inference_server_startup_flow
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
+from prometheus_client import make_asgi_app
 from shared.logging import setup_logging
 from starlette.datastructures import State
 
@@ -102,6 +103,10 @@ def create_app(base_config: Dict):
     )
     app.state = app_state
     app.include_router(control_app)
+
+    # Add prometheus asgi middleware to route /metrics requests
+    metrics_app = make_asgi_app()
+    app.mount("/metrics", metrics_app)
 
     @app.on_event("shutdown")
     def on_shutdown():
