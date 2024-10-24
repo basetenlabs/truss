@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from truss.build import init
-from truss.truss_spec import TrussSpec
+from truss.base.truss_spec import TrussSpec
+from truss.truss_handle.build import init
 
 
 def test_truss_init(tmp_path):

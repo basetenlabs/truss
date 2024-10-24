@@ -6,26 +6,28 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pytest
-from truss.constants import (
+from truss.base.constants import (
     BASE_TRTLLM_REQUIREMENTS,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
 )
+from truss.base.truss_config import ModelCache, ModelRepo, TrussConfig
 from truss.contexts.image_builder.serving_image_builder import (
     HF_ACCESS_TOKEN_FILE_NAME,
     ServingImageBuilderContext,
     get_files_to_cache,
 )
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_config import ModelCache, ModelRepo, TrussConfig
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 BASE_DIR = Path(__file__).parent
 
 
-def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
+def test_serving_image_dockerfile_from_user_base_image(
+    test_data_path, custom_model_truss_dir
+):
     th = TrussHandle(custom_model_truss_dir)
     # The test fixture python varies with host version, need to pin here.
     th.update_python_version("py39")
@@ -38,7 +40,7 @@ def test_serving_image_dockerfile_from_user_base_image(custom_model_truss_dir):
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_lines = f.readlines()
         with open(
-            f"{BASE_DIR}/../../../test_data/server.Dockerfile",
+            test_data_path / "server.Dockerfile",
             "r",
         ) as f:
             server_docker_lines = f.readlines()
@@ -248,12 +250,9 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
 
 
 @pytest.mark.integration
-def test_truss_server_caching_truss():
+def test_truss_server_caching_truss(test_data_path):
     with ensure_kill_all():
-        truss_root = (
-            Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
-        )
-        truss_dir = truss_root / "test_data" / "test_truss_server_caching_truss"
+        truss_dir = test_data_path / "test_truss_server_caching_truss"
         tr = TrussHandle(truss_dir)
 
         container = tr.docker_run(
@@ -263,9 +262,8 @@ def test_truss_server_caching_truss():
         assert "Downloading model.safetensors:" not in container.logs()
 
 
-def test_model_cache_dockerfile():
-    truss_root = Path(__file__).parent.parent.parent.parent.parent.resolve() / "truss"
-    truss_dir = truss_root / "test_data" / "test_truss_server_caching_truss"
+def test_model_cache_dockerfile(test_data_path):
+    truss_dir = test_data_path / "test_truss_server_caching_truss"
     tr = TrussHandle(truss_dir)
 
     builder_context = ServingImageBuilderContext

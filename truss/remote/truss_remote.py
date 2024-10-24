@@ -6,7 +6,7 @@ import requests
 
 if TYPE_CHECKING:
     from rich import console as rich_console
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 
 class RemoteUser:

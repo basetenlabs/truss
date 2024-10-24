@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from truss.truss_config import ExternalData
+from truss.base.truss_config import ExternalData
 
 B10CP_EXECUTABLE_NAME = "b10cp"
 BLOB_DOWNLOAD_TIMEOUT_SECS = 600  # 10 minutes
