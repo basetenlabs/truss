@@ -19,7 +19,7 @@ asdf plugin add python
 asdf plugin add poetry
 
 # Install poetry dependencies
-poetry install
+poetry install --with=dev --extras=all
 
 # And finally precommit
 poetry run pre-commit install

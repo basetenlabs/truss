@@ -15,7 +15,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: poetry install --with=dev --extras=all
       - run: poetry run pre-commit run --all-files
         env:
           SKIP: ruff
@@ -31,7 +31,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: poetry install --with=dev --extras=all
       - name: run tests
         run: poetry run pytest --durations=0  -m 'not integration' --junitxml=report.xml
       - name: Publish Test Report  # Not sure how to display this in the UI for non PRs.
