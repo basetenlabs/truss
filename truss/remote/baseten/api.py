@@ -84,6 +84,28 @@ class BasetenApi:
             raise ApiError(message, error_code)
         return resp_dict
 
+    def kickoff_finetuning_job(
+        self,
+        name: str,
+        config: str,
+        client_version: str,
+    ):
+        query_string = f"""
+        mutation {{
+            kickoff_finetuning_job(
+                config: "{config}",
+                client_version: "{client_version}"
+                name: "{name}"
+                s3_key: ""
+            ) {{
+                id
+            }}
+        }}
+        """
+
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["kickoff_finetuning_job"]
+
     def model_s3_upload_credentials(self):
         query_string = """
         {
