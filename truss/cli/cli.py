@@ -16,6 +16,7 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
+import yaml
 from InquirerPy import inquirer
 from rich.console import Console
 
@@ -74,6 +75,13 @@ click.rich_click.COMMAND_GROUPS = {
             "commands": ["chains"],
             "table_styles": {  # type: ignore
                 "row_styles": ["red"],
+            },
+        },
+        {
+            "name": "Finetune",
+            "commands": ["finetune"],
+            "table_styles": {  # type: ignore
+                "row_styles": ["orange"],
             },
         },
     ]
@@ -814,6 +822,7 @@ def init_chain(
 def _load_example_chainlet_code() -> str:
     try:
         from truss_chains import example_chainlet
+
     # if the example is faulty, a validation error would be raised
     except Exception as e:
         raise Exception("Failed to load starter code. Please notify support.") from e
@@ -1326,9 +1335,39 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     return truss.load(target_directory)
 
 
+# Finetuning Stuff #########################################################################
+
+
+@truss_cli.command()
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
+def finetune(
+    file_path: Path,
+    remote: str,
+):
+    """Finetune on Baseten"""
+    print(f"We finetuning now with file: {file_path}")
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider = RemoteFactory.create(remote=remote)
+    with open(file_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    id = remote_provider.finetune(config)
+    print(id)
+
+
 truss_cli.add_command(container)
 truss_cli.add_command(image)
 truss_cli.add_command(chains)
+truss_cli.add_command(finetune)
 
 if __name__ == "__main__":
     truss_cli()

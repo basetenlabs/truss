@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
+import truss
 import yaml
 from requests import ReadTimeout
 from truss.constants import PRODUCTION_ENVIRONMENT_NAME
@@ -114,6 +115,15 @@ class BasetenRemote(TrussRemote):
                 chain_deployment_id
             )
         ]
+
+    def finetune(self, config: dict):
+        encoded_config_str = base64_encoded_json_str(config)
+
+        ft_job_id = self.api.kickoff_finetuning_job(
+            config=encoded_config_str,
+            client_version=f"truss=={truss.version()}",
+        )
+        return ft_job_id
 
     def push(  # type: ignore
         self,
