@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import List
 
-from truss.patch.dir_signature import directory_content_signature
-from truss.truss_gatherer import gather
+from truss.truss_handle.patch.dir_signature import directory_content_signature
+from truss.truss_handle.truss_gatherer import gather
 
 
 def test_gather(custom_model_with_external_package):

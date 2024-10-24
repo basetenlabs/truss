@@ -21,8 +21,8 @@ from fastapi import HTTPException
 from outlines.models.transformers import TransformerTokenizer
 from outlines.processors.structured import JSONLogitsProcessor
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
-from truss.config.trt_llm import TrussTRTLLMBuildConfiguration
-from truss.constants import OPENAI_COMPATIBLE_TAG
+from truss.base.constants import OPENAI_COMPATIBLE_TAG
+from truss.base.trt_llm_config import TrussTRTLLMBuildConfiguration
 
 BRITON_PORT = 50051
 

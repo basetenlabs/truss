@@ -6,12 +6,12 @@ from typing import List, Optional
 
 import yaml
 
-from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
-from truss.docker import kill_containers
+from truss.base.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
+from truss.base.truss_config import Build, TrussConfig
 from truss.model_inference import infer_python_version, map_to_supported_python_version
-from truss.notebook import is_notebook_or_ipython
-from truss.truss_config import Build, TrussConfig
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
+from truss.util.docker import kill_containers
+from truss.util.notebook import is_notebook_or_ipython
 from truss.util.path import build_truss_target_directory, copy_tree_path
 
 logger: logging.Logger = logging.getLogger(__name__)

@@ -1,2 +1,0 @@
-class RemoteNetworkError(Exception):
-    pass

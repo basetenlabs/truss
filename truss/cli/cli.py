@@ -20,8 +20,13 @@ from InquirerPy import inquirer
 from rich.console import Console
 
 import truss
-from truss.config.trt_llm import TrussTRTLLMQuantizationType
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.base.constants import (
+    PRODUCTION_ENVIRONMENT_NAME,
+    TRTLLM_MIN_MEMORY_REQUEST_GI,
+)
+from truss.base.errors import RemoteNetworkError
+from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
+from truss.base.truss_config import Build, ModelServer
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -38,13 +43,11 @@ from truss.remote.remote_cli import (
     inquire_remote_name,
 )
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.truss_config import Build, ModelServer
-from truss.util.config_checks import (
+from truss.trt_llm.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
     check_secrets_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
-from truss.util.errors import RemoteNetworkError
 from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}

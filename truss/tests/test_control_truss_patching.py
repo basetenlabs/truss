@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from truss.constants import SUPPORTED_PYTHON_VERSIONS
+from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
+from truss.base.truss_config import ExternalDataItem
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.tests.test_truss_handle import (
@@ -12,9 +13,8 @@ from truss.tests.test_truss_handle import (
     verify_system_package_installed_on_container,
     verify_system_requirement_not_installed_on_container,
 )
-from truss.truss_config import ExternalDataItem
-from truss.truss_gatherer import calc_shadow_truss_dirname
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_gatherer import calc_shadow_truss_dirname
+from truss.truss_handle.truss_handle import TrussHandle
 
 
 def current_num_docker_images(th: TrussHandle) -> int:

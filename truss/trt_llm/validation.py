@@ -1,7 +1,7 @@
 import ast
 
-from truss.errors import ValidationError
-from truss.truss_spec import TrussSpec
+from truss.base.errors import ValidationError
+from truss.base.truss_spec import TrussSpec
 
 
 def validate(truss_spec: TrussSpec):

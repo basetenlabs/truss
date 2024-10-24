@@ -1,7 +1,7 @@
 import pytest
-from truss.errors import ValidationError
+from truss.base.errors import ValidationError
+from truss.base.truss_spec import TrussSpec
 from truss.trt_llm.validation import _verify_has_class_init_arg, validate
-from truss.truss_spec import TrussSpec
 
 
 @pytest.mark.parametrize(

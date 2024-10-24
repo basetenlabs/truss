@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from truss.docker import Docker
+from truss.util.docker import Docker
 from truss.util.path import given_or_temporary_dir
 
 

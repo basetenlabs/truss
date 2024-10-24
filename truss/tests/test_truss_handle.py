@@ -8,9 +8,8 @@ import requests
 from python_on_whales.exceptions import DockerException
 from tenacity import RetryError
 
-from truss.custom_types import Example, PatchRequest
-from truss.docker import Docker, DockerStates
-from truss.errors import ContainerIsDownError, ContainerNotFoundError
+from truss.base.custom_types import Example
+from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.templates.control.control.helpers.custom_types import (
@@ -23,7 +22,9 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     kill_all_with_retries,
 )
-from truss.truss_handle import TrussHandle, wait_for_truss
+from truss.truss_handle.patch.custom_types import PatchRequest
+from truss.truss_handle.truss_handle import TrussHandle, wait_for_truss
+from truss.util.docker import Docker, DockerStates
 
 
 def test_spec(custom_model_truss_dir_with_pre_and_post):
@@ -461,9 +462,8 @@ def test_add_environment_variable(custom_model_truss_dir_with_pre_and_post):
 
 
 @pytest.mark.integration
-def test_build_commands():
-    truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-    truss_dir = truss_root / "test_data" / "test_build_commands"
+def test_build_commands(test_data_path):
+    truss_dir = test_data_path / "test_build_commands"
     tr = TrussHandle(truss_dir)
     with ensure_kill_all():
         r1 = tr.docker_predict([1, 2])
@@ -471,9 +471,8 @@ def test_build_commands():
 
 
 @pytest.mark.integration
-def test_build_commands_failure():
-    truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-    truss_dir = truss_root / "test_data" / "test_build_commands_failure"
+def test_build_commands_failure(test_data_path):
+    truss_dir = test_data_path / "test_build_commands_failure"
     tr = TrussHandle(truss_dir)
     try:
         tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)

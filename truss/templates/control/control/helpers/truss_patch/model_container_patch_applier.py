@@ -16,7 +16,7 @@ from helpers.custom_types import (
 )
 from helpers.errors import UnsupportedPatch
 from helpers.truss_patch.model_code_patch_applier import apply_code_patch
-from truss.truss_config import ExternalData, ExternalDataItem, TrussConfig
+from truss.base.truss_config import ExternalData, ExternalDataItem, TrussConfig
 from truss.util.download import download_external_data
 
 

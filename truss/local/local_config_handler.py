@@ -3,8 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
+from truss.base.validation import validate_secret_name
 from truss.local.local_config import LocalConfig
-from truss.validation import validate_secret_name
 
 
 class LocalConfigHandler:

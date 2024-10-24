@@ -1,7 +1,7 @@
 import pytest
 from python_on_whales import docker
 
-from truss.docker import get_urls_from_container
+from truss.util.docker import get_urls_from_container
 
 
 @pytest.fixture

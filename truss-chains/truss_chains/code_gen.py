@@ -36,7 +36,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 import libcst
 import truss
-from truss import truss_config
+from truss.base import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss.util import path as truss_path
 
