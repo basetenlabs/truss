@@ -3440,13 +3440,13 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "uvicorn"
-version = "0.32.0"
+version = "0.24.0.post1"
 description = "The lightning-fast ASGI server."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "uvicorn-0.32.0-py3-none-any.whl", hash = "sha256:60b8f3a5ac027dcd31448f411ced12b5ef452c646f76f02f8cc3f25d8d26fd82"},
-    {file = "uvicorn-0.32.0.tar.gz", hash = "sha256:f78b36b143c16f54ccdb8190d0a26b5f1901fe5a3c777e1ab29f26391af8551e"},
+    {file = "uvicorn-0.24.0.post1-py3-none-any.whl", hash = "sha256:7c84fea70c619d4a710153482c0d230929af7bcf76c7bfa6de151f0a3a80121e"},
+    {file = "uvicorn-0.24.0.post1.tar.gz", hash = "sha256:09c8e5a79dc466bdf28dead50093957db184de356fcdc48697bad3bde4c2588e"},
 ]
 
 [package.dependencies]
@@ -3714,10 +3714,11 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 type = ["pytest-mypy"]
 
 [extras]
-all = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpcore", "httpx", "inquirerpy", "libcst", "loguru", "msgpack", "msgpack-numpy", "numpy", "opentelemetry-api", "opentelemetry-exporter-otlp", "opentelemetry-sdk", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "single-source", "tenacity", "watchfiles"]
-other = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpcore", "httpx", "inquirerpy", "libcst", "loguru", "msgpack", "msgpack-numpy", "numpy", "opentelemetry-api", "opentelemetry-exporter-otlp", "opentelemetry-sdk", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "single-source", "tenacity", "watchfiles"]
+all = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "msgpack", "msgpack-numpy", "numpy", "opentelemetry-api", "opentelemetry-exporter-otlp", "opentelemetry-sdk", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "single-source", "tenacity", "uvicorn", "watchfiles"]
+image-builder = ["Jinja2", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "requests", "rich", "single-source", "tenacity", "uvicorn"]
+other = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "msgpack", "msgpack-numpy", "numpy", "opentelemetry-api", "opentelemetry-exporter-otlp", "opentelemetry-sdk", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "single-source", "tenacity", "watchfiles"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.13"
-content-hash = "99fbe2af357055232b54c63b0c53e372ca55925b85d2355a20cc9b20c034ec28"
+content-hash = "d4b95dadaf55c4f1a147d34b91ec77467e50255501149231997a0c768d5987ea"

@@ -38,3 +38,7 @@ repos:
         args:
           - --python-version=3.9
         pass_filenames: true
+      - id: pyproject.toml
+        name: pyproject.toml
+        language: python
+        entry: poetry run python ./bin/pyproject_toml_linter.py
