@@ -1,4 +1,3 @@
-from truss import init
+from truss.base import config
 
-th = init("test_truss")
-th.docker_build_setup()
+print(config)

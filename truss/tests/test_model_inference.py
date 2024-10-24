@@ -20,8 +20,8 @@ import requests
 from opentelemetry import context, trace
 from requests.exceptions import RequestException
 
+from truss.base.truss_config import map_to_supported_python_version
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.model_inference import map_to_supported_python_version
 from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.truss_handle import TrussHandle

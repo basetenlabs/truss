@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 if TYPE_CHECKING:
     from python_on_whales.components.container.cli_wrapper import Container
 
-from truss.base.constants import TRUSS_DIR
+from truss.base.constants import TRUSS, TRUSS_DIR
 from truss.local.local_config_handler import LocalConfigHandler
 
 
@@ -115,3 +115,7 @@ def _create_label_filters(labels: Dict) -> Dict[str, Any]:
     return {
         f"label={label_key}": label_value for label_key, label_value in labels.items()
     }
+
+
+def kill_all() -> None:
+    kill_containers({TRUSS: True})

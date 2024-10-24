@@ -9,7 +9,7 @@ from truss.trt_llm.config_checks import (
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-@patch("truss.util.config_checks._is_model_public")
+@patch("truss.trt_llm.config_checks._is_model_public")
 @pytest.mark.parametrize(
     "has_secret, is_model_public, expected_result",
     [

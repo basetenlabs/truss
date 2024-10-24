@@ -13,11 +13,11 @@ import yaml
 
 from truss.base.custom_types import Example
 from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
-from truss.build import init
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
+from truss.truss_handle.build import init
 from truss.truss_handle.truss_handle import TrussHandle
 
 CUSTOM_MODEL_CODE = """

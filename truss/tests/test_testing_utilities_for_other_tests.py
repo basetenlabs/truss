@@ -8,8 +8,7 @@ import time
 from contextlib import contextmanager
 
 from truss.base.constants import TRUSS
-from truss.build import kill_all
-from truss.util.docker import get_containers
+from truss.util.docker import get_containers, kill_all
 
 DISK_SPACE_LOW_PERCENTAGE = 20
 

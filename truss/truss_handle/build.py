@@ -6,11 +6,13 @@ from typing import List, Optional
 
 import yaml
 
-from truss.base.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
-from truss.base.truss_config import Build, TrussConfig
-from truss.model_inference import infer_python_version, map_to_supported_python_version
+from truss.base.constants import CONFIG_FILE, TEMPLATES_DIR
+from truss.base.truss_config import (
+    Build,
+    TrussConfig,
+    map_local_to_supported_python_version,
+)
 from truss.truss_handle.truss_handle import TrussHandle
-from truss.util.docker import kill_containers
 from truss.util.notebook import is_notebook_or_ipython
 from truss.util.path import build_truss_target_directory, copy_tree_path
 
@@ -21,7 +23,7 @@ if is_notebook_or_ipython():
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
-def populate_target_directory(
+def _populate_target_directory(
     config: TrussConfig,
     target_directory_path: Optional[str] = None,
     template: str = "custom",
@@ -74,13 +76,13 @@ def init(
     """
     config = TrussConfig(
         model_name=model_name,
-        python_version=map_to_supported_python_version(infer_python_version()),
+        python_version=map_local_to_supported_python_version(),
     )
 
     if build_config:
         config.build = build_config
 
-    target_directory_path = populate_target_directory(
+    target_directory_path = _populate_target_directory(
         config=config,
         target_directory_path=target_directory,
         populate_dirs=True,
@@ -101,13 +103,6 @@ def load(truss_directory: str) -> TrussHandle:
         TrussHandle
     """
     return TrussHandle(Path(truss_directory))
-
-
-def from_directory(*args, **kwargs):
-    logger.warn(
-        "DeprecationWarning: from_directory() is deprecated. Use load() instead."
-    )
-    return load(*args, **kwargs)
 
 
 def cleanup() -> None:
@@ -138,7 +133,3 @@ def _update_truss_props(
 
     if requirements_file is not None:
         scaf.update_requirements_from_file(requirements_file)
-
-
-def kill_all() -> None:
-    kill_containers({TRUSS: True})

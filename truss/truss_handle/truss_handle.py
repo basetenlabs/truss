@@ -366,6 +366,7 @@ class TrussHandle:
         else:
             return self.server_predict(request)
 
+    # TODO(marius): can we kill this?
     def server_predict(self, request: Dict):
         """Run the prediction flow locally."""
         model = LoadModelLocal.run(self._truss_dir)

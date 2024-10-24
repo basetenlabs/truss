@@ -10,8 +10,8 @@ from tenacity import RetryError
 
 from truss.base.custom_types import Example
 from truss.base.errors import ContainerIsDownError, ContainerNotFoundError
+from truss.base.truss_config import map_local_to_supported_python_version
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ModelCodePatch,
@@ -822,7 +822,7 @@ def _read_readme(filename: str) -> str:
 
 def generate_default_config():
     # The test fixture varies with host version.
-    python_version = map_to_supported_python_version(infer_python_version())
+    python_version = map_local_to_supported_python_version()
     config = {
         "build_commands": [],
         "environment_variables": {},

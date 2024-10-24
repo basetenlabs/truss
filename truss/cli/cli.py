@@ -48,6 +48,10 @@ from truss.trt_llm.config_checks import (
     check_secrets_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
+from truss.truss_handle.build import cleanup as _cleanup
+from truss.truss_handle.build import init as _init
+from truss.truss_handle.build import load
+from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -216,7 +220,7 @@ def init(target_directory, backend, name) -> None:
         model_name = name
     else:
         model_name = inquire_model_name()
-    truss.init(
+    _init(
         target_directory=target_directory,
         build_config=build_config,
         model_name=model_name,
@@ -1306,7 +1310,7 @@ def kill(target_directory: str) -> None:
 @container.command()  # type: ignore
 def kill_all() -> None:
     """Kills all truss containers that are not manually persisted."""
-    truss.kill_all()
+    docker.kill_all()
 
 
 @truss_cli.command()
@@ -1319,14 +1323,14 @@ def cleanup() -> None:
     such as for building docker images. This command clears
     that data to free up disk space.
     """
-    truss.build.cleanup()
+    _cleanup()
 
 
 def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return truss.load(target_directory)
+    return load(target_directory)
 
 
 truss_cli.add_command(container)
