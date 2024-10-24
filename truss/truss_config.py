@@ -403,6 +403,7 @@ class DockerServer:
     readiness_endpoint: str
     liveness_endpoint: str
     predict_endpoint: str
+    metric_endpoint: str
 
     @staticmethod
     def from_dict(d) -> "DockerServer":
@@ -413,6 +414,7 @@ class DockerServer:
             readiness_endpoint=d.get("readiness_endpoint", ""),
             liveness_endpoint=d.get("liveness_endpoint", ""),
             predict_endpoint=d.get("predict_endpoint", ""),
+            metric_endpoint=d.get("metric_endpoint", ""),
         )
 
     def to_dict(self):
@@ -423,6 +425,7 @@ class DockerServer:
             "readiness_endpoint": self.readiness_endpoint,
             "liveness_endpoint": self.liveness_endpoint,
             "predict_endpoint": self.predict_endpoint,
+            "metric_endpoint": self.metric_endpoint,
         }
 
 
