@@ -30,7 +30,7 @@ asdf plugin add poetry
 asdf install
 
 # Install poetry dependencies
-poetry install
+poetry install --with=dev --extras=all
 
 # And finally precommit
 poetry run pre-commit install

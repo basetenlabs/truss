@@ -15,7 +15,10 @@ def version():
     return __version__
 
 
-from truss.api import login, push
-from truss.build import from_directory, init, kill_all, load
+try:
+    from truss.api import login, push
 
-__all__ = ["from_directory", "init", "kill_all", "load", "push", "login"]
+    __all__ = ["push", "login"]
+
+except ModuleNotFoundError:
+    warnings.warn("Could not import local client APIs - ok in image builder.")

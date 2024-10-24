@@ -1,7 +1,7 @@
 import pytest
 
-from truss.errors import ValidationError
-from truss.validation import (
+from truss.base.errors import ValidationError
+from truss.base.validation import (
     validate_cpu_spec,
     validate_memory_spec,
     validate_secret_name,

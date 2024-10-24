@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import pytest
 from httpx import AsyncClient
-from truss.custom_types import PatchRequest
+from truss.truss_handle.patch.custom_types import PatchRequest
 
 # Needed to simulate the set up on the model docker container
 sys.path.append(

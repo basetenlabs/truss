@@ -2,8 +2,8 @@ import copy
 import inspect
 from typing import Dict
 
+from truss.base.truss_spec import TrussSpec
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.truss_spec import TrussSpec
 
 
 def prepare_secrets(spec: TrussSpec) -> Dict[str, str]:

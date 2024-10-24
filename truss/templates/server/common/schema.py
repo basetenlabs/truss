@@ -8,6 +8,7 @@ from typing import (
     Optional,
     Type,
     Union,
+    cast,
     get_args,
     get_origin,
 )
@@ -159,7 +160,9 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     So for Awaitables, we need to extract the base class from the Awaitable type
     """
     return [
-        retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg
+        cast(Type[BaseModel], retrieve_base_class_from_awaitable(arg))
+        if _is_awaitable_type(arg)
+        else arg
         for arg in union_args
         if _is_awaitable_type(arg)
         or (isinstance(arg, type) and issubclass(arg, BaseModel))

@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 import yaml
-from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
+from truss.base.truss_config import TrussConfig
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ConfigPatch,
@@ -12,7 +12,7 @@ from truss.templates.control.control.helpers.custom_types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
+from truss.truss_handle.patch.truss_dir_patch_applier import TrussDirPatchApplier
 
 TEST_LOGGER = logging.getLogger("test_logger")
 

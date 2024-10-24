@@ -1,4 +1,0 @@
-model_name: Test Streaming
-python_version: py39
-environment_variables:
-  OTEL_TRACING_NDJSON_FILE: "/tmp/otel_traces.ndjson"

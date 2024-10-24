@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from jinja2 import Environment, FileSystemLoader
-from truss.constants import SUPPORTED_PYTHON_VERSIONS
+from truss.base.constants import SUPPORTED_PYTHON_VERSIONS
 from truss.contexts.image_builder.util import (
     truss_base_image_name,
     truss_base_image_tag,

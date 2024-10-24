@@ -1,5 +1,5 @@
-from truss.patch.custom_types import TrussSignature
-from truss.patch.signature import calc_truss_signature
+from truss.truss_handle.patch.custom_types import TrussSignature
+from truss.truss_handle.patch.signature import calc_truss_signature
 
 
 def test_truss_signature_type(custom_model_truss_dir):

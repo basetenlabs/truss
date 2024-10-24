@@ -3,10 +3,10 @@ import tempfile
 import time
 from pathlib import Path
 
-from truss import load
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
+from truss.truss_handle.build import load
 from truss.util import path
 
 

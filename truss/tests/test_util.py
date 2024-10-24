@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import requests_mock
 
-from truss.truss_config import ExternalData
+from truss.base.truss_config import ExternalData
 from truss.util.download import download_external_data
 
 TEST_DOWNLOAD_URL = "http://example.com/some-download-url"

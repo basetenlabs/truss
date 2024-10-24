@@ -5,12 +5,10 @@ import pytest
 
 
 @pytest.mark.integration
-def test_build_docker_image():
+def test_build_docker_image(test_data_path):
     root_path = Path(__file__).parent.parent.parent
     root = str(root_path)
-    context_builder_image_test_dir = str(
-        root_path / "truss" / "test_data" / "context_builder_image_test"
-    )
+    context_builder_image_test_dir = str(test_data_path / "context_builder_image_test")
 
     subprocess.run(
         [
