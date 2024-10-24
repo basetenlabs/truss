@@ -13,7 +13,7 @@ LIGHTGBM = "lightgbm"
 _TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
 TEMPLATES_DIR = _TRUSS_ROOT / "templates"
-DOCKER_SERVER_TEMPLATES_DIR = _TRUSS_ROOT / "templates", "docker_server"
+DOCKER_SERVER_TEMPLATES_DIR = TEMPLATES_DIR / "docker_server"
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
 AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"

@@ -1,3 +1,3 @@
-from truss.base import config
+from truss.base import truss_config
 
-print(config)
+print(truss_config)

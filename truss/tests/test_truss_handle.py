@@ -59,15 +59,18 @@ def test_server_predict(custom_model_truss_dir_with_pre_and_post):
     assert resp == {"predictions": [4, 5, 6, 7]}
 
 
-def test_readme_generation_int_example(custom_model_truss_dir_with_pre_and_post):
+def test_readme_generation_int_example(
+    test_data_path, custom_model_truss_dir_with_pre_and_post
+):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace("\n", "")
-    correct_readme_contents = _read_readme("readme_int_example.md")
+    correct_readme_contents = _read_readme(test_data_path / "readme_int_example.md")
     assert readme_contents == correct_readme_contents
 
 
 def test_readme_generation_no_example(
+    test_data_path,
     custom_model_truss_dir_with_pre_and_post_no_example,
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_no_example)
@@ -76,17 +79,18 @@ def test_readme_generation_no_example(
         os.remove(th._spec.examples_path)
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace("\n", "")
-    correct_readme_contents = _read_readme("readme_no_example.md")
+    correct_readme_contents = _read_readme(test_data_path / "readme_no_example.md")
     assert readme_contents == correct_readme_contents
 
 
 def test_readme_generation_str_example(
+    test_data_path,
     custom_model_truss_dir_with_pre_and_post_str_example,
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_str_example)
     readme_contents = th.generate_readme()
     readme_contents = readme_contents.replace("\n", "")
-    correct_readme_contents = _read_readme("readme_str_example.md")
+    correct_readme_contents = _read_readme(test_data_path / "readme_str_example.md")
     assert readme_contents == correct_readme_contents
 
 
@@ -634,7 +638,7 @@ class Model:
         assert len(th.get_all_docker_images()) == orig_num_truss_images + 1
 
 
-@patch("truss.truss_handle.directory_content_hash")
+@patch("truss.truss_handle.truss_handle.directory_content_hash")
 def test_truss_hash_caching_based_on_max_mod_time(
     directory_content_patcher,
     custom_model_truss_dir,
@@ -653,14 +657,14 @@ def test_truss_hash_caching_based_on_max_mod_time(
     directory_content_patcher.call_count == 2
 
 
-@patch("truss.truss_handle.get_container_state")
+@patch("truss.truss_handle.truss_handle.get_container_state")
 def test_container_oom_caught_during_waiting(container_state_mock):
     container_state_mock.return_value = DockerStates.OOMKILLED
     with pytest.raises(ContainerIsDownError):
         wait_for_truss(url="localhost:8000", container=MagicMock())
 
 
-@patch("truss.truss_handle.get_container_state")
+@patch("truss.truss_handle.truss_handle.get_container_state")
 @pytest.mark.integration
 def test_container_stuck_in_created(container_state_mock):
     container_state_mock.return_value = DockerStates.CREATED
@@ -814,10 +818,8 @@ def verify_environment_variable_on_container(
     assert needle in resp.splitlines()
 
 
-def _read_readme(filename: str) -> str:
-    readme_correct_path = Path(__file__).parent.parent / "test_data" / filename
-    readme_contents = readme_correct_path.open().read().replace("\n", "")
-    return readme_contents
+def _read_readme(readme_correct_path: Path) -> str:
+    return readme_correct_path.open().read().replace("\n", "")
 
 
 def generate_default_config():
