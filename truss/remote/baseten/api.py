@@ -86,6 +86,7 @@ class BasetenApi:
 
     def kickoff_finetuning_job(
         self,
+        name: str,
         config: str,
         client_version: str,
     ):
@@ -94,6 +95,8 @@ class BasetenApi:
             kickoff_finetuning_job(
                 config: "{config}",
                 client_version: "{client_version}"
+                name: "{name}"
+                s3_key: ""
             ) {{
                 id
             }}

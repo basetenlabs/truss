@@ -116,10 +116,11 @@ class BasetenRemote(TrussRemote):
             )
         ]
 
-    def finetune(self, config: dict):
+    def finetune(self, name: str, config: dict):
         encoded_config_str = base64_encoded_json_str(config)
 
         ft_job_id = self.api.kickoff_finetuning_job(
+            name=name,
             config=encoded_config_str,
             client_version=f"truss=={truss.version()}",
         )

@@ -1340,6 +1340,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 
 @truss_cli.command()
 @click.argument("file_path", type=click.Path(exists=True))
+@click.argument("name", type=str, required=True)
 @click.option(
     "--remote",
     type=str,
@@ -1348,10 +1349,11 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 )
 def finetune(
     file_path: Path,
+    name: str,
     remote: str,
 ):
     """Finetune on Baseten"""
-    print(f"We finetuning now with file: {file_path}")
+    print(f"We finetuning now with file: {file_path}, name: {name}")
 
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
@@ -1360,7 +1362,7 @@ def finetune(
     with open(file_path, "r") as file:
         config = yaml.safe_load(file)
 
-    id = remote_provider.finetune(config)
+    id = remote_provider.finetune(name, config)
     print(id)
 
 
