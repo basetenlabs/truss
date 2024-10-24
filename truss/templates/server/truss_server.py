@@ -24,6 +24,7 @@ from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
+from prometheus_client import make_asgi_app
 from shared import serialization, util
 from shared.logging import setup_logging
 from shared.secrets_resolver import SecretsResolver
@@ -342,6 +343,11 @@ class TrussServer:
             on_term=exit_self,
         )
         app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
+
+        # Add prometheus asgi middleware to route /metrics requests
+        metrics_app = make_asgi_app()
+        app.mount("/metrics", metrics_app)
+
         return app
 
     def start(self):

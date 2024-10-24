@@ -18,3 +18,4 @@ requests==2.31.0
 uvicorn==0.24.0
 uvloop==0.19.0
 aiofiles==24.1.0
+prometheus-client==0.15.0
