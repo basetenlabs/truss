@@ -299,6 +299,12 @@ class TrussHandle:
                             f"src={str(LocalConfigHandler.bptr_data_resolution_dir_path())}",
                             "target=/bptr",
                         ],
+                        [
+                            "type=bind",
+                            f"src={str(LocalConfigHandler.dynamic_config_path())}",
+                            "target=/etc/b10_dynamic_config",
+                            "readonly=false",
+                        ],
                     ],
                     gpus=gpus,
                     envs=envs,
