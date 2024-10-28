@@ -258,7 +258,7 @@ def test_truss_server_caching_truss():
         tr = TrussHandle(truss_dir)
 
         container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
+            local_port=8090, detach=True, wait_for_server_ready=True, network="host"
         )
         time.sleep(15)
         assert "Downloading model.safetensors:" not in container.logs()
