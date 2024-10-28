@@ -49,6 +49,12 @@ def default_config() -> Dict[str, Any]:
 @pytest.fixture
 def trtllm_config(default_config) -> Dict[str, Any]:
     trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+    }
     trtllm_config["trt_llm"] = {
         "build": {
             "base_model": "llama",
