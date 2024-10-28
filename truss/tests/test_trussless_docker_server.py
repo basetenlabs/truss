@@ -25,6 +25,7 @@ def test_docker_server_truss():
         assert response.status_code == 200
         assert response.json() == {
             "message": "Hello World",
+            "is_torch_cuda_available": False,
             "is_env_var_passed": True,
             "is_secret_mounted": True,
         }
