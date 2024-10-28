@@ -33,6 +33,12 @@ truss = 'truss.cli:truss_cli'
 "Baseten" = "https://baseten.co"
 
 
+#* Groups are labels for organzigin stuff, all will be resolved and *installed* by default by poetry.
+#* But a group can be delcared optional. install `--with {group_name}`
+#* But non-main deps are only installed by poetry, not by pip -> use `extras`.
+#* `extras` only make sense for optional deps and non-main groups, install `--extras {name}` or `--all-extras`}
+#* Dependencies listed in dependency groups cannot be specified as extras.
+
 [tool.poetry.dependencies]
 # "base" dependencies.
 python = ">=3.8,<3.13"
