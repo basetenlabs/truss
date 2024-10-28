@@ -412,17 +412,6 @@ class ServingImageBuilder(ImageBuilder):
                     DEFAULT_BUNDLED_PACKAGES_DIR,
                 )
 
-            tensor_parallel_count = (
-                config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]
-                if config.trt_llm.build is not None
-                else config.trt_llm.serve.tensor_parallel_count  # type: ignore[union-attr]
-            )
-
-            if tensor_parallel_count != config.resources.accelerator.count:
-                raise ValueError(
-                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
-                )
-
             config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
             if not is_audio_model:
