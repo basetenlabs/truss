@@ -31,7 +31,7 @@ class TrussTRTLLMQuantizationType(str, Enum):
     WEIGHTS_ONLY_INT8 = "weights_int8"
     WEIGHTS_KV_INT8 = "weights_kv_int8"
     WEIGHTS_ONLY_INT4 = "weights_int4"
-    WEIGHTS_KV_INT4 = "weights_kv_int4"
+    WEIGHTS_INT4_KV_INT8 = "weights_int4_kv_int8"
     SMOOTH_QUANT = "smooth_quant"
     FP8 = "fp8"
     FP8_KV = "fp8_kv"
