@@ -17,7 +17,15 @@ def _populate_extras(pyproject_path: pathlib.Path) -> None:
     extra_sections: DefaultDict[str, Set[str]] = collections.defaultdict(set)
     all_deps: Set[str] = set()
 
-    for key in dependencies.keys():
+    for key, value in dependencies.items():
+        if isinstance(value, dict):
+            is_optional = value.get("optional", False)
+        else:
+            is_optional = False  # Base dependencies.
+
+        if not is_optional:
+            continue
+
         if key not in dependency_metadata:
             raise ValueError(
                 f"`{key}` is missing in `[tool.dependency_metadata]`. "
@@ -46,6 +54,11 @@ def _populate_extras(pyproject_path: pathlib.Path) -> None:
 
     extras_section["all"] = tomlkit.array()
     extras_section["all"].extend(sorted(all_deps))
+    # TODO: this is temporary workaround until "local" is properly isolated.
+    #  Goal is to guarantee full functionality of CLI if installed as
+    #  `pip install truss[local]`.
+    extras_section["local"] = tomlkit.array()
+    extras_section["local"].extend(sorted(all_deps))
 
     if "extras" not in content["tool"]["poetry"]:
         raise ValueError("Expected section [tool.poetry.extras] to be present.")

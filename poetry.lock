@@ -179,17 +179,17 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.35.48"
+version = "1.35.50"
 description = "The AWS SDK for Python"
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "boto3-1.35.48-py3-none-any.whl", hash = "sha256:60889bb6e21f0af662ac9404e00125d3b8a5808f190e89462e5ddf73604adfc1"},
-    {file = "boto3-1.35.48.tar.gz", hash = "sha256:5007a5cdd09e4db9309adf2ee090455a34ae639bd10a68a1fefca72cd77070fc"},
+    {file = "boto3-1.35.50-py3-none-any.whl", hash = "sha256:14724b905fd13f26d9d8f7cdcea0fa65a9acad79f60f41f7662667f4e233d97c"},
+    {file = "boto3-1.35.50.tar.gz", hash = "sha256:4f15d1ccb481d66f6925b8c91c970ce41b956b6ecf7c479f23e2159531b37eec"},
 ]
 
 [package.dependencies]
-botocore = ">=1.35.48,<1.36.0"
+botocore = ">=1.35.50,<1.36.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.10.0,<0.11.0"
 
@@ -198,13 +198,13 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.35.48"
+version = "1.35.50"
 description = "Low-level, data-driven core of boto 3."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "botocore-1.35.48-py3-none-any.whl", hash = "sha256:34fa25fd717208b05745e60f271a39636108fa87a3512fbca18e7e6f787a3239"},
-    {file = "botocore-1.35.48.tar.gz", hash = "sha256:3e766cc251053c9ef98542fdf225381ed58531769c3811a6282bd7247f7e2bdf"},
+    {file = "botocore-1.35.50-py3-none-any.whl", hash = "sha256:965d3b99179ac04aa98e4c4baf4a970ebce77a5e02bb2a0a21cb6304e2bc0955"},
+    {file = "botocore-1.35.50.tar.gz", hash = "sha256:136ecef8d5a1088f1ba485c0bbfca40abd42b9f9fe9e11d8cde4e53b4c05b188"},
 ]
 
 [package.dependencies]
@@ -612,7 +612,7 @@ files = [
 name = "deprecated"
 version = "1.2.14"
 description = "Python @deprecated decorator to deprecate old python classes, functions or methods."
-optional = true
+optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 files = [
     {file = "Deprecated-1.2.14-py2.py3-none-any.whl", hash = "sha256:6fac8b097794a90302bdbb17b9b815e732d3c4720583ff1b198499d78470466c"},
@@ -666,13 +666,13 @@ test = ["pytest (>=6)"]
 
 [[package]]
 name = "fastapi"
-version = "0.115.3"
+version = "0.115.4"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "fastapi-0.115.3-py3-none-any.whl", hash = "sha256:8035e8f9a2b0aa89cea03b6c77721178ed5358e1aea4cd8570d9466895c0638c"},
-    {file = "fastapi-0.115.3.tar.gz", hash = "sha256:c091c6a35599c036d676fa24bd4a6e19fa30058d93d950216cdc672881f6f7db"},
+    {file = "fastapi-0.115.4-py3-none-any.whl", hash = "sha256:0b504a063ffb3cf96a5e27dc1bc32c80ca743a2528574f9cdc77daa2d31b4742"},
+    {file = "fastapi-0.115.4.tar.gz", hash = "sha256:db653475586b091cb8b2fec2ac54a680ac6a158e07406e1abae31679e8826349"},
 ]
 
 [package.dependencies]
@@ -778,13 +778,13 @@ tqdm = ["tqdm"]
 
 [[package]]
 name = "google-api-core"
-version = "2.21.0"
+version = "2.22.0"
 description = "Google API client core library"
 optional = true
 python-versions = ">=3.7"
 files = [
-    {file = "google_api_core-2.21.0-py3-none-any.whl", hash = "sha256:6869eacb2a37720380ba5898312af79a4d30b8bca1548fb4093e0697dc4bdf5d"},
-    {file = "google_api_core-2.21.0.tar.gz", hash = "sha256:4a152fd11a9f774ea606388d423b68aa7e6d6a0ffe4c8266f74979613ec09f81"},
+    {file = "google_api_core-2.22.0-py3-none-any.whl", hash = "sha256:a6652b6bd51303902494998626653671703c420f6f4c88cfd3f50ed723e9d021"},
+    {file = "google_api_core-2.22.0.tar.gz", hash = "sha256:26f8d76b96477db42b55fd02a33aae4a42ec8b86b98b94969b7333a2c828bf35"},
 ]
 
 [package.dependencies]
@@ -964,7 +964,7 @@ requests = ["requests (>=2.18.0,<3.0.0dev)"]
 name = "googleapis-common-protos"
 version = "1.65.0"
 description = "Common protobufs used in Google APIs"
-optional = true
+optional = false
 python-versions = ">=3.7"
 files = [
     {file = "googleapis_common_protos-1.65.0-py2.py3-none-any.whl", hash = "sha256:2972e6c496f435b92590fd54045060867f3fe9be2c82ab148fc8885035479a63"},
@@ -981,7 +981,7 @@ grpc = ["grpcio (>=1.44.0,<2.0.0.dev0)"]
 name = "grpcio"
 version = "1.67.0"
 description = "HTTP/2-based RPC framework"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "grpcio-1.67.0-cp310-cp310-linux_armv7l.whl", hash = "sha256:bd79929b3bb96b54df1296cd3bf4d2b770bd1df6c2bdf549b49bab286b925cdc"},
@@ -1106,13 +1106,13 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "huggingface-hub"
-version = "0.26.1"
+version = "0.26.2"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 optional = false
 python-versions = ">=3.8.0"
 files = [
-    {file = "huggingface_hub-0.26.1-py3-none-any.whl", hash = "sha256:5927a8fc64ae68859cd954b7cc29d1c8390a5e15caba6d3d349c973be8fdacf3"},
-    {file = "huggingface_hub-0.26.1.tar.gz", hash = "sha256:414c0d9b769eecc86c70f9d939d0f48bb28e8461dd1130021542eff0212db890"},
+    {file = "huggingface_hub-0.26.2-py3-none-any.whl", hash = "sha256:98c2a5a8e786c7b2cb6fdeb2740893cba4d53e312572ed3d8afafda65b128c46"},
+    {file = "huggingface_hub-0.26.2.tar.gz", hash = "sha256:b100d853465d965733964d123939ba287da60a547087783ddff8a323f340332b"},
 ]
 
 [package.dependencies]
@@ -1670,7 +1670,7 @@ files = [
 name = "msgpack"
 version = "1.1.0"
 description = "MessagePack serializer"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "msgpack-1.1.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:7ad442d527a7e358a469faf43fda45aaf4ac3249c8310a82f0ccff9164e5dccd"},
@@ -1743,7 +1743,7 @@ files = [
 name = "msgpack-numpy"
 version = "0.4.8"
 description = "Numpy data serialization using msgpack"
-optional = true
+optional = false
 python-versions = "*"
 files = [
     {file = "msgpack-numpy-0.4.8.tar.gz", hash = "sha256:c667d3180513422f9c7545be5eec5d296dcbb357e06f72ed39cc683797556e69"},
@@ -1925,7 +1925,7 @@ files = [
 name = "numpy"
 version = "1.24.4"
 description = "Fundamental package for array computing in Python"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "numpy-1.24.4-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c0bfb52d2169d58c1cdb8cc1f16989101639b34c7d3ce60ed70b19c63eba0b64"},
@@ -1962,7 +1962,7 @@ files = [
 name = "opentelemetry-api"
 version = "1.27.0"
 description = "OpenTelemetry Python API"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_api-1.27.0-py3-none-any.whl", hash = "sha256:953d5871815e7c30c81b56d910c707588000fff7a3ca1c73e6531911d53065e7"},
@@ -1977,7 +1977,7 @@ importlib-metadata = ">=6.0,<=8.4.0"
 name = "opentelemetry-exporter-otlp"
 version = "1.27.0"
 description = "OpenTelemetry Collector Exporters"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_exporter_otlp-1.27.0-py3-none-any.whl", hash = "sha256:7688791cbdd951d71eb6445951d1cfbb7b6b2d7ee5948fac805d404802931145"},
@@ -1992,7 +1992,7 @@ opentelemetry-exporter-otlp-proto-http = "1.27.0"
 name = "opentelemetry-exporter-otlp-proto-common"
 version = "1.27.0"
 description = "OpenTelemetry Protobuf encoding"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_exporter_otlp_proto_common-1.27.0-py3-none-any.whl", hash = "sha256:675db7fffcb60946f3a5c43e17d1168a3307a94a930ecf8d2ea1f286f3d4f79a"},
@@ -2006,7 +2006,7 @@ opentelemetry-proto = "1.27.0"
 name = "opentelemetry-exporter-otlp-proto-grpc"
 version = "1.27.0"
 description = "OpenTelemetry Collector Protobuf over gRPC Exporter"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_exporter_otlp_proto_grpc-1.27.0-py3-none-any.whl", hash = "sha256:56b5bbd5d61aab05e300d9d62a6b3c134827bbd28d0b12f2649c2da368006c9e"},
@@ -2026,7 +2026,7 @@ opentelemetry-sdk = ">=1.27.0,<1.28.0"
 name = "opentelemetry-exporter-otlp-proto-http"
 version = "1.27.0"
 description = "OpenTelemetry Collector Protobuf over HTTP Exporter"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_exporter_otlp_proto_http-1.27.0-py3-none-any.whl", hash = "sha256:688027575c9da42e179a69fe17e2d1eba9b14d81de8d13553a21d3114f3b4d75"},
@@ -2046,7 +2046,7 @@ requests = ">=2.7,<3.0"
 name = "opentelemetry-proto"
 version = "1.27.0"
 description = "OpenTelemetry Python Proto"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_proto-1.27.0-py3-none-any.whl", hash = "sha256:b133873de5581a50063e1e4b29cdcf0c5e253a8c2d8dc1229add20a4c3830ace"},
@@ -2060,7 +2060,7 @@ protobuf = ">=3.19,<5.0"
 name = "opentelemetry-sdk"
 version = "1.27.0"
 description = "OpenTelemetry Python SDK"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_sdk-1.27.0-py3-none-any.whl", hash = "sha256:365f5e32f920faf0fd9e14fdfd92c086e317eaa5f860edba9cdc17a380d9197d"},
@@ -2076,7 +2076,7 @@ typing-extensions = ">=3.7.4"
 name = "opentelemetry-semantic-conventions"
 version = "0.48b0"
 description = "OpenTelemetry Semantic Conventions"
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "opentelemetry_semantic_conventions-0.48b0-py3-none-any.whl", hash = "sha256:a0de9f45c413a8669788a38569c7e0a11ce6ce97861a628cca785deecdc32a1f"},
@@ -2269,7 +2269,7 @@ testing = ["google-api-core (>=1.31.5)"]
 name = "protobuf"
 version = "4.25.5"
 description = ""
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "protobuf-4.25.5-cp310-abi3-win32.whl", hash = "sha256:5e61fd921603f58d2f5acb2806a929b4675f8874ff5f330b7d6f7e2e784bbcd8"},
@@ -3122,7 +3122,7 @@ files = [
 name = "single-source"
 version = "0.3.0"
 description = "Access to the project version in Python code for PEP 621-style projects"
-optional = true
+optional = false
 python-versions = ">=3.6,<4.0"
 files = [
     {file = "single-source-0.3.0.tar.gz", hash = "sha256:b12705af958ca99d56ea9ce40bd9cc749378f4fe7ad03b1f9067e29daceef27d"},
@@ -3164,13 +3164,13 @@ files = [
 
 [[package]]
 name = "starlette"
-version = "0.41.0"
+version = "0.41.2"
 description = "The little ASGI library that shines."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "starlette-0.41.0-py3-none-any.whl", hash = "sha256:a0193a3c413ebc9c78bff1c3546a45bb8c8bcb4a84cae8747d650a65bd37210a"},
-    {file = "starlette-0.41.0.tar.gz", hash = "sha256:39cbd8768b107d68bfe1ff1672b38a2c38b49777de46d2a592841d58e3bf7c2a"},
+    {file = "starlette-0.41.2-py3-none-any.whl", hash = "sha256:fbc189474b4731cf30fcef52f18a8d070e3f3b46c6a04c97579e85e6ffca942d"},
+    {file = "starlette-0.41.2.tar.gz", hash = "sha256:9834fd799d1a87fd346deb76158668cfa0b0d56f85caefe8268e2d97c3468b62"},
 ]
 
 [package.dependencies]
@@ -3257,13 +3257,13 @@ files = [
 
 [[package]]
 name = "tqdm"
-version = "4.66.5"
+version = "4.66.6"
 description = "Fast, Extensible Progress Meter"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "tqdm-4.66.5-py3-none-any.whl", hash = "sha256:90279a3770753eafc9194a0364852159802111925aa30eb3f9d85b0e805ac7cd"},
-    {file = "tqdm-4.66.5.tar.gz", hash = "sha256:e1020aef2e5096702d8a025ac7d16b1577279c9d63f8375b63083e9a5f0fcbad"},
+    {file = "tqdm-4.66.6-py3-none-any.whl", hash = "sha256:223e8b5359c2efc4b30555531f09e9f2f3589bcd7fdd389271191031b49b7a63"},
+    {file = "tqdm-4.66.6.tar.gz", hash = "sha256:4bdd694238bef1485ce839d67967ab50af8f9272aab687c0d7702a01da0be090"},
 ]
 
 [package.dependencies]
@@ -3440,13 +3440,13 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "uvicorn"
-version = "0.24.0.post1"
+version = "0.32.0"
 description = "The lightning-fast ASGI server."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "uvicorn-0.24.0.post1-py3-none-any.whl", hash = "sha256:7c84fea70c619d4a710153482c0d230929af7bcf76c7bfa6de151f0a3a80121e"},
-    {file = "uvicorn-0.24.0.post1.tar.gz", hash = "sha256:09c8e5a79dc466bdf28dead50093957db184de356fcdc48697bad3bde4c2588e"},
+    {file = "uvicorn-0.32.0-py3-none-any.whl", hash = "sha256:60b8f3a5ac027dcd31448f411ced12b5ef452c646f76f02f8cc3f25d8d26fd82"},
+    {file = "uvicorn-0.32.0.tar.gz", hash = "sha256:f78b36b143c16f54ccdb8190d0a26b5f1901fe5a3c777e1ab29f26391af8551e"},
 ]
 
 [package.dependencies]
@@ -3510,13 +3510,13 @@ test = ["aiohttp (>=3.10.5)", "flake8 (>=5.0,<6.0)", "mypy (>=0.800)", "psutil",
 
 [[package]]
 name = "virtualenv"
-version = "20.27.0"
+version = "20.27.1"
 description = "Virtual Python Environment builder"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "virtualenv-20.27.0-py3-none-any.whl", hash = "sha256:44a72c29cceb0ee08f300b314848c86e57bf8d1f13107a5e671fb9274138d655"},
-    {file = "virtualenv-20.27.0.tar.gz", hash = "sha256:2ca56a68ed615b8fe4326d11a0dca5dfbe8fd68510fb6c6349163bed3c15f2b2"},
+    {file = "virtualenv-20.27.1-py3-none-any.whl", hash = "sha256:f11f1b8a29525562925f745563bfd48b189450f61fb34c4f9cc79dd5aa32a1f4"},
+    {file = "virtualenv-20.27.1.tar.gz", hash = "sha256:142c6be10212543b32c6c45d3d3893dff89112cc588b7d0879ae5a1ec03a47ba"},
 ]
 
 [package.dependencies]
@@ -3586,13 +3586,13 @@ files = [
 
 [[package]]
 name = "werkzeug"
-version = "3.0.4"
+version = "3.0.6"
 description = "The comprehensive WSGI web application library."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "werkzeug-3.0.4-py3-none-any.whl", hash = "sha256:02c9eb92b7d6c06f31a782811505d2157837cea66aaede3e217c7c27c039476c"},
-    {file = "werkzeug-3.0.4.tar.gz", hash = "sha256:34f2371506b250df4d4f84bfe7b0921e4762525762bbd936614909fe25cd7306"},
+    {file = "werkzeug-3.0.6-py3-none-any.whl", hash = "sha256:1bc0c2310d2fbb07b1dd1105eba2f7af72f322e1e455f2f93c993bee8c8a5f17"},
+    {file = "werkzeug-3.0.6.tar.gz", hash = "sha256:a8dd59d4de28ca70471a34cba79bed5f7ef2e036a76b3ab0835474246eb41f8d"},
 ]
 
 [package.dependencies]
@@ -3619,7 +3619,7 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 name = "wrapt"
 version = "1.16.0"
 description = "Module for decorators, wrappers and monkey patching."
-optional = true
+optional = false
 python-versions = ">=3.6"
 files = [
     {file = "wrapt-1.16.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ffa565331890b90056c01db69c0fe634a776f8019c143a5ae265f9c6bc4bd6d4"},
@@ -3714,11 +3714,11 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 type = ["pytest-mypy"]
 
 [extras]
-all = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "msgpack", "msgpack-numpy", "numpy", "opentelemetry-api", "opentelemetry-exporter-otlp", "opentelemetry-sdk", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "single-source", "tenacity", "uvicorn", "watchfiles"]
-image-builder = ["Jinja2", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "requests", "rich", "single-source", "tenacity", "uvicorn"]
-other = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "msgpack", "msgpack-numpy", "numpy", "opentelemetry-api", "opentelemetry-exporter-otlp", "opentelemetry-sdk", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "single-source", "tenacity", "watchfiles"]
+all = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "tenacity", "watchfiles"]
+local = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "tenacity", "watchfiles"]
+other = ["Jinja2", "aiofiles", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "tenacity", "watchfiles"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.13"
-content-hash = "d4b95dadaf55c4f1a147d34b91ec77467e50255501149231997a0c768d5987ea"
+content-hash = "0f9ae7f8a57ac4baaf2e6dab9da6fa928a3ffb35eb97bb98ed5cc598cc20a526"
