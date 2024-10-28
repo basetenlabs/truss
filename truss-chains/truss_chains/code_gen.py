@@ -401,12 +401,16 @@ def _gen_setup_environment_src(
     def_str = "async def" if chainlet_descriptor.setup_environment.is_async else "def"
     parts.append(f"{def_str} setup_environment(self, environment: dict) -> None:")
     maybe_await = "await " if chainlet_descriptor.setup_environment.is_async else ""
-    environment_typed_input = "definitions.Environment.model_validate(environment)"
-    parts.append(
-        _indent(
-            f"{maybe_await}self._chainlet.setup_environment({environment_typed_input})",
-            2,
-        )
+    parts.extend(
+        [
+            _indent(
+                "self._context.environment = definitions.Environment.model_validate(environment)"
+            ),
+            _indent(
+                f"if hasattr(self, '_chainlet'):"
+                f"{maybe_await}self._chainlet.setup_environment()",
+            ),
+        ]
     )
     return _Source(src="\n".join(parts))
 

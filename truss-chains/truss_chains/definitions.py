@@ -42,7 +42,6 @@ CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
 SETUP_ENVIRONMENT_METHOD_NAME = "setup_environment"
-ENVIRONMENT_ARG_NAME = "environment"
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
@@ -419,6 +418,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
     user_env: Mapping[str, str]
+    environment: Optional["Environment"] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
@@ -524,7 +524,7 @@ class DependencyDescriptor(SafeModelNonSerializable):
 
 class Environment(SafeModel):
     # Represents input to setup_environment
-    environment_name: str
+    name: str
     # can add more fields here as we add them to dynamic_config configmap
 
 

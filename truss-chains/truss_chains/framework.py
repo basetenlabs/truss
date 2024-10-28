@@ -309,27 +309,10 @@ def _validate_setup_environment_params(
             f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must be a method, i.e. "
             f"with `{definitions.SELF_ARG_NAME}` argument."
         )
-    if len(params) == 1:
+    if len(params) > 1:
         raise definitions.ChainsUsageError(
-            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have an `{definitions.ENVIRONMENT_ARG_NAME}` argument."
+            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have only one argument: `{definitions.SELF_ARG_NAME}`."
         )
-    if len(params) > 2:
-        raise definitions.ChainsUsageError(
-            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have only two arguments: `{definitions.SELF_ARG_NAME}` and `{definitions.ENVIRONMENT_ARG_NAME}`."
-        )
-    param = params[1]  # Skip self argument.
-    if param.name != definitions.ENVIRONMENT_ARG_NAME:
-        raise definitions.ChainsUsageError(
-            f"Input to `{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must be named `{definitions.ENVIRONMENT_ARG_NAME}`"
-        )
-    if param.annotation == inspect.Parameter.empty:
-        raise definitions.ChainsUsageError(
-            f"Input to `{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` must have a type annotation. For "
-            f"`{cls_name}.{definitions.SETUP_ENVIRONMENT_METHOD_NAME}` parameter "
-            f"`{param.name}` has no type annotation."
-        )
-    if param.annotation != definitions.Environment:
-        raise definitions.ChainsUsageError(f"{param.name} must be of type Environment")
 
 
 def _validate_setup_environment(
@@ -343,7 +326,7 @@ def _validate_setup_environment(
 
     * The name must be `setup_environment`.
     * It can be sync or async or def.
-    * Must only define the `environment` parameter with type `Environment`
+    * Must not define any parameters other than `self`.
     * Must not return anything.
     """
     if not hasattr(cls, definitions.SETUP_ENVIRONMENT_METHOD_NAME):

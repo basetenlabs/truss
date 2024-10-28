@@ -50,6 +50,6 @@ class TrussChainletModel:
     #     return TextToNumOutput((result,))
     #
     # def setup_environment(self, environment: dict) -> None:
-    #     self._chainlet.setup_environment(
-    #         definitions.Environment.model_validate(environment)
-    #     )
+    #     self._context.environment = definitions.Environment.model_validate(environment)
+    #     if hasattr(self, "_chainlet"):
+    #         self._chainlet.setup_environment()
