@@ -49,11 +49,16 @@ def default_config() -> Dict[str, Any]:
 @pytest.fixture
 def trtllm_config(default_config) -> Dict[str, Any]:
     trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+    }
     trtllm_config["trt_llm"] = {
         "build": {
             "base_model": "llama",
-            "max_input_len": 1024,
-            "max_output_len": 1024,
+            "max_seq_len": 2048,
             "max_batch_size": 512,
             "checkpoint_repository": {
                 "source": "HF",

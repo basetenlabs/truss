@@ -410,7 +410,13 @@ def chains():
     """Subcommands for truss chains"""
 
 
-def _make_chains_curl_snippet(run_remote_url: str) -> str:
+def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
+    if environment:
+        idx = run_remote_url.find("deployment")
+        if idx != -1:
+            run_remote_url = (
+                run_remote_url[:idx] + f"environments/{environment}/run_remote"
+            )
     return (
         f"curl -X POST '{run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
@@ -506,6 +512,15 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Replace production chainlets with newly deployed chainlets.",
 )
 @click.option(
+    "--environment",
+    type=str,
+    required=False,
+    help=(
+        "Deploy the chain as a published deployment to the specified environment."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+    ),
+)
+@click.option(
     "--wait/--no-wait",
     type=bool,
     default=True,
@@ -557,6 +572,7 @@ def push_chain(
     dryrun: bool,
     user_env: Optional[str],
     remote: Optional[str],
+    environment: Optional[str],
 ) -> None:
     """
     Deploys a chain remotely.
@@ -597,6 +613,10 @@ def push_chain(
     else:
         user_env_parsed = {}
 
+    if promote and environment:
+        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        console.print(promote_warning, style="yellow")
+
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
         options = chains_def.PushOptionsBaseten.create(
@@ -606,6 +626,7 @@ def push_chain(
             only_generate_trusses=dryrun,
             user_env=user_env_parsed,
             remote=remote,
+            environment=environment,
         )
         service = chains_remote.push(entrypoint_cls, options)
 
@@ -614,7 +635,9 @@ def push_chain(
         return
 
     assert isinstance(service, chains_remote.BasetenChainService)
-    curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
+    curl_snippet = _make_chains_curl_snippet(
+        service.run_remote_url, options.environment
+    )
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
@@ -647,7 +670,10 @@ def push_chain(
             for log in intercepted_logs:
                 console.print(f"\t{log}")
         if success:
-            console.print("Deployment succeeded.", style="bold green")
+            deploy_success_text = "Deployment succeeded."
+            if environment:
+                deploy_success_text = f"Your chain has been deployed into the {options.environment} environment."
+            console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
                 chains_remote.watch(

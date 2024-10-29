@@ -49,11 +49,8 @@ def _push_to_baseten(
     model_name = truss_handle.spec.config.model_name
     assert model_name is not None
     assert bool(_MODEL_NAME_RE.match(model_name))
-    if options.promote and not options.publish:
-        logging.info("`promote=True` overrides `publish` to `True`.")
     logging.info(
-        f"Pushing chainlet `{model_name}` as a truss model on Baseten "
-        f"(publish={options.publish}, promote={options.promote})."
+        f"Pushing chainlet `{model_name}` as a truss model on Baseten (publish={options.publish})"
     )
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
@@ -61,7 +58,6 @@ def _push_to_baseten(
         model_name=model_name,
         trusted=True,
         publish=options.publish,
-        promote=options.promote,
         origin=b10_types.ModelOrigin.CHAINS,
     )
     return cast(b10_service.BasetenService, service)
@@ -327,7 +323,7 @@ def _create_baseten_chain(
         chain_name=baseten_options.chain_name,
         chainlets=chainlet_data,
         publish=baseten_options.publish,
-        promote=baseten_options.promote,
+        environment=baseten_options.environment,
     )
     return BasetenChainService(
         baseten_options.chain_name,

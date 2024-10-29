@@ -649,7 +649,7 @@ class TrussConfig:
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())
 
-    def _validate_quant_format_and_accelerator_for_trt_llm_builder(self) -> None:
+    def _validate_accelerator_for_trt_llm_builder(self) -> None:
         if self.trt_llm and self.trt_llm.build:
             if (
                 self.trt_llm.build.quantization_type
@@ -665,9 +665,16 @@ class TrussConfig:
             ] and self.resources.accelerator.accelerator not in [
                 Accelerator.H100,
                 Accelerator.H100_40GB,
+                Accelerator.L4,
             ]:
                 raise ValueError(
-                    "FP8 quantization is only supported on H100 accelerators"
+                    "FP8 quantization is only supported on L4 and H100 accelerators"
+                )
+            tensor_parallel_count = self.trt_llm.build.tensor_parallel_count
+
+            if tensor_parallel_count != self.resources.accelerator.count:
+                raise ValueError(
+                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
                 )
 
     def validate(self):
@@ -692,7 +699,7 @@ class TrussConfig:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
-        self._validate_quant_format_and_accelerator_for_trt_llm_builder()
+        self._validate_accelerator_for_trt_llm_builder()
 
 
 def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:
