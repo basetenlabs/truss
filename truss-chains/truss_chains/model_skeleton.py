@@ -1,4 +1,5 @@
 import pathlib
+from typing import Optional
 
 import pydantic
 from truss.templates.shared import secrets_resolver
@@ -15,7 +16,11 @@ class TrussChainletModel:
     _chainlet: definitions.ABCChainlet
 
     def __init__(
-        self, config: dict, data_dir: pathlib.Path, secrets: secrets_resolver.Secrets
+        self,
+        config: dict,
+        data_dir: pathlib.Path,
+        secrets: secrets_resolver.Secrets,
+        environment: Optional[dict],
     ) -> None:
         truss_metadata: definitions.TrussMetadata[UserConfigT] = (
             definitions.TrussMetadata[
@@ -24,7 +29,9 @@ class TrussChainletModel:
                 config["model_metadata"][definitions.TRUSS_CONFIG_CHAINS_KEY]
             )
         )
-
+        context_environment: definitions.Environment = (
+            definitions.Environment.model_validate(environment)
+        )
         override_chainlet_to_service_metadata(truss_metadata.chainlet_to_service)
 
         self._context = definitions.DeploymentContext[UserConfigT](
@@ -33,6 +40,7 @@ class TrussChainletModel:
             secrets=secrets,
             data_dir=data_dir,
             user_env=truss_metadata.user_env,
+            environment=context_environment,
         )
 
     # Below illustrated code will be added by code generation.
