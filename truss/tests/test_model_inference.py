@@ -761,6 +761,44 @@ def test_slow_truss():
 
 
 @pytest.mark.integration
+def test_init_with_environment():
+    model = """
+    from typing import Optional
+    class Model:
+        def __init__(self, environment: Optional[dict]):
+            self.environment_name = environment.get("name") if environment else None
+
+        def load(self):
+            print(f"Executing model.load with environment: {self.environment_name}")
+
+        def predict(self, model_input):
+            return self.environment_name
+    """
+    config = "model_name: init-environment-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        # Mimic environment changing to staging
+        staging_env = {"name": "staging"}
+        staging_env_str = json.dumps(staging_env)
+        LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
+        container = tr.docker_run(
+            local_port=8090,
+            detach=True,
+            wait_for_server_ready=True,
+        )
+        assert "Executing model.load with environment: staging" in container.logs()
+        response = requests.post(PREDICT_URL, json={})
+        assert response.json() == "staging"
+        assert response.status_code == 200
+        container.execute(
+            [
+                "bash",
+                "-c",
+                "rm -f /etc/b10_dynamic_config/environment",
+            ]
+        )
+
+
+@pytest.mark.integration
 def test_setup_environment():
     # Test truss that uses setup_environment() without load()
     model = """
