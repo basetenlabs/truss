@@ -26,7 +26,6 @@ from truss.constants import (
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MODEL_DOCKERFILE_NAME,
-    OPENAI_COMPATIBLE_TAG,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -421,8 +420,6 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
                 config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-
-                config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
             else:
                 config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
                 config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
