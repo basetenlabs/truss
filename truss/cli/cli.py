@@ -345,6 +345,9 @@ def whoami(remote: Optional[str]):
     """
     from truss.api import whoami
 
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
     user = whoami(remote)
 
     console.print(f"{user.workspace_name}\{user.user_email}")
