@@ -61,10 +61,7 @@ class TrussSchema(BaseModel):
 
 def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
     parameter_types = list(input_parameters.values())
-
-    if len(parameter_types) > 1:
-        return None
-
+    # In `ArgConfig.from_signature` the arguments are validated.
     input_type = parameter_types[0].annotation
 
     if _annotation_is_pydantic_model(input_type):
