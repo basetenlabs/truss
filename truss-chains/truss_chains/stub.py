@@ -6,11 +6,14 @@ import threading
 import time
 from typing import Any, ClassVar, Mapping, Optional, Type, TypeVar, final
 
-import httpx
 import aiohttp
+import httpx
 import tenacity
 
 from truss_chains import definitions, utils
+
+DEFAULT_MAX_CONNECTIONS = 1000
+DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
 
 
 class BasetenSession:
@@ -18,12 +21,13 @@ class BasetenSession:
 
     _client_cycle_time_sec: ClassVar[int] = 3600 * 1  # 1 hour.
     _client_limits: ClassVar[httpx.Limits] = httpx.Limits(
-        max_connections=1000, max_keepalive_connections=400
+        max_connections=DEFAULT_MAX_CONNECTIONS,
+        max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
     )
     _auth_header: Mapping[str, str]
     _service_descriptor: definitions.ServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
-    _cached_async_client: Optional[tuple[httpx.AsyncClient, int]]
+    _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
         self,
@@ -89,13 +93,15 @@ class BasetenSession:
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
                     connector = aiohttp.TCPConnector(
-                        limit=self._client_limits.max_connections,
+                        limit=DEFAULT_MAX_CONNECTIONS,
                     )
                     self._cached_async_client = (
                         aiohttp.ClientSession(
                             headers=self._auth_header,
                             connector=connector,
-                            timeout=aiohttp.ClientTimeout(total=self._service_descriptor.options.timeout_sec),
+                            timeout=aiohttp.ClientTimeout(
+                                total=self._service_descriptor.options.timeout_sec
+                            ),
                         ),
                         int(time.time()),
                     )
