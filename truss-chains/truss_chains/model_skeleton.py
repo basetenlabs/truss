@@ -4,7 +4,8 @@ from typing import Optional
 import pydantic
 from truss.templates.shared import secrets_resolver
 
-from truss_chains import definitions, utils
+from truss_chains import definitions
+from truss_chains.utils import override_chainlet_to_service_metadata
 
 # Better: in >=3.10 use `TypeAlias`.
 UserConfigT = pydantic.BaseModel
@@ -29,9 +30,9 @@ class TrussChainletModel:
             )
         )
         deployment_environment: Optional[definitions.Environment] = (
-            utils.get_deployment_environment(environment)
+            definitions.Environment.model_validate(environment) if environment else None
         )
-        utils.override_chainlet_to_service_metadata(truss_metadata.chainlet_to_service)
+        override_chainlet_to_service_metadata(truss_metadata.chainlet_to_service)
 
         self._context = definitions.DeploymentContext[UserConfigT](
             user_config=truss_metadata.user_config,
