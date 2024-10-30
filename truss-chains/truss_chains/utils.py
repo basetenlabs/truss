@@ -271,8 +271,8 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
       File "/app/model/Chainlet.py", line 79, in run
         value += self._text_to_num.run(part)
       File "/packages/remote_stubs.py", line 21, in run
-        json_result = self._remote.call_sync(json_args)
-      File "/packages/truss_chains/stub.py", line 37, in call_sync
+        json_result = self._remote.predict_sync(json_args)
+      File "/packages/truss_chains/stub.py", line 37, in predict_sync
         return utils.handle_response(
     ValueError: (showing remote errors, root message at the bottom)
     --> Preceding Remote Cause:
@@ -283,8 +283,8 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
           File "/app/model/Chainlet.py", line 54, in run
             generated_text = self._replicator.run(data)
           File "/packages/remote_stubs.py", line 7, in run
-            json_result = self._remote.call_sync(json_args)
-          File "/packages/truss_chains/stub.py", line 37, in call_sync
+            json_result = self._remote.predict_sync(json_args)
+          File "/packages/truss_chains/stub.py", line 37, in predict_sync
             return utils.handle_response(
         ValueError: (showing remote errors, root message at the bottom)
         --> Preceding Remote Cause:

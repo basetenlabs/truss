@@ -28,14 +28,10 @@ def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
     token = _trace_parent_context.set(
         request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
     )
-    logging.info(
-        f"Set traceparent to {_trace_parent_context.get()} from {request.headers}"
-    )
     try:
         yield
     finally:
         _trace_parent_context.reset(token)
-
 
 
 class BasetenSession:
@@ -130,7 +126,7 @@ class BasetenSession:
         assert self._cached_async_client is not None
         return self._cached_async_client[0]
 
-    def call_sync(self, json_payload):
+    def predict_sync(self, json_payload):
         retrying = tenacity.Retrying(
             stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
             retry=tenacity.retry_if_exception_type(Exception),
@@ -142,9 +138,6 @@ class BasetenSession:
                     logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
                 try:
                     with self._sync_num_requests as num_requests:
-                        logging.info(
-                            f"POST with trace parent: {_trace_parent_context.get()}"
-                        )
                         self._maybe_warn_for_overload(num_requests)
                         resp = self._client_sync().post(
                             self._service_descriptor.predict_url,
@@ -160,7 +153,7 @@ class BasetenSession:
                     self._cached_sync_client = None
                     raise
 
-    async def call_async(self, json_payload):
+    async def predict_async(self, json_payload):
         retrying = tenacity.AsyncRetrying(
             stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
             retry=tenacity.retry_if_exception_type(Exception),
@@ -174,9 +167,6 @@ class BasetenSession:
                     client = await self._client_async()
                     async with self._async_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
-                        logging.info(
-                            f"POST with trace parent: {_trace_parent_context.get()}"
-                        )
                         resp = await client.post(
                             self._service_descriptor.predict_url,
                             json=json_payload,
@@ -209,7 +199,7 @@ class StubBase(abc.ABC):
         class DeployedWhisper(chains.StubBase):
 
             async def run_remote(self, audio_b64: str) -> WhisperOutput:
-                resp = await self._remote.call_async(
+                resp = await self._remote.predict_async(
                     json_payload={"audio": audio_b64})
                 return WhisperOutput(text=resp["text"], language=resp["language"])
 

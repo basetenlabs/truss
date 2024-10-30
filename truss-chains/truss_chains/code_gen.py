@@ -239,9 +239,8 @@ def _stub_endpoint_body_src(
 
     E.g.:
     ```
-    trace_parent: str = trace_parent_context.get()
-    json_result = await self._remote.call_async(
-        SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump(), trace_parent)
+    json_result = await self._remote.predict_async(
+        SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
     return SplitTextOutput.model_validate(json_result).output
     ```
     """
@@ -254,9 +253,9 @@ def _stub_endpoint_body_src(
 
     # Invoke remote.
     if endpoint.is_async:
-        remote_call = f"await self._remote.call_async({inputs})"
+        remote_call = f"await self._remote.predict_async({inputs})"
     else:
-        remote_call = f"self._remote.call_sync({inputs})"
+        remote_call = f"self._remote.predict_sync({inputs})"
 
     parts = [f"json_result = {remote_call}"]
     # Unpack response and parse as pydantic models if needed.
@@ -282,7 +281,7 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
         async def run_remote(
             self, inputs: shared_chainlet.SplitTextInput, extra_arg: int
         ) -> tuple[shared_chainlet.SplitTextOutput, int]:
-            json_result = await self._remote.call_async(
+            json_result = await self._remote.predict_async(
                 SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
             return SplitTextOutput.model_validate(json_result).root
     ```
