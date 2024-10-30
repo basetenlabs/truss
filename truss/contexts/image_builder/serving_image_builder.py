@@ -308,6 +308,7 @@ def generate_docker_server_nginx_config(build_dir, config):
         readiness_endpoint=config.docker_server.readiness_endpoint,
         liveness_endpoint=config.docker_server.liveness_endpoint,
         server_port=config.docker_server.server_port,
+        client_max_body_size='64M'
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
