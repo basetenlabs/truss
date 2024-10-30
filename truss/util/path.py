@@ -88,10 +88,14 @@ def load_trussignore_patterns(
     truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH,
 ) -> List[str]:
     """Load patterns from a .truss_ignore file"""
+    print('truss ignore file')
+    print(truss_ignore_file)
     patterns = []
 
     with truss_ignore_file.open() as f:
         lines = f.readlines()
+        print('lines')
+        print(lines)
 
     for line in lines:
         line = line.strip()

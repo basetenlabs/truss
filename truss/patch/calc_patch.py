@@ -198,6 +198,7 @@ def _calc_changed_paths(
     root_relative_new_paths = set(
         (str(path.relative_to(root)) for path in root.glob("**/*"))
     )
+    print(ignore_patterns)
     unignored_new_paths = calc_unignored_paths(root_relative_new_paths, ignore_patterns)
     previous_root_relative_paths = set(previous_root_path_content_hashes.keys())
     unignored_prev_paths = calc_unignored_paths(
@@ -231,6 +232,8 @@ def calc_unignored_paths(
     ignored_paths = set(
         get_ignored_relative_paths(root_relative_paths, ignore_patterns)
     )
+    print('ignore paths')
+    print(ignored_paths)
     return root_relative_paths - ignored_paths  # type: ignore
 
 
