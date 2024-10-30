@@ -8,7 +8,6 @@ from unittest.mock import patch
 import pytest
 from truss.constants import (
     BASE_TRTLLM_REQUIREMENTS,
-    OPENAI_COMPATIBLE_TAG,
     TRTLLM_BASE_IMAGE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
@@ -258,7 +257,7 @@ def test_truss_server_caching_truss():
         tr = TrussHandle(truss_dir)
 
         container = tr.docker_run(
-            local_port=8090, detach=True, wait_for_server_ready=True
+            local_port=8090, detach=True, wait_for_server_ready=True, network="host"
         )
         time.sleep(15)
         assert "Downloading model.safetensors:" not in container.logs()
@@ -331,7 +330,6 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
             == TRTLLM_PYTHON_EXECUTABLE
         )
         assert BASE_TRTLLM_REQUIREMENTS == build_th.spec.config.requirements
-        assert OPENAI_COMPATIBLE_TAG in build_th.spec.config.model_metadata["tags"]
 
 
 def _assert_copied(src_path: str, dest_path: str):

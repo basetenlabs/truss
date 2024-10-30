@@ -135,7 +135,7 @@ def override_chainlet_to_service_metadata(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ):
     # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
-    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value(
+    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY
     )
     if dynamic_chainlet_config_str:
