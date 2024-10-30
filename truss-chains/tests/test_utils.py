@@ -3,8 +3,7 @@ import json
 
 import pytest
 
-from truss_chains import definitions
-from truss_chains.utils import override_chainlet_to_service_metadata
+from truss_chains import definitions, utils
 
 DYNAMIC_CHAINLET_CONFIG_VALUE = {
     "HelloWorld": {
@@ -34,7 +33,7 @@ def test_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_di
         )
     }
     original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    override_chainlet_to_service_metadata(chainlet_to_service)
+    utils.override_chainlet_to_service_metadata(chainlet_to_service)
 
     assert chainlet_to_service != original_chainlet_to_service
     assert (
@@ -61,7 +60,7 @@ def test_no_override_chainlet_to_service_metadata(
         )
     }
     original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    override_chainlet_to_service_metadata(chainlet_to_service)
+    utils.override_chainlet_to_service_metadata(chainlet_to_service)
 
     assert chainlet_to_service == original_chainlet_to_service
 
@@ -75,6 +74,19 @@ def test_no_config_override_chainlet_to_service_metadata(dynamic_config_mount_di
         )
     }
     original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    override_chainlet_to_service_metadata(chainlet_to_service)
+    utils.override_chainlet_to_service_metadata(chainlet_to_service)
 
     assert chainlet_to_service == original_chainlet_to_service
+
+
+@pytest.mark.parametrize(
+    "environment_data, expected_environment",
+    [
+        (None, None),
+        ({"name": "production"}, definitions.Environment(name="production")),
+        ({"name": "staging"}, definitions.Environment(name="staging")),
+    ],
+)
+def test_get_deployment_environment(environment_data, expected_environment):
+    deployment_environment = utils.get_deployment_environment(environment_data)
+    assert deployment_environment == expected_environment

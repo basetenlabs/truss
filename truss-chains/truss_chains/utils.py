@@ -12,7 +12,17 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
+from typing import (
+    Any,
+    Iterable,
+    Iterator,
+    Mapping,
+    NoReturn,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import aiohttp
 import fastapi
@@ -157,6 +167,14 @@ def override_chainlet_to_service_metadata(
         logging.debug(
             f"No {definitions.DYNAMIC_CHAINLET_CONFIG_KEY} found, skipping overrides."
         )
+
+
+def get_deployment_environment(
+    environment_data: Optional[dict],
+) -> Optional[definitions.Environment]:
+    if environment_data is None:
+        return None
+    return definitions.Environment.model_validate(environment_data)
 
 
 # Error Propagation Utils. #############################################################
