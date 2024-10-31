@@ -110,6 +110,8 @@ class BasetenApi:
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
         chain_environment: Optional[str] = None,
+        chainlet_name: Optional[str] = None,
+        chain_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
@@ -123,6 +125,8 @@ class BasetenApi:
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
                 {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
+                {f'chainlet_name: "{chainlet_name}"' if chainlet_name else ""}
+                {f'chain_name: "{chain_name}"' if chain_name else ""}
             ) {{
                 id,
                 name,

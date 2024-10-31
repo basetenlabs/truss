@@ -252,6 +252,8 @@ def create_truss_service(
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
     chain_environment: Optional[str] = None,
+    chainlet_name: Optional[str] = None,
+    chain_name: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -297,6 +299,8 @@ def create_truss_service(
             deployment_name=deployment_name,
             origin=origin,
             chain_environment=chain_environment,
+            chainlet_name=chainlet_name,
+            chain_name=chain_name,
         )
         return model_version_json["id"], model_version_json["version_id"]
 
