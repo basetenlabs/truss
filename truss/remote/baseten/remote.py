@@ -126,6 +126,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        chain_environment: Optional[str] = None,
     ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -179,6 +180,7 @@ class BasetenRemote(TrussRemote):
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            chain_environment=chain_environment,
         )
 
         return BasetenService(

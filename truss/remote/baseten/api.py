@@ -109,6 +109,7 @@ class BasetenApi:
         is_trusted: bool,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
+        chain_environment: Optional[str] = None
     ):
         query_string = f"""
         mutation {{
@@ -121,6 +122,7 @@ class BasetenApi:
                 is_trusted: {'true' if is_trusted else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
+                {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
             ) {{
                 id,
                 name,
