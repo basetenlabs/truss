@@ -39,6 +39,7 @@ from truss.constants import (
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
+    TRUSSLESS_MAX_PAYLOAD_SIZE
 )
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
@@ -308,7 +309,7 @@ def generate_docker_server_nginx_config(build_dir, config):
         readiness_endpoint=config.docker_server.readiness_endpoint,
         liveness_endpoint=config.docker_server.liveness_endpoint,
         server_port=config.docker_server.server_port,
-        client_max_body_size='64M'
+        client_max_body_size=TRUSSLESS_MAX_PAYLOAD_SIZE,
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
