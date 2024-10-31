@@ -57,6 +57,11 @@ class CheckpointRepository(BaseModel):
     repo: str
 
 
+class TrussTRTLLMBatchSchedulerPolicy(Enum):
+    MAX_UTILIZATION = 0
+    GUARANTEED_NO_EVICT = 1
+
+
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel
     max_seq_len: int
@@ -78,6 +83,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
     enable_chunked_context: bool = False
+    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
+        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
+    )
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):

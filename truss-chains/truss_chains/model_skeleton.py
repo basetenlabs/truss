@@ -20,7 +20,9 @@ class TrussChainletModel:
         config: dict,
         data_dir: pathlib.Path,
         secrets: secrets_resolver.Secrets,
-        environment: Optional[dict],
+        environment: Optional[
+            dict
+        ] = None,  # TODO: Remove the default value once all truss versions are synced up.
     ) -> None:
         truss_metadata: definitions.TrussMetadata[UserConfigT] = (
             definitions.TrussMetadata[
