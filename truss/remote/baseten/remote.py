@@ -288,13 +288,13 @@ class BasetenRemote(TrussRemote):
                 "No development model found. Run `truss push` then try again."
             )
 
-        print('target directory')
-        # assuming this becomes truss_dir
-        print(target_directory)
         watch_path = Path(target_directory)
+        # assuming this becomes truss_dir
         truss_ignore_file = watch_path / ".truss_ignore"
         if truss_ignore_file.exists():
-            truss_ignore_patterns = load_trussignore_patterns(truss_ignore_file=truss_ignore_file)
+            truss_ignore_patterns = load_trussignore_patterns(
+                truss_ignore_file=truss_ignore_file
+            )
         else:
             truss_ignore_patterns = load_trussignore_patterns()
 
