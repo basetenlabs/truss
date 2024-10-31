@@ -38,8 +38,8 @@ from truss.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
-    TRUSSLESS_MAX_PAYLOAD_SIZE
 )
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
