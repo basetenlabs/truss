@@ -340,6 +340,17 @@ class Assets:
         return self._spec.copy(deep=True)
 
 
+class ChainletOptions(SafeModelNonSerializable):
+    """
+    Args:
+        enable_b10_tracing: enables baseten-internal trace data collection. This
+          helps baseten engineers better analyze chain performance in case of issues.
+          It is independent of a potentially user-configured tracing instrumentation.
+    """
+
+    enable_b10_tracing: bool = True
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -363,6 +374,7 @@ class RemoteConfig(SafeModelNonSerializable):
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None
+    options: ChainletOptions = ChainletOptions()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()

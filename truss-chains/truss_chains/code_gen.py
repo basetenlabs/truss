@@ -577,6 +577,7 @@ def _make_truss_config(
     config.model_name = model_name
     config.model_class_filename = _MODEL_FILENAME
     config.model_class_name = _MODEL_CLS_NAME
+    config.runtime.enable_tracing_data = chains_config.options.enable_b10_tracing
     # Compute.
     compute = chains_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)
