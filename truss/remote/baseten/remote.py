@@ -37,7 +37,7 @@ from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import TrussRemote
 from truss.truss_config import ModelServer
 from truss.truss_handle import TrussHandle
-from truss.util.path import is_ignored, load_trussignore_patterns
+from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 from watchfiles import watch
 
 
@@ -289,14 +289,7 @@ class BasetenRemote(TrussRemote):
             )
 
         watch_path = Path(target_directory)
-        # assuming this becomes truss_dir
-        truss_ignore_file = watch_path / ".truss_ignore"
-        if truss_ignore_file.exists():
-            truss_ignore_patterns = load_trussignore_patterns(
-                truss_ignore_file=truss_ignore_file
-            )
-        else:
-            truss_ignore_patterns = load_trussignore_patterns()
+        truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(watch_path)
 
         def watch_filter(_, path):
             return not is_ignored(

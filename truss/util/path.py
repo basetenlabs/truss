@@ -84,6 +84,14 @@ def build_truss_target_directory(stub: str) -> Path:
     return target_directory_path
 
 
+def load_trussignore_patterns_from_truss_dir(truss_dir: Path) -> List[str]:
+    truss_ignore_file = truss_dir / ".truss_ignore"
+    if truss_ignore_file.exists():
+        return load_trussignore_patterns(truss_ignore_file)
+    # default to the truss-defined ignore patterns
+    return load_trussignore_patterns()
+
+
 def load_trussignore_patterns(
     truss_ignore_file: Path = FIXED_TRUSS_IGNORE_PATH,
 ) -> List[str]:
