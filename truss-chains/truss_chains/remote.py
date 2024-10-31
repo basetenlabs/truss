@@ -127,7 +127,10 @@ def _push_service(
         )
     elif isinstance(options, definitions.PushOptionsBaseten):
         with utils.log_level(logging.INFO):
-            service = _push_to_baseten(truss_dir, options, chainlet_descriptor.name)
+            # We send the display_name of the chainlet in subsequent steps.
+            service = _push_to_baseten(
+                truss_dir, options, chainlet_descriptor.display_name
+            )
     else:
         raise NotImplementedError(options)
 
