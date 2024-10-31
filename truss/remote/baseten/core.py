@@ -296,6 +296,7 @@ def create_truss_service(
             is_trusted=is_trusted,
             deployment_name=deployment_name,
             origin=origin,
+            chain_environment=chain_environment,
         )
         return model_version_json["id"], model_version_json["version_id"]
 

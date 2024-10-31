@@ -59,7 +59,7 @@ def _push_to_baseten(
         trusted=True,
         publish=options.publish,
         origin=b10_types.ModelOrigin.CHAINS,
-        chain_environment=options.environment
+        chain_environment=options.environment,
     )
     return cast(b10_service.BasetenService, service)
 

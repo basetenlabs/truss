@@ -109,7 +109,7 @@ class BasetenApi:
         is_trusted: bool,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
-        chain_environment: Optional[str] = None
+        chain_environment: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
