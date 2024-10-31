@@ -11,7 +11,7 @@ from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_handle import TrussHandle
-from truss.util.path import load_trussignore_patterns
+from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
 
@@ -189,11 +189,7 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     truss_dir = truss_handle._spec.truss_dir
 
     # check for a truss_ignore file and read the ignore patterns if it exists
-    truss_ignore_file = truss_dir / ".truss_ignore"
-    if truss_ignore_file.exists():
-        ignore_patterns = load_trussignore_patterns(truss_ignore_file=truss_ignore_file)
-    else:
-        ignore_patterns = load_trussignore_patterns()
+    ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
 
     try:
         temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
