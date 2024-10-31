@@ -835,4 +835,12 @@ def _prepare_init_args(klass, config, data_dir, secrets, lazy_data_resolver):
         model_init_params["secrets"] = secrets
     if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
         model_init_params["lazy_data_resolver"] = lazy_data_resolver.fetch()
+    if _signature_accepts_keyword_arg(signature, "environment"):
+        environment = None
+        environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+        )
+        if environment_str:
+            environment = json.loads(environment_str)
+        model_init_params["environment"] = environment
     return model_init_params

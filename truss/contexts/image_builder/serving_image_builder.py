@@ -26,7 +26,6 @@ from truss.constants import (
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MODEL_DOCKERFILE_NAME,
-    OPENAI_COMPATIBLE_TAG,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -39,6 +38,7 @@ from truss.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.contexts.image_builder.cache_warmer import (
@@ -309,6 +309,7 @@ def generate_docker_server_nginx_config(build_dir, config):
         readiness_endpoint=config.docker_server.readiness_endpoint,
         liveness_endpoint=config.docker_server.liveness_endpoint,
         server_port=config.docker_server.server_port,
+        client_max_body_size=TRUSSLESS_MAX_PAYLOAD_SIZE,
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
@@ -421,8 +422,6 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
                 config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-
-                config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
             else:
                 config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
                 config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)

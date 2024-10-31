@@ -761,6 +761,60 @@ def test_slow_truss():
 
 
 @pytest.mark.integration
+def test_init_environment_parameter():
+    # Test a truss deployment that is associated with an environment
+    model = """
+    from typing import Optional
+    class Model:
+        def __init__(self, **kwargs):
+            self._config = kwargs["config"]
+            self._environment = kwargs["environment"]
+            self.environment_name = self._environment.get("name") if self._environment else None
+
+        def load(self):
+            print(f"Executing model.load with environment: {self.environment_name}")
+
+        def predict(self, model_input):
+            return self.environment_name
+    """
+    config = "model_name: init-environment-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        # Mimic environment changing to staging
+        staging_env = {"name": "staging"}
+        staging_env_str = json.dumps(staging_env)
+        LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
+        container = tr.docker_run(
+            local_port=8090,
+            detach=True,
+            wait_for_server_ready=True,
+        )
+        assert "Executing model.load with environment: staging" in container.logs()
+        response = requests.post(PREDICT_URL, json={})
+        assert response.json() == "staging"
+        assert response.status_code == 200
+        container.execute(
+            [
+                "bash",
+                "-c",
+                "rm -f /etc/b10_dynamic_config/environment",
+            ]
+        )
+
+    # Test a truss deployment with no associated environment
+    config = "model_name: init-no-environment-truss"
+    with ensure_kill_all(), temp_truss(model, config) as tr:
+        container = tr.docker_run(
+            local_port=8090,
+            detach=True,
+            wait_for_server_ready=True,
+        )
+        assert "Executing model.load with environment: None" in container.logs()
+        response = requests.post(PREDICT_URL, json={})
+        assert response.json() is None
+        assert response.status_code == 200
+
+
+@pytest.mark.integration
 def test_setup_environment():
     # Test truss that uses setup_environment() without load()
     model = """

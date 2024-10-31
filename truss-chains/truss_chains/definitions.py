@@ -390,6 +390,13 @@ class ServiceDescriptor(SafeModel):
     options: RPCOptions
 
 
+class Environment(SafeModel):
+    """The environment in which the chainlet is deployed."""
+
+    name: str
+    # can add more fields here as we add them to dynamic_config configmap
+
+
 class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     """Bundles config values and resources needed to instantiate Chainlets.
 
@@ -417,6 +424,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
     user_env: Mapping[str, str]
+    environment: Optional[Environment] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
