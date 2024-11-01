@@ -391,7 +391,11 @@ class ServiceDescriptor(SafeModel):
 
 
 class Environment(SafeModel):
-    """The environment in which the chainlet is deployed."""
+    """The environment the chainlet is deployed in.
+
+    Args:
+        name: The name of the environment.
+    """
 
     name: str
     # can add more fields here as we add them to dynamic_config configmap
@@ -417,6 +421,8 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         user_env: These values can be provided to
           the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
+        environment: The environment that the chainlet is deployed in.
+          None if the chainlet is not associated with an environment.
     """
 
     data_dir: Optional[pathlib.Path] = None
