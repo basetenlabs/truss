@@ -86,7 +86,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
-    default_max_tokens: Optional[int]
+    default_max_tokens: Optional[int] = None
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
