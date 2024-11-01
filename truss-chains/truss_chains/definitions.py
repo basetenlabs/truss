@@ -35,7 +35,7 @@ SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
-
+OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
 # Below arg names must correspond to `definitions.ABCChainlet`.
 ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
@@ -340,6 +340,20 @@ class Assets:
         return self._spec.copy(deep=True)
 
 
+class ChainletOptions(SafeModelNonSerializable):
+    """
+    Args:
+        enable_b10_tracing: enables baseten-internal trace data collection. This
+          helps baseten engineers better analyze chain performance in case of issues.
+          It is independent of a potentially user-configured tracing instrumentation.
+          Turning this on, could add performance overhead.
+        env_variables: static environment variables available to the deployed chainlet.
+    """
+
+    enable_b10_tracing: bool = False
+    env_variables: Mapping[str, str] = {}
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -363,6 +377,7 @@ class RemoteConfig(SafeModelNonSerializable):
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None
+    options: ChainletOptions = ChainletOptions()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -391,7 +406,11 @@ class ServiceDescriptor(SafeModel):
 
 
 class Environment(SafeModel):
-    """The environment in which the chainlet is deployed."""
+    """The environment the chainlet is deployed in.
+
+    Args:
+        name: The name of the environment.
+    """
 
     name: str
     # can add more fields here as we add them to dynamic_config configmap
@@ -417,6 +436,8 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         user_env: These values can be provided to
           the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
+        environment: The environment that the chainlet is deployed in.
+          None if the chainlet is not associated with an environment.
     """
 
     data_dir: Optional[pathlib.Path] = None

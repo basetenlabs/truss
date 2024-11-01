@@ -43,7 +43,7 @@ _MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
 
 
 def _push_to_baseten(
-    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten
+    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten, chainlet_name: str
 ) -> b10_service.BasetenService:
     truss_handle = truss.load(str(truss_dir))
     model_name = truss_handle.spec.config.model_name
@@ -59,6 +59,9 @@ def _push_to_baseten(
         trusted=True,
         publish=options.publish,
         origin=b10_types.ModelOrigin.CHAINS,
+        chain_environment=options.environment,
+        chainlet_name=chainlet_name,
+        chain_name=options.chain_name,
     )
     return cast(b10_service.BasetenService, service)
 
@@ -124,7 +127,10 @@ def _push_service(
         )
     elif isinstance(options, definitions.PushOptionsBaseten):
         with utils.log_level(logging.INFO):
-            service = _push_to_baseten(truss_dir, options)
+            # We send the display_name of the chainlet in subsequent steps.
+            service = _push_to_baseten(
+                truss_dir, options, chainlet_descriptor.display_name
+            )
     else:
         raise NotImplementedError(options)
 
