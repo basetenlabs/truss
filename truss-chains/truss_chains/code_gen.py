@@ -404,14 +404,16 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
     input_model_name = _get_input_model_name(chainlet_descriptor.name)
     output_model_name = _get_output_model_name(chainlet_descriptor.name)
+    imports.add("import starlette.requests")
+    imports.add("from truss_chains import stub")
     parts.append(
-        f"{def_str} predict(self, inputs: {input_model_name}) "
-        f"-> {output_model_name}:"
+        f"{def_str} predict(self, inputs: {input_model_name}, "
+        f"request: starlette.requests.Request) -> {output_model_name}:"
     )
     # Add error handling context manager:
     parts.append(
         _indent(
-            f"with utils.exception_to_http_error("
+            f"with stub.trace_parent(request), utils.exception_to_http_error("
             f'include_stack=True, chainlet_name="{chainlet_descriptor.name}"):'
         )
     )
@@ -448,10 +450,6 @@ def _gen_truss_chainlet_model(
             for stmt in node.body
         )
     )
-
-    imports.add("import logging")
-    imports.add("from truss_chains import utils")
-
     class_definition: libcst.ClassDef = utils.expect_one(
         node
         for node in skeleton_tree.body
@@ -499,6 +497,7 @@ def _gen_truss_chainlet_file(
     (chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / "__init__.py").touch()
     imports: set[str] = set()
     src_parts: list[str] = []
+
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
         _update_src(maybe_stub_src, src_parts, imports)
 
@@ -578,6 +577,8 @@ def _make_truss_config(
     config.model_name = model_name
     config.model_class_filename = _MODEL_FILENAME
     config.model_class_name = _MODEL_CLS_NAME
+    config.runtime.enable_tracing_data = chains_config.options.enable_b10_tracing
+    config.environment_variables = dict(chains_config.options.env_variables)
     # Compute.
     compute = chains_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)

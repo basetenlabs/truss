@@ -29,7 +29,11 @@ def test_chain():
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
 
         # Call without providing values for default arguments.
-        response = requests.post(url, json={"length": 30, "num_partitions": 3})
+        response = requests.post(
+            url,
+            json={"length": 30, "num_partitions": 3},
+            headers={"traceparent": "TEST TEST TEST"},
+        )
         print(response.content)
         assert response.status_code == 200
         assert response.json() == [

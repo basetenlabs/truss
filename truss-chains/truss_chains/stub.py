@@ -1,19 +1,37 @@
 import abc
 import asyncio
+import contextlib
+import contextvars
 import logging
 import ssl
 import threading
 import time
-from typing import Any, ClassVar, Mapping, Optional, Type, TypeVar, final
+from typing import Any, ClassVar, Iterator, Mapping, Optional, Type, TypeVar, final
 
 import aiohttp
 import httpx
+import starlette.requests
 import tenacity
 
 from truss_chains import definitions, utils
 
 DEFAULT_MAX_CONNECTIONS = 1000
 DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
+
+_trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "trace_parent"
+)
+
+
+@contextlib.contextmanager
+def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
+    token = _trace_parent_context.set(
+        request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
+    )
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
 
 
 class BasetenSession:
@@ -122,7 +140,11 @@ class BasetenSession:
                     with self._sync_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
                         resp = self._client_sync().post(
-                            self._service_descriptor.predict_url, json=json_payload
+                            self._service_descriptor.predict_url,
+                            json=json_payload,
+                            headers={
+                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+                            },
                         )
                     return utils.handle_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
@@ -146,7 +168,11 @@ class BasetenSession:
                     async with self._async_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
                         resp = await client.post(
-                            self._service_descriptor.predict_url, json=json_payload
+                            self._service_descriptor.predict_url,
+                            json=json_payload,
+                            headers={
+                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+                            },
                         )
                     return await utils.handle_async_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
