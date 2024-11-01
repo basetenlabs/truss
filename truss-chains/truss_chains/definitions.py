@@ -346,9 +346,12 @@ class ChainletOptions(SafeModelNonSerializable):
         enable_b10_tracing: enables baseten-internal trace data collection. This
           helps baseten engineers better analyze chain performance in case of issues.
           It is independent of a potentially user-configured tracing instrumentation.
+          Turning this on, could add performance overhead.
+        env_variables: static environment variables available to the deployed chainlet.
     """
 
-    enable_b10_tracing: bool = True
+    enable_b10_tracing: bool = False
+    env_variables: Mapping[str, str] = {}
 
 
 class RemoteConfig(SafeModelNonSerializable):

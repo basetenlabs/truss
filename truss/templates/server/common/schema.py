@@ -155,11 +155,11 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     2. Union[Awaitable[PydanticBaseModel], AsyncGenerator]
     So for Awaitables, we need to extract the base class from the Awaitable type
     """
+
     return [
-        retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg
+        retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg  # type: ignore[misc]  # Types are ok per filter condition.
         for arg in union_args
-        if _is_awaitable_type(arg)
-        or (isinstance(arg, type) and issubclass(arg, BaseModel))
+        if _is_awaitable_type(arg) or _annotation_is_pydantic_model(arg)
     ]
 
 

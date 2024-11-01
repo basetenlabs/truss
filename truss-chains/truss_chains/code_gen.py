@@ -407,7 +407,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     imports.add("import starlette.requests")
     imports.add("from truss_chains import stub")
     parts.append(
-        f"{def_str} predict(self, inputs: {input_model_name},"
+        f"{def_str} predict(self, inputs: {input_model_name}, "
         f"request: starlette.requests.Request) -> {output_model_name}:"
     )
     # Add error handling context manager:
@@ -578,6 +578,7 @@ def _make_truss_config(
     config.model_class_filename = _MODEL_FILENAME
     config.model_class_name = _MODEL_CLS_NAME
     config.runtime.enable_tracing_data = chains_config.options.enable_b10_tracing
+    config.environment_variables = dict(chains_config.options.env_variables)
     # Compute.
     compute = chains_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)
