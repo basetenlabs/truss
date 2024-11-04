@@ -375,6 +375,8 @@ def _validate_and_describe_endpoint(
             _ErrorKind.MISSING_API_ERROR,
             location,
         )
+        # Return a "neutral dummy" if validation fails, this allows to safely
+        # continue checking for more errors.
         return definitions.EndpointAPIDescriptor(
             input_args=[], output_types=[], is_async=False, is_generator=False
         )
@@ -389,6 +391,13 @@ def _validate_and_describe_endpoint(
 
     if not inspect.isfunction(endpoint_method):
         _collect_error("`Endpoints must be a method.", _ErrorKind.TYPE_ERROR, location)
+        # If it's not a function, it might be a class var and subsequent inspections
+        # fail.
+        # Return a "neutral dummy" if validation fails, this allows to safely
+        # continue checking for more errors.
+        return definitions.EndpointAPIDescriptor(
+            input_args=[], output_types=[], is_async=False, is_generator=False
+        )
     signature = inspect.signature(endpoint_method)
     input_args = _validate_endpoint_params(
         list(signature.parameters.values()), location
