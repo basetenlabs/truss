@@ -27,6 +27,7 @@ from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
+from truss.truss_handle import TrussHandle
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -554,6 +555,19 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
     @property
     def display_name(self) -> str:
         return self.chainlet_cls.display_name
+
+
+class ChainletArtifact(SafeModel):
+    path: pathlib.Path
+    is_entrypoint: bool
+    descriptor: ChainletAPIDescriptor
+
+
+class ChainletPushPayload(SafeModel):
+    truss_handle: TrussHandle
+    is_entrypoint: bool
+    model_name: str
+    name: str
 
 
 class StackFrame(SafeModel):

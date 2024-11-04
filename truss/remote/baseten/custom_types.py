@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 
 import pydantic
 
@@ -22,3 +23,21 @@ class ChainletData(pydantic.BaseModel):
 class ModelOrigin(Enum):
     BASETEN = "BASETEN"
     CHAINS = "CHAINS"
+
+
+class OracleData(pydantic.BaseModel):
+    name: str
+    s3_key: str
+    config: str
+    semver_bump: Optional[str] = "MINOR"
+    client_version: str
+    is_trusted: bool
+    deployment_name: Optional[str] = None
+    origin: Optional[ModelOrigin] = None
+    environment: Optional[str] = None
+
+
+class ChainletDataAtomic(pydantic.BaseModel):
+    name: str
+    is_entrypoint: bool
+    oracle: OracleData

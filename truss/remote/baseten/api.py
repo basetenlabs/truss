@@ -33,6 +33,42 @@ def _chainlet_data_to_graphql_mutation(chainlet: b10_types.ChainletData):
         """
 
 
+def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData):
+    args = [
+        f'name: "{oracle.name}"',
+        f's3_key: "{oracle.s3_key}"',
+        f'config: "{oracle.config}"',
+        f'client_version: "{oracle.client_version}"',
+        f'is_trusted: "{str(oracle.is_trusted).lower()}"',
+    ]
+
+    if oracle.semver_bump:
+        args.append(f'semver_bump: "{oracle.semver_bump}"')
+
+    if oracle.deployment_name:
+        args.append(f'version_name: "{oracle.deployment_name}"')
+
+    if oracle.origin:
+        args.append(f'model_origin: "{oracle.origin.value}"')
+
+    if oracle.environment:
+        args.append(f'environment_name: "{oracle.environment}"')
+
+    return f"""{{ {", ".join(args)} }}"""
+
+
+def _chainlet_data_atomic_to_graphql_mutation(chainlet: b10_types.ChainletDataAtomic):
+    oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
+
+    args = [
+        f'name: "{chainlet.name}"',
+        f"is_entrypoint: {str(chainlet.is_entrypoint).lower()}",
+        f"oracle: {oracle_data_string}",
+    ]
+
+    return f"""{{ {", ".join(args)} }}"""
+
+
 class BasetenApi:
     class GraphQLErrorCodes(Enum):
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
@@ -223,6 +259,37 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_chain"]
 
+    def deploy_chain_atomic(
+        self,
+        name: str,
+        chainlet_data: List[b10_types.ChainletDataAtomic],
+    ):
+        chainlets_string = ", ".join(
+            [
+                _chainlet_data_atomic_to_graphql_mutation(chainlet)
+                for chainlet in chainlet_data
+            ]
+        )
+
+        query_string = f"""
+            mutation {{
+                deploy_chain_atomic(
+                    name: "{name}",
+                    chainlets: [{chainlets_string}],
+                ) {{
+                    id
+                    chain_id
+                    chain_deployment_id
+                    entrypoint_model_id
+                    entrypoint_model_version_id
+                }}
+            }}
+        """
+
+        resp = self._post_graphql_query(query_string)
+
+        return resp["data"]["deploy_chain_atomic"]
+
     def deploy_draft_chain(
         self, name: str, chainlet_data: List[b10_types.ChainletData]
     ):
@@ -243,6 +310,36 @@ class BasetenApi:
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_draft_chain"]
+
+    def deploy_draft_chain_atomic(
+        self,
+        name: str,
+        chainlet_data: List[b10_types.ChainletDataAtomic],
+    ):
+        chainlets_string = ", ".join(
+            [
+                _chainlet_data_atomic_to_graphql_mutation(chainlet)
+                for chainlet in chainlet_data
+            ]
+        )
+
+        query_string = f"""
+            mutation {{
+                deploy_draft_chain_atomic(
+                    name: "{name}",
+                    chainlets: [{chainlets_string}],
+                ) {{
+                    chain_id
+                    chain_deployment_id
+                    entrypoint_model_id
+                    entrypoint_model_version_id
+                }}
+            }}
+        """
+
+        resp = self._post_graphql_query(query_string)
+
+        return resp["data"]["deploy_draft_chain_atomic"]
 
     def deploy_chain_deployment(
         self,
@@ -268,6 +365,38 @@ class BasetenApi:
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_chain_deployment"]
+
+    def deploy_chain_deployment_atomic(
+        self,
+        chain_id: str,
+        chainlet_data: List[b10_types.ChainletDataAtomic],
+        environment: Optional[str] = None,
+    ):
+        chainlets_string = ", ".join(
+            [
+                _chainlet_data_atomic_to_graphql_mutation(chainlet)
+                for chainlet in chainlet_data
+            ]
+        )
+
+        query_string = f"""
+            mutation {{
+                deploy_chain_deployment_atomic(
+                    chain_id: "{chain_id}",
+                    chainlets: [{chainlets_string}],
+                    {f'environment_name: "{environment}"' if environment else ""}
+                ) {{
+                    chain_id
+                    chain_deployment_id
+                    entrypoint_model_id
+                    entrypoint_model_version_id
+                }}
+            }}
+        """
+
+        resp = self._post_graphql_query(query_string)
+
+        return resp["data"]["deploy_chain_deployment_atomic"]
 
     def get_chains(self):
         query_string = """

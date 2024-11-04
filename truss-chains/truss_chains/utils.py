@@ -131,6 +131,9 @@ def get_free_port() -> int:
         return port
 
 
+# NOTE(dynamic-chainlet-config): Predict URLs
+# for services that belong to a Chainlet are
+# auto-populated through dynamic config.
 def override_chainlet_to_service_metadata(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ):

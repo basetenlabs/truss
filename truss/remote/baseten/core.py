@@ -63,6 +63,14 @@ class TrussWatchState(typing.NamedTuple):
     patches: Optional[TrussPatches]
 
 
+class ChainDeploymentHandleAtomic(typing.NamedTuple):
+    chain_id: str
+    chain_deployment_id: str
+    is_draft: bool
+    entrypoint_model_id: str
+    entrypoint_model_version_id: str
+
+
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
     """
     Check if a chain with the given name exists in the Baseten remote.
@@ -127,6 +135,47 @@ def create_chain(
     return ChainDeploymentHandle(
         chain_id=response["chain_id"],
         chain_deployment_id=response["chain_deployment_id"],
+        is_draft=is_draft,
+    )
+
+
+def create_chain_atomic(
+    api: BasetenApi,
+    chain_id: Optional[str],
+    chain_name: str,
+    chainlets: List[b10_types.ChainletDataAtomic],
+    is_draft: bool,
+    environment: Optional[str],
+):
+    if is_draft:
+        res = api.deploy_draft_chain_atomic(chain_name, chainlets)
+    elif chain_id:
+        # This is the only case where promote has relevance, since
+        # if there is no chain already, the first deployment will
+        # already be production, and only published deployments can
+        # be promoted.
+        try:
+            res = api.deploy_chain_deployment_atomic(chain_id, chainlets, environment)
+        except ApiError as e:
+            if (
+                e.graphql_error_code
+                == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+            ):
+                raise ValueError(
+                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
+                ) from e
+
+            raise e
+    elif environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+        raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
+    else:
+        res = api.deploy_chain_atomic(chain_name, chainlets)
+
+    return ChainDeploymentHandleAtomic(
+        chain_id=res["chain_id"],
+        chain_deployment_id=res["chain_deployment_id"],
+        entrypoint_model_id=res["entrypoint_model_id"],
+        entrypoint_model_version_id=res["entrypoint_model_version_id"],
         is_draft=is_draft,
     )
 
