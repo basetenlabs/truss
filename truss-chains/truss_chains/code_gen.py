@@ -636,9 +636,6 @@ def gen_truss_chainlet(
     chainlet_display_name_to_url: Mapping[str, str],
     user_env: Mapping[str, str],
 ) -> pathlib.Path:
-    dependencies = framework.global_chainlet_registry.get_dependencies(
-        chainlet_descriptor
-    )
     # Filter needed services and customize options.
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
@@ -672,7 +669,9 @@ def gen_truss_chainlet(
                 f"Python file name `{_MODEL_FILENAME}` is reserved and cannot be used."
             )
     chainlet_file = _gen_truss_chainlet_file(
-        chainlet_dir, chainlet_descriptor, dependencies
+        chainlet_dir,
+        chainlet_descriptor,
+        framework.get_dependencies(chainlet_descriptor),
     )
     remote_config = chainlet_descriptor.chainlet_cls.remote_config
     if remote_config.docker_image.data_dir:

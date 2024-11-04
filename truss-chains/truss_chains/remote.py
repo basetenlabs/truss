@@ -50,7 +50,8 @@ def _push_to_baseten(
     assert model_name is not None
     assert bool(_MODEL_NAME_RE.match(model_name))
     logging.info(
-        f"Pushing chainlet `{model_name}` as a truss model on Baseten (publish={options.publish})"
+        f"Pushing chainlet `{model_name}` as a truss model on "
+        f"Baseten (publish={options.publish})"
     )
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
@@ -147,20 +148,16 @@ def _get_ordered_dependencies(
 
     def add_needed_chainlets(chainlet: definitions.ChainletAPIDescriptor):
         needed_chainlets.add(chainlet)
-        for chainlet_descriptor in framework.global_chainlet_registry.get_dependencies(
-            chainlet
-        ):
+        for chainlet_descriptor in framework.get_dependencies(chainlet):
             needed_chainlets.add(chainlet_descriptor)
             add_needed_chainlets(chainlet_descriptor)
 
     for chainlet_cls in chainlets:
-        add_needed_chainlets(
-            framework.global_chainlet_registry.get_descriptor(chainlet_cls)
-        )
-    # Iterating over the registry ensures topological ordering.
+        add_needed_chainlets(framework.get_descriptor(chainlet_cls))
+    # Get dependencies in topological order.
     return [
         descr
-        for descr in framework.global_chainlet_registry.chainlet_descriptors
+        for descr in framework.get_ordered_descriptors()
         if descr in needed_chainlets
     ]
 
@@ -433,6 +430,7 @@ class _Pusher:
             raise NotImplementedError(self._options)
 
 
+@framework.raise_validation_errors_before
 def push(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.PushOptions,
@@ -692,6 +690,7 @@ class _Watcher:
                 self._console.print("👀 Watching for new changes.", style="blue")
 
 
+@framework.raise_validation_errors_before
 def watch(
     source: pathlib.Path,
     entrypoint: Optional[str],

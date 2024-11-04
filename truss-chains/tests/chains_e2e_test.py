@@ -1,14 +1,10 @@
 import logging
-import re
 from pathlib import Path
-from typing import List
 
-import pydantic
 import pytest
 import requests
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 
-import truss_chains as chains
 from truss_chains import definitions, framework, public_api, remote, utils
 
 utils.setup_dev_logging(logging.DEBUG)
@@ -128,114 +124,3 @@ async def test_chain_local():
             match="Chainlets cannot be naively instantiated",
         ):
             await entrypoint().run_remote(length=20, num_partitions=5)
-
-
-# Chainlet Initialization Guarding #####################################################
-
-
-def test_raises_without_depends():
-    with pytest.raises(definitions.ChainsUsageError, match="chains.provide"):
-
-        class WithoutDepends(chains.ChainletBase):
-            def __init__(self, chainlet1):
-                self.chainlet1 = chainlet1
-
-            def run_remote(self) -> str:
-                return self.chainlet1.run_remote()
-
-
-class Chainlet1(chains.ChainletBase):
-    def run_remote(self) -> str:
-        return self.__class__.name
-
-
-class Chainlet2(chains.ChainletBase):
-    def run_remote(self) -> str:
-        return self.__class__.name
-
-
-class InitInInit(chains.ChainletBase):
-    def __init__(self, chainlet2=chains.depends(Chainlet2)):
-        self.chainlet1 = Chainlet1()
-        self.chainlet2 = chainlet2
-
-    def run_remote(self) -> str:
-        return self.chainlet1.run_remote()
-
-
-class InitInRun(chains.ChainletBase):
-    def run_remote(self) -> str:
-        Chainlet1()
-        return "abc"
-
-
-def foo():
-    return Chainlet1()
-
-
-class InitWithFn(chains.ChainletBase):
-    def __init__(self):
-        foo()
-
-    def run_remote(self) -> str:
-        return self.__class__.name
-
-
-def test_raises_init_in_init():
-    match = "Chainlets cannot be naively instantiated"
-    with pytest.raises(definitions.ChainsRuntimeError, match=match):
-        with chains.run_local():
-            InitInInit()
-
-
-def test_raises_init_in_run():
-    match = "Chainlets cannot be naively instantiated"
-    with pytest.raises(definitions.ChainsRuntimeError, match=match):
-        with chains.run_local():
-            chain = InitInRun()
-            chain.run_remote()
-
-
-def test_raises_init_in_function():
-    match = "Chainlets cannot be naively instantiated"
-    with pytest.raises(definitions.ChainsRuntimeError, match=match):
-        with chains.run_local():
-            InitWithFn()
-
-
-def test_raises_depends_usage():
-    class InlinedDepends(chains.ChainletBase):
-        def __init__(self):
-            self.chainlet1 = chains.depends(Chainlet1)
-
-        def run_remote(self) -> str:
-            return self.chainlet1.run_remote()
-
-    match = (
-        "`chains.depends(Chainlet1)` was used, but not as "
-        "an argument to the `__init__`"
-    )
-    with pytest.raises(definitions.ChainsRuntimeError, match=re.escape(match)):
-        with chains.run_local():
-            chain = InlinedDepends()
-            chain.run_remote()
-
-
-class SomeModel(pydantic.BaseModel):
-    foo: int
-
-
-def test_raises_unsupported_arg_type_list_object():
-    with pytest.raises(definitions.ChainsUsageError, match="Unsupported I/O type"):
-
-        class UnsupportedArgType(chains.ChainletBase):
-            def run_remote(self) -> list[pydantic.BaseModel]:
-                return [SomeModel(foo=0)]
-
-
-def test_raises_unsupported_arg_type_list_object_legacy():
-    with pytest.raises(definitions.ChainsUsageError, match="Unsupported I/O type"):
-
-        class UnsupportedArgType(chains.ChainletBase):
-            def run_remote(self) -> List[pydantic.BaseModel]:
-                return [SomeModel(foo=0)]
