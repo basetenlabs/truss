@@ -35,7 +35,6 @@ DEFAULT_DATA_DIRECTORY = "data"
 DEFAULT_EXAMPLES_FILENAME = "examples.yaml"
 DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
-DEFAULT_NUM_WORKERS = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
 DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
 
@@ -145,14 +144,21 @@ class ModelCache:
 @dataclass
 class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
-    num_workers: int = DEFAULT_NUM_WORKERS
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
+    enable_debug_logs: bool = False
 
     @staticmethod
     def from_dict(d):
         predict_concurrency = d.get("predict_concurrency", DEFAULT_PREDICT_CONCURRENCY)
-        num_workers = d.get("num_workers", DEFAULT_NUM_WORKERS)
+        num_workers = d.get("num_workers", 1)
+        if num_workers != 1:
+            raise ValueError(
+                "After truss 0.9.49 only 1 worker per server is allowed. "
+                "For concurrency utilize asyncio, autoscaling replicas "
+                "and as a last resort thread/process pools inside the "
+                "truss model."
+            )
         streaming_read_timeout = d.get(
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
@@ -160,7 +166,6 @@ class Runtime:
 
         return Runtime(
             predict_concurrency=predict_concurrency,
-            num_workers=num_workers,
             streaming_read_timeout=streaming_read_timeout,
             enable_tracing_data=enable_tracing_data,
         )
@@ -168,7 +173,6 @@ class Runtime:
     def to_dict(self):
         return {
             "predict_concurrency": self.predict_concurrency,
-            "num_workers": self.num_workers,
             "streaming_read_timeout": self.streaming_read_timeout,
             "enable_tracing_data": self.enable_tracing_data,
         }
