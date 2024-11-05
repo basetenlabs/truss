@@ -73,13 +73,35 @@ def trtllm_config(default_config) -> Dict[str, Any]:
 @pytest.fixture
 def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
     spec_dec_config = trtllm_config
-    spec_dec_config["trt_llm"]["runtime"] = {"num_draft_tokens": 4}
-    spec_dec_config["trt_llm"]["build"].update(
-        {
-            "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
-            "max_draft_len": 10,
-        }
-    )
+    spec_dec_config["trt_llm"] = {
+        "target": {
+            "build": {
+                "base_model": "llama",
+                "max_seq_len": 2048,
+                "max_batch_size": 512,
+                "checkpoint_repository": {
+                    "source": "HF",
+                    "repo": "meta/llama4-500B",
+                },
+                "gather_all_token_logits": False,
+                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
+                "max_draft_len": 10,
+            },
+            "runtime": {"num_draft_tokens": 4},
+        },
+        "draft": {
+            "build": {
+                "base_model": "llama",
+                "max_seq_len": 2048,
+                "max_batch_size": 512,
+                "checkpoint_repository": {
+                    "source": "HF",
+                    "repo": "meta/llama4-500B",
+                },
+            },
+            "runtime": {"kv_cache_free_gpu_mem_fraction": 0.9},
+        },
+    }
     return spec_dec_config
 
 
@@ -522,16 +544,22 @@ def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
-def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
+def test_to_dict_trtllm(verbose, expect_equal, trtllm_config, trtllm_spec_dec_config):
     assert (
         TrussConfig.from_dict(trtllm_config).to_dict(verbose=verbose) == trtllm_config
+    ) == expect_equal
+    assert (
+        TrussConfig.from_dict(trtllm_spec_dec_config).to_dict(verbose=verbose)
+        == trtllm_spec_dec_config
     ) == expect_equal
 
 
 @pytest.mark.parametrize("should_raise", [False, True])
-def test_to_dict_spec_dec_trtllm(should_raise, trtllm_spec_dec_config):
+def test_from_dict_spec_dec_trtllm(should_raise, trtllm_spec_dec_config):
     if should_raise:
-        trtllm_spec_dec_config["trt_llm"]["build"]["speculative_decoding_mode"] = None
+        trtllm_spec_dec_config["trt_llm"]["target"]["build"][
+            "speculative_decoding_mode"
+        ] = None
         with pytest.raises(ValueError):
             TrussConfig.from_dict(trtllm_spec_dec_config)
     else:

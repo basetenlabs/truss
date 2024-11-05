@@ -85,8 +85,8 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         TrussTRTLLMPluginConfiguration()
     )
     num_builder_gpus: Optional[int] = None
-    speculative_decoding_mode: Optional[TrussSpecDecMode]
-    max_draft_len: Optional[int]
+    speculative_decoding_mode: Optional[TrussSpecDecMode] = None
+    max_draft_len: Optional[int] = None
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
@@ -101,7 +101,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     enable_chunked_context: bool = False
-    num_draft_tokens: Optional[int]
+    num_draft_tokens: Optional[int] = None
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
@@ -113,6 +113,11 @@ class TRTLLMConfiguration(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
+        self._spec_dec_configs = [
+            self.build.speculative_decoding_mode,
+            self.build.max_draft_len,
+            self.runtime.num_draft_tokens,
+        ]
         self._validate_minimum_required_configuration()
         self._validate_kv_cache_flags()
         if self.build.checkpoint_repository.source == CheckpointSource.HF:
@@ -152,13 +157,8 @@ class TRTLLMConfiguration(BaseModel):
             ) from e
 
     def _validate_spec_dec(self):
-        spec_dec_configs = [
-            self.build.speculative_decoding_mode,
-            self.build.max_draft_len,
-            self.runtime.num_draft_tokens,
-        ]
-        if any(spec_dec_configs):
-            if not all(spec_dec_configs):
+        if any(self._spec_dec_configs):
+            if not all(self._spec_dec_configs):
                 raise ValueError(
                     "Speculative Decoding requires all of `trt_llm.build.speculative_decoding`, `trt_llm.build.max_draft_len`, and `trt_llm.runtime.num_draft_tokens` to be configured."
                 )
@@ -168,6 +168,10 @@ class TRTLLMConfiguration(BaseModel):
         if self.build is not None:
             return True
         return False
+
+    @property
+    def uses_spec_dec(self):
+        return all(self._spec_dec_configs)
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here

@@ -33,6 +33,8 @@ class Extension:
     """
 
     def __init__(self, *args, **kwargs):
+        # model_factory -> () Model:
+        #     spec dec or regular
         self._model = Model(*args, **kwargs)
 
     def model_override(self):
