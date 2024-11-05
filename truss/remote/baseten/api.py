@@ -428,6 +428,7 @@ class BasetenApi:
         result = resp["data"]["stage_patch_for_draft_truss"]
         if not result["succeeded"]:
             logging.debug(f"Unsuccessful response: {result}")
+            return result
 
         return self._patch_draft_truss(model_name)
 
