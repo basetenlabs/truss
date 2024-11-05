@@ -388,8 +388,8 @@ class BasetenRemote(TrussRemote):
             needs_full_deploy = resp.get("needs_full_deploy", None)
             if needs_full_deploy:
                 message = (
-                    f"Model {model_name} is not able to be patched, "
-                    f"use `truss push` to deploy."
+                    f"Model {model_name} is not able to be patched: `{resp['error']}`. "
+                    f"Use `truss push` to deploy."
                 )
             else:
                 message = (
