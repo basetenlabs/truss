@@ -151,7 +151,7 @@ class Runtime:
         num_workers = d.get("num_workers", 1)
         if num_workers != 1:
             raise ValueError(
-                "After truss 0.9.41 only 1 worker per server is allowed. "
+                "After truss 0.9.49 only 1 worker per server is allowed. "
                 "For concurrency utilize asyncio, autoscaling replicas "
                 "and as a last resort thread/process pools inside the "
                 "truss model."

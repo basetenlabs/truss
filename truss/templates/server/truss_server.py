@@ -325,7 +325,11 @@ class TrussServer:
         return app
 
     def start(self):
-        log_level = "DEBUG" if self._config["runtime"]["enable_debug_logs"] else "INFO"
+        log_level = (
+            "DEBUG"
+            if self._config["runtime"].get("enable_debug_logs", False)
+            else "INFO"
+        )
         cfg = uvicorn.Config(
             self.create_application(),
             # We hard-code the http parser as h11 (the default) in case the user has
