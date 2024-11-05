@@ -57,9 +57,13 @@ class CheckpointRepository(BaseModel):
     repo: str
 
 
-class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
-    MAX_UTILIZATION = "max_utilization"
-    GUARANTEED_NO_EVICT = "guaranteed_no_evict"
+class TrussTRTLLMBatchSchedulerPolicy(Enum):
+    MAX_UTILIZATION = 0
+    GUARANTEED_NO_EVICT = 1
+
+
+class TrussSpecDecMode(str, Enum):
+    DRAFT_EXTERNAL: str = "DRAFT_TOKENS_EXTERNAL"
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
@@ -80,13 +84,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
-    kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
-    enable_chunked_context: bool = False
-    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
-        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
-    )
-    default_max_tokens: Optional[int] = None
+    speculative_decoding_mode: Optional[TrussSpecDecMode]
+    max_draft_len: Optional[int]
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
@@ -98,15 +98,17 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         return v
 
 
-class TrussTRTLLMServingConfiguration(BaseModel):
-    engine_repository: str
-    tokenizer_repository: str
-    tensor_parallel_count: int = 1
-    pipeline_parallel_count: int = 1
+class TrussTRTLLMRuntimeConfiguration(BaseModel):
+    kv_cache_free_gpu_mem_fraction: float = 0.9
+    enable_chunked_context: bool = False
+    num_draft_tokens: Optional[int]
+    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
+        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
+    )
 
 
 class TRTLLMConfiguration(BaseModel):
-    serve: Optional[TrussTRTLLMServingConfiguration] = None
+    runtime: Optional[TrussTRTLLMRuntimeConfiguration] = None
     build: Optional[TrussTRTLLMBuildConfiguration] = None
 
     def __init__(self, **data):
@@ -115,21 +117,13 @@ class TRTLLMConfiguration(BaseModel):
         self._validate_kv_cache_flags()
         if self.build.checkpoint_repository.source == CheckpointSource.HF:
             self._validate_hf_repo_id()
+        self._validate_spec_dec()
 
     # In pydantic v2 this would be `@model_validator(mode="after")` and
     # the __init__ override can be removed.
     def _validate_minimum_required_configuration(self):
-        if not self.serve and not self.build:
-            raise ValueError("Either serve or build configurations must be provided")
-        if self.serve and self.build:
-            raise ValueError("Both serve and build configurations cannot be provided")
-        if self.serve is not None:
-            if (self.serve.engine_repository is None) ^ (
-                self.serve.tokenizer_repository is None
-            ):
-                raise ValueError(
-                    "Both engine_repository and tokenizer_repository must be provided"
-                )
+        if not self.build:
+            raise ValueError("Build configuration must be provided")
         return self
 
     def _validate_kv_cache_flags(self):
@@ -156,6 +150,18 @@ class TRTLLMConfiguration(BaseModel):
             raise ValueError(
                 f"HuggingFace repository validation failed: {str(e)}"
             ) from e
+
+    def _validate_spec_dec(self):
+        spec_dec_configs = [
+            self.build.speculative_decoding_mode,
+            self.build.max_draft_len,
+            self.runtime.num_draft_tokens,
+        ]
+        if any(spec_dec_configs):
+            if not all(spec_dec_configs):
+                raise ValueError(
+                    "Speculative Decoding requires all of `trt_llm.build.speculative_decoding`, `trt_llm.build.max_draft_len`, and `trt_llm.runtime.num_draft_tokens` to be configured."
+                )
 
     @property
     def requires_build(self):

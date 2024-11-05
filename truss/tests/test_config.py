@@ -6,7 +6,7 @@ from typing import Any, Dict
 import pytest
 import yaml
 
-from truss.config.trt_llm import TrussTRTLLMQuantizationType
+from truss.config.trt_llm import TrussSpecDecMode, TrussTRTLLMQuantizationType
 from truss.custom_types import ModelFrameworkType
 from truss.truss_config import (
     DEFAULT_CPU,
@@ -68,6 +68,19 @@ def trtllm_config(default_config) -> Dict[str, Any]:
         }
     }
     return trtllm_config
+
+
+@pytest.fixture
+def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
+    spec_dec_config = trtllm_config
+    spec_dec_config["trt_llm"]["runtime"] = {"num_draft_tokens": 4}
+    spec_dec_config["trt_llm"]["build"].update(
+        {
+            "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
+            "max_draft_len": 10,
+        }
+    )
+    return spec_dec_config
 
 
 @pytest.mark.parametrize(
@@ -513,6 +526,16 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config):
     assert (
         TrussConfig.from_dict(trtllm_config).to_dict(verbose=verbose) == trtllm_config
     ) == expect_equal
+
+
+@pytest.mark.parametrize("should_raise", [False, True])
+def test_to_dict_spec_dec_trtllm(should_raise, trtllm_spec_dec_config):
+    if should_raise:
+        trtllm_spec_dec_config["trt_llm"]["build"]["speculative_decoding_mode"] = None
+        with pytest.raises(ValueError):
+            TrussConfig.from_dict(trtllm_spec_dec_config)
+    else:
+        TrussConfig.from_dict(trtllm_spec_dec_config)
 
 
 def test_from_yaml_invalid_requirements_configuration():
