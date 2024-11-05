@@ -6,8 +6,6 @@ import boto3
 from boto3.s3.transfer import TransferConfig
 from rich.progress import Progress
 
-os.environ["AWS_CONFIG_FILE"] = ""
-
 
 def base64_encoded_json_str(obj):
     return base64.b64encode(str.encode(json.dumps(obj))).decode("utf-8")
