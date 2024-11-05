@@ -54,15 +54,24 @@ class TextReplicator(chains.ChainletBase):
         return data * self.user_config.multiplier
 
 
-class SideEffectOnly(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
+class SideEffectBase(chains.ChainletBase):
     default_user_config = DummyUserConfig(multiplier=2)
 
     def __init__(self, context=chains.depends_context()):
         self.user_config = context.user_config
 
     def run_remote(self) -> None:
-        print("I'm have no input and no outputs, I just print.")
+        print(f"I'm have no input and no outputs, I just print: {self.user_config}")
+
+
+class SideEffectOnly(SideEffectBase):
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
+
+    def __init__(self, context=chains.depends_context()):
+        super().__init__(context=context)
+
+    def run_remote(self) -> None:
+        return super().run_remote()
 
 
 class TextToNum(chains.ChainletBase):
