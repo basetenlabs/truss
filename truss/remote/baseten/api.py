@@ -407,13 +407,40 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    def patch_draft_truss_two_step(self, model_name, patch_request):
+        patch = base64_encoded_json_str(patch_request.to_dict())
+        query_string = f"""
+        mutation {{
+        stage_patch_for_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+                    patch: "{patch}",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        result = resp["data"]["stage_patch_for_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Unsuccessful response: {result}")
+
+        return self._patch_draft_truss(model_name)
+
     def patch_draft_truss(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())
+        return self._patch_draft_truss(model_name, patch)
+
+    def _patch_draft_truss(self, model_name, patch: Optional[str] = None):
         query_string = f"""
         mutation {{
         patch_draft_truss(name: "{model_name}",
                     client_version: "TRUSS",
-                    patch: "{patch}",
+                    {f'patch: "{patch}",' if patch else ""}
     ) {{
             id,
             name,

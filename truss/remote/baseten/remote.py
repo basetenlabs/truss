@@ -370,9 +370,11 @@ class BasetenRemote(TrussRemote):
         try:
             if console:
                 with console.status("Applying patch..."):
-                    resp = self._api.patch_draft_truss(model_name, patch_request)
+                    resp = self._api.patch_draft_truss_two_step(
+                        model_name, patch_request
+                    )
             else:
-                resp = self._api.patch_draft_truss(model_name, patch_request)
+                resp = self._api.patch_draft_truss_two_step(model_name, patch_request)
 
         except ReadTimeout:
             return PatchResult(
