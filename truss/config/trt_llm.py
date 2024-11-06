@@ -58,8 +58,8 @@ class CheckpointRepository(BaseModel):
 
 
 class TrussTRTLLMBatchSchedulerPolicy(Enum):
-    MAX_UTILIZATION = 0
-    GUARANTEED_NO_EVICT = 1
+    MAX_UTILIZATION = "max_utilization"
+    GUARANTEED_NO_EVICT = "guaranteed_no_evict"
 
 
 class TrussSpecDecMode(str, Enum):
