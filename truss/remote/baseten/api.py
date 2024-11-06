@@ -427,21 +427,41 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         result = resp["data"]["stage_patch_for_draft_truss"]
         if not result["succeeded"]:
-            logging.debug(f"Unsuccessful response: {result}")
+            logging.debug(f"Failed to stage patch: {result}")
             return result
+        logging.debug("Succesfully staged patch. Syncing patch to truss...")
 
-        return self._patch_draft_truss(model_name)
+        return self._sync_draft_truss(model_name)
+
+    def _sync_draft_truss(self, model_name):
+        query_string = f"""
+        mutation {{
+        sync_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        result = resp["data"]["sync_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Failed to sync patch: {result}")
+        return result
 
     def patch_draft_truss(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())
-        return self._patch_draft_truss(model_name, patch)
 
-    def _patch_draft_truss(self, model_name, patch: Optional[str] = None):
         query_string = f"""
         mutation {{
         patch_draft_truss(name: "{model_name}",
                     client_version: "TRUSS",
-                    {f'patch: "{patch}",' if patch else ""}
+                    patch: "{patch}",
     ) {{
             id,
             name,
