@@ -64,7 +64,7 @@ class SideEffectBase(chains.ChainletBase):
         print(f"I'm have no input and no outputs, I just print: {self.user_config}")
 
 
-class SideEffectOnly(SideEffectBase):
+class SideEffectOnlySubclass(SideEffectBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
 
     def __init__(self, context=chains.depends_context()):
@@ -80,7 +80,7 @@ class TextToNum(chains.ChainletBase):
     def __init__(
         self,
         replicator: TextReplicator = chains.depends(TextReplicator),
-        side_effect=chains.depends(SideEffectOnly),
+        side_effect=chains.depends(SideEffectOnlySubclass),
     ) -> None:
         self._replicator = replicator
         self._side_effect = side_effect

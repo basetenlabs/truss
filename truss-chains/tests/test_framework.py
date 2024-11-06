@@ -93,6 +93,18 @@ def test_raises_depends_usage():
             chain.run_remote()
 
 
+# The problem with supporting helper functions in `run_local` is that the stack trace
+# looks similar to the forbidden one in `InitInRun`.
+@pytest.mark.skip(reason="Helper functions not supported yet.")
+def test_ok_with_subclass_and_helper_fn():
+    def build():
+        return Chainlet1()
+
+    with chains.run_local():
+        chain = build()
+        print(chain.run_remote())
+
+
 # Test sub-classing (incl. detection of naive chainlet instantiation). #################
 
 
@@ -147,7 +159,8 @@ class CorrectChain(chains.ChainletBase):
         return await self.a.run_remote() + " " + await self.b.run_remote()
 
 
-framework.raise_validation_errors()  # Make sure there are no other validations errors.
+# Make sure there are no other validations errors from above definitions..
+framework.raise_validation_errors()
 
 
 def test_raises_init_in_init_subclass():
@@ -165,18 +178,6 @@ def test_ok_with_subclass():
         assert chain.b.added_value == "added_value"
         result = asyncio.run(chain.run_remote())
         assert result == "BaseChainlet DerivedChainlet"
-
-
-# The issue with supporting helper functions is that the stack trace looks
-# similar to the forbidden one in `InitInRun`.
-@pytest.mark.skip(reason="Helper functions not supported yet.")
-def test_ok_with_subclass_and_helper_fn():
-    def build():
-        return CorrectChain()
-
-    with chains.run_local():
-        chain = build()
-        print(asyncio.run(chain.run_remote()))
 
 
 # Assert that Chain(let) definitions are validated #####################################

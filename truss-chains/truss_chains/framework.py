@@ -241,7 +241,7 @@ def _instantiation_error_msg(cls_name: str, location: Optional[str] = None) -> s
         f"add them as init argument. See {_DOCS_URL_CHAINING}.\n"
         f"2. For local / debug execution, use the `{run_local.__name__}`-"
         f"context. See {_DOCS_URL_LOCAL}. You cannot use helper functions to "
-        "instantiate the chain in this case.\n"
+        "instantiate the Chain in this case.\n"
         "3. Push the chain and call the remote endpoint.\n"
         "Example of correct `__init__` with dependencies:\n"
         f"{_example_chainlet_code()}"
@@ -852,7 +852,7 @@ def _create_modified_init_for_local(
 
     def _detect_naive_instantiations(
         stack: list[inspect.FrameInfo], levels_below_run_local: int
-    ):
+    ) -> None:
         # The goal is to find cases where a chainlet is directly instantiated
         # in a place that is not immediately inside the `run_local`-contextmanager.
         # In particular chainlets being instantiated in the `__init__` or `run_remote`
@@ -885,7 +885,7 @@ def _create_modified_init_for_local(
         #   for example Chainlet `A` tries to create an instance of `B` inside its
         #   `__init__` the `self` args are two different instances.
         substack = stack[:levels_below_run_local]
-        parts = ["-------- Validation Stack --------"]
+        parts = ["-------- Chainlet Instantiation Stack --------"]
         # Track the owner classes encountered in the stack to detect invalid scenarios
         transformed_stack = []
         for frame in substack:
@@ -929,12 +929,16 @@ def _create_modified_init_for_local(
         if len(parts) > 1:
             logging.debug("\n".join(parts))
 
+        # Analyze the stack after preparing relevant information.
         for i in range(len(transformed_stack) - 1):
             func_name, self_value, _ = transformed_stack[i]
             up_func_name, up_self_value, up_frame = transformed_stack[i + 1]
             if func_name != _INIT_LOCAL_NAME:
-                continue  # OK, we only validate `__init_local_` invocations.
+                continue  # OK, we only validate `__init_local__` invocations.
+            # We are in `__init_local__`. Now check who and how called it.
             if up_func_name == _INIT_LOCAL_NAME:
+                # Note: in this case `self` in the current frame is different then
+                # self in the parent frame, since a new instance is created.
                 continue  # Ok, populating `cls_to_instance`.
             if up_func_name == _INIT_NAME and self_value == up_self_value:
                 continue  # OK, call to `super().__init__()`.
