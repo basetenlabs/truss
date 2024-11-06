@@ -28,6 +28,7 @@ from truss.remote.baseten.core import (
     get_dev_version,
     get_dev_version_from_versions,
     get_model_versions,
+    get_most_recently_completed_patch,
     get_prod_version_from_versions,
     upload_truss,
 )
@@ -360,21 +361,43 @@ class BasetenRemote(TrussRemote):
                 "Failed to calculate patch. Change type might not be supported.",
             )
 
-        if (
-            patch_request.prev_hash == patch_request.next_hash
-            or len(patch_request.patch_ops) == 0
-        ):
+        # if the user closed truss watch in a state where their local is not sync'd with the truss server
+        # we need to ensure that we update the server to have the most recent hash
+        most_recently_completed_patch = get_most_recently_completed_patch(
+            self._api,
+            model_name,  # type: ignore
+        )
+        next_hash = (
+            None
+            if most_recently_completed_patch is None
+            else most_recently_completed_patch["next_hash"]
+        )
+        requires_sync = next_hash is not None and truss_hash != next_hash
+        should_create_patch_and_sync = (
+            patch_request.prev_hash != patch_request.next_hash
+            and len(patch_request.patch_ops) > 0
+        )
+        is_synced = not requires_sync and not should_create_patch_and_sync
+        if is_synced:
             return PatchResult(
                 PatchStatus.SKIPPED, "No changes observed, skipping patching."
             )
         try:
             if console:
                 with console.status("Applying patch..."):
+                    if should_create_patch_and_sync:
+                        resp = self._api.patch_draft_truss_two_step(
+                            model_name, patch_request
+                        )
+                    else:
+                        resp = self._api.sync_draft_truss(model_name)
+            else:
+                if should_create_patch_and_sync:
                     resp = self._api.patch_draft_truss_two_step(
                         model_name, patch_request
                     )
-            else:
-                resp = self._api.patch_draft_truss_two_step(model_name, patch_request)
+                else:
+                    resp = self._api.sync_draft_truss(model_name)
 
         except ReadTimeout:
             return PatchResult(

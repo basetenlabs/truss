@@ -344,6 +344,19 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    def get_patches(self, model_name: str):
+        query_string = f"""
+        {{
+            patches(name: "{model_name}") {{
+                next_hash
+                next_signature
+                completed_at
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
     def get_model(self, model_name):
         query_string = f"""
         {{
@@ -431,9 +444,9 @@ class BasetenApi:
             return result
         logging.debug("Succesfully staged patch. Syncing patch to truss...")
 
-        return self._sync_draft_truss(model_name)
+        return self.sync_draft_truss(model_name)
 
-    def _sync_draft_truss(self, model_name):
+    def sync_draft_truss(self, model_name):
         query_string = f"""
         mutation {{
         sync_draft_truss(name: "{model_name}",

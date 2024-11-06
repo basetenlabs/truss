@@ -178,6 +178,29 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     return get_dev_version_from_versions(versions)
 
 
+def get_most_recently_completed_patch(
+    api: BasetenApi, model_name: str
+) -> Optional[dict]:
+    """Queries the Baseten API and returns a dict representing the most recently
+    completed patch for the given model_id.
+
+    Args:
+        api: BasetenApi instance
+        model_id: ID of the model to get the most recently completed patch for
+
+    Returns:
+        The most recently completed patch of the model
+    """
+    patches = api.get_patches(model_name)["patches"]
+    if not patches:
+        return None
+    completed_patches = [p for p in patches if p["completed_at"]]
+    if not completed_patches:
+        return None
+
+    return max([p for p in completed_patches], key=lambda p: p["completed_at"])
+
+
 def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published
