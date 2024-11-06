@@ -675,8 +675,8 @@ class TrussConfig:
         def _validate_trt_llm_keys(self) -> None:
             if isinstance(self.trt_llm, Dict):
                 if list(self.trt_llm.keys()) != [
-                    TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME,
                     TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
+                    TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME,
                 ]:
                     raise ValueError(
                         f"Speculative Decoding TRT-LLM config requires keys `{TRTLLM_SPEC_DEC_TARGET_MODEL_NAME}` and `{TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME}`"
