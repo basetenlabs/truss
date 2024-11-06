@@ -9,6 +9,17 @@ if TYPE_CHECKING:
 from truss.truss_handle import TrussHandle
 
 
+class RemoteUser:
+    """Class to hold information about the remote user"""
+
+    workspace_name: str
+    user_email: str
+
+    def __init__(self, workspace_name: str, user_email: str):
+        self.workspace_name = workspace_name
+        self.user_email = user_email
+
+
 class TrussService(ABC):
     """
     Define the abstract base class for a TrussService.
@@ -206,6 +217,16 @@ class TrussRemote(ABC):
         Args:
             truss_handle: The TrussHandle to push to the remote service.
             **kwargs: Additional keyword arguments for the push operation.
+
+        """
+
+    @abstractmethod
+    def whoami(self) -> RemoteUser:
+        """
+        Returns account information for the current user.
+
+        This method should be implemented in subclasses and return a RemoteUser.
+
 
         """
 

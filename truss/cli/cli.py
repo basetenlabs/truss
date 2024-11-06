@@ -335,6 +335,28 @@ def login(api_key: Optional[str]):
 
 
 @truss_cli.command()
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to check whoami.",
+)
+@error_handling
+def whoami(remote: Optional[str]):
+    """
+    Shows user information and exit.
+    """
+    from truss.api import whoami
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    user = whoami(remote)
+
+    console.print(f"{user.workspace_name}\{user.user_email}")
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
