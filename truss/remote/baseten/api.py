@@ -456,7 +456,6 @@ class BasetenApi:
 
     def patch_draft_truss(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())
-
         query_string = f"""
         mutation {{
         patch_draft_truss(name: "{model_name}",

@@ -858,11 +858,10 @@ class TrussHandle:
         if patch_ops is None:
             return None
 
-        next_hash = directory_content_hash(self._truss_dir, ignore_patterns)
         return PatchDetails(
             prev_signature=prev_sign,
             prev_hash=prev_truss_hash,
-            next_hash=next_hash,
+            next_hash=directory_content_hash(self._truss_dir, ignore_patterns),
             next_signature=calc_truss_signature(self._truss_dir, ignore_patterns),
             patch_ops=patch_ops,
         )
