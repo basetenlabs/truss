@@ -162,7 +162,7 @@ class TRTLLMConfiguration(BaseModel):
         if any(self._spec_dec_configs):
             if not all(self._spec_dec_configs):
                 raise ValueError(
-                    "Speculative Decoding requires all of `trt_llm.build.speculative_decoding`, `trt_llm.build.max_draft_len`, and `trt_llm.runtime.num_draft_tokens` to be configured."
+                    "Speculative Decoding requires all of `build.speculative_decoding`, `build.max_draft_len`, and `runtime.num_draft_tokens` to be configured."
                 )
 
     @property

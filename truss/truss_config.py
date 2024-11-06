@@ -10,7 +10,11 @@ from truss.config.trt_llm import (
     TRTLLMConfiguration,
     TrussTRTLLMQuantizationType,
 )
-from truss.constants import HTTP_PUBLIC_BLOB_BACKEND, TRTLLM_SPEC_DEC_TARGET_MODEL_NAME
+from truss.constants import (
+    HTTP_PUBLIC_BLOB_BACKEND,
+    TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME,
+    TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
+)
 from truss.custom_types import ModelFrameworkType
 from truss.errors import ValidationError
 from truss.util.data_structures import transform_optional
@@ -670,9 +674,12 @@ class TrussConfig:
     def _validate_trt_llm_config(self) -> None:
         def _validate_trt_llm_keys(self) -> None:
             if isinstance(self.trt_llm, Dict):
-                if list(self.trt_llm.keys()) != ["target", "draft"]:
+                if list(self.trt_llm.keys()) != [
+                    TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME,
+                    TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
+                ]:
                     raise ValueError(
-                        "Speculative Decoding TRT-LLM config requires keys `target` and `draft`"
+                        f"Speculative Decoding TRT-LLM config requires keys `{TRTLLM_SPEC_DEC_TARGET_MODEL_NAME}` and `{TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME}`"
                     )
 
         def _validate_accelerator_for_trt_llm_builder(self):
