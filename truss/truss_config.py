@@ -10,7 +10,7 @@ from truss.config.trt_llm import (
     TRTLLMConfiguration,
     TrussTRTLLMQuantizationType,
 )
-from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
+from truss.constants import HTTP_PUBLIC_BLOB_BACKEND, TRTLLM_SPEC_DEC_TARGET_MODEL_NAME
 from truss.custom_types import ModelFrameworkType
 from truss.errors import ValidationError
 from truss.util.data_structures import transform_optional
@@ -567,7 +567,7 @@ class TrussConfig:
     def parsed_trt_llm_config(self) -> Optional[TRTLLMConfiguration]:
         if self.trt_llm:
             if isinstance(self.trt_llm, Dict):
-                return next(iter(self.trt_llm.values()))
+                return self.trt_llm.get(TRTLLM_SPEC_DEC_TARGET_MODEL_NAME)
             return self.trt_llm
         return None
 
