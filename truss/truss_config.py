@@ -667,15 +667,23 @@ class TrussConfig:
     def clone(self):
         return TrussConfig.from_dict(self.to_dict())
 
-    def _validate_accelerator_for_trt_llm_builder(self) -> None:
-        if self.trt_llm:  # mypy: disable-error-code="union-attr"
-            it: Iterable[TRTLLMConfiguration]
+    def _validate_trt_llm_config(self) -> None:
+        def _validate_trt_llm_keys(self) -> None:
             if isinstance(self.trt_llm, Dict):
-                it = iter(self.trt_llm.values())
-            else:
-                it = [self.trt_llm]
-            for trt_llm_config in it:
-                if trt_llm_config.build:
+                if list(self.trt_llm.keys()) != ["target", "draft"]:
+                    raise ValueError(
+                        "Speculative Decoding TRT-LLM config requires keys `target` and `draft`"
+                    )
+
+        def _validate_accelerator_for_trt_llm_builder(self):
+            if self.trt_llm:  # mypy: disable-error-code="union-attr"
+                it: Iterable[TRTLLMConfiguration]
+                if isinstance(self.trt_llm, Dict):
+                    it = iter(self.trt_llm.values())
+
+                else:
+                    it = [self.trt_llm]
+                for trt_llm_config in it:
                     if (
                         trt_llm_config.build.quantization_type
                         is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
@@ -701,7 +709,10 @@ class TrussConfig:
                         raise ValueError(
                             "Tensor parallelism and GPU count must be the same for TRT-LLM"
                         )
-        # mypy: enable-error-code="union-attr"
+            # mypy: enable-error-code="union-attr"
+
+        _validate_trt_llm_keys(self)
+        _validate_accelerator_for_trt_llm_builder(self)
 
     def validate(self):
         if self.python_version not in VALID_PYTHON_VERSIONS:
@@ -725,7 +736,7 @@ class TrussConfig:
             raise ValueError(
                 "Please ensure that only one of `requirements` and `requirements_file` is specified"
             )
-        self._validate_accelerator_for_trt_llm_builder()
+        self._validate_trt_llm_config()
 
 
 def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:

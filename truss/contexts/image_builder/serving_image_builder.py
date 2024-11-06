@@ -349,12 +349,12 @@ class ServingImageBuilder(ImageBuilder):
 
     def prepare_trtllm_build_dir(self, build_dir: Path):
         config = self._spec.config
-        trt_llm = config.parsed_trt_llm_config
-        if not trt_llm:
+        trt_llm_config = config.parsed_trt_llm_config
+        if not trt_llm_config:
             return
         is_audio_model = (
-            trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
-            if trt_llm.build is not None
+            trt_llm_config.build.base_model == TrussTRTLLMModel.WHISPER
+            if trt_llm_config.build is not None
             else False
         )
 

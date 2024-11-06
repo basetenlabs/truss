@@ -40,8 +40,8 @@ from truss.remote.remote_cli import (
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.truss_config import Build, ModelServer
 from truss.util.config_checks import (
-    check_and_update_memory_for_trt_llm_builder,
-    check_secrets_for_trt_llm_builder,
+    is_missing_secrets_for_trt_llm_builder,
+    memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
 from truss.util.errors import RemoteNetworkError
@@ -1158,22 +1158,22 @@ def push(
             live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
-        if not check_secrets_for_trt_llm_builder(tr):
+        if is_missing_secrets_for_trt_llm_builder(tr):
             missing_token_text = (
                 "`hf_access_token` must be provided in secrets to build a gated model. "
                 "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
             )
             console.print(missing_token_text, style="red")
             sys.exit(1)
-        if not check_and_update_memory_for_trt_llm_builder(tr):
+        if memory_updated_for_trt_llm_builder(tr):
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
-        config = tr.spec.config
+        trt_llm_config = tr.spec.config.parsed_trt_llm_config
         if (
-            config.trt_llm.build.quantization_type
+            trt_llm_config.build.quantization_type
             in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-            and not config.trt_llm.build.num_builder_gpus
+            and not trt_llm_config.build.num_builder_gpus
         ):
             fp8_and_num_builder_gpus_text = (
                 "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "

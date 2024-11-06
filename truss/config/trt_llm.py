@@ -100,6 +100,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
+    draft_kv_cache_free_gpu_mem_fraction: Optional[float] = None
     enable_chunked_context: bool = False
     num_draft_tokens: Optional[int] = None
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
@@ -109,15 +110,16 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 
 class TRTLLMConfiguration(BaseModel):
     runtime: Optional[TrussTRTLLMRuntimeConfiguration] = None
-    build: Optional[TrussTRTLLMBuildConfiguration] = None
+    build: TrussTRTLLMBuildConfiguration
 
     def __init__(self, **data):
         super().__init__(**data)
-        self._spec_dec_configs = [
-            self.build.speculative_decoding_mode,
-            self.build.max_draft_len,
-            self.runtime.num_draft_tokens,
-        ]
+        self._spec_dec_configs = (
+            [self.build.speculative_decoding_mode, self.build.max_draft_len]
+            + [self.runtime.num_draft_tokens]
+            if self.runtime and self.runtime.num_draft_tokens
+            else []
+        )
         self._validate_minimum_required_configuration()
         self._validate_kv_cache_flags()
         if self.build.checkpoint_repository.source == CheckpointSource.HF:
