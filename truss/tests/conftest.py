@@ -12,6 +12,7 @@ import requests
 import yaml
 
 from truss.build import init
+from truss.config.trt_llm import TrussTRTLLMBatchSchedulerPolicy
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
@@ -395,7 +396,13 @@ def custom_model_trt_llm(tmp_path):
                         "source": "HF",
                         "repo": "meta/llama4-500B",
                     },
-                }
+                },
+                "runtime": {
+                    "kv_cache_free_gpu_mem_fraction": 0.9,
+                    "enabled_chunked_context": False,
+                    "num_draft_tokens": None,
+                    "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT.value,
+                },
             }
             content["resources"]["accelerator"] = "H100:1"
 

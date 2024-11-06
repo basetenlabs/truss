@@ -1,3 +1,4 @@
+import copy
 import tempfile
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
@@ -65,14 +66,15 @@ def trtllm_config(default_config) -> Dict[str, Any]:
                 "repo": "meta/llama4-500B",
             },
             "gather_all_token_logits": False,
-        }
+        },
+        "runtime": {},
     }
     return trtllm_config
 
 
 @pytest.fixture
 def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
-    spec_dec_config = trtllm_config
+    spec_dec_config = copy.deepcopy(trtllm_config)
     spec_dec_config["trt_llm"] = {
         "target": {
             "build": {
@@ -566,6 +568,15 @@ def test_from_dict_spec_dec_trtllm(should_raise, trtllm_spec_dec_config):
         TrussConfig.from_dict(trtllm_spec_dec_config)
 
 
+@pytest.mark.parametrize("spec_dec_enabled", [False, True])
+def test_trtllm_uses_spec_dec(spec_dec_enabled, trtllm_config, trtllm_spec_dec_config):
+    config = trtllm_config
+    if spec_dec_enabled:
+        config = trtllm_spec_dec_config
+    truss_config = TrussConfig.from_dict(config)
+    assert truss_config.parsed_trt_llm_config.uses_spec_dec == spec_dec_enabled
+
+
 def test_from_yaml_invalid_requirements_configuration():
     invalid_requirements = {
         "requirements_file": "requirements.txt",
@@ -602,7 +613,7 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
     quant_format, accelerator, expectation, custom_model_trt_llm
 ):
     config = TrussHandle(custom_model_trt_llm).spec.config
-    config.trt_llm.build.quantization_type = quant_format
+    config.parsed_trt_llm_config.build.quantization_type = quant_format
     config.resources.accelerator.accelerator = accelerator
     with expectation:
         TrussConfig.from_dict(config.to_dict())
