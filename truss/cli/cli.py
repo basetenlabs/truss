@@ -20,8 +20,13 @@ from InquirerPy import inquirer
 from rich.console import Console
 
 import truss
-from truss.config.trt_llm import TrussTRTLLMQuantizationType
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.base.constants import (
+    PRODUCTION_ENVIRONMENT_NAME,
+    TRTLLM_MIN_MEMORY_REQUEST_GI,
+)
+from truss.base.errors import RemoteNetworkError
+from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
+from truss.base.truss_config import Build, ModelServer
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -38,13 +43,15 @@ from truss.remote.remote_cli import (
     inquire_remote_name,
 )
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.truss_config import Build, ModelServer
-from truss.util.config_checks import (
+from truss.trt_llm.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
     check_secrets_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
-from truss.util.errors import RemoteNetworkError
+from truss.truss_handle.build import cleanup as _cleanup
+from truss.truss_handle.build import init as _init
+from truss.truss_handle.build import load
+from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -96,7 +103,10 @@ def error_handling(f: Callable[..., object]):
             raise e  # You can re-raise the exception or handle it different
         except Exception as e:
             if is_humanfriendly_log_level:
-                click.secho(f"ERROR: {type(e).__name__}: {e}", fg="red")
+                console.print(
+                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
+                    highlight=True,
+                )
             else:
                 console.print_exception(show_locals=True)
 
@@ -213,7 +223,7 @@ def init(target_directory, backend, name) -> None:
         model_name = name
     else:
         model_name = inquire_model_name()
-    truss.init(
+    _init(
         target_directory=target_directory,
         build_config=build_config,
         model_name=model_name,
@@ -332,6 +342,28 @@ def login(api_key: Optional[str]):
 
 
 @truss_cli.command()
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to check whoami.",
+)
+@error_handling
+def whoami(remote: Optional[str]):
+    """
+    Shows user information and exit.
+    """
+    from truss.api import whoami
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    user = whoami(remote)
+
+    console.print(f"{user.workspace_name}\{user.user_email}")
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
@@ -410,7 +442,13 @@ def chains():
     """Subcommands for truss chains"""
 
 
-def _make_chains_curl_snippet(run_remote_url: str) -> str:
+def _make_chains_curl_snippet(run_remote_url: str, environment: Optional[str]) -> str:
+    if environment:
+        idx = run_remote_url.find("deployment")
+        if idx != -1:
+            run_remote_url = (
+                run_remote_url[:idx] + f"environments/{environment}/run_remote"
+            )
     return (
         f"curl -X POST '{run_remote_url}' \\\n"
         '    -H "Authorization: Api-Key $BASETEN_API_KEY" \\\n'
@@ -506,6 +544,15 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Replace production chainlets with newly deployed chainlets.",
 )
 @click.option(
+    "--environment",
+    type=str,
+    required=False,
+    help=(
+        "Deploy the chain as a published deployment to the specified environment."
+        "If specified, --publish is implied and the supplied value of --promote will be ignored."
+    ),
+)
+@click.option(
     "--wait/--no-wait",
     type=bool,
     default=True,
@@ -557,6 +604,7 @@ def push_chain(
     dryrun: bool,
     user_env: Optional[str],
     remote: Optional[str],
+    environment: Optional[str],
 ) -> None:
     """
     Deploys a chain remotely.
@@ -597,6 +645,10 @@ def push_chain(
     else:
         user_env_parsed = {}
 
+    if promote and environment:
+        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        console.print(promote_warning, style="yellow")
+
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
         options = chains_def.PushOptionsBaseten.create(
@@ -606,6 +658,7 @@ def push_chain(
             only_generate_trusses=dryrun,
             user_env=user_env_parsed,
             remote=remote,
+            environment=environment,
         )
         service = chains_remote.push(entrypoint_cls, options)
 
@@ -614,7 +667,9 @@ def push_chain(
         return
 
     assert isinstance(service, chains_remote.BasetenChainService)
-    curl_snippet = _make_chains_curl_snippet(service.run_remote_url)
+    curl_snippet = _make_chains_curl_snippet(
+        service.run_remote_url, options.environment
+    )
 
     table, statuses = _create_chains_table(service)
     status_check_wait_sec = 2
@@ -647,7 +702,10 @@ def push_chain(
             for log in intercepted_logs:
                 console.print(f"\t{log}")
         if success:
-            console.print("Deployment succeeded.", style="bold green")
+            deploy_success_text = "Deployment succeeded."
+            if environment:
+                deploy_success_text = f"Your chain has been deployed into the {options.environment} environment."
+            console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
                 chains_remote.watch(
@@ -1277,7 +1335,7 @@ def kill(target_directory: str) -> None:
 @container.command()  # type: ignore
 def kill_all() -> None:
     """Kills all truss containers that are not manually persisted."""
-    truss.kill_all()
+    docker.kill_all()
 
 
 @truss_cli.command()
@@ -1290,14 +1348,14 @@ def cleanup() -> None:
     such as for building docker images. This command clears
     that data to free up disk space.
     """
-    truss.build.cleanup()
+    _cleanup()
 
 
 def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return truss.load(target_directory)
+    return load(target_directory)
 
 
 truss_cli.add_command(container)

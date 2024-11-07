@@ -134,7 +134,7 @@ async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
         expected_predict_response = "test"
         mock_predict_called = False
 
-        async def mock_predict(return_value):
+        async def mock_predict(return_value, request):
             nonlocal mock_predict_called
             mock_predict_called = True
             return expected_predict_response
@@ -173,7 +173,7 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
         expected_predict_response = "test"
         mock_predict_called = False
 
-        async def mock_predict(return_value):
+        async def mock_predict(return_value, request: Request):
             nonlocal mock_predict_called
             mock_predict_called = True
             return expected_predict_response

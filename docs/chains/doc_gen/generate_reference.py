@@ -31,6 +31,7 @@ NON_PUBLIC_SYMBOLS = [
     # "truss_chains.definitions.AssetSpec",
     # "truss_chains.definitions.ComputeSpec",
     "truss_chains.remote.ChainService",
+    "truss_chains.definitions.Environment",
 ]
 
 
@@ -42,6 +43,8 @@ SECTION_CHAINLET = (
         "truss_chains.depends",
         "truss_chains.depends_context",
         "truss_chains.DeploymentContext",
+        "truss_chains.definitions.Environment",
+        "truss_chains.ChainletOptions",
         "truss_chains.RPCOptions",
         "truss_chains.mark_entrypoint",
     ],

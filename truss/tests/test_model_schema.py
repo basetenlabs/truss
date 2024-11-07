@@ -8,7 +8,7 @@ import requests
 from truss.templates.shared import serialization
 from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 DEFAULT_CONFIG = """model_name: test-truss"""
 TRUSS_SERVER_ADDR = "http://localhost:8090"
@@ -17,10 +17,8 @@ SCHEMA_URL = f"{TRUSS_SERVER_ADDR}/v1/models/model/schema"
 
 
 @pytest.mark.integration
-def test_truss_with_no_annotations():
-    truss_root = Path(__file__).parent.parent.parent.resolve()
-
-    truss_dir = truss_root / "truss" / "test_data" / "test_basic_truss"
+def test_truss_with_no_annotations(test_data_path):
+    truss_dir = test_data_path / "test_basic_truss"
 
     tr = TrussHandle(truss_dir)
 
@@ -97,10 +95,8 @@ class Model:
 
 
 @pytest.mark.integration
-def test_truss_with_annotated_inputs_outputs():
-    truss_root = Path(__file__).parent.parent.resolve()
-
-    truss_dir = truss_root / "test_data" / "annotated_types_truss"
+def test_truss_with_annotated_inputs_outputs(test_data_path):
+    truss_dir = test_data_path / "annotated_types_truss"
 
     tr = TrussHandle(truss_dir)
 
@@ -128,8 +124,7 @@ def test_truss_with_annotated_inputs_outputs():
         assert response.status_code == 400
         assert "error" in response.json()
         assert (
-            "Request Validation Error, 1 validation error for ModelInput"
-            "\nprompt\n  Field required [type=missing, input_value={'bad_key': 'value'}, input_type=dict]\n"
+            "Input Parsing Error:\n  `prompt`: Field required."
             in response.json()["error"]
         )
         assert response.headers["x-baseten-error-source"] == "04"

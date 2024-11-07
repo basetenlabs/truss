@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
 import yaml
 from requests import ReadTimeout
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
@@ -34,10 +35,9 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
-from truss.remote.truss_remote import TrussRemote
-from truss.truss_config import ModelServer
-from truss.truss_handle import TrussHandle
-from truss.util.path import is_ignored, load_trussignore_patterns
+from truss.remote.truss_remote import RemoteUser, TrussRemote
+from truss.truss_handle.truss_handle import TrussHandle
+from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 from watchfiles import watch
 
 
@@ -67,10 +67,10 @@ class BasetenRemote(TrussRemote):
         chain_name: str,
         chainlets: List[custom_types.ChainletData],
         publish: bool = False,
-        promote: bool = False,
+        environment: Optional[str] = None,
     ) -> ChainDeploymentHandle:
-        if promote:
-            # If we are promoting a model after deploy, it must be published.
+        if environment:
+            # If we are promoting a model to an environment after deploy, it must be published.
             # Draft models cannot be promoted.
             publish = True
         # Returns tuple of (chain_id, chain_deployment_id)
@@ -81,7 +81,7 @@ class BasetenRemote(TrussRemote):
             chain_name=chain_name,
             chainlets=chainlets,
             is_draft=not publish,
-            promote=promote,
+            environment=environment,
         )
 
     def get_chainlets(
@@ -115,6 +115,17 @@ class BasetenRemote(TrussRemote):
             )
         ]
 
+    def whoami(self) -> RemoteUser:
+        resp = self._api._post_graphql_query(
+            "query{organization{workspace_name}user{email}}"
+        )
+        workspace_name = resp["data"]["organization"]["workspace_name"]
+        user_email = resp["data"]["user"]["email"]
+        return RemoteUser(
+            workspace_name,
+            user_email,
+        )
+
     def push(  # type: ignore
         self,
         truss_handle: TrussHandle,
@@ -126,6 +137,9 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        chain_environment: Optional[str] = None,
+        chainlet_name: Optional[str] = None,
+        chain_name: Optional[str] = None,
     ) -> BasetenService:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -179,6 +193,9 @@ class BasetenRemote(TrussRemote):
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            chain_environment=chain_environment,
+            chainlet_name=chainlet_name,
+            chain_name=chain_name,
         )
 
         return BasetenService(
@@ -289,7 +306,7 @@ class BasetenRemote(TrussRemote):
             )
 
         watch_path = Path(target_directory)
-        truss_ignore_patterns = load_trussignore_patterns()
+        truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(watch_path)
 
         def watch_filter(_, path):
             return not is_ignored(

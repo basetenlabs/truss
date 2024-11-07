@@ -12,9 +12,8 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
-from truss import constants
-from truss.config.trt_llm import TrussTRTLLMModel
-from truss.constants import (
+from truss.base import constants
+from truss.base.constants import (
     AUDIO_MODEL_TRTLLM_REQUIREMENTS,
     AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
     AUDIO_MODEL_TRTLLM_TRUSS_DIR,
@@ -26,7 +25,6 @@ from truss.constants import (
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MODEL_DOCKERFILE_NAME,
-    OPENAI_COMPATIBLE_TAG,
     REQUIREMENTS_TXT_FILENAME,
     SERVER_CODE_DIR,
     SERVER_DOCKERFILE_TEMPLATE_NAME,
@@ -39,8 +37,12 @@ from truss.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
+from truss.base.trt_llm_config import TrussTRTLLMModel
+from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
+from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
     parse_s3_credentials_file,
@@ -54,9 +56,7 @@ from truss.contexts.image_builder.util import (
     truss_base_image_tag,
 )
 from truss.contexts.truss_context import TrussContext
-from truss.patch.hash import directory_content_hash
-from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
-from truss.truss_spec import TrussSpec
+from truss.truss_handle.patch.hash import directory_content_hash
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -151,7 +151,7 @@ class GCSCache(RemoteCache):
 
 
 class S3Cache(RemoteCache):
-    def list_files(self, revision=None):
+    def list_files(self, revision=None) -> List[str]:
         s3_credentials_file = self.data_dir / S3_CREDENTIALS
 
         if s3_credentials_file.exists():
@@ -309,6 +309,7 @@ def generate_docker_server_nginx_config(build_dir, config):
         readiness_endpoint=config.docker_server.readiness_endpoint,
         liveness_endpoint=config.docker_server.liveness_endpoint,
         server_port=config.docker_server.server_port,
+        client_max_body_size=TRUSSLESS_MAX_PAYLOAD_SIZE,
     )
     nginx_filepath = build_dir / "proxy.conf"
     nginx_filepath.write_text(nginx_content)
@@ -412,17 +413,6 @@ class ServingImageBuilder(ImageBuilder):
                     DEFAULT_BUNDLED_PACKAGES_DIR,
                 )
 
-            tensor_parallel_count = (
-                config.trt_llm.build.tensor_parallel_count  # type: ignore[union-attr]
-                if config.trt_llm.build is not None
-                else config.trt_llm.serve.tensor_parallel_count  # type: ignore[union-attr]
-            )
-
-            if tensor_parallel_count != config.resources.accelerator.count:
-                raise ValueError(
-                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
-                )
-
             config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
             if not is_audio_model:
@@ -432,8 +422,6 @@ class ServingImageBuilder(ImageBuilder):
                 )
 
                 config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-
-                config.model_metadata["tags"] = [OPENAI_COMPATIBLE_TAG]
             else:
                 config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
                 config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)

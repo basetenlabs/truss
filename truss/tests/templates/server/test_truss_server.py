@@ -18,6 +18,7 @@ def test_truss_server_termination(truss_container_fs):
         sys.stdout = open(stdout_capture_file_path, "w")
         app_path = truss_container_fs / "app"
         sys.path.append(str(app_path))
+        os.chdir(app_path)
 
         from truss_server import TrussServer
 

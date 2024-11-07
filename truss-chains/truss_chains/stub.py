@@ -1,15 +1,37 @@
 import abc
 import asyncio
+import contextlib
+import contextvars
 import logging
 import ssl
 import threading
 import time
-from typing import Any, ClassVar, Mapping, Optional, Type, TypeVar, final
+from typing import Any, ClassVar, Iterator, Mapping, Optional, Type, TypeVar, final
 
+import aiohttp
 import httpx
+import starlette.requests
 import tenacity
 
 from truss_chains import definitions, utils
+
+DEFAULT_MAX_CONNECTIONS = 1000
+DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
+
+_trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "trace_parent"
+)
+
+
+@contextlib.contextmanager
+def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
+    token = _trace_parent_context.set(
+        request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
+    )
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
 
 
 class BasetenSession:
@@ -17,12 +39,13 @@ class BasetenSession:
 
     _client_cycle_time_sec: ClassVar[int] = 3600 * 1  # 1 hour.
     _client_limits: ClassVar[httpx.Limits] = httpx.Limits(
-        max_connections=1000, max_keepalive_connections=400
+        max_connections=DEFAULT_MAX_CONNECTIONS,
+        max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
     )
     _auth_header: Mapping[str, str]
     _service_descriptor: definitions.ServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
-    _cached_async_client: Optional[tuple[httpx.AsyncClient, int]]
+    _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
         self,
@@ -81,17 +104,22 @@ class BasetenSession:
         assert self._cached_sync_client is not None
         return self._cached_sync_client[0]
 
-    async def _client_async(self) -> httpx.AsyncClient:
+    async def _client_async(self) -> aiohttp.ClientSession:
         # Check `_client_cycle_needed` before and after locking to avoid
         # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
+                    connector = aiohttp.TCPConnector(
+                        limit=DEFAULT_MAX_CONNECTIONS,
+                    )
                     self._cached_async_client = (
-                        httpx.AsyncClient(
+                        aiohttp.ClientSession(
                             headers=self._auth_header,
-                            timeout=self._service_descriptor.options.timeout_sec,
-                            limits=self._client_limits,
+                            connector=connector,
+                            timeout=aiohttp.ClientTimeout(
+                                total=self._service_descriptor.options.timeout_sec
+                            ),
                         ),
                         int(time.time()),
                     )
@@ -112,7 +140,11 @@ class BasetenSession:
                     with self._sync_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
                         resp = self._client_sync().post(
-                            self._service_descriptor.predict_url, json=json_payload
+                            self._service_descriptor.predict_url,
+                            json=json_payload,
+                            headers={
+                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+                            },
                         )
                     return utils.handle_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
@@ -136,9 +168,13 @@ class BasetenSession:
                     async with self._async_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
                         resp = await client.post(
-                            self._service_descriptor.predict_url, json=json_payload
+                            self._service_descriptor.predict_url,
+                            json=json_payload,
+                            headers={
+                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+                            },
                         )
-                    return utils.handle_response(resp, self.name)
+                    return await utils.handle_async_response(resp, self.name)
                 # As a special case we invalidate the client in case of certificate
                 # errors. This has happened in the past and is a defensive measure.
                 except ssl.SSLError:

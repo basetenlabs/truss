@@ -1,8 +1,8 @@
 import tempfile
 from pathlib import Path
 
+from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
-from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 
 ORIG_MODEL_CLASS_CONTENT = """
 class Model:

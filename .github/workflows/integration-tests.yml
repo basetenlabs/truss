@@ -25,6 +25,7 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/detect-versions/
         id: versions
+
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
     if: needs.detect-version-changed.outputs.build_base_images == 'true'
@@ -46,7 +47,7 @@ jobs:
 
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: poetry install --with=dev,dev-server --extras=all
       - shell: bash
         run: |
           poetry run bin/generate_base_images.py \

@@ -14,6 +14,7 @@ import threading
 import traceback
 from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
 
+import aiohttp
 import fastapi
 import httpx
 import pydantic
@@ -134,7 +135,7 @@ def override_chainlet_to_service_metadata(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ):
     # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
-    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value(
+    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY
     )
     if dynamic_chainlet_config_str:
@@ -224,6 +225,34 @@ def _resolve_exception_class(
     return exception_cls
 
 
+def _handle_response_error(response_json: dict, remote_name: str):
+    try:
+        error_json = response_json["error"]
+    except KeyError as e:
+        logging.error(f"response_json: {response_json}")
+        raise ValueError(
+            "Could not get `error` field from JSON from error response"
+        ) from e
+    try:
+        error = definitions.RemoteErrorDetail.model_validate(error_json)
+    except pydantic.ValidationError as e:
+        if isinstance(error_json, str):
+            msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
+            raise definitions.GenericRemoteException(msg) from None
+        raise ValueError(
+            "Could not parse error. Error details are expected to be either a "
+            "plain string (old truss models) or a serialized "
+            f"`definitions.RemoteErrorDetail.__name__`, got:\n{repr(error_json)}"
+        ) from e
+    exception_cls = _resolve_exception_class(error)
+    msg = (
+        f"(showing remote errors, root message at the bottom)\n"
+        f"--> Preceding Remote Cause:\n"
+        f"{textwrap.indent(error.format(), '    ')}"
+    )
+    raise exception_cls(msg)
+
+
 def handle_response(response: httpx.Response, remote_name: str) -> Any:
     """For successful requests returns JSON, otherwise raises error.
 
@@ -277,36 +306,31 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
                 "Could not get JSON from error response. Status: "
                 f"`{response.status_code}`."
             ) from e
-
-        try:
-            error_json = response_json["error"]
-        except KeyError as e:
-            logging.error(f"response.json(): {response_json}")
-            raise ValueError(
-                "Could not get `error` field from JSON from error response"
-            ) from e
-
-        try:
-            error = definitions.RemoteErrorDetail.model_validate(error_json)
-        except pydantic.ValidationError as e:
-            if isinstance(error_json, str):
-                msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
-                raise definitions.GenericRemoteException(msg) from None
-            raise ValueError(
-                "Could not parse error. Error details are expected to be either a "
-                "plain string (old truss models) or a serialized "
-                f"`definitions.RemoteErrorDetail.__name__`, got:\n{repr(error_json)}"
-            ) from e
-
-        exception_cls = _resolve_exception_class(error)
-        msg = (
-            f"(showing remote errors, root message at the bottom)\n"
-            f"--> Preceding Remote Cause:\n"
-            f"{textwrap.indent(error.format(), '    ')}"
-        )
-        raise exception_cls(msg)
+        _handle_response_error(response_json=response_json, remote_name=remote_name)
 
     return response.json()
+
+
+async def handle_async_response(
+    response: aiohttp.ClientResponse, remote_name: str
+) -> Any:
+    """For successful requests returns JSON, otherwise raises error.
+
+    See `handle_response` for more details on the specifics of the error-handling
+    here.
+    """
+    if response.status >= 400:
+        try:
+            response_json = await response.json()
+        except Exception as e:
+            raise ValueError(
+                "Could not get JSON from error response. Status: "
+                f"`{response.status}`."
+            ) from e
+
+        _handle_response_error(response_json=response_json, remote_name=remote_name)
+
+    return await response.json()
 
 
 class InjectedError(Exception):

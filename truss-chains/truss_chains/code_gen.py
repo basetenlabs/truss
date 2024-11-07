@@ -36,7 +36,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 import libcst
 import truss
-from truss import truss_config
+from truss.base import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss.util import path as truss_path
 
@@ -404,14 +404,16 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
     input_model_name = _get_input_model_name(chainlet_descriptor.name)
     output_model_name = _get_output_model_name(chainlet_descriptor.name)
+    imports.add("import starlette.requests")
+    imports.add("from truss_chains import stub")
     parts.append(
-        f"{def_str} predict(self, inputs: {input_model_name}) "
-        f"-> {output_model_name}:"
+        f"{def_str} predict(self, inputs: {input_model_name}, "
+        f"request: starlette.requests.Request) -> {output_model_name}:"
     )
     # Add error handling context manager:
     parts.append(
         _indent(
-            f"with utils.exception_to_http_error("
+            f"with stub.trace_parent(request), utils.exception_to_http_error("
             f'include_stack=True, chainlet_name="{chainlet_descriptor.name}"):'
         )
     )
@@ -448,10 +450,6 @@ def _gen_truss_chainlet_model(
             for stmt in node.body
         )
     )
-
-    imports.add("import logging")
-    imports.add("from truss_chains import utils")
-
     class_definition: libcst.ClassDef = utils.expect_one(
         node
         for node in skeleton_tree.body
@@ -499,6 +497,7 @@ def _gen_truss_chainlet_file(
     (chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / "__init__.py").touch()
     imports: set[str] = set()
     src_parts: list[str] = []
+
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
         _update_src(maybe_stub_src, src_parts, imports)
 
@@ -578,6 +577,8 @@ def _make_truss_config(
     config.model_name = model_name
     config.model_class_filename = _MODEL_FILENAME
     config.model_class_name = _MODEL_CLS_NAME
+    config.runtime.enable_tracing_data = chains_config.options.enable_b10_tracing
+    config.environment_variables = dict(chains_config.options.env_variables)
     # Compute.
     compute = chains_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)
@@ -635,9 +636,6 @@ def gen_truss_chainlet(
     chainlet_display_name_to_url: Mapping[str, str],
     user_env: Mapping[str, str],
 ) -> pathlib.Path:
-    dependencies = framework.global_chainlet_registry.get_dependencies(
-        chainlet_descriptor
-    )
     # Filter needed services and customize options.
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
@@ -671,7 +669,9 @@ def gen_truss_chainlet(
                 f"Python file name `{_MODEL_FILENAME}` is reserved and cannot be used."
             )
     chainlet_file = _gen_truss_chainlet_file(
-        chainlet_dir, chainlet_descriptor, dependencies
+        chainlet_dir,
+        chainlet_descriptor,
+        framework.get_dependencies(chainlet_descriptor),
     )
     remote_config = chainlet_descriptor.chainlet_cls.remote_config
     if remote_config.docker_image.data_dir:

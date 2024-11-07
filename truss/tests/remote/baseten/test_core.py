@@ -2,7 +2,7 @@ from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
 import pytest
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import core
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import create_truss_service

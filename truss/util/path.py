@@ -11,7 +11,8 @@ import pathspec
 
 # .truss_ignore is a fixed file in the Truss library that is used to specify files
 # that should be ignored when copying a directory tree such as .git directory.
-FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / ".truss_ignore"
+TRUSS_IGNORE_FILENAME = ".truss_ignore"
+FIXED_TRUSS_IGNORE_PATH = Path(__file__).parent / TRUSS_IGNORE_FILENAME
 
 
 def copy_tree_path(src: Path, dest: Path, ignore_patterns: List[str] = []) -> None:
@@ -82,6 +83,14 @@ def build_truss_target_directory(stub: str) -> Path:
     )
     target_directory_path.mkdir(parents=True)
     return target_directory_path
+
+
+def load_trussignore_patterns_from_truss_dir(truss_dir: Path) -> List[str]:
+    truss_ignore_file = truss_dir / TRUSS_IGNORE_FILENAME
+    if truss_ignore_file.exists():
+        return load_trussignore_patterns(truss_ignore_file)
+    # default to the truss-defined ignore patterns
+    return load_trussignore_patterns()
 
 
 def load_trussignore_patterns(

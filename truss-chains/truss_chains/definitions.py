@@ -23,7 +23,8 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 )
 
 import pydantic
-from truss import truss_config
+from truss.base import truss_config
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
 
@@ -34,7 +35,7 @@ SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
-
+OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
 # Below arg names must correspond to `definitions.ABCChainlet`.
 ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
@@ -295,7 +296,7 @@ class Assets:
     For example, model weight caching can be used like this::
 
         import truss_chains as chains
-        from truss import truss_config
+        from truss.base import truss_config
 
         mistral_cache = truss_config.ModelRepo(
             repo_id="mistralai/Mistral-7B-Instruct-v0.2",
@@ -339,6 +340,20 @@ class Assets:
         return self._spec.copy(deep=True)
 
 
+class ChainletOptions(SafeModelNonSerializable):
+    """
+    Args:
+        enable_b10_tracing: enables baseten-internal trace data collection. This
+          helps baseten engineers better analyze chain performance in case of issues.
+          It is independent of a potentially user-configured tracing instrumentation.
+          Turning this on, could add performance overhead.
+        env_variables: static environment variables available to the deployed chainlet.
+    """
+
+    enable_b10_tracing: bool = False
+    env_variables: Mapping[str, str] = {}
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -362,6 +377,7 @@ class RemoteConfig(SafeModelNonSerializable):
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None
+    options: ChainletOptions = ChainletOptions()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -389,6 +405,17 @@ class ServiceDescriptor(SafeModel):
     options: RPCOptions
 
 
+class Environment(SafeModel):
+    """The environment the chainlet is deployed in.
+
+    Args:
+        name: The name of the environment.
+    """
+
+    name: str
+    # can add more fields here as we add them to dynamic_config configmap
+
+
 class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     """Bundles config values and resources needed to instantiate Chainlets.
 
@@ -409,6 +436,8 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         user_env: These values can be provided to
           the deploy command and customize the behavior of deployed chainlets. E.g.
           for differentiating between prod and dev version of the same chain.
+        environment: The environment that the chainlet is deployed in.
+          None if the chainlet is not associated with an environment.
     """
 
     data_dir: Optional[pathlib.Path] = None
@@ -416,6 +445,7 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
     chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
     user_env: Mapping[str, str]
+    environment: Optional[Environment] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
@@ -609,22 +639,27 @@ class PushOptions(SafeModelNonSerializable):
 class PushOptionsBaseten(PushOptions):
     remote_provider: baseten_remote.BasetenRemote
     publish: bool
-    promote: bool
+    environment: Optional[str]
 
     @classmethod
     def create(
         cls,
         chain_name: str,
         publish: bool,
-        promote: bool,
+        promote: Optional[bool],
         only_generate_trusses: bool,
         user_env: Mapping[str, str],
         remote: Optional[str] = None,
+        environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
         if not remote:
             remote = remote_cli.inquire_remote_name(
                 remote_factory.RemoteFactory.get_available_config_names()
             )
+        if promote and not environment:
+            environment = PRODUCTION_ENVIRONMENT_NAME
+        if environment:
+            publish = True
         remote_provider = cast(
             baseten_remote.BasetenRemote,
             remote_factory.RemoteFactory.create(remote=remote),
@@ -633,9 +668,9 @@ class PushOptionsBaseten(PushOptions):
             remote_provider=remote_provider,
             chain_name=chain_name,
             publish=publish,
-            promote=promote,
             only_generate_trusses=only_generate_trusses,
             user_env=user_env,
+            environment=environment,
         )
 
 

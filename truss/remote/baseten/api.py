@@ -109,6 +109,9 @@ class BasetenApi:
         is_trusted: bool,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
+        chain_environment: Optional[str] = None,
+        chainlet_name: Optional[str] = None,
+        chain_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
@@ -121,6 +124,9 @@ class BasetenApi:
                 is_trusted: {'true' if is_trusted else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
+                {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
+                {f'chainlet_name: "{chainlet_name}"' if chainlet_name else ""}
+                {f'chain_name: "{chain_name}"' if chain_name else ""}
             ) {{
                 id,
                 name,
@@ -235,7 +241,10 @@ class BasetenApi:
         return resp["data"]["deploy_draft_chain"]
 
     def deploy_chain_deployment(
-        self, chain_id: str, chainlet_data: List[b10_types.ChainletData], promote: bool
+        self,
+        chain_id: str,
+        chainlet_data: List[b10_types.ChainletData],
+        environment: Optional[str] = None,
     ):
         chainlet_data_strings = [
             _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
@@ -243,14 +252,14 @@ class BasetenApi:
         chainlets_string = ", ".join(chainlet_data_strings)
         query_string = f"""
         mutation {{
-        deploy_chain_deployment(
-            chain_id: "{chain_id}",
-            chainlets: [{chainlets_string}],
-            promote_after_deploy: {'true' if promote else 'false'},
-        ) {{
-            chain_id
-            chain_deployment_id
-        }}
+            deploy_chain_deployment(
+                chain_id: "{chain_id}",
+                chainlets: [{chainlets_string}],
+                {f'environment_name: "{environment}"' if environment else ""}
+            ) {{
+                chain_id
+                chain_deployment_id
+            }}
         }}
         """
         resp = self._post_graphql_query(query_string)

@@ -6,7 +6,7 @@ from truss.remote.baseten.core import ModelId, ModelName, ModelVersionId
 from truss.remote.baseten.custom_types import ChainletData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import BasetenRemote
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
@@ -314,7 +314,6 @@ def test_create_chain_with_no_publish():
                 )
             ],
             publish=False,
-            promote=False,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -433,7 +432,7 @@ def test_create_chain_no_existing_chain():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_with_existing_chain_promote_true_publish_false():
+def test_create_chain_with_existing_chain_promote_to_environment_publish_false():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
     with requests_mock.Mocker() as m:
@@ -471,7 +470,7 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
                 )
             ],
             publish=False,
-            promote=True,
+            environment="production",
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -487,25 +486,26 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
         """.strip()
 
         match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
-        # Note that if publish=False and promote=True, we set publish to True and create
+        # Note that if publish=False and environment!=None, we set publish to True and create
         # a non-draft deployment
-        expected_create_chain_mutation = """
-        mutation {
-        deploy_chain_deployment(
-            chain_id: "old-chain-id",
-            chainlets: [
+        chainlets_string = """
         {
             name: "chainlet-1",
             oracle_version_id: "some-ov-id",
             is_entrypoint: true
         }
-        ],
-            promote_after_deploy: true,
-        ) {
-            chain_id
-            chain_deployment_id
-        }
-        }
+        """
+        expected_create_chain_mutation = f"""
+        mutation {{
+            deploy_chain_deployment(
+                chain_id: "old-chain-id",
+                chainlets: [{chainlets_string}],
+                environment_name: "production"
+            ) {{
+                chain_id
+                chain_deployment_id
+            }}
+        }}
         """.strip()
 
         match_graphql_request(
@@ -516,7 +516,7 @@ def test_create_chain_with_existing_chain_promote_true_publish_false():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_existing_chain_publish_true_promote_false():
+def test_create_chain_existing_chain_publish_true_no_promotion():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
     with requests_mock.Mocker() as m:
@@ -554,7 +554,6 @@ def test_create_chain_existing_chain_publish_true_promote_false():
                 )
             ],
             publish=True,
-            promote=False,
         )
 
         get_chains_graphql_request = m.request_history[0]
@@ -570,24 +569,25 @@ def test_create_chain_existing_chain_publish_true_promote_false():
         """.strip()
 
         match_graphql_request(get_chains_graphql_request, expected_get_chains_query)
-        # Note promote_after_deploy is false
-        expected_create_chain_mutation = """
-        mutation {
-        deploy_chain_deployment(
-            chain_id: "old-chain-id",
-            chainlets: [
+        chainlets_string = """
         {
             name: "chainlet-1",
             oracle_version_id: "some-ov-id",
             is_entrypoint: true
         }
-        ],
-            promote_after_deploy: false,
-        ) {
-            chain_id
-            chain_deployment_id
-        }
-        }
+        """
+        environment = None
+        expected_create_chain_mutation = f"""
+        mutation {{
+            deploy_chain_deployment(
+                chain_id: "old-chain-id",
+                chainlets: [{chainlets_string}],
+                {f'environment_name: "{environment}"' if environment else ""}
+            ) {{
+                chain_id
+                chain_deployment_id
+            }}
+        }}
         """.strip()
 
         match_graphql_request(

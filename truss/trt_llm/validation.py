@@ -1,7 +1,7 @@
 import ast
 
-from truss.errors import ValidationError
-from truss.truss_spec import TrussSpec
+from truss.base.errors import ValidationError
+from truss.base.truss_spec import TrussSpec
 
 
 def validate(truss_spec: TrussSpec):
@@ -31,7 +31,8 @@ def _verify_has_class_init_arg(source: str, class_name: str, arg_name: str):
                         raise ValidationError(
                             (
                                 "Model class `__init__` method is required to have `trt_llm` as an argument. Please add that argument.\n  "
-                                "Or if you want to use the automatically generated model class then remove the `model.py` file."
+                                "Or if you want to use the automatically generated model class then remove the `model.py` file.\n "
+                                "Refer to https://docs.baseten.co/performance/engine-builder-customization for details on engine object usage."
                             )
                         )
 

@@ -1,22 +1,18 @@
 import asyncio
 import json
 import logging
-import multiprocessing
 import os
 import signal
-import socket
 import sys
-import time
 from http import HTTPStatus
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 import pydantic
 import uvicorn
 import yaml
 from common import errors, tracing
 from common.schema import TrussSchema
-from common.termination_handler_middleware import TerminationHandlerMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
@@ -24,10 +20,9 @@ from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
-from shared import serialization, util
+from shared import serialization
 from shared.logging import setup_logging
 from shared.secrets_resolver import SecretsResolver
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
 
@@ -36,14 +31,8 @@ if sys.version_info >= (3, 9):
 else:
     from typing_extensions import AsyncGenerator, Generator
 
-# [IMPORTANT] A lot of things depend on this currently.
-# Please consider the following when increasing this:
-# 1. Self-termination on model load fail.
-# 2. Graceful termination.
-DEFAULT_NUM_WORKERS = 1
-DEFAULT_NUM_SERVER_PROCESSES = 1
-WORKER_TERMINATION_TIMEOUT_SECS = 120.0
-WORKER_TERMINATION_CHECK_INTERVAL_SECS = 0.5
+# [IMPORTANT] A lot of things depend on this currently, change with extreme care.
+TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -58,22 +47,6 @@ async def parse_body(request: Request) -> bytes:
         error_message = "Client disconnected"
         logging.error(error_message)
         raise HTTPException(status_code=499, detail=error_message) from exc
-
-
-class UvicornCustomServer(multiprocessing.Process):
-    def __init__(
-        self, config: uvicorn.Config, sockets: Optional[List[socket.socket]] = None
-    ):
-        super().__init__()
-        self.sockets = sockets
-        self.config = config
-
-    def stop(self):
-        self.terminate()
-
-    def run(self):
-        server = uvicorn.Server(config=self.config)
-        asyncio.run(server.serve(sockets=self.sockets))
 
 
 class BasetenEndpoints:
@@ -141,7 +114,7 @@ class BasetenEndpoints:
                         inputs = truss_schema.input_type.parse_obj(inputs)
                 except pydantic.ValidationError as e:
                     raise errors.InputParsingError(
-                        f"Request Validation Error, {str(e)}"
+                        errors.format_pydantic_validation_error(e)
                     ) from e
         else:
             if truss_schema:
@@ -151,7 +124,7 @@ class BasetenEndpoints:
                             inputs = truss_schema.input_type.parse_raw(body_raw)
                     except pydantic.ValidationError as e:
                         raise errors.InputParsingError(
-                            f"Request Validation Error, {str(e)}"
+                            errors.format_pydantic_validation_error(e)
                         ) from e
             else:
                 try:
@@ -170,6 +143,11 @@ class BasetenEndpoints:
         """
         This method calls the user-provided predict method
         """
+        if await request.is_disconnected():
+            msg = "Client disconnected. Skipping `predict`."
+            logging.info(msg)
+            raise ClientDisconnect(msg)
+
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
@@ -248,6 +226,8 @@ class TrussServer:
     main loop.
     """
 
+    _server: Optional[uvicorn.Server]
+
     def __init__(
         self,
         http_port: int,
@@ -263,10 +243,11 @@ class TrussServer:
         secrets = SecretsResolver.get_secrets(config)
         tracer = tracing.get_truss_tracer(secrets, config)
         self._setup_json_logger = setup_json_logger
-        self.http_port = http_port
+        self._http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config, tracer)
         self._endpoints = BasetenEndpoints(self._model, tracer)
+        self._server = None
 
     def cleanup(self):
         if INFERENCE_SERVER_FAILED_FILE.exists():
@@ -282,6 +263,17 @@ class TrussServer:
             setup_logging()
 
         await self._model.start_load()
+        asyncio.create_task(self._shutdown_if_load_fails())
+        self._model.setup_polling_for_environment_updates()
+
+    async def _shutdown_if_load_fails(self):
+        while not self._model.ready:
+            await asyncio.sleep(0.5)
+            if self._model.load_failed:
+                assert self._server is not None
+                logging.info("Trying shut down.")
+                self._server.should_exit = True
+                return
 
     def create_application(self):
         app = FastAPI(
@@ -331,20 +323,14 @@ class TrussServer:
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
 
-        def exit_self():
-            # Note that this kills the current process, the worker process, not
-            # the main truss_server process.
-            util.kill_child_processes(os.getpid())
-            sys.exit()
-
-        termination_handler_middleware = TerminationHandlerMiddleware(
-            on_stop=lambda: None,
-            on_term=exit_self,
-        )
-        app.add_middleware(BaseHTTPMiddleware, dispatch=termination_handler_middleware)
         return app
 
     def start(self):
+        log_level = (
+            "DEBUG"
+            if self._config["runtime"].get("enable_debug_logs", False)
+            else "INFO"
+        )
         cfg = uvicorn.Config(
             self.create_application(),
             # We hard-code the http parser as h11 (the default) in case the user has
@@ -352,8 +338,9 @@ class TrussServer:
             # of uvicorn.
             http="h11",
             host="0.0.0.0",
-            port=self.http_port,
-            workers=DEFAULT_NUM_WORKERS,
+            port=self._http_port,
+            workers=1,
+            timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config={
                 "version": 1,
                 "formatters": {
@@ -384,7 +371,7 @@ class TrussServer:
                     },
                 },
                 "loggers": {
-                    "uvicorn": {"handlers": ["default"], "level": "INFO"},
+                    "uvicorn": {"handlers": ["default"], "level": log_level},
                     "uvicorn.error": {"level": "INFO"},
                     "uvicorn.access": {
                         "handlers": ["access"],
@@ -394,47 +381,7 @@ class TrussServer:
                 },
             },
         )
-
-        # Call this so uvloop gets used
-        cfg.setup_event_loop()
-
-        async def serve() -> None:
-            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            serversocket.bind((cfg.host, cfg.port))
-            serversocket.listen(5)
-
-            num_server_procs = self._config.get("runtime", {}).get(
-                "num_workers", DEFAULT_NUM_SERVER_PROCESSES
-            )
-            logging.info(f"starting {num_server_procs} uvicorn server processes")
-            servers: List[UvicornCustomServer] = []
-            for _ in range(num_server_procs):
-                server = UvicornCustomServer(config=cfg, sockets=[serversocket])
-                server.start()
-                servers.append(server)
-
-            def stop_servers():
-                # Send stop signal, then wait for all to exit
-                for server in servers:
-                    # Sends term signal to the process, which should be handled
-                    # by the termination handler.
-                    server.stop()
-
-                termination_check_attempts = int(
-                    WORKER_TERMINATION_TIMEOUT_SECS
-                    / WORKER_TERMINATION_CHECK_INTERVAL_SECS
-                )
-                for _ in range(termination_check_attempts):
-                    time.sleep(WORKER_TERMINATION_CHECK_INTERVAL_SECS)
-                    if util.all_processes_dead(servers):
-                        return
-
-            for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-                signal.signal(sig, lambda sig, frame: stop_servers())
-
-        async def servers_task():
-            servers = [serve()]
-            await asyncio.gather(*servers)
-
-        asyncio.run(servers_task())
+        cfg.setup_event_loop()  # Call this so uvloop gets used
+        server = uvicorn.Server(config=cfg)
+        self._server = server
+        asyncio.run(server.serve())

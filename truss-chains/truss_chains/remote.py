@@ -24,7 +24,6 @@ from typing import (
 )
 
 import tenacity
-import truss
 import watchfiles
 
 if TYPE_CHECKING:
@@ -34,6 +33,7 @@ from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
+from truss.truss_handle import build as truss_build
 from truss.util import log_utils
 from truss.util import path as truss_path
 
@@ -43,17 +43,15 @@ _MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
 
 
 def _push_to_baseten(
-    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten
+    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten, chainlet_name: str
 ) -> b10_service.BasetenService:
-    truss_handle = truss.load(str(truss_dir))
+    truss_handle = truss_build.load(str(truss_dir))
     model_name = truss_handle.spec.config.model_name
     assert model_name is not None
     assert bool(_MODEL_NAME_RE.match(model_name))
-    if options.promote and not options.publish:
-        logging.info("`promote=True` overrides `publish` to `True`.")
     logging.info(
-        f"Pushing chainlet `{model_name}` as a truss model on Baseten "
-        f"(publish={options.publish}, promote={options.promote})."
+        f"Pushing chainlet `{model_name}` as a truss model on "
+        f"Baseten (publish={options.publish})"
     )
     # Models must be trusted to use the API KEY secret.
     service = options.remote_provider.push(
@@ -61,8 +59,10 @@ def _push_to_baseten(
         model_name=model_name,
         trusted=True,
         publish=options.publish,
-        promote=options.promote,
         origin=b10_types.ModelOrigin.CHAINS,
+        chain_environment=options.environment,
+        chainlet_name=chainlet_name,
+        chain_name=options.chain_name,
     )
     return cast(b10_service.BasetenService, service)
 
@@ -111,7 +111,7 @@ def _push_service(
             f"Running in docker container `{chainlet_descriptor.display_name}` "
         )
         port = utils.get_free_port()
-        truss_handle = truss.load(str(truss_dir))
+        truss_handle = truss_build.load(str(truss_dir))
         truss_handle.add_secret(
             definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
         )
@@ -128,7 +128,10 @@ def _push_service(
         )
     elif isinstance(options, definitions.PushOptionsBaseten):
         with utils.log_level(logging.INFO):
-            service = _push_to_baseten(truss_dir, options)
+            # We send the display_name of the chainlet in subsequent steps.
+            service = _push_to_baseten(
+                truss_dir, options, chainlet_descriptor.display_name
+            )
     else:
         raise NotImplementedError(options)
 
@@ -145,20 +148,16 @@ def _get_ordered_dependencies(
 
     def add_needed_chainlets(chainlet: definitions.ChainletAPIDescriptor):
         needed_chainlets.add(chainlet)
-        for chainlet_descriptor in framework.global_chainlet_registry.get_dependencies(
-            chainlet
-        ):
+        for chainlet_descriptor in framework.get_dependencies(chainlet):
             needed_chainlets.add(chainlet_descriptor)
             add_needed_chainlets(chainlet_descriptor)
 
     for chainlet_cls in chainlets:
-        add_needed_chainlets(
-            framework.global_chainlet_registry.get_descriptor(chainlet_cls)
-        )
-    # Iterating over the registry ensures topological ordering.
+        add_needed_chainlets(framework.get_descriptor(chainlet_cls))
+    # Get dependencies in topological order.
     return [
         descr
-        for descr in framework.global_chainlet_registry.chainlet_descriptors
+        for descr in framework.get_ordered_descriptors()
         if descr in needed_chainlets
     ]
 
@@ -327,7 +326,7 @@ def _create_baseten_chain(
         chain_name=baseten_options.chain_name,
         chainlets=chainlet_data,
         publish=baseten_options.publish,
-        promote=baseten_options.promote,
+        environment=baseten_options.environment,
     )
     return BasetenChainService(
         baseten_options.chain_name,
@@ -431,6 +430,7 @@ class _Pusher:
             raise NotImplementedError(self._options)
 
 
+@framework.raise_validation_errors_before
 def push(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.PushOptions,
@@ -690,6 +690,7 @@ class _Watcher:
                 self._console.print("👀 Watching for new changes.", style="blue")
 
 
+@framework.raise_validation_errors_before
 def watch(
     source: pathlib.Path,
     entrypoint: Optional[str],

@@ -4,6 +4,7 @@ import enum
 import importlib
 import importlib.util
 import inspect
+import json
 import logging
 import os
 import pathlib
@@ -34,7 +35,7 @@ from common.retry import retry, retry_async
 from common.schema import TrussSchema
 from opentelemetry import trace
 from pydantic import BaseModel
-from shared import serialization
+from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
 
@@ -52,6 +53,7 @@ EXTENSIONS_DIR_NAME = "extensions"
 EXTENSION_CLASS_NAME = "Extension"
 EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
+POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
 
 @asynccontextmanager
@@ -190,6 +192,7 @@ class ModelDescriptor:
     predict: MethodDescriptor
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
+    setup_environment: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -242,11 +245,19 @@ class ModelDescriptor:
         else:
             return_annotation = inspect.signature(model.predict).return_annotation
 
+        if hasattr(model, "setup_environment"):
+            setup_environment = MethodDescriptor.from_method(
+                model.setup_environment, "setup_environment"
+            )
+        else:
+            setup_environment = None
+
         return cls(
             preprocess=preprocess,
             predict=predict,
             postprocess=postprocess,
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
+            setup_environment=setup_environment,
         )
 
 
@@ -258,6 +269,8 @@ class ModelWrapper:
     _logger: logging.Logger
     _status: "ModelWrapper.Status"
     _predict_semaphore: Semaphore
+    _poll_for_environment_updates_task: Optional[asyncio.Task]
+    _environment: Optional[dict]
 
     class Status(Enum):
         NOT_READY = 0
@@ -279,6 +292,8 @@ class ModelWrapper:
                 "predict_concurrency", DEFAULT_PREDICT_CONCURRENCY
             )
         )
+        self._poll_for_environment_updates_task = None
+        self._environment = None
 
     @property
     def _model(self) -> Any:
@@ -306,11 +321,11 @@ class ModelWrapper:
     def _model_file_name(self) -> str:
         return self._config["model_class_filename"]
 
-    async def load(self) -> bool:
+    async def load(self):
         if self.ready:
-            return True
+            return
 
-        # if we are already loading, block on aquiring the lock;
+        # if we are already loading, block on acquiring the lock;
         # this worker will return 503 while the worker with the lock is loading
         with self._load_lock:
             self._status = ModelWrapper.Status.LOADING
@@ -323,12 +338,9 @@ class ModelWrapper:
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
-                return True
             except Exception:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
-
-        return False
 
     async def start_load(self):
         if self.should_load():
@@ -424,6 +436,9 @@ class ModelWrapper:
     async def try_load(self):
         await to_thread.run_sync(self._initialize_model)
 
+        if self._maybe_model_descriptor.setup_environment:
+            self._initialize_environment_before_load()
+
         if hasattr(self._model, "load"):
             if inspect.iscoroutinefunction(self._model.load):
                 await retry_async(
@@ -442,6 +457,76 @@ class ModelWrapper:
                     "Failed to load model.",
                     1.0,
                 )
+
+    def setup_polling_for_environment_updates(self):
+        self._poll_for_environment_updates_task = asyncio.create_task(
+            self.poll_for_environment_updates()
+        )
+
+    def _initialize_environment_before_load(self):
+        environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+        )
+        if environment_str:
+            environment_json = json.loads(environment_str)
+            self._logger.info(
+                f"Executing model.setup_environment with environment: {environment_json}"
+            )
+            # TODO: Support calling an async setup_environment() here once we support async load()
+            self._model.setup_environment(environment_json)
+            self._environment = environment_json
+
+    async def setup_environment(self, environment: Optional[dict]):
+        descriptor = self.model_descriptor.setup_environment
+        if not descriptor:
+            return
+        self._logger.info(
+            f"Executing model.setup_environment with environment: {environment}"
+        )
+        if descriptor.is_async:
+            return await self._model.setup_environment(environment)
+        else:
+            return await to_thread.run_sync(self._model.setup_environment, environment)
+
+    async def poll_for_environment_updates(self) -> None:
+        last_modified_time = None
+        environment_config_filename = (
+            dynamic_config_resolver.get_dynamic_config_file_path(
+                dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+            )
+        )
+
+        while True:
+            # Give control back to the event loop while waiting for environment updates
+            await asyncio.sleep(POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS)
+
+            # Wait for load to finish before checking for environment updates
+            if not self.ready:
+                continue
+
+            # Skip polling if no setup_environment implementation provided
+            if not self.model_descriptor.setup_environment:
+                break
+
+            if environment_config_filename.exists():
+                try:
+                    current_mtime = os.path.getmtime(environment_config_filename)
+                    if not last_modified_time or last_modified_time != current_mtime:
+                        environment_str = await dynamic_config_resolver.get_dynamic_config_value_async(
+                            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+                        )
+                        if environment_str:
+                            last_modified_time = current_mtime
+                            environment_json = json.loads(environment_str)
+                            # Avoid rerunning `setup_environment` with the same environment
+                            if self._environment != environment_json:
+                                await self.setup_environment(environment_json)
+                                self._environment = environment_json
+                except Exception as e:
+                    self._logger.exception(
+                        "Exception while setting up environment: " + str(e),
+                        exc_info=errors.filter_traceback(self._model_file_name),
+                    )
 
     async def preprocess(
         self,
@@ -762,4 +847,12 @@ def _prepare_init_args(klass, config, data_dir, secrets, lazy_data_resolver):
         model_init_params["secrets"] = secrets
     if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
         model_init_params["lazy_data_resolver"] = lazy_data_resolver.fetch()
+    if _signature_accepts_keyword_arg(signature, "environment"):
+        environment = None
+        environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+        )
+        if environment_str:
+            environment = json.loads(environment_str)
+        model_init_params["environment"] = environment
     return model_init_params

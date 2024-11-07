@@ -11,14 +11,14 @@ import pytest
 import requests
 import yaml
 
-from truss.build import init
+from truss.base.custom_types import Example
+from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.docker_build_emulator import DockerBuildEmulator
-from truss.custom_types import Example
-from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.build import init
+from truss.truss_handle.truss_handle import TrussHandle
 
 CUSTOM_MODEL_CODE = """
 class Model:
@@ -221,6 +221,11 @@ class Model:
 
 
 @pytest.fixture
+def test_data_path() -> Path:
+    return Path(__file__).parent.resolve() / "test_data"
+
+
+@pytest.fixture
 def pytorch_model_init_args():
     return {"arg1": 1, "arg2": 2, "kwarg1": 3, "kwarg2": 4}
 
@@ -389,8 +394,7 @@ def custom_model_trt_llm(tmp_path):
             content["trt_llm"] = {
                 "build": {
                     "base_model": "llama",
-                    "max_input_len": 1024,
-                    "max_output_len": 1024,
+                    "max_seq_len": 2048,
                     "max_batch_size": 512,
                     "checkpoint_repository": {
                         "source": "HF",
@@ -557,23 +561,18 @@ def custom_model_truss_dir_for_secrets(tmp_path):
 
 
 @pytest.fixture
-def truss_container_fs(tmp_path):
-    ROOT = Path(__file__).parent.parent.parent.resolve()
-    return _build_truss_fs(ROOT / "truss" / "test_data" / "test_truss", tmp_path)
+def truss_container_fs(tmp_path, test_data_path):
+    return _build_truss_fs(test_data_path / "test_truss", tmp_path)
 
 
 @pytest.fixture
-def trt_llm_truss_container_fs(tmp_path):
-    ROOT = Path(__file__).parent.parent.parent.resolve()
-    return _build_truss_fs(
-        ROOT / "truss" / "test_data" / "test_trt_llm_truss", tmp_path
-    )
+def trt_llm_truss_container_fs(tmp_path, test_data_path):
+    return _build_truss_fs(test_data_path / "test_trt_llm_truss", tmp_path)
 
 
 @pytest.fixture
-def truss_control_container_fs(tmp_path):
-    ROOT = Path(__file__).parent.parent.parent.resolve()
-    test_truss_dir = ROOT / "truss" / "test_data" / "test_truss"
+def truss_control_container_fs(tmp_path, test_data_path):
+    test_truss_dir = test_data_path / "test_truss"
     control_truss_dir = tmp_path / "control_truss"
     shutil.copytree(str(test_truss_dir), str(control_truss_dir))
     with _modify_yaml(control_truss_dir / "config.yaml") as content:
@@ -582,7 +581,7 @@ def truss_control_container_fs(tmp_path):
 
 
 @pytest.fixture
-def patch_ping_test_server():
+def patch_ping_test_server(test_data_path):
     port = "5001"
     proc = subprocess.Popen(
         [
@@ -597,7 +596,7 @@ def patch_ping_test_server():
             "--host",
             "0.0.0.0",
         ],
-        cwd=str(Path(__file__).parent.parent / "test_data" / "patch_ping_test_server"),
+        cwd=str(test_data_path / "patch_ping_test_server"),
     )
     base_url = f"http://127.0.0.1:{port}"
     retry_secs = 10

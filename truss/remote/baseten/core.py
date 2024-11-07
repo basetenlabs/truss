@@ -4,14 +4,14 @@ import typing
 from typing import IO, List, Optional, Tuple
 
 import truss
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
-from truss.truss_handle import TrussHandle
-from truss.util.path import load_trussignore_patterns
+from truss.truss_handle.truss_handle import TrussHandle
+from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def create_chain(
     chain_name: str,
     chainlets: List[b10_types.ChainletData],
     is_draft: bool,
-    promote: bool,
+    environment: Optional[str],
 ) -> ChainDeploymentHandle:
     if is_draft:
         response = api.deploy_draft_chain(chain_name, chainlets)
@@ -93,8 +93,20 @@ def create_chain(
         # if there is no chain already, the first deployment will
         # already be production, and only published deployments can
         # be promoted.
-        response = api.deploy_chain_deployment(chain_id, chainlets, promote)
+        try:
+            response = api.deploy_chain_deployment(chain_id, chainlets, environment)
+        except ApiError as e:
+            if (
+                e.graphql_error_code
+                == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+            ):
+                raise ValueError(
+                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
+                ) from e
+            raise e
     else:
+        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
         response = api.deploy_chain(chain_name, chainlets)
 
     return ChainDeploymentHandle(
@@ -189,11 +201,7 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     truss_dir = truss_handle._spec.truss_dir
 
     # check for a truss_ignore file and read the ignore patterns if it exists
-    truss_ignore_file = truss_dir / ".truss_ignore"
-    if truss_ignore_file.exists():
-        ignore_patterns = load_trussignore_patterns(truss_ignore_file=truss_ignore_file)
-    else:
-        ignore_patterns = load_trussignore_patterns()
+    ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
 
     try:
         temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
@@ -239,6 +247,9 @@ def create_truss_service(
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
+    chain_environment: Optional[str] = None,
+    chainlet_name: Optional[str] = None,
+    chain_name: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -283,6 +294,9 @@ def create_truss_service(
             is_trusted=is_trusted,
             deployment_name=deployment_name,
             origin=origin,
+            chain_environment=chain_environment,
+            chainlet_name=chainlet_name,
+            chain_name=chain_name,
         )
         return model_version_json["id"], model_version_json["version_id"]
 
@@ -299,7 +313,10 @@ def create_truss_service(
             environment=environment,
         )
     except ApiError as e:
-        if "Environment matching query does not exist" in e.message:
+        if (
+            e.graphql_error_code
+            == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
+        ):
             raise ValueError(
                 f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
             ) from e

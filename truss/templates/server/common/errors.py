@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import sys
+import textwrap
 from http import HTTPStatus
 from types import TracebackType
 from typing import (
@@ -13,6 +14,7 @@ from typing import (
 )
 
 import fastapi
+import pydantic
 import starlette.responses
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
@@ -171,3 +173,44 @@ def intercept_exceptions(
             "Internal Server Error", exc_info=filter_traceback(model_file_name)
         )
         raise UserCodeError(str(exc))
+
+
+def _loc_to_dot_sep(loc: Tuple[Union[str, int], ...]) -> str:
+    # From https://docs.pydantic.dev/latest/errors/errors/#customize-error-messages.
+    # Chained field access is stylized with `.`-notation (corresponding to str parts)
+    # and array indexing is stylized with `[i]`-notation (corresponding to int parts).
+    # E.g. ('items', 1, 'value') -> items[1].value.
+    parts = []
+    for i, x in enumerate(loc):
+        if isinstance(x, str):
+            if i > 0:
+                parts.append(".")
+            parts.append(x)
+        elif isinstance(x, int):
+            parts.append(f"[{x}]")
+        else:
+            raise TypeError(f"Unexpected type: {x}.")
+    return "".join(parts)
+
+
+def format_pydantic_validation_error(exc: pydantic.ValidationError) -> str:
+    if exc.error_count() == 1:
+        parts = ["Input Parsing Error:"]
+    else:
+        parts = ["Input Parsing Errors:"]
+
+    try:
+        for error in exc.errors(include_url=False, include_input=False):
+            loc = _loc_to_dot_sep(error["loc"])
+            if error["msg"]:
+                msg = error["msg"]
+            else:
+                error_no_loc = dict(error)
+                error_no_loc.pop("loc")
+                msg = str(error_no_loc)
+            parts.append(textwrap.indent(f"`{loc}`: {msg}.", "  "))
+    except:  # noqa: E722
+        # Fallback in case any of the fields cannot be processed as expected.
+        return f"Input Parsing Error, {str(exc)}"
+
+    return "\n".join(parts)

@@ -3,8 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
+from truss.base.validation import validate_secret_name
 from truss.local.local_config import LocalConfig
-from truss.validation import validate_secret_name
 
 
 class LocalConfigHandler:
@@ -74,6 +74,18 @@ class LocalConfigHandler:
         bptr_data_dir = LocalConfigHandler.TRUSS_CONFIG_DIR / "bptr"
         bptr_data_dir.mkdir(exist_ok=True, parents=True)
         return bptr_data_dir
+
+    @staticmethod
+    def dynamic_config_path():
+        dynamic_config_dir = LocalConfigHandler.TRUSS_CONFIG_DIR / "b10_dynamic_config"
+        dynamic_config_dir.mkdir(exist_ok=True, parents=True)
+        return dynamic_config_dir
+
+    @staticmethod
+    def set_dynamic_config(key: str, value: str):
+        key_path = LocalConfigHandler.dynamic_config_path() / key
+        with key_path.open("w") as key_file:
+            key_file.write(value)
 
     @staticmethod
     def _signatures_dir_path():

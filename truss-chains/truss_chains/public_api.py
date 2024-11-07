@@ -84,7 +84,7 @@ class ChainletBase(definitions.ABCChainlet):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        framework.check_and_register_class(cls)
+        framework.validate_and_register_class(cls)  # Errors are collected, not raised!
         # For default init (from `object`) we don't need to check anything.
         if cls.has_custom_init():
             original_init = cls.__init__
@@ -125,6 +125,7 @@ def push(
     user_env: Optional[Mapping[str, str]] = None,
     only_generate_trusses: bool = False,
     remote: Optional[str] = None,
+    environment: Optional[str] = None,
 ) -> chains_remote.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
@@ -144,6 +145,7 @@ def push(
           ``/tmp/.chains_generated``.
         remote: name of a remote config in `.trussrc`. If not provided, it will be
           inquired.
+        environment: The name of an environment to promote deployment into.
 
     Returns:
         A chain service handle to the deployed chain.
@@ -156,6 +158,7 @@ def push(
         user_env=user_env or {},
         only_generate_trusses=only_generate_trusses,
         remote=remote,
+        environment=environment,
     )
     service = chains_remote.push(entrypoint, options)
     assert isinstance(service, chains_remote.BasetenChainService)  # Per options above.
