@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Callable
@@ -8,6 +9,7 @@ from unittest.mock import patch
 import pytest
 import requests_mock
 from truss.templates.shared.lazy_data_resolver import (
+    BASETEN_FS_ENABLED_ENV_VAR,
     LAZY_DATA_RESOLVER_PATH,
     LazyDataResolver,
 )
@@ -87,8 +89,8 @@ def test_lazy_data_resolution(
         with expectation:
             ldr = LazyDataResolver(Path("foo"))
             assert ldr._bptr_resolution == {
-                "foo-name": "https://foo-rl",
-                "bar-name": "https://bar-rl",
+                "foo-name": ("https://foo-rl", "foo-hash"),
+                "bar-name": ("https://bar-rl", "bar-hash"),
             }
 
 
@@ -122,11 +124,61 @@ def test_lazy_data_fetch(
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
         with requests_mock.Mocker() as m:
-            for file_name, url in ldr._bptr_resolution.items():
+            for file_name, (url, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
                 m.get(url, json=resp)
             ldr.fetch()
-            for file_name, url in ldr._bptr_resolution.items():
+            for file_name, (url, _) in ldr._bptr_resolution.items():
                 assert (ldr._data_dir / file_name).read_text() == json.dumps(
                     {"file_name": file_name, "url": url}
                 )
+
+
+@pytest.mark.parametrize(
+    "foo_expiry,bar_expiry",
+    [
+        (
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+        )
+    ],
+)
+def test_lazy_data_fetch_to_cache(
+    baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch
+):
+    monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "1")
+    baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
+        foo_expiry, bar_expiry
+    )
+    manifest_path = tmp_path / "bptr" / "bptr-manifest"
+    manifest_path.parent.mkdir()
+    manifest_path.touch()
+    manifest_path.write_text(baseten_pointer_manifest_mock)
+    cache_dir = tmp_path / "cache" / "org"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.touch()
+    with patch(
+        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+        manifest_path,
+    ) as _, patch(
+        "truss.templates.shared.lazy_data_resolver.CACHE_DIR",
+        cache_dir,
+    ) as CACHE_DIR:
+        data_dir = Path(tmp_path)
+        ldr = LazyDataResolver(data_dir)
+        assert ldr._uses_b10_cache
+        with requests_mock.Mocker() as m:
+            for file_name, (url, hash) in ldr._bptr_resolution.items():
+                resp = {"file_name": file_name, "url": url}
+                m.get(url, json=resp)
+            ldr.fetch()
+            for file_name, (url, hash) in ldr._bptr_resolution.items():
+                assert (CACHE_DIR / hash).read_text() == json.dumps(
+                    {"file_name": file_name, "url": url}
+                )
+                assert os.path.islink(ldr._data_dir / file_name)
+                assert os.readlink(ldr._data_dir / file_name) == str(CACHE_DIR / hash)

@@ -1,18 +1,20 @@
+import os
+import shutil
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pydantic
+import requests
 import yaml
 
-try:
-    from shared.util import download_from_url_using_requests
-except ModuleNotFoundError:
-    from truss.templates.shared.util import download_from_url_using_requests
+from truss.templates.shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 NUM_WORKERS = 4
+CACHE_DIR = Path("/cache/org")
+BASETEN_FS_ENABLED_ENV_VAR = "BASETEN_FS_ENABLED"
 
 
 class Resolution(pydantic.BaseModel):
@@ -38,8 +40,40 @@ class BasetenPointerManifest(pydantic.BaseModel):
 class LazyDataResolver:
     def __init__(self, data_dir: Path):
         self._data_dir: Path = data_dir
-        self._bptr_resolution: Dict[str, str] = _read_bptr_resolution()
+        self._bptr_resolution: Dict[str, Tuple[str, str]] = _read_bptr_resolution()
         self._resolution_done = False
+        self._uses_b10_cache = eval(os.environ.get(BASETEN_FS_ENABLED_ENV_VAR, "False"))
+
+    def download_from_url_using_requests(self, URL: str, hash: str, file_name: str):
+        """Download object from URL, attempt to write to cache and symlink to data directory if applicable, data directory otherwise.
+        In case of failure, write to data directory
+        """
+        # Streaming download to keep memory usage low
+        resp = requests.get(
+            URL,
+            allow_redirects=True,
+            stream=True,
+            timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
+        )
+        resp.raise_for_status()
+
+        if self._uses_b10_cache:
+            try:
+                file_path = CACHE_DIR / hash
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                with file_path.open("wb") as file:
+                    shutil.copyfileobj(resp.raw, file)
+                # symlink to data directory
+                os.symlink(file_path, self._data_dir / file_name)
+                return
+            except OSError:
+                # Cache likely has no space left on device, break to download to data dir as fallback
+                pass
+
+        file_path = self._data_dir / file_name
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with file_path.open("wb") as file:
+            shutil.copyfileobj(resp.raw, file)
 
     def fetch(self):
         if self._resolution_done:
@@ -47,11 +81,12 @@ class LazyDataResolver:
 
         with ThreadPoolExecutor(NUM_WORKERS) as executor:
             futures = {}
-            for file_name, resolved_url in self._bptr_resolution.items():
+            for file_name, (resolved_url, hash) in self._bptr_resolution.items():
                 futures[file_name] = executor.submit(
-                    download_from_url_using_requests,
+                    self.download_from_url_using_requests,
                     resolved_url,
-                    self._data_dir / file_name,
+                    hash,
+                    file_name,
                 )
             for file_name, future in futures.items():
                 if not future:
@@ -59,7 +94,7 @@ class LazyDataResolver:
         self._resolution_done = True
 
 
-def _read_bptr_resolution() -> Dict[str, str]:
+def _read_bptr_resolution() -> Dict[str, Tuple[str, str]]:
     if not LAZY_DATA_RESOLVER_PATH.is_file():
         return {}
     bptr_manifest = BasetenPointerManifest(
@@ -71,5 +106,5 @@ def _read_bptr_resolution() -> Dict[str, str]:
             datetime.now(timezone.utc).timestamp()
         ):
             raise RuntimeError("Baseten pointer lazy data resolution has expired")
-        resolution_map[bptr.file_name] = bptr.resolution.url
+        resolution_map[bptr.file_name] = bptr.resolution.url, bptr.hash
     return resolution_map
