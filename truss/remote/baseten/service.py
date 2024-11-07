@@ -12,11 +12,11 @@ from typing import (
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
+from truss.base.errors import RemoteNetworkError
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.truss_remote import TrussService
-from truss.truss_handle import TrussHandle
-from truss.util.errors import RemoteNetworkError
+from truss.truss_handle.truss_handle import TrussHandle
 
 # "classes created inside an enum will not become a member" -> intended here anyway.
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*enum.*")

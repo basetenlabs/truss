@@ -7,9 +7,9 @@ from typing import Any, Dict
 import pytest
 import yaml
 
-from truss.config.trt_llm import TrussSpecDecMode, TrussTRTLLMQuantizationType
-from truss.custom_types import ModelFrameworkType
-from truss.truss_config import (
+from truss.base.custom_types import ModelFrameworkType
+from truss.base.trt_llm_config import TrussSpecDecMode, TrussTRTLLMQuantizationType
+from truss.base.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
     DEFAULT_USE_GPU,
@@ -23,7 +23,7 @@ from truss.truss_config import (
     Resources,
     TrussConfig,
 )
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 
 @pytest.fixture
