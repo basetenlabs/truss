@@ -86,10 +86,6 @@ error_console = Console(stderr=True, style="bold red")
 
 is_humanfriendly_log_level = True
 
-# In the CLI flow, ignore any local ~/.aws/config files,
-# which can interfere with uploading the Truss to S3.
-os.environ["AWS_CONFIG_FILE"] = ""
-
 
 def error_handling(f: Callable[..., object]):
     @wraps(f)
