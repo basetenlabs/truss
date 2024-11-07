@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
@@ -409,35 +409,7 @@ def watch(
 # Chains Stuff #########################################################################
 
 
-class ChainsGroup(click.Group):
-    _ALIASES = {"deploy": "push"}  # Alias `deploy` to push for backwards compat.
-
-    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
-        if cmd_name in self._ALIASES:
-            if cmd_name == "deploy":
-                warnings.warn(
-                    "`truss chains deploy` is deprecated and will be removed in a "
-                    "future version. Please use `truss chains push` instead.",
-                    DeprecationWarning,
-                    stacklevel=1,
-                )
-            cmd_name = self._ALIASES[cmd_name]
-
-        return super().get_command(ctx, cmd_name)
-
-    def list_commands(self, ctx: click.Context) -> List[str]:
-        commands = super().list_commands(ctx)
-        return commands + list(self._ALIASES.keys())
-
-    def invoke(self, ctx: click.Context) -> Any:
-        # This import raises error messages if pydantic v2 or python older than 3.9
-        # are installed.
-        import truss_chains  # noqa: F401
-
-        return super().invoke(ctx)
-
-
-@click.group(cls=ChainsGroup)
+@click.group()
 def chains():
     """Subcommands for truss chains"""
 
@@ -586,10 +558,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     "--user_env",
     required=False,
     type=str,
-    help=(
-        "Key-value-pairs (as JSON str) that can be used to control "
-        "deployment-specific chainlet behavior."
-    ),
+    help="[DEPRECATED], use ``environment`` instead.",
+    hidde=True,
 )
 @log_level_option
 @error_handling
@@ -633,17 +603,7 @@ def push_chain(
             wait = True
 
     if user_env:
-        try:
-            user_env_parsed = json.loads(user_env)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON string for user_env: `{user_env}`.\n"
-                f"user_env must be a JSON dict with string values and string keys.\n"
-                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
-                f"Error: {e}"
-            )
-    else:
-        user_env_parsed = {}
+        raise ValueError("`user_env` is deprecated, use `environment` instead.")
 
     if promote and environment:
         promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
@@ -656,7 +616,6 @@ def push_chain(
             promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
-            user_env=user_env_parsed,
             remote=remote,
             environment=environment,
         )
@@ -713,7 +672,6 @@ def push_chain(
                     entrypoint,
                     name,
                     remote,
-                    user_env_parsed,
                     console,
                     error_console,
                     show_stack_trace=not is_humanfriendly_log_level,
@@ -747,10 +705,8 @@ def push_chain(
     "--user_env",
     required=False,
     type=str,
-    help=(
-        "Key-value-pairs (as JSON str) that can be used to control "
-        "deployment-specific chainlet behavior."
-    ),
+    help="[DEPRECATED], use `environment` instead.",
+    hidden=True,
 )
 @log_level_option
 @error_handling
@@ -777,24 +733,13 @@ def watch_chains(
     console.print("")  # Print a newline.
 
     if user_env:
-        try:
-            user_env_parsed = json.loads(user_env)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON string for user_env: `{user_env}`.\n"
-                f"user_env must be a JSON dict with string values and string keys.\n"
-                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
-                f"Error: {e}"
-            )
-    else:
-        user_env_parsed = {}
+        raise ValueError("`user_env` is deprecated, use `environment` instead.")
 
     chains_remote.watch(
         source,
         entrypoint,
         name,
         remote,
-        user_env_parsed,
         console,
         error_console,
         show_stack_trace=not is_humanfriendly_log_level,
