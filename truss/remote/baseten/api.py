@@ -351,7 +351,6 @@ class BasetenApi:
                 is_container_built_from_push
                 django_patch_state {{
                     current_hash
-                    current_signature
                 }}
                 container_patch_state {{
                     current_hash

@@ -350,6 +350,15 @@ class BasetenRemote(TrussRemote):
                 ),
             )
 
+        truss_watch_state = get_truss_watch_state(self._api, model_name)  # type: ignore
+        # Make sure the patches are calculated against the current django patch state, if it exists.
+        # This is important to ensure that the sequence of patches for a given sesion forms a
+        # valid patch sequence (via a linked list)
+        if truss_watch_state.patches:
+            truss_hash = truss_watch_state.patches.django_patch_state.current_hash
+            truss_signature = (
+                truss_watch_state.patches.django_patch_state.current_signature
+            )
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
@@ -361,7 +370,6 @@ class BasetenRemote(TrussRemote):
                 "Failed to calculate patch. Change type might not be supported.",
             )
 
-        truss_watch_state = get_truss_watch_state(self._api, model_name)  # type: ignore
         requires_sync = (
             not truss_watch_state.is_container_built_from_push
             and truss_watch_state.patches
