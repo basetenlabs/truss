@@ -50,7 +50,7 @@ class CheckpointRepository(BaseModel):
     repo: str
 
 
-class TrussTRTLLMBatchSchedulerPolicy(Enum):
+class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
     MAX_UTILIZATION = "max_utilization"
     GUARANTEED_NO_EVICT = "guaranteed_no_evict"
 
