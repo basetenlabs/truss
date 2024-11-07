@@ -31,13 +31,14 @@ import starlette.responses
 from anyio import Semaphore, to_thread
 from common import errors, tracing
 from common.patches import apply_patches
-from common.retry import retry, retry_async
+from common.retry import retry
 from common.schema import TrussSchema
 from opentelemetry import trace
 from pydantic import BaseModel
 from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
+from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed
 
 if sys.version_info >= (3, 9):
     from typing import AsyncGenerator, Generator
@@ -441,13 +442,16 @@ class ModelWrapper:
 
         if hasattr(self._model, "load"):
             if inspect.iscoroutinefunction(self._model.load):
-                await retry_async(
-                    self._model.load,
-                    NUM_LOAD_RETRIES,
-                    self._logger.warn,
-                    "Failed to load model.",
-                    gap_seconds=1.0,
-                )
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(NUM_LOAD_RETRIES),
+                    wait=wait_fixed(1),
+                    before_sleep=lambda retry_state: self._logger.info(
+                        f"Model load failed (attempt {retry_state.attempt_number})...retrying"
+                    ),
+                ):
+                    with attempt:
+                        (await self._model.load(),)
+
             else:
                 await to_thread.run_sync(
                     retry,
