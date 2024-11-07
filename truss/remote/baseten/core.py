@@ -194,7 +194,7 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
 
 
 def get_truss_watch_state(api: BasetenApi, model_name: str) -> TrussWatchState:
-    response = api.get_truss_watch_state(model_name)
+    response = api.get_truss_watch_state(model_name)["trus_watch_state"]
     django_patch_state = (
         None
         if response["django_patch_state"] is None
