@@ -344,13 +344,19 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
-    def get_patches(self, model_name: str):
+    def get_truss_watch_state(self, model_name: str):
         query_string = f"""
         {{
-            patches(name: "{model_name}") {{
-                next_hash
-                next_signature
-                completed_at
+            truss_watch_state(name: "{model_name}") {{
+                is_container_built_from_push
+                django_patch_state {{
+                    current_hash
+                    current_signature
+                }}
+                container_patch_state {{
+                    current_hash
+                    current_signature
+                }}
             }}
         }}
         """
