@@ -12,9 +12,8 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
-from truss import constants
-from truss.config.trt_llm import TrussTRTLLMModel
-from truss.constants import (
+from truss.base import constants
+from truss.base.constants import (
     AUDIO_MODEL_TRTLLM_REQUIREMENTS,
     AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
     AUDIO_MODEL_TRTLLM_TRUSS_DIR,
@@ -41,6 +40,9 @@ from truss.constants import (
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
+from truss.base.trt_llm_config import TrussTRTLLMModel
+from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
+from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
     parse_s3_credentials_file,
@@ -54,9 +56,7 @@ from truss.contexts.image_builder.util import (
     truss_base_image_tag,
 )
 from truss.contexts.truss_context import TrussContext
-from truss.patch.hash import directory_content_hash
-from truss.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
-from truss.truss_spec import TrussSpec
+from truss.truss_handle.patch.hash import directory_content_hash
 from truss.util.jinja import read_template_from_fs
 from truss.util.path import (
     build_truss_target_directory,
@@ -151,7 +151,7 @@ class GCSCache(RemoteCache):
 
 
 class S3Cache(RemoteCache):
-    def list_files(self, revision=None):
+    def list_files(self, revision=None) -> List[str]:
         s3_credentials_file = self.data_dir / S3_CREDENTIALS
 
         if s3_credentials_file.exists():

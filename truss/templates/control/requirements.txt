@@ -1,5 +1,5 @@
 dataclasses-json==0.5.7
-truss==0.9.14
+truss==0.9.14  # TODO(marius/TaT): remove after TaT.
 fastapi==0.114.1
 uvicorn==0.24.0
 uvloop==0.19.0

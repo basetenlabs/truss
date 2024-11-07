@@ -6,7 +6,7 @@ from truss.remote.baseten.core import ModelId, ModelName, ModelVersionId
 from truss.remote.baseten.custom_types import ChainletData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import BasetenRemote
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"

@@ -1,4 +1,4 @@
-from truss.patch.signature import calc_truss_signature
+from truss.truss_handle.patch.signature import calc_truss_signature
 
 
 def test_calc_truss_signature(custom_model_truss_dir):

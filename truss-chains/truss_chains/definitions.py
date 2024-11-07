@@ -23,8 +23,8 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 )
 
 import pydantic
-from truss import truss_config
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base import truss_config
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
 
@@ -296,7 +296,7 @@ class Assets:
     For example, model weight caching can be used like this::
 
         import truss_chains as chains
-        from truss import truss_config
+        from truss.base import truss_config
 
         mistral_cache = truss_config.ModelRepo(
             repo_id="mistralai/Mistral-7B-Instruct-v0.2",

@@ -60,7 +60,7 @@ jobs:
           tags: baseten/truss-context-builder:v${{ needs.detect-version-changed.outputs.new_version }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  publish-to-pypi:
+  publish-release-to-pypi:
     needs: [detect-version-changed]
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' }}
     runs-on: ubuntu-20.04
@@ -80,7 +80,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
 
       - name: Install poetry packages
-        run: poetry install --no-dev
+        run: poetry install --extras=all
 
       - name: Build
         run: poetry build

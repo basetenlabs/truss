@@ -8,6 +8,7 @@ from typing import (
     Optional,
     Type,
     Union,
+    cast,
     get_args,
     get_origin,
 )
@@ -157,7 +158,9 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     """
 
     return [
-        retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg  # type: ignore[misc]  # Types are ok per filter condition.
+        cast(Type[BaseModel], retrieve_base_class_from_awaitable(arg))
+        if _is_awaitable_type(arg)
+        else arg
         for arg in union_args
         if _is_awaitable_type(arg) or _annotation_is_pydantic_model(arg)
     ]

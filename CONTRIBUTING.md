@@ -4,8 +4,8 @@ Truss was first created at [Baseten](https://baseten.co), but as an open and liv
 
 We use GitHub features for project management on Truss:
 
-* For bugs and feature requests, file an issue.
-* For changes and updates, create a pull request.
+* For bugs and feature requests, [file an issue](https://github.com/basetenlabs/truss/issues).
+* For changes and updates, create a [pull request](https://github.com/basetenlabs/truss/pulls).
 * To view and comment on the roadmap, [check the projects tab](https://github.com/orgs/basetenlabs/projects/3).
 
 ## Local development
@@ -30,7 +30,7 @@ asdf plugin add poetry
 asdf install
 
 # Install poetry dependencies
-poetry install
+poetry install --with=dev,dev-server --extras=all
 
 # And finally precommit
 poetry run pre-commit install

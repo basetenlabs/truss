@@ -294,12 +294,12 @@ For example, model weight caching can be used like this:
 
 ```python
 import truss_chains as chains
-from truss import truss_config
+from truss.base import truss_config
 
 mistral_cache = truss_config.ModelRepo(
     repo_id="mistralai/Mistral-7B-Instruct-v0.2",
     allow_patterns=["*.json", "*.safetensors", ".model"]
-  )
+)
 chains.Assets(cached=[mistral_cache], ...)
 ```
 

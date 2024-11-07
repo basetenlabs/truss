@@ -23,13 +23,11 @@ from opentelemetry import context, trace
 from python_on_whales import Container
 from requests.exceptions import RequestException
 
+from truss.base.truss_config import map_to_supported_python_version
 from truss.local.local_config_handler import LocalConfigHandler
-from truss.model_inference import map_to_supported_python_version
 from truss.tests.helpers import create_truss
-from truss.tests.test_testing_utilities_for_other_tests import (
-    ensure_kill_all,
-)
-from truss.truss_handle import TrussHandle, wait_for_truss
+from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.truss_handle.truss_handle import TrussHandle, wait_for_truss
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +105,9 @@ def test_map_to_supported_python_version(python_version, expected_python_version
 
 
 @pytest.mark.integration
-def test_model_load_failure_truss():
+def test_model_load_failure_truss(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "model_load_failure_test"
+        truss_dir = test_data_path / "model_load_failure_test"
         tr = TrussHandle(truss_dir)
 
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
@@ -164,11 +161,10 @@ def test_model_load_failure_truss():
 
 
 @pytest.mark.integration
-def test_concurrency_truss():
+def test_concurrency_truss(test_data_path):
     # Tests that concurrency limits work correctly
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_concurrency_truss"
+        truss_dir = test_data_path / "test_concurrency_truss"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
@@ -196,10 +192,9 @@ def test_concurrency_truss():
 
 
 @pytest.mark.integration
-def test_requirements_file_truss():
+def test_requirements_file_truss(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_requirements_file_truss"
+        truss_dir = test_data_path / "test_requirements_file_truss"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
@@ -211,10 +206,9 @@ def test_requirements_file_truss():
 
 @pytest.mark.integration
 @pytest.mark.parametrize("pydantic_major_version", ["1", "2"])
-def test_requirements_pydantic(pydantic_major_version):
+def test_requirements_pydantic(test_data_path, pydantic_major_version):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / f"test_pyantic_v{pydantic_major_version}"
+        truss_dir = test_data_path / f"test_pyantic_v{pydantic_major_version}"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
@@ -224,10 +218,9 @@ def test_requirements_pydantic(pydantic_major_version):
 
 
 @pytest.mark.integration
-def test_async_truss():
+def test_async_truss(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_async_truss"
+        truss_dir = test_data_path / "test_async_truss"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
@@ -239,10 +232,9 @@ def test_async_truss():
 
 
 @pytest.mark.integration
-def test_async_streaming():
+def test_async_streaming(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_streaming_async_generator_truss"
+        truss_dir = test_data_path / "test_streaming_async_generator_truss"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
@@ -263,10 +255,9 @@ def test_async_streaming():
 
 
 @pytest.mark.integration
-def test_async_streaming_timeout():
+def test_async_streaming_timeout(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_streaming_read_timeout"
+        truss_dir = test_data_path / "test_streaming_read_timeout"
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -289,10 +280,9 @@ def test_async_streaming_timeout():
 
 
 @pytest.mark.integration
-def test_streaming_with_error_and_stacktrace():
+def test_streaming_with_error_and_stacktrace(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_streaming_truss_with_error"
+        truss_dir = test_data_path / "test_streaming_truss_with_error"
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -667,10 +657,9 @@ def test_truss_with_user_errors():
 
 
 @pytest.mark.integration
-def test_truss_with_error_stacktrace():
+def test_truss_with_error_stacktrace(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_truss_with_error"
+        truss_dir = test_data_path / "test_truss_with_error"
         tr = TrussHandle(truss_dir)
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -702,10 +691,9 @@ def test_truss_with_error_stacktrace():
 
 
 @pytest.mark.integration
-def test_slow_truss():
+def test_slow_truss(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "server_conformance_test_truss"
+        truss_dir = test_data_path / "server_conformance_test_truss"
         tr = TrussHandle(truss_dir)
 
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
@@ -1044,10 +1032,9 @@ def _make_otel_headers() -> Mapping[str, str]:
 
 @pytest.mark.integration
 @pytest.mark.parametrize("enable_tracing_data", [True, False])
-def test_streaming_truss_with_user_tracing(enable_tracing_data):
+def test_streaming_truss_with_user_tracing(test_data_path, enable_tracing_data):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-        truss_dir = truss_root / "test_data" / "test_streaming_truss_with_tracing"
+        truss_dir = test_data_path / "test_streaming_truss_with_tracing"
         tr = TrussHandle(truss_dir)
 
         def enable_gpu_fn(conf):

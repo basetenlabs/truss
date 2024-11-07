@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable, List
 
 import pytest
-from truss.patch.hash import (
+from truss.truss_handle.patch.hash import (
     directory_content_hash,
     file_content_hash,
     file_content_hash_str,
