@@ -1,6 +1,7 @@
 import inspect
 from pathlib import Path
 
+from truss.base.truss_spec import TrussSpec
 from truss.contexts.local_loader.truss_module_loader import truss_module_loaded
 from truss.contexts.local_loader.utils import (
     prepare_secrets,
@@ -8,7 +9,6 @@ from truss.contexts.local_loader.utils import (
 )
 from truss.contexts.truss_context import TrussContext
 from truss.templates.server.common.patches import apply_patches
-from truss.truss_spec import TrussSpec
 
 
 class LoadModelLocal(TrussContext):

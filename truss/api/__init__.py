@@ -1,10 +1,10 @@
 from typing import Optional, cast
 
-import truss
 from truss.api import definitions
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
+from truss.truss_handle.build import load
 
 
 def login(api_key: str):
@@ -95,7 +95,7 @@ def push(
             )
 
     remote_provider = RemoteFactory.create(remote=remote)
-    tr = truss.load(target_directory)
+    tr = load(target_directory)
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         raise ValueError(

@@ -28,6 +28,7 @@ jobs:
           fetch-depth: 2
       - uses: ./.github/actions/detect-versions/
         id: versions
+
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
     if: needs.detect-version-changed.outputs.build_base_images == 'true'
@@ -49,7 +50,7 @@ jobs:
 
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: poetry install --with=dev,dev-server --extras=all
       - shell: bash
         run: |
           poetry run bin/generate_base_images.py \
@@ -64,7 +65,7 @@ jobs:
     if: ${{ !failure() && !cancelled() && (needs.build-and-push-truss-base-images-if-needed.result == 'success' || needs.build-and-push-truss-base-images-if-needed.result == 'skipped') }}
     uses: ./.github/workflows/_integration_test_shared.yml
 
-  publish-to-pypi:
+  publish-rc-to-pypi:
     needs: [detect-version-changed]
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && needs.detect-version-changed.outputs.is_prerelease_version == 'true' }}
     runs-on: ubuntu-20.04
@@ -84,7 +85,7 @@ jobs:
       - uses: ./.github/actions/setup-python/
 
       - name: Install poetry packages
-        run: poetry install --no-dev
+        run: poetry install --extras=all
 
       - name: Build
         run: poetry build
