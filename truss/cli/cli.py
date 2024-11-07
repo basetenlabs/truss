@@ -96,7 +96,10 @@ def error_handling(f: Callable[..., object]):
             raise e  # You can re-raise the exception or handle it different
         except Exception as e:
             if is_humanfriendly_log_level:
-                click.secho(f"ERROR: {type(e).__name__}: {e}", fg="red")
+                console.print(
+                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
+                    highlight=True,
+                )
             else:
                 console.print_exception(show_locals=True)
 

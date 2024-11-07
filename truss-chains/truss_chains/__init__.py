@@ -22,6 +22,7 @@ del pydantic, pydantic_major_version
 from truss_chains.definitions import (
     Assets,
     BasetenImage,
+    ChainletOptions,
     Compute,
     CustomImage,
     DeploymentContext,
@@ -47,6 +48,7 @@ __all__ = [
     "Assets",
     "BasetenImage",
     "ChainletBase",
+    "ChainletOptions",
     "Compute",
     "CustomImage",
     "DeploymentContext",

@@ -328,11 +328,10 @@ class ModelWrapper:
             thread = Thread(target=self.load)
             thread.start()
 
-    def load(self) -> bool:
+    def load(self):
         if self.ready:
-            return True
-
-        # if we are already loading, block on aquiring the lock;
+            return
+        # if we are already loading, block on acquiring the lock;
         # this worker will return 503 while the worker with the lock is loading
         with self._load_lock:
             self._status = ModelWrapper.Status.LOADING
@@ -344,12 +343,9 @@ class ModelWrapper:
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
-                return True
             except Exception:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
-
-        return False
 
     def _load_impl(self):
         data_dir = Path("data")

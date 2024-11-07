@@ -84,7 +84,7 @@ class ChainletBase(definitions.ABCChainlet):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        framework.check_and_register_class(cls)
+        framework.validate_and_register_class(cls)  # Errors are collected, not raised!
         # For default init (from `object`) we don't need to check anything.
         if cls.has_custom_init():
             original_init = cls.__init__
