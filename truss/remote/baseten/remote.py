@@ -359,6 +359,10 @@ class BasetenRemote(TrussRemote):
             truss_signature = (
                 truss_watch_state.patches.django_patch_state.current_signature
             )
+            logging.debug(f"db patch hash: {truss_hash}")
+            logging.debug(
+                f"container_patch_hash: {truss_watch_state.patches.container_patch_state.current_hash}"
+            )
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)

@@ -351,6 +351,7 @@ class BasetenApi:
                 is_container_built_from_push
                 django_patch_state {{
                     current_hash
+                    current_signature
                 }}
                 container_patch_state {{
                     current_hash
@@ -360,7 +361,6 @@ class BasetenApi:
         }}
         """
         resp = self._post_graphql_query(query_string)
-        print(resp)
         return resp["data"]
 
     def get_model(self, model_name):
