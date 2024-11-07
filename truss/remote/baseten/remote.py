@@ -126,6 +126,7 @@ class BasetenRemote(TrussRemote):
             user_email,
         )
 
+    # TODO(helen): support disable_truss_download
     def push(  # type: ignore
         self,
         truss_handle: TrussHandle,
@@ -181,6 +182,8 @@ class BasetenRemote(TrussRemote):
         temp_file = archive_truss(gathered_truss)
         s3_key = upload_truss(self._api, temp_file)
 
+        # TODO(helen): support disable_truss_download. raise warning if disable_truss_download and
+        # model exists
         model_id, model_version_id = create_truss_service(
             api=self._api,
             model_name=model_name,

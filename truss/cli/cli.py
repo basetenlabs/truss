@@ -1096,6 +1096,14 @@ def run_python(script, target_directory):
     help="Trust truss with hosted secrets.",
 )
 @click.option(
+    "--disable-truss-download",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading the truss directory from the UI.",
+)
+@click.option(
     "--deployment-name",
     type=str,
     required=False,
@@ -1129,6 +1137,7 @@ def push(
     model_name: str,
     publish: bool = False,
     trusted: bool = False,
+    disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
     deployment_name: Optional[str] = None,
@@ -1208,6 +1217,7 @@ def push(
             )
 
     # TODO(Abu): This needs to be refactored to be more generic
+    # TODO(helen): support disable_truss_download
     service = remote_provider.push(
         tr,
         model_name=model_name,

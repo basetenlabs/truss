@@ -234,6 +234,7 @@ def upload_truss(api: BasetenApi, serialize_file: IO) -> str:
     return s3_key
 
 
+# TODO(helen): support disable_truss_download
 def create_truss_service(
     api: BasetenApi,
     model_name: str,
