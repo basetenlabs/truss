@@ -29,6 +29,7 @@ from truss.remote.baseten.core import (
     get_dev_version_from_versions,
     get_model_versions,
     get_prod_version_from_versions,
+    get_truss_watch_state,
     upload_truss,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
@@ -360,12 +361,14 @@ class BasetenRemote(TrussRemote):
                 "Failed to calculate patch. Change type might not be supported.",
             )
 
-        truss_watch_state = self._api.get_truss_watch_state(
-            model_name,  # type: ignore
-        )
-        requires_sync = not truss_watch_state["is_container_built_from_push"] and (
-            truss_watch_state["django_patch_state"]["current_hash"]
-            != truss_watch_state["container_patch_state"]["current_hash"]
+        truss_watch_state = get_truss_watch_state(self._api, model_name)  # type: ignore
+        requires_sync = (
+            not truss_watch_state.is_container_built_from_push
+            and truss_watch_state.patches
+            and (
+                truss_watch_state.patches.django_patch_state.current_hash
+                != truss_watch_state.patches.container_patch_state.current_hash
+            )
         )
         should_create_patch_and_sync = (
             patch_request.prev_hash != patch_request.next_hash
