@@ -6,11 +6,17 @@ from typing import List, Optional
 
 import yaml
 
+from truss.config.trt_llm import (
+    CheckpointRepository,
+    CheckpointSource,
+    TRTLLMConfiguration,
+    TrussTRTLLMBuildConfiguration,
+)
 from truss.constants import CONFIG_FILE, TEMPLATES_DIR, TRUSS
 from truss.docker import kill_containers
 from truss.model_inference import infer_python_version, map_to_supported_python_version
 from truss.notebook import is_notebook_or_ipython
-from truss.truss_config import Build, TrussConfig
+from truss.truss_config import Accelerator, AcceleratorSpec, Build, TrussConfig
 from truss.truss_handle import TrussHandle
 from truss.util.path import build_truss_target_directory, copy_tree_path
 
@@ -54,6 +60,24 @@ def populate_target_directory(
     return target_directory_path_typed
 
 
+def set_trtllm_engine_builder_config(config):
+    config.resources.accelerator = AcceleratorSpec(
+        accelerator=Accelerator("A10G"), count=1
+    )
+    config.resources.use_gpu = True
+    trt_llm_build = TrussTRTLLMBuildConfiguration(
+        base_model="llama",
+        max_input_len=1024,
+        max_output_len=1024,
+        max_batch_size=1,
+        max_beam_width=1,
+        checkpoint_repository=CheckpointRepository(
+            source=CheckpointSource("HF"), repo=""
+        ),
+    )
+    config.trt_llm = TRTLLMConfiguration(build=trt_llm_build)
+
+
 def init(
     target_directory: str,
     data_files: Optional[List[str]] = None,
@@ -77,12 +101,19 @@ def init(
         python_version=map_to_supported_python_version(infer_python_version()),
     )
 
-    if build_config:
+    if build_config and build_config.model_server.value != "TRT_LLM_BUILDER":
         config.build = build_config
+
+    if build_config.model_server.value == "TRT_LLM_BUILDER":
+        template = "trtllm-engine-builder"
+        set_trtllm_engine_builder_config(config)
+    else:
+        template = "custom"
 
     target_directory_path = populate_target_directory(
         config=config,
         target_directory_path=target_directory,
+        template=template,
         populate_dirs=True,
     )
 

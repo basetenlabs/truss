@@ -184,6 +184,7 @@ class ModelServer(Enum):
 
     TrussServer = "TrussServer"
     TRT_LLM = "TRT_LLM"
+    TRT_LLM_BUILDER = "TRT_LLM_BUILDER"
 
 
 @dataclass
