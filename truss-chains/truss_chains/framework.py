@@ -116,6 +116,7 @@ class _ErrorCollector:
     def maybe_display_errors(self) -> None:
         if self.has_errors:
             sys.stderr.write(self.format_errors())
+            sys.stderr.write("\n")
 
 
 _global_error_collector = _ErrorCollector()
