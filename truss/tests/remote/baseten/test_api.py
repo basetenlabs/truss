@@ -54,6 +54,15 @@ def mock_create_model_response():
     return response
 
 
+def mock_create_development_model_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"data": {"deploy_draft_truss": {"id": "12345"}}}
+    )
+    return response
+
+
 def mock_deploy_chain_deployment_response():
     response = Response()
     response.status_code = 200
@@ -185,8 +194,8 @@ def test_create_model_from_truss(mock_post, baseten_api):
         "config_str",
         "semver_bump",
         "client_version",
-        False,
-        "deployment_name",
+        is_trusted=False,
+        deployment_name="deployment_name",
     )
 
     gql_mutation = mock_post.call_args[1]["data"]["query"]
@@ -207,8 +216,8 @@ def test_create_model_from_truss_forwards_chainlet_data(mock_post, baseten_api):
         "config_str",
         "semver_bump",
         "client_version",
-        False,
-        "deployment_name",
+        is_trusted=False,
+        deployment_name="deployment_name",
         chain_environment="chainstaging",
         chain_name="chainchain",
         chainlet_name="chainlet-1",
@@ -237,7 +246,7 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
         "config_str",
         "semver_bump",
         "client_version",
-        True,
+        is_trusted=True,
         deployment_name=None,
     )
 
@@ -249,6 +258,50 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: true" in gql_mutation
     assert "version_name: " not in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_api):
+    baseten_api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        "client_version",
+        is_trusted=True,
+        allow_truss_download=False,
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: true" in gql_mutation
+    assert "allow_truss_download: false" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_development_model_response())
+def test_create_development_model_from_truss_with_allow_truss_download(
+    mock_post, baseten_api
+):
+    baseten_api.create_development_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "client_version",
+        is_trusted=True,
+        allow_truss_download=False,
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: true" in gql_mutation
+    assert "allow_truss_download: false" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())

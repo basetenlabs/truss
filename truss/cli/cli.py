@@ -1103,6 +1103,14 @@ def run_python(script, target_directory):
     help="Trust truss with hosted secrets.",
 )
 @click.option(
+    "--disable-truss-download",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading the truss directory from the UI.",
+)
+@click.option(
     "--deployment-name",
     type=str,
     required=False,
@@ -1136,6 +1144,7 @@ def push(
     model_name: str,
     publish: bool = False,
     trusted: bool = False,
+    disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
     deployment_name: Optional[str] = None,
@@ -1224,6 +1233,7 @@ def push(
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
+        disable_truss_download=disable_truss_download,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
