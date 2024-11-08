@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 import re
@@ -92,7 +93,94 @@ def test_raises_depends_usage():
             chain.run_remote()
 
 
-# Assert that Chain(let) definitions are validated #################################
+# The problem with supporting helper functions in `run_local` is that the stack trace
+# looks similar to the forbidden one in `InitInRun`.
+@pytest.mark.skip(reason="Helper functions not supported yet.")
+def test_ok_with_subclass_and_helper_fn():
+    def build():
+        return Chainlet1()
+
+    with chains.run_local():
+        chain = build()
+        print(chain.run_remote())
+
+
+# Test sub-classing (incl. detection of naive chainlet instantiation). #################
+
+
+class BaseChainlet(chains.ChainletBase):
+    def __init__(self):
+        self.base_value = "base_value"
+        logging.info("########## Init Base")
+
+    async def run_remote(self) -> str:
+        return self.__class__.name
+
+
+class IntermediateChainlet(BaseChainlet):
+    def __init__(self):
+        logging.info("########## Start init Intermediate")
+        super().__init__()
+        self.added_value = "added_value"
+        logging.info("########## Finish init Intermediate")
+
+    async def run_remote(self) -> str:
+        return self.__class__.name
+
+
+class DerivedChainlet(IntermediateChainlet):
+    def __init__(self):
+        logging.info("########## Start init Derived")
+        super().__init__()
+        self.base_value = "overridden_base_value"
+        logging.info("########## Finish init Derived")
+
+    async def run_remote(self) -> str:
+        return self.__class__.name
+
+
+class InitInInitSub(chains.ChainletBase):
+    def __init__(self, a=chains.depends(BaseChainlet)):
+        self.b = DerivedChainlet()
+        self.a = a
+
+    async def run_remote(self) -> str:
+        return await self.b.run_remote()
+
+
+class CorrectChain(chains.ChainletBase):
+    def __init__(
+        self, a=chains.depends(BaseChainlet), b=chains.depends(DerivedChainlet)
+    ):
+        self.a = a
+        self.b = b
+
+    async def run_remote(self) -> str:
+        return await self.a.run_remote() + " " + await self.b.run_remote()
+
+
+# Make sure there are no other validations errors from above definitions..
+framework.raise_validation_errors()
+
+
+def test_raises_init_in_init_subclass():
+    match = "Chainlets cannot be naively instantiated"
+    with pytest.raises(definitions.ChainsRuntimeError, match=match):
+        with chains.run_local():
+            InitInInitSub()
+
+
+def test_ok_with_subclass():
+    with chains.run_local():
+        chain = CorrectChain()
+        assert chain.a.base_value == "base_value"
+        assert chain.b.base_value == "overridden_base_value"
+        assert chain.b.added_value == "added_value"
+        result = asyncio.run(chain.run_remote())
+        assert result == "BaseChainlet DerivedChainlet"
+
+
+# Assert that Chain(let) definitions are validated #####################################
 
 
 @contextlib.contextmanager

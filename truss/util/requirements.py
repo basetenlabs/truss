@@ -1,5 +1,6 @@
 from typing import Optional
 
+
 def parse_requirement_string(req_str: str) -> Optional[str]:
     """
     Collects requirements from a list of requirement lines.

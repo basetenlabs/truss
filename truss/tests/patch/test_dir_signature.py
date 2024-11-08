@@ -1,4 +1,4 @@
-from truss.patch.dir_signature import directory_content_signature
+from truss.truss_handle.patch.dir_signature import directory_content_signature
 
 
 def test_directory_content_signature(tmp_path):

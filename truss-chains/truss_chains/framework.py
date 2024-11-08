@@ -37,8 +37,10 @@ from truss_chains import definitions, utils
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
 
-_DOCS_URL_CHAINING = "https://docs.baseten.co/chains/chaining-chainlets"
-_DOCS_URL_LOCAL = "https://docs.baseten.co/chains/gettin-started"
+_DOCS_URL_CHAINING = (
+    "https://docs.baseten.co/chains/concepts#depends-call-other-chainlets"
+)
+_DOCS_URL_LOCAL = "https://docs.baseten.co/chains/guide#local-development"
 
 _ENTRYPOINT_ATTR_NAME = "_chains_entrypoint"
 
@@ -114,6 +116,7 @@ class _ErrorCollector:
     def maybe_display_errors(self) -> None:
         if self.has_errors:
             sys.stderr.write(self.format_errors())
+            sys.stderr.write("\n")
 
 
 _global_error_collector = _ErrorCollector()
@@ -229,14 +232,17 @@ def _example_chainlet_code() -> str:
     return class_code
 
 
-def _instantiation_error_msg(cls_name: str):
+def _instantiation_error_msg(cls_name: str, location: Optional[str] = None) -> str:
+    location_format = f"{location}\n" if location else ""
     return (
-        f"Error when instantiating Chainlet `{cls_name}`. "
+        f"Error when instantiating Chainlet `{cls_name}`.\n"
+        f"{location_format}"
         "Chainlets cannot be naively instantiated. Possible fixes:\n"
-        "1. To use Chainlets as dependencies in other Chainlets 'chaining'), "
+        "1. To use Chainlets as dependencies in other Chainlets ('chaining'), "
         f"add them as init argument. See {_DOCS_URL_CHAINING}.\n"
         f"2. For local / debug execution, use the `{run_local.__name__}`-"
-        f"context. See {_DOCS_URL_LOCAL}.\n"
+        f"context. See {_DOCS_URL_LOCAL}. You cannot use helper functions to "
+        "instantiate the Chain in this case.\n"
         "3. Push the chain and call the remote endpoint.\n"
         "Example of correct `__init__` with dependencies:\n"
         f"{_example_chainlet_code()}"
@@ -420,11 +426,11 @@ def _validate_and_describe_endpoint(
     if not is_async:
         warnings.warn(
             "`run_remote` must be an async (coroutine) function in future releases. "
-            "Replace `def run_remote(...` with `async def run_remote(...`. "
+            "Replace `def run_remote(...)` with `async def run_remote(...)`. "
             "Local testing and execution can be done with  "
             "`asyncio.run(my_chainlet.run_remote(...))`.\n"
             "Note on concurrency: previously sync functions were run in threads by the "
-            "Truss server.\bn"
+            "Truss server.\n"
             "For some frameworks this was **unsafe** (e.g. in torch the CUDA context "
             "is not thread-safe).\n"
             "Additionally, python threads hold the GIL and therefore might not give "
@@ -825,6 +831,9 @@ run_local_stack_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
     "run_local_stack_depth"
 )
 
+_INIT_LOCAL_NAME = "__init_local__"
+_INIT_NAME = "__init__"
+
 
 def _create_modified_init_for_local(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
@@ -842,33 +851,123 @@ def _create_modified_init_for_local(
     any init args (because the patched defaults are sufficient).
     """
 
-    def _verify_stack(stack: list[inspect.FrameInfo], levels_below_run_local: int):
-        # TODO: this checks is incompatible with sub-classing chainlets.
-        for frame in stack[:levels_below_run_local]:
-            # This is a robust way to compare for function identity, since `wraps`
-            # actually changes the name.
-            if frame.frame.f_code != __init_local__.__code__:  # type: ignore[attr-defined]
-                assert frame.code_context is not None
-                logging.error(
-                    f"Chainlet init called outside {__init_local__.__name__}, "
-                    f'occurred in:\n File "{frame.filename}", line {frame.lineno}, in '
-                    f"{frame.function}\n  {frame.code_context[0].strip()}."
-                )
-                raise definitions.ChainsRuntimeError(
-                    _instantiation_error_msg(chainlet_descriptor.name)
-                )
+    def _detect_naive_instantiations(
+        stack: list[inspect.FrameInfo], levels_below_run_local: int
+    ) -> None:
+        # The goal is to find cases where a chainlet is directly instantiated
+        # in a place that is not immediately inside the `run_local`-contextmanager.
+        # In particular chainlets being instantiated in the `__init__` or `run_remote`
+        # methods of other chainlets (instead of being passed as dependencies with
+        # `chains.depends()`).
+        #
+        # We look into the calls stack of any (wrapped) invocation of an
+        # ABCChainlet-subclass's `__init__`.
+        # We also cut off the "above" call stack, such that `run_local` (and anything
+        # above that) is ignored, so it is possible to use `run_local` in nested code.
+        #
+        # A valid stack looks like this:
+        # * `__init_local__` as deepest frame (which would then call
+        #   `__init_with_arg_check__` -> `__init__` if validation passes).
+        # * If a chainlet has no base classes, this can *only* be called from
+        #   `__init_local__` - the part when the chainlet needs to be instantiated and
+        #   added to `cls_to_instance`.
+        # * If a chainlet has other chainlets as base classes, they may call a chain
+        #   of `super().__init()`. Each will add a triple of
+        #   (__init__, __init_with_arg_check__, __init_local__) to the stack. While
+        #   these 3 init layers belong to the different base classes, the type of the
+        #   `self` arg is fixed.
+        #
+        # To detect invalid stacks we can rephrase this: `__init_local__` can only be
+        # called under either of these conditions:
+        # * From `__init_local__` when needing to populate `cls_to_instance`.
+        # * From a subclass's `__init__` using `super().__init__()`. This means the
+        #   type (and instance) of the `self` arg in the calling `__init_local__` and
+        #   the invoked `__init__` must are identical. In the forbidden situation that
+        #   for example Chainlet `A` tries to create an instance of `B` inside its
+        #   `__init__` the `self` args are two different instances.
+        substack = stack[:levels_below_run_local]
+        parts = ["-------- Chainlet Instantiation Stack --------"]
+        # Track the owner classes encountered in the stack to detect invalid scenarios
+        transformed_stack = []
+        for frame in substack:
+            func_name = frame.function
+            line_number = frame.lineno
+            local_vars = frame.frame.f_locals
+            init_owner_class = None
+            self_value = None
+            # Determine if "self" exists and extract the owner class
+            if "self" in local_vars:
+                self_value = local_vars["self"]
+                if func_name == _INIT_NAME:
+                    try:
+                        name_parts = frame.frame.f_code.co_qualname.split(".")  # type: ignore[attr-defined]
+                    except AttributeError:  # `co_qualname` only in Python 3.11+.
+                        name_parts = []
+                    if len(name_parts) > 1:
+                        init_owner_class = name_parts[-2]
+                elif func_name == _INIT_LOCAL_NAME:
+                    assert (
+                        "init_owner_class" in local_vars
+                    ), f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
+                    init_owner_class = local_vars["init_owner_class"].__name__
 
-    original_init = chainlet_descriptor.chainlet_cls.__init__
+                if init_owner_class:
+                    parts.append(
+                        f"{func_name}:{line_number} | type(self)=<"
+                        f"{self_value.__class__.__name__}> method of <"
+                        f"{init_owner_class}>"
+                    )
+                else:
+                    parts.append(
+                        f"{func_name}:l{line_number} | type(self)=<"
+                        f"{self_value.__class__.__name__}>"
+                    )
+            else:
+                parts.append(f"{func_name}:l{line_number}")
 
-    @functools.wraps(original_init)
+            transformed_stack.append((func_name, self_value, frame))
+
+        if len(parts) > 1:
+            logging.debug("\n".join(parts))
+
+        # Analyze the stack after preparing relevant information.
+        for i in range(len(transformed_stack) - 1):
+            func_name, self_value, _ = transformed_stack[i]
+            up_func_name, up_self_value, up_frame = transformed_stack[i + 1]
+            if func_name != _INIT_LOCAL_NAME:
+                continue  # OK, we only validate `__init_local__` invocations.
+            # We are in `__init_local__`. Now check who and how called it.
+            if up_func_name == _INIT_LOCAL_NAME:
+                # Note: in this case `self` in the current frame is different then
+                # self in the parent frame, since a new instance is created.
+                continue  # Ok, populating `cls_to_instance`.
+            if up_func_name == _INIT_NAME and self_value == up_self_value:
+                continue  # OK, call to `super().__init__()`.
+
+            # Everything else is invalid.
+            location = (
+                f"{up_frame.filename}:{up_frame.lineno} ({up_frame.function})\n"
+                f"    {up_frame.code_context[0].strip()}"  # type: ignore[index]
+            )
+            raise definitions.ChainsRuntimeError(
+                _instantiation_error_msg(chainlet_descriptor.name, location)
+            )
+
+    __original_init__ = chainlet_descriptor.chainlet_cls.__init__
+
+    @functools.wraps(__original_init__)
     def __init_local__(self: definitions.ABCChainlet, **kwargs) -> None:
         logging.debug(f"Patched `__init__` of `{chainlet_descriptor.name}`.")
         stack_depth = run_local_stack_depth.get(None)
-        assert stack_depth is not None, "The patched init is only called in context."
+        assert stack_depth is not None, "__init_local__ is only called in context."
         stack = inspect.stack()
         current_stack_depth = len(stack)
         levels_below_run_local = current_stack_depth - stack_depth
-        _verify_stack(stack, levels_below_run_local)
+        # Capture `init_owner_class` in locals, because we check it in
+        # `_detect_naive_instantiations`.
+        init_owner_class = chainlet_descriptor.chainlet_cls  # noqa: F841
+        _detect_naive_instantiations(stack, levels_below_run_local)
+
         kwargs_mod = dict(kwargs)
         if (
             chainlet_descriptor.has_context
@@ -881,24 +980,18 @@ def _create_modified_init_for_local(
                 chainlet_to_service=chainlet_to_service,
                 user_env=user_env,
             )
-        else:
-            logging.debug(
-                f"Use explicitly given context for `{self.__class__.__name__}`."
-            )
         for arg_name, dep in chainlet_descriptor.dependencies.items():
             chainlet_cls = dep.chainlet_cls
             if arg_name in kwargs_mod:
                 logging.debug(
-                    f"Use explicitly given instance for `{arg_name}` "
-                    f"of type `{dep.name}`."
+                    f"Use given instance for `{arg_name}` of type `{dep.name}`."
                 )
                 continue
             if chainlet_cls in cls_to_instance:
                 logging.debug(
-                    f"Use previously created instance for `{arg_name}` "
-                    f"of type `{dep.name}`."
+                    f"Use previously created `{arg_name}` of type `{dep.name}`."
                 )
-                instance = cls_to_instance[chainlet_cls]
+                kwargs_mod[arg_name] = cls_to_instance[chainlet_cls]
             else:
                 logging.debug(
                     f"Create new instance for `{arg_name}` of type `{dep.name}`. "
@@ -907,13 +1000,13 @@ def _create_modified_init_for_local(
                 assert chainlet_cls._init_is_patched
                 # Dependency chainlets are instantiated here, using their __init__
                 # that is patched for local.
+                logging.warning(f"Making first {dep.name}.")
                 instance = chainlet_cls()  # type: ignore  # Here init args are patched.
                 cls_to_instance[chainlet_cls] = instance
-
-            kwargs_mod[arg_name] = instance
+                kwargs_mod[arg_name] = instance
 
         logging.debug(f"Calling original __init__ of {chainlet_descriptor.name}.")
-        original_init(self, **kwargs_mod)
+        __original_init__(self, **kwargs_mod)
 
     return __init_local__
 
@@ -933,9 +1026,10 @@ def run_local(
     ] = {}
     original_inits: MutableMapping[Type[definitions.ABCChainlet], Callable] = {}
 
-    # Capture the stack depth when entering the context manager
+    # Capture the stack depth when entering the context manager. The stack is used
+    # to check that chainlets' `__init__` methods are only called within this context
+    # manager, to flag naive instantiations.
     stack_depth = len(inspect.stack())
-    token = None
     for chainlet_descriptor in _global_chainlet_registry.chainlet_descriptors:
         original_inits[chainlet_descriptor.chainlet_cls] = (
             chainlet_descriptor.chainlet_cls.__init__
@@ -950,17 +1044,17 @@ def run_local(
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True
+    # Subtract 2 levels: `run_local` (this) and `__enter__` (from @contextmanager).
+    token = run_local_stack_depth.set(stack_depth - 2)
     try:
-        # Subtract 2 levels: `run_local` (this) and `__enter__` (from @contextmanager).
-        token = run_local_stack_depth.set(stack_depth - 2)
         yield
     finally:
         # Restore original classes to unpatched state.
         for chainlet_cls, original_init in original_inits.items():
             chainlet_cls.__init__ = original_init  # type: ignore[method-assign]
             chainlet_cls._init_is_patched = False
-        if token is not None:
-            run_local_stack_depth.reset(token)
+
+        run_local_stack_depth.reset(token)
 
 
 ########################################################################################
@@ -1045,7 +1139,8 @@ def import_target(
             target_cls = getattr(module, target_name, None)
             if not target_cls:
                 raise AttributeError(
-                    f"Target Chainlet class `{target_name}` not found in `{module_path}`."
+                    f"Target Chainlet class `{target_name}` not found "
+                    f"in `{module_path}`."
                 )
             if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
                 raise TypeError(

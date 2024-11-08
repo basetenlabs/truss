@@ -1,0 +1,43 @@
+apply_library_patches: true
+base_image: null
+build:
+  arguments: {}
+  model_server: TrussServer
+  secret_to_path_mapping: {}
+build_commands: []
+bundled_packages_dir: packages
+data_dir: data
+description: null
+docker_server: null
+environment_variables:
+  OTEL_TRACING_NDJSON_FILE: /tmp/otel_traces.ndjson
+examples_filename: examples.yaml
+external_data: null
+external_package_dirs: []
+input_type: Any
+live_reload: false
+model_cache: []
+model_class_filename: model.py
+model_class_name: Model
+model_framework: custom
+model_metadata: {}
+model_module_dir: model
+model_name: Test Streaming
+model_type: Model
+python_version: py39
+requirements: []
+requirements_file: null
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+runtime:
+  enable_tracing_data: false
+  num_workers: 1
+  predict_concurrency: 1
+  streaming_read_timeout: 60
+secrets: {}
+spec_version: '2.0'
+system_packages: []
+trt_llm: null

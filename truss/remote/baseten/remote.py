@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
 
 import yaml
 from requests import ReadTimeout
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
@@ -34,9 +35,8 @@ from truss.remote.baseten.core import (
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
-from truss.remote.truss_remote import TrussRemote
-from truss.truss_config import ModelServer
-from truss.truss_handle import TrussHandle
+from truss.remote.truss_remote import RemoteUser, TrussRemote
+from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 from watchfiles import watch
 
@@ -114,6 +114,17 @@ class BasetenRemote(TrussRemote):
                 chain_deployment_id
             )
         ]
+
+    def whoami(self) -> RemoteUser:
+        resp = self._api._post_graphql_query(
+            "query{organization{workspace_name}user{email}}"
+        )
+        workspace_name = resp["data"]["organization"]["workspace_name"]
+        user_email = resp["data"]["user"]["email"]
+        return RemoteUser(
+            workspace_name,
+            user_email,
+        )
 
     def push(  # type: ignore
         self,

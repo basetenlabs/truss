@@ -2,7 +2,7 @@ import base64
 import tempfile
 
 import data_types
-from truss import truss_config
+from truss.base import truss_config
 
 import truss_chains as chains
 

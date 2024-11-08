@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: poetry install --with=dev,dev-server --extras=all
       - run: |
           poetry run pytest truss/tests \
           --durations=0 -m 'integration' \
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: poetry install
+      - run: poetry install --with=dev,dev-server --extras=all
       - run: |
          poetry run pytest truss-chains/tests \
          --durations=0 -m 'integration' \

@@ -22,6 +22,11 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
+      - id: pyproject.toml
+        name: pyproject.toml
+        entry: poetry run python bin/pyproject_toml_linter.py
+        language: python
+        additional_dependencies: [tomlkit]
       - id: mypy
         name: mypy-local
         entry: poetry run mypy

@@ -2,6 +2,7 @@ import time
 from typing import Callable
 
 
+# TODO: replace with tenacity.
 def retry(
     fn: Callable,
     count: int,
