@@ -60,7 +60,7 @@ async def test_model_wrapper_load_error_once(app_path):
     assert model_wrapper._model.load_count == 2
 
 
-def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
+async def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
     with helpers.env_var("NUM_LOAD_RETRIES_TRUSS", "0"):
         if "model_wrapper" in sys.modules:
             model_wrapper_module = sys.modules["model_wrapper"]
@@ -71,7 +71,7 @@ def test_model_wrapper_load_error_more_than_allowed(app_path, helpers):
         config = yaml.safe_load((app_path / "config.yaml").read_text())
         os.chdir(app_path)
         model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
-        model_wrapper.load()
+        await model_wrapper.load()
         # Allow load thread to execute
         time.sleep(1)
         assert model_wrapper.load_failed
