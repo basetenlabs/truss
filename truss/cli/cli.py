@@ -1224,7 +1224,6 @@ def push(
             )
 
     # TODO(Abu): This needs to be refactored to be more generic
-    # TODO(helen): support disable_truss_download
     service = remote_provider.push(
         tr,
         model_name=model_name,
