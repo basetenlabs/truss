@@ -297,7 +297,7 @@ class Assets:
         mistral_cache = truss_config.ModelRepo(
             repo_id="mistralai/Mistral-7B-Instruct-v0.2",
             allow_patterns=["*.json", "*.safetensors", ".model"]
-          )
+        )
         chains.Assets(cached=[mistral_cache], ...)
 
     See `truss caching guide <https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model>`_
