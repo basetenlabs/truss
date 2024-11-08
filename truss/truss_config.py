@@ -613,8 +613,14 @@ class TrussConfig:
         if self.requirements_file:
             requirements_path = truss_dir / self.requirements_file
             try:
+                requirement_lines = []
                 with open(requirements_path) as f:
-                    return [x for x in f.read().split("\n") if x]
+                    for line in f.readlines():
+                        stripped_line = line.strip()
+                        if stripped_line and not stripped_line.startswith("#"):
+                            print(f"appending line: {line.strip()}")
+                            requirement_lines.append(line.strip())
+                return requirement_lines
             except Exception as e:
                 logger.exception(
                     f"failed to read requirements file: {self.requirements_file}"

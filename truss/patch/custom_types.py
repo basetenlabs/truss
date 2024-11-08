@@ -26,10 +26,16 @@ class TrussSignature:
 
     @staticmethod
     def from_dict(d) -> "TrussSignature":
+        requirements_file_requirements = d.get("requirements_file_requirements", [])
+        filtered_requirements = []
+        for req in requirements_file_requirements:
+            stripped = req.strip()
+            if stripped and not stripped.startswith("#"):
+                filtered_requirements.append(req)
         return TrussSignature(
             content_hashes_by_path=d["content_hashes_by_path"],
             config=d["config"],
-            requirements_file_requirements=d.get("requirements_file_requirements", []),
+            requirements_file_requirements=filtered_requirements,
         )
 
 
