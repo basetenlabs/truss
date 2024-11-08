@@ -107,6 +107,7 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
+        allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
         chain_environment: Optional[str] = None,
@@ -122,6 +123,7 @@ class BasetenApi:
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
+                allow_truss_download: {'true' if allow_truss_download else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
                 {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
@@ -178,6 +180,7 @@ class BasetenApi:
         config,
         client_version,
         is_trusted=False,
+        allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
@@ -187,6 +190,7 @@ class BasetenApi:
                     config: "{config}",
                     client_version: "{client_version}",
                     is_trusted: {'true' if is_trusted else 'false'},
+                    allow_truss_download: {'true' if allow_truss_download else 'false'},
                     {f'model_origin: {origin.value}' if origin else ""}
     ) {{
             id,

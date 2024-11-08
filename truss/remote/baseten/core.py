@@ -242,6 +242,7 @@ def create_truss_service(
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
     preserve_previous_prod_deployment: bool = False,
+    allow_truss_download: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
@@ -276,7 +277,8 @@ def create_truss_service(
             s3_key,
             config,
             f"truss=={truss.version()}",
-            is_trusted,
+            is_trusted=is_trusted,
+            allow_truss_download=allow_truss_download,
             origin=origin,
         )
 
@@ -292,6 +294,7 @@ def create_truss_service(
             semver_bump=semver_bump,
             client_version=f"truss=={truss.version()}",
             is_trusted=is_trusted,
+            allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
             chain_environment=chain_environment,
