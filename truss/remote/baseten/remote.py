@@ -374,7 +374,7 @@ class BasetenRemote(TrussRemote):
                 "Failed to calculate patch. Change type might not be supported.",
             )
 
-        requires_sync = (
+        django_has_unapplied_patches = (
             not truss_watch_state.is_container_built_from_push
             and truss_watch_state.patches
             and (
@@ -382,11 +382,11 @@ class BasetenRemote(TrussRemote):
                 != truss_watch_state.patches.container_patch_state.current_hash
             )
         )
-        should_create_patch_and_sync = (
+        should_create_patch = (
             patch_request.prev_hash != patch_request.next_hash
             and len(patch_request.patch_ops) > 0
         )
-        is_synced = not requires_sync and not should_create_patch_and_sync
+        is_synced = not django_has_unapplied_patches and not should_create_patch
         if is_synced:
             return PatchResult(
                 PatchStatus.SKIPPED, "No changes observed, skipping patching."
@@ -394,14 +394,14 @@ class BasetenRemote(TrussRemote):
         try:
             if console:
                 with console.status("Applying patch..."):
-                    if should_create_patch_and_sync:
+                    if should_create_patch:
                         resp = self._api.patch_draft_truss_two_step(
                             model_name, patch_request
                         )
                     else:
                         resp = self._api.sync_draft_truss(model_name)
             else:
-                if should_create_patch_and_sync:
+                if should_create_patch:
                     resp = self._api.patch_draft_truss_two_step(
                         model_name, patch_request
                     )
