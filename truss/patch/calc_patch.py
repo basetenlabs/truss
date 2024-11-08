@@ -72,7 +72,6 @@ def calc_truss_patch(
     )
 
     new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
-    print(new_config)
     prev_config = TrussConfig.from_dict(yaml.safe_load(previous_truss_signature.config))
 
     truss_spec = TrussSpec(truss_dir)
