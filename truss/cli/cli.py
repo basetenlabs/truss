@@ -1234,6 +1234,7 @@ def push(
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
+        disable_truss_download=disable_truss_download,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
