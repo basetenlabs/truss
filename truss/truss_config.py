@@ -11,6 +11,7 @@ from truss.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.custom_types import ModelFrameworkType
 from truss.errors import ValidationError
 from truss.util.data_structures import transform_optional
+from truss.util.requirements import parse_requirement_string
 from truss.validation import (
     validate_cpu_spec,
     validate_memory_spec,
@@ -616,10 +617,9 @@ class TrussConfig:
                 requirement_lines = []
                 with open(requirements_path) as f:
                     for line in f.readlines():
-                        stripped_line = line.strip()
-                        if stripped_line and not stripped_line.startswith("#"):
-                            print(f"appending line: {line.strip()}")
-                            requirement_lines.append(line.strip())
+                        parsed_line = parse_requirement_string(line)
+                        if parsed_line:
+                            requirement_lines.append(parsed_line)
                 return requirement_lines
             except Exception as e:
                 logger.exception(
