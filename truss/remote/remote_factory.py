@@ -14,7 +14,7 @@ from operator import is_not
 from pathlib import Path
 from typing import Dict, List, Type
 
-from truss.remote.baseten import BasetenRemote
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.truss_remote import RemoteConfig, TrussRemote
 
 USER_TRUSSRC_PATH = Path(os.environ.get("USER_TRUSSRC_PATH", "~/.trussrc")).expanduser()

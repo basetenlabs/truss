@@ -16,10 +16,10 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
-import truss
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+from truss import version
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -85,6 +85,9 @@ click.rich_click.COMMAND_GROUPS = {
         },
     ]
 }
+
+VERSION = version.VERSION
+
 
 console = Console()
 
@@ -179,7 +182,7 @@ def print_help() -> None:
 
 @click.group(name="truss", invoke_without_command=True)  # type: ignore
 @click.pass_context
-@click.version_option(truss.version())
+@click.version_option(VERSION)
 @log_level_option
 def truss_cli(ctx) -> None:
     """truss: The simplest way to serve models in production"""
@@ -341,7 +344,7 @@ def run(
 )
 @error_handling
 def login(api_key: Optional[str]):
-    from truss.api import login
+    from truss.api.api import login
 
     if not api_key:
         remote_config = inquire_remote_config()
@@ -362,7 +365,7 @@ def whoami(remote: Optional[str]):
     """
     Shows user information and exit.
     """
-    from truss.api import whoami
+    from truss.api.api import whoami
 
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
