@@ -45,6 +45,7 @@ from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 from watchfiles import watch
 
 from truss_chains import definitions
+from truss_chains import remote as truss_chains_remote
 
 
 class PatchStatus(enum.Enum):
@@ -274,7 +275,7 @@ class BasetenRemote(TrussRemote):
     def push_chain_atomic(
         self,
         chain_name: str,
-        chainlet_push_payloads: List[definitions.ChainletPushPayload],
+        chainlet_artifacts: List[definitions.ChainletArtifact],
         publish: bool = False,
         environment: Optional[str] = None,
     ):
@@ -287,21 +288,25 @@ class BasetenRemote(TrussRemote):
         chainlet_data: List[custom_types.ChainletDataAtomic] = []
         entrypoint_truss_handle: Optional[TrussHandle] = None
 
-        for push_payload in chainlet_push_payloads:
-            if push_payload.is_entrypoint:
-                entrypoint_truss_handle = push_payload.truss_handle
+        for artifact in chainlet_artifacts:
+            truss_handle = truss.load(str(artifact.truss_dir))
+            model_name = truss_handle.spec.config.model_name
+
+            assert model_name and truss_chains_remote.is_valid_model_name(model_name)
+
+            if artifact.is_entrypoint:
+                entrypoint_truss_handle = truss_handle
 
             options = self._prepare_push(
-                truss_handle=push_payload.truss_handle,
-                model_name=push_payload.model_name,
+                truss_handle=truss_handle,
+                model_name=model_name,
                 # Models must be trusted to use the API KEY secret.
                 trusted=True,
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
             )
-
             oracle_data = custom_types.OracleData(
-                name=push_payload.name,
+                name=artifact.descriptor.display_name,
                 model_name=options.model_name,
                 s3_key=options.s3_key,
                 config=options.encoded_config_str,
@@ -314,13 +319,15 @@ class BasetenRemote(TrussRemote):
                 origin=options.origin,
                 environment=options.environment,
             )
-
             chainlet_data.append(
                 custom_types.ChainletDataAtomic(
-                    name=push_payload.name,
-                    is_entrypoint=push_payload.is_entrypoint,
+                    name=artifact.descriptor.display_name,
+                    is_entrypoint=artifact.is_entrypoint,
                     oracle=oracle_data,
                 )
+            )
+            logging.info(
+                f"Pushing chainlet `{model_name}` as a truss model on Baseten (publish={publish})"
             )
 
         assert entrypoint_truss_handle is not None

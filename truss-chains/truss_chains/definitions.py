@@ -27,7 +27,6 @@ from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
-from truss.truss_handle import TrussHandle
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -398,8 +397,11 @@ class ServiceDescriptor(SafeModel):
     specifically with ``StubBase``."""
 
     name: str
-    predict_url: str
     options: RPCOptions
+
+
+class DeployedServiceDescriptor(ServiceDescriptor):
+    predict_url: str
 
 
 class Environment(SafeModel):
@@ -435,11 +437,12 @@ class DeploymentContext(SafeModelNonSerializable):
     """
 
     data_dir: Optional[pathlib.Path] = None
-    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    user_config: UserConfigT
+    chainlet_to_service: Mapping[str, DeployedServiceDescriptor]
     secrets: MappingNoIter[str, str]
     environment: Optional[Environment] = None
 
-    def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
+    def get_service_descriptor(self, chainlet_name: str) -> DeployedServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
             raise MissingDependencyError(f"{chainlet_name}")
         return self.chainlet_to_service[chainlet_name]
@@ -558,16 +561,9 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
 
 
 class ChainletArtifact(SafeModel):
-    path: pathlib.Path
+    truss_dir: pathlib.Path
     is_entrypoint: bool
     descriptor: ChainletAPIDescriptor
-
-
-class ChainletPushPayload(SafeModel):
-    truss_handle: TrussHandle
-    is_entrypoint: bool
-    model_name: str
-    name: str
 
 
 class StackFrame(SafeModel):

@@ -12,7 +12,17 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    Mapping,
+    NoReturn,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import aiohttp
 import fastapi
@@ -136,30 +146,40 @@ def get_free_port() -> int:
 # auto-populated through dynamic config.
 def override_chainlet_to_service_metadata(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-):
+) -> Mapping[str, definitions.DeployedServiceDescriptor]:
+    chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
+
     # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY
     )
-    if dynamic_chainlet_config_str:
-        dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
-        for (
-            chainlet_name,
-            service_descriptor,
-        ) in chainlet_to_service.items():
-            if chainlet_name in dynamic_chainlet_config:
-                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
-                service_descriptor.predict_url = dynamic_chainlet_config[chainlet_name][
-                    "predict_url"
-                ]
-            else:
-                logging.debug(
-                    f"Skipped override for chainlet '{chainlet_name}': not found in {definitions.DYNAMIC_CHAINLET_CONFIG_KEY}."
-                )
-    else:
-        logging.debug(
-            f"No {definitions.DYNAMIC_CHAINLET_CONFIG_KEY} found, skipping overrides."
+
+    if not dynamic_chainlet_config_str:
+        raise RuntimeError(
+            f"No '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}' found. Cannot override Chainlet configs."
         )
+
+    dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
+
+    for (
+        chainlet_name,
+        service_descriptor,
+    ) in chainlet_to_service.items():
+        if chainlet_name not in dynamic_chainlet_config:
+            raise RuntimeError(
+                f"Chainlet '{chainlet_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'."
+            )
+
+        chainlet_to_deployed_service[chainlet_name] = (
+            definitions.DeployedServiceDescriptor(
+                name=service_descriptor.name,
+                options=service_descriptor.options,
+                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
+                predict_url=dynamic_chainlet_config[chainlet_name]["predict_url"],
+            )
+        )
+
+    return chainlet_to_deployed_service
 
 
 # Error Propagation Utils. #############################################################

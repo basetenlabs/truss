@@ -162,7 +162,10 @@ def push(
 def run_local(
     secrets: Optional[Mapping[str, str]] = None,
     data_dir: Optional[Union[pathlib.Path, str]] = None,
-    chainlet_to_service: Optional[Mapping[str, definitions.ServiceDescriptor]] = None,
+    chainlet_to_service: Optional[
+        Mapping[str, definitions.DeployedServiceDescriptor]
+    ] = None,
+    user_env: Optional[Mapping[str, str]] = None,
 ) -> ContextManager[None]:
     """Context manager local debug execution of a chain.
 
@@ -188,7 +191,7 @@ def run_local(
             with chains.run_local(
                 secrets={"some_token": os.environ["SOME_TOKEN"]},
                 chainlet_to_service={
-                    "SomeChainlet": chains.ServiceDescriptor(
+                    "SomeChainlet": chains.DeployedServiceDescriptor(
                         name="SomeChainlet",
                         predict_url="https://...",
                         options=chains.RPCOptions(),

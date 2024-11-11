@@ -38,12 +38,14 @@ def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData):
         f'name: "{oracle.name}"',
         f's3_key: "{oracle.s3_key}"',
         f'config: "{oracle.config}"',
-        f'client_version: "{oracle.client_version}"',
         f'is_trusted: "{str(oracle.is_trusted).lower()}"',
     ]
 
     if oracle.semver_bump:
         args.append(f'semver_bump: "{oracle.semver_bump}"')
+
+    if oracle.client_version:
+        args.append(f'client_version: "{oracle.client_version}"')
 
     if oracle.deployment_name:
         args.append(f'version_name: "{oracle.deployment_name}"')

@@ -28,10 +28,13 @@ class TrussChainletModel:
         deployment_environment: Optional[definitions.Environment] = (
             definitions.Environment.model_validate(environment) if environment else None
         )
-        override_chainlet_to_service_metadata(truss_metadata.chainlet_to_service)
+        chainlet_to_deployed_service = override_chainlet_to_service_metadata(
+            truss_metadata.chainlet_to_service
+        )
 
-        self._context = definitions.DeploymentContext(
-            chainlet_to_service=truss_metadata.chainlet_to_service,
+        self._context = definitions.DeploymentContext[UserConfigT](
+            user_config=truss_metadata.user_config,
+            chainlet_to_service=chainlet_to_deployed_service,
             secrets=secrets,
             data_dir=data_dir,
             environment=deployment_environment,
