@@ -1,0 +1,131 @@
+exclude = [
+    ".*__pycache__",
+    ".*egg-info",
+    "docs",
+    "tests",
+]
+source_roots = [
+    ".",
+    "truss",
+]
+
+[[modules]]
+path = "<root>"
+depends_on = [
+    { path = "truss" },
+    { path = "truss.api" },
+    { path = "truss.base" },
+    { path = "truss.contexts" },
+    { path = "truss.remote" },
+    { path = "truss.templates" },
+    { path = "truss.truss_handle" },
+    { path = "truss.util" },
+    { path = "truss.version" },
+]
+
+[[modules]]
+path = "truss"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.contexts" },
+    { path = "truss.local" },
+    { path = "truss.remote" },
+    { path = "truss.templates" },
+    { path = "truss.trt_llm" },
+    { path = "truss.truss_handle" },
+    { path = "truss.util" },
+]
+
+[[modules]]
+path = "truss.api"
+depends_on = [
+    { path = "truss.remote" },
+    { path = "truss.truss_handle" },
+]
+
+[[modules]]
+path = "truss.base"
+depends_on = [
+    { path = "truss.util" },
+]
+
+[[modules]]
+path = "truss.cli"
+depends_on = [
+    { path = "truss.api" },
+    { path = "truss.base" },
+    { path = "truss.remote" },
+    { path = "truss.trt_llm" },
+    { path = "truss.truss_handle" },
+    { path = "truss.util" },
+    { path = "truss.version" },
+]
+
+[[modules]]
+path = "truss.contexts"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.local" },
+    { path = "truss.templates" },
+    { path = "truss.truss_handle" },
+    { path = "truss.util" },
+    { path = "truss.version" },
+]
+
+[[modules]]
+path = "truss.local"
+depends_on = [
+    { path = "truss.base" },
+]
+
+[[modules]]
+path = "truss.patch"
+depends_on = [
+    { path = "truss.truss_handle" },
+]
+
+[[modules]]
+path = "truss.remote"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.local" },
+    { path = "truss.truss_handle" },
+    { path = "truss.util" },
+    { path = "truss.version" },
+]
+
+[[modules]]
+path = "truss.templates"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.util" },
+]
+
+[[modules]]
+path = "truss.trt_llm"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.truss_handle" },
+]
+
+[[modules]]
+path = "truss.truss_handle"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.contexts" },
+    { path = "truss.local" },
+    { path = "truss.templates" },
+    { path = "truss.trt_llm" },
+    { path = "truss.util" },
+]
+
+[[modules]]
+path = "truss.util"
+depends_on = [
+    { path = "truss.base" },
+    { path = "truss.local" },
+]
+
+[[modules]]
+path = "truss.version"
+depends_on = []

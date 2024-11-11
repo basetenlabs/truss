@@ -657,7 +657,7 @@ class PushOptionsBaseten(PushOptions):
             publish = True
         remote_provider = cast(
             baseten_remote.BasetenRemote,
-            remote_factory.RemoteFactory.create(remote=remote),
+            remote_factory.RemoteFactory.create(remote=remote_str),
         )
         return PushOptionsBaseten(
             remote_provider=remote_provider,
