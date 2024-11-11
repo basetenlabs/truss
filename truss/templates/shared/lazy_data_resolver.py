@@ -9,7 +9,10 @@ import pydantic
 import requests
 import yaml
 
-from truss.templates.shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
+try:
+    from shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
+except ModuleNotFoundError:
+    from truss.templates.shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 NUM_WORKERS = 4
