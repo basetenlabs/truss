@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import requests
+import truss
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
@@ -217,21 +218,34 @@ class BasetenApi:
 
     def deploy_chain_atomic(
         self,
-        name: str,
-        chainlet_data: List[b10_types.ChainletDataAtomic],
+        entrypoint: b10_types.ChainletDataAtomic,
+        dependencies: List[b10_types.ChainletDataAtomic],
+        chain_id: Optional[str] = None,
+        chain_name: Optional[str] = None,
+        environment: Optional[str] = None,
+        is_draft: bool = False,
+        promote_after_deploy: bool = False,
     ):
-        chainlets_string = ", ".join(
+        entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
+
+        dependencies_str = ", ".join(
             [
-                _chainlet_data_atomic_to_graphql_mutation(chainlet)
-                for chainlet in chainlet_data
+                _chainlet_data_atomic_to_graphql_mutation(dependency)
+                for dependency in dependencies
             ]
         )
 
         query_string = f"""
             mutation {{
                 deploy_chain_atomic(
-                    name: "{name}",
-                    chainlets: [{chainlets_string}],
+                    {f'chain_id: "{chain_id}"' if chain_id else ""}
+                    {f'chain_name: "{chain_name}"' if chain_name else ""}
+                    {f'environment: "{environment}"' if environment else ""}
+                    is_draft: {str(is_draft).lower()}
+                    entrypoint: {entrypoint_str}
+                    dependencies: [{dependencies_str}]
+                    promote_after_deploy: {str(promote_after_deploy).lower()}
+                    client_version: "truss=={truss.version()}"
                 ) {{
                     chain_id
                     chain_deployment_id
@@ -244,68 +258,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
 
         return resp["data"]["deploy_chain_atomic"]
-
-    def deploy_draft_chain_atomic(
-        self,
-        name: str,
-        chainlet_data: List[b10_types.ChainletDataAtomic],
-    ):
-        chainlets_string = ", ".join(
-            [
-                _chainlet_data_atomic_to_graphql_mutation(chainlet)
-                for chainlet in chainlet_data
-            ]
-        )
-
-        query_string = f"""
-            mutation {{
-                deploy_draft_chain_atomic(
-                    name: "{name}",
-                    chainlets: [{chainlets_string}],
-                ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
-                }}
-            }}
-        """
-
-        resp = self._post_graphql_query(query_string)
-
-        return resp["data"]["deploy_draft_chain_atomic"]
-
-    def deploy_chain_deployment_atomic(
-        self,
-        chain_id: str,
-        chainlet_data: List[b10_types.ChainletDataAtomic],
-        environment: Optional[str] = None,
-    ):
-        chainlets_string = ", ".join(
-            [
-                _chainlet_data_atomic_to_graphql_mutation(chainlet)
-                for chainlet in chainlet_data
-            ]
-        )
-
-        query_string = f"""
-            mutation {{
-                deploy_chain_deployment_atomic(
-                    chain_id: "{chain_id}",
-                    chainlets: [{chainlets_string}],
-                    {f'environment_name: "{environment}"' if environment else ""}
-                ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
-                }}
-            }}
-        """
-
-        resp = self._post_graphql_query(query_string)
-
-        return resp["data"]["deploy_chain_deployment_atomic"]
 
     def get_chains(self):
         query_string = """

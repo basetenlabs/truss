@@ -103,15 +103,35 @@ def create_chain_atomic(
     is_draft: bool,
     environment: Optional[str],
 ):
+    entrypoints: List[b10_types.ChainletDataAtomic] = []
+    dependencies: List[b10_types.ChainletDataAtomic] = []
+
+    for chainlet in chainlets:
+        (dependencies, entrypoints)[chainlet.is_entrypoint].append(chainlet)
+
+    assert len(entrypoints) == 1
+
+    entrypoint = entrypoints[0]
+
     if is_draft:
-        res = api.deploy_draft_chain_atomic(chain_name, chainlets)
+        res = api.deploy_chain_atomic(
+            chain_name=chain_name,
+            is_draft=True,
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+        )
     elif chain_id:
         # This is the only case where promote has relevance, since
         # if there is no chain already, the first deployment will
         # already be production, and only published deployments can
         # be promoted.
         try:
-            res = api.deploy_chain_deployment_atomic(chain_id, chainlets, environment)
+            res = api.deploy_chain_atomic(
+                chain_id=chain_id,
+                environment=environment,
+                entrypoint=entrypoint,
+                dependencies=dependencies,
+            )
         except ApiError as e:
             if (
                 e.graphql_error_code
@@ -125,7 +145,11 @@ def create_chain_atomic(
     elif environment and environment != PRODUCTION_ENVIRONMENT_NAME:
         raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
     else:
-        res = api.deploy_chain_atomic(chain_name, chainlets)
+        res = api.deploy_chain_atomic(
+            chain_name=chain_name,
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+        )
 
     return ChainDeploymentHandleAtomic(
         chain_id=res["chain_id"],
