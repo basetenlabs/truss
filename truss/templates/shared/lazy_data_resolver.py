@@ -47,10 +47,18 @@ class LazyDataResolver:
         self._resolution_done = False
         self._uses_b10_cache = eval(os.environ.get(BASETEN_FS_ENABLED_ENV_VAR, "False"))
 
-    def download_from_url_using_requests(self, URL: str, hash: str, file_name: str):
+    def cached_download_from_url_using_requests(
+        self, URL: str, hash: str, file_name: str
+    ):
         """Download object from URL, attempt to write to cache and symlink to data directory if applicable, data directory otherwise.
         In case of failure, write to data directory
         """
+        file_path = CACHE_DIR / hash
+        if self._uses_b10_cache:
+            if file_path.exists():
+                os.symlink(file_path, self._data_dir / file_name)
+                return
+
         # Streaming download to keep memory usage low
         resp = requests.get(
             URL,
@@ -59,11 +67,9 @@ class LazyDataResolver:
             timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
         )
         resp.raise_for_status()
-
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         if self._uses_b10_cache:
             try:
-                file_path = CACHE_DIR / hash
-                file_path.parent.mkdir(parents=True, exist_ok=True)
                 with file_path.open("wb") as file:
                     shutil.copyfileobj(resp.raw, file)
                 # symlink to data directory
@@ -86,7 +92,7 @@ class LazyDataResolver:
             futures = {}
             for file_name, (resolved_url, hash) in self._bptr_resolution.items():
                 futures[file_name] = executor.submit(
-                    self.download_from_url_using_requests,
+                    self.cached_download_from_url_using_requests,
                     resolved_url,
                     hash,
                     file_name,
