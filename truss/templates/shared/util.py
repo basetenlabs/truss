@@ -1,12 +1,9 @@
 import multiprocessing
 import os
-import shutil
 import sys
-from pathlib import Path
 from typing import List
 
 import psutil
-import requests
 
 BLOB_DOWNLOAD_TIMEOUT_SECS = 600  # 10 minutes
 # number of seconds to wait for truss server child processes before sending kill signal
@@ -78,17 +75,3 @@ def kill_child_processes(parent_pid: int):
     )
     for process in alive:
         process.kill()
-
-
-def download_from_url_using_requests(URL: str, download_to: Path):
-    # Streaming download to keep memory usage low
-    resp = requests.get(
-        URL,
-        allow_redirects=True,
-        stream=True,
-        timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
-    )
-    resp.raise_for_status()
-    download_to.parent.mkdir(parents=True, exist_ok=True)
-    with download_to.open("wb") as file:
-        shutil.copyfileobj(resp.raw, file)
