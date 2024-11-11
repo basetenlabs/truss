@@ -10,9 +10,9 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
-from truss.base.truss_config import ModelServer
 import truss
-from truss import validation
+from truss.base import validation
+from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
@@ -188,16 +188,16 @@ class BasetenRemote(TrussRemote):
                 "Deployment name must only contain alphanumeric, -, _ and . characters"
             )
 
+        model_id = exists_model(self._api, model_name)
+
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
+        temp_file = archive_truss(gathered_truss)
+        s3_key = upload_truss(self._api, temp_file)
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )
-
-        temp_file = archive_truss(gathered_truss)
-        s3_key = upload_truss(self._api, temp_file)
-        model_id = exists_model(self._api, model_name)
 
         return FinalPushData(
             model_name=model_name,
@@ -274,9 +274,12 @@ class BasetenRemote(TrussRemote):
         publish: bool = False,
         environment: Optional[str] = None,
     ):
-        if environment:
-            # If we are promoting a model to an environment after deploy, it must be published.
-            # Draft models cannot be promoted.
+        # If we are promoting a model to an environment after deploy, it must be published.
+        # Draft models cannot be promoted.
+        if environment and not publish:
+            logging.info(
+                f"Automatically publishing Chain '{chain_name}' based on environment setting."
+            )
             publish = True
 
         chain_id = get_chain_id_by_name(self._api, chain_name)
