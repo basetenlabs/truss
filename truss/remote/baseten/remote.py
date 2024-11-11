@@ -62,6 +62,7 @@ class FinalPushData(custom_types.OracleData):
     preserve_previous_prod_deployment: bool
     origin: Optional[custom_types.ModelOrigin] = None
     environment: Optional[str] = None
+    allow_truss_download: bool
 
 
 class BasetenRemote(TrussRemote):
@@ -221,6 +222,7 @@ class BasetenRemote(TrussRemote):
         trusted: bool = False,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
+        disable_truss_download: bool = False,
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
@@ -235,6 +237,7 @@ class BasetenRemote(TrussRemote):
             trusted=trusted,
             promote=promote,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
+            disable_truss_download=disable_truss_download,
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
@@ -249,6 +252,7 @@ class BasetenRemote(TrussRemote):
             model_id=push_data.model_id,
             is_trusted=push_data.is_trusted,
             preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
+            allow_truss_download=push_data.allow_truss_download,
             deployment_name=push_data.version_name,
             origin=push_data.origin,
             environment=push_data.environment,
