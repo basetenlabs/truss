@@ -53,8 +53,8 @@ class LazyDataResolver:
         """Download object from URL, attempt to write to cache and symlink to data directory if applicable, data directory otherwise.
         In case of failure, write to data directory
         """
-        file_path = CACHE_DIR / hash
         if self._uses_b10_cache:
+            file_path = CACHE_DIR / hash
             if file_path.exists():
                 os.symlink(file_path, self._data_dir / file_name)
                 return
@@ -67,9 +67,10 @@ class LazyDataResolver:
             timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
         )
         resp.raise_for_status()
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+
         if self._uses_b10_cache:
             try:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
                 with file_path.open("wb") as file:
                     shutil.copyfileobj(resp.raw, file)
                 # symlink to data directory
