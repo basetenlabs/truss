@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "truss-shim"  # TODO: make atomic switch of `truss` -> `truss-lib` & `truss-shim` -> `truss`.
+version = "0.10.0rc000"
+description = "A seamless bridge from model development to model delivery"
+authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
+license = "MIT"
+
+[tool.poetry.scripts]
+truss = "truss.cli:truss_cli"
+
+[tool.poetry.dependencies]
+# When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
+python = ">=3.8,<3.13"
+truss_lib = { version = "0.10.0rc000", extras = ["all"] }
+
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core>=1.2.1"]
