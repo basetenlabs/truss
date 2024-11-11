@@ -4,7 +4,6 @@ import inspect
 import json
 import logging
 import pathlib
-import re
 import tempfile
 import textwrap
 import traceback
@@ -28,6 +27,7 @@ import watchfiles
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+from truss import validation
 from truss.local import local_config_handler
 from truss.remote import remote_cli, remote_factory
 from truss.remote.baseten import core as b10_core
@@ -40,19 +40,13 @@ from truss.util import path as truss_path
 
 from truss_chains import code_gen, definitions, framework, utils
 
-_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
-
-
-def is_valid_model_name(model_name: str) -> bool:
-    return bool(_MODEL_NAME_RE.match(model_name))
-
 
 def _push_to_baseten(
     truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten, chainlet_name: str
 ) -> b10_service.BasetenService:
     truss_handle = truss_build.load(str(truss_dir))
     model_name = truss_handle.spec.config.model_name
-    assert model_name and is_valid_model_name(model_name)
+    assert model_name and validation.is_valid_model_name(model_name)
     logging.info(
         f"Pushing chainlet `{model_name}` as a truss model on "
         f"Baseten (publish={options.publish})"
@@ -106,11 +100,11 @@ class DockerTrussService(b10_service.TrussService):
 
 def _push_service_docker(
     truss_dir: pathlib.Path,
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_display_name: str,
     options: definitions.PushOptionsLocalDocker,
     port: int,
 ) -> None:
-    logging.info(f"Running in docker container `{chainlet_descriptor.display_name}` ")
+    logging.info(f"Running in docker container `{chainlet_display_name}` ")
 
     truss_handle = truss.load(str(truss_dir))
 
@@ -123,7 +117,7 @@ def _push_service_docker(
         detach=True,
         wait_for_server_ready=True,
         network="host",
-        container_name_prefix=chainlet_descriptor.display_name,
+        container_name_prefix=chainlet_display_name,
     )
 
 
@@ -296,7 +290,7 @@ def _get_chain_root(
 
 def _create_baseten_chain(
     baseten_options: definitions.PushOptionsBaseten,
-    chainlet_artifacts: list[definitions.ChainletArtifact],
+    chainlet_artifacts: list[b10_types.ChainletArtifact],
 ):
     chain_deployment_handle, entrypoint_service = (
         baseten_options.remote_provider.push_chain_atomic(
@@ -343,9 +337,9 @@ class _Generator:
         self,
         entrypoint: Type[definitions.ABCChainlet],
         non_entrypoint_root_dir: Optional[str] = None,
-    ) -> list[definitions.ChainletArtifact]:
+    ) -> list[b10_types.ChainletArtifact]:
         chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
-        chainlet_artifacts: list[definitions.ChainletArtifact] = []
+        chainlet_artifacts: list[b10_types.ChainletArtifact] = []
 
         for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
             model_base_name = chainlet_descriptor.display_name
@@ -369,10 +363,11 @@ class _Generator:
             is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint
 
             chainlet_artifacts.append(
-                definitions.ChainletArtifact(
+                b10_types.ChainletArtifact(
                     truss_dir=chainlet_dir,
                     is_entrypoint=is_entrypoint,
-                    descriptor=chainlet_descriptor,
+                    name=chainlet_descriptor.name,
+                    display_name=chainlet_descriptor.display_name,
                 )
             )
 
@@ -404,14 +399,13 @@ def push(
         chainlet_to_port: Dict[str, int] = {}
 
         for chainlet_artifact in chainlet_artifacts:
-            chainlet_name = chainlet_artifact.descriptor.name
             port = utils.get_free_port()
-            chainlet_to_port[chainlet_name] = port
+            chainlet_to_port[chainlet_artifact.name] = port
 
             # http://localhost:{port} seems to only work *sometimes* with docker.
             predict_url = f"http://host.docker.internal:{port}"
 
-            chainlet_to_predict_url[chainlet_name] = {
+            chainlet_to_predict_url[chainlet_artifact.name] = {
                 "predict_url": predict_url,
             }
 
@@ -428,19 +422,18 @@ def push(
         )
 
         for chainlet_artifact in chainlet_artifacts:
-            descriptor = chainlet_artifact.descriptor
             truss_dir = chainlet_artifact.truss_dir
 
             _push_service_docker(
                 truss_dir,
-                descriptor,
+                chainlet_artifact.display_name,
                 options,
-                chainlet_to_port[descriptor.name],
+                chainlet_to_port[chainlet_artifact.name],
             )
 
-            logging.info(f"Pushed `{descriptor.display_name}`")
+            logging.info(f"Pushed `{chainlet_artifact.display_name}`")
             logging.debug(
-                f"Internal model endpoint: `{chainlet_to_predict_url[descriptor.name]}`"
+                f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
             )
 
         return DockerChainService(options.chain_name, entrypoint_service)

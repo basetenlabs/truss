@@ -35,26 +35,17 @@ def _chainlet_data_to_graphql_mutation(chainlet: b10_types.ChainletData):
 
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData):
     args = [
-        f'name: "{oracle.name}"',
+        f'model_name: "{oracle.model_name}"',
         f's3_key: "{oracle.s3_key}"',
-        f'config: "{oracle.config}"',
+        f'encoded_config_str: "{oracle.encoded_config_str}"',
         f'is_trusted: "{str(oracle.is_trusted).lower()}"',
     ]
 
     if oracle.semver_bump:
         args.append(f'semver_bump: "{oracle.semver_bump}"')
 
-    if oracle.client_version:
-        args.append(f'client_version: "{oracle.client_version}"')
-
-    if oracle.deployment_name:
-        args.append(f'version_name: "{oracle.deployment_name}"')
-
-    if oracle.origin:
-        args.append(f'model_origin: "{oracle.origin.value}"')
-
-    if oracle.environment:
-        args.append(f'environment_name: "{oracle.environment}"')
+    if oracle.version_name:
+        args.append(f'version_name: "{oracle.version_name}"')
 
     return f"""{{ {", ".join(args)} }}"""
 

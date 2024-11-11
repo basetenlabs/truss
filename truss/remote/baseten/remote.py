@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from rich import console as rich_console
 from truss.base.truss_config import ModelServer
 import truss
-from pydantic import BaseModel
+from truss import validation
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
@@ -44,9 +44,6 @@ from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 from watchfiles import watch
 
-from truss_chains import definitions
-from truss_chains import remote as truss_chains_remote
-
 
 class PatchStatus(enum.Enum):
     SUCCESS = enum.auto()
@@ -59,17 +56,12 @@ class PatchResult(NamedTuple):
     message: str
 
 
-class FinalPushOptions(BaseModel):
-    model_name: str
-    s3_key: str
-    encoded_config_str: str
+class FinalPushData(custom_types.OracleData):
     is_draft: bool
     model_id: Optional[str]
-    is_trusted: bool
     preserve_previous_prod_deployment: bool
-    deployment_name: Optional[str]
-    origin: Optional[custom_types.ModelOrigin]
-    environment: Optional[str]
+    origin: Optional[custom_types.ModelOrigin] = None
+    environment: Optional[str] = None
 
 
 class BasetenRemote(TrussRemote):
@@ -160,7 +152,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
-    ) -> FinalPushOptions:
+    ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
@@ -172,9 +164,12 @@ class BasetenRemote(TrussRemote):
         if promote:
             environment = PRODUCTION_ENVIRONMENT_NAME
 
-        if environment:
-            # If there is a target environment, it must be published.
-            # Draft models cannot be promoted.
+        # If there is a target environment, it must be published.
+        # Draft models cannot be promoted.
+        if environment and not publish:
+            logging.info(
+                f"Automatically publishing model '{model_name}' based on environment setting."
+            )
             publish = True
 
         if not publish and deployment_name:
@@ -204,7 +199,7 @@ class BasetenRemote(TrussRemote):
         s3_key = upload_truss(self._api, temp_file)
         model_id = exists_model(self._api, model_name)
 
-        return FinalPushOptions(
+        return FinalPushData(
             model_name=model_name,
             s3_key=s3_key,
             encoded_config_str=encoded_config_str,
@@ -212,7 +207,7 @@ class BasetenRemote(TrussRemote):
             model_id=model_id,
             is_trusted=trusted,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
-            deployment_name=deployment_name,
+            version_name=deployment_name,
             origin=origin,
             environment=environment,
             allow_truss_download=not disable_truss_download,
@@ -233,7 +228,7 @@ class BasetenRemote(TrussRemote):
         chainlet_name: Optional[str] = None,
         chain_name: Optional[str] = None,
     ) -> BasetenService:
-        options = self._prepare_push(
+        push_data = self._prepare_push(
             truss_handle=truss_handle,
             model_name=model_name,
             publish=publish,
@@ -247,16 +242,16 @@ class BasetenRemote(TrussRemote):
 
         model_id, model_version_id = create_truss_service(
             api=self._api,
-            model_name=options.model_name,
-            s3_key=options.s3_key,
-            config=options.encoded_config_str,
-            is_draft=options.is_draft,
-            model_id=options.model_id,
-            is_trusted=options.is_trusted,
-            preserve_previous_prod_deployment=options.preserve_previous_prod_deployment,
-            deployment_name=options.deployment_name,
-            origin=options.origin,
-            environment=options.environment,
+            model_name=push_data.model_name,
+            s3_key=push_data.s3_key,
+            config=push_data.encoded_config_str,
+            is_draft=push_data.is_draft,
+            model_id=push_data.model_id,
+            is_trusted=push_data.is_trusted,
+            preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
+            deployment_name=push_data.version_name,
+            origin=push_data.origin,
+            environment=push_data.environment,
             chain_environment=chain_environment,
             chainlet_name=chainlet_name,
             chain_name=chain_name,
@@ -265,7 +260,7 @@ class BasetenRemote(TrussRemote):
         return BasetenService(
             model_id=model_id,
             model_version_id=model_version_id,
-            is_draft=options.is_draft,
+            is_draft=push_data.is_draft,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_handle,
@@ -275,7 +270,7 @@ class BasetenRemote(TrussRemote):
     def push_chain_atomic(
         self,
         chain_name: str,
-        chainlet_artifacts: List[definitions.ChainletArtifact],
+        chainlet_artifacts: List[custom_types.ChainletArtifact],
         publish: bool = False,
         environment: Optional[str] = None,
     ):
@@ -292,12 +287,12 @@ class BasetenRemote(TrussRemote):
             truss_handle = truss.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
 
-            assert model_name and truss_chains_remote.is_valid_model_name(model_name)
+            assert model_name and validation.is_valid_model_name(model_name)
 
             if artifact.is_entrypoint:
                 entrypoint_truss_handle = truss_handle
 
-            options = self._prepare_push(
+            push_data = self._prepare_push(
                 truss_handle=truss_handle,
                 model_name=model_name,
                 # Models must be trusted to use the API KEY secret.
@@ -306,22 +301,17 @@ class BasetenRemote(TrussRemote):
                 origin=custom_types.ModelOrigin.CHAINS,
             )
             oracle_data = custom_types.OracleData(
-                name=artifact.descriptor.display_name,
-                model_name=options.model_name,
-                s3_key=options.s3_key,
-                config=options.encoded_config_str,
-                client_version=f"truss=={truss.version()}",
-                is_draft=options.is_draft,
-                model_id=options.model_id,
-                is_trusted=options.is_trusted,
-                preserve_previous_prod_deployment=options.preserve_previous_prod_deployment,
-                deployment_name=options.deployment_name,
-                origin=options.origin,
-                environment=options.environment,
+                model_name=push_data.model_name,
+                s3_key=push_data.s3_key,
+                encoded_config_str=push_data.encoded_config_str,
+                is_draft=push_data.is_draft,
+                model_id=push_data.model_id,
+                is_trusted=push_data.is_trusted,
+                version_name=push_data.version_name,
             )
             chainlet_data.append(
                 custom_types.ChainletDataAtomic(
-                    name=artifact.descriptor.display_name,
+                    name=artifact.display_name,
                     is_entrypoint=artifact.is_entrypoint,
                     oracle=oracle_data,
                 )
@@ -347,7 +337,7 @@ class BasetenRemote(TrussRemote):
         entrypoint_service = BasetenService(
             model_id=model_id,
             model_version_id=model_version_id,
-            is_draft=options.is_draft,
+            is_draft=push_data.is_draft,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=entrypoint_truss_handle,

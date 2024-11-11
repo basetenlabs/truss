@@ -560,12 +560,6 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
-class ChainletArtifact(SafeModel):
-    truss_dir: pathlib.Path
-    is_entrypoint: bool
-    descriptor: ChainletAPIDescriptor
-
-
 class StackFrame(SafeModel):
     filename: str
     lineno: Optional[int]

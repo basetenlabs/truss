@@ -1,3 +1,4 @@
+import pathlib
 from enum import Enum
 from typing import Optional
 
@@ -20,21 +21,25 @@ class ChainletData(pydantic.BaseModel):
     is_entrypoint: bool
 
 
+class ChainletArtifact(pydantic.BaseModel):
+    truss_dir: pathlib.Path
+    is_entrypoint: bool
+    display_name: str
+    name: str
+
+
 class ModelOrigin(Enum):
     BASETEN = "BASETEN"
     CHAINS = "CHAINS"
 
 
 class OracleData(pydantic.BaseModel):
-    name: str
+    model_name: str
     s3_key: str
-    config: str
+    encoded_config_str: str
     semver_bump: Optional[str] = "MINOR"
-    client_version: Optional[str]
     is_trusted: bool
-    deployment_name: Optional[str] = None
-    origin: Optional[ModelOrigin] = None
-    environment: Optional[str] = None
+    version_name: Optional[str] = None
 
 
 class ChainletDataAtomic(pydantic.BaseModel):
