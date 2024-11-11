@@ -27,7 +27,7 @@ import watchfiles
 
 if TYPE_CHECKING:
     from rich import console as rich_console
-from truss import validation
+from truss.base import validation
 from truss.local import local_config_handler
 from truss.remote import remote_cli, remote_factory
 from truss.remote.baseten import core as b10_core
