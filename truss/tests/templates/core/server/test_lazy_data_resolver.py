@@ -150,7 +150,7 @@ def test_lazy_data_fetch(
 def test_lazy_data_fetch_to_cache(
     baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch
 ):
-    monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "1")
+    monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "True")
     baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
         foo_expiry, bar_expiry
     )
@@ -158,7 +158,7 @@ def test_lazy_data_fetch_to_cache(
     manifest_path.parent.mkdir()
     manifest_path.touch()
     manifest_path.write_text(baseten_pointer_manifest_mock)
-    cache_dir = tmp_path / "cache" / "org"
+    cache_dir = tmp_path / "cache" / "org" / "artifacts"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.touch()
     with patch(
@@ -200,7 +200,7 @@ def test_lazy_data_fetch_to_cache(
 def test_lazy_data_fetch_cached(
     baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch
 ):
-    monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "1")
+    monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "True")
     baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
         foo_expiry, bar_expiry
     )
@@ -208,7 +208,7 @@ def test_lazy_data_fetch_cached(
     manifest_path.parent.mkdir()
     manifest_path.touch()
     manifest_path.write_text(baseten_pointer_manifest_mock)
-    cache_dir = tmp_path / "cache" / "org"
+    cache_dir = tmp_path / "cache" / "org" / "artifacts"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.touch()
     with patch(

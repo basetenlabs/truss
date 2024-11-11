@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -16,8 +17,10 @@ except ModuleNotFoundError:
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 NUM_WORKERS = 4
-CACHE_DIR = Path("/cache/org")
+CACHE_DIR = Path("/cache/org/artifacts")
 BASETEN_FS_ENABLED_ENV_VAR = "BASETEN_FS_ENABLED"
+
+logger = logging.getLogger(__name__)
 
 
 class Resolution(pydantic.BaseModel):
@@ -45,7 +48,9 @@ class LazyDataResolver:
         self._data_dir: Path = data_dir
         self._bptr_resolution: Dict[str, Tuple[str, str]] = _read_bptr_resolution()
         self._resolution_done = False
-        self._uses_b10_cache = eval(os.environ.get(BASETEN_FS_ENABLED_ENV_VAR, "False"))
+        self._uses_b10_cache = (
+            os.environ.get(BASETEN_FS_ENABLED_ENV_VAR, "False") == "True"
+        )
 
     def cached_download_from_url_using_requests(
         self, URL: str, hash: str, file_name: str
@@ -77,6 +82,9 @@ class LazyDataResolver:
                 os.symlink(file_path, self._data_dir / file_name)
                 return
             except OSError:
+                logger.debug(
+                    "Failed to save artifact to cache dir, saving to data dir instead"
+                )
                 # Cache likely has no space left on device, break to download to data dir as fallback
                 pass
 
