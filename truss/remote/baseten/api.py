@@ -23,16 +23,6 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
-def _chainlet_data_to_graphql_mutation(chainlet: b10_types.ChainletData):
-    return f"""
-        {{
-            name: "{chainlet.name}",
-            oracle_version_id: "{chainlet.oracle_version_id}",
-            is_entrypoint: {'true' if chainlet.is_entrypoint else 'false'}
-        }}
-        """
-
-
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData):
     args = [
         f'model_name: "{oracle.model_name}"',
@@ -139,9 +129,6 @@ class BasetenApi:
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
-        chain_environment: Optional[str] = None,
-        chainlet_name: Optional[str] = None,
-        chain_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
@@ -155,9 +142,6 @@ class BasetenApi:
                 allow_truss_download: {'true' if allow_truss_download else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
-                {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
-                {f'chainlet_name: "{chainlet_name}"' if chainlet_name else ""}
-                {f'chain_name: "{chain_name}"' if chain_name else ""}
             ) {{
                 id,
                 name,
@@ -231,27 +215,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_draft_truss"]
 
-    def deploy_chain(self, name: str, chainlet_data: List[b10_types.ChainletData]):
-        chainlet_data_strings = [
-            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
-        ]
-
-        chainlets_string = ", ".join(chainlet_data_strings)
-        query_string = f"""
-        mutation {{
-        deploy_chain(
-            name: "{name}",
-            chainlets: [{chainlets_string}]
-        ) {{
-            id
-            chain_id
-            chain_deployment_id
-        }}
-        }}
-        """
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_chain"]
-
     def deploy_chain_atomic(
         self,
         name: str,
@@ -270,7 +233,6 @@ class BasetenApi:
                     name: "{name}",
                     chainlets: [{chainlets_string}],
                 ) {{
-                    id
                     chain_id
                     chain_deployment_id
                     entrypoint_model_id
@@ -282,27 +244,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
 
         return resp["data"]["deploy_chain_atomic"]
-
-    def deploy_draft_chain(
-        self, name: str, chainlet_data: List[b10_types.ChainletData]
-    ):
-        chainlet_data_strings = [
-            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
-        ]
-        chainlets_string = ", ".join(chainlet_data_strings)
-        query_string = f"""
-        mutation {{
-        deploy_draft_chain(
-            name: "{name}",
-            chainlets: [{chainlets_string}]
-        ) {{
-            chain_id
-            chain_deployment_id
-        }}
-        }}
-        """
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_draft_chain"]
 
     def deploy_draft_chain_atomic(
         self,
@@ -333,31 +274,6 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
 
         return resp["data"]["deploy_draft_chain_atomic"]
-
-    def deploy_chain_deployment(
-        self,
-        chain_id: str,
-        chainlet_data: List[b10_types.ChainletData],
-        environment: Optional[str] = None,
-    ):
-        chainlet_data_strings = [
-            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
-        ]
-        chainlets_string = ", ".join(chainlet_data_strings)
-        query_string = f"""
-        mutation {{
-            deploy_chain_deployment(
-                chain_id: "{chain_id}",
-                chainlets: [{chainlets_string}],
-                {f'environment_name: "{environment}"' if environment else ""}
-            ) {{
-                chain_id
-                chain_deployment_id
-            }}
-        }}
-        """
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_chain_deployment"]
 
     def deploy_chain_deployment_atomic(
         self,

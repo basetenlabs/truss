@@ -18,13 +18,11 @@ from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
-    ChainDeploymentHandle,
     ModelId,
     ModelIdentifier,
     ModelName,
     ModelVersionId,
     archive_truss,
-    create_chain,
     create_chain_atomic,
     create_truss_service,
     exists_model,
@@ -74,28 +72,6 @@ class BasetenRemote(TrussRemote):
     @property
     def api(self) -> BasetenApi:
         return self._api
-
-    def create_chain(
-        self,
-        chain_name: str,
-        chainlets: List[custom_types.ChainletData],
-        publish: bool = False,
-        environment: Optional[str] = None,
-    ) -> ChainDeploymentHandle:
-        if environment:
-            # If we are promoting a model to an environment after deploy, it must be published.
-            # Draft models cannot be promoted.
-            publish = True
-        # Returns tuple of (chain_id, chain_deployment_id)
-        chain_id = get_chain_id_by_name(self._api, chain_name)
-        return create_chain(
-            self._api,
-            chain_id=chain_id,
-            chain_name=chain_name,
-            chainlets=chainlets,
-            is_draft=not publish,
-            environment=environment,
-        )
 
     def get_chainlets(
         self, chain_deployment_id: str
@@ -226,9 +202,6 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
-        chain_environment: Optional[str] = None,
-        chainlet_name: Optional[str] = None,
-        chain_name: Optional[str] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -256,9 +229,6 @@ class BasetenRemote(TrussRemote):
             deployment_name=push_data.version_name,
             origin=push_data.origin,
             environment=push_data.environment,
-            chain_environment=chain_environment,
-            chainlet_name=chainlet_name,
-            chain_name=chain_name,
         )
 
         return BasetenService(

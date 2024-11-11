@@ -209,34 +209,6 @@ def test_create_model_from_truss(mock_post, baseten_api):
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
-def test_create_model_from_truss_forwards_chainlet_data(mock_post, baseten_api):
-    baseten_api.create_model_from_truss(
-        "model_name",
-        "s3key",
-        "config_str",
-        "semver_bump",
-        "client_version",
-        is_trusted=False,
-        deployment_name="deployment_name",
-        chain_environment="chainstaging",
-        chain_name="chainchain",
-        chainlet_name="chainlet-1",
-    )
-
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
-    assert 'name: "model_name"' in gql_mutation
-    assert 's3_key: "s3key"' in gql_mutation
-    assert 'config: "config_str"' in gql_mutation
-    assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: false" in gql_mutation
-    assert 'version_name: "deployment_name"' in gql_mutation
-    assert 'chain_environment: "chainstaging"' in gql_mutation
-    assert 'chain_name: "chainchain"' in gql_mutation
-    assert 'chainlet_name: "chainlet-1"' in gql_mutation
-
-
-@mock.patch("requests.post", return_value=mock_create_model_response())
 def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     mock_post, baseten_api
 ):

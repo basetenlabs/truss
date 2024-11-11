@@ -42,12 +42,6 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
-class ChainDeploymentHandle(typing.NamedTuple):
-    chain_id: str
-    chain_deployment_id: str
-    is_draft: bool
-
-
 class PatchState(typing.NamedTuple):
     current_hash: str
     current_signature: str
@@ -99,44 +93,6 @@ def get_dev_chain_deployment(api: BasetenApi, chain_id: str):
         dev_deployments, key=lambda d: datetime.datetime.fromisoformat(d["created"])
     )
     return newest_draft_deployment
-
-
-def create_chain(
-    api: BasetenApi,
-    chain_id: Optional[str],
-    chain_name: str,
-    chainlets: List[b10_types.ChainletData],
-    is_draft: bool,
-    environment: Optional[str],
-) -> ChainDeploymentHandle:
-    if is_draft:
-        response = api.deploy_draft_chain(chain_name, chainlets)
-    elif chain_id:
-        # This is the only case where promote has relevance, since
-        # if there is no chain already, the first deployment will
-        # already be production, and only published deployments can
-        # be promoted.
-        try:
-            response = api.deploy_chain_deployment(chain_id, chainlets, environment)
-        except ApiError as e:
-            if (
-                e.graphql_error_code
-                == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
-            ):
-                raise ValueError(
-                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
-                ) from e
-            raise e
-    else:
-        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
-        response = api.deploy_chain(chain_name, chainlets)
-
-    return ChainDeploymentHandle(
-        chain_id=response["chain_id"],
-        chain_deployment_id=response["chain_deployment_id"],
-        is_draft=is_draft,
-    )
 
 
 def create_chain_atomic(
@@ -342,9 +298,6 @@ def create_truss_service(
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
-    chain_environment: Optional[str] = None,
-    chainlet_name: Optional[str] = None,
-    chain_name: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -391,9 +344,6 @@ def create_truss_service(
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
-            chain_environment=chain_environment,
-            chainlet_name=chainlet_name,
-            chain_name=chain_name,
         )
         return model_version_json["id"], model_version_json["version_id"]
 

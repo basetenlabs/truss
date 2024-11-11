@@ -15,12 +15,6 @@ class DeployedChainlet(pydantic.BaseModel):
     oracle_name: str
 
 
-class ChainletData(pydantic.BaseModel):
-    name: str
-    oracle_version_id: str
-    is_entrypoint: bool
-
-
 class ChainletArtifact(pydantic.BaseModel):
     truss_dir: pathlib.Path
     is_entrypoint: bool

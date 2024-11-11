@@ -27,42 +27,16 @@ import watchfiles
 
 if TYPE_CHECKING:
     from rich import console as rich_console
-from truss.base import validation
 from truss.local import local_config_handler
 from truss.remote import remote_cli, remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
-from truss.truss_handle import build as truss_build
 from truss.util import log_utils
 from truss.util import path as truss_path
 
 from truss_chains import code_gen, definitions, framework, utils
-
-
-def _push_to_baseten(
-    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten, chainlet_name: str
-) -> b10_service.BasetenService:
-    truss_handle = truss_build.load(str(truss_dir))
-    model_name = truss_handle.spec.config.model_name
-    assert model_name and validation.is_valid_model_name(model_name)
-    logging.info(
-        f"Pushing chainlet `{model_name}` as a truss model on "
-        f"Baseten (publish={options.publish})"
-    )
-    # Models must be trusted to use the API KEY secret.
-    service = options.remote_provider.push(
-        truss_handle,
-        model_name=model_name,
-        trusted=True,
-        publish=options.publish,
-        origin=b10_types.ModelOrigin.CHAINS,
-        chain_environment=options.environment,
-        chainlet_name=chainlet_name,
-        chain_name=options.chain_name,
-    )
-    return cast(b10_service.BasetenService, service)
 
 
 class DockerTrussService(b10_service.TrussService):
@@ -206,14 +180,14 @@ class ChainService(abc.ABC):
 
 
 class BasetenChainService(ChainService):
-    _chain_deployment_handle: b10_core.ChainDeploymentHandle
+    _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
     _remote: b10_remote.BasetenRemote
 
     def __init__(
         self,
         name: str,
         entrypoint_service: b10_service.BasetenService,
-        chain_deployment_handle: b10_core.ChainDeploymentHandle,
+        chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
     ) -> None:
         super().__init__(name, entrypoint_service)
@@ -300,6 +274,9 @@ def _create_baseten_chain(
             environment=baseten_options.environment,
         )
     )
+
+    logging.info(f"Pushed Chain '{baseten_options.chain_name}'.")
+    logging.debug(f"Internal model endpoint: '{entrypoint_service.predict_url}'.")
 
     return BasetenChainService(
         baseten_options.chain_name,
