@@ -4,6 +4,7 @@ from typing import Dict, List
 from pydantic import BaseModel
 
 from truss.templates.control.control.helpers.custom_types import Patch
+from truss.util.requirements import parse_requirement_string
 
 
 @dataclass
@@ -30,10 +31,15 @@ class TrussSignature:
 
     @staticmethod
     def from_dict(d) -> "TrussSignature":
+        requirements = []
+        for req in d.get("requirements_file_requirements", []):
+            parsed_req = parse_requirement_string(req)
+            if parsed_req:
+                requirements.append(parsed_req)
         return TrussSignature(
             content_hashes_by_path=d["content_hashes_by_path"],
             config=d["config"],
-            requirements_file_requirements=d.get("requirements_file_requirements", []),
+            requirements_file_requirements=requirements,
         )
 
 
