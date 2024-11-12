@@ -179,7 +179,14 @@ class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
                 )
         for trt_llm_config in [self.target, self.draft]:
             if trt_llm_config.build.base_model is TrussTRTLLMModel.WHISPER:
-                raise ValueError("Speculative decoding for Whisper is not supported")
+                raise ValueError("Speculative decoding for Whisper is not supported.")
+        if (
+            self.target.build.tensor_parallel_count
+            != self.draft.build.tensor_parallel_count
+        ):
+            raise ValueError(
+                "Speculative decoding requires the same tensor parallelism for target and draft models."
+            )
 
     def to_json_dict(self, verbose=True):
         return json.loads(self.json(exclude_unset=not verbose))
