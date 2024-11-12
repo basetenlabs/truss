@@ -40,7 +40,7 @@ from truss.base.constants import (
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
-from truss.base.trt_llm_config import TrussTRTLLMModel
+from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
 from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
@@ -349,12 +349,13 @@ class ServingImageBuilder(ImageBuilder):
 
     def prepare_trtllm_build_dir(self, build_dir: Path):
         config = self._spec.config
-        trt_llm_config = config.parsed_trt_llm_config
+        trt_llm_config = config.trt_llm
         if not trt_llm_config:
             return
         is_audio_model = (
             trt_llm_config.build.base_model == TrussTRTLLMModel.WHISPER
-            if trt_llm_config.build is not None
+            if isinstance(trt_llm_config, TRTLLMConfiguration)
+            and trt_llm_config.build is not None
             else False
         )
 

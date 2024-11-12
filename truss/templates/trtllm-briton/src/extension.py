@@ -1,5 +1,6 @@
 from briton.spec_dec_truss_model import Model as SpecDecModel
 from briton.truss_model import Model
+from truss.trt_llm_config import TRTLLMSpeculativeDecodingConfiguration
 from truss.truss_config import TrussConfig
 
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in
@@ -36,8 +37,7 @@ class Extension:
 
     def __init__(self, *args, **kwargs):
         self._config = TrussConfig(**kwargs["config"])
-        trtllm_config = self._config.parsed_trt_llm_config
-        if trtllm_config.uses_spec_dec:
+        if isinstance(self._config.trt_llm, TRTLLMSpeculativeDecodingConfiguration):
             self._model = SpecDecModel(*args, **kwargs)
         else:
             self._model = Model(*args, **kwargs)

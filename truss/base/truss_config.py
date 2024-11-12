@@ -3,19 +3,18 @@ import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import yaml
 
 from truss.base.constants import (
     HTTP_PUBLIC_BLOB_BACKEND,
-    TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME,
-    TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
 )
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
+    TRTLLMSpeculativeDecodingConfiguration,
     TrussTRTLLMQuantizationType,
 )
 from truss.base.validation import (
@@ -564,7 +563,9 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
-    trt_llm: Optional[Union[Dict[str, TRTLLMConfiguration], TRTLLMConfiguration]] = None
+    trt_llm: Optional[
+        Union[TRTLLMConfiguration, TRTLLMSpeculativeDecodingConfiguration]
+    ] = None
     build_commands: List[str] = field(default_factory=list)
 
     @property
@@ -577,12 +578,12 @@ class TrussConfig:
         }[self.python_version]
 
     @property
-    def parsed_trt_llm_config(self) -> Optional[TRTLLMConfiguration]:
+    def parsed_trt_llm_configs(self) -> List[TRTLLMConfiguration]:
         if self.trt_llm:
-            if isinstance(self.trt_llm, Dict):
-                return self.trt_llm.get(TRTLLM_SPEC_DEC_TARGET_MODEL_NAME)
-            return self.trt_llm
-        return None
+            if isinstance(self.trt_llm, TRTLLMSpeculativeDecodingConfiguration):
+                return [self.trt_llm.target, self.trt_llm.draft]
+            return [self.trt_llm]
+        return []
 
     @staticmethod
     def from_dict(d):
@@ -631,9 +632,9 @@ class TrussConfig:
             ),
             trt_llm=transform_optional(
                 d.get("trt_llm"),
-                lambda x: TRTLLMConfiguration(**x)
-                if "build" in x
-                else {k: TRTLLMConfiguration(**v) for k, v in x.items()},
+                lambda x: (TRTLLMConfiguration(**x))
+                if "target" not in d.get("trt_llm")
+                else (TRTLLMSpeculativeDecodingConfiguration(**x)),
             ),
             build_commands=d.get("build_commands", []),
         )
@@ -681,54 +682,32 @@ class TrussConfig:
         return TrussConfig.from_dict(self.to_dict())
 
     def _validate_trt_llm_config(self) -> None:
-        def _validate_trt_llm_keys(self) -> None:
-            if isinstance(self.trt_llm, Dict):
-                if list(self.trt_llm.keys()) != [
-                    TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
-                    TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME,
-                ]:
-                    raise ValueError(
-                        f"Speculative Decoding TRT-LLM config requires keys `{TRTLLM_SPEC_DEC_TARGET_MODEL_NAME}` and `{TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME}`"
-                    )
+        for trt_llm_config in self.parsed_trt_llm_configs:
+            if (
+                trt_llm_config.build.quantization_type
+                is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
+                and self.resources.accelerator.accelerator is Accelerator.A100
+            ):
+                raise ValueError(
+                    "Weight only int8 quantization on A100 accelerators is not currently supported"
+                )
+            elif trt_llm_config.build.quantization_type in [
+                TrussTRTLLMQuantizationType.FP8,
+                TrussTRTLLMQuantizationType.FP8_KV,
+            ] and self.resources.accelerator.accelerator not in [
+                Accelerator.H100,
+                Accelerator.H100_40GB,
+                Accelerator.L4,
+            ]:
+                raise ValueError(
+                    "FP8 quantization is only supported on L4 and H100 accelerators"
+                )
+            tensor_parallel_count = trt_llm_config.build.tensor_parallel_count
 
-        def _validate_accelerator_for_trt_llm_builder(self):
-            if self.trt_llm:  # mypy: disable-error-code="union-attr"
-                it: Iterable[TRTLLMConfiguration]
-                if isinstance(self.trt_llm, Dict):
-                    it = iter(self.trt_llm.values())
-
-                else:
-                    it = [self.trt_llm]
-                for trt_llm_config in it:
-                    if (
-                        trt_llm_config.build.quantization_type
-                        is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
-                        and self.resources.accelerator.accelerator is Accelerator.A100
-                    ):
-                        raise ValueError(
-                            "Weight only int8 quantization on A100 accelerators is not currently supported"
-                        )
-                    elif trt_llm_config.build.quantization_type in [
-                        TrussTRTLLMQuantizationType.FP8,
-                        TrussTRTLLMQuantizationType.FP8_KV,
-                    ] and self.resources.accelerator.accelerator not in [
-                        Accelerator.H100,
-                        Accelerator.H100_40GB,
-                        Accelerator.L4,
-                    ]:
-                        raise ValueError(
-                            "FP8 quantization is only supported on L4 and H100 accelerators"
-                        )
-                    tensor_parallel_count = trt_llm_config.build.tensor_parallel_count
-
-                    if tensor_parallel_count != self.resources.accelerator.count:
-                        raise ValueError(
-                            "Tensor parallelism and GPU count must be the same for TRT-LLM"
-                        )
-            # mypy: enable-error-code="union-attr"
-
-        _validate_trt_llm_keys(self)
-        _validate_accelerator_for_trt_llm_builder(self)
+            if tensor_parallel_count != self.resources.accelerator.count:
+                raise ValueError(
+                    "Tensor parallelism and GPU count must be the same for TRT-LLM"
+                )
 
     def validate(self):
         if self.python_version not in VALID_PYTHON_VERSIONS:
@@ -828,18 +807,9 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["trt_llm"] = transform_optional(
                     field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
                 )
-            elif (
-                isinstance(field_curr_value, dict)
-                and len(field_curr_value)
-                and isinstance(
-                    next(iter(field_curr_value.values())), TRTLLMConfiguration
-                )
-            ):
+            elif isinstance(field_curr_value, TRTLLMSpeculativeDecodingConfiguration):
                 d["trt_llm"] = transform_optional(
-                    field_curr_value,
-                    lambda data: {
-                        k: v.to_json_dict(verbose=verbose) for k, v in data.items()
-                    },
+                    field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
                 )
             elif isinstance(field_curr_value, BaseImage):
                 d["base_image"] = transform_optional(

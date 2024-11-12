@@ -1198,21 +1198,21 @@ def push(
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
-        trt_llm_config = tr.spec.config.parsed_trt_llm_config
-        if (
-            trt_llm_config.build.quantization_type
-            in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-            and not trt_llm_config.build.num_builder_gpus
-        ):
-            fp8_and_num_builder_gpus_text = (
-                "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
-                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
-            )
-            console.print(
-                fp8_and_num_builder_gpus_text,
-                style="yellow",
-            )
+        for trt_llm_config in tr.spec.config.parsed_trt_llm_configs:
+            if (
+                trt_llm_config.build.quantization_type
+                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+                and not trt_llm_config.build.num_builder_gpus
+            ):
+                fp8_and_num_builder_gpus_text = (
+                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
+                    "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
+                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+                )
+                console.print(
+                    fp8_and_num_builder_gpus_text,
+                    style="yellow",
+                )
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(

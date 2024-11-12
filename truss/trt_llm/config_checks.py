@@ -9,10 +9,9 @@ from truss.truss_handle.truss_handle import TrussHandle
 
 
 def is_missing_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    trtllm_config = tr.spec.config.parsed_trt_llm_config
-    if trtllm_config:
-        source = trtllm_config.build.checkpoint_repository.source
-        hf_model_id = trtllm_config.build.checkpoint_repository.repo
+    for trt_llm_config in tr.spec.config.parsed_trt_llm_configs:
+        source = trt_llm_config.build.checkpoint_repository.source
+        hf_model_id = trt_llm_config.build.checkpoint_repository.repo
         if (
             source == CheckpointSource.HF
             and HF_ACCESS_TOKEN_KEY not in tr.spec.secrets
