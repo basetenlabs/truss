@@ -9,6 +9,7 @@ import yaml
 
 from truss.base.constants import (
     HTTP_PUBLIC_BLOB_BACKEND,
+    TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
 )
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
@@ -633,7 +634,7 @@ class TrussConfig:
             trt_llm=transform_optional(
                 d.get("trt_llm"),
                 lambda x: (TRTLLMConfiguration(**x))
-                if "target" not in d.get("trt_llm")
+                if TRTLLM_SPEC_DEC_TARGET_MODEL_NAME not in d.get("trt_llm")
                 else (TRTLLMSpeculativeDecodingConfiguration(**x)),
             ),
             build_commands=d.get("build_commands", []),
