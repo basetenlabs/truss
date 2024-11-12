@@ -102,7 +102,7 @@ def create_chain_atomic(
     chainlets: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
     environment: Optional[str],
-):
+) -> ChainDeploymentHandleAtomic:
     entrypoints: List[b10_types.ChainletDataAtomic] = []
     dependencies: List[b10_types.ChainletDataAtomic] = []
 

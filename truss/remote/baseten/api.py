@@ -24,7 +24,7 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
-def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData):
+def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
         f'model_name: "{oracle.model_name}"',
         f's3_key: "{oracle.s3_key}"',
@@ -41,7 +41,9 @@ def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData):
     return f"""{{ {", ".join(args)} }}"""
 
 
-def _chainlet_data_atomic_to_graphql_mutation(chainlet: b10_types.ChainletDataAtomic):
+def _chainlet_data_atomic_to_graphql_mutation(
+    chainlet: b10_types.ChainletDataAtomic,
+) -> str:
     oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
 
     args = [

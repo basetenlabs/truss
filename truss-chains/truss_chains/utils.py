@@ -151,7 +151,7 @@ def populate_chainlet_service_predict_urls(
     )
 
     if not dynamic_chainlet_config_str:
-        raise RuntimeError(
+        raise definitions.MissingDependencyError(
             f"No '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}' found. Cannot override Chainlet configs."
         )
 
@@ -162,7 +162,7 @@ def populate_chainlet_service_predict_urls(
         service_descriptor,
     ) in chainlet_to_service.items():
         if chainlet_name not in dynamic_chainlet_config:
-            raise RuntimeError(
+            raise definitions.MissingDependencyError(
                 f"Chainlet '{chainlet_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'."
             )
 
@@ -170,9 +170,6 @@ def populate_chainlet_service_predict_urls(
             definitions.DeployedServiceDescriptor(
                 name=service_descriptor.name,
                 options=service_descriptor.options,
-                # NOTE(dynamic-chainlet-config): Predict URLs
-                # for services that belong to a Chainlet are
-                # auto-populated through dynamic config.
                 predict_url=dynamic_chainlet_config[chainlet_name]["predict_url"],
             )
         )

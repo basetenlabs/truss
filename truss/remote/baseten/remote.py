@@ -18,6 +18,7 @@ from truss.remote.baseten import custom_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
+    ChainDeploymentHandleAtomic,
     ModelId,
     ModelIdentifier,
     ModelName,
@@ -247,7 +248,7 @@ class BasetenRemote(TrussRemote):
         chainlet_artifacts: List[custom_types.ChainletArtifact],
         publish: bool = False,
         environment: Optional[str] = None,
-    ):
+    ) -> Tuple[ChainDeploymentHandleAtomic, BasetenService]:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
         if environment and not publish:

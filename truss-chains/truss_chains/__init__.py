@@ -25,12 +25,12 @@ from truss_chains.definitions import (
     ChainletOptions,
     Compute,
     CustomImage,
+    DeployedServiceDescriptor,
     DeploymentContext,
     DockerImage,
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
-    ServiceDescriptor,
 )
 from truss_chains.public_api import (
     ChainletBase,
@@ -55,7 +55,7 @@ __all__ = [
     "RPCOptions",
     "RemoteConfig",
     "RemoteErrorDetail",
-    "ServiceDescriptor",
+    "DeployedServiceDescriptor",
     "StubBase",
     "depends",
     "depends_context",

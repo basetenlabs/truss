@@ -627,9 +627,6 @@ def gen_truss_chainlet(
     # Filter needed services and customize options.
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
-        # NOTE(dynamic-chainlet-config): We don't set
-        # a predict URL for Chainlet services as they
-        # are auto-populated during Chain deployment.
         dep_services[dep.name] = definitions.ServiceDescriptor(
             name=dep.name,
             options=dep.options,
