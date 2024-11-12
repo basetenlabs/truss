@@ -32,8 +32,7 @@ class TrussChainletModel:
             truss_metadata.chainlet_to_service
         )
 
-        self._context = definitions.DeploymentContext[UserConfigT](
-            user_config=truss_metadata.user_config,
+        self._context = definitions.DeploymentContext(
             chainlet_to_service=chainlet_to_deployed_service,
             secrets=secrets,
             data_dir=data_dir,

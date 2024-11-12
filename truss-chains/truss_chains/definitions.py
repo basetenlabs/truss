@@ -425,7 +425,6 @@ class DeploymentContext(SafeModelNonSerializable):
     Args:
         data_dir: The directory where the chainlet can store and access data,
           e.g. for downloading model weights.
-        user_config: User-defined configuration for the chainlet.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
           This is used create RPCs sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
@@ -437,7 +436,6 @@ class DeploymentContext(SafeModelNonSerializable):
     """
 
     data_dir: Optional[pathlib.Path] = None
-    user_config: UserConfigT
     chainlet_to_service: Mapping[str, DeployedServiceDescriptor]
     secrets: MappingNoIter[str, str]
     environment: Optional[Environment] = None
