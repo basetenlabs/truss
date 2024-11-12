@@ -4,7 +4,7 @@ import json
 import pytest
 
 from truss_chains import definitions
-from truss_chains.utils import override_chainlet_to_service_metadata
+from truss_chains.utils import populate_chainlet_service_predict_urls
 
 DYNAMIC_CHAINLET_CONFIG_VALUE = {
     "HelloWorld": {
@@ -22,7 +22,7 @@ def dynamic_config_mount_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
     yield
 
 
-def test_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_dir):
+def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_dir):
     with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
         f.write(json.dumps(DYNAMIC_CHAINLET_CONFIG_VALUE))
 
@@ -34,7 +34,7 @@ def test_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_di
         )
     }
     original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    override_chainlet_to_service_metadata(chainlet_to_service)
+    populate_chainlet_service_predict_urls(chainlet_to_service)
 
     assert chainlet_to_service != original_chainlet_to_service
     assert (
@@ -47,7 +47,7 @@ def test_override_chainlet_to_service_metadata(tmp_path, dynamic_config_mount_di
     "config",
     [DYNAMIC_CHAINLET_CONFIG_VALUE, {}, ""],
 )
-def test_no_override_chainlet_to_service_metadata(
+def test_no_populate_chainlet_service_predict_urls(
     config, tmp_path, dynamic_config_mount_dir
 ):
     with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
@@ -61,12 +61,12 @@ def test_no_override_chainlet_to_service_metadata(
         )
     }
     original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    override_chainlet_to_service_metadata(chainlet_to_service)
+    populate_chainlet_service_predict_urls(chainlet_to_service)
 
     assert chainlet_to_service == original_chainlet_to_service
 
 
-def test_no_config_override_chainlet_to_service_metadata(dynamic_config_mount_dir):
+def test_no_config_populate_chainlet_service_predict_urls(dynamic_config_mount_dir):
     chainlet_to_service = {
         "HelloWorld": definitions.ServiceDescriptor(
             name="HelloWorld",
@@ -75,6 +75,6 @@ def test_no_config_override_chainlet_to_service_metadata(dynamic_config_mount_di
         )
     }
     original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    override_chainlet_to_service_metadata(chainlet_to_service)
+    populate_chainlet_service_predict_urls(chainlet_to_service)
 
     assert chainlet_to_service == original_chainlet_to_service

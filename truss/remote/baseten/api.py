@@ -224,7 +224,6 @@ class BasetenApi:
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
         is_draft: bool = False,
-        promote_after_deploy: bool = False,
     ):
         entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
 
@@ -244,7 +243,6 @@ class BasetenApi:
                     is_draft: {str(is_draft).lower()}
                     entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
-                    promote_after_deploy: {str(promote_after_deploy).lower()}
                     client_version: "truss=={truss.version()}"
                 ) {{
                     chain_id

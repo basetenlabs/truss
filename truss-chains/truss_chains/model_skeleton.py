@@ -4,7 +4,7 @@ from typing import Optional
 from truss.templates.shared import secrets_resolver
 
 from truss_chains import definitions
-from truss_chains.utils import override_chainlet_to_service_metadata
+from truss_chains.utils import populate_chainlet_service_predict_urls
 
 
 class TrussChainletModel:
@@ -28,7 +28,7 @@ class TrussChainletModel:
         deployment_environment: Optional[definitions.Environment] = (
             definitions.Environment.model_validate(environment) if environment else None
         )
-        chainlet_to_deployed_service = override_chainlet_to_service_metadata(
+        chainlet_to_deployed_service = populate_chainlet_service_predict_urls(
             truss_metadata.chainlet_to_service
         )
 

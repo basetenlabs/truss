@@ -301,7 +301,7 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
         )
 
 
-class _Generator:
+class _ChainSourceGenerator:
     def __init__(
         self,
         options: definitions.PushOptions,
@@ -358,7 +358,9 @@ def push(
     non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
 ) -> Optional[ChainService]:
-    chainlet_artifacts = _Generator(options, gen_root).generate_chainlet_artifacts(
+    chainlet_artifacts = _ChainSourceGenerator(
+        options, gen_root
+    ).generate_chainlet_artifacts(
         entrypoint,
         non_entrypoint_root_dir,
     )
@@ -368,7 +370,6 @@ def push(
 
     if isinstance(options, definitions.PushOptionsBaseten):
         _create_chains_secret_if_missing(options.remote_provider)
-
         return _create_baseten_chain(options, chainlet_artifacts)
     elif isinstance(options, definitions.PushOptionsLocalDocker):
         entrypoint_service: Optional[DockerTrussService] = None

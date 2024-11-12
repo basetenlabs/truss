@@ -141,15 +141,11 @@ def get_free_port() -> int:
         return port
 
 
-# NOTE(dynamic-chainlet-config): Predict URLs
-# for services that belong to a Chainlet are
-# auto-populated through dynamic config.
-def override_chainlet_to_service_metadata(
+def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ) -> Mapping[str, definitions.DeployedServiceDescriptor]:
     chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
 
-    # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY
     )
@@ -174,7 +170,9 @@ def override_chainlet_to_service_metadata(
             definitions.DeployedServiceDescriptor(
                 name=service_descriptor.name,
                 options=service_descriptor.options,
-                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
+                # NOTE(dynamic-chainlet-config): Predict URLs
+                # for services that belong to a Chainlet are
+                # auto-populated through dynamic config.
                 predict_url=dynamic_chainlet_config[chainlet_name]["predict_url"],
             )
         )
