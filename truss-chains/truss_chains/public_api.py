@@ -165,7 +165,6 @@ def run_local(
     chainlet_to_service: Optional[
         Mapping[str, definitions.DeployedServiceDescriptor]
     ] = None,
-    user_env: Optional[Mapping[str, str]] = None,
 ) -> ContextManager[None]:
     """Context manager local debug execution of a chain.
 

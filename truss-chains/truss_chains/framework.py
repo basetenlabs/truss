@@ -841,7 +841,6 @@ def _create_modified_init_for_local(
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
     chainlet_to_service: Mapping[str, definitions.DeployedServiceDescriptor],
-    user_env: Mapping[str, str],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
@@ -1013,7 +1012,6 @@ def run_local(
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
     chainlet_to_service: Mapping[str, definitions.DeployedServiceDescriptor],
-    user_env: Mapping[str, str],
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
     # TODO: support retries in local mode.
