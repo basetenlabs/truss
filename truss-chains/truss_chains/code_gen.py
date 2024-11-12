@@ -476,14 +476,7 @@ def _gen_truss_chainlet_model(
         _SpecifyChainletTypeAnnotation(user_chainlet_ref.src)
     )
     model_class_src = libcst.Module(body=[class_definition]).code
-
-    if utils.issubclass_safe(chainlet_descriptor.user_config_type.raw, type(None)):
-        userconfig_pin = "UserConfigT = type(None)"
-    else:
-        user_config_ref = _gen_type_import_and_ref(chainlet_descriptor.user_config_type)
-        imports.update(user_config_ref.imports)
-        userconfig_pin = f"UserConfigT = {user_config_ref.src}"
-    return _Source(src=f"{userconfig_pin}\n\n{model_class_src}", imports=imports)
+    return _Source(src=model_class_src, imports=imports)
 
 
 def _gen_truss_chainlet_file(
@@ -559,18 +552,17 @@ def _inplace_fill_base_image(
             mutable_truss_config.base_image.python_executable_path = (
                 image.base_image.python_executable_path
             )
-
     elif isinstance(image.base_image, str):  # This options is deprecated.
-        mutable_truss_config.base_image = truss_config.BaseImage(image=image.base_image)
+        raise NotImplementedError(
+            "Specifying docker base image as string is deprecated"
+        )
 
 
 def _make_truss_config(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
-    user_config: definitions.UserConfigT,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
-    user_env: Mapping[str, str],
 ) -> truss_config.TrussConfig:
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
@@ -614,9 +606,7 @@ def _make_truss_config(
     config.external_data = truss_config.ExternalData(items=assets.external_data)
     # Metadata.
     chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
-        user_config=user_config,
-        chainlet_to_service=chainlet_to_service,
-        user_env=user_env,
+        chainlet_to_service=chainlet_to_service
     )
     config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
         chains_metadata.model_dump()
@@ -634,7 +624,6 @@ def gen_truss_chainlet(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
     model_name: str,
     chainlet_display_name_to_url: Mapping[str, str],
-    user_env: Mapping[str, str],
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
@@ -650,10 +639,8 @@ def gen_truss_chainlet(
     _make_truss_config(
         chainlet_dir,
         chainlet_descriptor.chainlet_cls.remote_config,
-        chainlet_descriptor.chainlet_cls.default_user_config,
         dep_services,
         model_name,
-        user_env,
     )
     # TODO This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(

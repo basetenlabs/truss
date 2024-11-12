@@ -392,7 +392,6 @@ class _Pusher:
                 chainlet_descriptor,
                 model_name,
                 chainlet_display_name_to_url,
-                self._options.user_env,
             )
             if self._options.only_generate_trusses:
                 chainlet_display_name_to_url[chainlet_descriptor.display_name] = (
@@ -547,7 +546,7 @@ class _Watcher:
         raise definitions.ChainsDeploymentError("\n".join(msg_parts))
 
     def _code_gen_and_patch_thread(
-        self, descr: definitions.ChainletAPIDescriptor, user_env: Mapping[str, str]
+        self, descr: definitions.ChainletAPIDescriptor
     ) -> tuple[b10_remote.PatchResult, list[str]]:
         with log_utils.LogInterceptor() as log_interceptor:
             # TODO: Maybe try-except code_gen errors explicitly.
@@ -558,7 +557,6 @@ class _Watcher:
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
                 self._chainlet_display_name_to_url,
-                user_env,
             )
             patch_result = self._remote_provider.patch_for_chainlet(
                 chainlet_dir, self._ignore_patterns
@@ -566,11 +564,7 @@ class _Watcher:
             logs = log_interceptor.get_logs()
         return patch_result, logs
 
-    def _patch(
-        self,
-        executor: concurrent.futures.Executor,
-        user_env: Optional[Mapping[str, str]],
-    ) -> None:
+    def _patch(self, executor: concurrent.futures.Executor) -> None:
         exception_raised = None
         stack_trace = ""
         with log_utils.LogInterceptor() as log_interceptor, self._console.status(
@@ -593,7 +587,6 @@ class _Watcher:
                         future = executor.submit(
                             self._code_gen_and_patch_thread,
                             chainlet_descr,
-                            user_env or {},
                         )
                         future_to_display_name[future] = chainlet_descr.display_name
                     # Threads need to finish while inside the `import_target`-context.
@@ -678,15 +671,15 @@ class _Watcher:
             )
             self._error_console.print(msg)
 
-    def watch(self, user_env: Optional[Mapping[str, str]]) -> None:
+    def watch(self) -> None:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             # Perform one initial patch at startup.
-            self._patch(executor, user_env)
+            self._patch(executor)
             self._console.print("👀 Watching for new changes.", style="blue")
             for _ in watchfiles.watch(
                 self._chain_root, watch_filter=self._watch_filter, raise_interrupt=False
             ):
-                self._patch(executor, user_env)
+                self._patch(executor)
                 self._console.print("👀 Watching for new changes.", style="blue")
 
 
@@ -696,7 +689,6 @@ def watch(
     entrypoint: Optional[str],
     name: Optional[str],
     remote: Optional[str],
-    user_env: Optional[Mapping[str, str]],
     console: "rich_console.Console",
     error_console: "rich_console.Console",
     show_stack_trace: bool,
@@ -711,4 +703,4 @@ def watch(
     patcher = _Watcher(
         source, entrypoint, name, remote, console, error_console, show_stack_trace
     )
-    patcher.watch(user_env)
+    patcher.watch()

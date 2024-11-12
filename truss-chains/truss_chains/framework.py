@@ -522,12 +522,11 @@ class _ChainletInitValidator:
         [dep_1: dep_1_type = truss_chains.depends(dep_1_class),]
         ...
         [dep_N: dep_N_type = truss_chains.provides(dep_N_class),]
-        [context: truss_chains.Context[UserConfig] = truss_chains.provide_context()]
+        [context: truss_chains.Context = truss_chains.depends_context()]
     ) -> None:
     ```
     * The context argument is optionally trailing and must have a default constructed
-     with the  `provide_context` directive. The type can be templated by a user
-     defined config e.g. `truss_chains.Context[UserConfig]`.
+     with the  `provide_context` directive.
     * The names and number of Chainlet "dependency" arguments are arbitrary.
     * Default values for dependencies must be constructed with the `depends` directive
       to make the dependency injection work. The argument to `depends` must be a
@@ -695,7 +694,6 @@ def validate_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
         has_context=init_validator.has_context,
         endpoint=_validate_and_describe_endpoint(cls, location),
         src_path=src_path,
-        user_config_type=definitions.TypeDescriptor(raw=type(cls.default_user_config)),
     )
     logging.debug(
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"
@@ -843,7 +841,6 @@ def _create_modified_init_for_local(
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-    user_env: Mapping[str, str],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
@@ -974,11 +971,9 @@ def _create_modified_init_for_local(
             and definitions.CONTEXT_ARG_NAME not in kwargs_mod
         ):
             kwargs_mod[definitions.CONTEXT_ARG_NAME] = definitions.DeploymentContext(
-                user_config=chainlet_descriptor.chainlet_cls.default_user_config,
                 secrets=secrets,
                 data_dir=data_dir,
                 chainlet_to_service=chainlet_to_service,
-                user_env=user_env,
             )
         for arg_name, dep in chainlet_descriptor.dependencies.items():
             chainlet_cls = dep.chainlet_cls
@@ -1017,7 +1012,6 @@ def run_local(
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-    user_env: Mapping[str, str],
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
     # TODO: support retries in local mode.
@@ -1040,7 +1034,6 @@ def run_local(
             secrets,
             data_dir,
             chainlet_to_service,
-            user_env,
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
         chainlet_descriptor.chainlet_cls._init_is_patched = True
