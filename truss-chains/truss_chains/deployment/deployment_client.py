@@ -490,7 +490,7 @@ class _Watcher:
         self._show_stack_trace = show_stack_trace
         self._remote_provider = cast(
             b10_remote.BasetenRemote,
-            remote_factory.RemoteFactory.create(remote=remote),
+            remote_factory.RemoteFactory.create(remote=remote_str),
         )
         with framework.import_target(source, entrypoint) as entrypoint_cls:
             self._deployed_chain_name = name or entrypoint_cls.__name__
