@@ -30,6 +30,7 @@ from truss.remote.baseten.core import (
     get_dev_version_from_versions,
     get_model_versions,
     get_prod_version_from_versions,
+    get_truss_watch_state,
     upload_truss,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
@@ -365,6 +366,19 @@ class BasetenRemote(TrussRemote):
                 ),
             )
 
+        truss_watch_state = get_truss_watch_state(self._api, model_name)  # type: ignore
+        # Make sure the patches are calculated against the current django patch state, if it exists.
+        # This is important to ensure that the sequence of patches for a given sesion forms a
+        # valid patch sequence (via a linked list)
+        if truss_watch_state.patches:
+            truss_hash = truss_watch_state.patches.django_patch_state.current_hash
+            truss_signature = (
+                truss_watch_state.patches.django_patch_state.current_signature
+            )
+            logging.debug(f"db patch hash: {truss_hash}")
+            logging.debug(
+                f"container_patch_hash: {truss_watch_state.patches.container_patch_state.current_hash}"
+            )
         LocalConfigHandler.add_signature(truss_hash, truss_signature)
         try:
             patch_request = truss_handle.calc_patch(truss_hash, truss_ignore_patterns)
@@ -376,19 +390,39 @@ class BasetenRemote(TrussRemote):
                 "Failed to calculate patch. Change type might not be supported.",
             )
 
-        if (
-            patch_request.prev_hash == patch_request.next_hash
-            or len(patch_request.patch_ops) == 0
-        ):
+        django_has_unapplied_patches = (
+            not truss_watch_state.is_container_built_from_push
+            and truss_watch_state.patches
+            and (
+                truss_watch_state.patches.django_patch_state.current_hash
+                != truss_watch_state.patches.container_patch_state.current_hash
+            )
+        )
+        should_create_patch = (
+            patch_request.prev_hash != patch_request.next_hash
+            and len(patch_request.patch_ops) > 0
+        )
+        is_synced = not django_has_unapplied_patches and not should_create_patch
+        if is_synced:
             return PatchResult(
                 PatchStatus.SKIPPED, "No changes observed, skipping patching."
             )
         try:
             if console:
                 with console.status("Applying patch..."):
-                    resp = self._api.patch_draft_truss(model_name, patch_request)
+                    if should_create_patch:
+                        resp = self._api.patch_draft_truss_two_step(
+                            model_name, patch_request
+                        )
+                    else:
+                        resp = self._api.sync_draft_truss(model_name)
             else:
-                resp = self._api.patch_draft_truss(model_name, patch_request)
+                if should_create_patch:
+                    resp = self._api.patch_draft_truss_two_step(
+                        model_name, patch_request
+                    )
+                else:
+                    resp = self._api.sync_draft_truss(model_name)
 
         except ReadTimeout:
             return PatchResult(
@@ -402,8 +436,8 @@ class BasetenRemote(TrussRemote):
             needs_full_deploy = resp.get("needs_full_deploy", None)
             if needs_full_deploy:
                 message = (
-                    f"Model {model_name} is not able to be patched, "
-                    f"use `truss push` to deploy."
+                    f"Model {model_name} is not able to be patched: `{resp['error']}`. "
+                    f"Use `truss push` to deploy."
                 )
             else:
                 message = (

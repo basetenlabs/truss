@@ -48,6 +48,21 @@ class ChainDeploymentHandle(typing.NamedTuple):
     is_draft: bool
 
 
+class PatchState(typing.NamedTuple):
+    current_hash: str
+    current_signature: str
+
+
+class TrussPatches(typing.NamedTuple):
+    django_patch_state: PatchState
+    container_patch_state: PatchState
+
+
+class TrussWatchState(typing.NamedTuple):
+    is_container_built_from_push: bool
+    patches: Optional[TrussPatches]
+
+
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
     """
     Check if a chain with the given name exists in the Baseten remote.
@@ -176,6 +191,36 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     model = api.get_model(model_name)
     versions = model["model"]["versions"]
     return get_dev_version_from_versions(versions)
+
+
+def get_truss_watch_state(api: BasetenApi, model_name: str) -> TrussWatchState:
+    response = api.get_truss_watch_state(model_name)["truss_watch_state"]
+    django_patch_state = (
+        None
+        if response["django_patch_state"] is None
+        else PatchState(
+            current_hash=response["django_patch_state"]["current_hash"],
+            current_signature=response["django_patch_state"]["current_signature"],
+        )
+    )
+    container_patch_state = (
+        None
+        if response["container_patch_state"] is None
+        else PatchState(
+            current_hash=response["container_patch_state"]["current_hash"],
+            current_signature=response["container_patch_state"]["current_signature"],
+        )
+    )
+    patches = None
+    if django_patch_state and container_patch_state:
+        patches = TrussPatches(
+            django_patch_state=django_patch_state,
+            container_patch_state=container_patch_state,
+        )
+    return TrussWatchState(
+        is_container_built_from_push=response["is_container_built_from_push"],
+        patches=patches,
+    )
 
 
 def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
