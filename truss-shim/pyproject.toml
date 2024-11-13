@@ -6,11 +6,12 @@ authors = ["Pankaj Gupta <pankaj@baseten.co>", "Phil Howes <phil@baseten.co>"]
 license = "MIT"
 
 [tool.poetry.scripts]
-truss = "truss.cli:truss_cli"
+truss = "truss.cli.cli:truss_cli"
 
 [tool.poetry.dependencies]
 # When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
 python = ">=3.8,<3.13"
+# TODO: carve out `cli` extra selectively instead of `all`.
 truss_lib = { version = "0.10.0rc000", extras = ["all"] }
 
 [build-system]
