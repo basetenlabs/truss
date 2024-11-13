@@ -559,7 +559,7 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     required=False,
     type=str,
     help="[DEPRECATED], use ``environment`` instead.",
-    hidde=True,
+    hidden=True,
 )
 @log_level_option
 @error_handling
