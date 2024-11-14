@@ -380,17 +380,20 @@ def push(
             port = utils.get_free_port()
             chainlet_to_port[chainlet_artifact.name] = port
 
-            # http://localhost:{port} seems to only work *sometimes* with docker.
-            predict_url = f"http://host.docker.internal:{port}"
+            service = DockerTrussService(
+                # http://localhost:{port} seems to only work *sometimes* with docker.
+                f"http://host.docker.internal:{port}",
+                is_draft=True,
+            )
 
             chainlet_to_predict_url[chainlet_artifact.name] = {
-                "predict_url": predict_url,
+                "predict_url": service.predict_url,
             }
 
             if chainlet_artifact.is_entrypoint:
                 assert entrypoint_service is None
 
-                entrypoint_service = DockerTrussService(predict_url, is_draft=True)
+                entrypoint_service = service
 
         assert entrypoint_service is not None
 
