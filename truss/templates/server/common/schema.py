@@ -2,8 +2,10 @@ from types import MappingProxyType
 from typing import (
     Any,
     AsyncGenerator,
+    AsyncIterator,
     Awaitable,
     Generator,
+    Iterator,
     List,
     Optional,
     Type,
@@ -83,7 +85,7 @@ def _annotation_is_pydantic_model(annotation: Any) -> bool:
 
 def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
     """
-    Therea are 4 possible cases for output_annotation:
+    There are 4 possible cases for output_annotation:
     1. Data object -- represented by a Pydantic BaseModel
     2. Streaming -- represented by a Generator or AsyncGenerator
     3. Async -- represented by an Awaitable
@@ -117,7 +119,7 @@ def _parse_output_type(output_annotation: Any) -> Optional[OutputType]:
 def _is_generator_type(annotation: Any) -> bool:
     base_type = get_origin(annotation)
     return isinstance(base_type, type) and issubclass(
-        base_type, (Generator, AsyncGenerator)
+        base_type, (Generator, AsyncGenerator, Iterator, AsyncIterator)
     )
 
 

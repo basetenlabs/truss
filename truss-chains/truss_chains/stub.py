@@ -6,7 +6,17 @@ import logging
 import ssl
 import threading
 import time
-from typing import Any, ClassVar, Iterator, Mapping, Optional, Type, TypeVar, final
+from typing import (
+    Any,
+    AsyncIterator,
+    ClassVar,
+    Iterator,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+    final,
+)
 
 import aiohttp
 import httpx
@@ -139,14 +149,16 @@ class BasetenSession:
                 try:
                     with self._sync_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
-                        resp = self._client_sync().post(
+                        response = self._client_sync().post(
                             self._service_descriptor.predict_url,
                             json=json_payload,
                             headers={
                                 definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
                             },
                         )
-                    return utils.handle_response(resp, self.name)
+                    utils.response_raise_errors(response, self.name)
+                    return response.json()
+
                 # As a special case we invalidate the client in case of certificate
                 # errors. This has happened in the past and is a defensive measure.
                 except ssl.SSLError:
@@ -167,14 +179,45 @@ class BasetenSession:
                     client = await self._client_async()
                     async with self._async_num_requests as num_requests:
                         self._maybe_warn_for_overload(num_requests)
-                        resp = await client.post(
+                        async with client.post(
+                            self._service_descriptor.predict_url,
+                            json=json_payload,
+                            headers={
+                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+                            },
+                        ) as response:
+                            await utils.async_response_raise_errors(response, self.name)
+                            return await response.json()
+                # As a special case we invalidate the client in case of certificate
+                # errors. This has happened in the past and is a defensive measure.
+                except ssl.SSLError:
+                    self._cached_async_client = None
+                    raise
+
+    async def predict_async_stream(self, json_payload) -> AsyncIterator[bytes]:
+        retrying = tenacity.AsyncRetrying(
+            stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
+            retry=tenacity.retry_if_exception_type(Exception),
+            reraise=True,
+        )
+        async for attempt in retrying:
+            with attempt:
+                if (num := attempt.retry_state.attempt_number) > 1:
+                    logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
+                try:
+                    client = await self._client_async()
+                    async with self._async_num_requests as num_requests:
+                        self._maybe_warn_for_overload(num_requests)
+                        response = await client.post(
                             self._service_descriptor.predict_url,
                             json=json_payload,
                             headers={
                                 definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
                             },
                         )
-                    return await utils.handle_async_response(resp, self.name)
+                        await utils.async_response_raise_errors(response, self.name)
+                        return response.content.iter_any()
+
                 # As a special case we invalidate the client in case of certificate
                 # errors. This has happened in the past and is a defensive measure.
                 except ssl.SSLError:

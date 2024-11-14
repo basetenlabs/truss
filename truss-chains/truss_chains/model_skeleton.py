@@ -16,9 +16,8 @@ class TrussChainletModel:
         config: dict,
         data_dir: pathlib.Path,
         secrets: secrets_resolver.Secrets,
-        environment: Optional[
-            dict
-        ] = None,  # TODO: Remove the default value once all truss versions are synced up.
+        # TODO: Remove the default value once all truss versions are synced up.
+        environment: Optional[dict] = None,
     ) -> None:
         truss_metadata: definitions.TrussMetadata = (
             definitions.TrussMetadata.model_validate(

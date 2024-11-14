@@ -36,17 +36,20 @@ from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
+_STREAM_TYPES = {bytes, str}
 
 _DOCS_URL_CHAINING = (
     "https://docs.baseten.co/chains/concepts#depends-call-other-chainlets"
 )
 _DOCS_URL_LOCAL = "https://docs.baseten.co/chains/guide#local-development"
+_DOCS_URL_STREAMING = "https://docs.baseten.co/chains/guide#streaming"
 
 _ENTRYPOINT_ATTR_NAME = "_chains_entrypoint"
 
 ChainletT = TypeVar("ChainletT", bound=definitions.ABCChainlet)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+
 
 # Error Collector ######################################################################
 
@@ -296,6 +299,24 @@ def _validate_io_type(
     _collect_error(error_msg, _ErrorKind.IO_TYPE_ERROR, location)
 
 
+def _validate_generator_output_type(
+    annotation: Any, param_name: str, location: _ErrorLocation
+) -> None:
+    """
+    For Chainlet I/O (both data or parameters), we allow simple types
+    (int, str, float...) and `list` or `dict` containers of these.
+    Any deeper nested and structured data must be typed as a pydantic model.
+    """
+    origin = get_origin(annotation)
+    assert origin in (collections.abc.AsyncIterator, collections.abc.Iterator)
+    args = get_args(annotation)
+    assert len(args) == 1, "AsyncIterator cannot have more than 1 arg."
+    arg = args[0]
+    if arg not in _SIMPLE_TYPES:
+        msg = "TODO TODO"
+        _collect_error(msg, _ErrorKind.IO_TYPE_ERROR, location)
+
+
 def _validate_endpoint_params(
     params: list[inspect.Parameter], location: _ErrorLocation
 ) -> list[definitions.InputArg]:
@@ -346,11 +367,15 @@ def _validate_endpoint_output_types(
             location,
         )
         return []
-    if get_origin(annotation) is tuple:
+    origin = get_origin(annotation)
+    if origin is tuple:
         output_types = []
         for i, arg in enumerate(get_args(annotation)):
             _validate_io_type(arg, f"return_type[{i}]", location)
             output_types.append(definitions.TypeDescriptor(raw=arg))
+    if origin in (collections.abc.AsyncIterator, collections.abc.Iterator):
+        _validate_generator_output_type(annotation, "return_type", location)
+        output_types = [definitions.TypeDescriptor(raw=annotation)]
     else:
         _validate_io_type(annotation, "return_type", location)
         output_types = [definitions.TypeDescriptor(raw=annotation)]
@@ -995,7 +1020,7 @@ def _create_modified_init_for_local(
                 assert chainlet_cls._init_is_patched
                 # Dependency chainlets are instantiated here, using their __init__
                 # that is patched for local.
-                logging.warning(f"Making first {dep.name}.")
+                logging.info(f"Making first {dep.name}.")
                 instance = chainlet_cls()  # type: ignore  # Here init args are patched.
                 cls_to_instance[chainlet_cls] = instance
                 kwargs_mod[arg_name] = instance
