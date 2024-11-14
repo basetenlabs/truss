@@ -251,36 +251,32 @@ def _stub_endpoint_body_src(
 
     E.g.:
     ```
-    json_result = await self._remote.predict_async(
-        SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
-    return SplitTextOutput.model_validate(json_result).output
+    return await self.predict_async(
+        SplitTextInput(inputs=inputs, extra_arg=extra_arg), SplitTextOutput).root
     ```
     """
     imports: set[str] = set()
     args = [f"{arg.name}={arg.name}" for arg in endpoint.input_args]
     if args:
-        inputs = (
-            f"{_get_input_model_name(chainlet_name)}({', '.join(args)}).model_dump()"
-        )
+        inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)})"
     else:
         inputs = "{}"
 
     parts = []
     # Invoke remote.
     if not endpoint.is_streaming:
-        if endpoint.is_async:
-            remote_call = f"await self._remote.predict_async({inputs})"
-        else:
-            remote_call = f"self._remote.predict_sync({inputs})"
-
-        parts = [f"json_result = {remote_call}"]
-        # Unpack response and parse as pydantic models if needed.
         output_model_name = _get_output_model_name(chainlet_name)
-        parts.append(f"return {output_model_name}.model_validate(json_result).root")
+        if endpoint.is_async:
+            parts = [
+                f"return (await self.predict_async({inputs}, {output_model_name})).root"
+            ]
+        else:
+            parts = [f"return self.predict_sync({inputs}, {output_model_name}).root"]
+
     else:
         if endpoint.is_async:
             parts.append(
-                f"async for data in await self._remote.predict_async_stream({inputs}):",
+                f"async for data in await self.predict_async_stream({inputs}):",
             )
             if endpoint.streaming_type.is_string:
                 parts.append(_indent("yield data.decode()"))
@@ -312,9 +308,8 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
         async def run_remote(
             self, inputs: shared_chainlet.SplitTextInput, extra_arg: int
         ) -> tuple[shared_chainlet.SplitTextOutput, int]:
-            json_result = await self._remote.predict_async(
-                SplitTextInput(inputs=inputs, extra_arg=extra_arg).model_dump())
-            return SplitTextOutput.model_validate(json_result).root
+            return await self.predict_async(
+                SplitTextInput(inputs=inputs, extra_arg=extra_arg), SplitTextOutput).root
     ```
     """
     imports = {"from truss_chains import stub"}
@@ -428,7 +423,7 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
 
 def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates AST for the `predict` method of the truss model."""
-    imports: set[str] = {"from truss_chains import utils"}
+    imports: set[str] = {"from truss_chains import stub"}
     parts: list[str] = []
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
     input_model_name = _get_input_model_name(chainlet_descriptor.name)
@@ -440,8 +435,8 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         output_type_name = streaming_src.src
     else:
         output_type_name = _get_output_model_name(chainlet_descriptor.name)
+
     imports.add("import starlette.requests")
-    imports.add("from truss_chains import stub")
     parts.append(
         f"{def_str} predict(self, inputs: {input_model_name}, "
         f"request: starlette.requests.Request) -> {output_type_name}:"
@@ -449,7 +444,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     # Add error handling context manager:
     parts.append(
         _indent(
-            f"with stub.trace_parent(request), utils.exception_to_http_error("
+            f"with stub.trace_parent(request), stub.exception_to_http_error("
             f'chainlet_name="{chainlet_descriptor.name}"):'
         )
     )
@@ -463,7 +458,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         maybe_await = ""
     run_remote = chainlet_descriptor.endpoint.name
     # See docs of `pydantic_set_field_dict` for why this is needed.
-    args = "**utils.pydantic_set_field_dict(inputs)"
+    args = "**stub.pydantic_set_field_dict(inputs)"
     parts.append(
         _indent(f"result = {maybe_await}self._chainlet.{run_remote}({args})", 2)
     )
