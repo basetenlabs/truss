@@ -21,7 +21,8 @@ class override_env_vars:
         self.original_vars: Dict[str, Optional[str]] = {}
 
     def __enter__(self):
-        self.original_vars = dict(os.environ)
+        for key in self.env_vars:
+            self.original_vars[key] = os.environ.get(key)
 
         for key, value in self.env_vars.items():
             os.environ[key] = value
