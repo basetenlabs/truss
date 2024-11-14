@@ -5,7 +5,7 @@ from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 if TYPE_CHECKING:
     from rich import progress
 
-import truss
+from truss import version
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
@@ -17,7 +17,7 @@ from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
 
-
+VERSION = version.VERSION
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
@@ -206,9 +206,9 @@ def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
         The version in versions corresponding to the development model, or None
         if no development model exists
     """
-    for version in versions:
-        if version["is_draft"] is True:
-            return version
+    for model_version in versions:
+        if model_version["is_draft"] is True:
+            return model_version
     return None
 
 
@@ -262,9 +262,9 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published
     # models exist.
-    for version in versions:
-        if version["is_primary"]:
-            return version
+    for model_version in versions:
+        if model_version["is_primary"]:
+            return model_version
     return None
 
 
@@ -357,7 +357,7 @@ def create_truss_service(
             model_name,
             s3_key,
             config,
-            f"truss=={truss.version()}",
+            f"truss=={VERSION}",
             is_trusted=is_trusted,
             allow_truss_download=allow_truss_download,
             origin=origin,
@@ -373,7 +373,7 @@ def create_truss_service(
             s3_key=s3_key,
             config=config,
             semver_bump=semver_bump,
-            client_version=f"truss=={truss.version()}",
+            client_version=f"truss=={VERSION}",
             is_trusted=is_trusted,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
@@ -387,7 +387,7 @@ def create_truss_service(
             s3_key=s3_key,
             config=config,
             semver_bump=semver_bump,
-            client_version=f"truss=={truss.version()}",
+            client_version=f"truss=={VERSION}",
             is_trusted=is_trusted,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
