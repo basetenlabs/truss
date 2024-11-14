@@ -1,10 +1,10 @@
 from typing import Optional, cast
 
-import truss
 from truss.api import definitions
 from truss.remote.baseten.service import BasetenService
 from truss.remote.remote_factory import RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
+from truss.truss_handle.build import load
 
 
 def login(api_key: str):
@@ -24,6 +24,27 @@ def login(api_key: str):
         },
     )
     RemoteFactory.update_remote_config(remote_config)
+
+
+def whoami(remote: Optional[str] = None):
+    """
+    Returns account information for the current user.
+    """
+    if not remote:
+        available_remotes = RemoteFactory.get_available_config_names()
+        if len(available_remotes) == 1:
+            remote = available_remotes[0]
+        elif len(available_remotes) == 0:
+            raise ValueError(
+                "Please authenticate via truss.login and pass it as an argument."
+            )
+        else:
+            raise ValueError(
+                "Multiple remotes found. Please pass the remote as an argument."
+            )
+
+    remote_provider = RemoteFactory.create(remote=remote)
+    return remote_provider.whoami()
 
 
 def push(
@@ -74,7 +95,7 @@ def push(
             )
 
     remote_provider = RemoteFactory.create(remote=remote)
-    tr = truss.load(target_directory)
+    tr = load(target_directory)
     model_name = model_name or tr.spec.config.model_name
     if not model_name:
         raise ValueError(

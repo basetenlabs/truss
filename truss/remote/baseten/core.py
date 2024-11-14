@@ -4,13 +4,13 @@ import typing
 from typing import IO, List, Optional, Tuple
 
 import truss
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,21 @@ class ChainDeploymentHandle(typing.NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
+
+
+class PatchState(typing.NamedTuple):
+    current_hash: str
+    current_signature: str
+
+
+class TrussPatches(typing.NamedTuple):
+    django_patch_state: PatchState
+    container_patch_state: PatchState
+
+
+class TrussWatchState(typing.NamedTuple):
+    is_container_built_from_push: bool
+    patches: Optional[TrussPatches]
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -178,6 +193,36 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     return get_dev_version_from_versions(versions)
 
 
+def get_truss_watch_state(api: BasetenApi, model_name: str) -> TrussWatchState:
+    response = api.get_truss_watch_state(model_name)["truss_watch_state"]
+    django_patch_state = (
+        None
+        if response["django_patch_state"] is None
+        else PatchState(
+            current_hash=response["django_patch_state"]["current_hash"],
+            current_signature=response["django_patch_state"]["current_signature"],
+        )
+    )
+    container_patch_state = (
+        None
+        if response["container_patch_state"] is None
+        else PatchState(
+            current_hash=response["container_patch_state"]["current_hash"],
+            current_signature=response["container_patch_state"]["current_signature"],
+        )
+    )
+    patches = None
+    if django_patch_state and container_patch_state:
+        patches = TrussPatches(
+            django_patch_state=django_patch_state,
+            container_patch_state=container_patch_state,
+        )
+    return TrussWatchState(
+        is_container_built_from_push=response["is_container_built_from_push"],
+        patches=patches,
+    )
+
+
 def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published
@@ -242,6 +287,7 @@ def create_truss_service(
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
     preserve_previous_prod_deployment: bool = False,
+    allow_truss_download: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
@@ -276,7 +322,8 @@ def create_truss_service(
             s3_key,
             config,
             f"truss=={truss.version()}",
-            is_trusted,
+            is_trusted=is_trusted,
+            allow_truss_download=allow_truss_download,
             origin=origin,
         )
 
@@ -292,6 +339,7 @@ def create_truss_service(
             semver_bump=semver_bump,
             client_version=f"truss=={truss.version()}",
             is_trusted=is_trusted,
+            allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
             chain_environment=chain_environment,

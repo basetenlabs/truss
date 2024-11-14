@@ -36,7 +36,6 @@ from truss_chains.public_api import (
     ChainletBase,
     depends,
     depends_context,
-    deploy_remotely,  # Alias for backwards compat.
     mark_entrypoint,
     push,
     run_local,
@@ -60,7 +59,6 @@ __all__ = [
     "StubBase",
     "depends",
     "depends_context",
-    "deploy_remotely",
     "make_abs_path_here",
     "mark_entrypoint",
     "push",

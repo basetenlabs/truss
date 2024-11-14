@@ -1,6 +1,5 @@
 import functools
 import pathlib
-import warnings
 from typing import ContextManager, Mapping, Optional, Type, Union
 
 from truss_chains import definitions, framework
@@ -122,7 +121,6 @@ def push(
     chain_name: str,
     publish: bool = True,
     promote: bool = True,
-    user_env: Optional[Mapping[str, str]] = None,
     only_generate_trusses: bool = False,
     remote: Optional[str] = None,
     environment: Optional[str] = None,
@@ -137,9 +135,6 @@ def push(
           draft deployment otherwise)
         promote: Whether to promote the chain to be the production deployment (this
           implies publishing as well).
-        user_env: These values can be provided to
-          the push command and customize the behavior of deployed chainlets. E.g.
-          for differentiating between prod and dev version of the same chain.
         only_generate_trusses: Used for debugging purposes. If set to True, only the
           the underlying truss models for the chainlets are generated in
           ``/tmp/.chains_generated``.
@@ -155,7 +150,6 @@ def push(
         chain_name=chain_name,
         publish=publish,
         promote=promote,
-        user_env=user_env or {},
         only_generate_trusses=only_generate_trusses,
         remote=remote,
         environment=environment,
@@ -165,38 +159,10 @@ def push(
     return service
 
 
-def deploy_remotely(
-    entrypoint: Type[definitions.ABCChainlet],
-    chain_name: str,
-    publish: bool = True,
-    promote: bool = True,
-    user_env: Optional[Mapping[str, str]] = None,
-    only_generate_trusses: bool = False,
-    remote: Optional[str] = None,
-) -> chains_remote.BasetenChainService:
-    """Deprecated, use ``push`` instead."""
-    warnings.warn(
-        "Chains `deploy_remotely()` is deprecated and will be removed in a "
-        "future version. Please use `push()` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return push(
-        entrypoint,
-        chain_name,
-        publish,
-        promote,
-        user_env,
-        only_generate_trusses,
-        remote,
-    )
-
-
 def run_local(
     secrets: Optional[Mapping[str, str]] = None,
     data_dir: Optional[Union[pathlib.Path, str]] = None,
     chainlet_to_service: Optional[Mapping[str, definitions.ServiceDescriptor]] = None,
-    user_env: Optional[Mapping[str, str]] = None,
 ) -> ContextManager[None]:
     """Context manager local debug execution of a chain.
 
@@ -207,7 +173,6 @@ def run_local(
         secrets: A dict of secrets keys and values to provide to the chainlets.
         data_dir: Path to a directory with data files.
         chainlet_to_service: A dict of chainlet names to service descriptors.
-        user_env: see ``deploy_remotely``.
 
     Example usage (as trailing main section in a chain file)::
 
@@ -240,6 +205,4 @@ def run_local(
     for more details.
     """
     data_dir = pathlib.Path(data_dir) if data_dir else None
-    return framework.run_local(
-        secrets or {}, data_dir, chainlet_to_service or {}, user_env or {}
-    )
+    return framework.run_local(secrets or {}, data_dir, chainlet_to_service or {})

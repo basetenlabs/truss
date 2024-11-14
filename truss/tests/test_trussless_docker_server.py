@@ -1,19 +1,15 @@
-from pathlib import Path
-
 import pytest
 import requests
 
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 
 @pytest.mark.integration
-def test_docker_server_truss():
+def test_docker_server_truss(test_data_path):
     with ensure_kill_all():
-        truss_root = Path(__file__).parent.parent.parent.resolve() / "truss"
-
-        truss_dir = truss_root / "test_data" / "test_docker_server_truss"
+        truss_dir = test_data_path / "test_docker_server_truss"
 
         tr = TrussHandle(truss_dir)
         LocalConfigHandler.set_secret("hf_access_token", "123")

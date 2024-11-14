@@ -2,7 +2,7 @@ from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
 import pytest
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import core
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import create_truss_service
@@ -195,3 +195,48 @@ def test_create_truss_service_handles_existing_model(inputs):
     _, kwargs = api.create_model_version_from_truss.call_args
     for k, v in inputs.items():
         assert kwargs[k] == v
+
+
+@pytest.mark.parametrize(
+    "allow_truss_download",
+    [True, False],
+)
+@pytest.mark.parametrize(
+    "is_draft",
+    [True, False],
+)
+def test_create_truss_service_handles_allow_truss_download_for_new_models(
+    is_draft, allow_truss_download
+):
+    api = MagicMock()
+    return_value = {
+        "id": "id",
+        "version_id": "model_version_id",
+    }
+    api.create_model_from_truss.return_value = return_value
+    api.create_development_model_from_truss.return_value = return_value
+
+    model_id = None
+    model_id, model_version_id = create_truss_service(
+        api,
+        "model_name",
+        "s3_key",
+        "config",
+        is_trusted=False,
+        preserve_previous_prod_deployment=False,
+        is_draft=is_draft,
+        model_id=model_id,
+        deployment_name="deployment_name",
+        allow_truss_download=allow_truss_download,
+    )
+    assert model_id == return_value["id"]
+    assert model_version_id == return_value["version_id"]
+
+    create_model_mock = (
+        api.create_development_model_from_truss
+        if is_draft
+        else api.create_model_from_truss
+    )
+    create_model_mock.assert_called_once()
+    _, kwargs = create_model_mock.call_args
+    assert kwargs["allow_truss_download"] is allow_truss_download
