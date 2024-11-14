@@ -25,8 +25,8 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.remote import baseten as baseten_remote
 from truss.remote import remote_factory
+from truss.remote.baseten import remote as baseten_remote
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -691,7 +691,7 @@ class PushOptionsBaseten(PushOptions):
             publish = True
         remote_provider = cast(
             baseten_remote.BasetenRemote,
-            remote_factory.RemoteFactory.create(remote=remote_str),
+            remote_factory.RemoteFactory.create(remote=remote),
         )
         return PushOptionsBaseten(
             remote_provider=remote_provider,
