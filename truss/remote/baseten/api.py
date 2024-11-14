@@ -29,7 +29,7 @@ def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
         f'model_name: "{oracle.model_name}"',
         f's3_key: "{oracle.s3_key}"',
         f'encoded_config_str: "{oracle.encoded_config_str}"',
-        f'is_trusted: "{str(oracle.is_trusted).lower()}"',
+        f"is_trusted: {str(oracle.is_trusted).lower()}",
     ]
 
     if oracle.semver_bump:
