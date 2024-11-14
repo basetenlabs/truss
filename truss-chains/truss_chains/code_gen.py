@@ -511,7 +511,9 @@ def _gen_truss_chainlet_file(
 # Truss Gen ############################################################################
 
 
-def _make_requirements(image: definitions.DockerImage) -> list[str]:
+def _make_requirements(
+    image: definitions.DockerImage, use_local_chains_src: bool
+) -> list[str]:
     """Merges file- and list-based requirements and adds truss git if not present."""
     pip_requirements: set[str] = set()
     if image.pip_requirements_file:
@@ -563,6 +565,7 @@ def _make_truss_config(
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
+    use_local_chains_src: bool,
 ) -> truss_config.TrussConfig:
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
@@ -580,7 +583,9 @@ def _make_truss_config(
     config.runtime.predict_concurrency = compute.predict_concurrency
     # Image.
     _inplace_fill_base_image(chains_config.docker_image, config)
-    pip_requirements = _make_requirements(chains_config.docker_image)
+    pip_requirements = _make_requirements(
+        chains_config.docker_image, use_local_chains_src
+    )
     # TODO: `pip_requirements` will add server requirements which give version
     #  conflicts. Check if that's still the case after relaxing versions.
     # config.requirements = pip_requirements
@@ -592,6 +597,7 @@ def _make_truss_config(
     if chains_config.docker_image.external_package_dirs:
         for ext_dir in chains_config.docker_image.external_package_dirs:
             config.external_package_dirs.append(ext_dir.abs_path)
+    config.use_local_chains_src = use_local_chains_src
     # Assets.
     assets = chains_config.get_asset_spec()
     config.secrets = assets.secrets
@@ -623,6 +629,7 @@ def gen_truss_chainlet(
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
     model_name: str,
+    use_local_chains_src: bool,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
@@ -641,6 +648,7 @@ def gen_truss_chainlet(
         chainlet_descriptor.chainlet_cls.remote_config,
         dep_services,
         model_name,
+        use_local_chains_src,
     )
     # TODO This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(

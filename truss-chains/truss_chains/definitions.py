@@ -621,6 +621,7 @@ class GenericRemoteException(Exception): ...
 class PushOptions(SafeModelNonSerializable):
     chain_name: str
     only_generate_trusses: bool = False
+    use_local_chains_src: bool = False
 
 
 class PushOptionsBaseten(PushOptions):

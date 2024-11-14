@@ -33,7 +33,7 @@ from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
-from truss.truss_handle import build as truss_build
+from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
 
@@ -340,6 +340,7 @@ class _ChainSourceGenerator:
                 self._options.chain_name,
                 chainlet_descriptor,
                 model_name,
+                self._options.use_local_chains_src,
             )
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,
@@ -547,6 +548,7 @@ class _Watcher:
                 self._deployed_chain_name,
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
+                use_local_chains_src=False,
             )
             patch_result = self._remote_provider.patch_for_chainlet(
                 chainlet_dir, self._ignore_patterns
