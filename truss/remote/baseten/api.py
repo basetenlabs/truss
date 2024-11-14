@@ -48,7 +48,6 @@ def _chainlet_data_atomic_to_graphql_mutation(
 
     args = [
         f'name: "{chainlet.name}"',
-        f"is_entrypoint: {str(chainlet.is_entrypoint).lower()}",
         f"oracle: {oracle_data_string}",
     ]
 
