@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss-lib"
-version = "0.10.0rc000"
+version = "0.10.0rc2"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -16,8 +16,8 @@ keywords = [
 ]
 
 packages = [
-    { include = "truss", from = "." },
-    { include = "truss_chains", from = "./truss-chains" },
+    { include = "truss", from = ".", to = "truss-lib" },
+    { include = "truss_chains", from = "./truss-chains"},
 ]
 
 [tool.poetry.scripts]
