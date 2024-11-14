@@ -2,7 +2,7 @@ import enum
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
 import yaml
 from requests import ReadTimeout
@@ -10,6 +10,7 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+    from rich import progress
 from truss.base import validation
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
@@ -129,6 +130,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        progress_bar: Optional[Type["progress.Progress"]] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -170,8 +172,8 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        temp_file = archive_truss(gathered_truss)
-        s3_key = upload_truss(self._api, temp_file)
+        temp_file = archive_truss(gathered_truss, progress_bar)
+        s3_key = upload_truss(self._api, temp_file, progress_bar)
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )

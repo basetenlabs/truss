@@ -16,10 +16,10 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
-from InquirerPy import inquirer
-from rich.console import Console
-
 import truss
+from InquirerPy import inquirer
+from rich import progress
+from rich.console import Console
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -27,6 +27,11 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
+from truss.cli.remote_cli import (
+    inquire_model_name,
+    inquire_remote_config,
+    inquire_remote_name,
+)
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -37,11 +42,6 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
-from truss.remote.remote_cli import (
-    inquire_model_name,
-    inquire_remote_config,
-    inquire_remote_name,
-)
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
@@ -606,8 +606,14 @@ def push_chain(
         raise ValueError("`user_env` is deprecated, use `environment` instead.")
 
     if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        promote_warning = (
+            "`promote` flag and `environment` flag were both specified. "
+            "Ignoring the value of `promote`"
+        )
         console.print(promote_warning, style="yellow")
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
@@ -619,7 +625,9 @@ def push_chain(
             remote=remote,
             environment=environment,
         )
-        service = chains_remote.push(entrypoint_cls, options)
+        service = chains_remote.push(
+            entrypoint_cls, options, progress_bar=progress.Progress
+        )
 
     console.print("\n")
     if dryrun:
@@ -663,7 +671,10 @@ def push_chain(
         if success:
             deploy_success_text = "Deployment succeeded."
             if environment:
-                deploy_success_text = f"Your chain has been deployed into the {options.environment} environment."
+                deploy_success_text = (
+                    "Your chain has been deployed into "
+                    f"the {options.environment} environment."
+                )
             console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
@@ -734,6 +745,9 @@ def watch_chains(
 
     if user_env:
         raise ValueError("`user_env` is deprecated, use `environment` instead.")
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     chains_remote.watch(
         source,
@@ -1179,6 +1193,7 @@ def push(
         deployment_name=deployment_name,
         environment=environment,
         disable_truss_download=disable_truss_download,
+        progress_bar=progress.Progress,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")

@@ -26,7 +26,7 @@ import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
-from truss.remote import remote_cli, remote_factory
+from truss.remote import remote_factory
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -635,13 +635,9 @@ class PushOptionsBaseten(PushOptions):
         publish: bool,
         promote: Optional[bool],
         only_generate_trusses: bool,
-        remote: Optional[str] = None,
+        remote: str,
         environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
-        if not remote:
-            remote = remote_cli.inquire_remote_name(
-                remote_factory.RemoteFactory.get_available_config_names()
-            )
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
         if environment:

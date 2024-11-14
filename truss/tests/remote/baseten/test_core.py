@@ -38,7 +38,7 @@ def test_upload_truss():
     core.multipart_upload_boto3 = MagicMock()
     core.multipart_upload_boto3.return_value = None
     test_file = NamedTemporaryFile()
-    assert core.upload_truss(api, test_file) == "key"
+    assert core.upload_truss(api, test_file, None) == "key"
 
 
 def test_get_dev_version_from_versions():
