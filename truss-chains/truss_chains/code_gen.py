@@ -511,9 +511,7 @@ def _gen_truss_chainlet_file(
 # Truss Gen ############################################################################
 
 
-def _make_requirements(
-    image: definitions.DockerImage, use_local_chains_src: bool
-) -> list[str]:
+def _make_requirements(image: definitions.DockerImage) -> list[str]:
     """Merges file- and list-based requirements and adds truss git if not present."""
     pip_requirements: set[str] = set()
     if image.pip_requirements_file:
@@ -583,9 +581,7 @@ def _make_truss_config(
     config.runtime.predict_concurrency = compute.predict_concurrency
     # Image.
     _inplace_fill_base_image(chains_config.docker_image, config)
-    pip_requirements = _make_requirements(
-        chains_config.docker_image, use_local_chains_src
-    )
+    pip_requirements = _make_requirements(chains_config.docker_image)
     # TODO: `pip_requirements` will add server requirements which give version
     #  conflicts. Check if that's still the case after relaxing versions.
     # config.requirements = pip_requirements

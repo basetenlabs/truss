@@ -87,11 +87,9 @@ def _push_service_docker(
     options: definitions.PushOptionsLocalDocker,
     port: int,
 ) -> None:
-    truss_handle = truss_build.load(str(truss_dir))
-    truss_handle.add_secret(
-        definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
-    )
-    truss_handle.docker_run(
+    th = truss_handle.TrussHandle(truss_dir)
+    th.add_secret(definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.docker_run(
         local_port=port,
         detach=True,
         wait_for_server_ready=True,
@@ -319,6 +317,12 @@ class _ChainSourceGenerator:
         self._options = options
         self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
 
+    @property
+    def _use_local_chains_src(self) -> bool:
+        if isinstance(self._options, definitions.PushOptionsLocalDocker):
+            return self._options.use_local_chains_src
+        return False
+
     def generate_chainlet_artifacts(
         self,
         entrypoint: Type[definitions.ABCChainlet],
@@ -340,7 +344,7 @@ class _ChainSourceGenerator:
                 self._options.chain_name,
                 chainlet_descriptor,
                 model_name,
-                self._options.use_local_chains_src,
+                self._use_local_chains_src,
             )
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,

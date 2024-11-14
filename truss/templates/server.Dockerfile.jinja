@@ -79,6 +79,7 @@ COPY ./{{config.data_dir}} /app/data
 COPY ./server /app
 
 {%- if use_local_chains_src %}
+{# This path takes precedence over site-packages. #}
 COPY ./truss_chains /app/truss_chains
 {%- endif %}
 

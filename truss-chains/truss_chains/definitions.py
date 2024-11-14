@@ -621,7 +621,6 @@ class GenericRemoteException(Exception): ...
 class PushOptions(SafeModelNonSerializable):
     chain_name: str
     only_generate_trusses: bool = False
-    use_local_chains_src: bool = False
 
 
 class PushOptionsBaseten(PushOptions):
@@ -662,3 +661,7 @@ class PushOptionsLocalDocker(PushOptions):
     # is unset. Additionally, if local docker containers make calls to models deployed
     # on baseten, a real API key must be provided (i.e. the default must be overridden).
     baseten_chain_api_key: str = "docker_dummy_key"
+    # If enabled, chains code is copied from the local package into `/app/truss_chains`
+    # in the docker image (which takes precedence over potential pip/site-packages).
+    # This should be used for integration tests or quick local dev loops.
+    use_local_chains_src: bool = False
