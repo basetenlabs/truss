@@ -17,7 +17,6 @@ class DeployedChainlet(pydantic.BaseModel):
 
 class ChainletArtifact(pydantic.BaseModel):
     truss_dir: pathlib.Path
-    is_entrypoint: bool
     display_name: str
     name: str
 
@@ -36,7 +35,7 @@ class OracleData(pydantic.BaseModel):
     version_name: Optional[str] = None
 
 
+# This corresponds to `ChainletInputAtomicGraphene` in the backend.
 class ChainletDataAtomic(pydantic.BaseModel):
     name: str
-    is_entrypoint: bool
     oracle: OracleData

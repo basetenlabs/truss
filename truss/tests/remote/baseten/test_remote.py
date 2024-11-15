@@ -340,18 +340,16 @@ def test_create_chain_with_no_publish():
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="draft_chain",
-            chainlets=[
-                ChainletDataAtomic(
-                    name="chainlet-1",
-                    is_entrypoint=True,
-                    oracle=OracleData(
-                        model_name="model-1",
-                        s3_key="s3-key-1",
-                        encoded_config_str="encoded-config-str-1",
-                        is_trusted=True,
-                    ),
-                )
-            ],
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                    is_trusted=True,
+                ),
+            ),
+            dependencies=[],
             is_draft=True,
             environment=None,
         )
@@ -438,18 +436,16 @@ def test_create_chain_no_existing_chain():
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="new_chain",
-            chainlets=[
-                ChainletDataAtomic(
-                    name="chainlet-1",
-                    is_entrypoint=True,
-                    oracle=OracleData(
-                        model_name="model-1",
-                        s3_key="s3-key-1",
-                        encoded_config_str="encoded-config-str-1",
-                        is_trusted=True,
-                    ),
-                )
-            ],
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                    is_trusted=True,
+                ),
+            ),
+            dependencies=[],
             is_draft=False,
             environment=None,
         )
@@ -540,18 +536,16 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
-            chainlets=[
-                ChainletDataAtomic(
-                    name="chainlet-1",
-                    is_entrypoint=True,
-                    oracle=OracleData(
-                        model_name="model-1",
-                        s3_key="s3-key-1",
-                        encoded_config_str="encoded-config-str-1",
-                        is_trusted=True,
-                    ),
-                )
-            ],
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                    is_trusted=True,
+                ),
+            ),
+            dependencies=[],
             is_draft=True,
             environment="production",
         )
@@ -645,18 +639,16 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
         deployment_handle = create_chain_atomic(
             api=remote.api,
             chain_name="old_chain",
-            chainlets=[
-                ChainletDataAtomic(
-                    name="chainlet-1",
-                    is_entrypoint=True,
-                    oracle=OracleData(
-                        model_name="model-1",
-                        s3_key="s3-key-1",
-                        encoded_config_str="encoded-config-str-1",
-                        is_trusted=True,
-                    ),
-                )
-            ],
+            entrypoint=ChainletDataAtomic(
+                name="chainlet-1",
+                oracle=OracleData(
+                    model_name="model-1",
+                    s3_key="s3-key-1",
+                    encoded_config_str="encoded-config-str-1",
+                    is_trusted=True,
+                ),
+            ),
+            dependencies=[],
             is_draft=False,
             environment=None,
         )

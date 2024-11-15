@@ -286,7 +286,6 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
         dependencies=[],
         entrypoint=ChainletDataAtomic(
             name="chainlet-1",
-            is_entrypoint=True,
             oracle=OracleData(
                 model_name="model-1",
                 s3_key="s3-key-1",
@@ -311,7 +310,6 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
         dependencies=[],
         entrypoint=ChainletDataAtomic(
             name="chainlet-1",
-            is_entrypoint=True,
             oracle=OracleData(
                 model_name="model-1",
                 s3_key="s3-key-1",

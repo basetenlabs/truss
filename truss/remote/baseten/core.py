@@ -98,7 +98,8 @@ def get_dev_chain_deployment(api: BasetenApi, chain_id: str):
 def create_chain_atomic(
     api: BasetenApi,
     chain_name: str,
-    chainlets: List[b10_types.ChainletDataAtomic],
+    entrypoint: b10_types.ChainletDataAtomic,
+    dependencies: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
     environment: Optional[str],
 ) -> ChainDeploymentHandleAtomic:
@@ -110,16 +111,10 @@ def create_chain_atomic(
 
     chain_id = get_chain_id_by_name(api, chain_name)
 
-    entrypoints: List[b10_types.ChainletDataAtomic] = []
-    dependencies: List[b10_types.ChainletDataAtomic] = []
-
-    for chainlet in chainlets:
-        (dependencies, entrypoints)[chainlet.is_entrypoint].append(chainlet)
-
-    assert len(entrypoints) == 1
-
-    entrypoint = entrypoints[0]
-
+    # TODO(Tyron): Refactor for better readability:
+    # 1. Prepare all arguments for `deploy_chain_atomic`.
+    # 2. Validate argument combinations.
+    # 3. Make a single invocation to `deploy_chain_atomic`.
     if is_draft:
         res = api.deploy_chain_atomic(
             chain_name=chain_name,

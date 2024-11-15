@@ -216,6 +216,10 @@ class BasetenRemote(TrussRemote):
             environment=environment,
         )
 
+        # TODO(Tyron): This set of args is duplicated across
+        # many functions. We should consolidate them into a
+        # data class with standardized default values so
+        # we're not drilling these arguments everywhere.
         model_id, model_version_id = create_truss_service(
             api=self._api,
             model_name=push_data.model_name,
@@ -244,7 +248,8 @@ class BasetenRemote(TrussRemote):
     def push_chain_atomic(
         self,
         chain_name: str,
-        chainlet_artifacts: List[custom_types.ChainletArtifact],
+        entrypoint_artifact: custom_types.ChainletArtifact,
+        dependency_artifacts: List[custom_types.ChainletArtifact],
         publish: bool = False,
         environment: Optional[str] = None,
     ) -> Tuple[ChainDeploymentHandleAtomic, BasetenService]:
@@ -254,16 +259,12 @@ class BasetenRemote(TrussRemote):
             publish = True
 
         chainlet_data: List[custom_types.ChainletDataAtomic] = []
-        entrypoint_truss_handle: Optional[TrussHandle] = None
 
-        for artifact in chainlet_artifacts:
+        for artifact in [entrypoint_artifact, *dependency_artifacts]:
             truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
 
             assert model_name and validation.is_valid_model_name(model_name)
-
-            if artifact.is_entrypoint:
-                entrypoint_truss_handle = truss_handle
 
             push_data = self._prepare_push(
                 truss_handle=truss_handle,
@@ -285,7 +286,6 @@ class BasetenRemote(TrussRemote):
             chainlet_data.append(
                 custom_types.ChainletDataAtomic(
                     name=artifact.display_name,
-                    is_entrypoint=artifact.is_entrypoint,
                     oracle=oracle_data,
                 )
             )
@@ -293,12 +293,11 @@ class BasetenRemote(TrussRemote):
                 f"Pushing chainlet `{model_name}` as a truss model on Baseten (publish={publish})"
             )
 
-        assert entrypoint_truss_handle is not None
-
         chain_deployment_handle = create_chain_atomic(
             api=self._api,
             chain_name=chain_name,
-            chainlets=chainlet_data,
+            entrypoint=chainlet_data[0],
+            dependencies=chainlet_data[1:],
             is_draft=not publish,
             environment=environment,
         )
@@ -312,7 +311,7 @@ class BasetenRemote(TrussRemote):
             is_draft=push_data.is_draft,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
-            truss_handle=entrypoint_truss_handle,
+            truss_handle=truss_build.load(str(entrypoint_artifact.truss_dir)),
             api=self._api,
         )
 
