@@ -97,12 +97,19 @@ def get_dev_chain_deployment(api: BasetenApi, chain_id: str):
 
 def create_chain_atomic(
     api: BasetenApi,
-    chain_id: Optional[str],
     chain_name: str,
     chainlets: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
     environment: Optional[str],
 ) -> ChainDeploymentHandleAtomic:
+    if environment and is_draft:
+        logging.info(
+            f"Automatically publishing Chain '{chain_name}' based on environment setting."
+        )
+        is_draft = False
+
+    chain_id = get_chain_id_by_name(api, chain_name)
+
     entrypoints: List[b10_types.ChainletDataAtomic] = []
     dependencies: List[b10_types.ChainletDataAtomic] = []
 

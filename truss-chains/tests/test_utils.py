@@ -1,4 +1,3 @@
-import copy
 import json
 
 import pytest
@@ -29,16 +28,15 @@ def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_d
     chainlet_to_service = {
         "HelloWorld": definitions.ServiceDescriptor(
             name="HelloWorld",
-            predict_url="https://model-model_id.api.baseten.co/deployments/deployment_id/predict",
             options=definitions.RPCOptions(),
         )
     }
-    original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    populate_chainlet_service_predict_urls(chainlet_to_service)
+    new_chainlet_to_service = populate_chainlet_service_predict_urls(
+        chainlet_to_service
+    )
 
-    assert chainlet_to_service != original_chainlet_to_service
     assert (
-        chainlet_to_service["HelloWorld"].predict_url
+        new_chainlet_to_service["HelloWorld"].predict_url
         == DYNAMIC_CHAINLET_CONFIG_VALUE["HelloWorld"]["predict_url"]
     )
 
@@ -55,26 +53,12 @@ def test_no_populate_chainlet_service_predict_urls(
 
     chainlet_to_service = {
         "RandInt": definitions.ServiceDescriptor(
-            name="HelloWorld",
-            predict_url="https://model-model_id.api.baseten.co/deployments/deployment_id/predict",
+            name="RandInt",
             options=definitions.RPCOptions(),
         )
     }
-    original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    populate_chainlet_service_predict_urls(chainlet_to_service)
 
-    assert chainlet_to_service == original_chainlet_to_service
-
-
-def test_no_config_populate_chainlet_service_predict_urls(dynamic_config_mount_dir):
-    chainlet_to_service = {
-        "HelloWorld": definitions.ServiceDescriptor(
-            name="HelloWorld",
-            predict_url="https://model-model_id.api.baseten.co/deployments/deployment_id/predict",
-            options=definitions.RPCOptions(),
-        )
-    }
-    original_chainlet_to_service = copy.deepcopy(chainlet_to_service)
-    populate_chainlet_service_predict_urls(chainlet_to_service)
-
-    assert chainlet_to_service == original_chainlet_to_service
+    with pytest.raises(
+        definitions.MissingDependencyError, match="Chainlet 'RandInt' not found"
+    ):
+        populate_chainlet_service_predict_urls(chainlet_to_service)

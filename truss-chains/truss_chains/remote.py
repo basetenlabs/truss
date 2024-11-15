@@ -22,7 +22,6 @@ from typing import (
 )
 
 import tenacity
-import truss
 import watchfiles
 
 if TYPE_CHECKING:
@@ -33,6 +32,7 @@ from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
+from truss.truss_handle import build as truss_build
 from truss.util import log_utils
 from truss.util import path as truss_path
 
@@ -80,7 +80,7 @@ def _push_service_docker(
 ) -> None:
     logging.info(f"Running in docker container `{chainlet_display_name}` ")
 
-    truss_handle = truss.load(str(truss_dir))
+    truss_handle = truss_build.load(str(truss_dir))
 
     truss_handle.add_secret(
         definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key

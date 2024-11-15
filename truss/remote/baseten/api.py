@@ -38,7 +38,11 @@ def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     if oracle.version_name:
         args.append(f'version_name: "{oracle.version_name}"')
 
-    return f"""{{ {", ".join(args)} }}"""
+    args_str = ",\n".join(args)
+
+    return f"""{{
+        {args_str}
+    }}"""
 
 
 def _chainlet_data_atomic_to_graphql_mutation(
@@ -51,7 +55,11 @@ def _chainlet_data_atomic_to_graphql_mutation(
         f"oracle: {oracle_data_string}",
     ]
 
-    return f"""{{ {", ".join(args)} }}"""
+    args_str = ",\n".join(args)
+
+    return f"""{{
+        {args_str}
+    }}"""
 
 
 class BasetenApi:

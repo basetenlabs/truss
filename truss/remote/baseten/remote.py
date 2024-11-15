@@ -10,7 +10,6 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
-import truss
 from truss.base import validation
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
@@ -27,7 +26,6 @@ from truss.remote.baseten.core import (
     create_chain_atomic,
     create_truss_service,
     exists_model,
-    get_chain_id_by_name,
     get_dev_version,
     get_dev_version_from_versions,
     get_model_versions,
@@ -39,6 +37,7 @@ from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 from truss.remote.truss_remote import RemoteUser, TrussRemote
+from truss.truss_handle import build as truss_build
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
 from watchfiles import watch
@@ -252,17 +251,13 @@ class BasetenRemote(TrussRemote):
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
         if environment and not publish:
-            logging.info(
-                f"Automatically publishing Chain '{chain_name}' based on environment setting."
-            )
             publish = True
 
-        chain_id = get_chain_id_by_name(self._api, chain_name)
         chainlet_data: List[custom_types.ChainletDataAtomic] = []
         entrypoint_truss_handle: Optional[TrussHandle] = None
 
         for artifact in chainlet_artifacts:
-            truss_handle = truss.load(str(artifact.truss_dir))
+            truss_handle = truss_build.load(str(artifact.truss_dir))
             model_name = truss_handle.spec.config.model_name
 
             assert model_name and validation.is_valid_model_name(model_name)
@@ -302,7 +297,6 @@ class BasetenRemote(TrussRemote):
 
         chain_deployment_handle = create_chain_atomic(
             api=self._api,
-            chain_id=chain_id,
             chain_name=chain_name,
             chainlets=chainlet_data,
             is_draft=not publish,
