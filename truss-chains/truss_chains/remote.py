@@ -337,7 +337,7 @@ class _ChainSourceGenerator:
             model_name = f"{model_base_name}-{model_suffix}"
 
             logging.info(
-                f"Generating truss chainlet model for `{chainlet_descriptor.name}`."
+                f"Generating Truss Chainlet model for '{chainlet_descriptor.name}'."
             )
 
             chainlet_dir = code_gen.gen_truss_chainlet(

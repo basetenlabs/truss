@@ -290,7 +290,7 @@ class BasetenRemote(TrussRemote):
                 )
             )
             logging.info(
-                f"Pushing chainlet `{model_name}` as a truss model on Baseten (publish={publish})"
+                f"Pushing Chainlet '{model_name}' as a Truss model on Baseten (publish={publish})."
             )
 
         chain_deployment_handle = create_chain_atomic(
@@ -308,7 +308,7 @@ class BasetenRemote(TrussRemote):
         entrypoint_service = BasetenService(
             model_id=model_id,
             model_version_id=model_version_id,
-            is_draft=push_data.is_draft,
+            is_draft=not publish,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}/model_versions/{model_version_id}",
             truss_handle=truss_build.load(str(entrypoint_artifact.truss_dir)),
