@@ -42,12 +42,6 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
-class ChainDeploymentHandle(typing.NamedTuple):
-    chain_id: str
-    chain_deployment_id: str
-    is_draft: bool
-
-
 class PatchState(typing.NamedTuple):
     current_hash: str
     current_signature: str
@@ -61,6 +55,14 @@ class TrussPatches(typing.NamedTuple):
 class TrussWatchState(typing.NamedTuple):
     is_container_built_from_push: bool
     patches: Optional[TrussPatches]
+
+
+class ChainDeploymentHandleAtomic(typing.NamedTuple):
+    chain_id: str
+    chain_deployment_id: str
+    is_draft: bool
+    entrypoint_model_id: str
+    entrypoint_model_version_id: str
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -93,23 +95,45 @@ def get_dev_chain_deployment(api: BasetenApi, chain_id: str):
     return newest_draft_deployment
 
 
-def create_chain(
+def create_chain_atomic(
     api: BasetenApi,
-    chain_id: Optional[str],
     chain_name: str,
-    chainlets: List[b10_types.ChainletData],
+    entrypoint: b10_types.ChainletDataAtomic,
+    dependencies: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
     environment: Optional[str],
-) -> ChainDeploymentHandle:
+) -> ChainDeploymentHandleAtomic:
+    if environment and is_draft:
+        logging.info(
+            f"Automatically publishing Chain '{chain_name}' based on environment setting."
+        )
+        is_draft = False
+
+    chain_id = get_chain_id_by_name(api, chain_name)
+
+    # TODO(Tyron): Refactor for better readability:
+    # 1. Prepare all arguments for `deploy_chain_atomic`.
+    # 2. Validate argument combinations.
+    # 3. Make a single invocation to `deploy_chain_atomic`.
     if is_draft:
-        response = api.deploy_draft_chain(chain_name, chainlets)
+        res = api.deploy_chain_atomic(
+            chain_name=chain_name,
+            is_draft=True,
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+        )
     elif chain_id:
         # This is the only case where promote has relevance, since
         # if there is no chain already, the first deployment will
         # already be production, and only published deployments can
         # be promoted.
         try:
-            response = api.deploy_chain_deployment(chain_id, chainlets, environment)
+            res = api.deploy_chain_atomic(
+                chain_id=chain_id,
+                environment=environment,
+                entrypoint=entrypoint,
+                dependencies=dependencies,
+            )
         except ApiError as e:
             if (
                 e.graphql_error_code
@@ -118,15 +142,22 @@ def create_chain(
                 raise ValueError(
                     f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
                 ) from e
-            raise e
-    else:
-        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
-        response = api.deploy_chain(chain_name, chainlets)
 
-    return ChainDeploymentHandle(
-        chain_id=response["chain_id"],
-        chain_deployment_id=response["chain_deployment_id"],
+            raise e
+    elif environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+        raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
+    else:
+        res = api.deploy_chain_atomic(
+            chain_name=chain_name,
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+        )
+
+    return ChainDeploymentHandleAtomic(
+        chain_id=res["chain_id"],
+        chain_deployment_id=res["chain_deployment_id"],
+        entrypoint_model_id=res["entrypoint_model_id"],
+        entrypoint_model_version_id=res["entrypoint_model_version_id"],
         is_draft=is_draft,
     )
 
@@ -293,9 +324,6 @@ def create_truss_service(
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
-    chain_environment: Optional[str] = None,
-    chainlet_name: Optional[str] = None,
-    chain_name: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -342,9 +370,6 @@ def create_truss_service(
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
-            chain_environment=chain_environment,
-            chainlet_name=chainlet_name,
-            chain_name=chain_name,
         )
         return model_version_json["id"], model_version_json["version_id"]
 

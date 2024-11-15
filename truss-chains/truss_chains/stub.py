@@ -43,13 +43,13 @@ class BasetenSession:
         max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
     )
     _auth_header: Mapping[str, str]
-    _service_descriptor: definitions.ServiceDescriptor
+    _service_descriptor: definitions.DeployedServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
         self,
-        service_descriptor: definitions.ServiceDescriptor,
+        service_descriptor: definitions.DeployedServiceDescriptor,
         api_key: str,
     ) -> None:
         logging.info(
@@ -220,7 +220,9 @@ class StubBase(abc.ABC):
 
     @final
     def __init__(
-        self, service_descriptor: definitions.ServiceDescriptor, api_key: str
+        self,
+        service_descriptor: definitions.DeployedServiceDescriptor,
+        api_key: str,
     ) -> None:
         """
         Args:
@@ -245,7 +247,7 @@ class StubBase(abc.ABC):
         """
         options = options or definitions.RPCOptions()
         return cls(
-            definitions.ServiceDescriptor(
+            service_descriptor=definitions.DeployedServiceDescriptor(
                 name=cls.__name__, predict_url=predict_url, options=options
             ),
             api_key=context.get_baseten_api_key(),

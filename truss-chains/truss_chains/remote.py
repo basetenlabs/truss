@@ -1,9 +1,9 @@
 import abc
 import concurrent.futures
 import inspect
+import json
 import logging
 import pathlib
-import re
 import tempfile
 import textwrap
 import traceback
@@ -16,8 +16,6 @@ from typing import (
     Iterable,
     Iterator,
     Mapping,
-    MutableMapping,
-    NamedTuple,
     Optional,
     Type,
     cast,
@@ -28,6 +26,7 @@ import watchfiles
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+from truss.local import local_config_handler
 from truss.remote import remote_cli, remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
@@ -39,38 +38,15 @@ from truss.util import path as truss_path
 
 from truss_chains import code_gen, definitions, framework, utils
 
-_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
-
-
-def _push_to_baseten(
-    truss_dir: pathlib.Path, options: definitions.PushOptionsBaseten, chainlet_name: str
-) -> b10_service.BasetenService:
-    truss_handle = truss_build.load(str(truss_dir))
-    model_name = truss_handle.spec.config.model_name
-    assert model_name is not None
-    assert bool(_MODEL_NAME_RE.match(model_name))
-    logging.info(
-        f"Pushing chainlet `{model_name}` as a truss model on "
-        f"Baseten (publish={options.publish})"
-    )
-    # Models must be trusted to use the API KEY secret.
-    service = options.remote_provider.push(
-        truss_handle,
-        model_name=model_name,
-        trusted=True,
-        publish=options.publish,
-        origin=b10_types.ModelOrigin.CHAINS,
-        chain_environment=options.environment,
-        chainlet_name=chainlet_name,
-        chain_name=options.chain_name,
-    )
-    return cast(b10_service.BasetenService, service)
-
 
 class DockerTrussService(b10_service.TrussService):
     """This service is for Chainlets (not for Chains)."""
 
-    def __init__(self, remote_url: str, is_draft: bool, **kwargs):
+    def __init__(self, port: int, is_draft: bool, **kwargs):
+        # http://localhost:{port} seems to only work *sometimes* with docker.
+        remote_url = f"http://host.docker.internal:{port}"
+        self._port = port
+
         super().__init__(remote_url, is_draft, **kwargs)
 
     def authenticate(self) -> Dict[str, str]:
@@ -93,6 +69,10 @@ class DockerTrussService(b10_service.TrussService):
         raise NotImplementedError()
 
     @property
+    def port(self) -> int:
+        return self._port
+
+    @property
     def predict_url(self) -> str:
         return f"{self._service_url}/v1/models/model:predict"
 
@@ -100,44 +80,27 @@ class DockerTrussService(b10_service.TrussService):
         raise NotImplementedError()
 
 
-def _push_service(
+def _push_service_docker(
     truss_dir: pathlib.Path,
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    options: definitions.PushOptions,
-) -> b10_service.TrussService:
-    service: b10_service.TrussService
-    if isinstance(options, definitions.PushOptionsLocalDocker):
-        logging.info(
-            f"Running in docker container `{chainlet_descriptor.display_name}` "
-        )
-        port = utils.get_free_port()
-        truss_handle = truss_build.load(str(truss_dir))
-        truss_handle.add_secret(
-            definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
-        )
-        truss_handle.docker_run(
-            local_port=port,
-            detach=True,
-            wait_for_server_ready=True,
-            network="host",
-            container_name_prefix=chainlet_descriptor.display_name,
-        )
-        # http://localhost:{port} seems to only work *sometimes* with docker.
-        service = DockerTrussService(
-            f"http://host.docker.internal:{port}", is_draft=True
-        )
-    elif isinstance(options, definitions.PushOptionsBaseten):
-        with utils.log_level(logging.INFO):
-            # We send the display_name of the chainlet in subsequent steps.
-            service = _push_to_baseten(
-                truss_dir, options, chainlet_descriptor.display_name
-            )
-    else:
-        raise NotImplementedError(options)
+    chainlet_display_name: str,
+    options: definitions.PushOptionsLocalDocker,
+    port: int,
+) -> None:
+    logging.info(f"Running in docker container `{chainlet_display_name}` ")
 
-    logging.info(f"Pushed `{chainlet_descriptor.display_name}`")
-    logging.debug(f"Internal model endpoint: `{service.predict_url}`")
-    return service
+    truss_handle = truss_build.load(str(truss_dir))
+
+    truss_handle.add_secret(
+        definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
+    )
+
+    truss_handle.docker_run(
+        local_port=port,
+        detach=True,
+        wait_for_server_ready=True,
+        network="host",
+        container_name_prefix=chainlet_display_name,
+    )
 
 
 def _get_ordered_dependencies(
@@ -225,14 +188,14 @@ class ChainService(abc.ABC):
 
 
 class BasetenChainService(ChainService):
-    _chain_deployment_handle: b10_core.ChainDeploymentHandle
+    _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
     _remote: b10_remote.BasetenRemote
 
     def __init__(
         self,
         name: str,
         entrypoint_service: b10_service.BasetenService,
-        chain_deployment_handle: b10_core.ChainDeploymentHandle,
+        chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
     ) -> None:
         super().__init__(name, entrypoint_service)
@@ -309,25 +272,22 @@ def _get_chain_root(
 
 def _create_baseten_chain(
     baseten_options: definitions.PushOptionsBaseten,
-    chainlet_services: list["_Pusher.ChainEntry"],
-    entrypoint_service: b10_service.BasetenService,
+    entrypoint_artifact: b10_types.ChainletArtifact,
+    dependency_artifacts: list[b10_types.ChainletArtifact],
 ):
-    chainlet_data = []
-    for chain_entry in chainlet_services:
-        assert isinstance(chain_entry.service, b10_service.BasetenService)
-        chainlet_data.append(
-            b10_types.ChainletData(
-                name=chain_entry.chainlet_display_name,
-                oracle_version_id=chain_entry.service.model_version_id,
-                is_entrypoint=chain_entry.is_entrypoint,
-            )
+    chain_deployment_handle, entrypoint_service = (
+        baseten_options.remote_provider.push_chain_atomic(
+            chain_name=baseten_options.chain_name,
+            entrypoint_artifact=entrypoint_artifact,
+            dependency_artifacts=dependency_artifacts,
+            publish=baseten_options.publish,
+            environment=baseten_options.environment,
         )
-    chain_deployment_handle = baseten_options.remote_provider.create_chain(
-        chain_name=baseten_options.chain_name,
-        chainlets=chainlet_data,
-        publish=baseten_options.publish,
-        environment=baseten_options.environment,
     )
+
+    logging.info(f"Pushed Chain '{baseten_options.chain_name}'.")
+    logging.debug(f"Internal model endpoint: '{entrypoint_service.predict_url}'.")
+
     return BasetenChainService(
         baseten_options.chain_name,
         entrypoint_service,
@@ -351,12 +311,7 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
         )
 
 
-class _Pusher:
-    class ChainEntry(NamedTuple):
-        service: b10_service.TrussService
-        chainlet_display_name: str
-        is_entrypoint: bool
-
+class _ChainSourceGenerator:
     def __init__(
         self,
         options: definitions.PushOptions,
@@ -364,69 +319,52 @@ class _Pusher:
     ) -> None:
         self._options = options
         self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
-        if isinstance(self._options, definitions.PushOptionsBaseten):
-            _create_chains_secret_if_missing(self._options.remote_provider)
 
-    def push(
+    def generate_chainlet_artifacts(
         self,
         entrypoint: Type[definitions.ABCChainlet],
         non_entrypoint_root_dir: Optional[str] = None,
-    ) -> Optional[ChainService]:
+    ) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact]]:
         chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
-        chainlet_display_name_to_url: MutableMapping[str, str] = {}
-        chainlet_services: list[_Pusher.ChainEntry] = []
-        entrypoint_service = None
+        entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
+        dependency_artifacts: list[b10_types.ChainletArtifact] = []
+
         for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
             model_base_name = chainlet_descriptor.display_name
             # Since we are creating a distinct model for each deployment of the chain,
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
             model_name = f"{model_base_name}-{model_suffix}"
+
             logging.info(
-                f"Generating truss chainlet model for `{chainlet_descriptor.name}`."
+                f"Generating Truss Chainlet model for '{chainlet_descriptor.name}'."
             )
+
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
                 self._gen_root,
                 self._options.chain_name,
                 chainlet_descriptor,
                 model_name,
-                chainlet_display_name_to_url,
             )
-            if self._options.only_generate_trusses:
-                chainlet_display_name_to_url[chainlet_descriptor.display_name] = (
-                    "http://dummy"
-                )
-                continue
+            artifact = b10_types.ChainletArtifact(
+                truss_dir=chainlet_dir,
+                name=chainlet_descriptor.name,
+                display_name=chainlet_descriptor.display_name,
+            )
 
             is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint
-            service = _push_service(chainlet_dir, chainlet_descriptor, self._options)
-            chainlet_display_name_to_url[chainlet_descriptor.display_name] = (
-                service.predict_url
-            )
-            chainlet_services.append(
-                _Pusher.ChainEntry(
-                    service, chainlet_descriptor.display_name, is_entrypoint
-                )
-            )
+
             if is_entrypoint:
-                assert entrypoint_service is None
-                entrypoint_service = service
+                assert entrypoint_artifact is None
 
-        if self._options.only_generate_trusses:
-            return None
-        assert entrypoint_service is not None
+                entrypoint_artifact = artifact
+            else:
+                dependency_artifacts.append(artifact)
 
-        if isinstance(self._options, definitions.PushOptionsBaseten):
-            assert isinstance(entrypoint_service, b10_service.BasetenService)
-            return _create_baseten_chain(
-                self._options, chainlet_services, entrypoint_service
-            )
-        elif isinstance(self._options, definitions.PushOptionsLocalDocker):
-            assert isinstance(entrypoint_service, DockerTrussService)
-            return DockerChainService(self._options.chain_name, entrypoint_service)
-        else:
-            raise NotImplementedError(self._options)
+        assert entrypoint_artifact is not None
+
+        return entrypoint_artifact, dependency_artifacts
 
 
 @framework.raise_validation_errors_before
@@ -436,7 +374,68 @@ def push(
     non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
 ) -> Optional[ChainService]:
-    return _Pusher(options, gen_root).push(entrypoint, non_entrypoint_root_dir)
+    entrypoint_artifact, dependency_artifacts = _ChainSourceGenerator(
+        options, gen_root
+    ).generate_chainlet_artifacts(
+        entrypoint,
+        non_entrypoint_root_dir,
+    )
+
+    if options.only_generate_trusses:
+        return None
+
+    if isinstance(options, definitions.PushOptionsBaseten):
+        _create_chains_secret_if_missing(options.remote_provider)
+        return _create_baseten_chain(options, entrypoint_artifact, dependency_artifacts)
+    elif isinstance(options, definitions.PushOptionsLocalDocker):
+        chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
+        chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
+        chainlet_to_service: Dict[str, DockerTrussService] = {}
+
+        for chainlet_artifact in chainlet_artifacts:
+            port = utils.get_free_port()
+
+            service = DockerTrussService(
+                is_draft=True,
+                port=port,
+            )
+            chainlet_to_predict_url[chainlet_artifact.name] = {
+                "predict_url": service.predict_url,
+            }
+            chainlet_to_service[chainlet_artifact.name] = service
+
+        local_config_handler.LocalConfigHandler.set_dynamic_config(
+            definitions.DYNAMIC_CHAINLET_CONFIG_KEY,
+            json.dumps(chainlet_to_predict_url),
+        )
+
+        # TODO(Tyron): We run the Docker containers in a
+        # separate for-loop to make sure that the dynamic
+        # config is populated (the same one gets mounted
+        # on all the containers). We should look into
+        # consolidating the logic into a single for-loop.
+        # One approach might be to use separate config
+        # paths for each container under the `/tmp` dir.
+        for chainlet_artifact in chainlet_artifacts:
+            truss_dir = chainlet_artifact.truss_dir
+
+            _push_service_docker(
+                truss_dir,
+                chainlet_artifact.display_name,
+                options,
+                chainlet_to_service[chainlet_artifact.name].port,
+            )
+
+            logging.info(f"Pushed `{chainlet_artifact.display_name}`")
+            logging.debug(
+                f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
+            )
+
+        return DockerChainService(
+            options.chain_name, chainlet_to_service[entrypoint_artifact.name]
+        )
+    else:
+        raise NotImplementedError(options)
 
 
 # Watch / Live Patching ################################################################
@@ -525,10 +524,6 @@ class _Watcher:
     def _original_chainlet_names(self) -> set[str]:
         return set(self._chainlet_data.keys())
 
-    @property
-    def _chainlet_display_name_to_url(self) -> Mapping[str, str]:
-        return {k: v.oracle_predict_url for k, v in self._chainlet_data.items()}
-
     def _assert_chainlet_names_same(self, new_names: set[str]) -> None:
         missing = self._original_chainlet_names - new_names
         added = new_names - self._original_chainlet_names
@@ -556,7 +551,6 @@ class _Watcher:
                 self._deployed_chain_name,
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
-                self._chainlet_display_name_to_url,
             )
             patch_result = self._remote_provider.patch_for_chainlet(
                 chainlet_dir, self._ignore_patterns
