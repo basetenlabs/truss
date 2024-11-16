@@ -27,6 +27,9 @@ class ModelOrigin(Enum):
 
 
 class OracleData(pydantic.BaseModel):
+    class Config:
+        protected_namespaces = ()
+
     model_name: str
     s3_key: str
     encoded_config_str: str

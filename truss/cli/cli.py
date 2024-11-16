@@ -589,8 +589,6 @@ def push_chain(
     from truss_chains import framework
     from truss_chains import remote as chains_remote
 
-    console.print("")  # Print a newline.
-
     if watch:
         if publish or promote:
             raise ValueError(
@@ -629,7 +627,6 @@ def push_chain(
             entrypoint_cls, options, progress_bar=progress.Progress
         )
 
-    console.print("\n")
     if dryrun:
         return
 
@@ -740,8 +737,6 @@ def watch_chains(
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import remote as chains_remote
-
-    console.print("")  # Print a newline.
 
     if user_env:
         raise ValueError("`user_env` is deprecated, use `environment` instead.")

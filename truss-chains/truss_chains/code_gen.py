@@ -631,11 +631,11 @@ def gen_truss_chainlet(
             name=dep.name,
             options=dep.options,
         )
-
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
-
-    logging.info(f"Chainlet `{chainlet_descriptor.name}` code gen in `{chainlet_dir}`.")
-
+    logging.info(
+        f"Code generation for Chainlet `{chainlet_descriptor.name}` "
+        f"in `{chainlet_dir}`."
+    )
     _make_truss_config(
         chainlet_dir,
         chainlet_descriptor.chainlet_cls.remote_config,

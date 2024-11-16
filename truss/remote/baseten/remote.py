@@ -56,6 +56,9 @@ class PatchResult(NamedTuple):
 
 
 class FinalPushData(custom_types.OracleData):
+    class Config:
+        protected_namespaces = ()
+
     is_draft: bool
     model_id: Optional[str]
     preserve_previous_prod_deployment: bool
@@ -204,6 +207,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        progress_bar: Optional[Type["progress.Progress"]] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -216,6 +220,7 @@ class BasetenRemote(TrussRemote):
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            progress_bar=progress_bar,
         )
 
         # TODO(Tyron): This set of args is duplicated across
@@ -254,6 +259,7 @@ class BasetenRemote(TrussRemote):
         dependency_artifacts: List[custom_types.ChainletArtifact],
         publish: bool = False,
         environment: Optional[str] = None,
+        progress_bar: Optional[Type["progress.Progress"]] = None,
     ) -> Tuple[ChainDeploymentHandleAtomic, BasetenService]:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -275,6 +281,7 @@ class BasetenRemote(TrussRemote):
                 trusted=True,
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
+                progress_bar=progress_bar,
             )
             oracle_data = custom_types.OracleData(
                 model_name=push_data.model_name,
@@ -290,9 +297,6 @@ class BasetenRemote(TrussRemote):
                     name=artifact.display_name,
                     oracle=oracle_data,
                 )
-            )
-            logging.info(
-                f"Pushing Chainlet '{model_name}' as a Truss model on Baseten (publish={publish})."
             )
 
         chain_deployment_handle = create_chain_atomic(
@@ -316,7 +320,7 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_build.load(str(entrypoint_artifact.truss_dir)),
             api=self._api,
         )
-
+        logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return (
             chain_deployment_handle,
             entrypoint_service,

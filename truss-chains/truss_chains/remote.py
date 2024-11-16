@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from rich import console as rich_console
     from rich import progress
 from truss.local import local_config_handler
-from truss.remote import remote_cli, remote_factory
+from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
@@ -271,7 +271,12 @@ def _create_baseten_chain(
     baseten_options: definitions.PushOptionsBaseten,
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
+    progress_bar: Optional[Type["progress.Progress"]],
 ):
+    logging.info(
+        f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
+        f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
+    )
     chain_deployment_handle, entrypoint_service = (
         baseten_options.remote_provider.push_chain_atomic(
             chain_name=baseten_options.chain_name,
@@ -279,15 +284,9 @@ def _create_baseten_chain(
             dependency_artifacts=dependency_artifacts,
             publish=baseten_options.publish,
             environment=baseten_options.environment,
+            progress_bar=progress_bar,
         )
     )
-
-    logging.info(
-        f"Chainlet `{chainlet_name}` pushed to Baseten (publish={options.publish}, "
-        f"environment={options.environment})"
-    )
-    logging.debug(f"Internal model endpoint: '{entrypoint_service.predict_url}'.")
-
     return BasetenChainService(
         baseten_options.chain_name,
         entrypoint_service,
@@ -382,7 +381,9 @@ def push(
 
     if isinstance(options, definitions.PushOptionsBaseten):
         _create_chains_secret_if_missing(options.remote_provider)
-        return _create_baseten_chain(options, entrypoint_artifact, dependency_artifacts)
+        return _create_baseten_chain(
+            options, entrypoint_artifact, dependency_artifacts, progress_bar
+        )
     elif isinstance(options, definitions.PushOptionsLocalDocker):
         chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
         chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
@@ -414,13 +415,18 @@ def push(
         # paths for each container under the `/tmp` dir.
         for chainlet_artifact in chainlet_artifacts:
             truss_dir = chainlet_artifact.truss_dir
+            logging.info(
+                f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
+            )
             _push_service_docker(
                 truss_dir,
                 chainlet_artifact.display_name,
                 options,
                 chainlet_to_service[chainlet_artifact.name].port,
             )
-            logging.info(f"Pushed `{chainlet_artifact.display_name}` as docker container")
+            logging.info(
+                f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
+            )
             logging.debug(
                 f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
             )

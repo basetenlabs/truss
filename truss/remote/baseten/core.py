@@ -44,7 +44,7 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
-class PatchState(typing.NamedTuple):
+class PatchState(NamedTuple):
     current_hash: str
     current_signature: str
 
@@ -59,7 +59,7 @@ class TrussWatchState(NamedTuple):
     patches: Optional[TrussPatches]
 
 
-class ChainDeploymentHandleAtomic(typing.NamedTuple):
+class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
@@ -107,7 +107,8 @@ def create_chain_atomic(
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
-            f"Automatically publishing Chain '{chain_name}' based on environment setting."
+            f"Automatically publishing Chain `{chain_name}` based on "
+            "environment setting."
         )
         is_draft = False
 
@@ -142,7 +143,8 @@ def create_chain_atomic(
                 == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
             ):
                 raise ValueError(
-                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
+                    f"Environment `{environment}` does not exist. You can "
+                    f"create environments in the Chains UI."
                 ) from e
 
             raise e
