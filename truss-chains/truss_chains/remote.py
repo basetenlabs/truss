@@ -33,7 +33,7 @@ from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
-from truss.truss_handle import build as truss_build
+from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
 
@@ -87,11 +87,9 @@ def _push_service_docker(
     options: definitions.PushOptionsLocalDocker,
     port: int,
 ) -> None:
-    truss_handle = truss_build.load(str(truss_dir))
-    truss_handle.add_secret(
-        definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
-    )
-    truss_handle.docker_run(
+    th = truss_handle.TrussHandle(truss_dir)
+    th.add_secret(definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.docker_run(
         local_port=port,
         detach=True,
         wait_for_server_ready=True,
@@ -319,6 +317,12 @@ class _ChainSourceGenerator:
         self._options = options
         self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
 
+    @property
+    def _use_local_chains_src(self) -> bool:
+        if isinstance(self._options, definitions.PushOptionsLocalDocker):
+            return self._options.use_local_chains_src
+        return False
+
     def generate_chainlet_artifacts(
         self,
         entrypoint: Type[definitions.ABCChainlet],
@@ -340,6 +344,7 @@ class _ChainSourceGenerator:
                 self._options.chain_name,
                 chainlet_descriptor,
                 model_name,
+                self._use_local_chains_src,
             )
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,
@@ -547,6 +552,7 @@ class _Watcher:
                 self._deployed_chain_name,
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
+                use_local_chains_src=False,
             )
             patch_result = self._remote_provider.patch_for_chainlet(
                 chainlet_dir, self._ignore_patterns
