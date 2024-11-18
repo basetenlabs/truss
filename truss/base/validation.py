@@ -24,6 +24,12 @@ MEMORY_UNITS: Dict[str, int] = {
     "Ei": 1024**6,
 }
 
+_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+-[0-9a-f]{8}$")
+
+
+def is_valid_model_name(model_name: str) -> bool:
+    return bool(_MODEL_NAME_RE.match(model_name))
+
 
 def validate_secret_to_path_mapping(secret_to_path_mapping: Dict[str, str]) -> None:
     if not isinstance(secret_to_path_mapping, dict):

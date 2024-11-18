@@ -75,7 +75,6 @@ class SafeModel(pydantic.BaseModel):
         arbitrary_types_allowed=False,
         strict=True,
         validate_assignment=True,
-        extra="forbid",
     )
 
 
@@ -397,8 +396,11 @@ class ServiceDescriptor(SafeModel):
     specifically with ``StubBase``."""
 
     name: str
-    predict_url: str
     options: RPCOptions
+
+
+class DeployedServiceDescriptor(ServiceDescriptor):
+    predict_url: str
 
 
 class Environment(SafeModel):
@@ -422,7 +424,6 @@ class DeploymentContext(SafeModelNonSerializable):
     Args:
         data_dir: The directory where the chainlet can store and access data,
           e.g. for downloading model weights.
-        user_config: User-defined configuration for the chainlet.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
           This is used create RPCs sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
@@ -434,11 +435,11 @@ class DeploymentContext(SafeModelNonSerializable):
     """
 
     data_dir: Optional[pathlib.Path] = None
-    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    chainlet_to_service: Mapping[str, DeployedServiceDescriptor]
     secrets: MappingNoIter[str, str]
     environment: Optional[Environment] = None
 
-    def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
+    def get_service_descriptor(self, chainlet_name: str) -> DeployedServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
             raise MissingDependencyError(f"{chainlet_name}")
         return self.chainlet_to_service[chainlet_name]
