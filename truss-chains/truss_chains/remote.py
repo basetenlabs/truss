@@ -26,8 +26,9 @@ import watchfiles
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+    from rich import progress
 from truss.local import local_config_handler
-from truss.remote import remote_cli, remote_factory
+from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten import remote as b10_remote
@@ -86,14 +87,10 @@ def _push_service_docker(
     options: definitions.PushOptionsLocalDocker,
     port: int,
 ) -> None:
-    logging.info(f"Running in docker container `{chainlet_display_name}` ")
-
     truss_handle = truss_build.load(str(truss_dir))
-
     truss_handle.add_secret(
         definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key
     )
-
     truss_handle.docker_run(
         local_port=port,
         detach=True,
@@ -274,7 +271,12 @@ def _create_baseten_chain(
     baseten_options: definitions.PushOptionsBaseten,
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
+    progress_bar: Optional[Type["progress.Progress"]],
 ):
+    logging.info(
+        f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
+        f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
+    )
     chain_deployment_handle, entrypoint_service = (
         baseten_options.remote_provider.push_chain_atomic(
             chain_name=baseten_options.chain_name,
@@ -282,12 +284,9 @@ def _create_baseten_chain(
             dependency_artifacts=dependency_artifacts,
             publish=baseten_options.publish,
             environment=baseten_options.environment,
+            progress_bar=progress_bar,
         )
     )
-
-    logging.info(f"Pushed Chain '{baseten_options.chain_name}'.")
-    logging.debug(f"Internal model endpoint: '{entrypoint_service.predict_url}'.")
-
     return BasetenChainService(
         baseten_options.chain_name,
         entrypoint_service,
@@ -315,7 +314,7 @@ class _ChainSourceGenerator:
     def __init__(
         self,
         options: definitions.PushOptions,
-        gen_root: Optional[pathlib.Path] = None,
+        gen_root: pathlib.Path,
     ) -> None:
         self._options = options
         self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
@@ -335,11 +334,6 @@ class _ChainSourceGenerator:
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
             model_name = f"{model_base_name}-{model_suffix}"
-
-            logging.info(
-                f"Generating Truss Chainlet model for '{chainlet_descriptor.name}'."
-            )
-
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
                 self._gen_root,
@@ -373,6 +367,7 @@ def push(
     options: definitions.PushOptions,
     non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
+    progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
     entrypoint_artifact, dependency_artifacts = _ChainSourceGenerator(
         options, gen_root
@@ -386,7 +381,9 @@ def push(
 
     if isinstance(options, definitions.PushOptionsBaseten):
         _create_chains_secret_if_missing(options.remote_provider)
-        return _create_baseten_chain(options, entrypoint_artifact, dependency_artifacts)
+        return _create_baseten_chain(
+            options, entrypoint_artifact, dependency_artifacts, progress_bar
+        )
     elif isinstance(options, definitions.PushOptionsLocalDocker):
         chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
         chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
@@ -418,15 +415,18 @@ def push(
         # paths for each container under the `/tmp` dir.
         for chainlet_artifact in chainlet_artifacts:
             truss_dir = chainlet_artifact.truss_dir
-
+            logging.info(
+                f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
+            )
             _push_service_docker(
                 truss_dir,
                 chainlet_artifact.display_name,
                 options,
                 chainlet_to_service[chainlet_artifact.name].port,
             )
-
-            logging.info(f"Pushed `{chainlet_artifact.display_name}`")
+            logging.info(
+                f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
+            )
             logging.debug(
                 f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
             )
@@ -457,7 +457,7 @@ class _Watcher:
         source: pathlib.Path,
         entrypoint: Optional[str],
         name: Optional[str],
-        remote: Optional[str],
+        remote: str,
         console: "rich_console.Console",
         error_console: "rich_console.Console",
         show_stack_trace: bool,
@@ -467,10 +467,6 @@ class _Watcher:
         self._console = console
         self._error_console = error_console
         self._show_stack_trace = show_stack_trace
-        if not remote:
-            remote = remote_cli.inquire_remote_name(
-                remote_factory.RemoteFactory.get_available_config_names()
-            )
         self._remote_provider = cast(
             b10_remote.BasetenRemote,
             remote_factory.RemoteFactory.create(remote=remote),
@@ -682,7 +678,7 @@ def watch(
     source: pathlib.Path,
     entrypoint: Optional[str],
     name: Optional[str],
-    remote: Optional[str],
+    remote: str,
     console: "rich_console.Console",
     error_console: "rich_console.Console",
     show_stack_trace: bool,

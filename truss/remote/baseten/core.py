@@ -1,7 +1,9 @@
 import datetime
 import logging
-import typing
-from typing import IO, List, Optional, Tuple
+from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+
+if TYPE_CHECKING:
+    from rich import progress
 
 import truss
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
@@ -42,22 +44,22 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
-class PatchState(typing.NamedTuple):
+class PatchState(NamedTuple):
     current_hash: str
     current_signature: str
 
 
-class TrussPatches(typing.NamedTuple):
+class TrussPatches(NamedTuple):
     django_patch_state: PatchState
     container_patch_state: PatchState
 
 
-class TrussWatchState(typing.NamedTuple):
+class TrussWatchState(NamedTuple):
     is_container_built_from_push: bool
     patches: Optional[TrussPatches]
 
 
-class ChainDeploymentHandleAtomic(typing.NamedTuple):
+class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
@@ -105,7 +107,8 @@ def create_chain_atomic(
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
         logging.info(
-            f"Automatically publishing Chain '{chain_name}' based on environment setting."
+            f"Automatically publishing Chain `{chain_name}` based on "
+            "environment setting."
         )
         is_draft = False
 
@@ -140,7 +143,8 @@ def create_chain_atomic(
                 == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
             ):
                 raise ValueError(
-                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
+                    f"Environment `{environment}` does not exist. You can "
+                    f"create environments in the Chains UI."
                 ) from e
 
             raise e
@@ -264,12 +268,10 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     return None
 
 
-def archive_truss(truss_handle: TrussHandle) -> IO:
-    """
-    Archive a TrussHandle into a tar file.
-
-    Args:
-        truss_handle: TrussHandle to archive
+def archive_truss(
+    truss_handle: TrussHandle, progress_bar: Optional[Type["progress.Progress"]]
+) -> IO:
+    """Archive a TrussHandle into a tar file.
 
     Returns:
         A file-like object containing the tar file
@@ -280,17 +282,23 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
 
     try:
-        temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
+        temp_file = create_tar_with_progress_bar(
+            truss_dir, ignore_patterns, progress_bar=progress_bar
+        )
     except PermissionError:
         # workaround for Windows bug with Tempfile that causes PermissionErrors
         temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, delete=False
+            truss_dir, ignore_patterns, delete=False, progress_bar=progress_bar
         )
     temp_file.file.seek(0)
     return temp_file
 
 
-def upload_truss(api: BasetenApi, serialize_file: IO) -> str:
+def upload_truss(
+    api: BasetenApi,
+    serialize_file: IO,
+    progress_bar: Optional[Type["progress.Progress"]],
+) -> str:
     """
     Upload a TrussHandle to the Baseten remote.
 
@@ -305,7 +313,7 @@ def upload_truss(api: BasetenApi, serialize_file: IO) -> str:
     s3_key = temp_credentials_s3_upload.pop("s3_key")
     s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
     multipart_upload_boto3(
-        serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload
+        serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, progress_bar
     )
     return s3_key
 

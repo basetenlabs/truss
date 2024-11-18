@@ -1,4 +1,7 @@
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, Type, cast
+
+if TYPE_CHECKING:
+    from rich import progress
 
 from truss.api import definitions
 from truss.remote.baseten.service import BasetenService
@@ -57,6 +60,7 @@ def push(
     trusted: bool = False,
     deployment_name: Optional[str] = None,
     environment: Optional[str] = None,
+    progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> definitions.ModelDeployment:
     """
     Pushes a Truss to Baseten.
@@ -76,6 +80,8 @@ def push(
         deployment_name: Name of the deployment created by the push. Can only be
             used in combination with `publish` or `promote`. Deployment name must
             only contain alphanumeric, ’.’, ’-’ or ’_’ characters.
+        environment: Name of stable environment on baseten.
+        progress_bar: Optional `rich.progress.Progress` if output is desired.
 
     Returns:
         The newly created ModelDeployment.
@@ -111,6 +117,7 @@ def push(
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
+        progress_bar=progress_bar,
     )  # type: ignore
 
     return definitions.ModelDeployment(cast(BasetenService, service))
