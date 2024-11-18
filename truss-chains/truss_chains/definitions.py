@@ -75,7 +75,6 @@ class SafeModel(pydantic.BaseModel):
         arbitrary_types_allowed=False,
         strict=True,
         validate_assignment=True,
-        extra="forbid",
     )
 
 
