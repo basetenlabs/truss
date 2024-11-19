@@ -338,6 +338,11 @@ class _ChainSourceGenerator:
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
             model_name = f"{model_base_name}-{model_suffix}"
+
+            logging.info(
+                f"Generating Truss Chainlet model for '{chainlet_descriptor.display_name}'."
+            )
+
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
                 self._gen_root,
@@ -348,7 +353,6 @@ class _ChainSourceGenerator:
             )
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,
-                name=chainlet_descriptor.name,
                 display_name=chainlet_descriptor.display_name,
             )
 
@@ -401,10 +405,10 @@ def push(
                 is_draft=True,
                 port=port,
             )
-            chainlet_to_predict_url[chainlet_artifact.name] = {
+            chainlet_to_predict_url[chainlet_artifact.display_name] = {
                 "predict_url": service.predict_url,
             }
-            chainlet_to_service[chainlet_artifact.name] = service
+            chainlet_to_service[chainlet_artifact.display_name] = service
 
         local_config_handler.LocalConfigHandler.set_dynamic_config(
             definitions.DYNAMIC_CHAINLET_CONFIG_KEY,
@@ -427,17 +431,17 @@ def push(
                 truss_dir,
                 chainlet_artifact.display_name,
                 options,
-                chainlet_to_service[chainlet_artifact.name].port,
+                chainlet_to_service[chainlet_artifact.display_name].port,
             )
             logging.info(
                 f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
             )
             logging.debug(
-                f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
+                f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.display_name]}`"
             )
 
         return DockerChainService(
-            options.chain_name, chainlet_to_service[entrypoint_artifact.name]
+            options.chain_name, chainlet_to_service[entrypoint_artifact.display_name]
         )
     else:
         raise NotImplementedError(options)
