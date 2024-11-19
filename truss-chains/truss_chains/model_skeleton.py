@@ -29,7 +29,8 @@ class TrussChainletModel:
             definitions.Environment.model_validate(environment) if environment else None
         )
         chainlet_to_deployed_service = populate_chainlet_service_predict_urls(
-            truss_metadata.chainlet_to_service
+            truss_metadata.chainlet_to_service,
+            raise_on_missing_key=True,
         )
 
         self._context = definitions.DeploymentContext(

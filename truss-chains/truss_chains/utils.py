@@ -143,6 +143,7 @@ def get_free_port() -> int:
 
 def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+    raise_on_missing_key=False,
 ) -> Mapping[str, definitions.DeployedServiceDescriptor]:
     chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
 
@@ -162,9 +163,12 @@ def populate_chainlet_service_predict_urls(
         service_descriptor,
     ) in chainlet_to_service.items():
         if chainlet_name not in dynamic_chainlet_config:
-            logging.warning(
-                f"Chainlet '{chainlet_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'."
-            )
+            err_msg = f"Chainlet '{chainlet_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'."
+
+            if raise_on_missing_key:
+                raise definitions.MissingDependencyError(err_msg)
+
+            logging.warning(err_msg)
             continue
 
         chainlet_to_deployed_service[chainlet_name] = (
