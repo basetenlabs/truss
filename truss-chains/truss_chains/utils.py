@@ -163,6 +163,11 @@ def populate_chainlet_service_predict_urls(
     ) in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
+        # NOTE: The Chainlet `display_name` in the Truss CLI
+        # corresponds to Chainlet `name` in the backend. As
+        # the dynamic Chainlet config is keyed on the backend
+        # Chainlet name, we have to look up config values by
+        # using the `display_name` in the service descriptor.
         if display_name not in dynamic_chainlet_config:
             raise definitions.MissingDependencyError(
                 f"Chainlet '{display_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
