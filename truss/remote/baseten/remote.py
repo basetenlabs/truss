@@ -294,7 +294,7 @@ class BasetenRemote(TrussRemote):
             )
             chainlet_data.append(
                 custom_types.ChainletDataAtomic(
-                    name=artifact.display_name,
+                    name=artifact.name,
                     oracle=oracle_data,
                 )
             )

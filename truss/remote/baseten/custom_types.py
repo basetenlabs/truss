@@ -17,7 +17,6 @@ class DeployedChainlet(pydantic.BaseModel):
 
 class ChainletArtifact(pydantic.BaseModel):
     truss_dir: pathlib.Path
-    display_name: str
     name: str
 
 

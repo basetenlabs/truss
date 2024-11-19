@@ -333,11 +333,13 @@ class _ChainSourceGenerator:
         dependency_artifacts: list[b10_types.ChainletArtifact] = []
 
         for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
-            model_base_name = chainlet_descriptor.display_name
+            chainlet_name = chainlet_descriptor.name
+
             # Since we are creating a distinct model for each deployment of the chain,
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
-            model_name = f"{model_base_name}-{model_suffix}"
+            model_name = f"{chainlet_name}-{model_suffix}"
+
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
                 self._gen_root,
@@ -348,8 +350,7 @@ class _ChainSourceGenerator:
             )
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,
-                name=chainlet_descriptor.name,
-                display_name=chainlet_descriptor.display_name,
+                name=chainlet_name,
             )
 
             is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint
@@ -420,17 +421,15 @@ def push(
         # paths for each container under the `/tmp` dir.
         for chainlet_artifact in chainlet_artifacts:
             truss_dir = chainlet_artifact.truss_dir
-            logging.info(
-                f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
-            )
+            logging.info(f"Building Chainlet `{chainlet_artifact.name}` docker image.")
             _push_service_docker(
                 truss_dir,
-                chainlet_artifact.display_name,
+                chainlet_artifact.name,
                 options,
                 chainlet_to_service[chainlet_artifact.name].port,
             )
             logging.info(
-                f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
+                f"Pushed Chainlet `{chainlet_artifact.name}` as docker container."
             )
             logging.debug(
                 f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
