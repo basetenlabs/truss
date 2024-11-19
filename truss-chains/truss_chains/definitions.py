@@ -408,6 +408,7 @@ class ServiceDescriptor(SafeModel):
     specifically with ``StubBase``."""
 
     name: str
+    display_name: str
     options: RPCOptions
 
 

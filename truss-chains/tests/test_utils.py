@@ -28,6 +28,7 @@ def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_d
     chainlet_to_service = {
         "HelloWorld": definitions.ServiceDescriptor(
             name="HelloWorld",
+            display_name="HelloWorld",
             options=definitions.RPCOptions(),
         )
     }
@@ -54,6 +55,7 @@ def test_no_populate_chainlet_service_predict_urls(
     chainlet_to_service = {
         "RandInt": definitions.ServiceDescriptor(
             name="RandInt",
+            display_name="RandInt",
             options=definitions.RPCOptions(),
         )
     }

@@ -331,13 +331,23 @@ class _ChainSourceGenerator:
         chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
         entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
         dependency_artifacts: list[b10_types.ChainletArtifact] = []
+        chainlet_display_names: set[str] = set()
 
         for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
-            model_base_name = chainlet_descriptor.display_name
+            chainlet_display_name = chainlet_descriptor.display_name
+
+            if chainlet_display_name in chainlet_display_names:
+                raise definitions.ChainsUsageError(
+                    f"Chainlet names must be unique. Found multiple Chainlets with the name: '{chainlet_display_name}'."
+                )
+
+            chainlet_display_names.add(chainlet_display_name)
+
             # Since we are creating a distinct model for each deployment of the chain,
             # we add a random suffix.
             model_suffix = str(uuid.uuid4()).split("-")[0]
-            model_name = f"{model_base_name}-{model_suffix}"
+            model_name = f"{chainlet_display_name}-{model_suffix}"
+
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
                 self._gen_root,
@@ -349,7 +359,7 @@ class _ChainSourceGenerator:
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,
                 name=chainlet_descriptor.name,
-                display_name=chainlet_descriptor.display_name,
+                display_name=chainlet_display_name,
             )
 
             is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint

@@ -161,16 +161,19 @@ def populate_chainlet_service_predict_urls(
         chainlet_name,
         service_descriptor,
     ) in chainlet_to_service.items():
-        if chainlet_name not in dynamic_chainlet_config:
+        display_name = service_descriptor.display_name
+
+        if display_name not in dynamic_chainlet_config:
             raise definitions.MissingDependencyError(
-                f"Chainlet '{chainlet_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'."
+                f"Chainlet '{display_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
         chainlet_to_deployed_service[chainlet_name] = (
             definitions.DeployedServiceDescriptor(
+                display_name=display_name,
                 name=service_descriptor.name,
                 options=service_descriptor.options,
-                predict_url=dynamic_chainlet_config[chainlet_name]["predict_url"],
+                predict_url=dynamic_chainlet_config[display_name]["predict_url"],
             )
         )
 
