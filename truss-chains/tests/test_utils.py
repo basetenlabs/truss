@@ -6,7 +6,7 @@ from truss_chains import definitions
 from truss_chains.utils import populate_chainlet_service_predict_urls
 
 DYNAMIC_CHAINLET_CONFIG_VALUE = {
-    "HelloWorld": {
+    "Hello World!": {
         "predict_url": "https://model-diff_id.api.baseten.co/deployment/diff_deployment_id/predict"
     }
 }
@@ -28,7 +28,7 @@ def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_d
     chainlet_to_service = {
         "HelloWorld": definitions.ServiceDescriptor(
             name="HelloWorld",
-            display_name="HelloWorld",
+            display_name="Hello World!",
             options=definitions.RPCOptions(),
         )
     }
@@ -38,7 +38,7 @@ def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_d
 
     assert (
         new_chainlet_to_service["HelloWorld"].predict_url
-        == DYNAMIC_CHAINLET_CONFIG_VALUE["HelloWorld"]["predict_url"]
+        == DYNAMIC_CHAINLET_CONFIG_VALUE["Hello World!"]["predict_url"]
     )
 
 
