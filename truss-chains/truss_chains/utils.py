@@ -180,22 +180,6 @@ def populate_chainlet_service_predict_urls(
     return chainlet_to_deployed_service
 
 
-# NOTE: This needs to be available in the Context Builder
-# so that older Truss CLI versions that generate code that
-# expects this function to be available continue to work.
-def override_chainlet_to_service_metadata(
-    chainlet_to_service: Dict[
-        str, Union[definitions.ServiceDescriptor, definitions.DeployedServiceDescriptor]
-    ],
-) -> None:
-    chainlet_to_deployed_service = populate_chainlet_service_predict_urls(
-        chainlet_to_service
-    )
-
-    for chainlet_name in chainlet_to_service.keys():
-        chainlet_to_service[chainlet_name] = chainlet_to_deployed_service[chainlet_name]
-
-
 # Error Propagation Utils. #############################################################
 
 
