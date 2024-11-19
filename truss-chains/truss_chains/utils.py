@@ -191,7 +191,9 @@ def override_chainlet_to_service_metadata(
     )
 
     for chainlet_name in chainlet_to_service.keys():
-        chainlet_to_service[chainlet_name] = chainlet_to_deployed_service[chainlet_name]
+        chainlet_to_service[chainlet_name] = chainlet_to_deployed_service.get(
+            chainlet_name, chainlet_to_service[chainlet_name]
+        )
 
 
 # Error Propagation Utils. #############################################################
