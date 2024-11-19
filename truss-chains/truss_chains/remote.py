@@ -411,7 +411,7 @@ def push(
                 is_draft=True,
                 port=port,
             )
-            chainlet_to_predict_url[chainlet_artifact.name] = {
+            chainlet_to_predict_url[chainlet_artifact.display_name] = {
                 "predict_url": service.predict_url,
             }
             chainlet_to_service[chainlet_artifact.name] = service
@@ -443,7 +443,8 @@ def push(
                 f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
             )
             logging.debug(
-                f"Internal model endpoint: `{chainlet_to_predict_url[chainlet_artifact.name]}`"
+                "Internal model endpoint: "
+                f"`{chainlet_to_predict_url[chainlet_artifact.display_name]}`"
             )
 
         return DockerChainService(
