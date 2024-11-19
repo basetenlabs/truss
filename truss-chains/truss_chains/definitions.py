@@ -191,6 +191,18 @@ class DockerImage(SafeModelNonSerializable):
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
 
+    @pydantic.root_validator(pre=True)
+    def migrate_fields(cls, values):
+        if "base_image" in values:
+            base_image = values["base_image"]
+            if isinstance(base_image, str):
+                doc_link = "https://docs.baseten.co/chains-reference/sdk#class-truss-chains-dockerimage"
+                raise ChainsUsageError(
+                    "`DockerImage.base_image` as string is deprecated. Specify as "
+                    f"`BasetenImage` or `CustomImage` (see docs: {doc_link})."
+                )
+        return values
+
 
 class ComputeSpec(pydantic.BaseModel):
     """Parsed and validated compute.  See ``Compute`` for more information."""

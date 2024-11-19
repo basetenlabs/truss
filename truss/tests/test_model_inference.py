@@ -13,7 +13,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
-from typing import Iterator, Mapping
+from typing import Iterator, Mapping, Optional
 
 import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
@@ -40,18 +40,30 @@ def anyio_backend():
     return "asyncio"
 
 
-def _log_contains_error(line: dict, error: str, message: str):
+def _log_contains_line(
+    line: dict, message: str, level: str, error: Optional[str] = None
+):
     return (
-        line["levelname"] == "ERROR"
-        and line["message"] == message
-        and error in line["exc_info"]
+        line["levelname"] == level
+        and message in line["message"]
+        and (error is None or error in line["exc_info"])
     )
 
 
 def _assert_logs_contain_error(logs: str, error: str, message=DEFAULT_LOG_ERROR):
     loglines = [json.loads(line) for line in logs.splitlines()]
-    assert any(_log_contains_error(line, error, message) for line in loglines), (
+    assert any(
+        _log_contains_line(line, message, "ERROR", error) for line in loglines
+    ), (
         f"Did not find expected error in logs.\nExpected error: {error}\n"
+        f"Expected message: {message}\nActual logs:\n{loglines}"
+    )
+
+
+def _assert_logs_contain(logs: str, message: str, level: str = "INFO"):
+    loglines = [json.loads(line) for line in logs.splitlines()]
+    assert any(_log_contains_line(line, message, level) for line in loglines), (
+        f"Did not find expected  logs.\n"
         f"Expected message: {message}\nActual logs:\n{loglines}"
     )
 
@@ -102,6 +114,42 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
 def test_map_to_supported_python_version(python_version, expected_python_version):
     out_python_version = map_to_supported_python_version(python_version)
     assert out_python_version == expected_python_version
+
+
+@pytest.mark.integration
+def test_model_load_logs(test_data_path):
+    model = """
+    from typing import Optional
+    import logging
+    class Model:
+        def load(self):
+            logging.info(f"User Load Message")
+
+        def predict(self, model_input):
+            return self.environment_name
+    """
+    config = "model_name: init-environment-truss"
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
+        logs = container.logs()
+        _assert_logs_contain(
+            logs,
+            message="Executing model.load()",
+        )
+        _assert_logs_contain(
+            logs,
+            message="Loading truss model from file",
+        )
+        _assert_logs_contain(
+            logs,
+            message="Completed model.load()",
+        )
+        _assert_logs_contain(
+            logs,
+            message="User Load Message",
+        )
 
 
 @pytest.mark.integration
