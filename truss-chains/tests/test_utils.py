@@ -61,4 +61,6 @@ def test_no_populate_chainlet_service_predict_urls(
     with pytest.raises(
         definitions.MissingDependencyError, match="Chainlet 'RandInt' not found"
     ):
-        populate_chainlet_service_predict_urls(chainlet_to_service)
+        populate_chainlet_service_predict_urls(
+            chainlet_to_service, raise_on_missing_key=True
+        )
