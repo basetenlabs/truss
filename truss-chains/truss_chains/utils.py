@@ -161,36 +161,28 @@ def populate_chainlet_service_predict_urls(
         chainlet_name,
         service_descriptor,
     ) in chainlet_to_service.items():
-        if chainlet_name not in dynamic_chainlet_config:
+        display_name = service_descriptor.display_name
+
+        # NOTE: The Chainlet `display_name` in the Truss CLI
+        # corresponds to Chainlet `name` in the backend. As
+        # the dynamic Chainlet config is keyed on the backend
+        # Chainlet name, we have to look up config values by
+        # using the `display_name` in the service descriptor.
+        if display_name not in dynamic_chainlet_config:
             raise definitions.MissingDependencyError(
-                f"Chainlet '{chainlet_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'."
+                f"Chainlet '{display_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
         chainlet_to_deployed_service[chainlet_name] = (
             definitions.DeployedServiceDescriptor(
+                display_name=display_name,
                 name=service_descriptor.name,
                 options=service_descriptor.options,
-                predict_url=dynamic_chainlet_config[chainlet_name]["predict_url"],
+                predict_url=dynamic_chainlet_config[display_name]["predict_url"],
             )
         )
 
     return chainlet_to_deployed_service
-
-
-# NOTE: This needs to be available in the Context Builder
-# so that older Truss CLI versions that generate code that
-# expects this function to be available continue to work.
-def override_chainlet_to_service_metadata(
-    chainlet_to_service: Dict[
-        str, Union[definitions.ServiceDescriptor, definitions.DeployedServiceDescriptor]
-    ],
-) -> None:
-    chainlet_to_deployed_service = populate_chainlet_service_predict_urls(
-        chainlet_to_service
-    )
-
-    for chainlet_name in chainlet_to_service.keys():
-        chainlet_to_service[chainlet_name] = chainlet_to_deployed_service[chainlet_name]
 
 
 # Error Propagation Utils. #############################################################

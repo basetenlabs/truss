@@ -197,6 +197,7 @@ def run_local(
                 chainlet_to_service={
                     "SomeChainlet": chains.DeployedServiceDescriptor(
                         name="SomeChainlet",
+                        display_name="SomeChainlet",
                         predict_url="https://...",
                         options=chains.RPCOptions(),
                     )
