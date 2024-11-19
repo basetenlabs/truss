@@ -98,6 +98,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
+    request_default_max_tokens: Optional[int] = None
 
 
 class TRTLLMConfiguration(BaseModel):
