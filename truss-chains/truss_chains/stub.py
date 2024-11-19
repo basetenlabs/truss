@@ -248,7 +248,10 @@ class StubBase(abc.ABC):
         options = options or definitions.RPCOptions()
         return cls(
             service_descriptor=definitions.DeployedServiceDescriptor(
-                name=cls.__name__, predict_url=predict_url, options=options
+                name=cls.__name__,
+                display_name=cls.__name__,
+                predict_url=predict_url,
+                options=options,
             ),
             api_key=context.get_baseten_api_key(),
         )

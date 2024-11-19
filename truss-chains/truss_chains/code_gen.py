@@ -632,6 +632,7 @@ def gen_truss_chainlet(
     for dep in chainlet_descriptor.dependencies.values():
         dep_services[dep.name] = definitions.ServiceDescriptor(
             name=dep.name,
+            display_name=dep.display_name,
             options=dep.options,
         )
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
