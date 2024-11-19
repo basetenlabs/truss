@@ -4,7 +4,7 @@ import pytest
 import requests
 from requests import Response
 from truss.remote.baseten.api import BasetenApi
-from truss.remote.baseten.custom_types import ChainletData
+from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
 
 
@@ -54,15 +54,26 @@ def mock_create_model_response():
     return response
 
 
+def mock_create_development_model_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"data": {"deploy_draft_truss": {"id": "12345"}}}
+    )
+    return response
+
+
 def mock_deploy_chain_deployment_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
         return_value={
             "data": {
-                "deploy_chain_deployment": {
+                "deploy_chain_atomic": {
                     "chain_id": "12345",
                     "chain_deployment_id": "54321",
+                    "entrypoint_model_id": "67890",
+                    "entrypoint_model_version_id": "09876",
                 }
             }
         }
@@ -185,8 +196,8 @@ def test_create_model_from_truss(mock_post, baseten_api):
         "config_str",
         "semver_bump",
         "client_version",
-        False,
-        "deployment_name",
+        is_trusted=False,
+        deployment_name="deployment_name",
     )
 
     gql_mutation = mock_post.call_args[1]["data"]["query"]
@@ -197,34 +208,6 @@ def test_create_model_from_truss(mock_post, baseten_api):
     assert 'client_version: "client_version"' in gql_mutation
     assert "is_trusted: false" in gql_mutation
     assert 'version_name: "deployment_name"' in gql_mutation
-
-
-@mock.patch("requests.post", return_value=mock_create_model_response())
-def test_create_model_from_truss_forwards_chainlet_data(mock_post, baseten_api):
-    baseten_api.create_model_from_truss(
-        "model_name",
-        "s3key",
-        "config_str",
-        "semver_bump",
-        "client_version",
-        False,
-        "deployment_name",
-        chain_environment="chainstaging",
-        chain_name="chainchain",
-        chainlet_name="chainlet-1",
-    )
-
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
-    assert 'name: "model_name"' in gql_mutation
-    assert 's3_key: "s3key"' in gql_mutation
-    assert 'config: "config_str"' in gql_mutation
-    assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: false" in gql_mutation
-    assert 'version_name: "deployment_name"' in gql_mutation
-    assert 'chain_environment: "chainstaging"' in gql_mutation
-    assert 'chain_name: "chainchain"' in gql_mutation
-    assert 'chainlet_name: "chainlet-1"' in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
@@ -237,7 +220,7 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
         "config_str",
         "semver_bump",
         "client_version",
-        True,
+        is_trusted=True,
         deployment_name=None,
     )
 
@@ -251,40 +234,94 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert "version_name: " not in gql_mutation
 
 
-@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
-def test_deploy_chain_deployment(mock_post, baseten_api):
-    baseten_api.deploy_chain_deployment(
-        "chain_id",
-        [
-            ChainletData(
-                name="chainlet-1",
-                oracle_version_id="some-ov-id",
-                is_entrypoint=True,
-            )
-        ],
-        "production",
+@mock.patch("requests.post", return_value=mock_create_model_response())
+def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_api):
+    baseten_api.create_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "semver_bump",
+        "client_version",
+        is_trusted=True,
+        allow_truss_download=False,
     )
 
     gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'semver_bump: "semver_bump"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: true" in gql_mutation
+    assert "allow_truss_download: false" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_create_development_model_response())
+def test_create_development_model_from_truss_with_allow_truss_download(
+    mock_post, baseten_api
+):
+    baseten_api.create_development_model_from_truss(
+        "model_name",
+        "s3key",
+        "config_str",
+        "client_version",
+        is_trusted=True,
+        allow_truss_download=False,
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    assert 'name: "model_name"' in gql_mutation
+    assert 's3_key: "s3key"' in gql_mutation
+    assert 'config: "config_str"' in gql_mutation
+    assert 'client_version: "client_version"' in gql_mutation
+    assert "is_trusted: true" in gql_mutation
+    assert "allow_truss_download: false" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
+def test_deploy_chain_deployment(mock_post, baseten_api):
+    baseten_api.deploy_chain_atomic(
+        environment="production",
+        chain_id="chain_id",
+        dependencies=[],
+        entrypoint=ChainletDataAtomic(
+            name="chainlet-1",
+            oracle=OracleData(
+                model_name="model-1",
+                s3_key="s3-key-1",
+                encoded_config_str="encoded-config-str-1",
+                is_trusted=True,
+            ),
+        ),
+    )
+
+    gql_mutation = mock_post.call_args[1]["data"]["query"]
+
+    assert 'environment: "production"' in gql_mutation
     assert 'chain_id: "chain_id"' in gql_mutation
-    assert "chainlets:" in gql_mutation
-    assert 'environment_name: "production"' in gql_mutation
+    assert "dependencies:" in gql_mutation
+    assert "entrypoint:" in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_deploy_chain_deployment_response())
 def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
-    baseten_api.deploy_chain_deployment(
-        "chain_id",
-        [
-            ChainletData(
-                name="chainlet-1",
-                oracle_version_id="some-ov-id",
-                is_entrypoint=True,
-            )
-        ],
+    baseten_api.deploy_chain_atomic(
+        chain_id="chain_id",
+        dependencies=[],
+        entrypoint=ChainletDataAtomic(
+            name="chainlet-1",
+            oracle=OracleData(
+                model_name="model-1",
+                s3_key="s3-key-1",
+                encoded_config_str="encoded-config-str-1",
+                is_trusted=True,
+            ),
+        ),
     )
 
     gql_mutation = mock_post.call_args[1]["data"]["query"]
+
     assert 'chain_id: "chain_id"' in gql_mutation
-    assert "chainlets:" in gql_mutation
-    assert "environment_name" not in gql_mutation
+    assert "environment" not in gql_mutation
+    assert "dependencies:" in gql_mutation
+    assert "entrypoint:" in gql_mutation

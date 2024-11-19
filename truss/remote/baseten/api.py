@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import requests
+import truss
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
@@ -23,14 +24,42 @@ API_URL_MAPPING = {
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
 
-def _chainlet_data_to_graphql_mutation(chainlet: b10_types.ChainletData):
-    return f"""
-        {{
-            name: "{chainlet.name}",
-            oracle_version_id: "{chainlet.oracle_version_id}",
-            is_entrypoint: {'true' if chainlet.is_entrypoint else 'false'}
-        }}
-        """
+def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
+    args = [
+        f'model_name: "{oracle.model_name}"',
+        f's3_key: "{oracle.s3_key}"',
+        f'encoded_config_str: "{oracle.encoded_config_str}"',
+        f"is_trusted: {str(oracle.is_trusted).lower()}",
+    ]
+
+    if oracle.semver_bump:
+        args.append(f'semver_bump: "{oracle.semver_bump}"')
+
+    if oracle.version_name:
+        args.append(f'version_name: "{oracle.version_name}"')
+
+    args_str = ",\n".join(args)
+
+    return f"""{{
+        {args_str}
+    }}"""
+
+
+def _chainlet_data_atomic_to_graphql_mutation(
+    chainlet: b10_types.ChainletDataAtomic,
+) -> str:
+    oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
+
+    args = [
+        f'name: "{chainlet.name}"',
+        f"oracle: {oracle_data_string}",
+    ]
+
+    args_str = ",\n".join(args)
+
+    return f"""{{
+        {args_str}
+    }}"""
 
 
 class BasetenApi:
@@ -107,11 +136,9 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
+        allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
-        chain_environment: Optional[str] = None,
-        chainlet_name: Optional[str] = None,
-        chain_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
@@ -122,11 +149,9 @@ class BasetenApi:
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
+                allow_truss_download: {'true' if allow_truss_download else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
-                {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
-                {f'chainlet_name: "{chainlet_name}"' if chainlet_name else ""}
-                {f'chain_name: "{chain_name}"' if chain_name else ""}
             ) {{
                 id,
                 name,
@@ -178,6 +203,7 @@ class BasetenApi:
         config,
         client_version,
         is_trusted=False,
+        allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
@@ -187,6 +213,7 @@ class BasetenApi:
                     config: "{config}",
                     client_version: "{client_version}",
                     is_trusted: {'true' if is_trusted else 'false'},
+                    allow_truss_download: {'true' if allow_truss_download else 'false'},
                     {f'model_origin: {origin.value}' if origin else ""}
     ) {{
             id,
@@ -198,72 +225,46 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]["deploy_draft_truss"]
 
-    def deploy_chain(self, name: str, chainlet_data: List[b10_types.ChainletData]):
-        chainlet_data_strings = [
-            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
-        ]
-
-        chainlets_string = ", ".join(chainlet_data_strings)
-        query_string = f"""
-        mutation {{
-        deploy_chain(
-            name: "{name}",
-            chainlets: [{chainlets_string}]
-        ) {{
-            id
-            chain_id
-            chain_deployment_id
-        }}
-        }}
-        """
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_chain"]
-
-    def deploy_draft_chain(
-        self, name: str, chainlet_data: List[b10_types.ChainletData]
-    ):
-        chainlet_data_strings = [
-            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
-        ]
-        chainlets_string = ", ".join(chainlet_data_strings)
-        query_string = f"""
-        mutation {{
-        deploy_draft_chain(
-            name: "{name}",
-            chainlets: [{chainlets_string}]
-        ) {{
-            chain_id
-            chain_deployment_id
-        }}
-        }}
-        """
-        resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_draft_chain"]
-
-    def deploy_chain_deployment(
+    def deploy_chain_atomic(
         self,
-        chain_id: str,
-        chainlet_data: List[b10_types.ChainletData],
+        entrypoint: b10_types.ChainletDataAtomic,
+        dependencies: List[b10_types.ChainletDataAtomic],
+        chain_id: Optional[str] = None,
+        chain_name: Optional[str] = None,
         environment: Optional[str] = None,
+        is_draft: bool = False,
     ):
-        chainlet_data_strings = [
-            _chainlet_data_to_graphql_mutation(chainlet) for chainlet in chainlet_data
-        ]
-        chainlets_string = ", ".join(chainlet_data_strings)
+        entrypoint_str = _chainlet_data_atomic_to_graphql_mutation(entrypoint)
+
+        dependencies_str = ", ".join(
+            [
+                _chainlet_data_atomic_to_graphql_mutation(dependency)
+                for dependency in dependencies
+            ]
+        )
+
         query_string = f"""
-        mutation {{
-            deploy_chain_deployment(
-                chain_id: "{chain_id}",
-                chainlets: [{chainlets_string}],
-                {f'environment_name: "{environment}"' if environment else ""}
-            ) {{
-                chain_id
-                chain_deployment_id
+            mutation {{
+                deploy_chain_atomic(
+                    {f'chain_id: "{chain_id}"' if chain_id else ""}
+                    {f'chain_name: "{chain_name}"' if chain_name else ""}
+                    {f'environment: "{environment}"' if environment else ""}
+                    is_draft: {str(is_draft).lower()}
+                    entrypoint: {entrypoint_str}
+                    dependencies: [{dependencies_str}]
+                    client_version: "truss=={truss.version()}"
+                ) {{
+                    chain_id
+                    chain_deployment_id
+                    entrypoint_model_id
+                    entrypoint_model_version_id
+                }}
             }}
-        }}
         """
+
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_chain_deployment"]
+
+        return resp["data"]["deploy_chain_atomic"]
 
     def get_chains(self):
         query_string = """
@@ -344,6 +345,25 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    def get_truss_watch_state(self, model_name: str):
+        query_string = f"""
+        {{
+            truss_watch_state(name: "{model_name}") {{
+                is_container_built_from_push
+                django_patch_state {{
+                    current_hash
+                    current_signature
+                }}
+                container_patch_state {{
+                    current_hash
+                    current_signature
+                }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
     def get_model(self, model_name):
         query_string = f"""
         {{
@@ -406,6 +426,53 @@ class BasetenApi:
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]
+
+    def patch_draft_truss_two_step(self, model_name, patch_request):
+        patch = base64_encoded_json_str(patch_request.to_dict())
+        query_string = f"""
+        mutation {{
+        stage_patch_for_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+                    patch: "{patch}",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        result = resp["data"]["stage_patch_for_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Failed to stage patch: {result}")
+            return result
+        logging.debug("Succesfully staged patch. Syncing patch to truss...")
+
+        return self.sync_draft_truss(model_name)
+
+    def sync_draft_truss(self, model_name):
+        query_string = f"""
+        mutation {{
+        sync_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        result = resp["data"]["sync_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Failed to sync patch: {result}")
+        return result
 
     def patch_draft_truss(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())

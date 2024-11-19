@@ -69,11 +69,10 @@ SECTION_UTILITIES = (
     "General framework and helper functions.",
     [
         "truss_chains.push",
-        "truss_chains.deploy_remotely",
         "truss_chains.remote.ChainService",
         "truss_chains.make_abs_path_here",
         "truss_chains.run_local",
-        "truss_chains.ServiceDescriptor",
+        "truss_chains.DeployedServiceDescriptor",
         "truss_chains.StubBase",
         "truss_chains.RemoteErrorDetail",
         # "truss_chains.ChainsRuntimeError",

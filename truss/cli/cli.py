@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
@@ -16,10 +16,10 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
-from InquirerPy import inquirer
-from rich.console import Console
-
 import truss
+from InquirerPy import inquirer
+from rich import progress
+from rich.console import Console
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -27,6 +27,11 @@ from truss.base.constants import (
 from truss.base.errors import RemoteNetworkError
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
+from truss.cli.remote_cli import (
+    inquire_model_name,
+    inquire_remote_config,
+    inquire_remote_name,
+)
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -37,11 +42,6 @@ from truss.remote.baseten.core import (
 )
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
-from truss.remote.remote_cli import (
-    inquire_model_name,
-    inquire_remote_config,
-    inquire_remote_name,
-)
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
     is_missing_secrets_for_trt_llm_builder,
@@ -409,35 +409,7 @@ def watch(
 # Chains Stuff #########################################################################
 
 
-class ChainsGroup(click.Group):
-    _ALIASES = {"deploy": "push"}  # Alias `deploy` to push for backwards compat.
-
-    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
-        if cmd_name in self._ALIASES:
-            if cmd_name == "deploy":
-                warnings.warn(
-                    "`truss chains deploy` is deprecated and will be removed in a "
-                    "future version. Please use `truss chains push` instead.",
-                    DeprecationWarning,
-                    stacklevel=1,
-                )
-            cmd_name = self._ALIASES[cmd_name]
-
-        return super().get_command(ctx, cmd_name)
-
-    def list_commands(self, ctx: click.Context) -> List[str]:
-        commands = super().list_commands(ctx)
-        return commands + list(self._ALIASES.keys())
-
-    def invoke(self, ctx: click.Context) -> Any:
-        # This import raises error messages if pydantic v2 or python older than 3.9
-        # are installed.
-        import truss_chains  # noqa: F401
-
-        return super().invoke(ctx)
-
-
-@click.group(cls=ChainsGroup)
+@click.group()
 def chains():
     """Subcommands for truss chains"""
 
@@ -586,10 +558,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     "--user_env",
     required=False,
     type=str,
-    help=(
-        "Key-value-pairs (as JSON str) that can be used to control "
-        "deployment-specific chainlet behavior."
-    ),
+    help="[DEPRECATED], use ``environment`` instead.",
+    hidden=True,
 )
 @log_level_option
 @error_handling
@@ -619,8 +589,6 @@ def push_chain(
     from truss_chains import framework
     from truss_chains import remote as chains_remote
 
-    console.print("")  # Print a newline.
-
     if watch:
         if publish or promote:
             raise ValueError(
@@ -633,21 +601,17 @@ def push_chain(
             wait = True
 
     if user_env:
-        try:
-            user_env_parsed = json.loads(user_env)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON string for user_env: `{user_env}`.\n"
-                f"user_env must be a JSON dict with string values and string keys.\n"
-                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
-                f"Error: {e}"
-            )
-    else:
-        user_env_parsed = {}
+        raise ValueError("`user_env` is deprecated, use `environment` instead.")
 
     if promote and environment:
-        promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
+        promote_warning = (
+            "`promote` flag and `environment` flag were both specified. "
+            "Ignoring the value of `promote`"
+        )
         console.print(promote_warning, style="yellow")
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     with framework.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = name or entrypoint_cls.__name__
@@ -656,13 +620,13 @@ def push_chain(
             promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
-            user_env=user_env_parsed,
             remote=remote,
             environment=environment,
         )
-        service = chains_remote.push(entrypoint_cls, options)
+        service = chains_remote.push(
+            entrypoint_cls, options, progress_bar=progress.Progress
+        )
 
-    console.print("\n")
     if dryrun:
         return
 
@@ -704,7 +668,10 @@ def push_chain(
         if success:
             deploy_success_text = "Deployment succeeded."
             if environment:
-                deploy_success_text = f"Your chain has been deployed into the {options.environment} environment."
+                deploy_success_text = (
+                    "Your chain has been deployed into "
+                    f"the {options.environment} environment."
+                )
             console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
@@ -713,7 +680,6 @@ def push_chain(
                     entrypoint,
                     name,
                     remote,
-                    user_env_parsed,
                     console,
                     error_console,
                     show_stack_trace=not is_humanfriendly_log_level,
@@ -747,10 +713,8 @@ def push_chain(
     "--user_env",
     required=False,
     type=str,
-    help=(
-        "Key-value-pairs (as JSON str) that can be used to control "
-        "deployment-specific chainlet behavior."
-    ),
+    help="[DEPRECATED], use `environment` instead.",
+    hidden=True,
 )
 @log_level_option
 @error_handling
@@ -774,27 +738,17 @@ def watch_chains(
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import remote as chains_remote
 
-    console.print("")  # Print a newline.
-
     if user_env:
-        try:
-            user_env_parsed = json.loads(user_env)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON string for user_env: `{user_env}`.\n"
-                f"user_env must be a JSON dict with string values and string keys.\n"
-                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
-                f"Error: {e}"
-            )
-    else:
-        user_env_parsed = {}
+        raise ValueError("`user_env` is deprecated, use `environment` instead.")
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     chains_remote.watch(
         source,
         entrypoint,
         name,
         remote,
-        user_env_parsed,
         console,
         error_console,
         show_stack_trace=not is_humanfriendly_log_level,
@@ -1103,6 +1057,14 @@ def run_python(script, target_directory):
     help="Trust truss with hosted secrets.",
 )
 @click.option(
+    "--disable-truss-download",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading the truss directory from the UI.",
+)
+@click.option(
     "--deployment-name",
     type=str,
     required=False,
@@ -1136,6 +1098,7 @@ def push(
     model_name: str,
     publish: bool = False,
     trusted: bool = False,
+    disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
     deployment_name: Optional[str] = None,
@@ -1224,6 +1187,8 @@ def push(
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
+        disable_truss_download=disable_truss_download,
+        progress_bar=progress.Progress,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")

@@ -17,8 +17,7 @@ def test_chain():
         chain_root = root / "itest_chain" / "itest_chain.py"
         with framework.import_target(chain_root, "ItestChain") as entrypoint:
             options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test",
-                user_env={"test_env_key": "test_env_value"},
+                chain_name="integration-test", use_local_chains_src=True
             )
             service = remote.push(entrypoint, options)
 
@@ -41,7 +40,6 @@ def test_chain():
                 "part_lens": [10],
             },
             ["a", "b"],
-            "test_env_value",
         ]
         # Call with values for default arguments.
         response = requests.post(
@@ -67,7 +65,6 @@ def test_chain():
                 "part_lens": [3],
             },
             ["bola"],
-            "test_env_value",
         ]
 
         # Test with errors.
@@ -87,7 +84,7 @@ async def test_chain_local():
     root = Path(__file__).parent.resolve()
     chain_root = root / "itest_chain" / "itest_chain.py"
     with framework.import_target(chain_root, "ItestChain") as entrypoint:
-        with public_api.run_local(user_env={"test_env_key": "test_env_value"}):
+        with public_api.run_local():
             with pytest.raises(ValueError):
                 # First time `SplitTextFailOnce` raises an error and
                 # currently local mode does not have retries.
@@ -104,7 +101,6 @@ async def test_chain_local():
                     "part_lens": [10],
                 },
                 ["a", "b"],
-                "test_env_value",
             )
 
             # Convert the pydantic model to a dict for comparison
@@ -114,7 +110,6 @@ async def test_chain_local():
                 result[2],
                 result[3].dict(),
                 result[4],
-                result[5],
             )
 
             assert result_dict == expected

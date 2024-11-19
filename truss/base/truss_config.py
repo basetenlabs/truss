@@ -25,6 +25,7 @@ from truss.base.validation import (
     validate_secret_name,
     validate_secret_to_path_mapping,
 )
+from truss.util.requirements import parse_requirement_string
 
 DEFAULT_MODEL_FRAMEWORK_TYPE = ModelFrameworkType.CUSTOM
 DEFAULT_MODEL_TYPE = "Model"
@@ -568,6 +569,7 @@ class TrussConfig:
         Union[TRTLLMConfiguration, TRTLLMSpeculativeDecodingConfiguration]
     ] = None
     build_commands: List[str] = field(default_factory=list)
+    use_local_chains_src: bool = False
 
     @property
     def canonical_python_version(self) -> str:
@@ -638,6 +640,7 @@ class TrussConfig:
                 else (TRTLLMSpeculativeDecodingConfiguration(**x)),
             ),
             build_commands=d.get("build_commands", []),
+            use_local_chains_src=d.get("use_local_chains_src", False),
         )
         config.validate()
         return config
@@ -646,8 +649,13 @@ class TrussConfig:
         if self.requirements_file:
             requirements_path = truss_dir / self.requirements_file
             try:
+                requirements = []
                 with open(requirements_path) as f:
-                    return [x for x in f.read().split("\n") if x]
+                    for line in f.readlines():
+                        parsed_line = parse_requirement_string(line)
+                        if parsed_line:
+                            requirements.append(parsed_line)
+                return requirements
             except Exception as e:
                 logger.exception(
                     f"failed to read requirements file: {self.requirements_file}"

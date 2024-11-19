@@ -19,6 +19,7 @@ from truss.base.constants import (
     AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
+    CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     FILENAME_CONSTANTS_MAP,
@@ -68,6 +69,7 @@ from truss.util.path import (
 BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 BUILD_SERVER_EXTENSIONS_PATH = "extensions"
+BUILD_CHAINS_DIR_NAME = "truss_chains"
 
 CONFIG_FILE = "config.yaml"
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
@@ -474,6 +476,9 @@ class ServingImageBuilder(ImageBuilder):
                 + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
             )
 
+        if config.use_local_chains_src:
+            self._copy_into_build_dir(CHAINS_CODE_DIR, build_dir, BUILD_CHAINS_DIR_NAME)
+
         # Copy base TrussServer requirements if supplied custom base image
         base_truss_server_reqs_filepath = SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
         if config.base_image:
@@ -619,6 +624,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
             build_commands=build_commands,
+            use_local_chains_src=config.use_local_chains_src,
             **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME

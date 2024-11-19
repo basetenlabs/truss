@@ -1,7 +1,9 @@
 import datetime
 import logging
-import typing
-from typing import IO, List, Optional, Tuple
+from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+
+if TYPE_CHECKING:
+    from rich import progress
 
 import truss
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
@@ -42,10 +44,27 @@ class ModelVersionId(ModelIdentifier):
         self.value = model_version_id
 
 
-class ChainDeploymentHandle(typing.NamedTuple):
+class PatchState(NamedTuple):
+    current_hash: str
+    current_signature: str
+
+
+class TrussPatches(NamedTuple):
+    django_patch_state: PatchState
+    container_patch_state: PatchState
+
+
+class TrussWatchState(NamedTuple):
+    is_container_built_from_push: bool
+    patches: Optional[TrussPatches]
+
+
+class ChainDeploymentHandleAtomic(NamedTuple):
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
+    entrypoint_model_id: str
+    entrypoint_model_version_id: str
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -78,40 +97,71 @@ def get_dev_chain_deployment(api: BasetenApi, chain_id: str):
     return newest_draft_deployment
 
 
-def create_chain(
+def create_chain_atomic(
     api: BasetenApi,
-    chain_id: Optional[str],
     chain_name: str,
-    chainlets: List[b10_types.ChainletData],
+    entrypoint: b10_types.ChainletDataAtomic,
+    dependencies: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
     environment: Optional[str],
-) -> ChainDeploymentHandle:
+) -> ChainDeploymentHandleAtomic:
+    if environment and is_draft:
+        logging.info(
+            f"Automatically publishing Chain `{chain_name}` based on "
+            "environment setting."
+        )
+        is_draft = False
+
+    chain_id = get_chain_id_by_name(api, chain_name)
+
+    # TODO(Tyron): Refactor for better readability:
+    # 1. Prepare all arguments for `deploy_chain_atomic`.
+    # 2. Validate argument combinations.
+    # 3. Make a single invocation to `deploy_chain_atomic`.
     if is_draft:
-        response = api.deploy_draft_chain(chain_name, chainlets)
+        res = api.deploy_chain_atomic(
+            chain_name=chain_name,
+            is_draft=True,
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+        )
     elif chain_id:
         # This is the only case where promote has relevance, since
         # if there is no chain already, the first deployment will
         # already be production, and only published deployments can
         # be promoted.
         try:
-            response = api.deploy_chain_deployment(chain_id, chainlets, environment)
+            res = api.deploy_chain_atomic(
+                chain_id=chain_id,
+                environment=environment,
+                entrypoint=entrypoint,
+                dependencies=dependencies,
+            )
         except ApiError as e:
             if (
                 e.graphql_error_code
                 == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
             ):
                 raise ValueError(
-                    f'Environment "{environment}" does not exist. You can create environments in the Chains UI.'
+                    f"Environment `{environment}` does not exist. You can "
+                    f"create environments in the Chains UI."
                 ) from e
-            raise e
-    else:
-        if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
-            raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
-        response = api.deploy_chain(chain_name, chainlets)
 
-    return ChainDeploymentHandle(
-        chain_id=response["chain_id"],
-        chain_deployment_id=response["chain_deployment_id"],
+            raise e
+    elif environment and environment != PRODUCTION_ENVIRONMENT_NAME:
+        raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
+    else:
+        res = api.deploy_chain_atomic(
+            chain_name=chain_name,
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+        )
+
+    return ChainDeploymentHandleAtomic(
+        chain_id=res["chain_id"],
+        chain_deployment_id=res["chain_deployment_id"],
+        entrypoint_model_id=res["entrypoint_model_id"],
+        entrypoint_model_version_id=res["entrypoint_model_version_id"],
         is_draft=is_draft,
     )
 
@@ -178,6 +228,36 @@ def get_dev_version(api: BasetenApi, model_name: str) -> Optional[dict]:
     return get_dev_version_from_versions(versions)
 
 
+def get_truss_watch_state(api: BasetenApi, model_name: str) -> TrussWatchState:
+    response = api.get_truss_watch_state(model_name)["truss_watch_state"]
+    django_patch_state = (
+        None
+        if response["django_patch_state"] is None
+        else PatchState(
+            current_hash=response["django_patch_state"]["current_hash"],
+            current_signature=response["django_patch_state"]["current_signature"],
+        )
+    )
+    container_patch_state = (
+        None
+        if response["container_patch_state"] is None
+        else PatchState(
+            current_hash=response["container_patch_state"]["current_hash"],
+            current_signature=response["container_patch_state"]["current_signature"],
+        )
+    )
+    patches = None
+    if django_patch_state and container_patch_state:
+        patches = TrussPatches(
+            django_patch_state=django_patch_state,
+            container_patch_state=container_patch_state,
+        )
+    return TrussWatchState(
+        is_container_built_from_push=response["is_container_built_from_push"],
+        patches=patches,
+    )
+
+
 def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published
@@ -188,12 +268,10 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     return None
 
 
-def archive_truss(truss_handle: TrussHandle) -> IO:
-    """
-    Archive a TrussHandle into a tar file.
-
-    Args:
-        truss_handle: TrussHandle to archive
+def archive_truss(
+    truss_handle: TrussHandle, progress_bar: Optional[Type["progress.Progress"]]
+) -> IO:
+    """Archive a TrussHandle into a tar file.
 
     Returns:
         A file-like object containing the tar file
@@ -204,17 +282,23 @@ def archive_truss(truss_handle: TrussHandle) -> IO:
     ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
 
     try:
-        temp_file = create_tar_with_progress_bar(truss_dir, ignore_patterns)
+        temp_file = create_tar_with_progress_bar(
+            truss_dir, ignore_patterns, progress_bar=progress_bar
+        )
     except PermissionError:
         # workaround for Windows bug with Tempfile that causes PermissionErrors
         temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, delete=False
+            truss_dir, ignore_patterns, delete=False, progress_bar=progress_bar
         )
     temp_file.file.seek(0)
     return temp_file
 
 
-def upload_truss(api: BasetenApi, serialize_file: IO) -> str:
+def upload_truss(
+    api: BasetenApi,
+    serialize_file: IO,
+    progress_bar: Optional[Type["progress.Progress"]],
+) -> str:
     """
     Upload a TrussHandle to the Baseten remote.
 
@@ -229,7 +313,7 @@ def upload_truss(api: BasetenApi, serialize_file: IO) -> str:
     s3_key = temp_credentials_s3_upload.pop("s3_key")
     s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
     multipart_upload_boto3(
-        serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload
+        serialize_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, progress_bar
     )
     return s3_key
 
@@ -242,14 +326,12 @@ def create_truss_service(
     semver_bump: str = "MINOR",
     is_trusted: bool = False,
     preserve_previous_prod_deployment: bool = False,
+    allow_truss_download: bool = False,
     is_draft: Optional[bool] = False,
     model_id: Optional[str] = None,
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
-    chain_environment: Optional[str] = None,
-    chainlet_name: Optional[str] = None,
-    chain_name: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Create a model in the Baseten remote.
@@ -276,7 +358,8 @@ def create_truss_service(
             s3_key,
             config,
             f"truss=={truss.version()}",
-            is_trusted,
+            is_trusted=is_trusted,
+            allow_truss_download=allow_truss_download,
             origin=origin,
         )
 
@@ -292,11 +375,9 @@ def create_truss_service(
             semver_bump=semver_bump,
             client_version=f"truss=={truss.version()}",
             is_trusted=is_trusted,
+            allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
-            chain_environment=chain_environment,
-            chainlet_name=chainlet_name,
-            chain_name=chain_name,
         )
         return model_version_json["id"], model_version_json["version_id"]
 

@@ -1,6 +1,5 @@
 import math
 
-import pydantic
 from user_package import shared_chainlet
 from user_package.nested_package import io_types
 
@@ -20,11 +19,6 @@ IMAGE_CUSTOM = chains.DockerImage(
     pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
 )
 
-IMAGE_STR = chains.DockerImage(
-    base_image="python:3.11-slim",
-    pip_requirements_file=chains.make_abs_path_here("requirements.txt"),
-)
-
 
 class GenerateData(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
@@ -37,31 +31,30 @@ class GenerateData(chains.ChainletBase):
         return (template * repetitions)[:length]
 
 
-class DummyUserConfig(pydantic.BaseModel):
-    multiplier: int
-
-
 class TextReplicator(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
-    default_user_config = DummyUserConfig(multiplier=2)
 
-    def __init__(self, context=chains.depends_context()):
-        self.user_config = context.user_config
+    def __init__(self):
+        try:
+            import pytzdata
+
+            print(f"Could import {pytzdata} is present")
+        except ModuleNotFoundError:
+            print("Could not import pytzdata is present")
+        self.multiplier = 2
 
     def run_remote(self, data: str) -> str:
         if len(data) > 30:
             raise ValueError(f"This input is too long: {len(data)}.")
-        return data * self.user_config.multiplier
+        return data * self.multiplier
 
 
 class SideEffectBase(chains.ChainletBase):
-    default_user_config = DummyUserConfig(multiplier=2)
-
     def __init__(self, context=chains.depends_context()):
-        self.user_config = context.user_config
+        self.ctx = context
 
     def run_remote(self) -> None:
-        print(f"I'm have no input and no outputs, I just print: {self.user_config}")
+        print("I'm have no input and no outputs, I just print.")
 
 
 class SideEffectOnlySubclass(SideEffectBase):
@@ -75,7 +68,7 @@ class SideEffectOnlySubclass(SideEffectBase):
 
 
 class TextToNum(chains.ChainletBase):
-    remote_config = chains.RemoteConfig(docker_image=IMAGE_STR)
+    remote_config = chains.RemoteConfig(docker_image=IMAGE_BASETEN)
 
     def __init__(
         self,
@@ -119,7 +112,7 @@ class ItestChain(chains.ChainletBase):
             parts=[], part_lens=[10]
         ),
         simple_default_arg: list[str] = ["a", "b"],
-    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str], str]:
+    ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str]]:
         data = self._data_generator.run_remote(length)
         text_parts, number = await self._data_splitter.run_remote(
             io_types.SplitTextInput(
@@ -139,5 +132,4 @@ class ItestChain(chains.ChainletBase):
             number,
             pydantic_default_arg,
             simple_default_arg,
-            self._context.user_env["test_env_key"],
         )
