@@ -93,7 +93,6 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
                 "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
                 "max_draft_len": 10,
             },
-            "runtime": {"num_draft_tokens": 4},
         },
         "draft": {
             "build": {
@@ -105,7 +104,7 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
                     "repo": "meta/llama4-500B",
                 },
             },
-            "runtime": {"kv_cache_free_gpu_mem_fraction": 0.9},
+            "runtime": {"num_draft_tokens": 4},
         },
     }
     return spec_dec_config
@@ -562,12 +561,19 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config, trtllm_spec_dec_co
 
 @pytest.mark.parametrize("should_raise", [False, True])
 def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
+    test_config = copy.deepcopy(trtllm_spec_dec_config)
     if should_raise:
-        trtllm_spec_dec_config["trt_llm"]["target"]["build"][
-            "speculative_decoding_mode"
-        ] = None
+        test_config["trt_llm"]["target"]["build"]["speculative_decoding_mode"] = None
         with pytest.raises(ValueError):
-            TrussConfig.from_dict(trtllm_spec_dec_config)
+            TrussConfig.from_dict(test_config)
+        test_config["trt_llm"]["target"]["build"]["speculative_decoding_mode"] = (
+            trtllm_spec_dec_config[
+                "trt_llm"
+            ]["target"]["build"]["speculative_decoding_mode"]
+        )
+        test_config["trt_llm"]["draft"]["runtime"]["num_draft_tokens"] = None
+        with pytest.raises(ValueError):
+            TrussConfig.from_dict(test_config)
     else:
         TrussConfig.from_dict(trtllm_spec_dec_config)
 

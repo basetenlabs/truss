@@ -159,7 +159,7 @@ class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
         ] + (
             [self.draft.runtime.num_draft_tokens]
             if self.draft.runtime and self.draft.runtime.num_draft_tokens
-            else []
+            else [False]
         )
         self._validate_spec_dec()
 
