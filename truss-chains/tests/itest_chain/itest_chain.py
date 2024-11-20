@@ -34,7 +34,13 @@ class GenerateData(chains.ChainletBase):
 class TextReplicator(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
 
-    def __init__(self, context=chains.depends_context()):
+    def __init__(self):
+        try:
+            import pytzdata
+
+            print(f"Could import {pytzdata} is present")
+        except ModuleNotFoundError:
+            print("Could not import pytzdata is present")
         self.multiplier = 2
 
     def run_remote(self, data: str) -> str:

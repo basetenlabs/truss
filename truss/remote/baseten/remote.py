@@ -2,7 +2,7 @@ import enum
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
 import yaml
 from requests import ReadTimeout
@@ -10,6 +10,7 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
 if TYPE_CHECKING:
     from rich import console as rich_console
+    from rich import progress
 from truss.base import validation
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
@@ -55,6 +56,9 @@ class PatchResult(NamedTuple):
 
 
 class FinalPushData(custom_types.OracleData):
+    class Config:
+        protected_namespaces = ()
+
     is_draft: bool
     model_id: Optional[str]
     preserve_previous_prod_deployment: bool
@@ -129,6 +133,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        progress_bar: Optional[Type["progress.Progress"]] = None,
     ) -> FinalPushData:
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
@@ -170,8 +175,8 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        temp_file = archive_truss(gathered_truss)
-        s3_key = upload_truss(self._api, temp_file)
+        temp_file = archive_truss(gathered_truss, progress_bar)
+        s3_key = upload_truss(self._api, temp_file, progress_bar)
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )
@@ -202,6 +207,7 @@ class BasetenRemote(TrussRemote):
         deployment_name: Optional[str] = None,
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
+        progress_bar: Optional[Type["progress.Progress"]] = None,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -214,6 +220,7 @@ class BasetenRemote(TrussRemote):
             deployment_name=deployment_name,
             origin=origin,
             environment=environment,
+            progress_bar=progress_bar,
         )
 
         # TODO(Tyron): This set of args is duplicated across
@@ -252,6 +259,7 @@ class BasetenRemote(TrussRemote):
         dependency_artifacts: List[custom_types.ChainletArtifact],
         publish: bool = False,
         environment: Optional[str] = None,
+        progress_bar: Optional[Type["progress.Progress"]] = None,
     ) -> Tuple[ChainDeploymentHandleAtomic, BasetenService]:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
@@ -273,6 +281,7 @@ class BasetenRemote(TrussRemote):
                 trusted=True,
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
+                progress_bar=progress_bar,
             )
             oracle_data = custom_types.OracleData(
                 model_name=push_data.model_name,
@@ -288,9 +297,6 @@ class BasetenRemote(TrussRemote):
                     name=artifact.display_name,
                     oracle=oracle_data,
                 )
-            )
-            logging.info(
-                f"Pushing Chainlet '{model_name}' as a Truss model on Baseten (publish={publish})."
             )
 
         chain_deployment_handle = create_chain_atomic(
@@ -314,7 +320,7 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_build.load(str(entrypoint_artifact.truss_dir)),
             api=self._api,
         )
-
+        logging.info("Successfully pushed to baseten. Chain is building and deploying.")
         return (
             chain_deployment_handle,
             entrypoint_service,

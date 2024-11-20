@@ -15,9 +15,9 @@ from typing import (
 )
 
 import pydantic
-import starlette.responses
 
 if TYPE_CHECKING:
+    import starlette.responses
     from numpy.typing import NDArray
 
 
@@ -44,7 +44,7 @@ OutputType = Union[
     MsgPackType,
     Generator[bytes, None, None],
     AsyncGenerator[bytes, None],
-    starlette.responses.Response,
+    "starlette.responses.Response",
 ]
 
 

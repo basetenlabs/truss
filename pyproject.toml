@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.51"
+version = "0.9.53"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -21,7 +21,7 @@ packages = [
 ]
 
 [tool.poetry.scripts]
-truss = "truss.cli:truss_cli"
+truss = "truss.cli.cli:truss_cli"
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"
@@ -70,7 +70,7 @@ truss = "truss.cli:truss_cli"
 # "When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
 python = ">=3.8,<3.13"
 huggingface_hub = ">=0.25.0"
-pydantic = ">=1.10.0"  # We cannot upgrade to v2, due to customer needs.
+pydantic = ">=1.10.0"  # We cannot upgrade to v2, due to customer constraints.
 PyYAML = ">=6.0"
 single-source = "^0.3.0"
 # "non-base" dependencies.
@@ -84,7 +84,6 @@ aiohttp = { version = "^3.10.10", optional = false }
 blake3 = { version = "^0.3.3", optional = false }
 boto3 = { version = "^1.34.85", optional = false }
 click = { version = "^8.0.3", optional = false }
-fastapi = { version = ">=0.109.1", optional = false }
 google-cloud-storage = { version = "2.10.0", optional = false }
 httpx = { version = ">=0.24.1", optional = false }
 inquirerpy = { version = "^0.3.4", optional = false }
@@ -111,7 +110,6 @@ aiohttp = { components = "other" }
 blake3 = { components = "other" }
 boto3 = { components = "other" }
 click = { components = "other" }
-fastapi = { components = "other" }
 google-cloud-storage = { components = "other" }
 httpx = { components = "other" }
 inquirerpy = { components = "other" }
@@ -154,6 +152,7 @@ types-setuptools = "^69.0.0.0"
 # These packages are needed to run local tests of server components. Note that the actual
 # server deps for building the docker image are (so far) defined in `requirements.txt`-files.
 dockerfile = "^3.2.0"
+fastapi =">=0.109.1"
 flask = "^2.3.3"
 msgpack = ">=1.0.2"
 msgpack-numpy = ">=0.4.8"

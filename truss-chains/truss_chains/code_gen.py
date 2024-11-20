@@ -563,6 +563,7 @@ def _make_truss_config(
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
+    use_local_chains_src: bool,
 ) -> truss_config.TrussConfig:
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
@@ -592,6 +593,7 @@ def _make_truss_config(
     if chains_config.docker_image.external_package_dirs:
         for ext_dir in chains_config.docker_image.external_package_dirs:
             config.external_package_dirs.append(ext_dir.abs_path)
+    config.use_local_chains_src = use_local_chains_src
     # Assets.
     assets = chains_config.get_asset_spec()
     config.secrets = assets.secrets
@@ -623,22 +625,27 @@ def gen_truss_chainlet(
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
     model_name: str,
+    use_local_chains_src: bool,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
         dep_services[dep.name] = definitions.ServiceDescriptor(
             name=dep.name,
+            display_name=dep.display_name,
             options=dep.options,
         )
-
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
-
+    logging.info(
+        f"Code generation for Chainlet `{chainlet_descriptor.name}` "
+        f"in `{chainlet_dir}`."
+    )
     _make_truss_config(
         chainlet_dir,
         chainlet_descriptor.chainlet_cls.remote_config,
         dep_services,
         model_name,
+        use_local_chains_src,
     )
     # TODO This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(
