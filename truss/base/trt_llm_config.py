@@ -102,7 +102,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 
 
 class TRTLLMConfiguration(BaseModel):
-    runtime: Optional[TrussTRTLLMRuntimeConfiguration] = None
+    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
 
     def __init__(self, **data):
