@@ -168,7 +168,7 @@ class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
         if any(self._spec_dec_configs):
             if not all(self._spec_dec_configs):
                 raise ValueError(
-                    "Speculative decoding requires all of `build.speculative_decoding`, `build.max_draft_len`, and `runtime.num_draft_tokens` to be configured."
+                    "Speculative decoding requires all of `target.build.speculative_decoding_mode`, `target.build.max_draft_len`, and `draft.runtime.num_draft_tokens` to be configured."
                 )
         for trt_llm_config in [self.target, self.draft]:
             if trt_llm_config.build.base_model is TrussTRTLLMModel.WHISPER:
