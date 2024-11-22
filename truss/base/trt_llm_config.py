@@ -151,6 +151,7 @@ class TRTLLMConfiguration(BaseModel):
 class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
     target: TRTLLMConfiguration
     draft: TRTLLMConfiguration
+    total_token_limit: int = 500000
 
     def __init__(self, **data):
         super().__init__(**data)
