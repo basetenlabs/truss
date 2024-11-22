@@ -109,7 +109,7 @@ TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
 TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.13.0_v0.0.17"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
-BASE_TRTLLM_REQUIREMENTS = ["briton==0.3.9"]
+BASE_TRTLLM_REQUIREMENTS = ["briton==0.3.10"]
 AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
     "--extra-index-url https://pypi.nvidia.com",
     "tensorrt_cu12_bindings==10.2.0.post1",
