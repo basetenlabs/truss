@@ -61,7 +61,10 @@ def create_app(base_config: Dict):
         app_logger=app_logger,
     )
 
-    limits = httpx.Limits(max_keepalive_connections=8, max_connections=32)
+    # max_connections = 1000
+    max_connections = 32
+    print(f"MAX CONNECTIONS: {max_connections}")
+    limits = httpx.Limits(max_keepalive_connections=8, max_connections=max_connections)
     app_state.proxy_client = httpx.AsyncClient(
         base_url=f"http://localhost:{app_state.inference_server_port}", limits=limits
     )

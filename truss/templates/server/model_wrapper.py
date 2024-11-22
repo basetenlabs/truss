@@ -17,14 +17,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import opentelemetry.sdk.trace as sdk_trace
 import starlette.requests
@@ -655,6 +648,7 @@ class ModelWrapper:
                 preprocess_result = await self.preprocess(inputs, request)
 
         span_predict = self._tracer.start_span("call-predict")
+        print(f"PREDICT SEMAPHORE: {self._predict_semaphore.value}")
         async with deferred_semaphore_and_span(
             self._predict_semaphore, span_predict
         ) as get_defer_fn:
