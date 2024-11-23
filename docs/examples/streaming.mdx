@@ -292,7 +292,7 @@ class Model:
 
             # Kick off a new thread to execute the model generation.
             # As the model generates outputs, they will be readable
-            # from the Streamer object.
+            # from the _Streamer object.
             thread = Thread(
                 target=self.model.generate,
                 kwargs=generation_kwargs

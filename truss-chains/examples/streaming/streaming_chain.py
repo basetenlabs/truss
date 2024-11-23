@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, reveal_type
 
 LOG_FORMAT = (
     "%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s - %(message)s"
@@ -39,12 +39,25 @@ class Footer(pydantic.BaseModel):
     msg: str
 
 
+STREAM_TYPES = streaming.stream_types(MyDataChunk, header_t=Header)
+
+
+reveal_type(STREAM_TYPES)
+reveal_type(STREAM_TYPES.header_t)
+reveal_type(STREAM_TYPES.footer_t)
+# header_instance = STREAM_TYPES.header_t()
+# print(header_instance.time)
+#
+#
+# footer_instance = STREAM_TYPES.footer_t()
+# print(footer_instance.time)
+
+
 class Generator(chains.ChainletBase):
     async def run_remote(self) -> AsyncIterator[bytes]:
         print("Entering Generator")
-        streamer = streaming.stream_writer(
-            MyDataChunk, header_t=Header, footer_t=Footer
-        )
+        streamer = streaming.StreamWriter(STREAM_TYPES)
+        reveal_type(streamer)
         header = Header(time=time.time(), msg="Start.")
         yield streamer.yield_header(header)
         for i in range(1, 5):
@@ -54,7 +67,8 @@ class Generator(chains.ChainletBase):
                 # numbers=numbers
             )
             print("Yield")
-            # await streamer.yield_header(item)  # TyeError because type mismatch.
+            yield streamer.yield_header(data)  # TyeError because type mismatch.
+            yield streamer.yield_item("ASdf")
             yield streamer.yield_item(data)
             # if i >2:
             #     raise ValueError()
@@ -72,17 +86,15 @@ class Consumer(chains.ChainletBase):
 
     async def run_remote(self) -> None:
         print("Entering Consumer")
-        reader = streaming.StreamReader(
-            self._generator.run_remote(), MyDataChunk, header_t=Header, footer_t=Footer
-        )
+        reader = streaming.stream_reader(STREAM_TYPES, self._generator.run_remote())
         print("Consuming...")
         header = await reader.read_header()
         print(header)
         async for data in reader.read_items():
             print(f"Read: {data}")
-
         # reader.yield_item()  # Type error, is reader, not writer.
-        # footer = await generator.reader_footer()  # Example does not have a footer.
+        footer = await reader.read_footer()  # Example does not have a footer.
+        print(footer)
         print("Exiting Consumer")
 
 
@@ -93,7 +105,6 @@ if __name__ == "__main__":
         chain = Consumer()
         result = asyncio.run(chain.run_remote())
         print(result)
-
 
     from truss_chains import definitions, remote
 
