@@ -2,7 +2,7 @@ import enum
 import struct
 import sys
 from collections.abc import AsyncIterator
-from typing import NamedTuple, Optional, overload
+from typing import NamedTuple, Optional, Protocol, overload
 
 import pydantic
 from truss.templates.shared import serialization
@@ -17,19 +17,20 @@ if sys.version_info < (3, 10):
         return await iterable.__anext__()
 
 
-# Type variables for Header, Item, and Footer
 ItemT = TypeVar("ItemT", bound=pydantic.BaseModel)
 HeaderT = TypeVar("HeaderT", bound=pydantic.BaseModel)
 FooterT = TypeVar("FooterT", bound=pydantic.BaseModel)
 
+# Since header/footer could also be None, we need an extra type variable that
+# can assume either `Type[HeaderT]` or `None` - `Type[None]` would not work.
 HeaderTT = TypeVar("HeaderTT")
 FooterTT = TypeVar("FooterTT")
 
 
 class StreamTypes(NamedTuple, Generic[ItemT, HeaderTT, FooterTT]):
     item_t: Type[ItemT]
-    header_t: HeaderTT = None
-    footer_t: FooterTT = None
+    header_t: HeaderTT  # Is either `Type[HeaderT]` or `None`.
+    footer_t: FooterTT  # Is either `Type[FooterT]` or `None`.
 
 
 @overload
@@ -67,29 +68,13 @@ def stream_types(
     header_t: Optional[Type[HeaderT]] = None,
     footer_t: Optional[Type[FooterT]] = None,
 ) -> StreamTypes:
+    """Creates a bundle of item type and potentially header/footer types,
+    each as pydantic model."""
     # This indirection for creating `StreamTypes` is needed to get generic typing.
     return StreamTypes(item_t, header_t, footer_t)
 
 
-class _ByteReader:
-    def __init__(self, source: AsyncIterator[bytes]) -> None:
-        self._source = source
-        self._buffer = bytearray()
-
-    async def readexactly(self, num_bytes: int) -> bytes:
-        while len(self._buffer) < num_bytes:
-            try:
-                chunk = await anext(self._source)
-            except StopAsyncIteration:
-                break
-            self._buffer.extend(chunk)
-
-        if len(self._buffer) < num_bytes:
-            raise EOFError("TODO")
-
-        result = bytes(self._buffer[:num_bytes])
-        del self._buffer[:num_bytes]
-        return result
+# Reading ##############################################################################
 
 
 class Delimiter(enum.IntEnum):
@@ -106,8 +91,42 @@ class _Streamer(Generic[ItemT, HeaderT, FooterT]):
         self._stream_types = stream_types
 
 
+# Reading ##############################################################################
+
+
+class _ByteReader:
+    def __init__(self, source: AsyncIterator[bytes]) -> None:
+        self._source = source
+        self._buffer = bytearray()
+
+    async def readexactly(self, num_bytes: int) -> bytes:
+        while len(self._buffer) < num_bytes:
+            try:
+                chunk = await anext(self._source)
+            except StopAsyncIteration:
+                if len(self._buffer) < num_bytes:
+                    raise EOFError(
+                        f"Requested to read `{num_bytes}` bytes, "
+                        f"but only `{len(self._buffer)}` available"
+                    )
+                break
+            self._buffer.extend(chunk)
+
+        result = bytes(self._buffer[:num_bytes])
+        del self._buffer[:num_bytes]
+        return result
+
+
+class _StreamReaderProtocol(Protocol[ItemT, HeaderT, FooterT]):
+    async def _read(self) -> tuple[Delimiter, serialization.MsgPackType]: ...
+
+    _footer_data: Optional[serialization.MsgPackType]
+    _stream_types: StreamTypes[ItemT, HeaderT, FooterT]
+
+
 class StreamReader(_Streamer[ItemT, HeaderT, FooterT]):
     _stream: _ByteReader
+    _footer_data: Optional[serialization.MsgPackType]
 
     def __init__(
         self,
@@ -147,14 +166,20 @@ class StreamReader(_Streamer[ItemT, HeaderT, FooterT]):
 
 
 class _HeaderReadMixin(_Streamer[ItemT, HeaderT, FooterT]):
-    async def read_header(self: StreamReader[ItemT, HeaderT, FooterT]) -> HeaderT:
+    async def read_header(
+        self: _StreamReaderProtocol[ItemT, HeaderT, FooterT],
+    ) -> HeaderT:
         delimiter, data_dict = await self._read()
         assert delimiter == Delimiter.HEADER
         return self._stream_types.header_t.model_validate(data_dict)
 
 
 class _FooterReadMixin(_Streamer[ItemT, HeaderT, FooterT]):
-    async def read_footer(self: StreamReader[ItemT, HeaderT, FooterT]) -> FooterT:
+    _footer_data: Optional[serialization.MsgPackType]
+
+    async def read_footer(
+        self: _StreamReaderProtocol[ItemT, HeaderT, FooterT],
+    ) -> FooterT:
         if self._footer_data is None:
             raise ValueError()
         footer = self._stream_types.footer_t.model_validate(self._footer_data)
@@ -190,7 +215,7 @@ def stream_reader(
 def stream_reader(
     stream_types: StreamTypes[ItemT, HeaderT, None],
     stream: AsyncIterator[bytes],
-) -> StreamReaderWithFooter[ItemT, HeaderT, None]: ...
+) -> StreamReaderWithHeader[ItemT, HeaderT, None]: ...
 
 
 @overload
@@ -220,7 +245,7 @@ def stream_reader(
     return StreamReaderFull(stream_types, stream)
 
 
-########################################################################################
+# Writing ##############################################################################
 
 
 class StreamWriter(_Streamer[ItemT, HeaderT, FooterT]):
