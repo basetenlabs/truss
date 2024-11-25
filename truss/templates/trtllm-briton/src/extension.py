@@ -1,7 +1,7 @@
 from briton.spec_dec_truss_model import Model as SpecDecModel
 from briton.truss_model import Model
-from truss.trt_llm_config import TRTLLMSpeculativeDecodingConfiguration
-from truss.truss_config import TrussConfig
+from truss.base.trt_llm_config import TRTLLMSpeculativeDecodingConfiguration
+from truss.base.truss_config import TrussConfig
 
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in
 # a new, smaller truss sub-library, perhaps called `truss-runtime`` for inclusion
