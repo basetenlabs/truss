@@ -84,10 +84,10 @@ class Delimiter(enum.IntEnum):
     END = enum.auto()
 
 
-class _Streamer(Generic[ItemT, HeaderT, FooterT]):
-    _stream_types: StreamTypes[ItemT, HeaderT, FooterT]
+class _Streamer(Generic[ItemT, HeaderTT, FooterTT]):
+    _stream_types: StreamTypes[ItemT, HeaderTT, FooterTT]
 
-    def __init__(self, stream_types: StreamTypes[ItemT, HeaderT, FooterT]) -> None:
+    def __init__(self, stream_types: StreamTypes[ItemT, HeaderTT, FooterTT]) -> None:
         self._stream_types = stream_types
 
 
@@ -117,20 +117,20 @@ class _ByteReader:
         return result
 
 
-class _StreamReaderProtocol(Protocol[ItemT, HeaderT, FooterT]):
+class _StreamReaderProtocol(Protocol[ItemT, HeaderTT, FooterTT]):
     async def _read(self) -> tuple[Delimiter, serialization.MsgPackType]: ...
 
     _footer_data: Optional[serialization.MsgPackType]
-    _stream_types: StreamTypes[ItemT, HeaderT, FooterT]
+    _stream_types: StreamTypes[ItemT, HeaderTT, FooterTT]
 
 
-class StreamReader(_Streamer[ItemT, HeaderT, FooterT]):
+class StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
     _stream: _ByteReader
     _footer_data: Optional[serialization.MsgPackType]
 
     def __init__(
         self,
-        stream_types: StreamTypes[ItemT, HeaderT, FooterT],
+        stream_types: StreamTypes[ItemT, HeaderTT, FooterTT],
         stream: AsyncIterator[bytes],
     ) -> None:
         super().__init__(stream_types)
@@ -150,7 +150,7 @@ class StreamReader(_Streamer[ItemT, HeaderT, FooterT]):
         data_bytes = await self._stream.readexactly(length)
         return delimiter, serialization.truss_msgpack_deserialize(data_bytes)
 
-    async def read_items(self) -> AsyncIterator[ItemT]:
+    async def read_items(self) -> AsyncIterator[ItemTT]:
         delimiter, data_dict = await self._read()
         assert delimiter == Delimiter.ITEM
 
@@ -165,20 +165,20 @@ class StreamReader(_Streamer[ItemT, HeaderT, FooterT]):
                 return
 
 
-class _HeaderReadMixin(_Streamer[ItemT, HeaderT, FooterT]):
+class _HeaderReadMixin(_Streamer[ItemT, HeaderTT, FooterTT]):
     async def read_header(
-        self: _StreamReaderProtocol[ItemT, HeaderT, FooterT],
-    ) -> HeaderT:
+        self: _StreamReaderProtocol[ItemT, HeaderTT, FooterTT],
+    ) -> HeaderTT:
         delimiter, data_dict = await self._read()
         assert delimiter == Delimiter.HEADER
         return self._stream_types.header_t.model_validate(data_dict)
 
 
-class _FooterReadMixin(_Streamer[ItemT, HeaderT, FooterT]):
+class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterTT]):
     _footer_data: Optional[serialization.MsgPackType]
 
     async def read_footer(
-        self: _StreamReaderProtocol[ItemT, HeaderT, FooterT],
+        self: _StreamReaderProtocol[ItemT, HeaderTT, FooterTT],
     ) -> FooterT:
         if self._footer_data is None:
             raise ValueError()
@@ -188,19 +188,19 @@ class _FooterReadMixin(_Streamer[ItemT, HeaderT, FooterT]):
 
 
 class StreamReaderWithHeader(
-    StreamReader[ItemT, HeaderT, FooterT], _HeaderReadMixin[ItemT, HeaderT, FooterT]
+    StreamReader[ItemT, HeaderTT, FooterTT], _HeaderReadMixin[ItemT, HeaderTT, FooterTT]
 ): ...
 
 
 class StreamReaderWithFooter(
-    StreamReader[ItemT, HeaderT, FooterT], _HeaderReadMixin[ItemT, HeaderT, FooterT]
+    StreamReader[ItemT, HeaderTT, FooterTT], _HeaderReadMixin[ItemT, HeaderTT, FooterTT]
 ): ...
 
 
 class StreamReaderFull(
-    StreamReader[ItemT, HeaderT, FooterT],
-    _HeaderReadMixin[ItemT, HeaderT, FooterT],
-    _FooterReadMixin[ItemT, HeaderT, FooterT],
+    StreamReader[ItemT, HeaderTT, FooterTT],
+    _HeaderReadMixin[ItemT, HeaderTT, FooterTT],
+    _FooterReadMixin[ItemT, HeaderTT, FooterTT],
 ): ...
 
 
