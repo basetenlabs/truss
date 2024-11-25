@@ -150,7 +150,7 @@ class StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
         data_bytes = await self._stream.readexactly(length)
         return delimiter, serialization.truss_msgpack_deserialize(data_bytes)
 
-    async def read_items(self) -> AsyncIterator[ItemTT]:
+    async def read_items(self) -> AsyncIterator[ItemT]:
         delimiter, data_dict = await self._read()
         assert delimiter == Delimiter.ITEM
 
@@ -165,20 +165,20 @@ class StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
                 return
 
 
-class _HeaderReadMixin(_Streamer[ItemT, HeaderTT, FooterTT]):
+class _HeaderReadMixin(_Streamer[ItemT, HeaderT, FooterTT]):
     async def read_header(
-        self: _StreamReaderProtocol[ItemT, HeaderTT, FooterTT],
-    ) -> HeaderTT:
+        self: _StreamReaderProtocol[ItemT, HeaderT, FooterTT],
+    ) -> HeaderT:
         delimiter, data_dict = await self._read()
         assert delimiter == Delimiter.HEADER
         return self._stream_types.header_t.model_validate(data_dict)
 
 
-class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterTT]):
+class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterT]):
     _footer_data: Optional[serialization.MsgPackType]
 
     async def read_footer(
-        self: _StreamReaderProtocol[ItemT, HeaderTT, FooterTT],
+        self: _StreamReaderProtocol[ItemT, HeaderTT, FooterT],
     ) -> FooterT:
         if self._footer_data is None:
             raise ValueError()
@@ -188,19 +188,19 @@ class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterTT]):
 
 
 class StreamReaderWithHeader(
-    StreamReader[ItemT, HeaderTT, FooterTT], _HeaderReadMixin[ItemT, HeaderTT, FooterTT]
+    StreamReader[ItemT, HeaderT, FooterTT], _HeaderReadMixin[ItemT, HeaderT, FooterTT]
 ): ...
 
 
 class StreamReaderWithFooter(
-    StreamReader[ItemT, HeaderTT, FooterTT], _HeaderReadMixin[ItemT, HeaderTT, FooterTT]
+    StreamReader[ItemT, HeaderTT, FooterT], _FooterReadMixin[ItemT, HeaderTT, FooterT]
 ): ...
 
 
 class StreamReaderFull(
-    StreamReader[ItemT, HeaderTT, FooterTT],
-    _HeaderReadMixin[ItemT, HeaderTT, FooterTT],
-    _FooterReadMixin[ItemT, HeaderTT, FooterTT],
+    StreamReader[ItemT, HeaderT, FooterT],
+    _HeaderReadMixin[ItemT, HeaderT, FooterT],
+    _FooterReadMixin[ItemT, HeaderT, FooterT],
 ): ...
 
 
@@ -233,7 +233,7 @@ def stream_reader(
 
 
 def stream_reader(
-    stream_types: StreamTypes[ItemT, HeaderT, FooterT],
+    stream_types: StreamTypes[ItemT, HeaderTT, FooterTT],
     stream: AsyncIterator[bytes],
 ) -> StreamReader:
     if stream_types.header_t is None and stream_types.footer_t is None:
