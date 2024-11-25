@@ -37,7 +37,7 @@ class Extension:
 
     def __init__(self, *args, **kwargs):
         self._config = kwargs["config"]
-        if TRTLLM_SPEC_DEC_TARGET_MODEL_NAME not in self._config.get("trt_llm"):
+        if TRTLLM_SPEC_DEC_TARGET_MODEL_NAME in self._config.get("trt_llm"):
             self._model = SpecDecModel(*args, **kwargs)
         else:
             self._model = Model(*args, **kwargs)
