@@ -56,11 +56,11 @@ class Generator(chains.ChainletBase):
 
 
 class StringGenerator(chains.ChainletBase):
-    """Minimal streaming example with raw strings (e.g. for LLM)."""
+    """Minimal streaming example with strings (e.g. for raw LLM output)."""
 
     async def run_remote(self) -> AsyncIterator[str]:
         # Note: the "chunk" boundaries are lost, when streaming raw strings. You must
-        # add spaces and linebreaks to the items.
+        # add spaces and linebreaks to the items yourself..
         yield "First "
         yield "second "
         yield "last."

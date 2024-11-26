@@ -180,7 +180,7 @@ class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
         if delimiter == _Delimiter.HEADER:
             raise ValueError(
                 "Called `read_items`, but there the stream contains header data, which "
-                "is not consumed. Call `read_header` or remove sending a header."
+                "is not consumed. Call `read_header` first or remove sending a header."
             )
         if delimiter in (_Delimiter.FOOTER, _Delimiter.END):
             return
