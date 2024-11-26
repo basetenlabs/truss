@@ -13,8 +13,8 @@ utils.setup_dev_logging(logging.DEBUG)
 @pytest.mark.integration
 def test_chain():
     with ensure_kill_all():
-        root = Path(__file__).parent.resolve()
-        chain_root = root / "itest_chain" / "itest_chain.py"
+        tests_root = Path(__file__).parent.resolve()
+        chain_root = tests_root / "itest_chain" / "itest_chain.py"
         with framework.import_target(chain_root, "ItestChain") as entrypoint:
             options = definitions.PushOptionsLocalDocker(
                 chain_name="integration-test", use_local_chains_src=True
@@ -81,8 +81,8 @@ def test_chain():
 
 @pytest.mark.asyncio
 async def test_chain_local():
-    root = Path(__file__).parent.resolve()
-    chain_root = root / "itest_chain" / "itest_chain.py"
+    tests_root = Path(__file__).parent.resolve()
+    chain_root = tests_root / "itest_chain" / "itest_chain.py"
     with framework.import_target(chain_root, "ItestChain") as entrypoint:
         with public_api.run_local():
             with pytest.raises(ValueError):
@@ -119,3 +119,48 @@ async def test_chain_local():
             match="Chainlets cannot be naively instantiated",
         ):
             await entrypoint().run_remote(length=20, num_partitions=5)
+
+
+@pytest.mark.integration
+def test_streaming_chain():
+    examples_root = Path(__file__).parent.parent.resolve() / "examples"
+    chain_root = examples_root / "streaming" / "streaming_chain.py"
+    with framework.import_target(chain_root, "Consumer") as entrypoint:
+        service = remote.push(
+            entrypoint,
+            options=definitions.PushOptionsLocalDocker(
+                chain_name="stream",
+                only_generate_trusses=False,
+                use_local_chains_src=True,
+            ),
+        )
+        assert service is not None
+        response = service.run_remote({})
+        assert response.status_code == 200
+        print(response.json())
+        result = response.json()
+        print(result)
+        assert result["header"]["msg"] == "Start."
+        assert result["chunks"][0]["words"] == ["G"]
+        assert result["chunks"][1]["words"] == ["G", "HH"]
+        assert result["chunks"][2]["words"] == ["G", "HH", "III"]
+        assert result["chunks"][3]["words"] == ["G", "HH", "III", "JJJJ"]
+        assert result["footer"]["duration_sec"] > 0
+        assert result["strings"] == ["First second last."]
+
+
+@pytest.mark.asyncio
+async def test_streaming_chain_local():
+    examples_root = Path(__file__).parent.parent.resolve() / "examples"
+    chain_root = examples_root / "streaming" / "streaming_chain.py"
+    with framework.import_target(chain_root, "Consumer") as entrypoint:
+        with public_api.run_local():
+            result = await entrypoint().run_remote()
+            print(result)
+            assert result.header.msg == "Start."
+            assert result.chunks[0].words == ["G"]
+            assert result.chunks[1].words == ["G", "HH"]
+            assert result.chunks[2].words == ["G", "HH", "III"]
+            assert result.chunks[3].words == ["G", "HH", "III", "JJJJ"]
+            assert result.footer.duration_sec > 0
+            assert result.strings == ["First second last."]

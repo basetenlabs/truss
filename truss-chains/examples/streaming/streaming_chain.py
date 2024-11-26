@@ -1,26 +1,11 @@
-import logging
-from typing import AsyncIterator, reveal_type
-
-LOG_FORMAT = (
-    "%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s - %(message)s"
-)
-
-logging.basicConfig(
-    level=logging.INFO, format=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S", force=True
-)
-
-logging.info("Start")
-
 import asyncio
 import time
+from typing import AsyncIterator
 
 import pydantic
 
-logging.info("Import Chains")
 import truss_chains as chains
 from truss_chains import streaming
-
-logging.info("Chains imported")
 
 
 class Header(pydantic.BaseModel):
@@ -30,7 +15,6 @@ class Header(pydantic.BaseModel):
 
 class MyDataChunk(pydantic.BaseModel):
     words: list[str]
-    # numbers: np.ndarray
 
 
 class Footer(pydantic.BaseModel):
@@ -39,79 +23,83 @@ class Footer(pydantic.BaseModel):
     msg: str
 
 
-STREAM_TYPES = streaming.stream_types(MyDataChunk, header_t=Header)
+class ConsumerOutput(pydantic.BaseModel):
+    header: Header
+    chunks: list[MyDataChunk]
+    footer: Footer
+    strings: str
 
 
-reveal_type(STREAM_TYPES)
-reveal_type(STREAM_TYPES.header_t)
-reveal_type(STREAM_TYPES.footer_t)
-# header_instance = STREAM_TYPES.header_t()
-# print(header_instance.time)
-#
-#
-# footer_instance = STREAM_TYPES.footer_t()
-# print(footer_instance.time)
+STREAM_TYPES = streaming.stream_types(MyDataChunk, header_t=Header, footer_t=Footer)
 
 
 class Generator(chains.ChainletBase):
+    """Example that streams fully structured pydantic items with header and footer."""
+
     async def run_remote(self) -> AsyncIterator[bytes]:
         print("Entering Generator")
-        streamer = streaming.StreamWriter(STREAM_TYPES)
-        reveal_type(streamer)
+        streamer = streaming.stream_writer(STREAM_TYPES)
         header = Header(time=time.time(), msg="Start.")
         yield streamer.yield_header(header)
         for i in range(1, 5):
-            # numbers = np.full((3, 4), i)
             data = MyDataChunk(
                 words=[chr(x + 70) * x for x in range(1, i + 1)],
-                # numbers=numbers
             )
             print("Yield")
-            yield streamer.yield_header(data)  # TyeError because type mismatch.
-            yield streamer.yield_item("ASdf")
             yield streamer.yield_item(data)
-            # if i >2:
-            #     raise ValueError()
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.05)
 
         end_time = time.time()
         footer = Footer(time=end_time, duration_sec=end_time - header.time, msg="Done.")
-        yield streamer.yield_footer(footer)  # TyeError because footer type is None.
+        yield streamer.yield_footer(footer)
         print("Exiting Generator")
 
 
-class Consumer(chains.ChainletBase):
-    def __init__(self, generator=chains.depends(Generator)):
-        self._generator = generator
+class StringGenerator(chains.ChainletBase):
+    """Minimal streaming example with raw strings (e.g. for LLM)."""
 
-    async def run_remote(self) -> None:
+    async def run_remote(self) -> AsyncIterator[str]:
+        # Note: the "chunk" boundaries are lost, when streaming raw strings. You must
+        # add spaces and linebreaks to the items.
+        yield "First "
+        yield "second "
+        yield "last."
+
+
+class Consumer(chains.ChainletBase):
+    """Consume that reads the raw streams and parses them."""
+
+    def __init__(
+        self,
+        generator=chains.depends(Generator),
+        string_generator=chains.depends(StringGenerator),
+    ):
+        self._generator = generator
+        self._string_generator = string_generator
+
+    async def run_remote(self) -> ConsumerOutput:
         print("Entering Consumer")
         reader = streaming.stream_reader(STREAM_TYPES, self._generator.run_remote())
         print("Consuming...")
         header = await reader.read_header()
-        print(header)
+        chunks = []
         async for data in reader.read_items():
             print(f"Read: {data}")
-        # reader.yield_item()  # Type error, is reader, not writer.
-        footer = await reader.read_footer()  # Example does not have a footer.
-        print(footer)
+            chunks.append(data)
+
+        footer = await reader.read_footer()
+        strings = []
+        async for part in self._string_generator.run_remote():
+            strings.append(part)
+
         print("Exiting Consumer")
+        return ConsumerOutput(
+            header=header, chunks=chunks, footer=footer, strings="".join(strings)
+        )
 
-
-logging.info("Module initialized")
 
 if __name__ == "__main__":
     with chains.run_local():
         chain = Consumer()
         result = asyncio.run(chain.run_remote())
         print(result)
-
-    from truss_chains import definitions, remote
-
-    service = remote.push(
-        Consumer,
-        options=definitions.PushOptionsLocalDocker(
-            chain_name="stream", only_generate_trusses=False, use_local_chains_src=True
-        ),
-    )
-    service.run_remote({})

@@ -524,6 +524,19 @@ class TypeDescriptor(SafeModelNonSerializable):
         )
 
 
+class StreamingTypeDescriptor(TypeDescriptor):
+    origin_type: type
+    arg_type: type
+
+    @property
+    def is_string(self) -> bool:
+        return self.arg_type is str
+
+    @property
+    def is_pydantic(self) -> bool:
+        return False
+
+
 class InputArg(SafeModelNonSerializable):
     name: str
     type: TypeDescriptor
@@ -535,7 +548,17 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
     is_async: bool
-    is_generator: bool
+    is_streaming: bool
+
+    @property
+    def streaming_type(self) -> StreamingTypeDescriptor:
+        if (
+            not self.is_streaming
+            or len(self.output_types) != 1
+            or not isinstance(self.output_types[0], StreamingTypeDescriptor)
+        ):
+            raise ValueError(f"{self} is not a streaming endpoint.")
+        return cast(StreamingTypeDescriptor, self.output_types[0])
 
 
 class DependencyDescriptor(SafeModelNonSerializable):

@@ -23,7 +23,6 @@ workspace/
 requirement (site-package), it will not be copied from the local host.
 """
 
-import collections
 import logging
 import os
 import pathlib
@@ -33,7 +32,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
-from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
+from typing import Any, Iterable, Mapping, Optional
 
 import libcst
 import truss
@@ -135,21 +134,14 @@ def _gen_type_import_and_ref(type_descr: definitions.TypeDescriptor) -> _Source:
         return _Source(src=str(type_descr.raw))
 
 
-def _gen_generator_type_import_and_ref(
-    endpoint: definitions.EndpointAPIDescriptor,
+def _gen_streaming_type_import_and_ref(
+    stream_type: definitions.StreamingTypeDescriptor,
 ) -> _Source:
     """Unlike other `_gen`-helpers, this does not define a type, it creates a symbol."""
-    assert len(endpoint.output_types) == 1
-    output_type = endpoint.output_types[0]
-    assert not output_type.is_pydantic
-    origin = get_origin(output_type.raw)
-    assert origin in (collections.abc.AsyncIterator, collections.abc.Iterator), origin
-    args = get_args(output_type.raw)
-    assert len(args) == 1, "AsyncIterator cannot have more than 1 arg."
-
-    arg = args[0]
-    type_src = f"{origin.__module__}.{origin.__name__}[{arg.__name__}]"
-    return _Source(src=type_src, imports={f"import {origin.__module__}"})
+    mod = stream_type.origin_type.__module__
+    arg = stream_type.arg_type.__name__
+    type_src = f"{mod}.{stream_type.origin_type.__name__}[{arg}]"
+    return _Source(src=type_src, imports={f"import {mod}"})
 
 
 def _gen_chainlet_import_and_ref(
@@ -231,10 +223,10 @@ def _stub_endpoint_signature_src(
         imports.update(arg_ref.imports)
         args.append(f"{arg.name}: {arg_ref.src}")
 
-    if endpoint.is_generator:
-        generator_src = _gen_generator_type_import_and_ref(endpoint)
-        imports.update(generator_src.imports)
-        output = generator_src.src
+    if endpoint.is_streaming:
+        streaming_src = _gen_streaming_type_import_and_ref(endpoint.streaming_type)
+        imports.update(streaming_src.imports)
+        output = streaming_src.src
     else:
         outputs: list[str] = []
         for output_type in endpoint.output_types:
@@ -245,7 +237,6 @@ def _stub_endpoint_signature_src(
         else:
             output = f"tuple[{', '.join(outputs)}]"
 
-    # If we produce an async generator, we just pass it through.
     def_str = "async def" if endpoint.is_async else "def"
     return _Source(
         src=f"{def_str} {endpoint.name}({','.join(args)}) -> {output}:",
@@ -274,8 +265,9 @@ def _stub_endpoint_body_src(
     else:
         inputs = "{}"
 
+    parts = []
     # Invoke remote.
-    if not endpoint.is_generator:
+    if not endpoint.is_streaming:
         if endpoint.is_async:
             remote_call = f"await self._remote.predict_async({inputs})"
         else:
@@ -287,13 +279,17 @@ def _stub_endpoint_body_src(
         parts.append(f"return {output_model_name}.model_validate(json_result).root")
     else:
         if endpoint.is_async:
-            parts = [
+            parts.append(
                 f"async for data in await self._remote.predict_async_stream({inputs}):",
-                _indent("yield data"),
-            ]
+            )
+            if endpoint.streaming_type.is_string:
+                parts.append(_indent("yield data.decode()"))
+            else:
+                parts.append(_indent("yield data"))
         else:
             raise NotImplementedError(
-                "Streaming/Generator only supported for async `run_remote`."
+                "`Streaming endpoints (containing `yield` statements) are only "
+                "supported for async endpoints."
             )
 
     return _Source(src="\n".join(parts), imports=imports)
@@ -325,7 +321,7 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
     src_parts: list[str] = []
     input_src = _gen_truss_input_pydantic(chainlet)
     _update_src(input_src, src_parts, imports)
-    if not chainlet.endpoint.is_generator:
+    if not chainlet.endpoint.is_streaming:
         output_src = _gen_truss_output_pydantic(chainlet)
         _update_src(output_src, src_parts, imports)
     signature = _stub_endpoint_signature_src(chainlet.endpoint)
@@ -436,10 +432,12 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     parts: list[str] = []
     def_str = "async def" if chainlet_descriptor.endpoint.is_async else "def"
     input_model_name = _get_input_model_name(chainlet_descriptor.name)
-    if chainlet_descriptor.endpoint.is_generator:
-        generator_src = _gen_generator_type_import_and_ref(chainlet_descriptor.endpoint)
-        imports.update(generator_src.imports)
-        output_type_name = generator_src.src
+    if chainlet_descriptor.endpoint.is_streaming:
+        streaming_src = _gen_streaming_type_import_and_ref(
+            chainlet_descriptor.endpoint.streaming_type
+        )
+        imports.update(streaming_src.imports)
+        output_type_name = streaming_src.src
     else:
         output_type_name = _get_output_model_name(chainlet_descriptor.name)
     imports.add("import starlette.requests")
@@ -458,7 +456,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     # Invoke Chainlet.
     if (
         chainlet_descriptor.endpoint.is_async
-        and not chainlet_descriptor.endpoint.is_generator
+        and not chainlet_descriptor.endpoint.is_streaming
     ):
         maybe_await = "await "
     else:
@@ -469,7 +467,8 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     parts.append(
         _indent(f"result = {maybe_await}self._chainlet.{run_remote}({args})", 2)
     )
-    if chainlet_descriptor.endpoint.is_generator:
+    if chainlet_descriptor.endpoint.is_streaming:
+        # Streaming returns raw iterator, no pydantic model.
         parts.append(_indent("return result"))
     else:
         result_pydantic = f"{output_type_name}(result)"
@@ -538,7 +537,7 @@ def _gen_truss_chainlet_file(
 
     input_src = _gen_truss_input_pydantic(chainlet_descriptor)
     _update_src(input_src, src_parts, imports)
-    if not chainlet_descriptor.endpoint.is_generator:
+    if not chainlet_descriptor.endpoint.is_streaming:
         output_src = _gen_truss_output_pydantic(chainlet_descriptor)
         _update_src(output_src, src_parts, imports)
     model_src = _gen_truss_chainlet_model(chainlet_descriptor)

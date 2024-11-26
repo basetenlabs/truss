@@ -137,6 +137,9 @@ class BasetenSession:
         return self._cached_async_client[0]
 
     def predict_sync(self, json_payload):
+        headers = {
+            definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+        }
         retrying = tenacity.Retrying(
             stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
             retry=tenacity.retry_if_exception_type(Exception),
@@ -152,9 +155,7 @@ class BasetenSession:
                         response = self._client_sync().post(
                             self._service_descriptor.predict_url,
                             json=json_payload,
-                            headers={
-                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-                            },
+                            headers=headers,
                         )
                     utils.response_raise_errors(response, self.name)
                     return response.json()
@@ -166,6 +167,9 @@ class BasetenSession:
                     raise
 
     async def predict_async(self, json_payload):
+        headers = {
+            definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+        }
         retrying = tenacity.AsyncRetrying(
             stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
             retry=tenacity.retry_if_exception_type(Exception),
@@ -182,9 +186,7 @@ class BasetenSession:
                         async with client.post(
                             self._service_descriptor.predict_url,
                             json=json_payload,
-                            headers={
-                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-                            },
+                            headers=headers,
                         ) as response:
                             await utils.async_response_raise_errors(response, self.name)
                             return await response.json()
@@ -194,7 +196,10 @@ class BasetenSession:
                     self._cached_async_client = None
                     raise
 
-    async def predict_async_stream(self, json_payload) -> AsyncIterator[bytes]:
+    async def predict_async_stream(self, json_payload) -> AsyncIterator[bytes]:  # type: ignore[return]  # Handled by retries.
+        headers = {
+            definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+        }
         retrying = tenacity.AsyncRetrying(
             stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
             retry=tenacity.retry_if_exception_type(Exception),
@@ -211,9 +216,7 @@ class BasetenSession:
                         response = await client.post(
                             self._service_descriptor.predict_url,
                             json=json_payload,
-                            headers={
-                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-                            },
+                            headers=headers,
                         )
                         await utils.async_response_raise_errors(response, self.name)
                         return response.content.iter_any()
