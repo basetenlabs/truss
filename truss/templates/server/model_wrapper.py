@@ -27,6 +27,7 @@ from typing import (
 )
 
 import opentelemetry.sdk.trace as sdk_trace
+import pydantic
 import starlette.requests
 import starlette.responses
 from anyio import Semaphore, to_thread
@@ -55,6 +56,15 @@ EXTENSION_CLASS_NAME = "Extension"
 EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
 POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
+
+InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
+OutputType = Union[
+    serialization.JSONType,
+    serialization.MsgPackType,
+    Generator[bytes, None, None],
+    AsyncGenerator[bytes, None],
+    "starlette.responses.Response",
+]
 
 
 @asynccontextmanager
@@ -520,7 +530,7 @@ class ModelWrapper:
 
     async def preprocess(
         self,
-        inputs: serialization.InputType,
+        inputs: InputType,
         request: starlette.requests.Request,
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
@@ -538,7 +548,7 @@ class ModelWrapper:
         self,
         inputs: Any,
         request: starlette.requests.Request,
-    ) -> Union[serialization.OutputType, Any]:
+    ) -> Union[OutputType, Any]:
         # The result can be a serializable data structure, byte-generator, a request,
         # or, if `postprocessing` is used, anything. In the last case postprocessing
         # must convert the result to something serializable.
@@ -555,9 +565,9 @@ class ModelWrapper:
 
     async def postprocess(
         self,
-        result: Union[serialization.InputType, Any],
+        result: Union[InputType, Any],
         request: starlette.requests.Request,
-    ) -> serialization.OutputType:
+    ) -> OutputType:
         # The postprocess function can handle outputs of `predict`, but not
         # generators and responses - in that case predict must return directly
         # and postprocess is skipped.
@@ -642,9 +652,9 @@ class ModelWrapper:
 
     async def __call__(
         self,
-        inputs: Optional[serialization.InputType],
+        inputs: Optional[InputType],
         request: starlette.requests.Request,
-    ) -> serialization.OutputType:
+    ) -> OutputType:
         """
         Returns result from: preprocess -> predictor -> postprocess.
         """
@@ -726,6 +736,7 @@ class ModelWrapper:
             ), tracing.detach_context():
                 postprocess_result = await self.postprocess(predict_result, request)
 
+            final_result: OutputType
             if isinstance(postprocess_result, BaseModel):
                 # If we return a pydantic object, convert it back to a dict
                 with tracing.section_as_event(span_post, "dump-pydantic"):

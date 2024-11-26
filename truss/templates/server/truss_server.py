@@ -16,7 +16,7 @@ from common.schema import TrussSchema
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import ModelWrapper
+from model_wrapper import InputType, ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
@@ -104,7 +104,7 @@ class BasetenEndpoints:
         body_raw: bytes,
         truss_schema: Optional[TrussSchema],
         span: trace.Span,
-    ) -> serialization.InputType:
+    ) -> InputType:
         if self.is_binary(request):
             with tracing.section_as_event(span, "binary-deserialize"):
                 inputs = serialization.truss_msgpack_deserialize(body_raw)
@@ -157,7 +157,7 @@ class BasetenEndpoints:
         with self._tracer.start_as_current_span(
             "predict-endpoint", context=trace_ctx
         ) as span:
-            inputs: Optional[serialization.InputType]
+            inputs: Optional[InputType]
             if model.model_descriptor.skip_input_parsing:
                 inputs = None
             else:

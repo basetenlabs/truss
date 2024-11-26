@@ -4,12 +4,12 @@ import enum
 import struct
 import sys
 from collections.abc import AsyncIterator
-from typing import Generic, Optional, Protocol, Type, TypeVar, overload
+from typing import Generic, Optional, Protocol, Type, TypeVar, Union, overload
 
 import pydantic
-from truss.templates.shared import serialization
 
 TAG_SIZE = 5  # uint8 + uint32.
+JSONType = Union[str, int, float, bool, None, list["JSONType"], dict[str, "JSONType"]]
 _T = TypeVar("_T")
 
 if sys.version_info < (3, 10):
@@ -136,14 +136,14 @@ class _ByteReader:
 
 class _StreamReaderProtocol(Protocol[ItemT, HeaderTT, FooterTT]):
     _stream_types: StreamTypes[ItemT, HeaderTT, FooterTT]
-    _footer_data: Optional[serialization.MsgPackType]
+    _footer_data: Optional[bytes]
 
-    async def _read(self) -> tuple[_Delimiter, serialization.MsgPackType]: ...
+    async def _read(self) -> tuple[_Delimiter, bytes]: ...
 
 
 class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
     _stream: _ByteReader
-    _footer_data: Optional[serialization.MsgPackType]
+    _footer_data: Optional[bytes]
 
     def __init__(
         self,
@@ -159,24 +159,24 @@ class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
         enum_value, length = struct.unpack(">BI", tag)
         return _Delimiter(enum_value), length
 
-    async def _read(self) -> tuple[_Delimiter, serialization.MsgPackType]:
+    async def _read(self) -> tuple[_Delimiter, bytes]:
         try:
             tag = await self._stream.readexactly(TAG_SIZE)
         # It's ok to read nothing (end of stream), but unexpected to read partial.
         except asyncio.IncompleteReadError:
             raise
         except EOFError:
-            return _Delimiter.END, None
+            return _Delimiter.END, b""
 
         delimiter, length = self._unpack_tag(tag)
         if not length:
-            return delimiter, None
+            return delimiter, b""
         data_bytes = await self._stream.readexactly(length)
         print(f"Read Delimiter: {delimiter}")
-        return delimiter, serialization.truss_msgpack_deserialize(data_bytes)
+        return delimiter, data_bytes
 
     async def read_items(self) -> AsyncIterator[ItemT]:
-        delimiter, data_dict = await self._read()
+        delimiter, data_bytes = await self._read()
         if delimiter == _Delimiter.HEADER:
             raise ValueError(
                 "Called `read_items`, but there the stream contains header data, which "
@@ -187,13 +187,13 @@ class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
 
         assert delimiter == _Delimiter.ITEM
         while True:
-            yield self._stream_types.item_t.model_validate(data_dict)
+            yield self._stream_types.item_t.model_validate_json(data_bytes)
             # We don't know if the next data is another item, footer or the end.
-            delimiter, data_dict = await self._read()
+            delimiter, data_bytes = await self._read()
             if delimiter == _Delimiter.END:
                 return
             if delimiter == _Delimiter.FOOTER:
-                self._footer_data = data_dict
+                self._footer_data = data_bytes
                 return
 
 
@@ -201,25 +201,25 @@ class _HeaderReadMixin(_Streamer[ItemT, HeaderT, FooterTT]):
     async def read_header(
         self: _StreamReaderProtocol[ItemT, HeaderT, FooterTT],
     ) -> HeaderT:
-        delimiter, data_dict = await self._read()
+        delimiter, data_bytes = await self._read()
         if delimiter != _Delimiter.HEADER:
             raise ValueError("Stream does not contain header.")
-        return self._stream_types.header_t.model_validate(data_dict)
+        return self._stream_types.header_t.model_validate_json(data_bytes)
 
 
 class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterT]):
-    _footer_data: Optional[serialization.MsgPackType]
+    _footer_data: Optional[bytes]
 
     async def read_footer(
         self: _StreamReaderProtocol[ItemT, HeaderTT, FooterT],
     ) -> FooterT:
         if self._footer_data is None:
-            delimiter, data_dict = await self._read()
+            delimiter, data_bytes = await self._read()
             if delimiter != _Delimiter.FOOTER:
                 raise ValueError("Stream does not contain footer.")
-            self._footer_data = data_dict
+            self._footer_data = data_bytes
 
-        footer = self._stream_types.footer_t.model_validate(self._footer_data)
+        footer = self._stream_types.footer_t.model_validate_json(self._footer_data)
         self._footer_data = None
         return footer
 
@@ -298,8 +298,7 @@ class _StreamWriter(_Streamer[ItemT, HeaderTT, FooterTT]):
         return struct.pack(">BI", delimiter.value, length)
 
     def _serialize(self, obj: pydantic.BaseModel, delimiter: _Delimiter) -> bytes:
-        data_dict = obj.model_dump()
-        data_bytes = serialization.truss_msgpack_serialize(data_dict)
+        data_bytes = obj.model_dump_json().encode()
         data = bytearray(self._pack_tag(delimiter, len(data_bytes)))
         data.extend(data_bytes)
         # Starlette cannot handle byte array, but view works..

@@ -305,6 +305,16 @@ def _validate_streaming_output_type(
     origin = get_origin(annotation)
     assert origin in (collections.abc.AsyncIterator, collections.abc.Iterator)
     args = get_args(annotation)
+    if len(args) < 1:
+        _collect_error(
+            f"Iterators must be annotated with type (one of {list(x.__name__ for x in _STREAM_TYPES)}).",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+        return definitions.StreamingTypeDescriptor(
+            raw=annotation, origin_type=origin, arg_type=bytes
+        )
+
     assert len(args) == 1, "AsyncIterator cannot have more than 1 arg."
     arg = args[0]
     if arg not in _STREAM_TYPES:
@@ -479,7 +489,7 @@ def _validate_and_describe_endpoint(
             _collect_error(
                 "`Streaming endpoints (containing `yield` statements) are only "
                 "supported for async endpoints.",
-                _ErrorKind.TYPE_ERROR,
+                _ErrorKind.IO_TYPE_ERROR,
                 location,
             )
 
