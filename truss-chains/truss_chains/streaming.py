@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import enum
 import struct
 import sys
@@ -40,16 +41,11 @@ HeaderTT = TypeVar("HeaderTT")
 FooterTT = TypeVar("FooterTT")
 
 
+@dataclasses.dataclass
 class StreamTypes(Generic[ItemT, HeaderTT, FooterTT]):
-    def __init__(
-        self,
-        item_t: Type[ItemT],
-        header_t: HeaderTT,
-        footer_t: FooterTT,
-    ) -> None:
-        self.item_t = item_t
-        self.header_t = header_t  # Is either `Type[HeaderT]` or `None`.
-        self.footer_t = footer_t  # Is either `Type[FooterT]` or `None`.
+    item_t: Type[ItemT]
+    header_t: HeaderTT  # Is either `Type[HeaderT]` or `None`.
+    footer_t: FooterTT  # Is either `Type[FooterT]` or `None`.
 
 
 @overload
