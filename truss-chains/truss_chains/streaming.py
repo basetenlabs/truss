@@ -3,11 +3,10 @@ import enum
 import struct
 import sys
 from collections.abc import AsyncIterator
-from typing import NamedTuple, Optional, Protocol, overload
+from typing import Generic, Optional, Protocol, Type, TypeVar, overload
 
 import pydantic
 from truss.templates.shared import serialization
-from typing_extensions import Generic, Type, TypeVar
 
 TAG_SIZE = 5  # uint8 + uint32.
 _T = TypeVar("_T")
@@ -41,10 +40,16 @@ HeaderTT = TypeVar("HeaderTT")
 FooterTT = TypeVar("FooterTT")
 
 
-class StreamTypes(NamedTuple, Generic[ItemT, HeaderTT, FooterTT]):
-    item_t: Type[ItemT]
-    header_t: HeaderTT  # Is either `Type[HeaderT]` or `None`.
-    footer_t: FooterTT  # Is either `Type[FooterT]` or `None`.
+class StreamTypes(Generic[ItemT, HeaderTT, FooterTT]):
+    def __init__(
+        self,
+        item_t: Type[ItemT],
+        header_t: HeaderTT,
+        footer_t: FooterTT,
+    ) -> None:
+        self.item_t = item_t
+        self.header_t = header_t  # Is either `Type[HeaderT]` or `None`.
+        self.footer_t = footer_t  # Is either `Type[FooterT]` or `None`.
 
 
 @overload

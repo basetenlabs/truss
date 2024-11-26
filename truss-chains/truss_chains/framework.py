@@ -378,7 +378,8 @@ def _validate_endpoint_output_types(
         for i, arg in enumerate(get_args(annotation)):
             _validate_io_type(arg, f"return_type[{i}]", location)
             output_types.append(definitions.TypeDescriptor(raw=arg))
-    if origin in (collections.abc.AsyncIterator, collections.abc.Iterator):
+
+    elif origin in (collections.abc.AsyncIterator, collections.abc.Iterator):
         output_types = [_validate_streaming_output_type(annotation, location)]
         has_streaming_type = True
         if not is_streaming:
@@ -394,8 +395,8 @@ def _validate_endpoint_output_types(
 
     if is_streaming and not has_streaming_type:
         _collect_error(
-            "If the endpoint is streaming (has `yield` statements), the return type must"
-            "be an iterator (e.g. `AsyncIterator[bytes]`). Got:\n"
+            "If the endpoint is streaming (has `yield` statements), the return type "
+            "must be an iterator (e.g. `AsyncIterator[bytes]`). Got:\n"
             f"\t{location.method_name}{signature} -> {annotation}",
             _ErrorKind.IO_TYPE_ERROR,
             location,

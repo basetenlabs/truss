@@ -146,7 +146,7 @@ def test_streaming_chain():
         assert result["chunks"][2]["words"] == ["G", "HH", "III"]
         assert result["chunks"][3]["words"] == ["G", "HH", "III", "JJJJ"]
         assert result["footer"]["duration_sec"] > 0
-        assert result["strings"] == ["First second last."]
+        assert result["strings"] == "First second last."
 
 
 @pytest.mark.asyncio
@@ -163,4 +163,4 @@ async def test_streaming_chain_local():
             assert result.chunks[2].words == ["G", "HH", "III"]
             assert result.chunks[3].words == ["G", "HH", "III", "JJJJ"]
             assert result.footer.duration_sec > 0
-            assert result.strings == ["First second last."]
+            assert result.strings == "First second last."
