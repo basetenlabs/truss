@@ -270,7 +270,7 @@ class TrussServer:
             await asyncio.sleep(0.5)
             if self._model.load_failed:
                 assert self._server is not None
-                logging.info("Trying shut down.")
+                logging.info("Trying shut down after failed model load.")
                 self._server.should_exit = True
                 return
 
@@ -330,6 +330,9 @@ class TrussServer:
             if self._config["runtime"].get("enable_debug_logs", False)
             else "INFO"
         )
+        # Warning: `ModelWrapper` depends on correctly setup `uvicorn` logger,
+        # if you change/remove that logger, make sure `ModelWrapper` has a suitable
+        # alternative logger that is also correctly setup in the load thread.
         cfg = uvicorn.Config(
             self.create_application(),
             # We hard-code the http parser as h11 (the default) in case the user has

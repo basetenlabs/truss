@@ -6,7 +6,7 @@ import sys
 import uuid
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
 
 import requests
@@ -46,6 +46,7 @@ from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
 from truss.contexts.local_loader.load_model_local import LoadModelLocal
+from truss.contexts.truss_context import TrussContext
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.templates.shared.serialization import (
     truss_msgpack_deserialize,
@@ -956,7 +957,7 @@ class TrussHandle:
 
     def _build_image(
         self,
-        builder_context,
+        builder_context: Type[TrussContext],
         labels: Dict[str, str],
         build_dir: Optional[Path] = None,
         tag: Optional[str] = None,

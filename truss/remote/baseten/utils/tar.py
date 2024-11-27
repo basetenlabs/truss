@@ -1,9 +1,12 @@
+import contextlib
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import IO, Any, Callable, List
+from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Type
 
-from rich.progress import Progress
+if TYPE_CHECKING:
+    from rich import progress
+
 from truss.util.path import is_ignored
 
 
@@ -24,37 +27,46 @@ class ReadProgressIndicatorFileHandle:
 
 
 def create_tar_with_progress_bar(
-    source_dir: Path, ignore_patterns: List[str] = [], delete=True
+    source_dir: Path,
+    ignore_patterns: Optional[List[str]] = None,
+    delete=True,
+    progress_bar: Optional[Type["progress.Progress"]] = None,
 ):
-    # Exclude files that match the ignore_patterns
     files_to_include = [
         f
         for f in source_dir.rglob("*")
-        if f.is_file() and not is_ignored(f, ignore_patterns, source_dir)
+        if f.is_file() and not is_ignored(f, ignore_patterns or [], source_dir)
     ]
 
     total_size = sum(f.stat().st_size for f in files_to_include)
     temp_file = tempfile.NamedTemporaryFile(suffix=".tgz", delete=delete)
 
-    with tarfile.open(temp_file.name, "w:") as tar:
-        progress = Progress()
+    progress_context = (
+        progress_bar(transient=True) if progress_bar else contextlib.nullcontext()
+    )
+    # Trailing spaces are to align with `multipart_upload_boto3` message.
+    task_id = (
+        progress_context.add_task("[cyan]Packing Truss  ", total=total_size)
+        if not isinstance(progress_context, contextlib.nullcontext)
+        else None
+    )
 
-        task_id = progress.add_task("[cyan]Compressing...", total=total_size)
+    def file_read_progress_callback(bytes_read: int):
+        if not isinstance(progress_context, contextlib.nullcontext):
+            assert task_id is not None
+            progress_context.update(task_id, advance=bytes_read)
 
-        with progress:
-
-            def file_read_progress_callback(bytes_read: int):
-                progress.update(task_id, advance=bytes_read)
-
-            for file_path in files_to_include:
-                arcname = str(file_path.relative_to(source_dir))
-                with file_path.open("rb") as file_obj:
-                    file_obj_with_progress = ReadProgressIndicatorFileHandle(
+    with tarfile.open(temp_file.name, "w:") as tar, progress_context:
+        for file_path in files_to_include:
+            arcname = str(file_path.relative_to(source_dir))
+            with file_path.open("rb") as file_obj:
+                file_obj_with_progress = (
+                    ReadProgressIndicatorFileHandle(
                         file_obj, file_read_progress_callback
                     )
-                    tarinfo = tar.gettarinfo(name=str(file_path), arcname=arcname)
-                    tar.addfile(
-                        tarinfo=tarinfo,
-                        fileobj=file_obj_with_progress,  # type: ignore[arg-type]
-                    )
+                    if progress_bar
+                    else file_obj
+                )
+                tarinfo = tar.gettarinfo(name=str(file_path), arcname=arcname)
+                tar.addfile(tarinfo=tarinfo, fileobj=file_obj_with_progress)  # type: ignore[arg-type]  # `ReadProgressIndicatorFileHandle` implements `IO[bytes]`.
     return temp_file

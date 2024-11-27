@@ -1,6 +1,9 @@
 import functools
 import pathlib
-from typing import ContextManager, Mapping, Optional, Type, Union
+from typing import TYPE_CHECKING, ContextManager, Mapping, Optional, Type, Union
+
+if TYPE_CHECKING:
+    from rich import progress
 
 from truss_chains import definitions, framework
 from truss_chains import remote as chains_remote
@@ -122,8 +125,9 @@ def push(
     publish: bool = True,
     promote: bool = True,
     only_generate_trusses: bool = False,
-    remote: Optional[str] = None,
+    remote: str = "baseten",
     environment: Optional[str] = None,
+    progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> chains_remote.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
@@ -141,6 +145,7 @@ def push(
         remote: name of a remote config in `.trussrc`. If not provided, it will be
           inquired.
         environment: The name of an environment to promote deployment into.
+        progress_bar: Optional `rich.progress.Progress` if output is desired.
 
     Returns:
         A chain service handle to the deployed chain.
@@ -154,7 +159,7 @@ def push(
         remote=remote,
         environment=environment,
     )
-    service = chains_remote.push(entrypoint, options)
+    service = chains_remote.push(entrypoint, options, progress_bar=progress_bar)
     assert isinstance(service, chains_remote.BasetenChainService)  # Per options above.
     return service
 
@@ -162,7 +167,9 @@ def push(
 def run_local(
     secrets: Optional[Mapping[str, str]] = None,
     data_dir: Optional[Union[pathlib.Path, str]] = None,
-    chainlet_to_service: Optional[Mapping[str, definitions.ServiceDescriptor]] = None,
+    chainlet_to_service: Optional[
+        Mapping[str, definitions.DeployedServiceDescriptor]
+    ] = None,
 ) -> ContextManager[None]:
     """Context manager local debug execution of a chain.
 
@@ -188,8 +195,9 @@ def run_local(
             with chains.run_local(
                 secrets={"some_token": os.environ["SOME_TOKEN"]},
                 chainlet_to_service={
-                    "SomeChainlet": chains.ServiceDescriptor(
+                    "SomeChainlet": chains.DeployedServiceDescriptor(
                         name="SomeChainlet",
+                        display_name="SomeChainlet",
                         predict_url="https://...",
                         options=chains.RPCOptions(),
                     )

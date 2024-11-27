@@ -26,7 +26,7 @@ import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
-from truss.remote import remote_cli, remote_factory
+from truss.remote import remote_factory
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -75,7 +75,6 @@ class SafeModel(pydantic.BaseModel):
         arbitrary_types_allowed=False,
         strict=True,
         validate_assignment=True,
-        extra="forbid",
     )
 
 
@@ -191,6 +190,18 @@ class DockerImage(SafeModelNonSerializable):
     apt_requirements: list[str] = []
     data_dir: Optional[AbsPath] = None
     external_package_dirs: Optional[list[AbsPath]] = None
+
+    @pydantic.root_validator(pre=True)
+    def migrate_fields(cls, values):
+        if "base_image" in values:
+            base_image = values["base_image"]
+            if isinstance(base_image, str):
+                doc_link = "https://docs.baseten.co/chains-reference/sdk#class-truss-chains-dockerimage"
+                raise ChainsUsageError(
+                    "`DockerImage.base_image` as string is deprecated. Specify as "
+                    f"`BasetenImage` or `CustomImage` (see docs: {doc_link})."
+                )
+        return values
 
 
 class ComputeSpec(pydantic.BaseModel):
@@ -397,8 +408,12 @@ class ServiceDescriptor(SafeModel):
     specifically with ``StubBase``."""
 
     name: str
-    predict_url: str
+    display_name: str
     options: RPCOptions
+
+
+class DeployedServiceDescriptor(ServiceDescriptor):
+    predict_url: str
 
 
 class Environment(SafeModel):
@@ -422,7 +437,6 @@ class DeploymentContext(SafeModelNonSerializable):
     Args:
         data_dir: The directory where the chainlet can store and access data,
           e.g. for downloading model weights.
-        user_config: User-defined configuration for the chainlet.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
           This is used create RPCs sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
@@ -434,11 +448,11 @@ class DeploymentContext(SafeModelNonSerializable):
     """
 
     data_dir: Optional[pathlib.Path] = None
-    chainlet_to_service: Mapping[str, ServiceDescriptor]
+    chainlet_to_service: Mapping[str, DeployedServiceDescriptor]
     secrets: MappingNoIter[str, str]
     environment: Optional[Environment] = None
 
-    def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
+    def get_service_descriptor(self, chainlet_name: str) -> DeployedServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
             raise MissingDependencyError(f"{chainlet_name}")
         return self.chainlet_to_service[chainlet_name]
@@ -634,13 +648,9 @@ class PushOptionsBaseten(PushOptions):
         publish: bool,
         promote: Optional[bool],
         only_generate_trusses: bool,
-        remote: Optional[str] = None,
+        remote: str,
         environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
-        if not remote:
-            remote = remote_cli.inquire_remote_name(
-                remote_factory.RemoteFactory.get_available_config_names()
-            )
         if promote and not environment:
             environment = PRODUCTION_ENVIRONMENT_NAME
         if environment:
@@ -664,3 +674,7 @@ class PushOptionsLocalDocker(PushOptions):
     # is unset. Additionally, if local docker containers make calls to models deployed
     # on baseten, a real API key must be provided (i.e. the default must be overridden).
     baseten_chain_api_key: str = "docker_dummy_key"
+    # If enabled, chains code is copied from the local package into `/app/truss_chains`
+    # in the docker image (which takes precedence over potential pip/site-packages).
+    # This should be used for integration tests or quick local dev loops.
+    use_local_chains_src: bool = False

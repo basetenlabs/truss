@@ -1,4 +1,5 @@
-fail_fast: true
+# Check & fix all locally: `pre-commit run --files $(git diff --name-only HEAD)`.
+fail_fast: false
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0

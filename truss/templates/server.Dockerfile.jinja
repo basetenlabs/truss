@@ -80,6 +80,11 @@ COPY ./{{config.data_dir}} /app/data
 COPY ./server /app
 {%- endif %}
 
+{%- if use_local_chains_src %}
+{# This path takes precedence over site-packages. #}
+COPY ./truss_chains /app/truss_chains
+{%- endif %}
+
 COPY ./config.yaml /app/config.yaml
     {%- if config.live_reload and not config.docker_server%}
 COPY ./control /control

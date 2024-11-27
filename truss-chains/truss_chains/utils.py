@@ -12,7 +12,17 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import Any, Iterable, Iterator, Mapping, NoReturn, Type, TypeVar, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    Mapping,
+    NoReturn,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import aiohttp
 import fastapi
@@ -131,32 +141,48 @@ def get_free_port() -> int:
         return port
 
 
-def override_chainlet_to_service_metadata(
+def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-):
-    # Override predict_urls in chainlet_to_service ServiceDescriptors if dynamic_chainlet_config exists
+) -> Mapping[str, definitions.DeployedServiceDescriptor]:
+    chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
+
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY
     )
-    if dynamic_chainlet_config_str:
-        dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
-        for (
-            chainlet_name,
-            service_descriptor,
-        ) in chainlet_to_service.items():
-            if chainlet_name in dynamic_chainlet_config:
-                # We update the predict_url to be the one pulled from the dynamic_chainlet_config
-                service_descriptor.predict_url = dynamic_chainlet_config[chainlet_name][
-                    "predict_url"
-                ]
-            else:
-                logging.debug(
-                    f"Skipped override for chainlet '{chainlet_name}': not found in {definitions.DYNAMIC_CHAINLET_CONFIG_KEY}."
-                )
-    else:
-        logging.debug(
-            f"No {definitions.DYNAMIC_CHAINLET_CONFIG_KEY} found, skipping overrides."
+
+    if not dynamic_chainlet_config_str:
+        raise definitions.MissingDependencyError(
+            f"No '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}' found. Cannot override Chainlet configs."
         )
+
+    dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
+
+    for (
+        chainlet_name,
+        service_descriptor,
+    ) in chainlet_to_service.items():
+        display_name = service_descriptor.display_name
+
+        # NOTE: The Chainlet `display_name` in the Truss CLI
+        # corresponds to Chainlet `name` in the backend. As
+        # the dynamic Chainlet config is keyed on the backend
+        # Chainlet name, we have to look up config values by
+        # using the `display_name` in the service descriptor.
+        if display_name not in dynamic_chainlet_config:
+            raise definitions.MissingDependencyError(
+                f"Chainlet '{display_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
+            )
+
+        chainlet_to_deployed_service[chainlet_name] = (
+            definitions.DeployedServiceDescriptor(
+                display_name=display_name,
+                name=service_descriptor.name,
+                options=service_descriptor.options,
+                predict_url=dynamic_chainlet_config[display_name]["predict_url"],
+            )
+        )
+
+    return chainlet_to_deployed_service
 
 
 # Error Propagation Utils. #############################################################
