@@ -315,7 +315,7 @@ def _validate_streaming_output_type(
             raw=annotation, origin_type=origin, arg_type=bytes
         )
 
-    assert len(args) == 1, "AsyncIterator cannot have more than 1 arg."
+    assert len(args) == 1, "Iterator type annotations cannot have more than 1 arg."
     arg = args[0]
     if arg not in _STREAM_TYPES:
         msg = (

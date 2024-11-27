@@ -8,8 +8,10 @@ from typing import Generic, Optional, Protocol, Type, TypeVar, Union, overload
 
 import pydantic
 
-TAG_SIZE = 5  # uint8 + uint32.
-JSONType = Union[str, int, float, bool, None, list["JSONType"], dict[str, "JSONType"]]
+_TAG_SIZE = 5  # uint8 + uint32.
+_JSONType = Union[
+    str, int, float, bool, None, list["_JSONType"], dict[str, "_JSONType"]
+]
 _T = TypeVar("_T")
 
 if sys.version_info < (3, 10):
@@ -43,56 +45,57 @@ FooterTT = TypeVar("FooterTT")
 
 @dataclasses.dataclass
 class StreamTypes(Generic[ItemT, HeaderTT, FooterTT]):
-    item_t: Type[ItemT]
-    header_t: HeaderTT  # Is either `Type[HeaderT]` or `None`.
-    footer_t: FooterTT  # Is either `Type[FooterT]` or `None`.
+    item_type: Type[ItemT]
+    header_type: HeaderTT  # Is either `Type[HeaderT]` or `None`.
+    footer_type: FooterTT  # Is either `Type[FooterT]` or `None`.
 
 
 @overload
 def stream_types(
-    item_t: Type[ItemT],
+    item_type: Type[ItemT],
     *,
-    header_t: Type[HeaderT],
-    footer_t: Type[FooterT],
+    header_type: Type[HeaderT],
+    footer_type: Type[FooterT],
 ) -> StreamTypes[ItemT, HeaderT, FooterT]: ...
 
 
 @overload
 def stream_types(
-    item_t: Type[ItemT],
+    item_type: Type[ItemT],
     *,
-    header_t: Type[HeaderT],
+    header_type: Type[HeaderT],
 ) -> StreamTypes[ItemT, HeaderT, None]: ...
 
 
 @overload
 def stream_types(
-    item_t: Type[ItemT],
+    item_type: Type[ItemT],
     *,
-    footer_t: Type[FooterT],
+    footer_type: Type[FooterT],
 ) -> StreamTypes[ItemT, None, FooterT]: ...
 
 
 @overload
-def stream_types(item_t: Type[ItemT]) -> StreamTypes[ItemT, None, None]: ...
+def stream_types(item_type: Type[ItemT]) -> StreamTypes[ItemT, None, None]: ...
 
 
 def stream_types(
-    item_t: Type[ItemT],
+    item_type: Type[ItemT],
     *,
-    header_t: Optional[Type[HeaderT]] = None,
-    footer_t: Optional[Type[FooterT]] = None,
+    header_type: Optional[Type[HeaderT]] = None,
+    footer_type: Optional[Type[FooterT]] = None,
 ) -> StreamTypes:
     """Creates a bundle of item type and potentially header/footer types,
     each as pydantic model."""
     # This indirection for creating `StreamTypes` is needed to get generic typing.
-    return StreamTypes(item_t, header_t, footer_t)
+    return StreamTypes(item_type, header_type, footer_type)
 
 
 # Reading ##############################################################################
 
 
 class _Delimiter(enum.IntEnum):
+    NOT_SET = enum.auto()
     HEADER = enum.auto()
     ITEM = enum.auto()
     FOOTER = enum.auto()
@@ -161,7 +164,7 @@ class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
 
     async def _read(self) -> tuple[_Delimiter, bytes]:
         try:
-            tag = await self._stream.readexactly(TAG_SIZE)
+            tag = await self._stream.readexactly(_TAG_SIZE)
         # It's ok to read nothing (end of stream), but unexpected to read partial.
         except asyncio.IncompleteReadError:
             raise
@@ -182,12 +185,13 @@ class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
                 "Called `read_items`, but there the stream contains header data, which "
                 "is not consumed. Call `read_header` first or remove sending a header."
             )
-        if delimiter in (_Delimiter.FOOTER, _Delimiter.END):
+        if delimiter in (_Delimiter.FOOTER, _Delimiter.END):  # In case of 0 items.
+            self._footer_data = data_bytes
             return
 
         assert delimiter == _Delimiter.ITEM
         while True:
-            yield self._stream_types.item_t.model_validate_json(data_bytes)
+            yield self._stream_types.item_type.model_validate_json(data_bytes)
             # We don't know if the next data is another item, footer or the end.
             delimiter, data_bytes = await self._read()
             if delimiter == _Delimiter.END:
@@ -204,7 +208,7 @@ class _HeaderReadMixin(_Streamer[ItemT, HeaderT, FooterTT]):
         delimiter, data_bytes = await self._read()
         if delimiter != _Delimiter.HEADER:
             raise ValueError("Stream does not contain header.")
-        return self._stream_types.header_t.model_validate_json(data_bytes)
+        return self._stream_types.header_type.model_validate_json(data_bytes)
 
 
 class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterT]):
@@ -219,7 +223,7 @@ class _FooterReadMixin(_Streamer[ItemT, HeaderTT, FooterT]):
                 raise ValueError("Stream does not contain footer.")
             self._footer_data = data_bytes
 
-        footer = self._stream_types.footer_t.model_validate_json(self._footer_data)
+        footer = self._stream_types.footer_type.model_validate_json(self._footer_data)
         self._footer_data = None
         return footer
 
@@ -273,11 +277,11 @@ def stream_reader(
     types: StreamTypes[ItemT, HeaderTT, FooterTT],
     stream: AsyncIterator[bytes],
 ) -> _StreamReader:
-    if types.header_t is None and types.footer_t is None:
+    if types.header_type is None and types.footer_type is None:
         return _StreamReader(types, stream)
-    if types.header_t is None:
+    if types.header_type is None:
         return StreamReaderWithFooter(types, stream)
-    if types.footer_t is None:
+    if types.footer_type is None:
         return StreamReaderWithHeader(types, stream)
 
     return StreamReaderFull(types, stream)
@@ -288,11 +292,17 @@ def stream_reader(
 
 class _StreamWriterProtocol(Protocol[ItemT, HeaderTT, FooterTT]):
     _stream_types: StreamTypes[ItemT, HeaderTT, FooterTT]
+    _last_sent: _Delimiter
 
     def _serialize(self, obj: pydantic.BaseModel, delimiter: _Delimiter) -> bytes: ...
 
 
 class _StreamWriter(_Streamer[ItemT, HeaderTT, FooterTT]):
+    def __init__(self, types: StreamTypes[ItemT, HeaderTT, FooterTT]) -> None:
+        super().__init__(types)
+        self._last_sent = _Delimiter.NOT_SET
+        self._stream_types = types
+
     @staticmethod
     def _pack_tag(delimiter: _Delimiter, length: int) -> bytes:
         return struct.pack(">BI", delimiter.value, length)
@@ -305,6 +315,9 @@ class _StreamWriter(_Streamer[ItemT, HeaderTT, FooterTT]):
         return memoryview(data)
 
     def yield_item(self, item: ItemT) -> bytes:
+        if self._last_sent in (_Delimiter.FOOTER, _Delimiter.END):
+            raise ValueError("Cannot yield item after sending footer / closing stream.")
+        self._last_sent = _Delimiter.ITEM
         return self._serialize(item, _Delimiter.ITEM)
 
 
@@ -312,8 +325,9 @@ class _HeaderWriteMixin(_Streamer[ItemT, HeaderT, FooterTT]):
     def yield_header(
         self: _StreamWriterProtocol[ItemT, HeaderT, FooterTT], header: HeaderT
     ) -> bytes:
-        if self._stream_types.header_t is None or header is None:
-            raise ValueError()
+        if self._last_sent != _Delimiter.NOT_SET:
+            raise ValueError("Cannot yield header after other data has been sent.")
+        self._last_sent = _Delimiter.HEADER
         return self._serialize(header, _Delimiter.HEADER)
 
 
@@ -321,8 +335,9 @@ class _FooterWriteMixin(_Streamer[ItemT, HeaderTT, FooterT]):
     def yield_footer(
         self: _StreamWriterProtocol[ItemT, HeaderTT, FooterT], footer: FooterT
     ) -> bytes:
-        if self._stream_types.header_t is None or footer is None:
-            raise ValueError()
+        if self._last_sent == _Delimiter.END:
+            raise ValueError("Cannot yield footer after closing stream.")
+        self._last_sent = _Delimiter.FOOTER
         return self._serialize(footer, _Delimiter.FOOTER)
 
 
@@ -370,11 +385,11 @@ def stream_writer(
 def stream_writer(
     types: StreamTypes[ItemT, HeaderTT, FooterTT],
 ) -> _StreamWriter:
-    if types.header_t is None and types.footer_t is None:
+    if types.header_type is None and types.footer_type is None:
         return _StreamWriter(types)
-    if types.header_t is None:
+    if types.header_type is None:
         return StreamWriterWithFooter(types)
-    if types.footer_t is None:
+    if types.footer_type is None:
         return StreamWriterWithHeader(types)
 
     return StreamWriterFull(types)

@@ -30,7 +30,9 @@ async def to_bytes_iterator(data_stream) -> AsyncIterator[bytes]:
 
 @pytest.mark.asyncio
 async def test_streaming_with_header_and_footer():
-    types = streaming.stream_types(item_t=MyDataChunk, header_t=Header, footer_t=Footer)
+    types = streaming.stream_types(
+        item_type=MyDataChunk, header_type=Header, footer_type=Footer
+    )
 
     writer = streaming.stream_writer(types)
     header = Header(time=123.456, msg="Start of stream")
@@ -61,7 +63,7 @@ async def test_streaming_with_header_and_footer():
 
 @pytest.mark.asyncio
 async def test_streaming_with_items_only():
-    types = streaming.stream_types(item_t=MyDataChunk)
+    types = streaming.stream_types(item_type=MyDataChunk)
     writer = streaming.stream_writer(types)
 
     items = [
@@ -84,8 +86,8 @@ async def test_streaming_with_items_only():
 
 @pytest.mark.asyncio
 async def test_reading_header_when_none_sent():
-    types = streaming.stream_types(item_t=MyDataChunk, header_t=Header)
-    writer = streaming.stream_writer(streaming.stream_types(item_t=MyDataChunk))
+    types = streaming.stream_types(item_type=MyDataChunk, header_type=Header)
+    writer = streaming.stream_writer(types)
     items = [MyDataChunk(words=["hello", "world"])]
 
     data_stream = []
@@ -99,8 +101,8 @@ async def test_reading_header_when_none_sent():
 
 @pytest.mark.asyncio
 async def test_reading_items_with_wrong_model():
-    types_writer = streaming.stream_types(item_t=MyDataChunk)
-    types_reader = streaming.stream_types(item_t=Header)  # Wrong item type
+    types_writer = streaming.stream_types(item_type=MyDataChunk)
+    types_reader = streaming.stream_types(item_type=Header)  # Wrong item type
     writer = streaming.stream_writer(types_writer)
     items = [MyDataChunk(words=["hello", "world"])]
     data_stream = []
@@ -117,9 +119,9 @@ async def test_reading_items_with_wrong_model():
 @pytest.mark.asyncio
 async def test_streaming_with_wrong_order():
     types = streaming.stream_types(
-        item_t=MyDataChunk,
-        header_t=Header,
-        footer_t=Footer,
+        item_type=MyDataChunk,
+        header_type=Header,
+        footer_type=Footer,
     )
 
     writer = streaming.stream_writer(types)
@@ -129,11 +131,14 @@ async def test_streaming_with_wrong_order():
     data_stream = []
     for item in items:
         data_stream.append(writer.yield_item(item))
-    data_stream.append(writer.yield_header(header))
+
+    with pytest.raises(
+        ValueError, match="Cannot yield header after other data has been sent."
+    ):
+        data_stream.append(writer.yield_header(header))
     data_stream.append(writer.yield_footer(footer))
 
     reader = streaming.stream_reader(types, to_bytes_iterator(data_stream))
-
     # Try to read header, should fail because the first data is an item
     with pytest.raises(ValueError, match="Stream does not contain header."):
         await reader.read_header()
@@ -141,7 +146,7 @@ async def test_streaming_with_wrong_order():
 
 @pytest.mark.asyncio
 async def test_reading_items_without_consuming_header():
-    types = streaming.stream_types(item_t=MyDataChunk, header_t=Header)
+    types = streaming.stream_types(item_type=MyDataChunk, header_type=Header)
     writer = streaming.stream_writer(types)
     header = Header(time=123.456, msg="Start of stream")
     items = [MyDataChunk(words=["hello", "world"])]
@@ -163,8 +168,8 @@ async def test_reading_items_without_consuming_header():
 
 @pytest.mark.asyncio
 async def test_reading_footer_when_none_sent():
-    types = streaming.stream_types(item_t=MyDataChunk, footer_t=Footer)
-    writer = streaming.stream_writer(streaming.stream_types(item_t=MyDataChunk))
+    types = streaming.stream_types(item_type=MyDataChunk, footer_type=Footer)
+    writer = streaming.stream_writer(types)
     items = [MyDataChunk(words=["hello", "world"])]
     data_stream = []
     for item in items:
@@ -179,3 +184,20 @@ async def test_reading_footer_when_none_sent():
     # Try to read footer, expect an error
     with pytest.raises(ValueError, match="Stream does not contain footer."):
         await reader.read_footer()
+
+
+@pytest.mark.asyncio
+async def test_reading_footer_with_no_items():
+    types = streaming.stream_types(item_type=MyDataChunk, footer_type=Footer)
+    writer = streaming.stream_writer(types)
+    footer = Footer(time=789.012, duration_sec=665.556, msg="End of stream")
+    data_stream = [writer.yield_footer(footer)]
+
+    reader = streaming.stream_reader(types, to_bytes_iterator(data_stream))
+    read_items = []
+    async for item in reader.read_items():
+        read_items.append(item)
+    assert len(read_items) == 0
+
+    read_footer = await reader.read_footer()
+    assert read_footer == footer

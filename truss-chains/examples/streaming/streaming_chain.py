@@ -30,7 +30,9 @@ class ConsumerOutput(pydantic.BaseModel):
     strings: str
 
 
-STREAM_TYPES = streaming.stream_types(MyDataChunk, header_t=Header, footer_t=Footer)
+STREAM_TYPES = streaming.stream_types(
+    MyDataChunk, header_type=Header, footer_type=Footer
+)
 
 
 class Generator(chains.ChainletBase):
