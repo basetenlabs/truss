@@ -328,11 +328,10 @@ class ModelWrapper:
             thread = Thread(target=self.load)
             thread.start()
 
-    def load(self) -> bool:
+    def load(self):
         if self.ready:
-            return True
-
-        # if we are already loading, block on aquiring the lock;
+            return
+        # if we are already loading, block on acquiring the lock;
         # this worker will return 503 while the worker with the lock is loading
         with self._load_lock:
             self._status = ModelWrapper.Status.LOADING
@@ -344,12 +343,9 @@ class ModelWrapper:
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
-                return True
             except Exception:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
-
-        return False
 
     def _load_impl(self):
         data_dir = Path("data")
@@ -835,4 +831,12 @@ def _prepare_init_args(klass, config, data_dir, secrets, lazy_data_resolver):
         model_init_params["secrets"] = secrets
     if _signature_accepts_keyword_arg(signature, "lazy_data_resolver"):
         model_init_params["lazy_data_resolver"] = lazy_data_resolver.fetch()
+    if _signature_accepts_keyword_arg(signature, "environment"):
+        environment = None
+        environment_str = dynamic_config_resolver.get_dynamic_config_value_sync(
+            dynamic_config_resolver.ENVIRONMENT_DYNAMIC_CONFIG_KEY
+        )
+        if environment_str:
+            environment = json.loads(environment_str)
+        model_init_params["environment"] = environment
     return model_init_params

@@ -24,5 +24,4 @@ COPY ./README.md ./README.md
 
 # https://python-poetry.org/docs/configuration/#virtualenvsin-project
 # to write to project root .venv file to be used for context builder test
-RUN poetry config virtualenvs.in-project true \
-    && poetry install --only builder
+RUN poetry config virtualenvs.in-project true && poetry install --extras=all

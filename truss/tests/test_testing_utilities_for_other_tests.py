@@ -2,14 +2,14 @@
 # TODO(pankaj): Using a tests file for shared code is not ideal, we should
 # move it to a regular file. This is a short term hack.
 import json
+import logging
 import shutil
 import subprocess
 import time
 from contextlib import contextmanager
 
-from truss.build import kill_all
-from truss.constants import TRUSS
-from truss.docker import get_containers
+from truss.base.constants import TRUSS
+from truss.util.docker import get_containers, kill_all
 
 DISK_SPACE_LOW_PERCENTAGE = 20
 
@@ -52,9 +52,11 @@ def _show_container_logs_if_raised():
             print("An exception was raised, showing logs of all containers.")
             containers = get_containers({TRUSS: True})
             new_containers = [c for c in containers if c.id not in initial_ids]
+            parts = []
             for container in new_containers:
-                print(f"Logs for container {container.name} ({container.id}):")
-                print(_human_readable_json_logs(container.logs()))
+                parts.append(f"Logs for container {container.name} ({container.id}):")
+                parts.append(_human_readable_json_logs(container.logs()))
+            logging.warning("\n".join(parts))
 
 
 def kill_all_with_retries(num_retries: int = 10):

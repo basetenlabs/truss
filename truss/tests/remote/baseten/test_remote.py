@@ -6,7 +6,7 @@ from truss.remote.baseten.core import ModelId, ModelName, ModelVersionId
 from truss.remote.baseten.custom_types import ChainletData
 from truss.remote.baseten.error import RemoteError
 from truss.remote.baseten.remote import BasetenRemote
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.truss_handle import TrussHandle
 
 _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
@@ -226,7 +226,15 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
             ValueError,
             match="Deployment name cannot be used for development deployment",
         ):
-            remote.push(th, "model_name", False, False, False, False, "dep_name")
+            remote.push(
+                th,
+                "model_name",
+                publish=False,
+                trusted=False,
+                promote=False,
+                preserve_previous_prod_deployment=False,
+                deployment_name="dep_name",
+            )
 
 
 def test_push_raised_value_error_when_deployment_name_is_not_valid(
@@ -253,7 +261,15 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
             ValueError,
             match="Deployment name must only contain alphanumeric, -, _ and . characters",
         ):
-            remote.push(th, "model_name", True, False, False, False, "dep//name")
+            remote.push(
+                th,
+                "model_name",
+                publish=True,
+                trusted=False,
+                promote=False,
+                preserve_previous_prod_deployment=False,
+                deployment_name="dep//name",
+            )
 
 
 def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promote(
@@ -280,7 +296,14 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
             ValueError,
             match="preserve-previous-production-deployment can only be used with the '--promote' option",
         ):
-            remote.push(th, "model_name", False, False, False, True)
+            remote.push(
+                th,
+                "model_name",
+                publish=False,
+                trusted=False,
+                promote=False,
+                preserve_previous_prod_deployment=True,
+            )
 
 
 def test_create_chain_with_no_publish():
@@ -596,3 +619,35 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
 
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
+
+
+@pytest.mark.parametrize(
+    "publish",
+    [True, False],
+)
+def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
+    publish,
+    custom_model_truss_dir_with_pre_and_post,
+):
+    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+    model_response = {
+        "data": {
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "primary_version": {"id": "version_id"},
+            }
+        }
+    }
+    with requests_mock.Mocker() as m:
+        m.post(
+            _TEST_REMOTE_GRAPHQL_PATH,
+            json=model_response,
+        )
+        th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
+
+        with pytest.raises(
+            ValueError,
+            match="disable-truss-download can only be used for new models",
+        ):
+            remote.push(th, "model_name", publish=publish, disable_truss_download=True)

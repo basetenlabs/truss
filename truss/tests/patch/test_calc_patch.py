@@ -4,12 +4,7 @@ from typing import Any, Callable, List, Optional
 
 import pytest
 import yaml
-from truss.patch.calc_patch import (
-    _calc_python_requirements_patches,
-    calc_truss_patch,
-    calc_unignored_paths,
-)
-from truss.patch.signature import calc_truss_signature
+from truss.base.truss_config import TrussConfig
 from truss.templates.control.control.helpers.custom_types import (
     Action,
     ConfigPatch,
@@ -22,8 +17,13 @@ from truss.templates.control.control.helpers.custom_types import (
     PythonRequirementPatch,
     SystemPackagePatch,
 )
-from truss.truss_config import TrussConfig
-from truss.truss_handle import TrussHandle
+from truss.truss_handle.patch.calc_patch import (
+    _calc_python_requirements_patches,
+    _calc_unignored_paths,
+    calc_truss_patch,
+)
+from truss.truss_handle.patch.signature import calc_truss_signature
+from truss.truss_handle.truss_handle import TrussHandle
 
 
 def test_calc_truss_patch_unsupported(custom_model_truss_dir: Path):
@@ -304,6 +304,46 @@ def test_calc_truss_patch_handles_requirements_file_name_change(
     ]
 
 
+def test_calc_truss_patch_handles_requirements_comments(
+    custom_model_truss_dir: Path,
+):
+    def pre_config_op(config: TrussConfig):
+        requirements_contents = """xformers\n#torch==2.0.1"""
+        filename = "./requirements.txt"
+        config.requirements_file = filename
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+
+    def config_op(config: TrussConfig):
+        requirements_contents = """#xformers\ntorch==2.3.1\n"""
+        filename = "requirements.txt"
+        with (custom_model_truss_dir / filename).open("w") as req_file:
+            req_file.write(requirements_contents)
+
+    patches = _apply_config_change_and_calc_patches(
+        custom_model_truss_dir,
+        config_op=config_op,
+        config_pre_op=pre_config_op,
+    )
+    assert len(patches) == 2
+    assert patches == [
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.REMOVE,
+                requirement="xformers",
+            ),
+        ),
+        Patch(
+            type=PatchType.PYTHON_REQUIREMENT,
+            body=PythonRequirementPatch(
+                action=Action.ADD,
+                requirement="torch==2.3.1",
+            ),
+        ),
+    ]
+
+
 def test_calc_truss_patch_handles_requirements_file_changes(
     custom_model_truss_dir: Path,
 ):
@@ -315,7 +355,7 @@ def test_calc_truss_patch_handles_requirements_file_changes(
             req_file.write(requirements_contents)
 
     def config_op(config: TrussConfig):
-        requirements_contents = """requests\ntorch==2.3.1"""
+        requirements_contents = """requests\ntorch==2.3.1\n"""
         filename = "requirements.txt"
         with (custom_model_truss_dir / filename).open("w") as req_file:
             req_file.write(requirements_contents)
@@ -995,7 +1035,7 @@ def test_calc_unignored_paths():
         "model/model.py",
     }
 
-    unignored_paths = calc_unignored_paths(root_relative_paths, ignore_patterns)
+    unignored_paths = _calc_unignored_paths(root_relative_paths, ignore_patterns)
     assert unignored_paths == {
         "config.yaml",
         "model/model.py",

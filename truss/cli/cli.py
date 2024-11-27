@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import rich
 import rich.live
@@ -20,8 +20,13 @@ from InquirerPy import inquirer
 from rich.console import Console
 
 import truss
-from truss.config.trt_llm import TrussTRTLLMQuantizationType
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME, TRTLLM_MIN_MEMORY_REQUEST_GI
+from truss.base.constants import (
+    PRODUCTION_ENVIRONMENT_NAME,
+    TRTLLM_MIN_MEMORY_REQUEST_GI,
+)
+from truss.base.errors import RemoteNetworkError
+from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
+from truss.base.truss_config import Build, ModelServer
 from truss.remote.baseten.core import (
     ACTIVE_STATUS,
     DEPLOYING_STATUSES,
@@ -38,13 +43,15 @@ from truss.remote.remote_cli import (
     inquire_remote_name,
 )
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
-from truss.truss_config import Build, ModelServer
-from truss.util.config_checks import (
+from truss.trt_llm.config_checks import (
     check_and_update_memory_for_trt_llm_builder,
     check_secrets_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
-from truss.util.errors import RemoteNetworkError
+from truss.truss_handle.build import cleanup as _cleanup
+from truss.truss_handle.build import init as _init
+from truss.truss_handle.build import load
+from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
 rich.spinner.SPINNERS["deploying"] = {"interval": 500, "frames": ["👾 ", " 👾"]}
@@ -96,7 +103,10 @@ def error_handling(f: Callable[..., object]):
             raise e  # You can re-raise the exception or handle it different
         except Exception as e:
             if is_humanfriendly_log_level:
-                click.secho(f"ERROR: {type(e).__name__}: {e}", fg="red")
+                console.print(
+                    f"[bold red]ERROR {type(e).__name__}[/bold red]: {e}",
+                    highlight=True,
+                )
             else:
                 console.print_exception(show_locals=True)
 
@@ -213,7 +223,7 @@ def init(target_directory, backend, name) -> None:
         model_name = name
     else:
         model_name = inquire_model_name()
-    truss.init(
+    _init(
         target_directory=target_directory,
         build_config=build_config,
         model_name=model_name,
@@ -332,6 +342,28 @@ def login(api_key: Optional[str]):
 
 
 @truss_cli.command()
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to check whoami.",
+)
+@error_handling
+def whoami(remote: Optional[str]):
+    """
+    Shows user information and exit.
+    """
+    from truss.api import whoami
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    user = whoami(remote)
+
+    console.print(f"{user.workspace_name}\{user.user_email}")
+
+
+@truss_cli.command()
 @click.argument("target_directory", required=False, default=os.getcwd())
 @click.option(
     "--remote",
@@ -377,35 +409,7 @@ def watch(
 # Chains Stuff #########################################################################
 
 
-class ChainsGroup(click.Group):
-    _ALIASES = {"deploy": "push"}  # Alias `deploy` to push for backwards compat.
-
-    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
-        if cmd_name in self._ALIASES:
-            if cmd_name == "deploy":
-                warnings.warn(
-                    "`truss chains deploy` is deprecated and will be removed in a "
-                    "future version. Please use `truss chains push` instead.",
-                    DeprecationWarning,
-                    stacklevel=1,
-                )
-            cmd_name = self._ALIASES[cmd_name]
-
-        return super().get_command(ctx, cmd_name)
-
-    def list_commands(self, ctx: click.Context) -> List[str]:
-        commands = super().list_commands(ctx)
-        return commands + list(self._ALIASES.keys())
-
-    def invoke(self, ctx: click.Context) -> Any:
-        # This import raises error messages if pydantic v2 or python older than 3.9
-        # are installed.
-        import truss_chains  # noqa: F401
-
-        return super().invoke(ctx)
-
-
-@click.group(cls=ChainsGroup)
+@click.group()
 def chains():
     """Subcommands for truss chains"""
 
@@ -554,10 +558,8 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     "--user_env",
     required=False,
     type=str,
-    help=(
-        "Key-value-pairs (as JSON str) that can be used to control "
-        "deployment-specific chainlet behavior."
-    ),
+    help="[DEPRECATED], use ``environment`` instead.",
+    hidden=True,
 )
 @log_level_option
 @error_handling
@@ -601,17 +603,7 @@ def push_chain(
             wait = True
 
     if user_env:
-        try:
-            user_env_parsed = json.loads(user_env)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON string for user_env: `{user_env}`.\n"
-                f"user_env must be a JSON dict with string values and string keys.\n"
-                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
-                f"Error: {e}"
-            )
-    else:
-        user_env_parsed = {}
+        raise ValueError("`user_env` is deprecated, use `environment` instead.")
 
     if promote and environment:
         promote_warning = "`promote` flag and `environment` flag were both specified. Ignoring the value of `promote`"
@@ -624,7 +616,6 @@ def push_chain(
             promote=promote,
             publish=publish,
             only_generate_trusses=dryrun,
-            user_env=user_env_parsed,
             remote=remote,
             environment=environment,
         )
@@ -681,7 +672,6 @@ def push_chain(
                     entrypoint,
                     name,
                     remote,
-                    user_env_parsed,
                     console,
                     error_console,
                     show_stack_trace=not is_humanfriendly_log_level,
@@ -715,10 +705,8 @@ def push_chain(
     "--user_env",
     required=False,
     type=str,
-    help=(
-        "Key-value-pairs (as JSON str) that can be used to control "
-        "deployment-specific chainlet behavior."
-    ),
+    help="[DEPRECATED], use `environment` instead.",
+    hidden=True,
 )
 @log_level_option
 @error_handling
@@ -745,24 +733,13 @@ def watch_chains(
     console.print("")  # Print a newline.
 
     if user_env:
-        try:
-            user_env_parsed = json.loads(user_env)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON string for user_env: `{user_env}`.\n"
-                f"user_env must be a JSON dict with string values and string keys.\n"
-                'Example: --user_env \'{"key1": "value1", "key2": "value2"}\'.\n'
-                f"Error: {e}"
-            )
-    else:
-        user_env_parsed = {}
+        raise ValueError("`user_env` is deprecated, use `environment` instead.")
 
     chains_remote.watch(
         source,
         entrypoint,
         name,
         remote,
-        user_env_parsed,
         console,
         error_console,
         show_stack_trace=not is_humanfriendly_log_level,
@@ -1071,6 +1048,14 @@ def run_python(script, target_directory):
     help="Trust truss with hosted secrets.",
 )
 @click.option(
+    "--disable-truss-download",
+    type=bool,
+    is_flag=True,
+    required=False,
+    default=False,
+    help="Disable downloading the truss directory from the UI.",
+)
+@click.option(
     "--deployment-name",
     type=str,
     required=False,
@@ -1104,6 +1089,7 @@ def push(
     model_name: str,
     publish: bool = False,
     trusted: bool = False,
+    disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
     deployment_name: Optional[str] = None,
@@ -1192,6 +1178,7 @@ def push(
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
         environment=environment,
+        disable_truss_download=disable_truss_download,
     )  # type: ignore
 
     click.echo(f"✨ Model {model_name} was successfully pushed ✨")
@@ -1303,7 +1290,7 @@ def kill(target_directory: str) -> None:
 @container.command()  # type: ignore
 def kill_all() -> None:
     """Kills all truss containers that are not manually persisted."""
-    truss.kill_all()
+    docker.kill_all()
 
 
 @truss_cli.command()
@@ -1316,14 +1303,14 @@ def cleanup() -> None:
     such as for building docker images. This command clears
     that data to free up disk space.
     """
-    truss.build.cleanup()
+    _cleanup()
 
 
 def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return truss.load(target_directory)
+    return load(target_directory)
 
 
 truss_cli.add_command(container)

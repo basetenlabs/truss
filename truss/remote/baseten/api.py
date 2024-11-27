@@ -107,8 +107,12 @@ class BasetenApi:
         semver_bump: str,
         client_version: str,
         is_trusted: bool,
+        allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
+        chain_environment: Optional[str] = None,
+        chainlet_name: Optional[str] = None,
+        chain_name: Optional[str] = None,
     ):
         query_string = f"""
         mutation {{
@@ -119,8 +123,12 @@ class BasetenApi:
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
                 is_trusted: {'true' if is_trusted else 'false'},
+                allow_truss_download: {'true' if allow_truss_download else 'false'},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
                 {f'model_origin: {origin.value}' if origin else ""}
+                {f'chain_environment: "{chain_environment}"' if chain_environment else ""}
+                {f'chainlet_name: "{chainlet_name}"' if chainlet_name else ""}
+                {f'chain_name: "{chain_name}"' if chain_name else ""}
             ) {{
                 id,
                 name,
@@ -172,6 +180,7 @@ class BasetenApi:
         config,
         client_version,
         is_trusted=False,
+        allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
@@ -181,6 +190,7 @@ class BasetenApi:
                     config: "{config}",
                     client_version: "{client_version}",
                     is_trusted: {'true' if is_trusted else 'false'},
+                    allow_truss_download: {'true' if allow_truss_download else 'false'},
                     {f'model_origin: {origin.value}' if origin else ""}
     ) {{
             id,
@@ -338,6 +348,25 @@ class BasetenApi:
         resp = self._post_graphql_query(query_string)
         return resp["data"]
 
+    def get_truss_watch_state(self, model_name: str):
+        query_string = f"""
+        {{
+            truss_watch_state(name: "{model_name}") {{
+                is_container_built_from_push
+                django_patch_state {{
+                    current_hash
+                    current_signature
+                }}
+                container_patch_state {{
+                    current_hash
+                    current_signature
+                }}
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]
+
     def get_model(self, model_name):
         query_string = f"""
         {{
@@ -400,6 +429,53 @@ class BasetenApi:
         """
         resp = self._post_graphql_query(query_string)
         return resp["data"]
+
+    def patch_draft_truss_two_step(self, model_name, patch_request):
+        patch = base64_encoded_json_str(patch_request.to_dict())
+        query_string = f"""
+        mutation {{
+        stage_patch_for_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+                    patch: "{patch}",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        result = resp["data"]["stage_patch_for_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Failed to stage patch: {result}")
+            return result
+        logging.debug("Succesfully staged patch. Syncing patch to truss...")
+
+        return self.sync_draft_truss(model_name)
+
+    def sync_draft_truss(self, model_name):
+        query_string = f"""
+        mutation {{
+        sync_draft_truss(name: "{model_name}",
+                    client_version: "TRUSS",
+    ) {{
+            id,
+            name,
+            version_id
+            succeeded
+            needs_full_deploy
+            error
+        }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        result = resp["data"]["sync_draft_truss"]
+        if not result["succeeded"]:
+            logging.debug(f"Failed to sync patch: {result}")
+        return result
 
     def patch_draft_truss(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())

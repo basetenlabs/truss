@@ -23,19 +23,17 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 )
 
 import pydantic
-from truss import truss_config
-from truss.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base import truss_config
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote import baseten as baseten_remote
 from truss.remote import remote_cli, remote_factory
-
-UserConfigT = TypeVar("UserConfigT", bound=Union[pydantic.BaseModel, None])
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
-
+OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
 # Below arg names must correspond to `definitions.ABCChainlet`.
 ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
@@ -173,8 +171,7 @@ class DockerImage(SafeModelNonSerializable):
           assets are included as additional layers on top of that image. You can choose
           a Baseten default image for a supported python version (e.g.
           ``BasetenImage.PY311``), this will also include GPU drivers if needed, or
-          provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``).
-          Specification by string is deprecated.
+          provide a custom image (e.g. ``CustomImage(image="python:3.11-slim")``)..
         pip_requirements_file: Path to a file containing pip requirements. The file
           content is naively concatenated with ``pip_requirements``.
         pip_requirements: A list of pip requirements to install.  The items are
@@ -188,8 +185,7 @@ class DockerImage(SafeModelNonSerializable):
     """
 
     # TODO: this is not stable yet and might change or refer back to truss.
-    # Image as str is deprecated.
-    base_image: Union[BasetenImage, CustomImage, str] = BasetenImage.PY311
+    base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
     apt_requirements: list[str] = []
@@ -296,12 +292,12 @@ class Assets:
     For example, model weight caching can be used like this::
 
         import truss_chains as chains
-        from truss import truss_config
+        from truss.base import truss_config
 
         mistral_cache = truss_config.ModelRepo(
             repo_id="mistralai/Mistral-7B-Instruct-v0.2",
             allow_patterns=["*.json", "*.safetensors", ".model"]
-          )
+        )
         chains.Assets(cached=[mistral_cache], ...)
 
     See `truss caching guide <https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model>`_
@@ -340,6 +336,20 @@ class Assets:
         return self._spec.copy(deep=True)
 
 
+class ChainletOptions(SafeModelNonSerializable):
+    """
+    Args:
+        enable_b10_tracing: enables baseten-internal trace data collection. This
+          helps baseten engineers better analyze chain performance in case of issues.
+          It is independent of a potentially user-configured tracing instrumentation.
+          Turning this on, could add performance overhead.
+        env_variables: static environment variables available to the deployed chainlet.
+    """
+
+    enable_b10_tracing: bool = False
+    env_variables: Mapping[str, str] = {}
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -363,6 +373,7 @@ class RemoteConfig(SafeModelNonSerializable):
     compute: Compute = Compute()
     assets: Assets = Assets()
     name: Optional[str] = None
+    options: ChainletOptions = ChainletOptions()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
@@ -390,7 +401,18 @@ class ServiceDescriptor(SafeModel):
     options: RPCOptions
 
 
-class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
+class Environment(SafeModel):
+    """The environment the chainlet is deployed in.
+
+    Args:
+        name: The name of the environment.
+    """
+
+    name: str
+    # can add more fields here as we add them to dynamic_config configmap
+
+
+class DeploymentContext(SafeModelNonSerializable):
     """Bundles config values and resources needed to instantiate Chainlets.
 
     The context can optionally added as a trailing argument in a Chainlet's
@@ -407,16 +429,14 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
           current chainlet.
-        user_env: These values can be provided to
-          the deploy command and customize the behavior of deployed chainlets. E.g.
-          for differentiating between prod and dev version of the same chain.
+        environment: The environment that the chainlet is deployed in.
+          None if the chainlet is not associated with an environment.
     """
 
     data_dir: Optional[pathlib.Path] = None
-    user_config: UserConfigT
     chainlet_to_service: Mapping[str, ServiceDescriptor]
     secrets: MappingNoIter[str, str]
-    user_env: Mapping[str, str]
+    environment: Optional[Environment] = None
 
     def get_service_descriptor(self, chainlet_name: str) -> ServiceDescriptor:
         if chainlet_name not in self.chainlet_to_service:
@@ -445,17 +465,14 @@ class DeploymentContext(SafeModelNonSerializable, Generic[UserConfigT]):
         return api_key
 
 
-class TrussMetadata(SafeModel, Generic[UserConfigT]):
+class TrussMetadata(SafeModel):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
-    user_config: UserConfigT
     chainlet_to_service: Mapping[str, ServiceDescriptor]
-    user_env: Mapping[str, str]
 
 
 class ABCChainlet(abc.ABC):
     remote_config: ClassVar[RemoteConfig] = RemoteConfig(docker_image=DockerImage())
-    default_user_config: ClassVar[Optional[pydantic.BaseModel]] = None
     _init_is_patched: ClassVar[bool] = False
 
     @classmethod
@@ -526,7 +543,6 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
     has_context: bool
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
-    user_config_type: TypeDescriptor
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)
@@ -603,7 +619,6 @@ class GenericRemoteException(Exception): ...
 
 class PushOptions(SafeModelNonSerializable):
     chain_name: str
-    user_env: Mapping[str, str]
     only_generate_trusses: bool = False
 
 
@@ -619,7 +634,6 @@ class PushOptionsBaseten(PushOptions):
         publish: bool,
         promote: Optional[bool],
         only_generate_trusses: bool,
-        user_env: Mapping[str, str],
         remote: Optional[str] = None,
         environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
@@ -640,7 +654,6 @@ class PushOptionsBaseten(PushOptions):
             chain_name=chain_name,
             publish=publish,
             only_generate_trusses=only_generate_trusses,
-            user_env=user_env,
             environment=environment,
         )
 

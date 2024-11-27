@@ -49,7 +49,7 @@ __diff_output__
 /env/
 /output/
 /cache/
-/dist/
+dist/
 
 # Spritesmith
 spritesmith-generated/

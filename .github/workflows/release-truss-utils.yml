@@ -40,7 +40,7 @@ jobs:
 
       - name: Install poetry packages
         working-directory: truss-utils
-        run: poetry install --no-dev
+        run: poetry install
 
       - name: Build
         working-directory: truss-utils

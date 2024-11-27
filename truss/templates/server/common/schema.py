@@ -8,6 +8,7 @@ from typing import (
     Optional,
     Type,
     Union,
+    cast,
     get_args,
     get_origin,
 )
@@ -61,10 +62,7 @@ class TrussSchema(BaseModel):
 
 def _parse_input_type(input_parameters: MappingProxyType) -> Optional[type]:
     parameter_types = list(input_parameters.values())
-
-    if len(parameter_types) > 1:
-        return None
-
+    # In `ArgConfig.from_signature` the arguments are validated.
     input_type = parameter_types[0].annotation
 
     if _annotation_is_pydantic_model(input_type):
@@ -158,11 +156,13 @@ def _extract_pydantic_base_models(union_args: tuple) -> List[Type[BaseModel]]:
     2. Union[Awaitable[PydanticBaseModel], AsyncGenerator]
     So for Awaitables, we need to extract the base class from the Awaitable type
     """
+
     return [
-        retrieve_base_class_from_awaitable(arg) if _is_awaitable_type(arg) else arg
-        for arg in union_args
+        cast(Type[BaseModel], retrieve_base_class_from_awaitable(arg))
         if _is_awaitable_type(arg)
-        or (isinstance(arg, type) and issubclass(arg, BaseModel))
+        else arg
+        for arg in union_args
+        if _is_awaitable_type(arg) or _annotation_is_pydantic_model(arg)
     ]
 
 
