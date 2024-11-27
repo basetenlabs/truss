@@ -424,8 +424,8 @@ class DockerServer:
             setup_command=d.get("setup_command", ""),
             start_command=d.get("start_command", ""),
             server_port=d.get("server_port", 8000),
-            readiness_endpoint=d.get("readiness_endpoint", ""),
-            liveness_endpoint=d.get("liveness_endpoint", ""),
+            readiness_endpoint=d.get("readiness_endpoint", "/v1/models/model"),
+            liveness_endpoint=d.get("liveness_endpoint", "/"),
             predict_endpoint=d.get("predict_endpoint", ""),
         )
 
