@@ -1,4 +1,4 @@
-We built this minimal fastapi docker image to be used in integration test `test_model_inference.py::test_docker_server_truss`
+We built this minimal fastapi docker image to be used in integration test `test_custom_server_truss.py::test_custom_server_truss`
 
 Steps to update testing docker image
 

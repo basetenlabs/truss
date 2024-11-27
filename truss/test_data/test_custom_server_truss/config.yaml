@@ -2,8 +2,8 @@ base_image:
   image: baseten/fastapi-test:0.1.2
 docker_server:
   start_command: python main.py
-  readiness_endpoint: /health
-  liveness_endpoint: /health
+  # readiness_endpoint: /health
+  # liveness_endpoint: /health
   predict_endpoint: /predict
   server_port: 8000
 resources:
