@@ -8,13 +8,16 @@ from truss.truss_handle.truss_handle import TrussHandle
 
 
 @pytest.mark.integration
-def test_docker_server_truss(test_data_path):
+def test_custom_server_truss(test_data_path):
     with ensure_kill_all():
-        truss_dir = test_data_path / "test_docker_server_truss"
-
+        print("Running test_custom_server_truss")
+        truss_dir = test_data_path / "test_custom_server_truss"
+        print(f"truss_dir: {truss_dir}")
         tr = TrussHandle(truss_dir)
+        print("Setting secret")
         LocalConfigHandler.set_secret("hf_access_token", "123")
         try:
+            print("Starting container")
             _ = tr.docker_run(
                 local_port=8090,
                 detach=True,
