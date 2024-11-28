@@ -1114,7 +1114,7 @@ def wait_for_truss(
     try:
         _wait_for_docker_build(container)
         if wait_for_server_ready:
-            if model_server_stop_retry_override:
+            if model_server_stop_retry_override is not None:
                 _wait_for_model_server(url, stop=model_server_stop_retry_override)
             else:
                 _wait_for_model_server(url)
