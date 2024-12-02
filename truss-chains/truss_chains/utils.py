@@ -186,28 +186,27 @@ def populate_chainlet_service_predict_urls(
 
 
 # Error Propagation Utils. #############################################################
+# TODO: move request related code into `stub.py`.
 
 
-def _handle_exception(
-    exception: Exception, include_stack: bool, chainlet_name: str
-) -> NoReturn:
+def _handle_exception(exception: Exception, chainlet_name: str) -> NoReturn:
     """Raises `fastapi.HTTPException` with `RemoteErrorDetail` as detail."""
     if hasattr(exception, "__module__"):
         exception_module_name = exception.__module__
     else:
         exception_module_name = None
 
-    if include_stack:
-        error_stack = traceback.extract_tb(exception.__traceback__)
-        # Exclude the error handling functions from the stack trace.
-        exclude_frames = {exception_to_http_error.__name__, handle_response.__name__}
-        final_tb = [frame for frame in error_stack if frame.name not in exclude_frames]
-        stack = list(
-            [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
-        )
-    else:
-        stack = []
-
+    error_stack = traceback.extract_tb(exception.__traceback__)
+    # Exclude the error handling functions from the stack trace.
+    exclude_frames = {
+        exception_to_http_error.__name__,
+        response_raise_errors.__name__,
+        async_response_raise_errors.__name__,
+    }
+    final_tb = [frame for frame in error_stack if frame.name not in exclude_frames]
+    stack = list(
+        [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
+    )
     error = definitions.RemoteErrorDetail(
         remote_name=chainlet_name,
         exception_cls_name=exception.__class__.__name__,
@@ -221,11 +220,12 @@ def _handle_exception(
 
 
 @contextlib.contextmanager
-def exception_to_http_error(include_stack: bool, chainlet_name: str) -> Iterator[None]:
+def exception_to_http_error(chainlet_name: str) -> Iterator[None]:
+    # TODO: move chainlet name from here to caller side.
     try:
         yield
     except Exception as e:
-        _handle_exception(e, include_stack, chainlet_name)
+        _handle_exception(e, chainlet_name)
 
 
 def _resolve_exception_class(
@@ -279,8 +279,8 @@ def _handle_response_error(response_json: dict, remote_name: str):
     raise exception_cls(msg)
 
 
-def handle_response(response: httpx.Response, remote_name: str) -> Any:
-    """For successful requests returns JSON, otherwise raises error.
+def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
+    """In case of error, raise it.
 
     If the response error contains `RemoteErrorDetail`, it tries to re-raise
     the same exception that was raised remotely and falls back to
@@ -334,17 +334,11 @@ def handle_response(response: httpx.Response, remote_name: str) -> Any:
             ) from e
         _handle_response_error(response_json=response_json, remote_name=remote_name)
 
-    return response.json()
 
-
-async def handle_async_response(
+async def async_response_raise_errors(
     response: aiohttp.ClientResponse, remote_name: str
-) -> Any:
-    """For successful requests returns JSON, otherwise raises error.
-
-    See `handle_response` for more details on the specifics of the error-handling
-    here.
-    """
+) -> None:
+    """Async version of `async_response_raise_errors`."""
     if response.status >= 400:
         try:
             response_json = await response.json()
@@ -353,10 +347,10 @@ async def handle_async_response(
                 "Could not get JSON from error response. Status: "
                 f"`{response.status}`."
             ) from e
-
         _handle_response_error(response_json=response_json, remote_name=remote_name)
 
-    return await response.json()
+
+########################################################################################
 
 
 class InjectedError(Exception):
@@ -417,7 +411,21 @@ def issubclass_safe(x: Any, cls: type) -> bool:
 
 
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
-    """Like `BaseModel.model_dump(exclude_unset=True), but only top-level."""
+    """Like `BaseModel.model_dump(exclude_unset=True), but only top-level.
+
+    This is used to get kwargs for invoking a function, while dropping fields for which
+    there is no value explicitly set in the pydantic model. A field is considered unset
+    if the key was not present in the incoming JSON request (from which the model was
+    parsed/initialized) and the pydantic model has a default value, such as `None`.
+
+    By dropping these unset fields, the default values from the function definition
+    will be used instead. This behavior ensures correct handling of arguments where
+    the function has a default, such as in the case of `run_remote`. If the model has
+    an optional field defaulting to `None`, this approach differentiates between
+    the user explicitly passing a value of `None` and the field being unset in the
+    request.
+
+    """
     return {name: getattr(obj, name) for name in obj.__fields_set__}
 
 
