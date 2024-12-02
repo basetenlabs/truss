@@ -245,6 +245,7 @@ def test_requirements_file_truss(test_data_path):
         truss_dir = test_data_path / "test_requirements_file_truss"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        time.sleep(3)
 
         # The prediction imports torch which is specified in a requirements.txt and returns if GPU is available.
         response = requests.post(PREDICT_URL, json={})
