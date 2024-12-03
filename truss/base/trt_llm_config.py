@@ -1,3 +1,4 @@
+import json
 import warnings
 from enum import Enum
 from typing import Optional
@@ -146,8 +147,8 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
-    def to_dict(self, verbose=True):
-        return self.dict(exclude_unset=not verbose)
+    def to_json_dict(self, verbose=True):
+        return json.loads(self.json(exclude_unset=not verbose))
 
 
 class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
@@ -184,5 +185,5 @@ class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
                 "Speculative decoding requires the same tensor parallelism for target and draft models."
             )
 
-    def to_dict(self, verbose=True):
-        return self.dict(exclude_unset=not verbose)
+    def to_json_dict(self, verbose=True):
+        return json.loads(self.json(exclude_unset=not verbose))
