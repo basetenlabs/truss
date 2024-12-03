@@ -1,4 +1,3 @@
-import json
 import warnings
 from enum import Enum
 from typing import Optional
@@ -94,11 +93,14 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
     enable_chunked_context: bool = False
-    num_draft_tokens: Optional[int] = None
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
     request_default_max_tokens: Optional[int] = None
+    # Speculative Decoding runtime configuration, ignored for non spec dec configurations
+    num_draft_tokens: Optional[int] = (
+        None  # number of draft tokens to be sampled from draft model in speculative decoding scheme
+    )
 
 
 class TRTLLMConfiguration(BaseModel):
@@ -144,8 +146,8 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
-    def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
+    def to_dict(self, verbose=True):
+        return self.dict(exclude_unset=not verbose)
 
 
 class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
@@ -182,5 +184,5 @@ class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
                 "Speculative decoding requires the same tensor parallelism for target and draft models."
             )
 
-    def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
+    def to_dict(self, verbose=True):
+        return self.dict(exclude_unset=not verbose)

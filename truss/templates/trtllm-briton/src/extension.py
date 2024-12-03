@@ -1,5 +1,10 @@
 from briton.spec_dec_truss_model import Model as SpecDecModel
+from briton.trtllm_config import (
+    TRTLLMConfiguration,
+    TRTLLMSpeculativeDecodingConfiguration,
+)
 from briton.truss_model import Model
+from pydantic import ValidationError
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 
@@ -37,10 +42,13 @@ class Extension:
 
     def __init__(self, *args, **kwargs):
         self._config = kwargs["config"]
-        if TRTLLM_SPEC_DEC_TARGET_MODEL_NAME in self._config.get("trt_llm"):
-            self._model = SpecDecModel(*args, **kwargs)
-        else:
+        trt_llm_config = self._config.get("trt_llm")
+        try:
+            TRTLLMConfiguration(**trt_llm_config)
             self._model = Model(*args, **kwargs)
+        except ValidationError as _:
+            TRTLLMSpeculativeDecodingConfiguration(**trt_llm_config)
+            self._model = SpecDecModel(*args, **kwargs)
 
     def model_override(self):
         """Return a model object.
