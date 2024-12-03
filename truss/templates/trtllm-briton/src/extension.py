@@ -6,8 +6,6 @@ from briton.trtllm_config import (
 from briton.truss_model import Model
 from pydantic import ValidationError
 
-TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
-
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in
 # a new, smaller truss sub-library, perhaps called `truss-runtime`` for inclusion
 # in Truss runtime. Once we have that sub-library, we should define the Extension
