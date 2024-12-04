@@ -1137,7 +1137,7 @@ def push(
     # Log a warning if using --trusted.
     if trusted:
         trusted_deprecation_notice = (
-            "[DEPRECATED] `--trusted` optionsis deprecated and no longer needed"
+            "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
         )
         console.print(trusted_deprecation_notice, style="yellow")
 
