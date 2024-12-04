@@ -59,8 +59,8 @@ def _handle_exception(exception: Exception, chainlet_name: str) -> NoReturn:
     # Exclude the error handling functions from the stack trace.
     exclude_frames = {
         exception_to_http_error.__name__,
-        response_raise_errors.__name__,
-        async_response_raise_errors.__name__,
+        _response_raise_errors.__name__,
+        _async_response_raise_errors.__name__,
     }
     final_tb = [frame for frame in error_stack if frame.name not in exclude_frames]
     stack = list(
@@ -143,7 +143,7 @@ def _handle_response_error(response_json: dict, remote_name: str):
     raise exception_cls(msg)
 
 
-def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
+def _response_raise_errors(response: httpx.Response, remote_name: str) -> None:
     """In case of error, raise it.
 
     If the response error contains `RemoteErrorDetail`, it tries to re-raise
@@ -199,7 +199,7 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
         _handle_response_error(response_json=response_json, remote_name=remote_name)
 
 
-async def async_response_raise_errors(
+async def _async_response_raise_errors(
     response: aiohttp.ClientResponse, remote_name: str
 ) -> None:
     """Async version of `async_response_raise_errors`."""
@@ -306,9 +306,7 @@ class BasetenSession:
         )
 
     def _log_retry(self, retry_state: tenacity.RetryCallState) -> None:
-        attempt_number = retry_state.attempt_number
-        if attempt_number > 1:
-            logging.info(f"Retrying `{self.name}`, attempt {attempt_number}")
+        logging.info(f"Retrying `{self.name}`, attempt {retry_state.attempt_number}")
 
     def _make_retry_policy(self, retrying: Type[_RetryPolicyT]) -> _RetryPolicyT:
         return retrying(
@@ -501,7 +499,7 @@ class StubBase(BasetenSession, abc.ABC):
             client: httpx.Client
             with self._client_sync() as client:
                 response = client.post(self._service_descriptor.predict_url, **params)
-            response_raise_errors(response, self.name)
+            _response_raise_errors(response, self.name)
             return response.content
 
         response_bytes = retry(_rpc)
@@ -531,7 +529,7 @@ class StubBase(BasetenSession, abc.ABC):
                 async with client.post(
                     self._service_descriptor.predict_url, **params
                 ) as response:
-                    await async_response_raise_errors(response, self.name)
+                    await _async_response_raise_errors(response, self.name)
                     return await response.read()
 
         response_bytes: bytes = await retry(_rpc)
@@ -549,7 +547,7 @@ class StubBase(BasetenSession, abc.ABC):
                 response = await client.post(
                     self._service_descriptor.predict_url, **params
                 )
-                await async_response_raise_errors(response, self.name)
+                await _async_response_raise_errors(response, self.name)
                 return response.content.iter_any()
 
         return await retry(_rpc)

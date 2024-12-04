@@ -10,7 +10,7 @@ class DataModel(pydantic.BaseModel):
     np_array: pydantic_numpy.NumpyArrayField
 
 
-class SynChainlet(chains.ChainletBase):
+class SyncChainlet(chains.ChainletBase):
     def run_remote(self, data: DataModel) -> DataModel:
         print(data)
         return data.model_copy(update={"msg": "From sync"})
@@ -39,7 +39,7 @@ class HostJSON(chains.ChainletBase):
 
     def __init__(
         self,
-        sync_chainlet=chains.depends(SynChainlet, use_binary=False),
+        sync_chainlet=chains.depends(SyncChainlet, use_binary=False),
         async_chainlet=chains.depends(AsyncChainlet, use_binary=False),
         async_chainlet_no_output=chains.depends(
             AsyncChainletNoOutput, use_binary=False
@@ -69,7 +69,7 @@ class HostBinary(chains.ChainletBase):
 
     def __init__(
         self,
-        sync_chainlet=chains.depends(SynChainlet, use_binary=True),
+        sync_chainlet=chains.depends(SyncChainlet, use_binary=True),
         async_chainlet=chains.depends(AsyncChainlet, use_binary=True),
         async_chainlet_no_output=chains.depends(AsyncChainletNoOutput, use_binary=True),
         async_chainlet_no_input=chains.depends(AsyncChainletNoInput, use_binary=True),
