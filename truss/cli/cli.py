@@ -1134,9 +1134,7 @@ def push(
         tr.spec.config.model_name = model_name
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
-    # Log a warning if using secrets without --trusted.
-    # TODO(helen): this could be moved to a separate function that includes more
-    #  config checks.
+    # Log a warning if using --trusted.
     if trusted:
         trusted_deprecation_notice = (
             "[DEPRECATED] `--trusted` optionsis deprecated and no longer needed"

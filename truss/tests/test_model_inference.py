@@ -397,8 +397,7 @@ secrets:
 
     config_with_no_secret = "model_name: secrets-truss"
     missing_secret_error_message = """Secret 'secret' not found. Please ensure that:
-  * Secret 'secret' is defined in the 'secrets' section of the Truss config file
-  * The model was pushed with the --trusted flag"""
+  * Secret 'secret' is defined in the 'secrets' section of the Truss config file"""
 
     with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.set_secret("secret", "secret_value")
