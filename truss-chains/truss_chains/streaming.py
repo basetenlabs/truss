@@ -4,14 +4,12 @@ import enum
 import struct
 import sys
 from collections.abc import AsyncIterator
-from typing import Generic, Optional, Protocol, Type, TypeVar, Union, overload
+from typing import Generic, Optional, Protocol, Type, TypeVar, overload
 
 import pydantic
 
 _TAG_SIZE = 5  # uint8 + uint32.
-_JSONType = Union[
-    str, int, float, bool, None, list["_JSONType"], dict[str, "_JSONType"]
-]
+
 _T = TypeVar("_T")
 
 if sys.version_info < (3, 10):

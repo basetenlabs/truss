@@ -36,7 +36,6 @@ from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
 from opentelemetry import trace
-from pydantic import BaseModel
 from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
@@ -64,6 +63,7 @@ OutputType = Union[
     Generator[bytes, None, None],
     AsyncGenerator[bytes, None],
     "starlette.responses.Response",
+    pydantic.BaseModel,
 ]
 
 
@@ -735,15 +735,7 @@ class ModelWrapper:
                 span_post, "postprocess"
             ), tracing.detach_context():
                 postprocess_result = await self.postprocess(predict_result, request)
-
-            final_result: OutputType
-            if isinstance(postprocess_result, BaseModel):
-                # If we return a pydantic object, convert it back to a dict
-                with tracing.section_as_event(span_post, "dump-pydantic"):
-                    final_result = postprocess_result.dict()
-            else:
-                final_result = postprocess_result
-            return final_result
+            return postprocess_result
 
 
 async def _gather_generator(

@@ -16,10 +16,11 @@ from common.schema import TrussSchema
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import InputType, ModelWrapper
+from model_wrapper import InputType, ModelWrapper, OutputType
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
+from pydantic import BaseModel
 from shared import serialization
 from shared.logging import setup_logging
 from shared.secrets_resolver import SecretsResolver
@@ -30,6 +31,8 @@ if sys.version_info >= (3, 9):
     from typing import AsyncGenerator, Generator
 else:
     from typing_extensions import AsyncGenerator, Generator
+
+PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
 TIMEOUT_GRACEFUL_SHUTDOWN = 120
@@ -118,14 +121,13 @@ class BasetenEndpoints:
                     ) from e
         else:
             if truss_schema:
-                if truss_schema:
-                    try:
-                        with tracing.section_as_event(span, "parse-pydantic"):
-                            inputs = truss_schema.input_type.parse_raw(body_raw)
-                    except pydantic.ValidationError as e:
-                        raise errors.InputParsingError(
-                            errors.format_pydantic_validation_error(e)
-                        ) from e
+                try:
+                    with tracing.section_as_event(span, "parse-pydantic"):
+                        inputs = truss_schema.input_type.parse_raw(body_raw)
+                except pydantic.ValidationError as e:
+                    raise errors.InputParsingError(
+                        errors.format_pydantic_validation_error(e)
+                    ) from e
             else:
                 try:
                     with tracing.section_as_event(span, "json-deserialize"):
@@ -166,7 +168,7 @@ class BasetenEndpoints:
                 )
             # Calls ModelWrapper which runs: preprocess, predict, postprocess.
             with tracing.section_as_event(span, "model-call"):
-                result: Union[Dict, Generator] = await model(inputs, request)
+                result: OutputType = await model(inputs, request)
 
             # In the case that the model returns a Generator object, return a
             # StreamingResponse instead.
@@ -177,22 +179,42 @@ class BasetenEndpoints:
                 if result.status_code >= HTTPStatus.MULTIPLE_CHOICES.value:
                     errors.add_error_headers_to_user_response(result)
                 return result
+            return self._serialize_result(result, self.is_binary(request), span)
 
-            response_headers = {}
-            if self.is_binary(request):
+    def _serialize_result(
+        self, result: OutputType, is_binary: bool, span: trace.Span
+    ) -> Response:
+        response_headers = {}
+        if is_binary:
+            if isinstance(result, BaseModel):
+                with tracing.section_as_event(span, "binary-dump"):
+                    if PYDANTIC_MAJOR_VERSION > 1:
+                        result = result.model_dump(mode="python")
+                    else:
+                        result = result.dict()
+            # If the result is not already serialize and not a pydantic model, it must
+            # be something that can be serialized with `truss_msgpack_serialize` (some
+            # dict / nested structure).
+            if not isinstance(result, bytes):
                 with tracing.section_as_event(span, "binary-serialize"):
-                    response_headers["Content-Type"] = "application/octet-stream"
-                    return Response(
-                        content=serialization.truss_msgpack_serialize(result),
-                        headers=response_headers,
-                    )
-            else:
-                with tracing.section_as_event(span, "json-serialize"):
-                    response_headers["Content-Type"] = "application/json"
-                    return Response(
-                        content=json.dumps(result, cls=serialization.DeepNumpyEncoder),
-                        headers=response_headers,
-                    )
+                    result = serialization.truss_msgpack_serialize(result)
+
+            response_headers["Content-Type"] = "application/octet-stream"
+            return Response(content=result, headers=response_headers)
+        else:
+            with tracing.section_as_event(span, "json-serialize"):
+                if isinstance(result, BaseModel):
+                    # Note: chains has a pydantic integration for numpy arrays
+                    # `NumpyArrayField`. `result.dict()`, passes through the array
+                    # object which cannot be JSON serialized.
+                    # In pydantic v2 `result.model_dump(mode="json")` could be used.
+                    # For backwards compatibility we dump directly the JSON string.
+                    content = result.json()
+                else:
+                    content = json.dumps(result, cls=serialization.DeepNumpyEncoder)
+
+                response_headers["Content-Type"] = "application/json"
+                return Response(content=content, headers=response_headers)
 
     async def schema(self, model_name: str) -> Dict:
         model: ModelWrapper = self._safe_lookup_model(model_name)
