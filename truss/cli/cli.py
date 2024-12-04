@@ -1054,7 +1054,7 @@ def run_python(script, target_directory):
     is_flag=True,
     required=False,
     default=False,
-    help="Trust truss with hosted secrets.",
+    help="[DEPRECATED]Trust truss with hosted secrets.",
 )
 @click.option(
     "--disable-truss-download",
@@ -1137,12 +1137,11 @@ def push(
     # Log a warning if using secrets without --trusted.
     # TODO(helen): this could be moved to a separate function that includes more
     #  config checks.
-    if tr.spec.config.secrets and not trusted:
-        not_trusted_text = (
-            "Warning: your Truss has secrets but was not pushed with --trusted. "
-            "Please push with --trusted to grant access to secrets."
+    if trusted:
+        trusted_deprecation_notice = (
+            "[DEPRECATED] `--trusted` optionsis deprecated and no longer needed"
         )
-        console.print(not_trusted_text, style="red")
+        console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
@@ -1182,7 +1181,7 @@ def push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=trusted,
+        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
