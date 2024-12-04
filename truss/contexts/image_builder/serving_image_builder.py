@@ -41,7 +41,7 @@ from truss.base.constants import (
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
-from truss.base.trt_llm_config import TrussTRTLLMModel
+from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
 from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
@@ -353,6 +353,59 @@ class ServingImageBuilder(ImageBuilder):
     def default_tag(self):
         return f"{self._spec.model_framework_name}-model:latest"
 
+    def _copy_into_build_dir(
+        self, from_path: Path, build_dir: Path, path_in_build_dir: str
+    ):
+        copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+
+    def prepare_trtllm_build_dir(self, build_dir: Path):
+        config = self._spec.config
+        trt_llm_config = config.trt_llm
+        if not trt_llm_config:
+            return
+        is_audio_model = (
+            trt_llm_config.build.base_model == TrussTRTLLMModel.WHISPER
+            if isinstance(trt_llm_config, TRTLLMConfiguration)
+            and trt_llm_config.build is not None
+            else False
+        )
+
+        if is_audio_model:
+            copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+        else:
+            # trt_llm is treated as an extension at model run time.
+            self._copy_into_build_dir(
+                TRTLLM_TRUSS_DIR / "src",
+                build_dir,
+                f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
+            )
+            # TODO(pankaj) Do this differently. This is not ideal, user
+            # supplied code in bundled packages can conflict with those from
+            # the trtllm extension. We don't want to put this in the build
+            # directory directly either because of chances of conflict there
+            # as well and the noise it can create there. We need to find a
+            # new place that's made available in model's pythonpath. This is
+            # a bigger lift and feels overkill right now. Worth revisiting
+            # if we come across cases of actual conflicts.
+            self._copy_into_build_dir(
+                TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
+                build_dir,
+                DEFAULT_BUNDLED_PACKAGES_DIR,
+            )
+
+        config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
+
+        if not is_audio_model:
+            config.base_image = BaseImage(
+                image=TRTLLM_BASE_IMAGE,
+                python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
+            )
+            config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
+        else:
+            config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
+            config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
+            config.python_version = "py310"
+
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
     ):
@@ -367,8 +420,7 @@ class ServingImageBuilder(ImageBuilder):
             # TODO(pankaj) We probably don't need model framework specific directory.
             build_dir = build_truss_target_directory(model_framework_name)
 
-        def copy_into_build_dir(from_path: Path, path_in_build_dir: str):
-            copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
+        data_dir = build_dir / config.data_dir  # type: ignore[operator]
 
         truss_ignore_patterns = []
         if (truss_dir / USER_TRUSS_IGNORE_FILE).exists():
@@ -380,8 +432,9 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         if config.docker_server is not None:
-            copy_into_build_dir(
+            self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
+                build_dir,
                 "docker_server_requirements.txt",
             )
 
@@ -389,52 +442,7 @@ class ServingImageBuilder(ImageBuilder):
 
             generate_docker_server_supervisord_config(build_dir, config)
 
-        # Copy over template truss for TRT-LLM (we overwrite the model and packages dir)
-        # Most of the code is pulled from upstream triton-inference-server tensorrtllm_backend
-        # https://github.com/triton-inference-server/tensorrtllm_backend/tree/v0.9.0/all_models/inflight_batcher_llm
-        if config.trt_llm is not None:
-            is_audio_model = (
-                config.trt_llm.build.base_model == TrussTRTLLMModel.WHISPER
-                if config.trt_llm.build is not None
-                else False
-            )
-
-            if is_audio_model:
-                copy_tree_path(
-                    AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[]
-                )
-            else:
-                # trt_llm is treated as an extension at model run time.
-                copy_into_build_dir(
-                    TRTLLM_TRUSS_DIR / "src",
-                    f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
-                )
-                # TODO(pankaj) Do this differently. This is not ideal, user
-                # supplied code in bundled packages can conflict with those from
-                # the trtllm extension. We don't want to put this in the build
-                # directory directly either because of chances of conflict there
-                # as well and the noise it can create there. We need to find a
-                # new place that's made available in model's pythonpath. This is
-                # a bigger lift and feels overkill right now. Worth revisiting
-                # if we come across cases of actual conflicts.
-                copy_into_build_dir(
-                    TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
-                    DEFAULT_BUNDLED_PACKAGES_DIR,
-                )
-
-            config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
-
-            if not is_audio_model:
-                config.base_image = BaseImage(
-                    image=TRTLLM_BASE_IMAGE,
-                    python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
-                )
-
-                config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-            else:
-                config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
-                config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
-                config.python_version = "py310"
+        self.prepare_trtllm_build_dir(build_dir=build_dir)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
@@ -457,30 +465,36 @@ class ServingImageBuilder(ImageBuilder):
         )
 
         # Copy inference server code
-        copy_into_build_dir(SERVER_CODE_DIR, BUILD_SERVER_DIR_NAME)
-        copy_into_build_dir(
+        self._copy_into_build_dir(SERVER_CODE_DIR, build_dir, BUILD_SERVER_DIR_NAME)
+        self._copy_into_build_dir(
             SHARED_SERVING_AND_TRAINING_CODE_DIR,
+            build_dir,
             BUILD_SERVER_DIR_NAME + "/" + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
         )
 
         # Copy control server code
         if config.live_reload:
-            copy_into_build_dir(CONTROL_SERVER_CODE_DIR, BUILD_CONTROL_SERVER_DIR_NAME)
-            copy_into_build_dir(
+            self._copy_into_build_dir(
+                CONTROL_SERVER_CODE_DIR, build_dir, BUILD_CONTROL_SERVER_DIR_NAME
+            )
+            self._copy_into_build_dir(
                 SHARED_SERVING_AND_TRAINING_CODE_DIR,
+                build_dir,
                 BUILD_CONTROL_SERVER_DIR_NAME
                 + "/control/"
                 + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
             )
 
         if config.use_local_chains_src:
-            copy_into_build_dir(CHAINS_CODE_DIR, BUILD_CHAINS_DIR_NAME)
+            self._copy_into_build_dir(CHAINS_CODE_DIR, build_dir, BUILD_CHAINS_DIR_NAME)
 
         # Copy base TrussServer requirements if supplied custom base image
         base_truss_server_reqs_filepath = SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
         if config.base_image:
-            copy_into_build_dir(
-                base_truss_server_reqs_filepath, BASE_SERVER_REQUIREMENTS_TXT_FILENAME
+            self._copy_into_build_dir(
+                base_truss_server_reqs_filepath,
+                build_dir,
+                BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
             )
 
         # Copy model framework specific requirements file
@@ -489,7 +503,9 @@ class ServingImageBuilder(ImageBuilder):
         )
         should_install_server_requirements = file_is_not_empty(server_reqs_filepath)
         if should_install_server_requirements:
-            copy_into_build_dir(server_reqs_filepath, SERVER_REQUIREMENTS_TXT_FILENAME)
+            self._copy_into_build_dir(
+                server_reqs_filepath, build_dir, SERVER_REQUIREMENTS_TXT_FILENAME
+            )
 
         with open(base_truss_server_reqs_filepath, "r") as f:
             base_server_requirements = f.read()
@@ -513,8 +529,9 @@ class ServingImageBuilder(ImageBuilder):
                 else base_server_requirements
             )
         if spec.requirements_file is not None:
-            copy_into_build_dir(
+            self._copy_into_build_dir(
                 truss_dir / spec.requirements_file,
+                build_dir,
                 USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
             )
         (build_dir / REQUIREMENTS_TXT_FILENAME).write_text(

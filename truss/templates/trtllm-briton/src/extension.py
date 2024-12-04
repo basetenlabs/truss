@@ -1,4 +1,10 @@
+from briton.spec_dec_truss_model import Model as SpecDecModel
+from briton.trtllm_config import (
+    TRTLLMConfiguration,
+    TRTLLMSpeculativeDecodingConfiguration,
+)
 from briton.truss_model import Model
+from pydantic import ValidationError
 
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in
 # a new, smaller truss sub-library, perhaps called `truss-runtime`` for inclusion
@@ -33,7 +39,14 @@ class Extension:
     """
 
     def __init__(self, *args, **kwargs):
-        self._model = Model(*args, **kwargs)
+        self._config = kwargs["config"]
+        trt_llm_config = self._config.get("trt_llm")
+        try:
+            TRTLLMConfiguration(**trt_llm_config)
+            self._model = Model(*args, **kwargs)
+        except ValidationError as _:
+            TRTLLMSpeculativeDecodingConfiguration(**trt_llm_config)
+            self._model = SpecDecModel(*args, **kwargs)
 
     def model_override(self):
         """Return a model object.

@@ -55,6 +55,10 @@ class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
     GUARANTEED_NO_EVICT = "guaranteed_no_evict"
 
 
+class TrussSpecDecMode(str, Enum):
+    DRAFT_EXTERNAL: str = "DRAFT_TOKENS_EXTERNAL"
+
+
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel
     max_seq_len: int
@@ -73,13 +77,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
         TrussTRTLLMPluginConfiguration()
     )
-    kv_cache_free_gpu_mem_fraction: float = 0.9
     num_builder_gpus: Optional[int] = None
-    enable_chunked_context: bool = False
-    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
-        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
-    )
-    default_max_tokens: Optional[int] = None
+    speculative_decoding_mode: Optional[TrussSpecDecMode] = None
+    max_draft_len: Optional[int] = None
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
@@ -91,39 +91,28 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         return v
 
 
-class TrussTRTLLMServingConfiguration(BaseModel):
-    engine_repository: str
-    tokenizer_repository: str
-    tensor_parallel_count: int = 1
-    pipeline_parallel_count: int = 1
+class TrussTRTLLMRuntimeConfiguration(BaseModel):
+    kv_cache_free_gpu_mem_fraction: float = 0.9
+    enable_chunked_context: bool = False
+    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
+        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
+    )
+    request_default_max_tokens: Optional[int] = None
+    # Speculative Decoding runtime configuration, ignored for non spec dec configurations
+    num_draft_tokens: Optional[int] = (
+        None  # number of draft tokens to be sampled from draft model in speculative decoding scheme
+    )
 
 
 class TRTLLMConfiguration(BaseModel):
-    serve: Optional[TrussTRTLLMServingConfiguration] = None
-    build: Optional[TrussTRTLLMBuildConfiguration] = None
+    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
+    build: TrussTRTLLMBuildConfiguration
 
     def __init__(self, **data):
         super().__init__(**data)
-        self._validate_minimum_required_configuration()
         self._validate_kv_cache_flags()
         if self.build.checkpoint_repository.source == CheckpointSource.HF:
             self._validate_hf_repo_id()
-
-    # In pydantic v2 this would be `@model_validator(mode="after")` and
-    # the __init__ override can be removed.
-    def _validate_minimum_required_configuration(self):
-        if not self.serve and not self.build:
-            raise ValueError("Either serve or build configurations must be provided")
-        if self.serve and self.build:
-            raise ValueError("Both serve and build configurations cannot be provided")
-        if self.serve is not None:
-            if (self.serve.engine_repository is None) ^ (
-                self.serve.tokenizer_repository is None
-            ):
-                raise ValueError(
-                    "Both engine_repository and tokenizer_repository must be provided"
-                )
-        return self
 
     def _validate_kv_cache_flags(self):
         if self.build is None:
@@ -158,5 +147,43 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
+    def to_json_dict(self, verbose=True):
+        return json.loads(self.json(exclude_unset=not verbose))
+
+
+class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
+    target: TRTLLMConfiguration
+    draft: TRTLLMConfiguration
+    total_token_limit: int = 500000
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._spec_dec_configs = [
+            self.target.build.speculative_decoding_mode,
+            self.target.build.max_draft_len,
+        ] + (
+            [self.draft.runtime.num_draft_tokens]
+            if self.draft.runtime and self.draft.runtime.num_draft_tokens
+            else [False]
+        )
+        self._validate_spec_dec()
+
+    def _validate_spec_dec(self):
+        if any(self._spec_dec_configs):
+            if not all(self._spec_dec_configs):
+                raise ValueError(
+                    "Speculative decoding requires all of `target.build.speculative_decoding_mode`, `target.build.max_draft_len`, and `draft.runtime.num_draft_tokens` to be configured."
+                )
+        for trt_llm_config in [self.target, self.draft]:
+            if trt_llm_config.build.base_model is TrussTRTLLMModel.WHISPER:
+                raise ValueError("Speculative decoding for Whisper is not supported.")
+        if (
+            self.target.build.tensor_parallel_count
+            != self.draft.build.tensor_parallel_count
+        ):
+            raise ValueError(
+                "Speculative decoding requires the same tensor parallelism for target and draft models."
+            )
+
     def to_json_dict(self, verbose=True):
         return json.loads(self.json(exclude_unset=not verbose))
