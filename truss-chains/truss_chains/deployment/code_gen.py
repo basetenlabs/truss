@@ -473,7 +473,9 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     )
     if chainlet_descriptor.endpoint.is_streaming:
         # Streaming returns raw iterator, no pydantic model.
-        parts.append(_indent("return result"))
+        # This needs to be nested inside the `trace_parent` context!
+        parts.append(_indent("async for chunk in result:", 2))
+        parts.append(_indent("yield chunk", 3))
     else:
         result_pydantic = f"{output_type_name}(result)"
         parts.append(_indent(f"return {result_pydantic}"))

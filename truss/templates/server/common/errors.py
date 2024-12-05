@@ -141,14 +141,19 @@ def filter_traceback(
     if tb is None:
         return exc_type, exc_value, tb  # type: ignore[return-value]
 
-    # Walk the traceback until we find the frame ending with 'model.py'
+    # Store the last occurrence of the traceback matching the condition
+    last_matching_tb: Optional[TracebackType] = None
     current_tb: Optional[TracebackType] = tb
+
     while current_tb is not None:
         filename = current_tb.tb_frame.f_code.co_filename
         if filename.endswith(model_file_name):
-            # Return exception info with traceback starting from current_tb
-            return exc_type, exc_value, current_tb  # type: ignore[return-value]
+            last_matching_tb = current_tb
         current_tb = current_tb.tb_next
+
+    # If a match was found, truncate the traceback at the last occurrence
+    if last_matching_tb is not None:
+        return exc_type, exc_value, last_matching_tb  # type: ignore[return-value]
 
     # If `model_file_name` not found, return the original exception info
     return exc_type, exc_value, tb  # type: ignore[return-value]
