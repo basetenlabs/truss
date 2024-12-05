@@ -312,6 +312,12 @@ def generate_docker_server_nginx_config(build_dir, config):
     assert (
         config.docker_server.server_port is not None
     ), "docker_server.server_port is required to use custom server"
+    assert (
+        config.docker_server.readiness_endpoint is not None
+    ), "docker_server.readiness_endpoint is required to use custom server"
+    assert (
+        config.docker_server.liveness_endpoint is not None
+    ), "docker_server.liveness_endpoint is required to use custom server"
 
     nginx_content = nginx_template.render(
         server_endpoint=config.docker_server.predict_endpoint,
