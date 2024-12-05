@@ -4,7 +4,7 @@ from typing import Optional
 from truss.templates.shared import secrets_resolver
 
 from truss_chains import definitions
-from truss_chains.utils import populate_chainlet_service_predict_urls
+from truss_chains.remote_chainlet import utils
 
 
 class TrussChainletModel:
@@ -27,7 +27,7 @@ class TrussChainletModel:
         deployment_environment: Optional[definitions.Environment] = (
             definitions.Environment.model_validate(environment) if environment else None
         )
-        chainlet_to_deployed_service = populate_chainlet_service_predict_urls(
+        chainlet_to_deployed_service = utils.populate_chainlet_service_predict_urls(
             truss_metadata.chainlet_to_service
         )
 
@@ -42,12 +42,16 @@ class TrussChainletModel:
 
     # def load(self) -> None:
     #     logging.info(f"Loading Chainlet `TextToNum`.")
-    #     self._chainlet = main.TextToNum(
-    #       mistral=stub.factory(MistralLLM, self._context))
+    #     self._chainlet = itest_chain.TextToNum(
+    #         replicator=stub.factory(TextReplicator, self._context),
+    #         side_effect=stub.factory(SideEffectOnlySubclass, self._context),
+    #     )
     #
-    # def predict(self, inputs: TextToNumInput) -> TextToNumOutput:
-    #     with utils.exception_to_http_error(
+    # def predict(
+    #     self, inputs: TextToNumInput, request: starlette.requests.Request
+    # ) -> TextToNumOutput:
+    #     with stub.trace_parent(request), utils.exception_to_http_error(
     #         include_stack=True, chainlet_name="TextToNum"
     #     ):
-    #         result = self._chainlet.run_remote(data=inputs.data)
-    #     return TextToNumOutput((result,))
+    #         result = self._chainlet.run_remote(**utils.pydantic_set_field_dict(inputs))
+    #     return TextToNumOutput(result)

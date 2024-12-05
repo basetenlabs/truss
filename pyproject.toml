@@ -98,6 +98,7 @@ requests = { version = ">=2.31", optional = false }
 rich = { version = "^13.4.2", optional = false }
 rich-click = { version = "^1.6.1", optional = false }
 ruff = { version = "^0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
+starlette = { version ="^0.41.3", optional = false }
 tenacity = { version = "^8.0.1", optional = false }
 watchfiles = { version = "^0.19.0", optional = false }
 
