@@ -2,11 +2,11 @@ import functools
 import pathlib
 from typing import TYPE_CHECKING, ContextManager, Mapping, Optional, Type, Union
 
+from truss_chains import definitions, framework
+from truss_chains.deployment import deployment_client
+
 if TYPE_CHECKING:
     from rich import progress
-
-from truss_chains import definitions, framework
-from truss_chains import remote as chains_remote
 
 
 def depends_context() -> definitions.DeploymentContext:
@@ -137,7 +137,7 @@ def push(
     remote: str = "baseten",
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
-) -> chains_remote.BasetenChainService:
+) -> deployment_client.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
 
@@ -168,8 +168,10 @@ def push(
         remote=remote,
         environment=environment,
     )
-    service = chains_remote.push(entrypoint, options, progress_bar=progress_bar)
-    assert isinstance(service, chains_remote.BasetenChainService)  # Per options above.
+    service = deployment_client.push(entrypoint, options, progress_bar=progress_bar)
+    assert isinstance(
+        service, deployment_client.BasetenChainService
+    )  # Per options above.
     return service
 
 

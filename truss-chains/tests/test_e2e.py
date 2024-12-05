@@ -5,7 +5,8 @@ import pytest
 import requests
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 
-from truss_chains import definitions, framework, public_api, remote, utils
+from truss_chains import definitions, framework, public_api, utils
+from truss_chains.deployment import deployment_client
 
 utils.setup_dev_logging(logging.DEBUG)
 
@@ -19,7 +20,7 @@ def test_chain():
             options = definitions.PushOptionsLocalDocker(
                 chain_name="integration-test", use_local_chains_src=True
             )
-            service = remote.push(entrypoint, options)
+            service = deployment_client.push(entrypoint, options)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
 
@@ -127,7 +128,7 @@ def test_streaming_chain():
         examples_root = Path(__file__).parent.parent.resolve() / "examples"
         chain_root = examples_root / "streaming" / "streaming_chain.py"
         with framework.import_target(chain_root, "Consumer") as entrypoint:
-            service = remote.push(
+            service = deployment_client.push(
                 entrypoint,
                 options=definitions.PushOptionsLocalDocker(
                     chain_name="integration-test-stream",
@@ -178,7 +179,7 @@ def test_numpy_chain(mode):
         examples_root = Path(__file__).parent.parent.resolve() / "examples"
         chain_root = examples_root / "numpy_and_binary" / "chain.py"
         with framework.import_target(chain_root, target) as entrypoint:
-            service = remote.push(
+            service = deployment_client.push(
                 entrypoint,
                 options=definitions.PushOptionsLocalDocker(
                     chain_name=f"integration-test-numpy-{mode}",

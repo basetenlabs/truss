@@ -1,24 +1,17 @@
-import asyncio
 import contextlib
 import enum
 import inspect
-import json
 import logging
 import os
 import random
 import socket
-import threading
 from typing import (
     Any,
-    Dict,
     Iterable,
     Iterator,
-    Mapping,
     TypeVar,
     Union,
 )
-
-from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
 
@@ -131,50 +124,6 @@ def get_free_port() -> int:
         return port
 
 
-def populate_chainlet_service_predict_urls(
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-) -> Mapping[str, definitions.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
-
-    dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
-    )
-
-    if not dynamic_chainlet_config_str:
-        raise definitions.MissingDependencyError(
-            f"No '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}' found. Cannot override Chainlet configs."
-        )
-
-    dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
-
-    for (
-        chainlet_name,
-        service_descriptor,
-    ) in chainlet_to_service.items():
-        display_name = service_descriptor.display_name
-
-        # NOTE: The Chainlet `display_name` in the Truss CLI
-        # corresponds to Chainlet `name` in the backend. As
-        # the dynamic Chainlet config is keyed on the backend
-        # Chainlet name, we have to look up config values by
-        # using the `display_name` in the service descriptor.
-        if display_name not in dynamic_chainlet_config:
-            raise definitions.MissingDependencyError(
-                f"Chainlet '{display_name}' not found in '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
-            )
-
-        chainlet_to_deployed_service[chainlet_name] = (
-            definitions.DeployedServiceDescriptor(
-                display_name=display_name,
-                name=service_descriptor.name,
-                options=service_descriptor.options,
-                predict_url=dynamic_chainlet_config[display_name]["predict_url"],
-            )
-        )
-
-    return chainlet_to_deployed_service
-
-
 ########################################################################################
 
 
@@ -233,47 +182,3 @@ class StrEnum(str, enum.Enum):
 def issubclass_safe(x: Any, cls: type) -> bool:
     """Like built-in `issubclass`, but works on non-type objects."""
     return isinstance(x, type) and issubclass(x, cls)
-
-
-class AsyncSafeCounter:
-    def __init__(self, initial: int = 0) -> None:
-        self._counter = initial
-        self._lock = asyncio.Lock()
-
-    async def increment(self) -> int:
-        async with self._lock:
-            self._counter += 1
-            return self._counter
-
-    async def decrement(self) -> int:
-        async with self._lock:
-            self._counter -= 1
-            return self._counter
-
-    async def __aenter__(self) -> int:
-        return await self.increment()
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.decrement()
-
-
-class ThreadSafeCounter:
-    def __init__(self, initial: int = 0) -> None:
-        self._counter = initial
-        self._lock = threading.Lock()
-
-    def increment(self) -> int:
-        with self._lock:
-            self._counter += 1
-            return self._counter
-
-    def decrement(self) -> int:
-        with self._lock:
-            self._counter -= 1
-            return self._counter
-
-    def __enter__(self) -> int:
-        return self.increment()
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.decrement()

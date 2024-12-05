@@ -40,7 +40,9 @@ from truss_chains.public_api import (
     push,
     run_local,
 )
-from truss_chains.stub import StubBase
+
+# TODO: make this optional (remove aiohttp, httpx and starlette deps).
+from truss_chains.remote_chainlet.stub import StubBase
 from truss_chains.utils import make_abs_path_here
 
 __all__ = [

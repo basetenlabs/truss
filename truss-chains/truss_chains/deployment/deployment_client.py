@@ -23,10 +23,6 @@ from typing import (
 
 import tenacity
 import watchfiles
-
-if TYPE_CHECKING:
-    from rich import console as rich_console
-    from rich import progress
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -37,7 +33,12 @@ from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
 
-from truss_chains import code_gen, definitions, framework, utils
+from truss_chains import definitions, framework, utils
+from truss_chains.deployment import code_gen
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
+    from rich import progress
 
 
 class DockerTrussService(b10_service.TrussService):
