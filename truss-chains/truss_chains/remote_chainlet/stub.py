@@ -75,9 +75,9 @@ class BasetenSession:
         api_key: str,
     ) -> None:
         logging.info(
-            f"Creating BasetenSession (HTTP) for `{service_descriptor.name}` "
-            f"({service_descriptor.options.retries} retries) with predict URL:\n"
-            f"    `{service_descriptor.predict_url}`"
+            f"Creating BasetenSession (HTTP) for `{service_descriptor.name}`.\n"
+            f"\tTarget: `{service_descriptor.predict_url}`\n"
+            f"\t`{service_descriptor.options}`."
         )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
