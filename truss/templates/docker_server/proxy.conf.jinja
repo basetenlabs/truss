@@ -3,7 +3,6 @@ server {
     listen 8080;
     client_max_body_size {{client_max_body_size}};
 
-{%- if liveness_endpoint %}
     # Liveness endpoint override
     location = / {
         proxy_redirect off;
@@ -13,8 +12,6 @@ server {
 
         proxy_pass http://127.0.0.1:{{server_port}};
     }
-{%- endif %}
-{%- if readiness_endpoint %}
     # Readiness endpoint override
     location ~ ^/v1/models/model$ {
         proxy_redirect off;
@@ -24,7 +21,6 @@ server {
 
         proxy_pass http://127.0.0.1:{{server_port}};
     }
-{%- endif %}
     # Predict
     location ~ ^/v1/models/model:predict$ {
         proxy_redirect off;

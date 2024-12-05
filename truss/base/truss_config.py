@@ -421,8 +421,8 @@ class DockerServer:
     start_command: str
     server_port: int
     predict_endpoint: str
-    readiness_endpoint: Optional[str] = None
-    liveness_endpoint: Optional[str] = None
+    readiness_endpoint: str
+    liveness_endpoint: str
 
     @staticmethod
     def from_dict(d) -> "DockerServer":
@@ -430,8 +430,8 @@ class DockerServer:
             start_command=d.get("start_command"),
             server_port=d.get("server_port"),
             predict_endpoint=d.get("predict_endpoint"),
-            readiness_endpoint=d.get("readiness_endpoint", None),
-            liveness_endpoint=d.get("liveness_endpoint", None),
+            readiness_endpoint=d.get("readiness_endpoint"),
+            liveness_endpoint=d.get("liveness_endpoint"),
         )
 
     def to_dict(self):

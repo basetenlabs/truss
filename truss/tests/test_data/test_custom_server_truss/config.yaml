@@ -4,6 +4,8 @@ docker_server:
   start_command: python main.py
   predict_endpoint: /predict
   server_port: 8000
+  readiness_endpoint: /
+  liveness_endpoint: /
 resources:
   accelerator: null
   cpu: '1'
