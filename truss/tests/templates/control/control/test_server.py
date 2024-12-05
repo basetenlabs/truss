@@ -4,8 +4,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List
 
+import httpx
 import pytest
-from httpx import AsyncClient
 from truss.truss_handle.patch.custom_types import PatchRequest
 
 # Needed to simulate the set up on the model docker container
@@ -73,7 +73,10 @@ def anyio_backend(request):
 
 @pytest.fixture()
 async def client(app):
-    async with AsyncClient(app=app, base_url="http://localhost:8080") as async_client:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://localhost:8080"
+    ) as async_client:
         yield async_client
 
 

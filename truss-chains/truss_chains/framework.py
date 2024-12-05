@@ -36,17 +36,20 @@ from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
 _SIMPLE_CONTAINERS = {list, dict}
+_STREAM_TYPES = {bytes, str}
 
 _DOCS_URL_CHAINING = (
     "https://docs.baseten.co/chains/concepts#depends-call-other-chainlets"
 )
 _DOCS_URL_LOCAL = "https://docs.baseten.co/chains/guide#local-development"
+_DOCS_URL_STREAMING = "https://docs.baseten.co/chains/guide#streaming"
 
 _ENTRYPOINT_ATTR_NAME = "_chains_entrypoint"
 
 ChainletT = TypeVar("ChainletT", bound=definitions.ABCChainlet)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+
 
 # Error Collector ######################################################################
 
@@ -296,6 +299,38 @@ def _validate_io_type(
     _collect_error(error_msg, _ErrorKind.IO_TYPE_ERROR, location)
 
 
+def _validate_streaming_output_type(
+    annotation: Any, location: _ErrorLocation
+) -> definitions.StreamingTypeDescriptor:
+    origin = get_origin(annotation)
+    assert origin in (collections.abc.AsyncIterator, collections.abc.Iterator)
+    args = get_args(annotation)
+    if len(args) < 1:
+        _collect_error(
+            f"Iterators must be annotated with type (one of {list(x.__name__ for x in _STREAM_TYPES)}).",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+        return definitions.StreamingTypeDescriptor(
+            raw=annotation, origin_type=origin, arg_type=bytes
+        )
+
+    assert len(args) == 1, "Iterator type annotations cannot have more than 1 arg."
+    arg = args[0]
+    if arg not in _STREAM_TYPES:
+        msg = (
+            "Streaming endpoints (containing `yield` statements) can only yield string "
+            "or byte items. For streaming structured pydantic data, use `stream_writer`"
+            "and `stream_reader` helpers.\n"
+            f"See streaming docs: {_DOCS_URL_STREAMING}"
+        )
+        _collect_error(msg, _ErrorKind.IO_TYPE_ERROR, location)
+
+    return definitions.StreamingTypeDescriptor(
+        raw=annotation, origin_type=origin, arg_type=arg
+    )
+
+
 def _validate_endpoint_params(
     params: list[inspect.Parameter], location: _ErrorLocation
 ) -> list[definitions.InputArg]:
@@ -336,8 +371,9 @@ def _validate_endpoint_params(
 
 
 def _validate_endpoint_output_types(
-    annotation: Any, signature, location: _ErrorLocation
+    annotation: Any, signature, location: _ErrorLocation, is_streaming: bool
 ) -> list[definitions.TypeDescriptor]:
+    has_streaming_type = False
     if annotation == inspect.Parameter.empty:
         _collect_error(
             "Return values of endpoints must be type annotated. Got:\n"
@@ -346,14 +382,36 @@ def _validate_endpoint_output_types(
             location,
         )
         return []
-    if get_origin(annotation) is tuple:
+    origin = get_origin(annotation)
+    if origin is tuple:
         output_types = []
         for i, arg in enumerate(get_args(annotation)):
             _validate_io_type(arg, f"return_type[{i}]", location)
             output_types.append(definitions.TypeDescriptor(raw=arg))
+
+    elif origin in (collections.abc.AsyncIterator, collections.abc.Iterator):
+        output_types = [_validate_streaming_output_type(annotation, location)]
+        has_streaming_type = True
+        if not is_streaming:
+            _collect_error(
+                "If the endpoint returns an iterator (streaming), it must have `yield` "
+                "statements.",
+                _ErrorKind.IO_TYPE_ERROR,
+                location,
+            )
     else:
         _validate_io_type(annotation, "return_type", location)
         output_types = [definitions.TypeDescriptor(raw=annotation)]
+
+    if is_streaming and not has_streaming_type:
+        _collect_error(
+            "If the endpoint is streaming (has `yield` statements), the return type "
+            "must be an iterator (e.g. `AsyncIterator[bytes]`). Got:\n"
+            f"\t{location.method_name}{signature} -> {annotation}",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
     return output_types
 
 
@@ -384,7 +442,7 @@ def _validate_and_describe_endpoint(
         # Return a "neutral dummy" if validation fails, this allows to safely
         # continue checking for more errors.
         return definitions.EndpointAPIDescriptor(
-            input_args=[], output_types=[], is_async=False, is_generator=False
+            input_args=[], output_types=[], is_async=False, is_streaming=False
         )
 
     # This is the unbound method.
@@ -402,26 +460,38 @@ def _validate_and_describe_endpoint(
         # Return a "neutral dummy" if validation fails, this allows to safely
         # continue checking for more errors.
         return definitions.EndpointAPIDescriptor(
-            input_args=[], output_types=[], is_async=False, is_generator=False
+            input_args=[], output_types=[], is_async=False, is_streaming=False
         )
     signature = inspect.signature(endpoint_method)
     input_args = _validate_endpoint_params(
         list(signature.parameters.values()), location
     )
 
-    output_types = _validate_endpoint_output_types(
-        signature.return_annotation, signature, location
-    )
-
     if inspect.isasyncgenfunction(endpoint_method):
         is_async = True
-        is_generator = True
+        is_streaming = True
     elif inspect.iscoroutinefunction(endpoint_method):
         is_async = True
-        is_generator = False
+        is_streaming = False
     else:
         is_async = False
-        is_generator = inspect.isgeneratorfunction(endpoint_method)
+        is_streaming = inspect.isgeneratorfunction(endpoint_method)
+
+    output_types = _validate_endpoint_output_types(
+        signature.return_annotation,
+        signature,
+        location,
+        is_streaming,
+    )
+
+    if is_streaming:
+        if not is_async:
+            _collect_error(
+                "`Streaming endpoints (containing `yield` statements) are only "
+                "supported for async endpoints.",
+                _ErrorKind.IO_TYPE_ERROR,
+                location,
+            )
 
     if not is_async:
         warnings.warn(
@@ -446,7 +516,7 @@ def _validate_and_describe_endpoint(
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
-        is_generator=is_generator,
+        is_streaming=is_streaming,
     )
 
 
@@ -995,7 +1065,7 @@ def _create_modified_init_for_local(
                 assert chainlet_cls._init_is_patched
                 # Dependency chainlets are instantiated here, using their __init__
                 # that is patched for local.
-                logging.warning(f"Making first {dep.name}.")
+                logging.info(f"Making first {dep.name}.")
                 instance = chainlet_cls()  # type: ignore  # Here init args are patched.
                 cls_to_instance[chainlet_cls] = instance
                 kwargs_mod[arg_name] = instance

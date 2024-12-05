@@ -2,22 +2,9 @@ import json
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    AsyncGenerator,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    Union,
-)
-
-import pydantic
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
-    import starlette.responses
     from numpy.typing import NDArray
 
 
@@ -37,14 +24,6 @@ MsgPackType = Union[
     "NDArray",
     List["MsgPackType"],
     Dict[str, "MsgPackType"],
-]
-InputType = Union[JSONType, MsgPackType, pydantic.BaseModel]
-OutputType = Union[
-    JSONType,
-    MsgPackType,
-    Generator[bytes, None, None],
-    AsyncGenerator[bytes, None],
-    "starlette.responses.Response",
 ]
 
 

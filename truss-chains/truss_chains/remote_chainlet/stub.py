@@ -2,21 +2,43 @@ import abc
 import asyncio
 import contextlib
 import contextvars
+import json
 import logging
-import ssl
 import threading
 import time
-from typing import Any, ClassVar, Iterator, Mapping, Optional, Type, TypeVar, final
+from typing import (
+    Any,
+    AsyncIterator,
+    ClassVar,
+    Dict,
+    Iterator,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    final,
+    overload,
+)
 
 import aiohttp
 import httpx
+import pydantic
 import starlette.requests
 import tenacity
+from truss.templates.shared import serialization
 
-from truss_chains import definitions, utils
+from truss_chains import definitions
+from truss_chains.remote_chainlet import utils
 
 DEFAULT_MAX_CONNECTIONS = 1000
 DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
+
+
+_RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
+_InputT = TypeVar("_InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
+_OutputT = TypeVar("_OutputT", bound=pydantic.BaseModel)
+
 
 _trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
     "trace_parent"
@@ -35,7 +57,7 @@ def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
 
 
 class BasetenSession:
-    """Helper to invoke predict method on Baseten deployments."""
+    """Provides configured HTTP clients, retries rate limit warning etc."""
 
     _client_cycle_time_sec: ClassVar[int] = 3600 * 1  # 1 hour.
     _client_limits: ClassVar[httpx.Limits] = httpx.Limits(
@@ -53,9 +75,9 @@ class BasetenSession:
         api_key: str,
     ) -> None:
         logging.info(
-            f"Creating BasetenSession (HTTP) for `{service_descriptor.name}` "
-            f"({service_descriptor.options.retries} retries) with predict URL:\n"
-            f"    `{service_descriptor.predict_url}`"
+            f"Creating BasetenSession (HTTP) for `{service_descriptor.name}`.\n"
+            f"\tTarget: `{service_descriptor.predict_url}`\n"
+            f"\t`{service_descriptor.options}`."
         )
         self._auth_header = {"Authorization": f"Api-Key {api_key}"}
         self._service_descriptor = service_descriptor
@@ -87,7 +109,19 @@ class BasetenSession:
             or (int(time.time()) - cached_client[1]) > self._client_cycle_time_sec
         )
 
-    def _client_sync(self) -> httpx.Client:
+    def _log_retry(self, retry_state: tenacity.RetryCallState) -> None:
+        logging.info(f"Retrying `{self.name}`, attempt {retry_state.attempt_number}")
+
+    def _make_retry_policy(self, retrying: Type[_RetryPolicyT]) -> _RetryPolicyT:
+        return retrying(
+            stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
+            retry=tenacity.retry_if_exception_type(Exception),
+            reraise=True,
+            before_sleep=self._log_retry,
+        )
+
+    @contextlib.contextmanager
+    def _client_sync(self) -> Iterator[httpx.Client]:
         # Check `_client_cycle_needed` before and after locking to avoid
         # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_sync_client):
@@ -102,9 +136,14 @@ class BasetenSession:
                         int(time.time()),
                     )
         assert self._cached_sync_client is not None
-        return self._cached_sync_client[0]
+        client = self._cached_sync_client[0]
 
-    async def _client_async(self) -> aiohttp.ClientSession:
+        with self._sync_num_requests as num_requests:
+            self._maybe_warn_for_overload(num_requests)
+            yield client
+
+    @contextlib.asynccontextmanager
+    async def _client_async(self) -> AsyncIterator[aiohttp.ClientSession]:
         # Check `_client_cycle_needed` before and after locking to avoid
         # needing a lock each time the client is accessed.
         if self._client_cycle_needed(self._cached_async_client):
@@ -124,66 +163,18 @@ class BasetenSession:
                         int(time.time()),
                     )
         assert self._cached_async_client is not None
-        return self._cached_async_client[0]
+        client = self._cached_async_client[0]
 
-    def predict_sync(self, json_payload):
-        retrying = tenacity.Retrying(
-            stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
-            retry=tenacity.retry_if_exception_type(Exception),
-            reraise=True,
-        )
-        for attempt in retrying:
-            with attempt:
-                if (num := attempt.retry_state.attempt_number) > 1:
-                    logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
-                try:
-                    with self._sync_num_requests as num_requests:
-                        self._maybe_warn_for_overload(num_requests)
-                        resp = self._client_sync().post(
-                            self._service_descriptor.predict_url,
-                            json=json_payload,
-                            headers={
-                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-                            },
-                        )
-                    return utils.handle_response(resp, self.name)
-                # As a special case we invalidate the client in case of certificate
-                # errors. This has happened in the past and is a defensive measure.
-                except ssl.SSLError:
-                    self._cached_sync_client = None
-                    raise
-
-    async def predict_async(self, json_payload):
-        retrying = tenacity.AsyncRetrying(
-            stop=tenacity.stop_after_attempt(self._service_descriptor.options.retries),
-            retry=tenacity.retry_if_exception_type(Exception),
-            reraise=True,
-        )
-        async for attempt in retrying:
-            with attempt:
-                if (num := attempt.retry_state.attempt_number) > 1:
-                    logging.info(f"Retrying `{self.name}`, " f"attempt {num}")
-                try:
-                    client = await self._client_async()
-                    async with self._async_num_requests as num_requests:
-                        self._maybe_warn_for_overload(num_requests)
-                        resp = await client.post(
-                            self._service_descriptor.predict_url,
-                            json=json_payload,
-                            headers={
-                                definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-                            },
-                        )
-                    return await utils.handle_async_response(resp, self.name)
-                # As a special case we invalidate the client in case of certificate
-                # errors. This has happened in the past and is a defensive measure.
-                except ssl.SSLError:
-                    self._cached_async_client = None
-                    raise
+        async with self._async_num_requests as num_requests:
+            self._maybe_warn_for_overload(num_requests)
+            yield client
 
 
-class StubBase(abc.ABC):
+class StubBase(BasetenSession, abc.ABC):
     """Base class for stubs that invoke remote chainlets.
+
+    Extends ``BasetenSession`` with methods for data serialization, de-serialization
+    and invoking other endpoints.
 
     It is used internally for RPCs to dependency chainlets, but it can also be used
     in user-code for wrapping a deployed truss model into the chains framework, e.g.
@@ -199,7 +190,7 @@ class StubBase(abc.ABC):
         class DeployedWhisper(chains.StubBase):
 
             async def run_remote(self, audio_b64: str) -> WhisperOutput:
-                resp = await self._remote.predict_async(
+                resp = await self.predict_async(
                     json_payload={"audio": audio_b64})
                 return WhisperOutput(text=resp["text"], language=resp["language"])
 
@@ -216,8 +207,6 @@ class StubBase(abc.ABC):
 
     """
 
-    _remote: BasetenSession
-
     @final
     def __init__(
         self,
@@ -229,7 +218,7 @@ class StubBase(abc.ABC):
             service_descriptor: Contains the URL and other configuration.
             api_key: A baseten API key to authorize requests.
         """
-        self._remote = BasetenSession(service_descriptor, api_key)
+        super().__init__(service_descriptor, api_key)
 
     @classmethod
     def from_url(
@@ -255,6 +244,117 @@ class StubBase(abc.ABC):
             ),
             api_key=context.get_baseten_api_key(),
         )
+
+    def _make_request_params(
+        self, inputs: _InputT, for_httpx: bool = False
+    ) -> Mapping[str, Any]:
+        kwargs: Dict[str, Any] = {}
+        headers = {
+            definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
+        }
+        if isinstance(inputs, pydantic.BaseModel):
+            if self._service_descriptor.options.use_binary:
+                data_dict = inputs.model_dump(mode="python")
+                kwargs["data"] = serialization.truss_msgpack_serialize(data_dict)
+                headers["Content-Type"] = "application/octet-stream"
+            else:
+                data_key = "content" if for_httpx else "data"
+                kwargs[data_key] = inputs.model_dump_json()
+                headers["Content-Type"] = "application/json"
+        else:  # inputs is JSON dict.
+            if self._service_descriptor.options.use_binary:
+                kwargs["data"] = serialization.truss_msgpack_serialize(inputs)
+                headers["Content-Type"] = "application/octet-stream"
+            else:
+                kwargs["json"] = inputs
+                headers["Content-Type"] = "application/json"
+
+        kwargs["headers"] = headers
+        return kwargs
+
+    def _response_to_pydantic(
+        self, response: bytes, output_model: Type[_OutputT]
+    ) -> _OutputT:
+        if self._service_descriptor.options.use_binary:
+            data_dict = serialization.truss_msgpack_deserialize(response)
+            return output_model.model_validate(data_dict)
+        return output_model.model_validate_json(response)
+
+    def _response_to_json(self, response: bytes) -> Any:
+        if self._service_descriptor.options.use_binary:
+            return serialization.truss_msgpack_deserialize(response)
+        return json.loads(response)
+
+    @overload
+    def predict_sync(
+        self, inputs: _InputT, output_model: Type[_OutputT]
+    ) -> _OutputT: ...
+
+    @overload  # Returns JSON
+    def predict_sync(self, inputs: _InputT, output_model: None = None) -> Any: ...
+
+    def predict_sync(
+        self, inputs: _InputT, output_model: Optional[Type[_OutputT]] = None
+    ) -> Union[_OutputT, Any]:
+        retry = self._make_retry_policy(tenacity.Retrying)
+        params = self._make_request_params(inputs, for_httpx=True)
+
+        def _rpc() -> bytes:
+            client: httpx.Client
+            with self._client_sync() as client:
+                response = client.post(self._service_descriptor.predict_url, **params)
+            utils.response_raise_errors(response, self.name)
+            return response.content
+
+        response_bytes = retry(_rpc)
+        if output_model:
+            return self._response_to_pydantic(response_bytes, output_model)
+        return self._response_to_json(response_bytes)
+
+    @overload
+    async def predict_async(
+        self, inputs: _InputT, output_model: Type[_OutputT]
+    ) -> _OutputT: ...
+
+    @overload  # Returns JSON.
+    async def predict_async(
+        self, inputs: _InputT, output_model: None = None
+    ) -> Any: ...
+
+    async def predict_async(
+        self, inputs: _InputT, output_model: Optional[Type[_OutputT]] = None
+    ) -> Union[_OutputT, Any]:
+        retry = self._make_retry_policy(tenacity.AsyncRetrying)
+        params = self._make_request_params(inputs)
+
+        async def _rpc() -> bytes:
+            client: aiohttp.ClientSession
+            async with self._client_async() as client:
+                async with client.post(
+                    self._service_descriptor.predict_url, **params
+                ) as response:
+                    await utils.async_response_raise_errors(response, self.name)
+                    return await response.read()
+
+        response_bytes: bytes = await retry(_rpc)
+        if output_model:
+            return self._response_to_pydantic(response_bytes, output_model)
+        return self._response_to_json(response_bytes)
+
+    async def predict_async_stream(self, inputs: _InputT) -> AsyncIterator[bytes]:
+        retry = self._make_retry_policy(tenacity.AsyncRetrying)
+        params = self._make_request_params(inputs)
+
+        async def _rpc() -> AsyncIterator[bytes]:
+            client: aiohttp.ClientSession
+            async with self._client_async() as client:
+                response = await client.post(
+                    self._service_descriptor.predict_url, **params
+                )
+                await utils.async_response_raise_errors(response, self.name)
+                return response.content.iter_any()
+
+        return await retry(_rpc)
 
 
 StubT = TypeVar("StubT", bound=StubBase)

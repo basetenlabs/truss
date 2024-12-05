@@ -2,11 +2,11 @@ import functools
 import pathlib
 from typing import TYPE_CHECKING, ContextManager, Mapping, Optional, Type, Union
 
+from truss_chains import definitions, framework
+from truss_chains.deployment import deployment_client
+
 if TYPE_CHECKING:
     from rich import progress
-
-from truss_chains import definitions, framework
-from truss_chains import remote as chains_remote
 
 
 def depends_context() -> definitions.DeploymentContext:
@@ -38,6 +38,7 @@ def depends(
     chainlet_cls: Type[framework.ChainletT],
     retries: int = 1,
     timeout_sec: int = definitions.DEFAULT_TIMEOUT_SEC,
+    use_binary: bool = False,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
     dependency of another chainlet. The return value of ``depends`` is intended to be
@@ -58,14 +59,22 @@ def depends(
     Args:
         chainlet_cls: The chainlet class of the dependency.
         retries: The number of times to retry the remote chainlet in case of failures
-          (e.g. due to transient network issues).
+          (e.g. due to transient network issues). For streaming, retries are only made
+          if the request fails before streaming any results back. Failures mid-stream
+          not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
+        use_binary: whether to send data data in binary format. This can give a parsing
+         speedup and message size reduction (~25%) for numpy arrays. Use
+         ``NumpyArrayField`` as a field type on pydantic models for integration and set
+         this option to ``True``. For simple text data, there is no significant benefit.
 
     Returns:
         A "symbolic marker" to be used as a default argument in a chainlet's
         initializer.
     """
-    options = definitions.RPCOptions(retries=retries, timeout_sec=timeout_sec)
+    options = definitions.RPCOptions(
+        retries=retries, timeout_sec=timeout_sec, use_binary=use_binary
+    )
     # The type error is silenced to because chains framework will at runtime inject
     # a corresponding instance. Nonetheless, we want to use a type annotation here,
     # to facilitate type inference, code-completion and type checking within the code
@@ -128,7 +137,7 @@ def push(
     remote: str = "baseten",
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
-) -> chains_remote.BasetenChainService:
+) -> deployment_client.BasetenChainService:
     """
     Deploys a chain remotely (with all dependent chainlets).
 
@@ -159,8 +168,10 @@ def push(
         remote=remote,
         environment=environment,
     )
-    service = chains_remote.push(entrypoint, options, progress_bar=progress_bar)
-    assert isinstance(service, chains_remote.BasetenChainService)  # Per options above.
+    service = deployment_client.push(entrypoint, options, progress_bar=progress_bar)
+    assert isinstance(
+        service, deployment_client.BasetenChainService
+    )  # Per options above.
     return service
 
 

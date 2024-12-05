@@ -8,26 +8,26 @@ from truss.base.trt_llm_config import CheckpointSource
 from truss.truss_handle.truss_handle import TrussHandle
 
 
-def check_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
-    if tr.spec.config.trt_llm and tr.spec.config.trt_llm.build:
-        source = tr.spec.config.trt_llm.build.checkpoint_repository.source
-        hf_model_id = tr.spec.config.trt_llm.build.checkpoint_repository.repo
+def is_missing_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
+    for trt_llm_config in tr.spec.config.parsed_trt_llm_configs:
+        source = trt_llm_config.build.checkpoint_repository.source
+        hf_model_id = trt_llm_config.build.checkpoint_repository.repo
         if (
             source == CheckpointSource.HF
             and HF_ACCESS_TOKEN_KEY not in tr.spec.secrets
             and not _is_model_public(hf_model_id)
         ):
-            return False
-    return True
+            return True
+    return False
 
 
-def check_and_update_memory_for_trt_llm_builder(tr: TrussHandle) -> bool:
+def memory_updated_for_trt_llm_builder(tr: TrussHandle) -> bool:
     if uses_trt_llm_builder(tr):
         if tr.spec.memory_in_bytes < TRTLLM_MIN_MEMORY_REQUEST_GI * 1024**3:
             tr.spec.config.resources.memory = f"{TRTLLM_MIN_MEMORY_REQUEST_GI}Gi"
             tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
-            return False
-    return True
+            return True
+    return False
 
 
 def _is_model_public(model_id: str) -> bool:
@@ -40,6 +40,4 @@ def _is_model_public(model_id: str) -> bool:
 
 
 def uses_trt_llm_builder(tr: TrussHandle) -> bool:
-    return (
-        tr.spec.config.trt_llm is not None and tr.spec.config.trt_llm.build is not None
-    )
+    return tr.spec.config.trt_llm is not None

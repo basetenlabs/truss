@@ -44,8 +44,8 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
-    check_and_update_memory_for_trt_llm_builder,
-    check_secrets_for_trt_llm_builder,
+    is_missing_secrets_for_trt_llm_builder,
+    memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
 )
 from truss.truss_handle.build import cleanup as _cleanup
@@ -587,7 +587,7 @@ def push_chain(
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import definitions as chains_def
     from truss_chains import framework
-    from truss_chains import remote as chains_remote
+    from truss_chains.deployment import deployment_client
 
     if watch:
         if publish or promote:
@@ -623,14 +623,14 @@ def push_chain(
             remote=remote,
             environment=environment,
         )
-        service = chains_remote.push(
+        service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
         )
 
     if dryrun:
         return
 
-    assert isinstance(service, chains_remote.BasetenChainService)
+    assert isinstance(service, deployment_client.BasetenChainService)
     curl_snippet = _make_chains_curl_snippet(
         service.run_remote_url, options.environment
     )
@@ -675,7 +675,7 @@ def push_chain(
             console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
-                chains_remote.watch(
+                deployment_client.watch(
                     source,
                     entrypoint,
                     name,
@@ -736,7 +736,7 @@ def watch_chains(
     if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import remote as chains_remote
+    from truss_chains.deployment import deployment_client
 
     if user_env:
         raise ValueError("`user_env` is deprecated, use `environment` instead.")
@@ -744,7 +744,7 @@ def watch_chains(
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
-    chains_remote.watch(
+    deployment_client.watch(
         source,
         entrypoint,
         name,
@@ -1054,7 +1054,7 @@ def run_python(script, target_directory):
     is_flag=True,
     required=False,
     default=False,
-    help="Trust truss with hosted secrets.",
+    help="[DEPRECATED]Trust truss with hosted secrets.",
 )
 @click.option(
     "--disable-truss-download",
@@ -1134,15 +1134,12 @@ def push(
         tr.spec.config.model_name = model_name
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
-    # Log a warning if using secrets without --trusted.
-    # TODO(helen): this could be moved to a separate function that includes more
-    #  config checks.
-    if tr.spec.config.secrets and not trusted:
-        not_trusted_text = (
-            "Warning: your Truss has secrets but was not pushed with --trusted. "
-            "Please push with --trusted to grant access to secrets."
+    # Log a warning if using --trusted.
+    if trusted:
+        trusted_deprecation_notice = (
+            "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
         )
-        console.print(not_trusted_text, style="red")
+        console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
@@ -1150,39 +1147,39 @@ def push(
             live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
-        if not check_secrets_for_trt_llm_builder(tr):
+        if is_missing_secrets_for_trt_llm_builder(tr):
             missing_token_text = (
                 "`hf_access_token` must be provided in secrets to build a gated model. "
                 "Please see https://docs.baseten.co/deploy/guides/private-model for configuration instructions."
             )
             console.print(missing_token_text, style="red")
             sys.exit(1)
-        if not check_and_update_memory_for_trt_llm_builder(tr):
+        if memory_updated_for_trt_llm_builder(tr):
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
-        config = tr.spec.config
-        if (
-            config.trt_llm.build.quantization_type
-            in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-            and not config.trt_llm.build.num_builder_gpus
-        ):
-            fp8_and_num_builder_gpus_text = (
-                "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
-                "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
-                "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
-            )
-            console.print(
-                fp8_and_num_builder_gpus_text,
-                style="yellow",
-            )
+        for trt_llm_config in tr.spec.config.parsed_trt_llm_configs:
+            if (
+                trt_llm_config.build.quantization_type
+                in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
+                and not trt_llm_config.build.num_builder_gpus
+            ):
+                fp8_and_num_builder_gpus_text = (
+                    "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "
+                    "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
+                    "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
+                )
+                console.print(
+                    fp8_and_num_builder_gpus_text,
+                    style="yellow",
+                )
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=trusted,
+        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,

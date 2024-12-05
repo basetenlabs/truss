@@ -3,7 +3,7 @@ import json
 import pytest
 
 from truss_chains import definitions
-from truss_chains.utils import populate_chainlet_service_predict_urls
+from truss_chains.remote_chainlet.utils import populate_chainlet_service_predict_urls
 
 DYNAMIC_CHAINLET_CONFIG_VALUE = {
     "Hello World!": {

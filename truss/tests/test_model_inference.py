@@ -245,6 +245,7 @@ def test_requirements_file_truss(test_data_path):
         truss_dir = test_data_path / "test_requirements_file_truss"
         tr = TrussHandle(truss_dir)
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        time.sleep(3)  # Sleeping to allow the load to finish
 
         # The prediction imports torch which is specified in a requirements.txt and returns if GPU is available.
         response = requests.post(PREDICT_URL, json={})
@@ -396,8 +397,7 @@ secrets:
 
     config_with_no_secret = "model_name: secrets-truss"
     missing_secret_error_message = """Secret 'secret' not found. Please ensure that:
-  * Secret 'secret' is defined in the 'secrets' section of the Truss config file
-  * The model was pushed with the --trusted flag"""
+  * Secret 'secret' is defined in the 'secrets' section of the Truss config file"""
 
     with ensure_kill_all(), _temp_truss(inspect.getsource(Model), config) as tr:
         LocalConfigHandler.set_secret("secret", "secret_value")

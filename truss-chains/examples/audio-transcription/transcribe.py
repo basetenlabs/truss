@@ -33,10 +33,7 @@ class DeployedWhisper(chains.StubBase):
     async def run_remote(
         self, whisper_input: data_types.WhisperInput
     ) -> data_types.WhisperResult:
-        resp = await self._remote.predict_async(
-            json_payload={"whisper_input": whisper_input.model_dump()},
-        )
-        return data_types.WhisperResult.parse_obj(resp)
+        return await self.predict_async(whisper_input, data_types.WhisperResult)
 
 
 class MacroChunkWorker(chains.ChainletBase):
@@ -93,7 +90,7 @@ class MacroChunkWorker(chains.ChainletBase):
         t1 = time.time()
         return data_types.SegmentList(
             segments=segments,
-            chunk_info=macro_chunk.copy(update={"processing_duration": t1 - t0}),
+            chunk_info=macro_chunk.model_copy(update={"processing_duration": t1 - t0}),
         )
 
 

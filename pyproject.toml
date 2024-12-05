@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.53"
+version = "0.9.55"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -84,6 +84,7 @@ aiohttp = { version = "^3.10.10", optional = false }
 blake3 = { version = "^0.3.3", optional = false }
 boto3 = { version = "^1.34.85", optional = false }
 click = { version = "^8.0.3", optional = false }
+fastapi = { version =">=0.109.1", optional = false }
 google-cloud-storage = { version = "2.10.0", optional = false }
 httpx = { version = ">=0.24.1", optional = false }
 inquirerpy = { version = "^0.3.4", optional = false }
