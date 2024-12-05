@@ -16,7 +16,6 @@ from typing import (
 import fastapi
 import pydantic
 import starlette.responses
-from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 # See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
@@ -163,7 +162,7 @@ def intercept_exceptions(
         yield
     # Note that logger.error logs the stacktrace, such that the user can
     # debug this error from the logs.
-    except HTTPException:
+    except fastapi.HTTPException:
         logger.error(
             "Model raised HTTPException", exc_info=filter_traceback(model_file_name)
         )

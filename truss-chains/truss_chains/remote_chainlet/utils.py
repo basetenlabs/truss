@@ -17,9 +17,9 @@ from typing import (
 )
 
 import aiohttp
+import fastapi
 import httpx
 import pydantic
-import starlette.exceptions
 from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
@@ -165,8 +165,8 @@ def _handle_exception(exception: Exception, chainlet_name: str) -> NoReturn:
         exception_message=str(exception),
         user_stack_trace=stack,
     )
-    raise starlette.exceptions.HTTPException(
-        status_code=500, detail=error.model_dump_json()
+    raise fastapi.HTTPException(
+        status_code=500, detail=error.model_dump()
     ) from exception
 
 
