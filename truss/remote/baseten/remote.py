@@ -519,22 +519,20 @@ class BasetenRemote(TrussRemote):
             return PatchResult(
                 PatchStatus.SKIPPED, "No changes observed, skipping patching."
             )
+
+        def do_patch():
+            if should_create_patch:
+                resp = self._api.patch_draft_truss_two_step(model_name, patch_request)
+            else:
+                resp = self._api.sync_draft_truss(model_name)
+            return resp
+
         try:
             if console:
                 with console.status("Applying patch..."):
-                    if should_create_patch:
-                        resp = self._api.patch_draft_truss_two_step(
-                            model_name, patch_request
-                        )
-                    else:
-                        resp = self._api.sync_draft_truss(model_name)
+                    resp = do_patch()
             else:
-                if should_create_patch:
-                    resp = self._api.patch_draft_truss_two_step(
-                        model_name, patch_request
-                    )
-                else:
-                    resp = self._api.sync_draft_truss(model_name)
+                resp = do_patch()
 
         except ReadTimeout:
             return PatchResult(
