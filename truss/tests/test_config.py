@@ -9,7 +9,6 @@ import yaml
 
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.trt_llm_config import (
-    TRTLLMSpeculativeDecodingConfiguration,
     TrussSpecDecMode,
     TrussTRTLLMQuantizationType,
 )
@@ -77,34 +76,57 @@ def trtllm_config(default_config) -> Dict[str, Any]:
 
 
 @pytest.fixture
+def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
+    spec_dec_config = copy.deepcopy(trtllm_config)
+    spec_dec_config["trt_llm"] = {
+        "build": {
+            "base_model": "llama",
+            "max_seq_len": 2048,
+            "max_batch_size": 512,
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "gather_all_token_logits": False,
+            "speculator": {
+                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
+                "num_draft_tokens": 4,
+                "build": {
+                    "base_model": "llama",
+                    "max_seq_len": 2048,
+                    "max_batch_size": 512,
+                    "checkpoint_repository": {
+                        "source": "HF",
+                        "repo": "meta/llama4-500B",
+                    },
+                },
+            },
+        },
+    }
+    return spec_dec_config
+
+
+@pytest.fixture
 def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
     spec_dec_config = copy.deepcopy(trtllm_config)
     spec_dec_config["trt_llm"] = {
-        "target": {
-            "build": {
-                "base_model": "llama",
-                "max_seq_len": 2048,
-                "max_batch_size": 512,
-                "checkpoint_repository": {
-                    "source": "HF",
-                    "repo": "meta/llama4-500B",
-                },
-                "gather_all_token_logits": False,
+        "build": {
+            "base_model": "llama",
+            "max_seq_len": 2048,
+            "max_batch_size": 512,
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "gather_all_token_logits": False,
+            "speculator": {
                 "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
-                "max_draft_len": 10,
-            },
-        },
-        "draft": {
-            "build": {
-                "base_model": "llama",
-                "max_seq_len": 2048,
-                "max_batch_size": 512,
+                "num_draft_tokens": 4,
                 "checkpoint_repository": {
                     "source": "HF",
                     "repo": "meta/llama4-500B",
                 },
             },
-            "runtime": {"num_draft_tokens": 4},
         },
     }
     return spec_dec_config
@@ -549,7 +571,13 @@ def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
 
 
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
-def test_to_dict_trtllm(verbose, expect_equal, trtllm_config, trtllm_spec_dec_config):
+def test_to_dict_trtllm(
+    verbose,
+    expect_equal,
+    trtllm_config,
+    trtllm_spec_dec_config,
+    trtllm_spec_dec_config_full,
+):
     assert (
         TrussConfig.from_dict(trtllm_config).to_dict(verbose=verbose) == trtllm_config
     ) == expect_equal
@@ -557,37 +585,39 @@ def test_to_dict_trtllm(verbose, expect_equal, trtllm_config, trtllm_spec_dec_co
         TrussConfig.from_dict(trtllm_spec_dec_config).to_dict(verbose=verbose)
         == trtllm_spec_dec_config
     ) == expect_equal
+    assert (
+        TrussConfig.from_dict(trtllm_spec_dec_config_full).to_dict(verbose=verbose)
+        == trtllm_spec_dec_config_full
+    ) == expect_equal
 
 
 @pytest.mark.parametrize("should_raise", [False, True])
 def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
     test_config = copy.deepcopy(trtllm_spec_dec_config)
     if should_raise:
-        test_config["trt_llm"]["target"]["build"]["speculative_decoding_mode"] = None
+        test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
+            None
+        )
         with pytest.raises(ValueError):
             TrussConfig.from_dict(test_config)
-        test_config["trt_llm"]["target"]["build"]["speculative_decoding_mode"] = (
+        test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = None
+        with pytest.raises(ValueError):
+            TrussConfig.from_dict(test_config)
+        test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = (
             trtllm_spec_dec_config[
                 "trt_llm"
-            ]["target"]["build"]["speculative_decoding_mode"]
+            ]["build"]["speculator"]["checkpoint_repository"]
         )
-        test_config["trt_llm"]["draft"]["runtime"]["num_draft_tokens"] = None
+        test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
+            trtllm_spec_dec_config[
+                "trt_llm"
+            ]["build"]["speculator"]["speculative_decoding_mode"]
+        )
+        test_config["trt_llm"]["build"]["speculator"]["num_draft_tokens"] = None
         with pytest.raises(ValueError):
             TrussConfig.from_dict(test_config)
     else:
         TrussConfig.from_dict(trtllm_spec_dec_config)
-
-
-@pytest.mark.parametrize("spec_dec_enabled", [False, True])
-def test_trtllm_spec_dec(spec_dec_enabled, trtllm_config, trtllm_spec_dec_config):
-    config = trtllm_config
-    if spec_dec_enabled:
-        config = trtllm_spec_dec_config
-    truss_config = TrussConfig.from_dict(config)
-    assert (
-        isinstance(truss_config.trt_llm, TRTLLMSpeculativeDecodingConfiguration)
-        == spec_dec_enabled
-    )
 
 
 def test_from_yaml_invalid_requirements_configuration():

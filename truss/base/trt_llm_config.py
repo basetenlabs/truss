@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import warnings
 from enum import Enum
@@ -49,6 +51,19 @@ class CheckpointRepository(BaseModel):
     source: CheckpointSource
     repo: str
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.source == CheckpointSource.HF:
+            self._validate_hf_repo_id()
+
+    def _validate_hf_repo_id(self):
+        try:
+            validate_repo_id(self.repo)
+        except HFValidationError as e:
+            raise ValueError(
+                f"HuggingFace repository validation failed: {str(e)}"
+            ) from e
+
 
 class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
     MAX_UTILIZATION = "max_utilization"
@@ -57,6 +72,16 @@ class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
 
 class TrussSpecDecMode(str, Enum):
     DRAFT_EXTERNAL: str = "DRAFT_TOKENS_EXTERNAL"
+
+
+class TrussTRTLLMRuntimeConfiguration(BaseModel):
+    kv_cache_free_gpu_mem_fraction: float = 0.9
+    enable_chunked_context: bool = False
+    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
+        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
+    )
+    request_default_max_tokens: Optional[int] = None
+    total_token_limit: int = 500000
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
@@ -78,8 +103,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         TrussTRTLLMPluginConfiguration()
     )
     num_builder_gpus: Optional[int] = None
-    speculative_decoding_mode: Optional[TrussSpecDecMode] = None
-    max_draft_len: Optional[int] = None
+    speculator: Optional[TrussSpeculatorConfiguration] = None
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
@@ -90,54 +114,78 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 )
         return v
 
-
-class TrussTRTLLMRuntimeConfiguration(BaseModel):
-    kv_cache_free_gpu_mem_fraction: float = 0.9
-    enable_chunked_context: bool = False
-    batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
-        TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
-    )
-    request_default_max_tokens: Optional[int] = None
-    # Speculative Decoding runtime configuration, ignored for non spec dec configurations
-    num_draft_tokens: Optional[int] = (
-        None  # number of draft tokens to be sampled from draft model in speculative decoding scheme
-    )
-
-
-class TRTLLMConfiguration(BaseModel):
-    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
-    build: TrussTRTLLMBuildConfiguration
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        self._validate_kv_cache_flags()
-        if self.build.checkpoint_repository.source == CheckpointSource.HF:
-            self._validate_hf_repo_id()
-
     def _validate_kv_cache_flags(self):
-        if self.build is None:
-            return self
-        if not self.build.plugin_configuration.paged_kv_cache and (
-            self.build.plugin_configuration.use_paged_context_fmha
-            or self.build.plugin_configuration.use_fp8_context_fmha
+        if not self.plugin_configuration.paged_kv_cache and (
+            self.plugin_configuration.use_paged_context_fmha
+            or self.plugin_configuration.use_fp8_context_fmha
         ):
             raise ValueError(
                 "Using paged context fmha or fp8 context fmha requires requires paged kv cache"
             )
         if (
-            self.build.plugin_configuration.use_fp8_context_fmha
-            and not self.build.plugin_configuration.use_paged_context_fmha
+            self.plugin_configuration.use_fp8_context_fmha
+            and not self.plugin_configuration.use_paged_context_fmha
         ):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
         return self
 
-    def _validate_hf_repo_id(self):
-        try:
-            validate_repo_id(self.build.checkpoint_repository.repo)
-        except HFValidationError as e:
+    def _validate_speculator_config(self):
+        if self.speculator:
+            if self.base_model is TrussTRTLLMModel.WHISPER:
+                raise ValueError("Speculative decoding for Whisper is not supported.")
+            if self.speculator.build:
+                if (
+                    self.tensor_parallel_count
+                    != self.speculator.build.tensor_parallel_count
+                ):
+                    raise ValueError(
+                        "Speculative decoding requires the same tensor parallelism for target and draft models."
+                    )
+
+    @property
+    def max_draft_len(self) -> Optional[int]:
+        if self.speculator:
+            return self.speculator.num_draft_tokens
+        return None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._validate_kv_cache_flags()
+        self._validate_speculator_config()
+
+
+class TrussSpeculatorConfiguration(BaseModel):
+    speculative_decoding_mode: TrussSpecDecMode
+    num_draft_tokens: int
+    checkpoint_repository: Optional[CheckpointRepository] = None
+    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
+    build: Optional[TrussTRTLLMBuildConfiguration] = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._validate_checkpoint()
+
+    def _validate_checkpoint(self):
+        if not (bool(self.checkpoint_repository) ^ bool(self.build)):
             raise ValueError(
-                f"HuggingFace repository validation failed: {str(e)}"
-            ) from e
+                "Speculative decoding requires exactly one of checkpoint_repository or build to be configured."
+            )
+
+    @property
+    def resolved_checkpoint_repository(self) -> CheckpointRepository:
+        if self.build:
+            return self.build.checkpoint_repository
+        elif self.checkpoint_repository:
+            return self.checkpoint_repository
+        else:
+            raise ValueError(
+                "Speculative decoding requires exactly one of checkpoint_repository or build to be configured."
+            )
+
+
+class TRTLLMConfiguration(BaseModel):
+    runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
+    build: TrussTRTLLMBuildConfiguration
 
     @property
     def requires_build(self):
@@ -147,43 +195,5 @@ class TRTLLMConfiguration(BaseModel):
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
-    def to_json_dict(self, verbose=True):
-        return json.loads(self.json(exclude_unset=not verbose))
-
-
-class TRTLLMSpeculativeDecodingConfiguration(BaseModel):
-    target: TRTLLMConfiguration
-    draft: TRTLLMConfiguration
-    total_token_limit: int = 500000
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        self._spec_dec_configs = [
-            self.target.build.speculative_decoding_mode,
-            self.target.build.max_draft_len,
-        ] + (
-            [self.draft.runtime.num_draft_tokens]
-            if self.draft.runtime and self.draft.runtime.num_draft_tokens
-            else [False]
-        )
-        self._validate_spec_dec()
-
-    def _validate_spec_dec(self):
-        if any(self._spec_dec_configs):
-            if not all(self._spec_dec_configs):
-                raise ValueError(
-                    "Speculative decoding requires all of `target.build.speculative_decoding_mode`, `target.build.max_draft_len`, and `draft.runtime.num_draft_tokens` to be configured."
-                )
-        for trt_llm_config in [self.target, self.draft]:
-            if trt_llm_config.build.base_model is TrussTRTLLMModel.WHISPER:
-                raise ValueError("Speculative decoding for Whisper is not supported.")
-        if (
-            self.target.build.tensor_parallel_count
-            != self.draft.build.tensor_parallel_count
-        ):
-            raise ValueError(
-                "Speculative decoding requires the same tensor parallelism for target and draft models."
-            )
-
     def to_json_dict(self, verbose=True):
         return json.loads(self.json(exclude_unset=not verbose))

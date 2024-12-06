@@ -3,19 +3,18 @@ import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
 from truss.base.constants import (
     HTTP_PUBLIC_BLOB_BACKEND,
-    TRTLLM_SPEC_DEC_TARGET_MODEL_NAME,
 )
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
-    TRTLLMSpeculativeDecodingConfiguration,
+    TrussTRTLLMBuildConfiguration,
     TrussTRTLLMQuantizationType,
 )
 from truss.base.validation import (
@@ -562,9 +561,7 @@ class TrussConfig:
     base_image: Optional[BaseImage] = None
     docker_server: Optional[DockerServer] = None
     model_cache: ModelCache = field(default_factory=ModelCache)
-    trt_llm: Optional[
-        Union[TRTLLMConfiguration, TRTLLMSpeculativeDecodingConfiguration]
-    ] = None
+    trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
     use_local_chains_src: bool = False
 
@@ -578,11 +575,11 @@ class TrussConfig:
         }[self.python_version]
 
     @property
-    def parsed_trt_llm_configs(self) -> List[TRTLLMConfiguration]:
+    def parsed_trt_llm_build_configs(self) -> List[TrussTRTLLMBuildConfiguration]:
         if self.trt_llm:
-            if isinstance(self.trt_llm, TRTLLMSpeculativeDecodingConfiguration):
-                return [self.trt_llm.target, self.trt_llm.draft]
-            return [self.trt_llm]
+            if self.trt_llm.build.speculator and self.trt_llm.build.speculator.build:
+                return [self.trt_llm.build, self.trt_llm.build.speculator.build]
+            return [self.trt_llm.build]
         return []
 
     @staticmethod
@@ -631,10 +628,7 @@ class TrussConfig:
                 ModelCache.from_list,
             ),
             trt_llm=transform_optional(
-                d.get("trt_llm"),
-                lambda x: (TRTLLMConfiguration(**x))
-                if TRTLLM_SPEC_DEC_TARGET_MODEL_NAME not in d.get("trt_llm")
-                else (TRTLLMSpeculativeDecodingConfiguration(**x)),
+                d.get("trt_llm"), lambda x: (TRTLLMConfiguration(**x))
             ),
             build_commands=d.get("build_commands", []),
             use_local_chains_src=d.get("use_local_chains_src", False),
@@ -688,16 +682,16 @@ class TrussConfig:
         return TrussConfig.from_dict(self.to_dict())
 
     def _validate_trt_llm_config(self) -> None:
-        for trt_llm_config in self.parsed_trt_llm_configs:
+        if self.trt_llm:
             if (
-                trt_llm_config.build.quantization_type
+                self.trt_llm.build.quantization_type
                 is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
                 and self.resources.accelerator.accelerator is Accelerator.A100
             ):
                 raise ValueError(
                     "Weight only int8 quantization on A100 accelerators is not currently supported"
                 )
-            elif trt_llm_config.build.quantization_type in [
+            elif self.trt_llm.build.quantization_type in [
                 TrussTRTLLMQuantizationType.FP8,
                 TrussTRTLLMQuantizationType.FP8_KV,
             ] and self.resources.accelerator.accelerator not in [
@@ -708,7 +702,7 @@ class TrussConfig:
                 raise ValueError(
                     "FP8 quantization is only supported on L4 and H100 accelerators"
                 )
-            tensor_parallel_count = trt_llm_config.build.tensor_parallel_count
+            tensor_parallel_count = self.trt_llm.build.tensor_parallel_count
 
             if tensor_parallel_count != self.resources.accelerator.count:
                 raise ValueError(
@@ -810,10 +804,6 @@ def obj_to_dict(obj, verbose: bool = False):
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
             elif isinstance(field_curr_value, TRTLLMConfiguration):
-                d["trt_llm"] = transform_optional(
-                    field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
-                )
-            elif isinstance(field_curr_value, TRTLLMSpeculativeDecodingConfiguration):
                 d["trt_llm"] = transform_optional(
                     field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
                 )
