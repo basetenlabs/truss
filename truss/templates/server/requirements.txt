@@ -7,7 +7,7 @@ fastapi==0.114.1
 joblib==1.2.0
 loguru==0.7.2
 msgpack-numpy==0.4.8
-msgpack==1.0.2
+msgpack==1.1.0  # Numpy/msgpack versions are finniky (1.0.2 breaks), double check when changing.
 numpy>=1.23.5
 opentelemetry-api>=1.25.0
 opentelemetry-sdk>=1.25.0

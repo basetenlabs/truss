@@ -23,10 +23,6 @@ from typing import (
 
 import tenacity
 import watchfiles
-
-if TYPE_CHECKING:
-    from rich import console as rich_console
-    from rich import progress
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -37,15 +33,19 @@ from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
 
-from truss_chains import code_gen, definitions, framework, utils
+from truss_chains import definitions, framework, utils
+from truss_chains.deployment import code_gen
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
+    from rich import progress
 
 
 class DockerTrussService(b10_service.TrussService):
     """This service is for Chainlets (not for Chains)."""
 
     def __init__(self, port: int, is_draft: bool, **kwargs):
-        # http://localhost:{port} seems to only work *sometimes* with docker.
-        remote_url = f"http://host.docker.internal:{port}"
+        remote_url = f"http://localhost:{port}"
         self._port = port
 
         super().__init__(remote_url, is_draft, **kwargs)
@@ -411,8 +411,11 @@ def push(
                 is_draft=True,
                 port=port,
             )
+            docker_internal_url = service.predict_url.replace(
+                "localhost", "host.docker.internal"
+            )
             chainlet_to_predict_url[chainlet_artifact.display_name] = {
-                "predict_url": service.predict_url,
+                "predict_url": docker_internal_url,
             }
             chainlet_to_service[chainlet_artifact.name] = service
 

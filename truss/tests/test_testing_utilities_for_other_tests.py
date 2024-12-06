@@ -52,10 +52,11 @@ def _show_container_logs_if_raised():
             print("An exception was raised, showing logs of all containers.")
             containers = get_containers({TRUSS: True})
             new_containers = [c for c in containers if c.id not in initial_ids]
-            parts = []
+            parts = ["\n"]
             for container in new_containers:
                 parts.append(f"Logs for container {container.name} ({container.id}):")
                 parts.append(_human_readable_json_logs(container.logs()))
+                parts.append("\n")
             logging.warning("\n".join(parts))
 
 

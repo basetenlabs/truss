@@ -587,7 +587,7 @@ def push_chain(
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import definitions as chains_def
     from truss_chains import framework
-    from truss_chains import remote as chains_remote
+    from truss_chains.deployment import deployment_client
 
     if watch:
         if publish or promote:
@@ -623,14 +623,14 @@ def push_chain(
             remote=remote,
             environment=environment,
         )
-        service = chains_remote.push(
+        service = deployment_client.push(
             entrypoint_cls, options, progress_bar=progress.Progress
         )
 
     if dryrun:
         return
 
-    assert isinstance(service, chains_remote.BasetenChainService)
+    assert isinstance(service, deployment_client.BasetenChainService)
     curl_snippet = _make_chains_curl_snippet(
         service.run_remote_url, options.environment
     )
@@ -675,7 +675,7 @@ def push_chain(
             console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
             if watch:  # Note that this command will print a startup message.
-                chains_remote.watch(
+                deployment_client.watch(
                     source,
                     entrypoint,
                     name,
@@ -736,7 +736,7 @@ def watch_chains(
     if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import remote as chains_remote
+    from truss_chains.deployment import deployment_client
 
     if user_env:
         raise ValueError("`user_env` is deprecated, use `environment` instead.")
@@ -744,7 +744,7 @@ def watch_chains(
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
-    chains_remote.watch(
+    deployment_client.watch(
         source,
         entrypoint,
         name,
@@ -1054,7 +1054,7 @@ def run_python(script, target_directory):
     is_flag=True,
     required=False,
     default=False,
-    help="Trust truss with hosted secrets.",
+    help="[DEPRECATED]Trust truss with hosted secrets.",
 )
 @click.option(
     "--disable-truss-download",
@@ -1134,15 +1134,12 @@ def push(
         tr.spec.config.model_name = model_name
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
-    # Log a warning if using secrets without --trusted.
-    # TODO(helen): this could be moved to a separate function that includes more
-    #  config checks.
-    if tr.spec.config.secrets and not trusted:
-        not_trusted_text = (
-            "Warning: your Truss has secrets but was not pushed with --trusted. "
-            "Please push with --trusted to grant access to secrets."
+    # Log a warning if using --trusted.
+    if trusted:
+        trusted_deprecation_notice = (
+            "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
         )
-        console.print(not_trusted_text, style="red")
+        console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
     if uses_trt_llm_builder(tr):
@@ -1182,7 +1179,7 @@ def push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=trusted,
+        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,

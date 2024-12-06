@@ -115,8 +115,8 @@ class LLMClient(chains.StubBase):
             f"{PERSON_MATCHING_PROMPT}\nPerson you're matching: {new_bio}\n"
             f"People from database: {bios_info}"
         )
-        resp = await self._remote.predict_async(
-            json_payload={
+        resp = await self.predict_async(
+            {
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
                 "max_new_tokens": 32,

@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 import re
-from typing import List
+from typing import AsyncIterator, Iterator, List
 
 import pydantic
 import pytest
@@ -505,3 +505,55 @@ def test_collects_multiple_errors_run_local():
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
         with public_api.run_local():
             MultiIssue()
+
+
+def test_raises_iterator_no_yield():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IteratorNoYield\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"If the endpoint returns an iterator \(streaming\), it must have `yield` statements"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IteratorNoYield(chains.ChainletBase):
+            async def run_remote(self) -> AsyncIterator[str]:
+                return "123"  # type: ignore[return-value]
+
+
+def test_raises_yield_no_iterator():
+    match = (
+        rf"{TEST_FILE}:\d+ \(YieldNoIterator\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"If the endpoint is streaming \(has `yield` statements\), the return type must be an iterator"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class YieldNoIterator(chains.ChainletBase):
+            async def run_remote(self) -> str:  # type: ignore[misc]
+                yield "123"
+
+
+def test_raises_iterator_sync():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IteratorSync\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"Streaming endpoints \(containing `yield` statements\) are only supported for async endpoints"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IteratorSync(chains.ChainletBase):
+            def run_remote(self) -> Iterator[str]:
+                yield "123"
+
+
+def test_raises_iterator_no_arg():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IteratorNoArg\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"Iterators must be annotated with type \(one of \['str', 'bytes'\]\)"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IteratorNoArg(chains.ChainletBase):
+            async def run_remote(self) -> AsyncIterator:
+                yield "123"

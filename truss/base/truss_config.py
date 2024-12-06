@@ -418,27 +418,24 @@ class BaseImage:
 
 @dataclass
 class DockerServer:
-    setup_command: str
     start_command: str
     server_port: int
+    predict_endpoint: str
     readiness_endpoint: str
     liveness_endpoint: str
-    predict_endpoint: str
 
     @staticmethod
     def from_dict(d) -> "DockerServer":
         return DockerServer(
-            setup_command=d.get("setup_command", ""),
-            start_command=d.get("start_command", ""),
-            server_port=d.get("server_port", 8000),
-            readiness_endpoint=d.get("readiness_endpoint", ""),
-            liveness_endpoint=d.get("liveness_endpoint", ""),
-            predict_endpoint=d.get("predict_endpoint", ""),
+            start_command=d.get("start_command"),
+            server_port=d.get("server_port"),
+            predict_endpoint=d.get("predict_endpoint"),
+            readiness_endpoint=d.get("readiness_endpoint"),
+            liveness_endpoint=d.get("liveness_endpoint"),
         )
 
     def to_dict(self):
         return {
-            "setup_command": self.setup_command,
             "start_command": self.start_command,
             "server_port": self.server_port,
             "readiness_endpoint": self.readiness_endpoint,

@@ -344,7 +344,7 @@ class Assets:
 
     def get_spec(self) -> AssetSpec:
         """Returns parsed and validated assets."""
-        return self._spec.copy(deep=True)
+        return self._spec.model_copy(deep=True)
 
 
 class ChainletOptions(SafeModelNonSerializable):
@@ -397,10 +397,23 @@ DEFAULT_TIMEOUT_SEC = 600
 
 
 class RPCOptions(SafeModel):
-    """Options to customize RPCs to dependency chainlets."""
+    """Options to customize RPCs to dependency chainlets.
 
-    timeout_sec: int = DEFAULT_TIMEOUT_SEC
+    Args:
+        retries: The number of times to retry the remote chainlet in case of failures
+          (e.g. due to transient network issues). For streaming, retries are only made
+          if the request fails before streaming any results back. Failures mid-stream
+          not retried.
+        timeout_sec: Timeout for the HTTP request to this chainlet.
+        use_binary: whether to send data data in binary format. This can give a parsing
+         speedup and message size reduction (~25%) for numpy arrays. Use
+         ``NumpyArrayField`` as a field type on pydantic models for integration and set
+         this option to ``True``. For simple text data, there is no significant benefit.
+    """
+
     retries: int = 1
+    timeout_sec: int = DEFAULT_TIMEOUT_SEC
+    use_binary: bool = False
 
 
 class ServiceDescriptor(SafeModel):
@@ -524,6 +537,19 @@ class TypeDescriptor(SafeModelNonSerializable):
         )
 
 
+class StreamingTypeDescriptor(TypeDescriptor):
+    origin_type: type
+    arg_type: type
+
+    @property
+    def is_string(self) -> bool:
+        return self.arg_type is str
+
+    @property
+    def is_pydantic(self) -> bool:
+        return False
+
+
 class InputArg(SafeModelNonSerializable):
     name: str
     type: TypeDescriptor
@@ -535,7 +561,17 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
     is_async: bool
-    is_generator: bool
+    is_streaming: bool
+
+    @property
+    def streaming_type(self) -> StreamingTypeDescriptor:
+        if (
+            not self.is_streaming
+            or len(self.output_types) != 1
+            or not isinstance(self.output_types[0], StreamingTypeDescriptor)
+        ):
+            raise ValueError(f"{self} is not a streaming endpoint.")
+        return cast(StreamingTypeDescriptor, self.output_types[0])
 
 
 class DependencyDescriptor(SafeModelNonSerializable):

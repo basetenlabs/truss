@@ -51,10 +51,10 @@ RUN pip install -r {{config_requirements_filename}} --no-cache-dir && rm -rf /ro
 
 
 
-
+{%- if not config.docker_server %}
 ENV APP_HOME="/app"
 WORKDIR $APP_HOME
-
+{%- endif %}
 
 {% block app_copy %}
 {% endblock %}

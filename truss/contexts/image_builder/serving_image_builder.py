@@ -306,6 +306,19 @@ def generate_docker_server_nginx_config(build_dir, config):
         DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
     )
 
+    assert (
+        config.docker_server.predict_endpoint is not None
+    ), "docker_server.predict_endpoint is required to use custom server"
+    assert (
+        config.docker_server.server_port is not None
+    ), "docker_server.server_port is required to use custom server"
+    assert (
+        config.docker_server.readiness_endpoint is not None
+    ), "docker_server.readiness_endpoint is required to use custom server"
+    assert (
+        config.docker_server.liveness_endpoint is not None
+    ), "docker_server.liveness_endpoint is required to use custom server"
+
     nginx_content = nginx_template.render(
         server_endpoint=config.docker_server.predict_endpoint,
         readiness_endpoint=config.docker_server.readiness_endpoint,
@@ -321,9 +334,11 @@ def generate_docker_server_supervisord_config(build_dir, config):
     supervisord_template = read_template_from_fs(
         DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
+    assert (
+        config.docker_server.start_command is not None
+    ), "docker_server.start_command is required to use custom server"
     supervisord_contents = supervisord_template.render(
         start_command=config.docker_server.start_command,
-        setup_command=config.docker_server.setup_command,
     )
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
