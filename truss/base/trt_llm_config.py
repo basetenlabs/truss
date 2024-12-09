@@ -48,6 +48,7 @@ class CheckpointSource(str, Enum):
 class CheckpointRepository(BaseModel):
     source: CheckpointSource
     repo: str
+    revision: Optional[str] = None
 
 
 class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
