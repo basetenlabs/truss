@@ -198,9 +198,7 @@ class TRTLLMConfiguration(BaseModel):
 
     @property
     def requires_build(self):
-        if self.build is not None:
-            return True
-        return False
+        return self.build is not None
 
     # TODO(Abu): Replace this with model_dump(json=True)
     # when pydantic v2 is used here
