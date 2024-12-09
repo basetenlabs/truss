@@ -31,6 +31,11 @@ class GenerateData(chains.ChainletBase):
         return (template * repetitions)[:length]
 
 
+def validate_data(data):
+    if len(data) > 30:
+        raise ValueError(f"This input is too long: {len(data)}.")
+
+
 class TextReplicator(chains.ChainletBase):
     remote_config = chains.RemoteConfig(docker_image=IMAGE_CUSTOM)
 
@@ -44,8 +49,7 @@ class TextReplicator(chains.ChainletBase):
         self.multiplier = 2
 
     def run_remote(self, data: str) -> str:
-        if len(data) > 30:
-            raise ValueError(f"This input is too long: {len(data)}.")
+        validate_data(data)
         return data * self.multiplier
 
 
@@ -123,9 +127,7 @@ class ItestChain(chains.ChainletBase):
             extra_arg=123,
         )
         print(pydantic_default_arg, simple_default_arg)
-        value = 0
-        for part in text_parts.parts:
-            value += self._text_to_num.run_remote(part)
+        value = self._accumulate_parts(text_parts.parts)
         return (
             value,
             data,
@@ -133,3 +135,9 @@ class ItestChain(chains.ChainletBase):
             pydantic_default_arg,
             simple_default_arg,
         )
+
+    def _accumulate_parts(self, parts) -> int:
+        value = 0
+        for part in parts:
+            value += self._text_to_num.run_remote(part)
+        return value

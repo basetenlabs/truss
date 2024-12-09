@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 import pytest
@@ -73,11 +74,33 @@ def test_chain():
             url, json={"length": 300, "num_partitions": 3}, stream=True
         )
         print(response)
+        assert response.status_code == 500
+
         error = definitions.RemoteErrorDetail.model_validate(response.json()["error"])
         error_str = error.format()
         print(error_str)
-        assert "ValueError: This input is too long: 100." in error_str
-        assert response.status_code == 500
+
+        error_regex = r"""
+Chainlet-Traceback \(most recent call last\):
+  File \".*?/itest_chain\.py\", line \d+, in run_remote
+    value = self\._accumulate_parts\(text_parts\.parts\)
+  File \".*?/itest_chain\.py\", line \d+, in _accumulate_parts
+    value \+= self\._text_to_num\.run_remote\(part\)
+ValueError: \(showing chained remote errors, root error at the bottom\)
+├─ Error in dependency Chainlet `TextToNum`:
+│   Chainlet-Traceback \(most recent call last\):
+│     File \".*?/itest_chain\.py\", line \d+, in run_remote
+│       generated_text = self\._replicator\.run_remote\(data\)
+│   ValueError: \(showing chained remote errors, root error at the bottom\)
+│   ├─ Error in dependency Chainlet `TextReplicator`:
+│   │   Chainlet-Traceback \(most recent call last\):
+│   │     File \".*?/itest_chain\.py\", line \d+, in run_remote
+│   │       validate_data\(data\)
+│   │     File \".*?/itest_chain\.py\", line \d+, in validate_data
+│   │       raise ValueError\(f\"This input is too long: \{len\(data\)\}\.\"\)
+╰   ╰   ValueError: This input is too long: \d+\.
+                """
+        assert re.match(error_regex.strip(), error_str.strip(), re.MULTILINE)
 
 
 @pytest.mark.asyncio
@@ -137,7 +160,8 @@ def test_streaming_chain():
                 ),
             )
             assert service is not None
-            response = service.run_remote({})
+
+            response = service.run_remote({"cause_error": False})
             assert response.status_code == 200
             print(response.json())
             result = response.json()
@@ -150,6 +174,13 @@ def test_streaming_chain():
             assert result["footer"]["duration_sec"] > 0
             assert result["strings"] == "First second last."
 
+            # TODO: build error handling for stream reader.
+            # response = service.run_remote({"cause_error": True})
+            # assert response.status_code == 200
+            # print(response.json())
+            # result = response.json()
+            # print(result)
+
 
 @pytest.mark.asyncio
 async def test_streaming_chain_local():
@@ -157,7 +188,7 @@ async def test_streaming_chain_local():
     chain_root = examples_root / "streaming" / "streaming_chain.py"
     with framework.import_target(chain_root, "Consumer") as entrypoint:
         with public_api.run_local():
-            result = await entrypoint().run_remote()
+            result = await entrypoint().run_remote(cause_error=False)
             print(result)
             assert result.header.msg == "Start."
             assert result.chunks[0].words == ["G"]

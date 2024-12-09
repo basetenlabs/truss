@@ -633,7 +633,6 @@ class RemoteErrorDetail(SafeModel):
     error response.
     """
 
-    remote_name: str
     exception_cls_name: str
     exception_module_name: Optional[str]
     exception_message: str
@@ -654,8 +653,7 @@ class RemoteErrorDetail(SafeModel):
             else ""
         )
         error = (
-            f"{RemoteErrorDetail.__name__} in `{self.remote_name}`\n"
-            f"Traceback (most recent call last):\n"
+            f"Chainlet-Traceback (most recent call last):\n"
             f"{stack}{self.exception_cls_name}: {self.exception_message}{exc_info}"
         )
         return error
