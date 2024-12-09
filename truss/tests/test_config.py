@@ -87,7 +87,11 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
                 "source": "HF",
                 "repo": "meta/llama4-500B",
             },
-            "gather_all_token_logits": False,
+            "plugin_configuration": {
+                "paged_kv_cache": True,
+                "gemm_plugin": "auto",
+                "use_paged_context_fmha": True,
+            },
             "speculator": {
                 "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
                 "num_draft_tokens": 4,
@@ -118,7 +122,11 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
                 "source": "HF",
                 "repo": "meta/llama4-500B",
             },
-            "gather_all_token_logits": False,
+            "plugin_configuration": {
+                "paged_kv_cache": True,
+                "gemm_plugin": "auto",
+                "use_paged_context_fmha": True,
+            },
             "speculator": {
                 "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
                 "num_draft_tokens": 4,
@@ -608,6 +616,14 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
                 "trt_llm"
             ]["build"]["speculator"]["checkpoint_repository"]
         )
+        test_config["trt_llm"]["build"]["plugin_configuration"][
+            "use_paged_context_fmha"
+        ] = False
+        with pytest.raises(ValueError):
+            TrussConfig.from_dict(test_config)
+        test_config["trt_llm"]["build"]["plugin_configuration"][
+            "use_paged_context_fmha"
+        ] = True
         test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
             trtllm_spec_dec_config[
                 "trt_llm"

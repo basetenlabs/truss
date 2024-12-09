@@ -133,6 +133,15 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         if self.speculator:
             if self.base_model is TrussTRTLLMModel.WHISPER:
                 raise ValueError("Speculative decoding for Whisper is not supported.")
+            if not all(
+                [
+                    self.plugin_configuration.use_paged_context_fmha,
+                    self.plugin_configuration.paged_kv_cache,
+                ]
+            ):
+                raise ValueError(
+                    "KV cache block reuse must be enabled for speculative decoding target model."
+                )
             if self.speculator.build:
                 if (
                     self.tensor_parallel_count
