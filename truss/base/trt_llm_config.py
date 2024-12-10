@@ -19,6 +19,7 @@ class TrussTRTLLMModel(str, Enum):
     DEEPSEEK = "deepseek"
     WHISPER = "whisper"
     QWEN = "qwen"
+    ENCODER = "encoder"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
