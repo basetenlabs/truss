@@ -9,6 +9,7 @@ from truss.templates.control.control.helpers.custom_types import (
     EnvVarPatch,
     ExternalDataPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PythonRequirementPatch,
     SystemPackagePatch,
@@ -53,35 +54,34 @@ class TrussDirPatchApplier:
                 model_code_patch: ModelCodePatch = patch.body
                 model_module_dir = self._truss_dir / self._truss_config.model_module_dir
                 apply_code_patch(model_module_dir, model_code_patch, self._logger)
-                continue
-            if isinstance(patch.body, PythonRequirementPatch):
+            elif isinstance(patch.body, PythonRequirementPatch):
                 py_req_patch: PythonRequirementPatch = patch.body
                 req = py_req_patch.requirement
                 req_name = identify_requirement_name(req)
                 if action == Action.REMOVE:
                     del reqs[req_name]
-                    continue
-                if action == Action.ADD or Action.UPDATE:
+                elif action == Action.ADD or Action.UPDATE:
                     reqs[req_name] = req
-                continue
-            if isinstance(patch.body, SystemPackagePatch):
+            elif isinstance(patch.body, SystemPackagePatch):
                 sys_pkg_patch: SystemPackagePatch = patch.body
                 pkg = sys_pkg_patch.package
                 if action == Action.REMOVE:
                     pkgs.remove(pkg)
-                    continue
-                if action == Action.ADD or Action.UPDATE:
+                elif action == Action.ADD or Action.UPDATE:
                     pkgs.add(pkg)
-                    continue
-            # Each of EnvVarPatch and ExternalDataPatch can be expressed through an overwrite of the config,
-            # handled below
-            if isinstance(patch.body, EnvVarPatch):
-                continue
-            if isinstance(patch.body, ExternalDataPatch):
-                continue
-            if isinstance(patch.body, ConfigPatch):
+            elif isinstance(patch.body, ConfigPatch):
                 new_config = TrussConfig.from_dict(patch.body.config)
-                continue
-            raise UnsupportedPatch(f"Unknown patch type {patch.type}")
+            # Each of EnvVarPatch and ExternalDataPatch can be expressed through an
+            # overwrite of the config, handled below.
+            elif isinstance(patch.body, (EnvVarPatch, ExternalDataPatch)):
+                pass
+            elif isinstance(patch.body, PackagePatch):
+                package_patch: PackagePatch = patch.body
+                package_module_dir = (
+                    self._truss_dir / self._truss_config.bundled_packages_dir
+                )
+                apply_code_patch(package_module_dir, package_patch, self._logger)
+            else:
+                raise UnsupportedPatch(f"Unknown patch type {patch.type}")
 
         new_config.write_to_yaml_file(self._truss_config_path)
