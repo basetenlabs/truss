@@ -51,6 +51,7 @@ class CheckpointSource(str, Enum):
 class CheckpointRepository(BaseModel):
     source: CheckpointSource
     repo: str
+    revision: Optional[str] = None
 
     def __init__(self, **data):
         super().__init__(**data)
