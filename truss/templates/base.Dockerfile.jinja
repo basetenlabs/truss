@@ -1,11 +1,6 @@
 ARG PYVERSION={{config.python_version}}
 FROM {{base_image_name_and_tag}} AS truss_server
 
-ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
-
-RUN pip install --upgrade pip --no-cache-dir \
-    && rm -rf /root/.cache/pip
-
 {% block base_image_patch %}
 {% endblock %}
 
