@@ -432,7 +432,7 @@ class BasetenApi:
         query_string = f"""
         mutation {{
         stage_patch_for_draft_truss(name: "{model_name}",
-                    client_version: "TRUSS",
+                    client_version: "{truss.version()}",
                     patch: "{patch}",
     ) {{
             id,
@@ -457,7 +457,7 @@ class BasetenApi:
         query_string = f"""
         mutation {{
         sync_draft_truss(name: "{model_name}",
-                    client_version: "TRUSS",
+                    client_version: "{truss.version()}",
     ) {{
             id,
             name,
@@ -472,29 +472,6 @@ class BasetenApi:
         result = resp["data"]["sync_draft_truss"]
         if not result["succeeded"]:
             logging.debug(f"Failed to sync patch: {result}")
-        return result
-
-    def patch_draft_truss(self, model_name, patch_request):
-        patch = base64_encoded_json_str(patch_request.to_dict())
-        query_string = f"""
-        mutation {{
-        patch_draft_truss(name: "{model_name}",
-                    client_version: "TRUSS",
-                    patch: "{patch}",
-    ) {{
-            id,
-            name,
-            version_id
-            succeeded
-            needs_full_deploy
-            error
-        }}
-        }}
-        """
-        resp = self._post_graphql_query(query_string)
-        result = resp["data"]["patch_draft_truss"]
-        if not result["succeeded"]:
-            logging.debug(f"Unsuccessful response: {result}")
         return result
 
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:

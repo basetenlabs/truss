@@ -1158,11 +1158,11 @@ def push(
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
-        for trt_llm_config in tr.spec.config.parsed_trt_llm_configs:
+        for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
             if (
-                trt_llm_config.build.quantization_type
+                trt_llm_build_config.quantization_type
                 in [TrussTRTLLMQuantizationType.FP8, TrussTRTLLMQuantizationType.FP8_KV]
-                and not trt_llm_config.build.num_builder_gpus
+                and not trt_llm_build_config.num_builder_gpus
             ):
                 fp8_and_num_builder_gpus_text = (
                     "Warning: build specifies FP8 quantization but does not explicitly specify number of build GPUs. "

@@ -38,7 +38,7 @@ STREAM_TYPES = streaming.stream_types(
 class Generator(chains.ChainletBase):
     """Example that streams fully structured pydantic items with header and footer."""
 
-    async def run_remote(self) -> AsyncIterator[bytes]:
+    async def run_remote(self, cause_error: bool) -> AsyncIterator[bytes]:
         print("Entering Generator")
         streamer = streaming.stream_writer(STREAM_TYPES)
         header = Header(time=time.time(), msg="Start.")
@@ -49,6 +49,8 @@ class Generator(chains.ChainletBase):
             )
             print("Yield")
             yield streamer.yield_item(data)
+            if cause_error and i > 2:
+                raise RuntimeError("Test Error")
             await asyncio.sleep(0.05)
 
         end_time = time.time()
@@ -79,9 +81,11 @@ class Consumer(chains.ChainletBase):
         self._generator = generator
         self._string_generator = string_generator
 
-    async def run_remote(self) -> ConsumerOutput:
+    async def run_remote(self, cause_error: bool) -> ConsumerOutput:
         print("Entering Consumer")
-        reader = streaming.stream_reader(STREAM_TYPES, self._generator.run_remote())
+        reader = streaming.stream_reader(
+            STREAM_TYPES, self._generator.run_remote(cause_error)
+        )
         print("Consuming...")
         header = await reader.read_header()
         chunks = []
@@ -103,5 +107,5 @@ class Consumer(chains.ChainletBase):
 if __name__ == "__main__":
     with chains.run_local():
         chain = Consumer()
-        result = asyncio.run(chain.run_remote())
+        result = asyncio.run(chain.run_remote(False))
         print(result)

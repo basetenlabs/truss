@@ -534,9 +534,7 @@ class ModelWrapper:
         request: starlette.requests.Request,
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
-        if not descriptor:
-            return inputs
-
+        assert descriptor, "`preprocess` must only be called if model has it."
         args = ArgConfig.prepare_args(descriptor, inputs, request)
         with errors.intercept_exceptions(self._logger, self._model_file_name):
             if descriptor.is_async:
@@ -573,9 +571,7 @@ class ModelWrapper:
         # and postprocess is skipped.
         # The result type can be the same as for predict.
         descriptor = self.model_descriptor.postprocess
-        if not descriptor:
-            return result
-
+        assert descriptor, "`postprocess` must only be called if model has it."
         args = ArgConfig.prepare_args(descriptor, result, request)
         with errors.intercept_exceptions(self._logger, self._model_file_name):
             if descriptor.is_async:
@@ -658,11 +654,14 @@ class ModelWrapper:
         """
         Returns result from: preprocess -> predictor -> postprocess.
         """
-        with self._tracer.start_as_current_span("call-pre") as span_pre:
-            with tracing.section_as_event(
-                span_pre, "preprocess"
-            ), tracing.detach_context():
-                preprocess_result = await self.preprocess(inputs, request)
+        if self.model_descriptor.preprocess:
+            with self._tracer.start_as_current_span("call-pre") as span_pre:
+                with tracing.section_as_event(
+                    span_pre, "preprocess"
+                ), tracing.detach_context():
+                    preprocess_result = await self.preprocess(inputs, request)
+        else:
+            preprocess_result = inputs
 
         span_predict = self._tracer.start_span("call-predict")
         async with deferred_semaphore_and_span(
@@ -730,12 +729,15 @@ class ModelWrapper:
 
                 return predict_result
 
-        with self._tracer.start_as_current_span("call-post") as span_post:
-            with tracing.section_as_event(
-                span_post, "postprocess"
-            ), tracing.detach_context():
-                postprocess_result = await self.postprocess(predict_result, request)
-            return postprocess_result
+        if self.model_descriptor.postprocess:
+            with self._tracer.start_as_current_span("call-post") as span_post:
+                with tracing.section_as_event(
+                    span_post, "postprocess"
+                ), tracing.detach_context():
+                    postprocess_result = await self.postprocess(predict_result, request)
+                return postprocess_result
+        else:
+            return predict_result
 
 
 async def _gather_generator(
