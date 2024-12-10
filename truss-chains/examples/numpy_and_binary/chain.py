@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import pydantic
 
@@ -8,6 +10,7 @@ from truss_chains import pydantic_numpy
 class DataModel(pydantic.BaseModel):
     msg: str
     np_array: pydantic_numpy.NumpyArrayField
+    byte_field: Optional[bytes] = None
 
 
 class SyncChainlet(chains.ChainletBase):
@@ -23,7 +26,8 @@ class AsyncChainlet(chains.ChainletBase):
 
 
 class AsyncChainletNoInput(chains.ChainletBase):
-    async def run_remote(self) -> DataModel:
+    async def run_remote(self, byte_input_internal: bytes) -> DataModel:
+        print(byte_input_internal)
         data = DataModel(msg="From async no input", np_array=np.full((2, 2), 3))
         print(data)
         return data
@@ -79,7 +83,10 @@ class HostBinary(chains.ChainletBase):
         self._async_chainlet_no_output = async_chainlet_no_output
         self._async_chainlet_no_input = async_chainlet_no_input
 
-    async def run_remote(self) -> tuple[DataModel, DataModel, DataModel]:
+    async def run_remote(
+        self, byte_input: bytes
+    ) -> tuple[DataModel, DataModel, DataModel]:
+        print(byte_input)
         a = np.ones((3, 2, 1))
         data = DataModel(msg="From Host", np_array=a)
         sync_result = self._sync_chainlet.run_remote(data)
@@ -87,6 +94,6 @@ class HostBinary(chains.ChainletBase):
         async_result = await self._async_chainlet.run_remote(data)
         print(async_result)
         await self._async_chainlet_no_output.run_remote(data)
-        async_no_input = await self._async_chainlet_no_input.run_remote()
+        async_no_input = await self._async_chainlet_no_input.run_remote(byte_input)
         print(async_no_input)
         return sync_result, async_result, async_no_input
