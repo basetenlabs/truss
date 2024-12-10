@@ -8,6 +8,14 @@
 # If user base image is supplied in config, apply build commands from truss base image
 {% if config.base_image %}
     {%- if not config.docker_server %}
+
+{% block fail_fast %}
+RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
+RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == {{supported_python_major_version_in_custom_base_image}} and sys.version_info.minor >={{min_supported_python_minor_version_in_custom_base_image}} and sys.version_info.minor <={{max_supported_python_minor_version_in_custom_base_image}} else sys.exit(1)" \
+    || { echo "ERROR: Supplied base image does not have {{min_supported_python_version_in_custom_base_image}} <= python <= {{max_supported_python_version_in_custom_base_image}}"; exit 1; }
+{% endblock %}
+
+
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 
@@ -100,10 +108,8 @@ COPY ./{{ config.model_module_dir }} /app/model
 {% block run %}
     {%- if config.docker_server %}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl nginx python3-pip && \
+        curl nginx supervisor && \
         rm -rf /var/lib/apt/lists/*
-COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
-RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_log_dir = "/var/log/supervisor" %}

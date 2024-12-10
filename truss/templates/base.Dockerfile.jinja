@@ -3,12 +3,6 @@ FROM {{base_image_name_and_tag}} AS truss_server
 
 ENV PYTHON_EXECUTABLE="{{ config.base_image.python_executable_path or 'python3' }}"
 
-{% block fail_fast %}
-RUN grep -w 'ID=debian\|ID_LIKE=debian' /etc/os-release || { echo "ERROR: Supplied base image is not a debian image"; exit 1; }
-RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == {{supported_python_major_version_in_custom_base_image}} and sys.version_info.minor >={{min_supported_python_minor_version_in_custom_base_image}} and sys.version_info.minor <={{max_supported_python_minor_version_in_custom_base_image}} else sys.exit(1)" \
-    || { echo "ERROR: Supplied base image does not have {{min_supported_python_version_in_custom_base_image}} <= python <= {{max_supported_python_version_in_custom_base_image}}"; exit 1; }
-{% endblock %}
-
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
 
