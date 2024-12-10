@@ -452,10 +452,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     )
     # Add error handling context manager:
     parts.append(
-        _indent(
-            f"with stub.trace_parent(request), utils.exception_to_http_error("
-            f'chainlet_name="{chainlet_descriptor.name}"):'
-        )
+        _indent("with stub.trace_parent(request), utils.exception_to_http_error():")
     )
     # Invoke Chainlet.
     if (

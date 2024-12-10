@@ -173,7 +173,6 @@ class _StreamReader(_Streamer[ItemT, HeaderTT, FooterTT]):
         if not length:
             return delimiter, b""
         data_bytes = await self._stream.readexactly(length)
-        print(f"Read Delimiter: {delimiter}")
         return delimiter, data_bytes
 
     async def read_items(self) -> AsyncIterator[ItemT]:

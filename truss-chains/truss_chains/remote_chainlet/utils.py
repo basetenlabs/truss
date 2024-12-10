@@ -140,8 +140,8 @@ def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseM
 # Error Propagation Utils. #############################################################
 
 
-def _handle_exception(exception: Exception, chainlet_name: str) -> NoReturn:
-    """Raises `starlette.exceptions.HTTPExceptionn` with `RemoteErrorDetail`."""
+def _handle_exception(exception: Exception) -> NoReturn:
+    """Raises `HTTPException` with `RemoteErrorDetail`."""
     if hasattr(exception, "__module__"):
         exception_module_name = exception.__module__
     else:
@@ -149,17 +149,30 @@ def _handle_exception(exception: Exception, chainlet_name: str) -> NoReturn:
 
     error_stack = traceback.extract_tb(exception.__traceback__)
     # Exclude the error handling functions from the stack trace.
-    exclude_frames = {
+    exclude_function_names = {
         exception_to_http_error.__name__,
         response_raise_errors.__name__,
         async_response_raise_errors.__name__,
+        _handle_response_error.__name__,
     }
-    final_tb = [frame for frame in error_stack if frame.name not in exclude_frames]
+    final_tb = []
+    for frame in error_stack:
+        if frame.name in exclude_function_names:
+            continue
+        if "tenacity" in frame.filename:
+            continue
+        if frame.filename.endswith("model/model.py"):
+            continue
+        if frame.filename.endswith("remote_chainlet/stub.py") and frame.name.startswith(
+            "predict"
+        ):
+            break
+        final_tb.append(frame)
+
     stack = list(
         [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
     )
     error = definitions.RemoteErrorDetail(
-        remote_name=chainlet_name,
         exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
@@ -171,12 +184,12 @@ def _handle_exception(exception: Exception, chainlet_name: str) -> NoReturn:
 
 
 @contextlib.contextmanager
-def exception_to_http_error(chainlet_name: str) -> Iterator[None]:
+def exception_to_http_error() -> Iterator[None]:
     # TODO: move chainlet name from here to caller side.
     try:
         yield
     except Exception as e:
-        _handle_exception(e, chainlet_name)
+        _handle_exception(e)
 
 
 def _resolve_exception_class(
@@ -213,7 +226,7 @@ def _handle_response_error(response_json: dict, remote_name: str):
     except KeyError as e:
         logging.error(f"response_json: {response_json}")
         raise ValueError(
-            "Could not get `error` field from JSON from error response"
+            "Could not get `error` field from JSON from chainlet error response"
         ) from e
     try:
         error = definitions.RemoteErrorDetail.model_validate(error_json)
@@ -222,15 +235,19 @@ def _handle_response_error(response_json: dict, remote_name: str):
             msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
             raise definitions.GenericRemoteException(msg) from None
         raise ValueError(
-            "Could not parse error. Error details are expected to be either a "
+            "Could not parse chainlet error. Error details are expected to be either a "
             "plain string (old truss models) or a serialized "
-            f"`definitions.RemoteErrorDetail.__name__`, got:\n{repr(error_json)}"
+            f"`{definitions.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
         ) from e
     exception_cls = _resolve_exception_class(error)
+    error_format = textwrap.indent(error.format(), "│   ")
+    *lines, last_line = error_format.splitlines()
+    last_line = f"╰{last_line[1:]}" if last_line.startswith("│") else last_line
+    error_format = "\n".join(lines + [last_line])
     msg = (
-        f"(showing remote errors, root message at the bottom)\n"
-        f"--> Preceding Remote Cause:\n"
-        f"{textwrap.indent(error.format(), '    ')}"
+        f"(showing chained remote errors, root error at the bottom)\n"
+        f"├─ Error in dependency Chainlet `{remote_name}`:\n"
+        f"{error_format}"
     )
     raise exception_cls(msg)
 
