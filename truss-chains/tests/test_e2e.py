@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ def test_chain():
             service = deployment_client.push(entrypoint, options)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
+        time.sleep(1.0)  # Wait for models to be ready.
 
         # Call without providing values for default arguments.
         response = requests.post(
@@ -100,7 +102,8 @@ ValueError: \(showing chained remote errors, root error at the bottom\)
 │   │       raise ValueError\(f\"This input is too long: \{len\(data\)\}\.\"\)
 ╰   ╰   ValueError: This input is too long: \d+\.
                 """
-        assert re.match(error_regex.strip(), error_str.strip(), re.MULTILINE)
+
+        assert re.match(error_regex.strip(), error_str.strip(), re.MULTILINE), error_str
 
 
 @pytest.mark.asyncio

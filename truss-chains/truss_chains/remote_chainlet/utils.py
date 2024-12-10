@@ -148,35 +148,26 @@ def _handle_exception(exception: Exception) -> NoReturn:
         exception_module_name = None
 
     error_stack = traceback.extract_tb(exception.__traceback__)
-    # Exclude the error handling functions from the stack trace.
-    exclude_function_names = {
-        exception_to_http_error.__name__,
-        response_raise_errors.__name__,
-        async_response_raise_errors.__name__,
-        _handle_response_error.__name__,
-    }
-    final_tb = []
-    for frame in error_stack:
-        if frame.name in exclude_function_names:
-            continue
-        if "tenacity" in frame.filename:
-            continue
-        if frame.filename.endswith("model/model.py"):
-            continue
+    # Filter everything before (model.py) and after (stubs, error handling) so that only
+    # user-defined code remains. See test_e2e.py::test_chain for expected results.
+    model_predict_index = 0
+    first_stub_index = len(error_stack)
+    for i, frame in enumerate(error_stack):
+        if frame.filename.endswith("model/model.py") and frame.name == "predict":
+            model_predict_index = i + 1
         if frame.filename.endswith("remote_chainlet/stub.py") and frame.name.startswith(
-            "predict"
+            "predict"  # predict sycnc|async|stream.
         ):
+            first_stub_index = i - 1
             break
-        final_tb.append(frame)
 
-    stack = list(
-        [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
-    )
+    final_tb = error_stack[model_predict_index:first_stub_index]
+    stack = [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
     error = definitions.RemoteErrorDetail(
         exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
-        user_stack_trace=stack,
+        user_stack_trace=list(stack),
     )
     raise fastapi.HTTPException(
         status_code=500, detail=error.model_dump()
@@ -185,7 +176,6 @@ def _handle_exception(exception: Exception) -> NoReturn:
 
 @contextlib.contextmanager
 def exception_to_http_error() -> Iterator[None]:
-    # TODO: move chainlet name from here to caller side.
     try:
         yield
     except Exception as e:
@@ -228,6 +218,7 @@ def _handle_response_error(response_json: dict, remote_name: str):
         raise ValueError(
             "Could not get `error` field from JSON from chainlet error response"
         ) from e
+
     try:
         error = definitions.RemoteErrorDetail.model_validate(error_json)
     except pydantic.ValidationError as e:
@@ -239,6 +230,7 @@ def _handle_response_error(response_json: dict, remote_name: str):
             "plain string (old truss models) or a serialized "
             f"`{definitions.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
         ) from e
+
     exception_cls = _resolve_exception_class(error)
     error_format = textwrap.indent(error.format(), "│   ")
     *lines, last_line = error_format.splitlines()
