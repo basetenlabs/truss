@@ -79,7 +79,12 @@ class BasetenEndpoints:
             raise errors.ModelNotReady(model.name)
 
     async def model_ready(self, model_name: str) -> Dict[str, Union[str, bool]]:
-        self.check_healthy(self._safe_lookup_model(model_name))
+        model: ModelWrapper = self._safe_lookup_model(model_name)
+        is_ready = await model.is_ready()
+        if is_ready is None:
+            self.check_healthy(model)
+        elif not is_ready:
+            raise errors.ModelNotReady(model.name)
 
         return {}
 
@@ -152,7 +157,7 @@ class BasetenEndpoints:
 
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
-        self.check_healthy(model)
+        self.check_healthy(model)  # Do we still need this check?
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
