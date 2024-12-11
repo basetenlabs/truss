@@ -86,7 +86,6 @@ click.rich_click.COMMAND_GROUPS = {
     ]
 }
 
-
 console = Console()
 
 error_console = Console(stderr=True, style="bold red")
@@ -555,11 +554,15 @@ def _create_chains_table(service) -> Tuple[rich.table.Table, List[str]]:
     help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
-    "--user_env",
-    required=False,
+    "--experimental-watch-chainlet-names",
     type=str,
-    help="[DEPRECATED], use ``environment`` instead.",
-    hidden=True,
+    required=False,
+    help=(
+        "Runs `watch`, but only applies patches to specified chainlets. The option is "
+        "a comma-separated list of chainlet (display) names. This option can give "
+        "faster dev loops, but also lead to inconsistent deployments. Use with caution "
+        "and refer to docs."
+    ),
 )
 @log_level_option
 @error_handling
@@ -572,9 +575,9 @@ def push_chain(
     wait: bool,
     watch: bool,
     dryrun: bool,
-    user_env: Optional[str],
     remote: Optional[str],
     environment: Optional[str],
+    experimental_watch_chainlet_names: Optional[str],
 ) -> None:
     """
     Deploys a chain remotely.
@@ -589,6 +592,9 @@ def push_chain(
     from truss_chains import framework
     from truss_chains.deployment import deployment_client
 
+    if experimental_watch_chainlet_names:
+        watch = True
+
     if watch:
         if publish or promote:
             raise ValueError(
@@ -600,13 +606,10 @@ def push_chain(
             )
             wait = True
 
-    if user_env:
-        raise ValueError("`user_env` is deprecated, use `environment` instead.")
-
     if promote and environment:
         promote_warning = (
             "`promote` flag and `environment` flag were both specified. "
-            "Ignoring the value of `promote`"
+            "Ignoring the value of `promote`."
         )
         console.print(promote_warning, style="yellow")
 
@@ -674,7 +677,14 @@ def push_chain(
                 )
             console.print(deploy_success_text, style="bold green")
             console.print(f"You can run the chain with:\n{curl_snippet}")
+
             if watch:  # Note that this command will print a startup message.
+                if experimental_watch_chainlet_names:
+                    included_chainlets = [
+                        x.strip() for x in experimental_watch_chainlet_names.split(",")
+                    ]
+                else:
+                    included_chainlets = None
                 deployment_client.watch(
                     source,
                     entrypoint,
@@ -683,6 +693,7 @@ def push_chain(
                     console,
                     error_console,
                     show_stack_trace=not is_humanfriendly_log_level,
+                    included_chainlets=included_chainlets,
                 )
         else:
             console.print(f"Deployment failed ({num_failed} failures).", style="red")
@@ -710,11 +721,15 @@ def push_chain(
     help="Name of the remote in .trussrc to push to.",
 )
 @click.option(
-    "--user_env",
-    required=False,
+    "--experimental-chainlet-names",
     type=str,
-    help="[DEPRECATED], use `environment` instead.",
-    hidden=True,
+    required=False,
+    help=(
+        "Runs `watch`, but only applies patches to specified chainlets. The option is "
+        "a comma-separated list of chainlet (display) names. This option can give "
+        "faster dev loops, but also lead to inconsistent deployments. Use with caution "
+        "and refer to docs."
+    ),
 )
 @log_level_option
 @error_handling
@@ -722,8 +737,8 @@ def watch_chains(
     source: Path,
     entrypoint: Optional[str],
     name: Optional[str],
-    user_env: Optional[str],
     remote: Optional[str],
+    experimental_chainlet_names: Optional[str],
 ) -> None:
     """
     Watches the chains source code and applies live patches to a development deployment.
@@ -738,11 +753,13 @@ def watch_chains(
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains.deployment import deployment_client
 
-    if user_env:
-        raise ValueError("`user_env` is deprecated, use `environment` instead.")
-
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    if experimental_chainlet_names:
+        included_chainlets = [x.strip() for x in experimental_chainlet_names.split(",")]
+    else:
+        included_chainlets = None
 
     deployment_client.watch(
         source,
@@ -752,6 +769,7 @@ def watch_chains(
         console,
         error_console,
         show_stack_trace=not is_humanfriendly_log_level,
+        included_chainlets=included_chainlets,
     )
 
 
