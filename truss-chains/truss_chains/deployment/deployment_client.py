@@ -6,6 +6,7 @@ import logging
 import pathlib
 import tempfile
 import textwrap
+import time
 import traceback
 import uuid
 from typing import (
@@ -21,6 +22,7 @@ from typing import (
     cast,
 )
 
+import mypy.api
 import tenacity
 import watchfiles
 from truss.local import local_config_handler
@@ -249,15 +251,8 @@ class DockerChainService(ChainService):
         raise NotImplementedError()
 
 
-def _get_chain_root(
-    entrypoint: Type[definitions.ABCChainlet],
-    non_entrypoint_root_dir: Optional[str] = None,
-) -> pathlib.Path:
-    # TODO: revisit how chain root is inferred/specified, current might be brittle.
-    if non_entrypoint_root_dir:
-        chain_root = pathlib.Path(non_entrypoint_root_dir).absolute()
-    else:
-        chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
+def _get_chain_root(entrypoint: Type[definitions.ABCChainlet]) -> pathlib.Path:
+    chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
     logging.info(
         f"Using chain workspace dir: `{chain_root}` (files under this dir will "
         "be included as dependencies in the remote deployments and are importable)."
@@ -310,9 +305,7 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
 
 class _ChainSourceGenerator:
     def __init__(
-        self,
-        options: definitions.PushOptions,
-        gen_root: pathlib.Path,
+        self, options: definitions.PushOptions, gen_root: pathlib.Path
     ) -> None:
         self._options = options
         self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
@@ -323,22 +316,48 @@ class _ChainSourceGenerator:
             return self._options.use_local_chains_src
         return False
 
+    def _type_check(
+        self, chainlet_dependencies: Iterable[definitions.ChainletAPIDescriptor]
+    ):
+        t0 = time.time()
+        files = set(descr.src_path for descr in chainlet_dependencies)
+        print(files)
+        cache_dir = (
+            self._gen_root / definitions.GENERATED_CODE_DIR / self._options.chain_name
+        )
+        print(cache_dir)
+        std_out, std_err, exit_code = mypy.api.run(
+            [
+                *files,
+                "--follow-imports=silent",
+                "--python-version=3.9",
+                f"--cache-dir={cache_dir}/.mypy",
+            ]
+        )
+        print(std_out)
+        duration = time.time() - t0
+        print(f"Mypy took {duration:.2f} sec.")
+        raise NotImplementedError()
+
     def generate_chainlet_artifacts(
         self,
         entrypoint: Type[definitions.ABCChainlet],
-        non_entrypoint_root_dir: Optional[str] = None,
     ) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact]]:
-        chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
+        chain_root = _get_chain_root(entrypoint)
         entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
         dependency_artifacts: list[b10_types.ChainletArtifact] = []
         chainlet_display_names: set[str] = set()
 
-        for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
+        chainlet_dependencies = _get_ordered_dependencies([entrypoint])
+        self._type_check(chainlet_dependencies)
+
+        for chainlet_descriptor in chainlet_dependencies:
             chainlet_display_name = chainlet_descriptor.display_name
 
             if chainlet_display_name in chainlet_display_names:
                 raise definitions.ChainsUsageError(
-                    f"Chainlet names must be unique. Found multiple Chainlets with the name: '{chainlet_display_name}'."
+                    "Chainlet names must be unique. Found multiple Chainlets "
+                    f"with the name: '{chainlet_display_name}'."
                 )
 
             chainlet_display_names.add(chainlet_display_name)
@@ -380,16 +399,12 @@ class _ChainSourceGenerator:
 def push(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.PushOptions,
-    non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
     entrypoint_artifact, dependency_artifacts = _ChainSourceGenerator(
         options, gen_root
-    ).generate_chainlet_artifacts(
-        entrypoint,
-        non_entrypoint_root_dir,
-    )
+    ).generate_chainlet_artifacts(entrypoint)
 
     if options.only_generate_trusses:
         return None

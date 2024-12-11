@@ -12,3 +12,4 @@ class SplitTextInput(pydantic.BaseModel):
     data: str
     num_partitions: int
     mode: Modes
+    field: float

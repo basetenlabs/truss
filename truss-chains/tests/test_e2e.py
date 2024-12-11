@@ -209,9 +209,9 @@ def test_numpy_chain(mode):
         target = "HostJSON"
     else:
         target = "HostBinary"
+    tests_root = Path(__file__).parent.resolve()
+    chain_root = tests_root / "numpy_and_binary" / "chain.py"
     with ensure_kill_all():
-        examples_root = Path(__file__).parent.parent.resolve() / "examples"
-        chain_root = examples_root / "numpy_and_binary" / "chain.py"
         with framework.import_target(chain_root, target) as entrypoint:
             service = deployment_client.push(
                 entrypoint,
