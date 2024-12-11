@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import warnings
 from enum import Enum
 from typing import Optional
@@ -9,6 +10,7 @@ from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import BaseModel, PydanticDeprecatedSince20, validator
 
+logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
@@ -107,6 +109,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
 
+    class Config:
+        extra = "forbid"
+
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
         if isinstance(v, int):
@@ -197,6 +202,28 @@ class TrussSpeculatorConfiguration(BaseModel):
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
+
+    def __init__(self, **data):
+        extra_build_fields = {}
+        valid_build_fields = {}
+        for key, value in data.get("build").items():
+            if key in TrussTRTLLMBuildConfiguration.__annotations__:
+                valid_build_fields[key] = value
+            else:
+                extra_build_fields[key] = value
+        data.update({"build": valid_build_fields})
+
+        if extra_build_fields:
+            logger.warning(
+                f"Found extra fields {list(extra_build_fields.keys())} in build configuration, attempting to migrate valid fields to runtime configuration."
+                " This migration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
+            )
+            for key, value in extra_build_fields.items():
+                if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
+                    logger.warning(f"Setting runtime.{key}: {value}")
+                    data.get("runtime", {}).update({key: value})
+
+        super().__init__(**data)
 
     @property
     def requires_build(self):
