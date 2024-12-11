@@ -1,7 +1,14 @@
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TrussTRTLLMBatchSchedulerPolicy,
+    TrussTRTLLMBuildConfiguration,
+    TrussTRTLLMRuntimeConfiguration,
 )
+
+
+def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
+    build_config = TrussTRTLLMBuildConfiguration(**trtllm_config["trt_llm"]["build"])
+    TRTLLMConfiguration(build=build_config, runtime=TrussTRTLLMRuntimeConfiguration())
 
 
 def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(

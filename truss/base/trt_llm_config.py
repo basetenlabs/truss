@@ -208,27 +208,28 @@ class TRTLLMConfiguration(BaseModel):
     def migrate_runtime_fields(cls, data: Any) -> Any:
         extra_runtime_fields = {}
         valid_build_fields = {}
-        for key, value in data.get("build").items():
-            if key in TrussTRTLLMBuildConfiguration.__annotations__:
-                valid_build_fields[key] = value
-            else:
-                if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
-                    logger.warning(f"Found runtime.{key}: {value} in build config")
-                    extra_runtime_fields[key] = value
-        if extra_runtime_fields:
-            logger.warning(
-                f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
-                " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
-            )
-            data.get("runtime").update(
-                {
-                    k: v
-                    for k, v in extra_runtime_fields.items()
-                    if k not in data.get("runtime")
-                }
-            )
-
-        data.update({"build": valid_build_fields})
+        if isinstance(data.get("build"), dict):
+            for key, value in data.get("build").items():
+                if key in TrussTRTLLMBuildConfiguration.__annotations__:
+                    valid_build_fields[key] = value
+                else:
+                    if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
+                        logger.warning(f"Found runtime.{key}: {value} in build config")
+                        extra_runtime_fields[key] = value
+            if extra_runtime_fields:
+                logger.warning(
+                    f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
+                    " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
+                )
+                data.get("runtime").update(
+                    {
+                        k: v
+                        for k, v in extra_runtime_fields.items()
+                        if k not in data.get("runtime")
+                    }
+                )
+            data.update({"build": valid_build_fields})
+            return data
         return data
 
     @property
