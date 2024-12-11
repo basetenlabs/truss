@@ -808,7 +808,7 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
             "enable_chunked_context": True,
             "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
             "request_default_max_tokens": 10,
-            "total_token_limit": 100,
+            "total_token_limit": 50,
             # end deprecated fields
             "checkpoint_repository": {
                 "source": "HF",
@@ -816,7 +816,7 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
             },
             "gather_all_token_logits": False,
         },
-        "runtime": {},
+        "runtime": {"total_token_limit": 100},
     }
     return trtllm_config
 

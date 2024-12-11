@@ -213,14 +213,20 @@ class TRTLLMConfiguration(BaseModel):
                 valid_build_fields[key] = value
             else:
                 if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
-                    logger.warning(f"Setting runtime.{key}: {value}")
+                    logger.warning(f"Found runtime.{key}: {value} in build config")
                     extra_runtime_fields[key] = value
         if extra_runtime_fields:
             logger.warning(
-                f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, fields were migrated to runtime configuration."
-                " This migration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
+                f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
+                " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
             )
-            data.update({"runtime": extra_runtime_fields})
+            data.get("runtime").update(
+                {
+                    k: v
+                    for k, v in extra_runtime_fields.items()
+                    if k not in data.get("runtime")
+                }
+            )
 
         data.update({"build": valid_build_fields})
         return data
