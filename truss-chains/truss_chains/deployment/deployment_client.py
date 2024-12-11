@@ -470,6 +470,7 @@ class _Watcher:
     _console: "rich_console.Console"
     _error_console: "rich_console.Console"
     _show_stack_trace: bool
+    _included_chainlets: set[str]
 
     def __init__(
         self,
@@ -480,6 +481,7 @@ class _Watcher:
         console: "rich_console.Console",
         error_console: "rich_console.Console",
         show_stack_trace: bool,
+        included_chainlets: Optional[list[str]],
     ) -> None:
         self._source = source
         self._entrypoint = entrypoint
@@ -497,6 +499,16 @@ class _Watcher:
                 desc.display_name
                 for desc in _get_ordered_dependencies([entrypoint_cls])
             )
+
+        if included_chainlets:
+            if not_matched := (set(included_chainlets) - chainlet_names):
+                raise definitions.ChainsDeploymentError(
+                    "Requested to watch specific chainlets, but did not find "
+                    f"{not_matched} among available chainlets {chainlet_names}."
+                )
+            self._included_chainlets = set(included_chainlets)
+        else:
+            self._included_chainlets = chainlet_names
 
         chain_id = b10_core.get_chain_id_by_name(
             self._remote_provider.api, self._deployed_chain_name
@@ -594,6 +606,13 @@ class _Watcher:
                     )
                     future_to_display_name = {}
                     for chainlet_descr in chainlet_descriptors:
+                        if chainlet_descr.display_name not in self._included_chainlets:
+                            self._console.print(
+                                f"⏩ Skipping patching `{chainlet_descr.display_name}`.",
+                                style="grey50",
+                            )
+                            continue
+
                         future = executor.submit(
                             self._code_gen_and_patch_thread,
                             chainlet_descr,
@@ -658,17 +677,17 @@ class _Watcher:
 
             if patch_result.status == b10_remote.PatchStatus.SUCCESS:
                 self._console.print(
-                    f"Patched Chainlet `{display_name}`.{logs_output}", style="green"
+                    f"✅ Patched Chainlet `{display_name}`.{logs_output}", style="green"
                 )
             elif patch_result.status == b10_remote.PatchStatus.SKIPPED:
                 self._console.print(
-                    f"Nothing to do for Chainlet `{display_name}`.{logs_output}",
+                    f"💤 Nothing to do for Chainlet `{display_name}`.{logs_output}",
                     style="grey50",
                 )
             else:
                 has_errors = True
                 self._error_console.print(
-                    f"Failed to patch Chainlet `{display_name}`. "
+                    f"❌ Failed to patch Chainlet `{display_name}`. "
                     f"{patch_result.message}{logs_output}"
                 )
 
@@ -702,6 +721,7 @@ def watch(
     console: "rich_console.Console",
     error_console: "rich_console.Console",
     show_stack_trace: bool,
+    included_chainlets: Optional[list[str]],
 ) -> None:
     console.print(
         (
@@ -711,6 +731,13 @@ def watch(
         style="blue",
     )
     patcher = _Watcher(
-        source, entrypoint, name, remote, console, error_console, show_stack_trace
+        source,
+        entrypoint,
+        name,
+        remote,
+        console,
+        error_console,
+        show_stack_trace,
+        included_chainlets,
     )
     patcher.watch()
