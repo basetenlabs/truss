@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import warnings
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from pydantic import BaseModel, PydanticDeprecatedSince20, validator
+from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
 
+logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
@@ -107,6 +109,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
 
+    class Config:
+        extra = "forbid"
+
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
         if isinstance(v, int):
@@ -197,6 +202,34 @@ class TrussSpeculatorConfiguration(BaseModel):
 class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_runtime_fields(cls, data: Any) -> Any:
+        extra_runtime_fields = {}
+        valid_build_fields = {}
+        for key, value in data.get("build").items():
+            if key in TrussTRTLLMBuildConfiguration.__annotations__:
+                valid_build_fields[key] = value
+            else:
+                if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
+                    logger.warning(f"Found runtime.{key}: {value} in build config")
+                    extra_runtime_fields[key] = value
+        if extra_runtime_fields:
+            logger.warning(
+                f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
+                " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
+            )
+            data.get("runtime").update(
+                {
+                    k: v
+                    for k, v in extra_runtime_fields.items()
+                    if k not in data.get("runtime")
+                }
+            )
+
+        data.update({"build": valid_build_fields})
+        return data
 
     @property
     def requires_build(self):

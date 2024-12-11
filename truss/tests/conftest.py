@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import importlib
 import os
 import shutil
@@ -6,14 +7,18 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict
 
 import pytest
 import requests
 import yaml
 
 from truss.base.custom_types import Example
-from truss.base.trt_llm_config import TrussTRTLLMBatchSchedulerPolicy
-from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR
+from truss.base.trt_llm_config import (
+    TrussSpecDecMode,
+    TrussTRTLLMBatchSchedulerPolicy,
+)
+from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, Accelerator
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
 )
@@ -736,3 +741,146 @@ def _modify_yaml(yaml_path: Path):
     yield content
     with yaml_path.open("w") as yaml_file:
         yaml.dump(content, yaml_file)
+
+
+@pytest.fixture
+def default_config() -> Dict[str, Any]:
+    return {
+        "build_commands": [],
+        "environment_variables": {},
+        "external_package_dirs": [],
+        "model_metadata": {},
+        "model_name": None,
+        "python_version": "py39",
+        "requirements": [],
+        "resources": {
+            "accelerator": None,
+            "cpu": "1",
+            "memory": "2Gi",
+            "use_gpu": False,
+        },
+        "secrets": {},
+        "system_packages": [],
+    }
+
+
+@pytest.fixture
+def trtllm_config(default_config) -> Dict[str, Any]:
+    trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+    }
+    trtllm_config["trt_llm"] = {
+        "build": {
+            "base_model": "llama",
+            "max_seq_len": 2048,
+            "max_batch_size": 512,
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "gather_all_token_logits": False,
+        },
+        "runtime": {},
+    }
+    return trtllm_config
+
+
+@pytest.fixture
+def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
+    trtllm_config = default_config
+    trtllm_config["resources"] = {
+        "accelerator": Accelerator.L4.value,
+        "cpu": "1",
+        "memory": "24Gi",
+        "use_gpu": True,
+    }
+    trtllm_config["trt_llm"] = {
+        "build": {
+            "base_model": "llama",
+            "max_seq_len": 2048,
+            "max_batch_size": 512,
+            # start deprecated fields
+            "kv_cache_free_gpu_mem_fraction": 0.1,
+            "enable_chunked_context": True,
+            "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
+            "request_default_max_tokens": 10,
+            "total_token_limit": 50,
+            # end deprecated fields
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "gather_all_token_logits": False,
+        },
+        "runtime": {"total_token_limit": 100},
+    }
+    return trtllm_config
+
+
+@pytest.fixture
+def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
+    spec_dec_config = copy.deepcopy(trtllm_config)
+    spec_dec_config["trt_llm"] = {
+        "build": {
+            "base_model": "llama",
+            "max_seq_len": 2048,
+            "max_batch_size": 512,
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "plugin_configuration": {
+                "paged_kv_cache": True,
+                "gemm_plugin": "auto",
+                "use_paged_context_fmha": True,
+            },
+            "speculator": {
+                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
+                "num_draft_tokens": 4,
+                "build": {
+                    "base_model": "llama",
+                    "max_seq_len": 2048,
+                    "max_batch_size": 512,
+                    "checkpoint_repository": {
+                        "source": "HF",
+                        "repo": "meta/llama4-500B",
+                    },
+                },
+            },
+        },
+    }
+    return spec_dec_config
+
+
+@pytest.fixture
+def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
+    spec_dec_config = copy.deepcopy(trtllm_config)
+    spec_dec_config["trt_llm"] = {
+        "build": {
+            "base_model": "llama",
+            "max_seq_len": 2048,
+            "max_batch_size": 512,
+            "checkpoint_repository": {
+                "source": "HF",
+                "repo": "meta/llama4-500B",
+            },
+            "plugin_configuration": {
+                "paged_kv_cache": True,
+                "gemm_plugin": "auto",
+                "use_paged_context_fmha": True,
+            },
+            "speculator": {
+                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
+                "num_draft_tokens": 4,
+                "checkpoint_repository": {
+                    "source": "HF",
+                    "repo": "meta/llama4-500B",
+                },
+            },
+        },
+    }
+    return spec_dec_config
