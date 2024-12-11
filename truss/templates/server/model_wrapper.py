@@ -122,6 +122,7 @@ def _is_request_type(obj: Any) -> bool:
 
 
 class ArgConfig(enum.Enum):
+    NONE = enum.auto()
     INPUTS_ONLY = enum.auto()
     REQUEST_ONLY = enum.auto()
     INPUTS_AND_REQUEST = enum.auto()
@@ -134,11 +135,12 @@ class ArgConfig(enum.Enum):
     ) -> "ArgConfig":
         parameters = list(signature.parameters.values())
 
-        if len(parameters) == 1:
+        if len(parameters) == 0:
+            return cls.NONE
+        elif len(parameters) == 1:
             if _is_request_type(parameters[0].annotation):
                 return cls.REQUEST_ONLY
             return cls.INPUTS_ONLY
-
         elif len(parameters) == 2:
             # First arg can be whatever, except request. Second arg must be request.
             param1, param2 = parameters
@@ -204,6 +206,7 @@ class ModelDescriptor:
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
     setup_environment: Optional[MethodDescriptor]
+    is_ready: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -263,12 +266,18 @@ class ModelDescriptor:
         else:
             setup_environment = None
 
+        if hasattr(model, "is_ready"):
+            is_ready = MethodDescriptor.from_method(model.is_ready, "is_ready")
+        else:
+            is_ready = None
+
         return cls(
             preprocess=preprocess,
             predict=predict,
             postprocess=postprocess,
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
             setup_environment=setup_environment,
+            is_ready=is_ready,
         )
 
 
@@ -311,6 +320,7 @@ class ModelWrapper:
         )
         self._poll_for_environment_updates_task = None
         self._environment = None
+        self._is_ready_failures = 0
 
     @property
     def _model(self) -> Any:
@@ -527,6 +537,32 @@ class ModelWrapper:
                         "Exception while setting up environment: " + str(e),
                         exc_info=errors.filter_traceback(self._model_file_name),
                     )
+
+    async def is_ready(self) -> Optional[bool]:
+        descriptor = self.model_descriptor.is_ready
+        is_ready: Optional[bool] = None
+        if not descriptor:
+            return is_ready
+        try:
+            if descriptor.is_async:
+                is_ready = await self._model.is_ready()
+            else:
+                # Offload sync functions to thread, to not block event loop.
+                is_ready = await to_thread.run_sync(self._model.is_ready)
+        except Exception as e:
+            is_ready = False
+            self._logger.exception(
+                "Exception while checking if model is ready: " + str(e),
+                exc_info=errors.filter_traceback(self._model_file_name),
+            )
+        if not is_ready:
+            self._is_ready_failures += 1
+            self._logger.warning(
+                f"Model is not ready. Consecutive failures: {self._is_ready_failures}"
+            )
+        elif is_ready:
+            self._is_ready_failures = 0
+        return is_ready
 
     async def preprocess(
         self,
