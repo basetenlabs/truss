@@ -839,7 +839,7 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
                 "use_paged_context_fmha": True,
             },
             "speculator": {
-                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
+                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
                 "num_draft_tokens": 4,
                 "build": {
                     "base_model": "llama",
@@ -874,7 +874,7 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
                 "use_paged_context_fmha": True,
             },
             "speculator": {
-                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL,
+                "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
                 "num_draft_tokens": 4,
                 "checkpoint_repository": {
                     "source": "HF",

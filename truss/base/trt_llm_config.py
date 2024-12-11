@@ -4,11 +4,11 @@ import json
 import logging
 import warnings
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from pydantic import BaseModel, PydanticDeprecatedSince20, validator
+from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
 
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
@@ -203,27 +203,27 @@ class TRTLLMConfiguration(BaseModel):
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: TrussTRTLLMBuildConfiguration
 
-    def __init__(self, **data):
-        extra_build_fields = {}
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_runtime_fields(cls, data: Any) -> Any:
+        extra_runtime_fields = {}
         valid_build_fields = {}
         for key, value in data.get("build").items():
             if key in TrussTRTLLMBuildConfiguration.__annotations__:
                 valid_build_fields[key] = value
             else:
-                extra_build_fields[key] = value
-        data.update({"build": valid_build_fields})
-
-        if extra_build_fields:
-            logger.warning(
-                f"Found extra fields {list(extra_build_fields.keys())} in build configuration, attempting to migrate valid fields to runtime configuration."
-                " This migration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
-            )
-            for key, value in extra_build_fields.items():
                 if key in TrussTRTLLMRuntimeConfiguration.__annotations__:
                     logger.warning(f"Setting runtime.{key}: {value}")
-                    data.get("runtime", {}).update({key: value})
+                    extra_runtime_fields[key] = value
+        if extra_runtime_fields:
+            logger.warning(
+                f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, fields were migrated to runtime configuration."
+                " This migration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
+            )
+            data.update({"runtime": extra_runtime_fields})
 
-        super().__init__(**data)
+        data.update({"build": valid_build_fields})
+        return data
 
     @property
     def requires_build(self):
