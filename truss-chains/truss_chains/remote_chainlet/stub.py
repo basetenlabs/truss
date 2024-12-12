@@ -36,8 +36,8 @@ DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
 
 
 _RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
-_InputT = TypeVar("_InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
-_OutputT = TypeVar("_OutputT", bound=pydantic.BaseModel)
+InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
+OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
 
 
 _trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
@@ -177,22 +177,32 @@ class StubBase(BasetenSession, abc.ABC):
     and invoking other endpoints.
 
     It is used internally for RPCs to dependency chainlets, but it can also be used
-    in user-code for wrapping a deployed truss model into the chains framework, e.g.
-    like that::
+    in user-code for wrapping a deployed truss model into the Chains framework. It
+    flexibly supports JSON and pydantic inputs and output. Example usage::
 
         import pydantic
         import truss_chains as chains
+
 
         class WhisperOutput(pydantic.BaseModel):
             ...
 
 
         class DeployedWhisper(chains.StubBase):
+            # Input JSON, output JSON.
+            async def run_remote(self, audio_b64: str) -> Any:
+                return await self.predict_async(
+                    inputs={"audio": audio_b64})
+                # resp == {"text": ..., "language": ...}
 
+            # OR Input JSON, output pydantic model.
             async def run_remote(self, audio_b64: str) -> WhisperOutput:
-                resp = await self.predict_async(
-                    json_payload={"audio": audio_b64})
-                return WhisperOutput(text=resp["text"], language=resp["language"])
+                return await self.predict_async(
+                    inputs={"audio": audio_b64}, output_model=WhisperOutput)
+
+            # OR Input and output are pydantic models.
+            async def run_remote(self, data: WhisperInput) -> WhisperOutput:
+                return await self.predict_async(data, output_model=WhisperOutput)
 
 
         class MyChainlet(chains.ChainletBase):
@@ -205,6 +215,8 @@ class StubBase(BasetenSession, abc.ABC):
                     options=chains.RPCOptions(retries=3),
                 )
 
+            async def run_remote(self, ...):
+               await self._whisper.run_remote(...)
     """
 
     @final
@@ -246,7 +258,7 @@ class StubBase(BasetenSession, abc.ABC):
         )
 
     def _make_request_params(
-        self, inputs: _InputT, for_httpx: bool = False
+        self, inputs: InputT, for_httpx: bool = False
     ) -> Mapping[str, Any]:
         kwargs: Dict[str, Any] = {}
         headers = {
@@ -273,8 +285,8 @@ class StubBase(BasetenSession, abc.ABC):
         return kwargs
 
     def _response_to_pydantic(
-        self, response: bytes, output_model: Type[_OutputT]
-    ) -> _OutputT:
+        self, response: bytes, output_model: Type[OutputModelT]
+    ) -> OutputModelT:
         if self._service_descriptor.options.use_binary:
             data_dict = serialization.truss_msgpack_deserialize(response)
             return output_model.model_validate(data_dict)
@@ -287,15 +299,15 @@ class StubBase(BasetenSession, abc.ABC):
 
     @overload
     def predict_sync(
-        self, inputs: _InputT, output_model: Type[_OutputT]
-    ) -> _OutputT: ...
+        self, inputs: InputT, output_model: Type[OutputModelT]
+    ) -> OutputModelT: ...
 
     @overload  # Returns JSON
-    def predict_sync(self, inputs: _InputT, output_model: None = None) -> Any: ...
+    def predict_sync(self, inputs: InputT, output_model: None = None) -> Any: ...
 
     def predict_sync(
-        self, inputs: _InputT, output_model: Optional[Type[_OutputT]] = None
-    ) -> Union[_OutputT, Any]:
+        self, inputs: InputT, output_model: Optional[Type[OutputModelT]] = None
+    ) -> Union[OutputModelT, Any]:
         retry = self._make_retry_policy(tenacity.Retrying)
         params = self._make_request_params(inputs, for_httpx=True)
 
@@ -313,17 +325,15 @@ class StubBase(BasetenSession, abc.ABC):
 
     @overload
     async def predict_async(
-        self, inputs: _InputT, output_model: Type[_OutputT]
-    ) -> _OutputT: ...
+        self, inputs: InputT, output_model: Type[OutputModelT]
+    ) -> OutputModelT: ...
 
     @overload  # Returns JSON.
-    async def predict_async(
-        self, inputs: _InputT, output_model: None = None
-    ) -> Any: ...
+    async def predict_async(self, inputs: InputT, output_model: None = None) -> Any: ...
 
     async def predict_async(
-        self, inputs: _InputT, output_model: Optional[Type[_OutputT]] = None
-    ) -> Union[_OutputT, Any]:
+        self, inputs: InputT, output_model: Optional[Type[OutputModelT]] = None
+    ) -> Union[OutputModelT, Any]:
         retry = self._make_retry_policy(tenacity.AsyncRetrying)
         params = self._make_request_params(inputs)
 
@@ -341,7 +351,7 @@ class StubBase(BasetenSession, abc.ABC):
             return self._response_to_pydantic(response_bytes, output_model)
         return self._response_to_json(response_bytes)
 
-    async def predict_async_stream(self, inputs: _InputT) -> AsyncIterator[bytes]:
+    async def predict_async_stream(self, inputs: InputT) -> AsyncIterator[bytes]:
         retry = self._make_retry_policy(tenacity.AsyncRetrying)
         params = self._make_request_params(inputs)
 
