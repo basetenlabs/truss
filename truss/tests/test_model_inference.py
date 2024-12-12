@@ -980,7 +980,7 @@ def test_is_ready():
             local_port=8090, detach=True, wait_for_server_ready=False
         )
 
-        # Sleep a few seconds to get the server some time to  wake up
+        # Sleep a few seconds to get the server some time to wake up
         time.sleep(10)
 
         truss_server_addr = "http://localhost:8090"
@@ -990,7 +990,7 @@ def test_is_ready():
         assert (
             "Exception while checking if model is ready: not ready" in container.logs()
         )
-        assert "Model is not ready. Consecutive failures: 1" in container.logs()
+        assert "Model is not ready. Health checks failing." in container.logs()
 
     model = """
     class Model:
@@ -1005,18 +1005,21 @@ def test_is_ready():
             local_port=8090, detach=True, wait_for_server_ready=False
         )
 
-        # Sleep a few seconds to get the server some time to  wake up
+        # Sleep a few seconds to get the server some time to wake up
         time.sleep(10)
 
         truss_server_addr = "http://localhost:8090"
 
         ready = requests.get(f"{truss_server_addr}/v1/models/model")
         assert ready.status_code == 503
-        assert "Model is not ready. Consecutive failures: 1" in container.logs()
-
+        assert "Model is not ready. Health checks failing." in container.logs()
+        time.sleep(5)
         ready = requests.get(f"{truss_server_addr}/v1/models/model")
         assert ready.status_code == 503
-        assert "Model is not ready. Consecutive failures: 2" in container.logs()
+        assert (
+            "Model is not ready. Health checks failing for 5 seconds."
+            in container.logs()
+        )
 
     model = """
     class Model:
