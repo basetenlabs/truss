@@ -7,6 +7,7 @@ https://github.com/basetenlabs/truss/tree/main/docs/chains/doc_gen
 
 APIs for creating user-defined Chainlets.
 
+
 ### *class* `truss_chains.ChainletBase`
 
 Base class for all chainlets.
@@ -70,6 +71,7 @@ context instance is provided.
 * **Return type:**
   [*DeploymentContext*](#truss_chains.DeploymentContext)
 
+
 ### *class* `truss_chains.DeploymentContext`
 
 Bases: `pydantic.BaseModel`
@@ -86,7 +88,7 @@ an access token for downloading model weights).
 | Name | Type | Description |
 |------|------|-------------|
 | `data_dir` | *Path\|None* | The directory where the chainlet can store and access data, e.g. for downloading model weights. |
-| `chainlet_to_service` | *Mapping[str,[DeployedServiceDescriptor](#truss_chains.DeployedServiceDescriptor* | A mapping from chainlet names to service descriptors. This is used create RPCs sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
+| `chainlet_to_service` | *Mapping[str,[DeployedServiceDescriptor](#truss_chains.DeployedServiceDescriptor* | A mapping from chainlet names to service descriptors. This is used to create RPC sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
 | `secrets` | *MappingNoIter[str,str]* | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet. |
 | `environment` | *[Environment](#truss_chains.definitions.Environment* | The environment that the chainlet is deployed in. None if the chainlet is not associated with an environment. |
 
@@ -110,6 +112,7 @@ an access token for downloading model weights).
 
 #### secrets *: MappingNoIter[str, str]*
 
+
 ### *class* `truss_chains.definitions.Environment`
 
 Bases: `pydantic.BaseModel`
@@ -119,6 +122,7 @@ The environment the chainlet is deployed in.
 * **Parameters:**
   **name** (*str*) – The name of the environment.
 #### name *: str*
+
 
 ### *class* `truss_chains.ChainletOptions`
 
@@ -135,6 +139,7 @@ Bases: `pydantic.BaseModel`
 #### enable_b10_tracing *: bool*
 
 #### env_variables *: Mapping[str, str]*
+
 
 ### *class* `truss_chains.RPCOptions`
 
@@ -183,6 +188,7 @@ class MyChainlet(ChainletBase):
 # Remote Configuration
 
 These data structures specify for each chainlet how it gets deployed remotely, e.g. dependencies and compute resources.
+
 
 ### *class* `truss_chains.RemoteConfig`
 
@@ -237,6 +243,7 @@ class MyChainlet(chains.ChainletBase):
 
 #### options *: [ChainletOptions](#truss_chains.ChainletOptions)*
 
+
 ### *class* `truss_chains.DockerImage`
 
 Bases: `pydantic.BaseModel`
@@ -275,6 +282,7 @@ modules and keep their requirement files right next their python source files.
 
 #### pip_requirements_file *: AbsPath | None*
 
+
 ### *class* `truss_chains.BasetenImage`
 
 Bases: `Enum`
@@ -287,6 +295,7 @@ uses GPUs, drivers will be included in the image.
 #### PY311 *= 'py311'*
 
 #### PY39 *= 'py39'*
+
 
 ### *class* `truss_chains.CustomImage`
 
@@ -308,6 +317,7 @@ Configures the usage of a custom image hosted on dockerhub.
 #### image *: str*
 
 #### python_executable_path *: str | None*
+
 
 ### *class* `truss_chains.Compute`
 
@@ -346,6 +356,7 @@ two ways:
 
 * **Return type:**
   *ComputeSpec*
+
 
 ### *class* `truss_chains.Assets`
 
@@ -415,6 +426,7 @@ Deploys a chain remotely (with all dependent chainlets).
   A chain service handle to the deployed chain.
 * **Return type:**
   *BasetenChainService*
+
 
 ### *class* `truss_chains.deployment.deployment_client.ChainService`
 
@@ -578,6 +590,7 @@ if __name__ == "__main__":
 Refer to the [local debugging guide](https://docs.baseten.co/chains/guide#test-a-chain-locally)
 for more details.
 
+
 ### *class* `truss_chains.DeployedServiceDescriptor`
 
 Bases: `ServiceDescriptor`
@@ -593,6 +606,7 @@ Bases: `ServiceDescriptor`
 
 
 #### predict_url *: str*
+
 
 ### *class* `truss_chains.StubBase`
 
@@ -611,12 +625,12 @@ flexibly supports JSON and pydantic inputs and output. Example usage:
 import pydantic
 import truss_chains as chains
 
+
 class WhisperOutput(pydantic.BaseModel):
     ...
 
 
 class DeployedWhisper(chains.StubBase):
-
     # Input JSON, output JSON.
     async def run_remote(self, audio_b64: str) -&gt; Any:
         return await self.predict_async(
@@ -684,6 +698,7 @@ Factory method, convenient to be used in chainlet’s `__init__`-method.
 #### predict_sync(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
 
 #### predict_sync(inputs: InputT, output_model: None = None) → Any
+
 
 ### *class* `truss_chains.RemoteErrorDetail`
 

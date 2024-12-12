@@ -40,18 +40,16 @@ chainlet instance is provided.
 
 **Parameters:**
 
-| Name           | Type                                                      | Description                                                                                                                                                                                                                                                                               |
-|----------------|-----------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `chainlet_cls` | *Type[[ChainletBase](#class-truss-chains-chainletbase)]]* | The chainlet class of the dependency.                                                                                                                                                                                                                                                     |
-| `retries`      | *int*                                                     | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues).                                                                                                                                                                              |
-| `timeout_sec`  | *int*                                                     | Timeout for the HTTP request to this chainlet.                                                                                                                                                                                                                                            |
-| `use_binary`   | *bool*                                                    | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
+| Name           | Type                                                     | Description                                                                                                                                                                                                                                                                               |
+|----------------|----------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `chainlet_cls` | *Type[[ChainletBase](#class-truss-chains-chainletbase)]* | The chainlet class of the dependency.                                                                                                                                                                                                                                                     |
+| `retries`      | *int*                                                    | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues).                                                                                                                                                                              |
+| `timeout_sec`  | *int*                                                    | Timeout for the HTTP request to this chainlet.                                                                                                                                                                                                                                            |
+| `use_binary`   | *bool*                                                   | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 
 * **Returns:**
   A “symbolic marker” to be used as a default argument in a chainlet’s
   initializer.
-* **Return type:**
-  *ChainletT*
 
 
 ### `truss_chains.depends_context`
@@ -86,12 +84,12 @@ an access token for downloading model weights).
 
 **Parameters:**
 
-| Name                  | Type                                                                                       | Description                                                                                                                                                                                            |
-|-----------------------|--------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `data_dir`            | *Path\|None*                                                                               | The directory where the chainlet can store and access data, e.g. for downloading model weights.                                                                                                        |
-| `chainlet_to_service` | *Mapping[str,[DeployedServiceDescriptor](#class-truss-chains-deployedservicedescriptor)]]* | A mapping from chainlet names to service descriptors. This is used create RPCs sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
-| `secrets`             | *Mapping[str,str]*                                                                         | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet.                                              |
-| `environment`         | *[Environment](#class-truss-chains-definitions-environment)\|None*                         | The environment that the chainlet is deployed in. None if the chainlet is not associated with an environment.                                                                                          |
+| Name                  | Type                                                                                      | Description                                                                                                                                                                                              |
+|-----------------------|-------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `data_dir`            | *Path\|None*                                                                              | The directory where the chainlet can store and access data, e.g. for downloading model weights.                                                                                                          |
+| `chainlet_to_service` | *Mapping[str,[DeployedServiceDescriptor](#class-truss-chains-deployedservicedescriptor)]* | A mapping from chainlet names to service descriptors. This is used to create RPC sessions to dependency chainlets. It contains only the chainlet services that are dependencies of the current chainlet. |
+| `secrets`             | *Mapping[str,str]*                                                                        | A mapping from secret names to secret values. It contains only the secrets that are listed in `remote_config.assets.secret_keys` of the current chainlet.                                                |
+| `environment`         | *[Environment](#class-truss-chains-definitions-environment)\|None*                        | The environment that the chainlet is deployed in. None if the chainlet is not associated with an environment.                                                                                            |
 
 #### get_baseten_api_key()
 
@@ -169,9 +167,9 @@ class MyChainlet(ChainletBase):
 
 **Parameters:**
 
-| Name  | Type                                                      | Description         |
-|-------|-----------------------------------------------------------|---------------------|
-| `cls` | *Type[[ChainletBase](#class-truss-chains-chainletbase)]]* | The chainlet class. |
+| Name  | Type                                                     | Description         |
+|-------|----------------------------------------------------------|---------------------|
+| `cls` | *Type[[ChainletBase](#class-truss-chains-chainletbase)]* | The chainlet class. |
 
 * **Return type:**
   *Type*[*ChainletBase*]
@@ -342,16 +340,16 @@ Deploys a chain remotely (with all dependent chainlets).
 
 **Parameters:**
 
-| Name                    | Type                                                      | Description                                                                                                                                    |
-|-------------------------|-----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| `entrypoint`            | *Type[[ChainletBase](#class-truss-chains-chainletbase)]]* | The chainlet class that serves as the entrypoint to the chain.                                                                                 |
-| `chain_name`            | *str*                                                     | The name of the chain.                                                                                                                         |
-| `publish`               | *bool*                                                    | Whether to publish the chain as a published deployment (it is a draft deployment otherwise)                                                    |
-| `promote`               | *bool*                                                    | Whether to promote the chain to be the production deployment (this implies publishing as well).                                                |
-| `only_generate_trusses` | *bool*                                                    | Used for debugging purposes. If set to True, only the the underlying truss models for the chainlets are generated in `/tmp/.chains_generated`. |
-| `remote`                | *str\|None*                                               | name of a remote config in .trussrc. If not provided, it will be inquired.                                                                     |
-| `environment`           | *str\|None*                                               | The name of an environment to promote deployment into.                                                                                         |
-| `progress_bar`          | *Type[progress.Progress]\|None*                           | Optional `rich.progress.Progress` if output is desired.                                                                                        |
+| Name                    | Type                                                     | Description                                                                                                                                    |
+|-------------------------|----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| `entrypoint`            | *Type[[ChainletBase](#class-truss-chains-chainletbase)]* | The chainlet class that serves as the entrypoint to the chain.                                                                                 |
+| `chain_name`            | *str*                                                    | The name of the chain.                                                                                                                         |
+| `publish`               | *bool*                                                   | Whether to publish the chain as a published deployment (it is a draft deployment otherwise)                                                    |
+| `promote`               | *bool*                                                   | Whether to promote the chain to be the production deployment (this implies publishing as well).                                                |
+| `only_generate_trusses` | *bool*                                                   | Used for debugging purposes. If set to True, only the the underlying truss models for the chainlets are generated in `/tmp/.chains_generated`. |
+| `remote`                | *str\|None*                                              | name of a remote config in .trussrc. If not provided, it will be inquired.                                                                     |
+| `environment`           | *str\|None*                                              | The name of an environment to promote deployment into.                                                                                         |
+| `progress_bar`          | *Type[progress.Progress]\|None*                          | Optional `rich.progress.Progress` if output is desired.                                                                                        |
 
 * **Returns:**
   A chain service handle to the deployed chain.
@@ -650,5 +648,3 @@ with stack traces.
 
 * **Return type:**
   str
-
-#### user_stack_trace *: list[StackFrame]*

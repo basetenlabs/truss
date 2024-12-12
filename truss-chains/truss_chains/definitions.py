@@ -451,7 +451,7 @@ class DeploymentContext(SafeModelNonSerializable):
         data_dir: The directory where the chainlet can store and access data,
           e.g. for downloading model weights.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
-          This is used create RPCs sessions to dependency chainlets. It contains only
+          This is used to create RPC sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
