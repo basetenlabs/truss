@@ -63,7 +63,7 @@ def depends(
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
-        use_binary: whether to send data data in binary format. This can give a parsing
+        use_binary: Whether to send data in binary format. This can give a parsing
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.

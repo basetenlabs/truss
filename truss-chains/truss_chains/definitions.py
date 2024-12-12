@@ -405,7 +405,7 @@ class RPCOptions(SafeModel):
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
-        use_binary: whether to send data data in binary format. This can give a parsing
+        use_binary: Whether to send data in binary format. This can give a parsing
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
@@ -451,7 +451,7 @@ class DeploymentContext(SafeModelNonSerializable):
         data_dir: The directory where the chainlet can store and access data,
           e.g. for downloading model weights.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
-          This is used create RPCs sessions to dependency chainlets. It contains only
+          This is used to create RPC sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
