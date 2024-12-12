@@ -12,6 +12,7 @@ import sys
 import time
 import weakref
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from enum import Enum
 from functools import cached_property
 from multiprocessing import Lock
@@ -291,6 +292,7 @@ class ModelWrapper:
     _predict_semaphore: Semaphore
     _poll_for_environment_updates_task: Optional[asyncio.Task]
     _environment: Optional[dict]
+    _first_health_check_failure: Optional[datetime]
 
     class Status(Enum):
         NOT_READY = 0
@@ -320,7 +322,7 @@ class ModelWrapper:
         )
         self._poll_for_environment_updates_task = None
         self._environment = None
-        self._is_ready_failures = 0
+        self._first_health_check_failure = None
 
     @property
     def _model(self) -> Any:
@@ -556,10 +558,18 @@ class ModelWrapper:
                 exc_info=errors.filter_traceback(self._model_file_name),
             )
         if not is_ready:
-            self._is_ready_failures += 1
-            self._logger.warning(
-                f"Model is not ready. Consecutive failures: {self._is_ready_failures}"
-            )
+            if self._first_health_check_failure is None:
+                self._first_health_check_failure = datetime.now(timezone.utc)
+                self._logger.warning("Model is not ready. Health checks failing.")
+            else:
+                seconds_since_first_failure = round(
+                    (
+                        datetime.now(timezone.utc) - self._first_health_check_failure
+                    ).total_seconds()
+                )
+                self._logger.warning(
+                    f"Model is not ready. Health checks failing for {seconds_since_first_failure} seconds."
+                )
         elif is_ready:
             self._is_ready_failures = 0
         return is_ready
