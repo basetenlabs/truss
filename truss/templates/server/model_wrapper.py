@@ -555,7 +555,7 @@ class ModelWrapper:
                     f"Model is not ready. Health checks failing for {seconds_since_first_failure} seconds."
                 )
         elif is_ready:
-            self._is_ready_failures = 0
+            self._first_health_check_failure = None
         return is_ready
 
     async def preprocess(
