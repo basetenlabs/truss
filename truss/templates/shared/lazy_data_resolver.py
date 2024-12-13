@@ -90,7 +90,8 @@ class LazyDataResolver:
                 os.symlink(file_path, self._data_dir / file_name)
                 return
             except OSError as e:
-                logger.debug(
+                # TODO(helen): change back to debug
+                logger.info(
                     "Failed to save artifact to cache dir, saving to data dir instead. Error: %s",
                     e,
                 )
