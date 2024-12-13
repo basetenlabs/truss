@@ -19,6 +19,8 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     TypeVar,
     Union,
     cast,
+    get_args,
+    get_origin,
     runtime_checkable,
 )
 
@@ -361,6 +363,12 @@ class ChainletOptions(SafeModelNonSerializable):
     env_variables: Mapping[str, str] = {}
 
 
+class ChainletMetadata(SafeModelNonSerializable):
+    is_entrypoint: bool = False
+    chain_name: Optional[str] = None
+    init_is_patched: bool = False
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -499,8 +507,8 @@ class TrussMetadata(SafeModel):
 
 
 class ABCChainlet(abc.ABC):
-    remote_config: ClassVar[RemoteConfig] = RemoteConfig(docker_image=DockerImage())
-    _init_is_patched: ClassVar[bool] = False
+    remote_config: ClassVar[RemoteConfig] = RemoteConfig()
+    meta_data: ClassVar[ChainletMetadata] = ChainletMetadata()
 
     @classmethod
     def has_custom_init(cls) -> bool:
@@ -534,6 +542,17 @@ class TypeDescriptor(SafeModelNonSerializable):
             isinstance(self.raw, type)
             and not isinstance(self.raw, GenericAlias)
             and issubclass(self.raw, pydantic.BaseModel)
+        )
+
+    @property
+    def has_pydantic_args(self):
+        origin = get_origin(self.raw)
+        if not origin:
+            return False
+        args = get_args(self.raw)
+        return any(
+            isinstance(arg, type) and issubclass(arg, pydantic.BaseModel)
+            for arg in args
         )
 
 

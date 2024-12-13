@@ -32,7 +32,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
 
 import libcst
 import truss
@@ -125,19 +125,37 @@ def _gen_pydantic_import_and_ref(raw_type: Any) -> _Source:
     return _Source(src=ref_src, imports={import_src})
 
 
+def _gen_nested_pydantic(raw_type: Any) -> _Source:
+    """Handles `list[str, PydanticModel]` and similar, correctly resolving imports
+    of model args that might be defined in other files."""
+    origin = get_origin(raw_type)
+    assert origin in framework._SIMPLE_CONTAINERS
+    container = _gen_type_import_and_ref(definitions.TypeDescriptor(raw=origin))
+    args = get_args(raw_type)
+    arg_parts = []
+    for arg in args:
+        arg_src = _gen_type_import_and_ref(definitions.TypeDescriptor(raw=arg))
+        arg_parts.append(arg_src.src)
+        container.imports.update(arg_src.imports)
+
+    container.src = f"{container.src}[{','.join(arg_parts)}]"
+    return container
+
+
 def _gen_type_import_and_ref(type_descr: definitions.TypeDescriptor) -> _Source:
     """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     if type_descr.is_pydantic:
         return _gen_pydantic_import_and_ref(type_descr.raw)
-
-    elif isinstance(type_descr.raw, type):
+    if type_descr.has_pydantic_args:
+        return _gen_nested_pydantic(type_descr.raw)
+    if isinstance(type_descr.raw, type):
         if not type_descr.raw.__module__ == "builtins":
             raise TypeError(
                 f"{type_descr.raw} is not a builtin - cannot be rendered as source."
             )
         return _Source(src=type_descr.raw.__name__)
-    else:
-        return _Source(src=str(type_descr.raw))
+
+    return _Source(src=str(type_descr.raw))
 
 
 def _gen_streaming_type_import_and_ref(
@@ -358,13 +376,25 @@ def _gen_stub_src_for_deps(
 # Truss Chainlet Gen ###################################################################
 
 
+def _name_to_dirname(name: str) -> str:
+    """Make a string safe to use as a directory name."""
+    name = name.strip()  # Remove leading and trailing spaces
+    name = re.sub(
+        r"[^\w.-]", "_", name
+    )  # Replace non-alphanumeric characters with underscores
+    name = re.sub(r"_+", "_", name)  # Collapse multiple underscores into a single one
+    return name
+
+
 def _make_chainlet_dir(
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
     root: pathlib.Path,
 ) -> pathlib.Path:
     dir_name = f"chainlet_{chainlet_descriptor.name}"
-    chainlet_dir = root / definitions.GENERATED_CODE_DIR / chain_name / dir_name
+    chainlet_dir = (
+        root / definitions.GENERATED_CODE_DIR / _name_to_dirname(chain_name) / dir_name
+    )
     if chainlet_dir.exists():
         shutil.rmtree(chainlet_dir)
     chainlet_dir.mkdir(exist_ok=False, parents=True)

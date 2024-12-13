@@ -617,7 +617,9 @@ def push_chain(
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     with framework.import_target(source, entrypoint) as entrypoint_cls:
-        chain_name = name or entrypoint_cls.__name__
+        chain_name = (
+            name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
+        )
         options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
             promote=promote,

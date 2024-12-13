@@ -25,6 +25,8 @@ from typing import (
     Protocol,
     Type,
     TypeVar,
+    Union,
+    cast,
     get_args,
     get_origin,
 )
@@ -34,7 +36,7 @@ from typing_extensions import ParamSpec
 
 from truss_chains import definitions, utils
 
-_SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
+_SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
 _STREAM_TYPES = {bytes, str}
 
@@ -44,7 +46,6 @@ _DOCS_URL_CHAINING = (
 _DOCS_URL_LOCAL = "https://docs.baseten.co/chains/guide#local-development"
 _DOCS_URL_STREAMING = "https://docs.baseten.co/chains/guide#streaming"
 
-_ENTRYPOINT_ATTR_NAME = "_chains_entrypoint"
 
 ChainletT = TypeVar("ChainletT", bound=definitions.ABCChainlet)
 _P = ParamSpec("_P")
@@ -289,9 +290,12 @@ def _validate_io_type(
             return
         args = get_args(annotation)
         for arg in args:
-            if arg not in _SIMPLE_TYPES:
+            if not (
+                arg in _SIMPLE_TYPES or utils.issubclass_safe(arg, pydantic.BaseModel)
+            ):
                 _collect_error(error_msg, _ErrorKind.IO_TYPE_ERROR, location)
                 return
+            pass
         return
     if utils.issubclass_safe(annotation, pydantic.BaseModel):
         return
@@ -1062,7 +1066,7 @@ def _create_modified_init_for_local(
                     f"Create new instance for `{arg_name}` of type `{dep.name}`. "
                     f"Calling patched __init__."
                 )
-                assert chainlet_cls._init_is_patched
+                assert chainlet_cls.meta_data.init_is_patched
                 # Dependency chainlets are instantiated here, using their __init__
                 # that is patched for local.
                 logging.info(f"Making first {dep.name}.")
@@ -1106,7 +1110,7 @@ def run_local(
             chainlet_to_service,
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
-        chainlet_descriptor.chainlet_cls._init_is_patched = True
+        chainlet_descriptor.chainlet_cls.meta_data.init_is_patched = True
     # Subtract 2 levels: `run_local` (this) and `__enter__` (from @contextmanager).
     token = run_local_stack_depth.set(stack_depth - 2)
     try:
@@ -1115,7 +1119,7 @@ def run_local(
         # Restore original classes to unpatched state.
         for chainlet_cls, original_init in original_inits.items():
             chainlet_cls.__init__ = original_init  # type: ignore[method-assign]
-            chainlet_cls._init_is_patched = False
+            chainlet_cls.meta_data.init_is_patched = False
 
         run_local_stack_depth.reset(token)
 
@@ -1123,19 +1127,31 @@ def run_local(
 ########################################################################################
 
 
-def entrypoint(cls: Type[ChainletT]) -> Type[ChainletT]:
+def entrypoint(
+    cls_or_chain_name: Optional[Union[Type[ChainletT], str]] = None,
+) -> Union[Callable[[Type[ChainletT]], Type[ChainletT]], Type[ChainletT]]:
     """Decorator to tag a Chainlet as an entrypoint."""
-    if not (utils.issubclass_safe(cls, definitions.ABCChainlet)):
-        src_path = os.path.abspath(inspect.getfile(cls))
-        line = inspect.getsourcelines(cls)[1]
-        location = _ErrorLocation(src_path=src_path, line=line)
-        _collect_error(
-            "Only Chainlet classes can be marked as entrypoint.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-    setattr(cls, _ENTRYPOINT_ATTR_NAME, True)
-    return cls
+
+    def decorator(cls: Type[ChainletT]) -> Type[ChainletT]:
+        if not (utils.issubclass_safe(cls, definitions.ABCChainlet)):
+            src_path = os.path.abspath(inspect.getfile(cls))
+            line = inspect.getsourcelines(cls)[1]
+            location = _ErrorLocation(src_path=src_path, line=line)
+            _collect_error(
+                "Only Chainlet classes can be marked as entrypoint.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+        cls.meta_data.is_entrypoint = True
+        if isinstance(cls_or_chain_name, str):
+            cls.meta_data.chain_name = cls_or_chain_name
+        return cls
+
+    if isinstance(cls_or_chain_name, str):
+        return decorator
+
+    assert cls_or_chain_name is not None
+    return decorator(cls_or_chain_name)  # Decorator used without arguments
 
 
 def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
@@ -1143,7 +1159,7 @@ def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
         sym
         for sym in symbols
         if utils.issubclass_safe(sym, definitions.ABCChainlet)
-        and getattr(sym, _ENTRYPOINT_ATTR_NAME, False)
+        and cast(definitions.ABCChainlet, sym).meta_data.is_entrypoint
     }
 
 
@@ -1223,7 +1239,7 @@ def import_target(
                     "`target_name` was not specified and multiple Chainlets in "
                     f"`{module_path}` were tagged with `@chains.mark_entrypoint`. Tag "
                     "one Chainlet or provide the Chainlet class name. Found Chainlets: "
-                    f"\n{entrypoints}"
+                    f"\n{list(cls.name for cls in entrypoints)}"
                 )
             target_cls = utils.expect_one(entrypoints)
             if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):

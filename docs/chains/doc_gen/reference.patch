@@ -1,5 +1,5 @@
---- docs/chains/doc_gen/generated-reference.mdx	2024-12-12 12:51:17.671757358 -0800
-+++ docs/chains/doc_gen/API-reference.mdx	2024-12-12 12:56:32.358153491 -0800
+--- docs/chains/doc_gen/generated-reference.mdx	2024-12-13 13:43:39.820410114 -0800
++++ docs/chains/doc_gen/API-reference.mdx	2024-12-13 13:45:28.492573893 -0800
 @@ -19,38 +19,38 @@
  [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
  for more guidance on how to create subclasses.
@@ -141,7 +141,7 @@
 
 
  ### *class* `truss_chains.RPCOptions`
-@@ -147,20 +137,14 @@
+@@ -147,22 +137,14 @@
 
  Options to customize RPCs to dependency chainlets.
 
@@ -164,10 +164,12 @@
 +| `use_binary`  | *bool* | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 
 -#### use_binary *: bool*
+-
+-### `truss_chains.mark_entrypoint`
 
  ### `truss_chains.mark_entrypoint`
 
-@@ -172,18 +156,23 @@
+@@ -176,7 +158,7 @@
 
  Example usage:
 
@@ -175,27 +177,19 @@
 +```python
  import truss_chains as chains
 
-+
  @chains.mark_entrypoint
- class MyChainlet(ChainletBase):
+@@ -189,6 +171,10 @@
      ...
  ```
 
--* **Parameters:**
--  **cls** (*Type* *[**ChainletT* *]*)
-+**Parameters:**
-+
-+| Name  | Type                                                     | Description         |
-+|-------|----------------------------------------------------------|---------------------|
-+| `cls` | *Type[[ChainletBase](#class-truss-chains-chainletbase)]* | The chainlet class. |
-+
- * **Return type:**
--  *Type*[*ChainletT*]
++* **Return type:**
 +  *Type*[*ChainletBase*]
-
++
++
  # Remote Configuration
 
-@@ -198,7 +187,7 @@
+ These data structures specify for each chainlet how it gets deployed remotely, e.g. dependencies and compute resources.
+@@ -202,7 +188,7 @@
 
  This is specified as a class variable for each chainlet class, e.g.:
 
@@ -204,7 +198,7 @@
  import truss_chains as chains
 
 
-@@ -214,34 +203,13 @@
+@@ -218,34 +204,13 @@
 
  **Parameters:**
 
@@ -246,7 +240,7 @@
 
 
  ### *class* `truss_chains.DockerImage`
-@@ -250,37 +218,23 @@
+@@ -254,37 +219,23 @@
 
  Configures the docker image in which a remoted chainlet is deployed.
 
@@ -295,7 +289,7 @@
 
 
  ### *class* `truss_chains.BasetenImage`
-@@ -290,11 +244,11 @@
+@@ -294,11 +245,11 @@
  Default images, curated by baseten, for different python versions. If a Chainlet
  uses GPUs, drivers will be included in the image.
 
@@ -312,7 +306,7 @@
 
 
  ### *class* `truss_chains.CustomImage`
-@@ -305,43 +259,36 @@
+@@ -309,43 +260,36 @@
 
  **Parameters:**
 
@@ -372,7 +366,7 @@
  It is important to understand the difference between predict_concurrency and
  the concurrency target (used for autoscaling, i.e. adding or removing replicas).
  Furthermore, the `predict_concurrency` of a single instance is implemented in
-@@ -352,11 +299,6 @@
+@@ -356,11 +300,6 @@
  - With a threadpool if it’s a synchronous function. This requires
    that the threads don’t have significant CPU load (due to the GIL).
 
@@ -384,7 +378,7 @@
 
  ### *class* `truss_chains.Assets`
 
-@@ -364,7 +306,7 @@
+@@ -368,7 +307,7 @@
 
  For example, model weight caching can be used like this:
 
@@ -393,7 +387,7 @@
  import truss_chains as chains
  from truss.base import truss_config
 
-@@ -378,32 +320,19 @@
+@@ -382,32 +321,19 @@
  See [truss caching guide](https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model)
  for more details on caching.
 
@@ -432,7 +426,7 @@
  ### `truss_chains.push`
 
  Deploys a chain remotely (with all dependent chainlets).
-@@ -411,56 +340,38 @@
+@@ -415,56 +341,38 @@
 
  **Parameters:**
 
@@ -503,7 +497,7 @@
  * **Return type:**
    list[*DeployedChainlet*]
 
-@@ -470,21 +381,27 @@
+@@ -474,21 +382,27 @@
 
  Invokes the entrypoint with JSON data.
 
@@ -535,7 +529,7 @@
  ### `truss_chains.make_abs_path_here`
 
  Helper to specify file paths relative to the *immediately calling* module.
-@@ -503,12 +420,12 @@
+@@ -507,12 +421,12 @@
  You can now in `root/sub_package/chainlet.py` point to the requirements
  file like this:
 
@@ -550,7 +544,7 @@
  This helper uses the directory of the immediately calling module as an
  absolute reference point for resolving the file location. Therefore,
  you MUST NOT wrap the instantiation of `make_abs_path_here` into a
-@@ -516,7 +433,7 @@
+@@ -520,7 +434,7 @@
 
  Ok:
 
@@ -559,7 +553,7 @@
  def foo(path: AbsPath):
      abs_path = path.abs_path
 
-@@ -526,7 +443,7 @@
+@@ -530,7 +444,7 @@
 
  Not Ok:
 
@@ -568,7 +562,7 @@
  def foo(path: str):
      dangerous_value = make_abs_path_here(path).abs_path
 
-@@ -534,33 +451,41 @@
+@@ -538,33 +452,41 @@
  foo("./somewhere")
  ```
 
@@ -620,7 +614,7 @@
  import os
  import truss_chains as chains
 
-@@ -587,7 +512,8 @@
+@@ -591,7 +513,8 @@
      print(result)
  ```
 
@@ -630,7 +624,7 @@
  for more details.
 
 
-@@ -595,17 +521,17 @@
+@@ -599,17 +522,17 @@
 
  Bases: `ServiceDescriptor`
 
@@ -657,7 +651,7 @@
 
 
  ### *class* `truss_chains.StubBase`
-@@ -621,7 +547,7 @@
+@@ -625,7 +548,7 @@
  in user-code for wrapping a deployed truss model into the Chains framework. It
  flexibly supports JSON and pydantic inputs and output. Example usage:
 
@@ -666,7 +660,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -631,19 +557,20 @@
+@@ -635,19 +558,20 @@
 
 
  class DeployedWhisper(chains.StubBase):
@@ -690,7 +684,7 @@
          return await self.predict_async(data, output_model=WhisperOutput)
 
 
-@@ -664,40 +591,37 @@
+@@ -668,40 +592,37 @@
 
  **Parameters:**
 
@@ -716,38 +710,45 @@
 -| `predict_url` | *str* | URL to predict endpoint of another chain / truss model. |
 -| `context` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__`. |
 -| `options` | *[RPCOptions](#truss_chains.RPCOptions* | RPC options, e.g. retries. |
+-
+-
+-#### *async* predict_async(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
+-
+-#### *async* predict_async(inputs: InputT, output_model: None = None) → Any
+-
+-#### *async* predict_async_stream(inputs)
+-
+-* **Parameters:**
+-  **inputs** (*InputT*)
+-* **Return type:**
+-  *AsyncIterator*[bytes]
+-
+-#### predict_sync(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
+-
+-#### predict_sync(inputs: InputT, output_model: None = None) → Any
 +| Name          | Type                                                         | Description                                                       |
 +|---------------|--------------------------------------------------------------|-------------------------------------------------------------------|
 +| `predict_url` | *str*                                                        | URL to predict endpoint of another chain / truss model.           |
 +| `context`     | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__`. |
 +| `options`     | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                        |
-
-+#### *async* predict_async(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel
-
--#### *async* predict_async(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
-+#### *async* predict_async(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel
-
--#### *async* predict_async(inputs: InputT, output_model: None = None) → Any
-+#### *async* predict_async(inputs: JSON) → JSON
-
--#### *async* predict_async_stream(inputs)
-+#### *async* predict_async_stream(inputs: PydanticModel | JSON) -> AsyncIterator[bytes]
-
--* **Parameters:**
--  **inputs** (*InputT*)
--* **Return type:**
--  *AsyncIterator*[bytes]
-+#### predict_sync(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel
-
--#### predict_sync(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
-+#### predict_sync(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel
-
--#### predict_sync(inputs: InputT, output_model: None = None) → Any
-+#### predict_sync(inputs: JSON) → JSON
++
++#### Invocation Methods
++
++* `async predict_async(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel`
++* `async predict_async(inputs: JSON, output_model: Type[PydanticModel]) →
++ PydanticModel`
++* `async predict_async(inputs: JSON) → JSON`
++* `async predict_async_stream(inputs: PydanticModel | JSON) -> AsyncIterator[bytes]`
++
++Deprecated synchronous methods:
++
++* `predict_sync(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel`
++* `predict_sync(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel`
++* `predict_sync(inputs: JSON) → JSON`
 
 
  ### *class* `truss_chains.RemoteErrorDetail`
-@@ -710,19 +634,12 @@
+@@ -714,19 +635,12 @@
 
  **Parameters:**
 
@@ -773,7 +774,7 @@
 
  #### format()
 
-@@ -731,5 +648,3 @@
+@@ -735,5 +649,3 @@
 
  * **Return type:**
    str

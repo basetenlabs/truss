@@ -539,7 +539,9 @@ class _Watcher:
 
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
-        self._ignore_patterns = truss_path.load_trussignore_patterns()
+        self._ignore_patterns = truss_path.load_trussignore_patterns_from_truss_dir(
+            self._chain_root
+        )
 
         def watch_filter(_: watchfiles.Change, path: str) -> bool:
             return not truss_path.is_ignored(pathlib.Path(path), self._ignore_patterns)
