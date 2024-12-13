@@ -222,6 +222,19 @@ def test_numpy_chain(mode):
                 ),
             )
             assert service is not None
-            response = service.run_remote({})
+            # response = service.run_remote({})
+            url = service.run_remote_url.replace("host.docker.internal", "localhost")
+            time.sleep(1.0)  # Wait for models to be ready.
+
+            # Call without providing values for default arguments.
+            response = requests.post(
+                url,
+                data=b"\x81\xaabyte_input\xc4\x0basfdsafdsfa",
+                headers={
+                    "traceparent": "TEST TEST TEST",
+                    "Content-Type": "application/octet-stream",
+                },
+            )
+
             assert response.status_code == 200
             print(response.json())
