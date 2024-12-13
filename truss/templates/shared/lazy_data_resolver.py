@@ -75,15 +75,24 @@ class LazyDataResolver:
 
         if self._uses_b10_cache:
             try:
+                # Check whether the cache has sufficient space to store the file
+                if shutil.disk_usage(CACHE_DIR).free < int(
+                    resp.headers.get("Content-Length", 0)
+                ):
+                    raise OSError(
+                        f"Cache directory does not have sufficient space to save file {file_name}"
+                    )
+
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 with file_path.open("wb") as file:
                     shutil.copyfileobj(resp.raw, file)
                 # symlink to data directory
                 os.symlink(file_path, self._data_dir / file_name)
                 return
-            except OSError:
+            except OSError as e:
                 logger.debug(
-                    "Failed to save artifact to cache dir, saving to data dir instead"
+                    "Failed to save artifact to cache dir, saving to data dir instead. Error: %s",
+                    e,
                 )
                 # Cache likely has no space left on device, break to download to data dir as fallback
                 pass
