@@ -1130,7 +1130,9 @@ def run_local(
 def entrypoint(
     cls_or_chain_name: Optional[Union[Type[ChainletT], str]] = None,
 ) -> Union[Callable[[Type[ChainletT]], Type[ChainletT]], Type[ChainletT]]:
-    """Decorator to tag a Chainlet as an entrypoint."""
+    """Decorator to tag a Chainlet as an entrypoint.
+    Can be used with or without chain name argument.
+    """
 
     def decorator(cls: Type[ChainletT]) -> Type[ChainletT]:
         if not (utils.issubclass_safe(cls, definitions.ABCChainlet)):

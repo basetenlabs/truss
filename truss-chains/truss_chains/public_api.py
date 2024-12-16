@@ -143,7 +143,7 @@ def mark_entrypoint(
     """Decorator to mark a chainlet as the entrypoint of a chain.
 
     This decorator can be applied to *one* chainlet in a source file and then the
-    CLI push command simplifies: only the file, not the class within must be specified.
+    CLI push command simplifies: only the file, not the class within, must be specified.
 
     Optionally a display name for the Chain (not the Chainlet) can be set (effectively
     giving a custom default value for the `--name` arg of the CLI push command).

@@ -508,6 +508,7 @@ class TrussMetadata(SafeModel):
 
 class ABCChainlet(abc.ABC):
     remote_config: ClassVar[RemoteConfig] = RemoteConfig()
+    # `meta_data` is not shared between subclasses, each has an isolated copy.
     meta_data: ClassVar[ChainletMetadata] = ChainletMetadata()
 
     @classmethod

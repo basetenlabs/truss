@@ -126,7 +126,7 @@ def _gen_pydantic_import_and_ref(raw_type: Any) -> _Source:
 
 
 def _gen_nested_pydantic(raw_type: Any) -> _Source:
-    """Handles `list[str, PydanticModel]` and similar, correctly resolving imports
+    """Handles `list[PydanticModel]` and similar, correctly resolving imports
     of model args that might be defined in other files."""
     origin = get_origin(raw_type)
     assert origin in framework._SIMPLE_CONTAINERS
