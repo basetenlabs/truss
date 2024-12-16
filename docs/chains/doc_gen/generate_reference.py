@@ -30,7 +30,7 @@ BUILDER = "mdx_adapter"  # "html"
 NON_PUBLIC_SYMBOLS = [
     # "truss_chains.definitions.AssetSpec",
     # "truss_chains.definitions.ComputeSpec",
-    "truss_chains.remote.ChainService",
+    "truss_chains.deployment.deployment_client.ChainService",
     "truss_chains.definitions.Environment",
 ]
 
@@ -69,7 +69,7 @@ SECTION_UTILITIES = (
     "General framework and helper functions.",
     [
         "truss_chains.push",
-        "truss_chains.remote.ChainService",
+        "truss_chains.deployment.deployment_client.ChainService",
         "truss_chains.make_abs_path_here",
         "truss_chains.run_local",
         "truss_chains.DeployedServiceDescriptor",

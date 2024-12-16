@@ -12,12 +12,13 @@ from truss_chains.deployment import deployment_client
 
 utils.setup_dev_logging(logging.DEBUG)
 
+TEST_ROOT = Path(__file__).parent.resolve()
+
 
 @pytest.mark.integration
 def test_chain():
     with ensure_kill_all():
-        tests_root = Path(__file__).parent.resolve()
-        chain_root = tests_root / "itest_chain" / "itest_chain.py"
+        chain_root = TEST_ROOT / "itest_chain" / "itest_chain.py"
         with framework.import_target(chain_root, "ItestChain") as entrypoint:
             options = definitions.PushOptionsLocalDocker(
                 chain_name="integration-test", use_local_chains_src=True
@@ -108,8 +109,7 @@ ValueError: \(showing chained remote errors, root error at the bottom\)
 
 @pytest.mark.asyncio
 async def test_chain_local():
-    tests_root = Path(__file__).parent.resolve()
-    chain_root = tests_root / "itest_chain" / "itest_chain.py"
+    chain_root = TEST_ROOT / "itest_chain" / "itest_chain.py"
     with framework.import_target(chain_root, "ItestChain") as entrypoint:
         with public_api.run_local():
             with pytest.raises(ValueError):
@@ -210,8 +210,7 @@ def test_numpy_chain(mode):
     else:
         target = "HostBinary"
     with ensure_kill_all():
-        examples_root = Path(__file__).parent.parent.resolve() / "examples"
-        chain_root = examples_root / "numpy_and_binary" / "chain.py"
+        chain_root = TEST_ROOT / "numpy_and_binary" / "chain.py"
         with framework.import_target(chain_root, target) as entrypoint:
             service = deployment_client.push(
                 entrypoint,

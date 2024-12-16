@@ -7,6 +7,7 @@ from truss.templates.control.control.helpers.custom_types import (
     Action,
     ConfigPatch,
     ModelCodePatch,
+    PackagePatch,
     Patch,
     PatchType,
     PythonRequirementPatch,
@@ -30,6 +31,23 @@ def test_model_code_patch(custom_model_truss_dir: Path):
         ]
     )
     assert (custom_model_truss_dir / "model" / "model.py").read_text() == "test_content"
+
+
+def test_packages_patch(custom_model_truss_dir: Path):
+    applier = TrussDirPatchApplier(custom_model_truss_dir, TEST_LOGGER)
+    applier(
+        [
+            Patch(
+                type=PatchType.PACKAGE,
+                body=PackagePatch(
+                    action=Action.UPDATE, path="user_package.py", content="import sys"
+                ),
+            )
+        ]
+    )
+    assert (
+        custom_model_truss_dir / "packages" / "user_package.py"
+    ).read_text() == "import sys"
 
 
 def test_python_requirement_patch(custom_model_truss_dir: Path):

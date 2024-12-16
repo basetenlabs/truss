@@ -1,6 +1,15 @@
 import functools
 import pathlib
-from typing import TYPE_CHECKING, ContextManager, Mapping, Optional, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    ContextManager,
+    Mapping,
+    Optional,
+    Type,
+    Union,
+    overload,
+)
 
 from truss_chains import definitions, framework
 from truss_chains.deployment import deployment_client
@@ -63,7 +72,7 @@ def depends(
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
-        use_binary: whether to send data data in binary format. This can give a parsing
+        use_binary: Whether to send data in binary format. This can give a parsing
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
@@ -95,6 +104,9 @@ class ChainletBase(definitions.ABCChainlet):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        # Each sub-class has own, isolated metadata, e.g. we don't want
+        # `mark_entrypoint` to propagate to subclasses.
+        cls.meta_data = definitions.ChainletMetadata()
         framework.validate_and_register_class(cls)  # Errors are collected, not raised!
         # For default init (from `object`) we don't need to check anything.
         if cls.has_custom_init():
@@ -110,12 +122,31 @@ class ChainletBase(definitions.ABCChainlet):
             cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
 
 
-def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]:
+@overload
+def mark_entrypoint(
+    cls_or_chain_name: Type[framework.ChainletT],
+) -> Type[framework.ChainletT]: ...
+
+
+@overload
+def mark_entrypoint(
+    cls_or_chain_name: str,
+) -> Callable[[Type[framework.ChainletT]], Type[framework.ChainletT]]: ...
+
+
+def mark_entrypoint(
+    cls_or_chain_name: Union[str, Type[framework.ChainletT]],
+) -> Union[
+    Type[framework.ChainletT],
+    Callable[[Type[framework.ChainletT]], Type[framework.ChainletT]],
+]:
     """Decorator to mark a chainlet as the entrypoint of a chain.
 
     This decorator can be applied to *one* chainlet in a source file and then the
-    CLI push command simplifies because only the file, but not the chainlet class
-    in the file, needs to be specified.
+    CLI push command simplifies: only the file, not the class within, must be specified.
+
+    Optionally a display name for the Chain (not the Chainlet) can be set (effectively
+    giving a custom default value for the `--name` arg of the CLI push command).
 
     Example usage::
 
@@ -124,8 +155,13 @@ def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]
         @chains.mark_entrypoint
         class MyChainlet(ChainletBase):
             ...
+
+        # OR with custom Chain name.
+        @chains.mark_entrypoint("My Chain Name")
+        class MyChainlet(ChainletBase):
+            ...
     """
-    return framework.entrypoint(cls)
+    return framework.entrypoint(cls_or_chain_name)
 
 
 def push(

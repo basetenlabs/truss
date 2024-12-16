@@ -75,7 +75,7 @@ def _line_replacements(line: str) -> str:
         first_brace = line.find("(")
         if first_brace > 0:
             line = line[:first_brace]
-        return f"### *class* `{line}`"
+        return f"\n### *class* `{line}`"
     elif line.startswith("### "):
         line = line.replace("### ", "").strip()
         if not any(sym in line for sym in NON_PUBLIC_SYMBOLS):

@@ -24,11 +24,15 @@ class SplitTextFailOnce(chains.ChainletBase):
         self._count = 0
 
     async def run_remote(
-        self, inputs: io_types.SplitTextInput, extra_arg: int
-    ) -> Tuple[SplitTextOutput, int]:
+        self,
+        inputs: io_types.SplitTextInput,
+        extra_arg: int,
+        list_arg: list[io_types.Item],
+    ) -> Tuple[SplitTextOutput, int, list[io_types.Item]]:
         import numpy as np
 
         print(extra_arg)
+        print(list_arg)
 
         self._count += 1
         if self._count == 1:
@@ -44,4 +48,4 @@ class SplitTextFailOnce(chains.ChainletBase):
         parts_arr = np.array_split(np.array(list(inputs.data)), inputs.num_partitions)
         parts = ["".join(part) for part in parts_arr]
         part_lens = [len(part) for part in parts]
-        return SplitTextOutput(parts=parts, part_lens=part_lens), 123
+        return SplitTextOutput(parts=parts, part_lens=part_lens), 123, list_arg

@@ -19,6 +19,8 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     TypeVar,
     Union,
     cast,
+    get_args,
+    get_origin,
     runtime_checkable,
 )
 
@@ -361,6 +363,12 @@ class ChainletOptions(SafeModelNonSerializable):
     env_variables: Mapping[str, str] = {}
 
 
+class ChainletMetadata(SafeModelNonSerializable):
+    is_entrypoint: bool = False
+    chain_name: Optional[str] = None
+    init_is_patched: bool = False
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -405,7 +413,7 @@ class RPCOptions(SafeModel):
           if the request fails before streaming any results back. Failures mid-stream
           not retried.
         timeout_sec: Timeout for the HTTP request to this chainlet.
-        use_binary: whether to send data data in binary format. This can give a parsing
+        use_binary: Whether to send data in binary format. This can give a parsing
          speedup and message size reduction (~25%) for numpy arrays. Use
          ``NumpyArrayField`` as a field type on pydantic models for integration and set
          this option to ``True``. For simple text data, there is no significant benefit.
@@ -451,7 +459,7 @@ class DeploymentContext(SafeModelNonSerializable):
         data_dir: The directory where the chainlet can store and access data,
           e.g. for downloading model weights.
         chainlet_to_service: A mapping from chainlet names to service descriptors.
-          This is used create RPCs sessions to dependency chainlets. It contains only
+          This is used to create RPC sessions to dependency chainlets. It contains only
           the chainlet services that are dependencies of the current chainlet.
         secrets: A mapping from secret names to secret values. It contains only the
           secrets that are listed in ``remote_config.assets.secret_keys`` of the
@@ -499,8 +507,9 @@ class TrussMetadata(SafeModel):
 
 
 class ABCChainlet(abc.ABC):
-    remote_config: ClassVar[RemoteConfig] = RemoteConfig(docker_image=DockerImage())
-    _init_is_patched: ClassVar[bool] = False
+    remote_config: ClassVar[RemoteConfig] = RemoteConfig()
+    # `meta_data` is not shared between subclasses, each has an isolated copy.
+    meta_data: ClassVar[ChainletMetadata] = ChainletMetadata()
 
     @classmethod
     def has_custom_init(cls) -> bool:
@@ -534,6 +543,17 @@ class TypeDescriptor(SafeModelNonSerializable):
             isinstance(self.raw, type)
             and not isinstance(self.raw, GenericAlias)
             and issubclass(self.raw, pydantic.BaseModel)
+        )
+
+    @property
+    def has_pydantic_args(self):
+        origin = get_origin(self.raw)
+        if not origin:
+            return False
+        args = get_args(self.raw)
+        return any(
+            isinstance(arg, type) and issubclass(arg, pydantic.BaseModel)
+            for arg in args
         )
 
 
