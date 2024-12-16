@@ -275,7 +275,7 @@ class TrussServer:
         if INFERENCE_SERVER_FAILED_FILE.exists():
             INFERENCE_SERVER_FAILED_FILE.unlink()
 
-    def on_startup(self):
+    async def on_startup(self):
         """
         This method will be started inside the main process, so here is where
         we want to setup our logging and model.
@@ -283,7 +283,8 @@ class TrussServer:
         self.cleanup()
         if self._setup_json_logger:
             setup_logging()
-        self._model.start_load_thread()
+
+        await self._model.start_load()
         asyncio.create_task(self._shutdown_if_load_fails())
         self._model.setup_polling_for_environment_updates()
 
