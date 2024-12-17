@@ -172,7 +172,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
 
 class TrussSpeculatorConfiguration(BaseModel):
-    speculative_decoding_mode: TrussSpecDecMode
+    speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
     num_draft_tokens: int
     checkpoint_repository: Optional[CheckpointRepository] = None
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
