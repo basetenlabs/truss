@@ -20,9 +20,6 @@ class HelloWorld(chains.ChainletBase):
     def __init__(self, rand_int=chains.depends(RandInt, retries=3)) -> None:
         self._rand_int = rand_int
 
-    def is_ready(self):
-        pass
-
     def run_remote(self, max_value: int) -> str:
         num_repetitions = self._rand_int.run_remote(max_value)
         return "Hello World! " * num_repetitions
