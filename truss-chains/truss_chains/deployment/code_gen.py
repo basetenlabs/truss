@@ -668,7 +668,9 @@ def _make_truss_config(
     config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
     config.resources.use_gpu = bool(compute.accelerator.count)
+    # Runtime
     config.runtime.predict_concurrency = compute.predict_concurrency
+    config.runtime.health_checks = chains_config.runtime.health_checks
     # Image.
     _inplace_fill_base_image(chains_config.docker_image, config)
     pip_requirements = _make_requirements(chains_config.docker_image)

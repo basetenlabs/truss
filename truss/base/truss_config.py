@@ -42,7 +42,8 @@ DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
 DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
-
+MAX_FAILURE_THRESHOLD_SECONDS = 1800
+MIN_FAILURE_THRESHOLD_SECONDS = 30
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
@@ -156,11 +157,69 @@ class ModelCache:
 
 
 @dataclass
+class HealthCheck:
+    restart_check_delay_seconds: int = 0
+    restart_failure_threshold_seconds: int = MAX_FAILURE_THRESHOLD_SECONDS
+    stop_traffic_failure_threshold_seconds: int = MAX_FAILURE_THRESHOLD_SECONDS
+
+    def __post_init__(self):
+        if not (0 <= self.restart_check_delay_seconds <= MAX_FAILURE_THRESHOLD_SECONDS):
+            raise ValidationError(
+                f"restart_check_delay_seconds must be between 0 and {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
+            )
+        if not (
+            MIN_FAILURE_THRESHOLD_SECONDS
+            <= self.restart_failure_threshold_seconds
+            <= MAX_FAILURE_THRESHOLD_SECONDS
+        ):
+            raise ValidationError(
+                f"restart_failure_threshold_seconds must be between {MIN_FAILURE_THRESHOLD_SECONDS} and {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
+            )
+        if not (
+            MIN_FAILURE_THRESHOLD_SECONDS
+            <= self.stop_traffic_failure_threshold_seconds
+            <= MAX_FAILURE_THRESHOLD_SECONDS
+        ):
+            raise ValidationError(
+                f"stop_traffic_failure_threshold_seconds must be between {MIN_FAILURE_THRESHOLD_SECONDS} and {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
+            )
+
+        if (
+            self.restart_check_delay_seconds + self.restart_failure_threshold_seconds
+            > MAX_FAILURE_THRESHOLD_SECONDS
+        ):
+            raise ValidationError(
+                "The sum of restart_check_delay_seconds and max_failures_before_restart "
+                f"must not exceed {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
+            )
+
+    @staticmethod
+    def from_dict(d):
+        return HealthCheck(
+            restart_check_delay_seconds=d.get("restart_check_delay_seconds", 0),
+            restart_failure_threshold_seconds=d.get(
+                "restart_failure_threshold_seconds", MAX_FAILURE_THRESHOLD_SECONDS
+            ),
+            stop_traffic_failure_threshold_seconds=d.get(
+                "stop_traffic_failure_threshold_seconds", MAX_FAILURE_THRESHOLD_SECONDS
+            ),
+        )
+
+    def to_dict(self):
+        return {
+            "restart_check_delay_seconds": self.restart_check_delay_seconds,
+            "restart_failure_threshold_seconds": self.restart_failure_threshold_seconds,
+            "stop_traffic_failure_threshold_seconds": self.stop_traffic_failure_threshold_seconds,
+        }
+
+
+@dataclass
 class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
     enable_debug_logs: bool = False
+    health_checks: HealthCheck = field(default_factory=HealthCheck)
 
     @staticmethod
     def from_dict(d):
@@ -177,11 +236,13 @@ class Runtime:
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
         enable_tracing_data = d.get("enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA)
+        health_checks = HealthCheck.from_dict(d.get("health_checks", {}))
 
         return Runtime(
             predict_concurrency=predict_concurrency,
             streaming_read_timeout=streaming_read_timeout,
             enable_tracing_data=enable_tracing_data,
+            health_checks=health_checks,
         )
 
     def to_dict(self):
@@ -189,6 +250,7 @@ class Runtime:
             "predict_concurrency": self.predict_concurrency,
             "streaming_read_timeout": self.streaming_read_timeout,
             "enable_tracing_data": self.enable_tracing_data,
+            "health_checks": self.health_checks.to_dict(),
         }
 
 
@@ -820,6 +882,10 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, DockerAuthSettings):
                 d["docker_auth"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
+            elif isinstance(field_curr_value, HealthCheck):
+                d[field_name] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
             else:

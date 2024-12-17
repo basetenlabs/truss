@@ -32,6 +32,7 @@ from truss_chains.definitions import (
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
+    Runtime,
 )
 from truss_chains.public_api import (
     ChainletBase,
@@ -59,6 +60,7 @@ __all__ = [
     "GenericRemoteException",
     "RemoteConfig",
     "RemoteErrorDetail",
+    "Runtime",
     "DeployedServiceDescriptor",
     "StubBase",
     "depends",
