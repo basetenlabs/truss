@@ -22,6 +22,7 @@ class TrussTRTLLMModel(str, Enum):
     WHISPER = "whisper"
     QWEN = "qwen"
     ENCODER = "encoder"
+    PALMYRA = "palmyra"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
