@@ -359,7 +359,7 @@ class ChainletOptions(SafeModelNonSerializable):
 
 
 class Runtime(SafeModelNonSerializable):
-    health_checks: truss_config.HealthCheck = truss_config.HealthCheck()
+    health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
 class ChainletMetadata(SafeModelNonSerializable):

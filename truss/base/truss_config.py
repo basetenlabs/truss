@@ -157,45 +157,14 @@ class ModelCache:
 
 
 @dataclass
-class HealthCheck:
+class HealthChecks:
     restart_check_delay_seconds: int = 0
     restart_failure_threshold_seconds: int = MAX_FAILURE_THRESHOLD_SECONDS
     stop_traffic_failure_threshold_seconds: int = MAX_FAILURE_THRESHOLD_SECONDS
 
-    def __post_init__(self):
-        if not (0 <= self.restart_check_delay_seconds <= MAX_FAILURE_THRESHOLD_SECONDS):
-            raise ValidationError(
-                f"restart_check_delay_seconds must be between 0 and {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
-            )
-        if not (
-            MIN_FAILURE_THRESHOLD_SECONDS
-            <= self.restart_failure_threshold_seconds
-            <= MAX_FAILURE_THRESHOLD_SECONDS
-        ):
-            raise ValidationError(
-                f"restart_failure_threshold_seconds must be between {MIN_FAILURE_THRESHOLD_SECONDS} and {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
-            )
-        if not (
-            MIN_FAILURE_THRESHOLD_SECONDS
-            <= self.stop_traffic_failure_threshold_seconds
-            <= MAX_FAILURE_THRESHOLD_SECONDS
-        ):
-            raise ValidationError(
-                f"stop_traffic_failure_threshold_seconds must be between {MIN_FAILURE_THRESHOLD_SECONDS} and {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
-            )
-
-        if (
-            self.restart_check_delay_seconds + self.restart_failure_threshold_seconds
-            > MAX_FAILURE_THRESHOLD_SECONDS
-        ):
-            raise ValidationError(
-                "The sum of restart_check_delay_seconds and max_failures_before_restart "
-                f"must not exceed {MAX_FAILURE_THRESHOLD_SECONDS} seconds."
-            )
-
     @staticmethod
     def from_dict(d):
-        return HealthCheck(
+        return HealthChecks(
             restart_check_delay_seconds=d.get("restart_check_delay_seconds", 0),
             restart_failure_threshold_seconds=d.get(
                 "restart_failure_threshold_seconds", MAX_FAILURE_THRESHOLD_SECONDS
@@ -219,7 +188,7 @@ class Runtime:
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
     enable_debug_logs: bool = False
-    health_checks: HealthCheck = field(default_factory=HealthCheck)
+    health_checks: HealthChecks = field(default_factory=HealthChecks)
 
     @staticmethod
     def from_dict(d):
@@ -236,7 +205,7 @@ class Runtime:
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
         enable_tracing_data = d.get("enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA)
-        health_checks = HealthCheck.from_dict(d.get("health_checks", {}))
+        health_checks = HealthChecks.from_dict(d.get("health_checks", {}))
 
         return Runtime(
             predict_concurrency=predict_concurrency,
@@ -884,7 +853,7 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["docker_auth"] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
-            elif isinstance(field_curr_value, HealthCheck):
+            elif isinstance(field_curr_value, HealthChecks):
                 d[field_name] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
