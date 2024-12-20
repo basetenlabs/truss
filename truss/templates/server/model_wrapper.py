@@ -527,7 +527,7 @@ class ModelWrapper:
     async def is_ready(self) -> Optional[bool]:
         descriptor = self.model_descriptor.is_ready
         is_ready: Optional[bool] = None
-        if not descriptor:
+        if not descriptor or self.load_failed:
             return is_ready
         try:
             if descriptor.is_async:
