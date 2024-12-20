@@ -363,6 +363,10 @@ class ChainletOptions(SafeModelNonSerializable):
     env_variables: Mapping[str, str] = {}
 
 
+class Runtime(SafeModelNonSerializable):
+    health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
+
+
 class ChainletMetadata(SafeModelNonSerializable):
     is_entrypoint: bool = False
     chain_name: Optional[str] = None
@@ -393,6 +397,7 @@ class RemoteConfig(SafeModelNonSerializable):
     assets: Assets = Assets()
     name: Optional[str] = None
     options: ChainletOptions = ChainletOptions()
+    runtime: Runtime = Runtime()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
