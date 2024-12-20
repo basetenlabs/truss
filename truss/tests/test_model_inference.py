@@ -972,6 +972,35 @@ def test_setup_environment():
 @pytest.mark.integration
 def test_is_ready():
     model = """
+    import time
+    class Model:
+        def load(self) -> bool:
+            raise Exception("not loaded")
+
+        def is_ready(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        truss_server_addr = "http://localhost:8090"
+        for _ in range(5):
+            time.sleep(1)
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            if ready.status_code == 503:
+                break
+            assert ready.status_code == 200
+        assert ready.status_code == 503
+        diff = container.diff()
+        assert "/root/inference_server_crashed.txt" in diff
+        assert diff["/root/inference_server_crashed.txt"] == "A"
+
+    model = """
     class Model:
         def is_ready(self) -> bool:
             raise Exception("not ready")
