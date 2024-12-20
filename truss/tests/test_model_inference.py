@@ -969,6 +969,108 @@ def test_setup_environment():
         )
 
 
+@pytest.mark.integration
+def test_is_ready():
+    model = """
+    import time
+    class Model:
+        def load(self) -> bool:
+            raise Exception("not loaded")
+
+        def is_ready(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        truss_server_addr = "http://localhost:8090"
+        for _ in range(5):
+            time.sleep(1)
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            if ready.status_code == 503:
+                break
+            assert ready.status_code == 200
+        assert ready.status_code == 503
+        diff = container.diff()
+        assert "/root/inference_server_crashed.txt" in diff
+        assert diff["/root/inference_server_crashed.txt"] == "A"
+
+    model = """
+    class Model:
+        def is_ready(self) -> bool:
+            raise Exception("not ready")
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        truss_server_addr = "http://localhost:8090"
+
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 503
+        assert (
+            "Exception while checking if model is ready: not ready" in container.logs()
+        )
+        assert "Model is not ready. Health checks failing." in container.logs()
+
+    model = """
+    class Model:
+        def is_ready(self) -> bool:
+            return False
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        truss_server_addr = "http://localhost:8090"
+
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 503
+        assert "Model is not ready. Health checks failing." in container.logs()
+        time.sleep(5)
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 503
+        assert (
+            "Model is not ready. Health checks failing for 5 seconds."
+            in container.logs()
+        )
+
+    model = """
+    class Model:
+        def is_ready(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        truss_server_addr = "http://localhost:8090"
+
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 200
+
+
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
     app_path = truss_container_fs / "app"
     sys.path.append(str(app_path))
