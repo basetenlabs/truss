@@ -76,11 +76,11 @@ class LazyDataResolver:
         if self._uses_b10_cache:
             try:
                 # Check whether the cache has sufficient space to store the file
-                if shutil.disk_usage(CACHE_DIR).free < int(
-                    resp.headers.get("Content-Length", 0)
-                ):
+                cache_free_space = shutil.disk_usage(CACHE_DIR).free
+                content_length = int(resp.headers.get("Content-Length", 0))
+                if cache_free_space < content_length:
                     raise OSError(
-                        f"Cache directory does not have sufficient space to save file {file_name}"
+                        f"Cache directory does not have sufficient space to save file {file_name}. Free space in cache: {cache_free_space}, file size: {content_length}"
                     )
 
                 file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +91,7 @@ class LazyDataResolver:
                 return
             except OSError as e:
                 # TODO(helen): change back to debug
-                logger.info(
+                logger.warning(
                     "Failed to save artifact to cache dir, saving to data dir instead. Error: %s",
                     e,
                 )

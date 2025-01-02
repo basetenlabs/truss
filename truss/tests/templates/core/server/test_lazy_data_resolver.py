@@ -197,6 +197,64 @@ def test_lazy_data_fetch_to_cache(
         )
     ],
 )
+def test_lazy_data_fetch_to_cache_fallback_if_no_space(
+    baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch, caplog
+):
+    monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "True")
+    baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
+        foo_expiry, bar_expiry
+    )
+    manifest_path = tmp_path / "bptr" / "bptr-manifest"
+    manifest_path.parent.mkdir()
+    manifest_path.touch()
+    manifest_path.write_text(baseten_pointer_manifest_mock)
+    cache_dir = tmp_path / "cache" / "org" / "artifacts"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.touch()
+    with patch(
+        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+        manifest_path,
+    ) as _, patch(
+        "truss.templates.shared.lazy_data_resolver.CACHE_DIR",
+        cache_dir,
+    ) as _, patch(
+        "truss.templates.shared.lazy_data_resolver.shutil.disk_usage"
+    ) as mock_disk_usage:
+        data_dir = Path(tmp_path)
+        ldr = LazyDataResolver(data_dir)
+        assert ldr._uses_b10_cache
+
+        mock_disk_usage.return_value.free = 10
+        with requests_mock.Mocker() as m:
+            for file_name, (url, hash) in ldr._bptr_resolution.items():
+                resp = {"file_name": file_name, "url": url}
+                m.get(url, json=resp, headers={"Content-Length": "1000"})
+            with caplog.at_level("WARNING"):
+                ldr.fetch()
+
+            for file_name, (url, _) in ldr._bptr_resolution.items():
+                assert (ldr._data_dir / file_name).read_text() == json.dumps(
+                    {"file_name": file_name, "url": url}
+                )
+                assert (
+                    f"Cache directory does not have sufficient space to save file {file_name}"
+                    in caplog.text
+                )
+
+
+@pytest.mark.parametrize(
+    "foo_expiry,bar_expiry",
+    [
+        (
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+            int(
+                datetime.datetime(3000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
+            ),
+        )
+    ],
+)
 def test_lazy_data_fetch_cached(
     baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch
 ):
