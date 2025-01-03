@@ -224,7 +224,7 @@ def test_raises_unsupported_return_type_list_object():
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
         class UnsupportedArgType(chains.ChainletBase):
-            def run_remote(self) -> list[pydantic.BaseModel]:
+            def run_remote(self) -> list[object]:
                 return [SomeModel(foo=0)]
 
 
@@ -237,7 +237,7 @@ def test_raises_unsupported_return_type_list_object_legacy():
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
         class UnsupportedArgType(chains.ChainletBase):
-            def run_remote(self) -> List[pydantic.BaseModel]:
+            def run_remote(self) -> List[object]:
                 return [SomeModel(foo=0)]
 
 
@@ -250,7 +250,7 @@ def test_raises_unsupported_arg_type_list_object():
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
         class UnsupportedArgType(chains.ChainletBase):
-            def run_remote(self, arg: list[pydantic.BaseModel]) -> None:
+            def run_remote(self, arg: list[object]) -> None:
                 return
 
 

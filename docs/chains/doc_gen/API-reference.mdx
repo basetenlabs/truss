@@ -148,31 +148,33 @@ Options to customize RPCs to dependency chainlets.
 
 ### `truss_chains.mark_entrypoint`
 
+
 Decorator to mark a chainlet as the entrypoint of a chain.
 
 This decorator can be applied to *one* chainlet in a source file and then the
-CLI push command simplifies because only the file, but not the chainlet class
-in the file, needs to be specified.
+CLI push command simplifies: only the file, not the class within, must be specified.
+
+Optionally a display name for the Chain (not the Chainlet) can be set (effectively
+giving a custom default value for the `name` arg of the CLI push command).
 
 Example usage:
 
 ```python
 import truss_chains as chains
 
-
 @chains.mark_entrypoint
+class MyChainlet(ChainletBase):
+    ...
+
+# OR with custom Chain name.
+@chains.mark_entrypoint("My Chain Name")
 class MyChainlet(ChainletBase):
     ...
 ```
 
-**Parameters:**
-
-| Name  | Type                                                     | Description         |
-|-------|----------------------------------------------------------|---------------------|
-| `cls` | *Type[[ChainletBase](#class-truss-chains-chainletbase)]* | The chainlet class. |
-
 * **Return type:**
   *Type*[*ChainletBase*]
+
 
 # Remote Configuration
 
@@ -609,19 +611,19 @@ Factory method, convenient to be used in chainlet’s `__init__`-method.
 | `context`     | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__`. |
 | `options`     | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                        |
 
-#### *async* predict_async(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel
+#### Invocation Methods
 
-#### *async* predict_async(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel
+* `async predict_async(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel`
+* `async predict_async(inputs: JSON, output_model: Type[PydanticModel]) →
+ PydanticModel`
+* `async predict_async(inputs: JSON) → JSON`
+* `async predict_async_stream(inputs: PydanticModel | JSON) -> AsyncIterator[bytes]`
 
-#### *async* predict_async(inputs: JSON) → JSON
+Deprecated synchronous methods:
 
-#### *async* predict_async_stream(inputs: PydanticModel | JSON) -> AsyncIterator[bytes]
-
-#### predict_sync(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel
-
-#### predict_sync(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel
-
-#### predict_sync(inputs: JSON) → JSON
+* `predict_sync(inputs: PydanticModel, output_model: Type[PydanticModel]) → PydanticModel`
+* `predict_sync(inputs: JSON, output_model: Type[PydanticModel]) → PydanticModel`
+* `predict_sync(inputs: JSON) → JSON`
 
 
 ### *class* `truss_chains.RemoteErrorDetail`

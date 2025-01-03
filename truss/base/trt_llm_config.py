@@ -22,6 +22,7 @@ class TrussTRTLLMModel(str, Enum):
     WHISPER = "whisper"
     QWEN = "qwen"
     ENCODER = "encoder"
+    PALMYRA = "palmyra"
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
@@ -171,7 +172,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
 
 class TrussSpeculatorConfiguration(BaseModel):
-    speculative_decoding_mode: TrussSpecDecMode
+    speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
     num_draft_tokens: int
     checkpoint_repository: Optional[CheckpointRepository] = None
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
@@ -221,13 +222,18 @@ class TRTLLMConfiguration(BaseModel):
                     f"Found extra fields {list(extra_runtime_fields.keys())} in build configuration, unspecified runtime fields will be configured using these values."
                     " This configuration of deprecated fields is scheduled for removal, please upgrade to the latest truss version and update configs according to https://docs.baseten.co/performance/engine-builder-config."
                 )
-                data.get("runtime").update(
-                    {
-                        k: v
-                        for k, v in extra_runtime_fields.items()
-                        if k not in data.get("runtime")
-                    }
-                )
+                if data.get("runtime"):
+                    data.get("runtime").update(
+                        {
+                            k: v
+                            for k, v in extra_runtime_fields.items()
+                            if k not in data.get("runtime")
+                        }
+                    )
+                else:
+                    data.update(
+                        {"runtime": {k: v for k, v in extra_runtime_fields.items()}}
+                    )
             data.update({"build": valid_build_fields})
             return data
         return data
