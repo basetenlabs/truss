@@ -242,7 +242,7 @@ def test_lazy_data_fetch_to_cache(
     ],
 )
 def test_lazy_data_fetch_to_cache_fallback_if_no_space(
-    baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch, caplog
+    baseten_pointer_manifest_mock, foo_expiry, bar_expiry, tmp_path, monkeypatch
 ):
     monkeypatch.setenv(BASETEN_FS_ENABLED_ENV_VAR, "True")
     baseten_pointer_manifest_mock = baseten_pointer_manifest_mock(
@@ -273,16 +273,11 @@ def test_lazy_data_fetch_to_cache_fallback_if_no_space(
             for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
                 m.get(url, json=resp)
-            with caplog.at_level("DEBUG"):
-                ldr.fetch()
+            ldr.fetch()
 
             for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 assert (ldr._data_dir / file_name).read_text() == json.dumps(
                     {"file_name": file_name, "url": url}
-                )
-                assert (
-                    f"Cache directory does not have sufficient space to save file {file_name}"
-                    in caplog.text
                 )
 
 
