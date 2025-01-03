@@ -273,7 +273,7 @@ def test_lazy_data_fetch_to_cache_fallback_if_no_space(
             for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
                 m.get(url, json=resp)
-            with caplog.at_level("WARNING"):
+            with caplog.at_level("DEBUG"):
                 ldr.fetch()
 
             for file_name, (url, _, _) in ldr._bptr_resolution.items():
