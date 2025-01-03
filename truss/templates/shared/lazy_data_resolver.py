@@ -96,8 +96,7 @@ class LazyDataResolver:
                 # symlink may already exist if the inference server was restarted
                 return
             except OSError as e:
-                # TODO(helen): change back to debug
-                logger.warning(
+                logger.debug(
                     "Failed to save artifact to cache dir, saving to data dir instead. Error: %s",
                     e,
                 )
@@ -126,12 +125,9 @@ class LazyDataResolver:
                     )
                 ] = file_name
             for future in as_completed(futures):
-                e = future.exception()
-                if e:
+                if future.exception():
                     file_name = futures[future]
-                    raise RuntimeError(
-                        f"Download failure for file {file_name}. Exception: {e}"
-                    )
+                    raise RuntimeError(f"Download failure for file {file_name}")
         self._resolution_done = True
 
 
