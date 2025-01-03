@@ -89,8 +89,8 @@ def test_lazy_data_resolution(
         with expectation:
             ldr = LazyDataResolver(Path("foo"))
             assert ldr._bptr_resolution == {
-                "foo-name": ("https://foo-rl", "foo-hash"),
-                "bar-name": ("https://bar-rl", "bar-hash"),
+                "foo-name": ("https://foo-rl", "foo-hash", 100),
+                "bar-name": ("https://bar-rl", "bar-hash", 1000),
             }
 
 
@@ -124,11 +124,11 @@ def test_lazy_data_fetch(
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
         with requests_mock.Mocker() as m:
-            for file_name, (url, _) in ldr._bptr_resolution.items():
+            for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
                 m.get(url, json=resp)
             ldr.fetch()
-            for file_name, (url, _) in ldr._bptr_resolution.items():
+            for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 assert (ldr._data_dir / file_name).read_text() == json.dumps(
                     {"file_name": file_name, "url": url}
                 )
@@ -172,8 +172,8 @@ def test_lazy_data_fetch_to_cache_non_200_status(
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
         with requests_mock.Mocker() as m:
-            for _, (url, _) in ldr._bptr_resolution.items():
-                m.get(url, status_code=404)
+            for _, (url, _, _) in ldr._bptr_resolution.items():
+                m.get(url, status_code=500)
             with pytest.raises(RuntimeError):
                 ldr.fetch()
 
@@ -216,11 +216,11 @@ def test_lazy_data_fetch_to_cache(
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
         with requests_mock.Mocker() as m:
-            for file_name, (url, hash) in ldr._bptr_resolution.items():
+            for file_name, (url, hash, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
                 m.get(url, json=resp)
             ldr.fetch()
-            for file_name, (url, hash) in ldr._bptr_resolution.items():
+            for file_name, (url, hash, _) in ldr._bptr_resolution.items():
                 assert (CACHE_DIR / hash).read_text() == json.dumps(
                     {"file_name": file_name, "url": url}
                 )
@@ -268,15 +268,15 @@ def test_lazy_data_fetch_to_cache_fallback_if_no_space(
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
 
-        mock_disk_usage.return_value.free = 10
+        mock_disk_usage.return_value.free = 1
         with requests_mock.Mocker() as m:
-            for file_name, (url, hash) in ldr._bptr_resolution.items():
+            for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
-                m.get(url, json=resp, headers={"Content-Length": "1000"})
+                m.get(url, json=resp)
             with caplog.at_level("WARNING"):
                 ldr.fetch()
 
-            for file_name, (url, _) in ldr._bptr_resolution.items():
+            for file_name, (url, _, _) in ldr._bptr_resolution.items():
                 assert (ldr._data_dir / file_name).read_text() == json.dumps(
                     {"file_name": file_name, "url": url}
                 )
@@ -324,12 +324,12 @@ def test_lazy_data_fetch_cached(
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
         with requests_mock.Mocker() as m:
-            for file_name, (url, hash) in ldr._bptr_resolution.items():
+            for file_name, (url, hash, _) in ldr._bptr_resolution.items():
                 resp = {"file_name": file_name, "url": url}
                 (CACHE_DIR / hash).write_text(json.dumps(resp))
                 m.get(url, json=resp)
             ldr.fetch()
-            for file_name, (url, hash) in ldr._bptr_resolution.items():
+            for file_name, (url, hash, _) in ldr._bptr_resolution.items():
                 assert (CACHE_DIR / hash).read_text() == json.dumps(
                     {"file_name": file_name, "url": url}
                 )

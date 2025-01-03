@@ -46,14 +46,14 @@ class BasetenPointerManifest(pydantic.BaseModel):
 class LazyDataResolver:
     def __init__(self, data_dir: Path):
         self._data_dir: Path = data_dir
-        self._bptr_resolution: Dict[str, Tuple[str, str]] = _read_bptr_resolution()
+        self._bptr_resolution: Dict[str, Tuple[str, str, int]] = _read_bptr_resolution()
         self._resolution_done = False
         self._uses_b10_cache = (
             os.environ.get(BASETEN_FS_ENABLED_ENV_VAR, "False") == "True"
         )
 
     def cached_download_from_url_using_requests(
-        self, URL: str, hash: str, file_name: str
+        self, URL: str, hash: str, file_name: str, size: int
     ):
         """Download object from URL, attempt to write to cache and symlink to data directory if applicable, data directory otherwise.
         In case of failure, write to data directory
@@ -81,10 +81,9 @@ class LazyDataResolver:
             try:
                 # Check whether the cache has sufficient space to store the file
                 cache_free_space = shutil.disk_usage(CACHE_DIR).free
-                content_length = int(resp.headers.get("Content-Length", 0))
-                if cache_free_space < content_length:
+                if cache_free_space < size:
                     raise OSError(
-                        f"Cache directory does not have sufficient space to save file {file_name}. Free space in cache: {cache_free_space}, file size: {content_length}"
+                        f"Cache directory does not have sufficient space to save file {file_name}. Free space in cache: {cache_free_space}, file size: {size}"
                     )
 
                 file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,13 +115,14 @@ class LazyDataResolver:
 
         with ThreadPoolExecutor(NUM_WORKERS) as executor:
             futures = {}
-            for file_name, (resolved_url, hash) in self._bptr_resolution.items():
+            for file_name, (resolved_url, hash, size) in self._bptr_resolution.items():
                 futures[
                     executor.submit(
                         self.cached_download_from_url_using_requests,
                         resolved_url,
                         hash,
                         file_name,
+                        size,
                     )
                 ] = file_name
             for future in as_completed(futures):
@@ -135,7 +135,7 @@ class LazyDataResolver:
         self._resolution_done = True
 
 
-def _read_bptr_resolution() -> Dict[str, Tuple[str, str]]:
+def _read_bptr_resolution() -> Dict[str, Tuple[str, str, int]]:
     if not LAZY_DATA_RESOLVER_PATH.is_file():
         return {}
     bptr_manifest = BasetenPointerManifest(
@@ -147,5 +147,5 @@ def _read_bptr_resolution() -> Dict[str, Tuple[str, str]]:
             datetime.now(timezone.utc).timestamp()
         ):
             raise RuntimeError("Baseten pointer lazy data resolution has expired")
-        resolution_map[bptr.file_name] = bptr.resolution.url, bptr.hash
+        resolution_map[bptr.file_name] = bptr.resolution.url, bptr.hash, bptr.size
     return resolution_map
