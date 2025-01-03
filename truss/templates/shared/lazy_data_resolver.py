@@ -1,7 +1,7 @@
 import logging
 import os
 import shutil
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -110,15 +110,21 @@ class LazyDataResolver:
         with ThreadPoolExecutor(NUM_WORKERS) as executor:
             futures = {}
             for file_name, (resolved_url, hash) in self._bptr_resolution.items():
-                futures[file_name] = executor.submit(
-                    self.cached_download_from_url_using_requests,
-                    resolved_url,
-                    hash,
-                    file_name,
-                )
-            for file_name, future in futures.items():
-                if not future:
-                    raise RuntimeError(f"Download failure for file {file_name}")
+                futures[
+                    executor.submit(
+                        self.cached_download_from_url_using_requests,
+                        resolved_url,
+                        hash,
+                        file_name,
+                    )
+                ] = file_name
+            for future in as_completed(futures):
+                e = future.exception()
+                if e:
+                    file_name = futures[future]
+                    raise RuntimeError(
+                        f"Download failure for file {file_name}. Exception: {e}"
+                    )
         self._resolution_done = True
 
 
