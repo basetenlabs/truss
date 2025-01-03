@@ -61,8 +61,12 @@ class LazyDataResolver:
         if self._uses_b10_cache:
             file_path = CACHE_DIR / hash
             if file_path.exists():
-                os.symlink(file_path, self._data_dir / file_name)
-                return
+                try:
+                    os.symlink(file_path, self._data_dir / file_name)
+                    return
+                except FileExistsError:
+                    # symlink may already exist if the inference server was restarted
+                    return
 
         # Streaming download to keep memory usage low
         resp = requests.get(
@@ -88,6 +92,9 @@ class LazyDataResolver:
                     shutil.copyfileobj(resp.raw, file)
                 # symlink to data directory
                 os.symlink(file_path, self._data_dir / file_name)
+                return
+            except FileExistsError:
+                # symlink may already exist if the inference server was restarted
                 return
             except OSError as e:
                 # TODO(helen): change back to debug
