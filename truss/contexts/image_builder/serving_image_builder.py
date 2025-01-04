@@ -389,8 +389,8 @@ class ServingImageBuilder(ImageBuilder):
             copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
         elif is_encoder_model:
             self._spec.config.docker_server = DockerServer(
-                start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 8080 --tokenization-workers 16 --max-batch-requests 32 --max-client-batch-size 128 --model-id /app/data/tokenization'",
-                server_port=8080,
+                start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 7997 --tokenization-workers 16 --max-batch-requests 32 --max-client-batch-size 128 --model-id /app/data/tokenization'",
+                server_port=7997,
                 predict_endpoint="/predict",
                 readiness_endpoint="/health",
                 liveness_endpoint="/health"
