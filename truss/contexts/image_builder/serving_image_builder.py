@@ -383,13 +383,15 @@ class ServingImageBuilder(ImageBuilder):
             and trt_llm_config.build is not None
             else False
         )
-        
+        concurrency = TRTLLM_PREDICT_CONCURRENCY
 
         if is_audio_model:
             copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
         elif is_encoder_model:
+            concurrency = 192
+            max_batch_size = max(trt_llm_config.build.max_batch_size, 32)
             self._spec.config.docker_server = DockerServer(
-                start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 7997 --tokenization-workers 16 --max-batch-requests 32 --max-client-batch-size 128 --model-id /app/data/tokenization'",
+                start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 7997 --max-batch-requests {max_batch_size} --max-client-batch-size 128 --max-concurrent-requests {int(concurrency + 5)} --model-id /app/data/tokenization'",
                 server_port=7997,
                 predict_endpoint="/predict",
                 readiness_endpoint="/health",
@@ -417,7 +419,7 @@ class ServingImageBuilder(ImageBuilder):
                 DEFAULT_BUNDLED_PACKAGES_DIR,
             )
 
-        config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
+        config.runtime.predict_concurrency = concurrency
 
         if is_audio_model:
             config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
