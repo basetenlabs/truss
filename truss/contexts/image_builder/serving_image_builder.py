@@ -44,7 +44,12 @@ from truss.base.constants import (
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
-from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig, DockerServer
+from truss.base.truss_config import (
+    DEFAULT_BUNDLED_PACKAGES_DIR,
+    BaseImage,
+    TrussConfig,
+    DockerServer,
+)
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
@@ -395,7 +400,7 @@ class ServingImageBuilder(ImageBuilder):
                 server_port=7997,
                 predict_endpoint="/predict",
                 readiness_endpoint="/health",
-                liveness_endpoint="/health"
+                liveness_endpoint="/health",
             )
             copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
         else:
@@ -436,7 +441,6 @@ class ServingImageBuilder(ImageBuilder):
                 python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-        
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -464,7 +468,7 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
         self.prepare_trtllm_build_dir(build_dir=build_dir)
-        
+
         if config.docker_server is not None:
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
