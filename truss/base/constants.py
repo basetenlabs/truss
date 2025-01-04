@@ -133,6 +133,8 @@ AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES = [
     "openmpi-bin",
     "libopenmpi-dev",
 ]
+ENCODER_TRTLLM_BASE_IMAGE = "baseten/trt_tei_prod:v0.0.6"
+ENCODER_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
 
 PRODUCTION_ENVIRONMENT_NAME = "production"

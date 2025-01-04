@@ -35,6 +35,8 @@ from truss.base.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
+    ENCODER_TRTLLM_BASE_IMAGE,
+    ENCODER_TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
@@ -42,7 +44,7 @@ from truss.base.constants import (
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
-from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
+from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig, DockerServer
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
@@ -375,9 +377,25 @@ class ServingImageBuilder(ImageBuilder):
             and trt_llm_config.build is not None
             else False
         )
+        is_encoder_model = (
+            trt_llm_config.build.base_model == TrussTRTLLMModel.ENCODER
+            if isinstance(trt_llm_config, TRTLLMConfiguration)
+            and trt_llm_config.build is not None
+            else False
+        )
+        
 
         if is_audio_model:
             copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
+        elif is_encoder_model:
+            self._spec.config.docker_server = DockerServer(
+                start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 8080 --tokenization-workers 16 --max-batch-requests 32 --max-client-batch-size 128 --model-id /app/data/tokenization'",
+                server_port=8080,
+                predict_endpoint="/predict",
+                readiness_endpoint="/health",
+                liveness_endpoint="/health"
+            )
+            copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
         else:
             # trt_llm is treated as an extension at model run time.
             self._copy_into_build_dir(
@@ -401,16 +419,22 @@ class ServingImageBuilder(ImageBuilder):
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-        if not is_audio_model:
+        if is_audio_model:
+            config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
+            config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
+            config.python_version = "py310"
+        elif is_encoder_model:
+            config.base_image = BaseImage(
+                image=ENCODER_TRTLLM_BASE_IMAGE,
+                python_executable_path=ENCODER_TRTLLM_PYTHON_EXECUTABLE,
+            )
+        else:
             config.base_image = BaseImage(
                 image=TRTLLM_BASE_IMAGE,
                 python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
             )
             config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-        else:
-            config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
-            config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
-            config.python_version = "py310"
+        
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -437,6 +461,8 @@ class ServingImageBuilder(ImageBuilder):
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
 
+        self.prepare_trtllm_build_dir(build_dir=build_dir)
+        
         if config.docker_server is not None:
             self._copy_into_build_dir(
                 TEMPLATES_DIR / "docker_server_requirements.txt",
@@ -447,8 +473,6 @@ class ServingImageBuilder(ImageBuilder):
             generate_docker_server_nginx_config(build_dir, config)
 
             generate_docker_server_supervisord_config(build_dir, config)
-
-        self.prepare_trtllm_build_dir(build_dir=build_dir)
 
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
