@@ -394,7 +394,7 @@ class ServingImageBuilder(ImageBuilder):
             copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
         elif is_encoder_model:
             concurrency = 192
-            max_batch_size = max(trt_llm_config.build.max_batch_size, 32)
+            max_batch_size = max(trt_llm_config.build.max_batch_size or 32, 32)
             self._spec.config.docker_server = DockerServer(
                 start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 7997 --max-batch-requests {max_batch_size} --max-client-batch-size 128 --max-concurrent-requests {int(concurrency + 5)} --model-id /app/data/tokenization'",
                 server_port=7997,
