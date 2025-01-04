@@ -22,6 +22,8 @@ from truss.base.constants import (
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
+    ENCODER_TRTLLM_BASE_IMAGE,
+    ENCODER_TRTLLM_PYTHON_EXECUTABLE,
     FILENAME_CONSTANTS_MAP,
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
@@ -35,8 +37,6 @@ from truss.base.constants import (
     SYSTEM_PACKAGES_TXT_FILENAME,
     TEMPLATES_DIR,
     TRTLLM_BASE_IMAGE,
-    ENCODER_TRTLLM_BASE_IMAGE,
-    ENCODER_TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
@@ -47,8 +47,8 @@ from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
 from truss.base.truss_config import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     BaseImage,
-    TrussConfig,
     DockerServer,
+    TrussConfig,
 )
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
