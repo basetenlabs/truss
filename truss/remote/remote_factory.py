@@ -1,4 +1,5 @@
 import inspect
+import os
 
 try:
     from configparser import DEFAULTSECT, ConfigParser  # type: ignore
@@ -16,7 +17,7 @@ from typing import Dict, List, Type
 from truss.remote.baseten import BasetenRemote
 from truss.remote.truss_remote import RemoteConfig, TrussRemote
 
-USER_TRUSSRC_PATH = Path("~/.trussrc").expanduser()
+USER_TRUSSRC_PATH = Path(os.environ.get("USER_TRUSSRC_PATH", "~/.trussrc")).expanduser()
 
 
 def load_config() -> ConfigParser:

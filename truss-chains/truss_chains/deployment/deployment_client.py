@@ -129,12 +129,10 @@ class ChainService(abc.ABC):
     """
 
     _name: str
-    _entrypoint_service: b10_service.TrussService
     _entrypoint_fake_json_data: Any
 
-    def __init__(self, name: str, entrypoint_service: b10_service.TrussService):
+    def __init__(self, name: str):
         self._name = name
-        self._entrypoint_service = entrypoint_service
         self._entrypoint_fake_json_data = None
 
     @property
@@ -151,12 +149,12 @@ class ChainService(abc.ABC):
     def run_remote_url(self) -> str:
         """URL to invoke the entrypoint."""
 
+    @abc.abstractmethod
     def run_remote(self, json: Dict) -> Any:
         """Invokes the entrypoint with JSON data.
 
         Returns:
             The JSON response."""
-        return self._entrypoint_service.predict(json)
 
     @abc.abstractmethod
     def get_info(self) -> list[b10_types.DeployedChainlet]:
@@ -183,7 +181,10 @@ class ChainService(abc.ABC):
 
 
 class BasetenChainService(ChainService):
+    # TODO: entrypoint service is for truss model - make chains-specific.
+    #   E.g. chain/chainlet will not have model URLs anymore.
     _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
+    _entrypoint_service: b10_service.BasetenService
     _remote: b10_remote.BasetenRemote
 
     def __init__(
@@ -193,8 +194,9 @@ class BasetenChainService(ChainService):
         chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
         remote: b10_remote.BasetenRemote,
     ) -> None:
-        super().__init__(name, entrypoint_service)
+        super().__init__(name)
         self._chain_deployment_handle = chain_deployment_handle
+        self._entrypoint_service = entrypoint_service
         self._remote = remote
 
     @property
@@ -207,6 +209,13 @@ class BasetenChainService(ChainService):
             self._chain_deployment_handle.chain_deployment_id,
             self._chain_deployment_handle.is_draft,
         )
+
+    def run_remote(self, json: Dict) -> Any:
+        """Invokes the entrypoint with JSON data.
+
+        Returns:
+            The JSON response."""
+        return self._entrypoint_service.predict(json)
 
     @property
     def status_page_url(self) -> str:
@@ -231,13 +240,23 @@ class BasetenChainService(ChainService):
 
 
 class DockerChainService(ChainService):
+    _entrypoint_service: DockerTrussService
+
     def __init__(self, name: str, entrypoint_service: DockerTrussService) -> None:
-        super().__init__(name, entrypoint_service)
+        super().__init__(name)
+        self._entrypoint_service = entrypoint_service
 
     @property
     def run_remote_url(self) -> str:
         """URL to invoke the entrypoint."""
         return self._entrypoint_service.predict_url
+
+    def run_remote(self, json: Dict) -> Any:
+        """Invokes the entrypoint with JSON data.
+
+        Returns:
+            The JSON response."""
+        return self._entrypoint_service.predict(json)
 
     @property
     def status_page_url(self) -> str:
