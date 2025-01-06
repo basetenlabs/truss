@@ -1,12 +1,16 @@
-name: Truss CLI E2E tests (chains)
+name: Truss CLI E2E tests
 
 on:
-  push:  # Remove after testing.
   workflow_dispatch:
     inputs:
       truss_version:
-        description: "The version of Truss to install"
+        description: "The version of Truss to test"
         required: false
+      leave_deployments:
+        description: "If set, deployments are not deleted."
+        required: false
+        default: false
+        type: boolean
 jobs:
   test-chains:
     runs-on: ubuntu-22.04
@@ -19,31 +23,23 @@ jobs:
         uses: ./.github/actions/setup-python/
       - name: Poetry Install
         run: poetry install --with=dev,dev-server --extras=all
-      - name: Determine Truss Version
-        id: truss_version
-        run: |
-          if [ -n "${{ github.event.inputs.truss_version }}" ]; then
-            echo "Using workflow_dispatch input: ${{ github.event.inputs.truss_version }}"
-            echo "TRUSS_VERSION=${{ github.event.inputs.truss_version }}" >> $GITHUB_ENV
-          else
-            echo "Using default Truss version: latest"
-            echo "TRUSS_VERSION=latest" >> $GITHUB_ENV
-          fi
       - name: Install Truss
         run: |
           python -m venv truss_env
-          if [ "${{ env.TRUSS_VERSION }}" = "latest" ]; then
+          TRUSS_VERSION=${{ github.event.inputs.truss_version || 'latest' }}
+          if [ "$TRUSS_VERSION" = "latest" ]; then
             echo "Installing the latest version of Truss"
-            truss_env/bin/pip install truss==0.9.58rc101
+            truss_env/bin/pip install truss
           else
-            echo "Installing Truss version ${{ env.TRUSS_VERSION }}"
-            truss_env/bin/pip install truss==${{ env.TRUSS_VERSION }}
+            echo "Installing Truss version $TRUSS_VERSION"
+            truss_env/bin/pip install truss==$TRUSS_VERSION
           fi
       - name: Run tests
         env:
           TRUSS_ENV_PATH: ${{ github.workspace }}/truss_env
         run: |
           BASETEN_API_KEY_STAGING="${{ secrets.BASETEN_API_KEY_STAGING }}" \
+          LEAVE_DEPLOYMENTS="${{ github.event.inputs.leave_deployments }}" \
           poetry run pytest smoketests \
           --durations=0 \
           --junitxml=report.xml \

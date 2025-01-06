@@ -6,7 +6,6 @@ import subprocess
 import tempfile
 import time
 import uuid
-from typing import Tuple
 
 import pytest
 import pytest_check
@@ -19,6 +18,7 @@ from truss_chains.remote_chainlet import stub
 
 backend_env_domain = "staging.baseten.co"
 BASETEN_API_KEY = os.environ["BASETEN_API_KEY_STAGING"]
+LEAVE_DEPLOYMENTS = os.getenv("LEAVE_DEPLOYMENTS", "false").lower() == "true"
 
 BASETEN_REMOTE_URL = f"https://app.{backend_env_domain}"
 VENV_PATH = pathlib.Path(os.environ["TRUSS_ENV_PATH"])
@@ -37,11 +37,11 @@ def make_stub(url: str, options: definitions.RPCOptions) -> stub.StubBase:
     return stub.StubBase.from_url(url, context, options)
 
 
-def write_trussrc(api_key: str, dir_path: pathlib.Path) -> pathlib.Path:
+def write_trussrc(dir_path: pathlib.Path) -> pathlib.Path:
     config = rf"""
-        [staging]
+        [baseten]
         remote_provider = baseten
-        api_key = {api_key}
+        api_key = {BASETEN_API_KEY}
         remote_url = {BASETEN_REMOTE_URL}
         """
     truss_rc_path = dir_path / ".trussrc"
@@ -52,16 +52,13 @@ def write_trussrc(api_key: str, dir_path: pathlib.Path) -> pathlib.Path:
 @pytest.fixture
 def prepare(request):
     temp_dir = pathlib.Path(tempfile.mkdtemp())
-    truss_rc_path = write_trussrc(BASETEN_API_KEY, temp_dir)
+    truss_rc_path = write_trussrc(temp_dir)
     remote = b10_remote.BasetenRemote(BASETEN_REMOTE_URL, BASETEN_API_KEY)
-    mutable_chain_deployment_id = [None]
 
-    yield temp_dir, truss_rc_path, remote, mutable_chain_deployment_id
-    # if not test_failed:
-    #     shutil.rmtree(temp_dir, ignore_errors=True)
+    yield temp_dir, truss_rc_path, remote
 
 
-def generate_traceparent():
+def generate_traceparent() -> str:
     trace_id = uuid.uuid4().hex
     span_id = uuid.uuid4().hex[:16]
     trace_flags = "01"
@@ -69,7 +66,7 @@ def generate_traceparent():
     return traceparent
 
 
-def run_command(truss_rc_path: pathlib.Path, command: str) -> Tuple[str, str]:
+def run_command(truss_rc_path: pathlib.Path, command: str) -> tuple[str, str]:
     logging.info(f"Running command `{command}` in VENV `{VENV_PATH}` (subprocess).")
     activate_script = VENV_PATH / "bin" / "activate"
     env = os.environ.copy()
@@ -83,6 +80,7 @@ def run_command(truss_rc_path: pathlib.Path, command: str) -> Tuple[str, str]:
         stderr=subprocess.PIPE,
         text=True,
     )
+    result.check_returncode()
     stdout = result.stdout.strip()
     stderr = result.stderr.strip()
     logging.info("Command subprocess finished.")
@@ -91,7 +89,7 @@ def run_command(truss_rc_path: pathlib.Path, command: str) -> Tuple[str, str]:
 
 def wait_ready(
     remote: b10_remote.BasetenRemote, chain_id: str, chain_deployment_id: str
-) -> Tuple[bool, float]:
+) -> tuple[bool, float]:
     logging.info(f"Waiting for chain deployment `{chain_deployment_id}` to be ready.")
     t0 = time.perf_counter()
     success = False
@@ -129,36 +127,30 @@ def wait_ready(
 
 # Actual tests #########################################################################
 
-# def test_truss_version(prepare):
-#     _, truss_rc_path = prepare
-#     result = run_command(truss_rc_path, "truss --version")
-#     assert result.stdout.strip() == "truss, version 0.9.57"
-
 
 def test_itest_chain_publish(prepare) -> None:
     remote: b10_remote.BasetenRemote
-    tmpdir, truss_rc_path, remote, mutable_chain_deployment_id = prepare
+    tmpdir, truss_rc_path, remote = prepare
 
     chain_src = CHAINS_ROOT / "tests" / "itest_chain" / "itest_chain.py"
     command = f"truss chains push {chain_src} --publish --name=itest_publish --no-wait"
-    # stdout = (
-    #     "https://chain-1lqzvkw4.api.staging.baseten.co/deployment/nwx4d0qy/run_remote"
-    # )
+
     stdout, stderr = run_command(truss_rc_path, command)
-    # Warning: Input is not a terminal (fd=0).
-    # assert not stderr
+    if stderr:
+        # On github CI this might be `Warning: Input is not a terminal (fd=0).` but
+        # could change over time -> just log it, but don't assert anything.
+        logging.warning(f"Subprocess had error output:\n{stderr}")
 
     matches = URL_RE.search(stdout)
     assert matches, stdout
     url = matches.group(0)
     chain_id = matches.group(1)
     chain_deployment_id = matches.group(2)
-    mutable_chain_deployment_id[0] = chain_deployment_id
 
     success, wait_time_sec = wait_ready(remote, chain_id, chain_deployment_id)
     pytest_check.less(wait_time_sec, 220, "Deployment took too long.")
 
-    # Test regular invocation.
+    # Test regular (JSON) invocation.
     chain_stub = make_stub(url, definitions.RPCOptions(timeout_sec=10))
     trace_parent = generate_traceparent()
     with stub.trace_parent_raw(trace_parent):
@@ -173,7 +165,7 @@ def test_itest_chain_publish(prepare) -> None:
     ]
     pytest_check.equal(result, expected)
 
-    # Test speed
+    # Test speed.
     invocation_times_sec = []
     for i in range(10):
         t0 = time.perf_counter()
@@ -202,7 +194,7 @@ def test_itest_chain_publish(prepare) -> None:
     ]
     pytest_check.equal(result, expected)
 
-    # Test speed
+    # Test binary speed.
     invocation_times_sec = []
     for i in range(10):
         t0 = time.perf_counter()
@@ -214,7 +206,7 @@ def test_itest_chain_publish(prepare) -> None:
     logging.info(f"Invocation times(sec): {invocation_times_sec}.")
     pytest_check.less(invocation_times_sec[0], 0.32)  # Best of 10, could be <0.30...
 
-    if pytest_check.any_failures():
+    if pytest_check.any_failures() or LEAVE_DEPLOYMENTS:
         logging.info(
             f"There were failures, leaving deployment `{chain_deployment_id}` "
             "undeleted for inspection."
@@ -233,4 +225,4 @@ def test_itest_chain_development(prepare):
     # 5. Start watch and edit code again.
     # 6. Verify invocation is updated.
     # 7. Delete.
-    ...
+    pass

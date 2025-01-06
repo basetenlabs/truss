@@ -33,14 +33,14 @@ repos:
         entry: poetry run mypy
         language: python
         types: [python]
-        exclude: ^examples/|^truss/test.+/|model.py$|^truss-chains/.*|^smoketest/.*
+        exclude: ^examples/|^truss/test.+/|model.py$|^truss-chains/.*|^smoketests/.*
         pass_filenames: true
       - id: mypy
         name: mypy-local (3.9)
         entry: poetry run mypy
         language: python
         types: [python]
-        files: ^truss-chains/.*|^smoketest/.*
+        files: ^truss-chains/.*|^smoketests/.*
         args:
           - --python-version=3.9
         pass_filenames: true
