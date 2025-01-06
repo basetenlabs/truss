@@ -1,0 +1,56 @@
+name: Truss CLI E2E tests (chains)
+
+on:
+  push:  # Remove after testing.
+  workflow_dispatch:
+    inputs:
+      truss_version:
+        description: "The version of Truss to install"
+        required: false
+jobs:
+  test-chains:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Setup Python
+        uses: ./.github/actions/setup-python/
+      - name: Poetry Install
+        run: poetry install --with=dev,dev-server --extras=all
+      - name: Determine Truss Version
+        id: truss_version
+        run: |
+          if [ -n "${{ github.event.inputs.truss_version }}" ]; then
+            echo "Using workflow_dispatch input: ${{ github.event.inputs.truss_version }}"
+            echo "TRUSS_VERSION=${{ github.event.inputs.truss_version }}" >> $GITHUB_ENV
+          else
+            echo "Using default Truss version: latest"
+            echo "TRUSS_VERSION=latest" >> $GITHUB_ENV
+          fi
+      - name: Install Truss
+        run: |
+          python -m venv truss_env
+          if [ "${{ env.TRUSS_VERSION }}" = "latest" ]; then
+            echo "Installing the latest version of Truss"
+            truss_env/bin/pip install truss==0.9.58rc101
+          else
+            echo "Installing Truss version ${{ env.TRUSS_VERSION }}"
+            truss_env/bin/pip install truss==${{ env.TRUSS_VERSION }}
+          fi
+      - name: Run tests
+        env:
+          TRUSS_ENV_PATH: ${{ github.workspace }}/truss_env
+        run: |
+          BASETEN_API_KEY_STAGING="${{ secrets.BASETEN_API_KEY_STAGING }}" \
+          poetry run pytest smoketests \
+          --durations=0 \
+          --junitxml=report.xml \
+          -s --log-cli-level=INFO
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+           commit: ${{ github.sha }}
+           report_paths: "report.xml"

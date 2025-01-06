@@ -3013,6 +3013,20 @@ docs = ["sphinx (>=5.3)", "sphinx-rtd-theme (>=1.0)"]
 testing = ["coverage (>=6.2)", "hypothesis (>=5.7.1)"]
 
 [[package]]
+name = "pytest-check"
+version = "2.4.1"
+description = "A pytest plugin that allows multiple failures per test."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "pytest_check-2.4.1-py3-none-any.whl", hash = "sha256:74f38938183880d9921aeb85662437d2b13e1e053e1bed7d186d54613d3068c7"},
+    {file = "pytest_check-2.4.1.tar.gz", hash = "sha256:5224efcef059bf7f0cda253f8d0f62704b4819ff48c93f51c675aea6a014f650"},
+]
+
+[package.dependencies]
+pytest = ">=7.0.0"
+
+[[package]]
 name = "pytest-cov"
 version = "3.0.0"
 description = "Pytest plugin for measuring coverage."
@@ -4317,4 +4331,4 @@ all = []
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.13"
-content-hash = "18d0641fc35dd7d4e989aee99072d09ca82b708a0b360d2ed6f6f1a04a81348f"
+content-hash = "1fedf4a848019ebf8e5a5fdc6d7a9387964adbf32ecf30fc34b95e3dfb0ed91e"
