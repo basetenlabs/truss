@@ -265,12 +265,12 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
       File "/packages/itest_chain.py", line 144, in _accumulate_parts
         value += self._text_to_num.run_remote(part)
     ValueError: (showing chained remote errors, root error at the bottom)
-    ├─ Error in dependency Chainlet `TextToNum`:
+    ├─ Error in dependency Chainlet `TextToNum` (HTTP status 500):
     │   Chainlet-Traceback (most recent call last):
     │     File "/packages/itest_chain.py", line 87, in run_remote
     │       generated_text = self._replicator.run_remote(data)
     │   ValueError: (showing chained remote errors, root error at the bottom)
-    │   ├─ Error in dependency Chainlet `TextReplicator`:
+    │   ├─ Error in dependency Chainlet `TextReplicator` (HTTP status 500):
     │   │   Chainlet-Traceback (most recent call last):
     │   │     File "/packages/itest_chain.py", line 52, in run_remote
     │   │       validate_data(data)
