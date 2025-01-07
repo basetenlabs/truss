@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.58rc3"
+version = "0.9.58rc101"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -140,6 +140,7 @@ nbconvert = "^7.2.1"
 pre-commit = "^2.18.1"
 pytest = "7.2.0"
 pytest-asyncio = "^0.23.6"
+pytest-check = "^2.4.1"
 pytest-cov = "^3.0.0"
 pytest-split = "^0.8.1"
 requests-mock = ">=1.11.0"
@@ -178,6 +179,7 @@ markers = [
     "integration: marks tests as integration (deselect with '-m \"not integration\"').",
     "asyncio: marks tests as async.",
 ]
+addopts = "--ignore=smoketests"
 
 [tool.ruff]
 src = ["truss", "truss-chains", "truss-utils"]

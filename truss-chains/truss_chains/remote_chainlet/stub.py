@@ -56,6 +56,15 @@ def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
         _trace_parent_context.reset(token)
 
 
+@contextlib.contextmanager
+def trace_parent_raw(trace_parent: str) -> Iterator[None]:
+    token = _trace_parent_context.set(trace_parent)
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
+
+
 class BasetenSession:
     """Provides configured HTTP clients, retries rate limit warning etc."""
 
