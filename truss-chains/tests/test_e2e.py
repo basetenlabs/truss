@@ -90,12 +90,12 @@ Chainlet-Traceback \(most recent call last\):
   File \".*?/itest_chain\.py\", line \d+, in _accumulate_parts
     value \+= self\._text_to_num\.run_remote\(part\)
 ValueError: \(showing chained remote errors, root error at the bottom\)
-├─ Error in dependency Chainlet `TextToNum`:
+├─ Error in dependency Chainlet `TextToNum` \(HTTP status 500\):
 │   Chainlet-Traceback \(most recent call last\):
 │     File \".*?/itest_chain\.py\", line \d+, in run_remote
 │       generated_text = self\._replicator\.run_remote\(data\)
 │   ValueError: \(showing chained remote errors, root error at the bottom\)
-│   ├─ Error in dependency Chainlet `TextReplicator`:
+│   ├─ Error in dependency Chainlet `TextReplicator` \(HTTP status 500\):
 │   │   Chainlet-Traceback \(most recent call last\):
 │   │     File \".*?/itest_chain\.py\", line \d+, in run_remote
 │   │       validate_data\(data\)

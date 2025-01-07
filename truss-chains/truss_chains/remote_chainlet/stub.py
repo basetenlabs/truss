@@ -56,6 +56,15 @@ def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
         _trace_parent_context.reset(token)
 
 
+@contextlib.contextmanager
+def trace_parent_raw(trace_parent: str) -> Iterator[None]:
+    token = _trace_parent_context.set(trace_parent)
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
+
+
 class BasetenSession:
     """Provides configured HTTP clients, retries rate limit warning etc."""
 
@@ -267,7 +276,8 @@ class StubBase(BasetenSession, abc.ABC):
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:
                 data_dict = inputs.model_dump(mode="python")
-                kwargs["data"] = serialization.truss_msgpack_serialize(data_dict)
+                data_key = "content" if for_httpx else "data"
+                kwargs[data_key] = serialization.truss_msgpack_serialize(data_dict)
                 headers["Content-Type"] = "application/octet-stream"
             else:
                 data_key = "content" if for_httpx else "data"
@@ -275,7 +285,8 @@ class StubBase(BasetenSession, abc.ABC):
                 headers["Content-Type"] = "application/json"
         else:  # inputs is JSON dict.
             if self._service_descriptor.options.use_binary:
-                kwargs["data"] = serialization.truss_msgpack_serialize(inputs)
+                data_key = "content" if for_httpx else "data"
+                kwargs[data_key] = serialization.truss_msgpack_serialize(inputs)
                 headers["Content-Type"] = "application/octet-stream"
             else:
                 kwargs["json"] = inputs

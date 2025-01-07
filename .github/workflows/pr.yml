@@ -36,11 +36,11 @@ jobs:
       - run: poetry install --with=dev,dev-server --extras=all
       - name: run tests
         run: poetry run pytest --durations=0  -m 'not integration' --junitxml=report.xml
-      - name: Publish Test Report  # Not sure how to display this in the UI for non PRs.
+      - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-           commit: ${{github.event.workflow_run.head_sha}}  # Doest that work outside PR?
+           commit: ${{ github.event.workflow_run.head_sha }}
            report_paths: "report.xml"
 
   markdown-link-check:
