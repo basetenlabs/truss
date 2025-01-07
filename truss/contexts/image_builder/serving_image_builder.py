@@ -395,7 +395,11 @@ class ServingImageBuilder(ImageBuilder):
         if is_audio_model:
             copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
         elif is_encoder_model:
-            concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
+            concurrency = config.runtime.predict_concurrency
+            if concurrency == 1:
+                # for text-embeddings-router, predict concurrency of 1 doesn't make sense
+                # set it to the default, but respect the user's setting if its other than 1
+                concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
             # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
             # to 32 even if the engine.rank0 allows for higher batch_size
             max_batch_size = max(trt_llm_config.build.max_batch_size, 32)
@@ -405,6 +409,7 @@ class ServingImageBuilder(ImageBuilder):
                 f"--port {port} "
                 f"--max-batch-requests {max_batch_size} "
                 # how many sentences can be in a single json payload.
+                # limited default to improve request based autoscaling.
                 f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
                 # how many concurrent requests can be handled by the server until 429 is returned.
                 f"--max-concurrent-requests {int(ENCODER_TRTLLM_PREDICT_CONCURRENCY + 1)} "
