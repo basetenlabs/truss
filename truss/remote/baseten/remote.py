@@ -68,8 +68,8 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str, **kwargs):
-        super().__init__(remote_url, **kwargs)
+    def __init__(self, remote_url: str, api_key: str):
+        super().__init__(remote_url)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
 
@@ -310,7 +310,8 @@ class BasetenRemote(TrussRemote):
 
         model_id = chain_deployment_handle.entrypoint_model_id
         model_version_id = chain_deployment_handle.entrypoint_model_version_id
-
+        # TODO: entrypoint service is for truss model - make chains-specific.
+        #   E.g. chain/chainlet will not have model URLs anymore.
         entrypoint_service = BasetenService(
             model_id=model_id,
             model_version_id=model_version_id,

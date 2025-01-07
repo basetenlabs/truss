@@ -199,7 +199,7 @@ class TrussRemote(ABC):
 
     """
 
-    def __init__(self, remote_url: str, **kwargs) -> None:
+    def __init__(self, remote_url: str) -> None:
         self._remote_url = remote_url
 
     @property
