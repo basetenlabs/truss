@@ -14,7 +14,12 @@ runs:
       shell: bash
       run: echo "version=$(python -c 'import sys; print(\"-\".join(str(v) for v in sys.version_info))')" >> $GITHUB_ENV
 
-    - run: curl -sSL https://install.python-poetry.org | python3 -
+    - name: Install Poetry with Debug Output
+      env:
+        POETRY_VERBOSE: 1
+      run: |
+        set -x
+        curl -sSL https://install.python-poetry.org | python3 -v -
       shell: bash
 
     - name: Configure poetry
