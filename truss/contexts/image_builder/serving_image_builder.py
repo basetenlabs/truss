@@ -23,6 +23,8 @@ from truss.base.constants import (
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
     ENCODER_TRTLLM_BASE_IMAGE,
+    ENCODER_TRTLLM_CLIENT_BATCH_SIZE,
+    ENCODER_TRTLLM_PREDICT_CONCURRENCY,
     ENCODER_TRTLLM_PYTHON_EXECUTABLE,
     FILENAME_CONSTANTS_MAP,
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
@@ -393,11 +395,25 @@ class ServingImageBuilder(ImageBuilder):
         if is_audio_model:
             copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
         elif is_encoder_model:
-            concurrency = 192
-            max_batch_size = max(trt_llm_config.build.max_batch_size or 32, 32)
+            concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
+            # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
+            # to 32 even if the engine.rank0 allows for higher batch_size
+            max_batch_size = max(trt_llm_config.build.max_batch_size, 32)
+            port = 7997
+            start_command = (
+                f"python-truss-download && text-embeddings-router "
+                f"--port {port} "
+                f"--max-batch-requests {max_batch_size} "
+                # how many sentences can be in a single json payload.
+                f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                f"--max-concurrent-requests {int(ENCODER_TRTLLM_PREDICT_CONCURRENCY + 1)} "
+                # downloaded model path by `python-truss-download` cmd
+                "--model-id /app/data/tokenization"
+            )
             self._spec.config.docker_server = DockerServer(
-                start_command=f"/bin/sh -c 'python-truss-download && text-embeddings-router --port 7997 --max-batch-requests {max_batch_size} --max-client-batch-size 128 --max-concurrent-requests {int(concurrency + 5)} --model-id /app/data/tokenization'",
-                server_port=7997,
+                start_command=f"/bin/sh -c {start_command}",
+                server_port=port,
                 predict_endpoint="/predict",
                 readiness_endpoint="/health",
                 liveness_endpoint="/health",
