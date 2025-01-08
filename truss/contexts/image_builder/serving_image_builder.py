@@ -371,6 +371,7 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
     def prepare_trtllm_encoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model"""
         config = self._spec.config
         if (
             not config.trt_llm
@@ -415,7 +416,8 @@ class ServingImageBuilder(ImageBuilder):
             python_executable_path=ENCODER_TRTLLM_PYTHON_EXECUTABLE,
         )
 
-    def prepare_trtllm_build_dir(self, build_dir: Path):
+    def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm decoder-like modes"""
         config = self._spec.config
         if (
             not config.trt_llm
@@ -423,7 +425,7 @@ class ServingImageBuilder(ImageBuilder):
             or config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
         ):
             raise ValueError(
-                "prepare_trtllm_build_dir should only be called for tensorrt-llm model"
+                "prepare_trtllm_build_dir should only be called for decoder tensorrt-llm model"
             )
 
         # trt_llm is treated as an extension at model run time.
@@ -486,7 +488,7 @@ class ServingImageBuilder(ImageBuilder):
                 # Run the specific encoder build
                 self.prepare_trtllm_encoder_build_dir(build_dir=build_dir)
             else:
-                self.prepare_trtllm_build_dir(build_dir=build_dir)
+                self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
         if config.docker_server is not None:
             self._copy_into_build_dir(
