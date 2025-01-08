@@ -44,11 +44,11 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
 
 
 class CheckpointSource(str, Enum):
-    HF: str = "HF"
-    GCS: str = "GCS"
-    LOCAL: str = "LOCAL"
+    HF = "HF"
+    GCS = "GCS"
+    LOCAL = "LOCAL"
     # REMOTE_URL is useful when the checkpoint lives on remote storage accessible via HTTP (e.g a presigned URL)
-    REMOTE_URL: str = "REMOTE_URL"
+    REMOTE_URL = "REMOTE_URL"
 
 
 class CheckpointRepository(BaseModel):
@@ -76,7 +76,7 @@ class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
 
 
 class TrussSpecDecMode(str, Enum):
-    DRAFT_EXTERNAL: str = "DRAFT_TOKENS_EXTERNAL"
+    DRAFT_EXTERNAL = "DRAFT_TOKENS_EXTERNAL"
 
 
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
