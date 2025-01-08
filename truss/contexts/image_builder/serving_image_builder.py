@@ -14,9 +14,6 @@ from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.base import constants
 from truss.base.constants import (
-    AUDIO_MODEL_TRTLLM_REQUIREMENTS,
-    AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
-    AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     CHAINS_CODE_DIR,
@@ -373,95 +370,81 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
+    def prepare_trtllm_encoder_build_dir(self, build_dir: Path):
+        config = self._spec.config
+        if (
+            not config.trt_llm
+            or not config.trt_llm.build
+            or config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+        ):
+            raise ValueError(
+                "prepare_trtllm_encoder_build_dir should only be called for encoder model"
+            )
+
+        if config.runtime.predict_concurrency == 1:
+            # for text-embeddings-router, predict concurrency of 1 doesn't make sense
+            # set it to the default, but respect the user's setting if its other than 1
+            config.runtime.predict_concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
+        # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
+        # to 32 even if the engine.rank0 allows for higher batch_size
+        max_batch_size = max(config.trt_llm.build.max_batch_size, 32)
+        port = 7997
+        start_command = (
+            f"python-truss-download && text-embeddings-router "
+            f"--port {port} "
+            f"--max-batch-requests {max_batch_size} "
+            # how many sentences can be in a single json payload.
+            # limited default to improve request based autoscaling.
+            f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
+            # how many concurrent requests can be handled by the server until 429 is returned.
+            f"--max-concurrent-requests {config.runtime.predict_concurrency} "
+            # downloaded model path by `python-truss-download` cmd
+            "--model-id /app/data/tokenization"
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c {start_command}",
+            server_port=port,
+            predict_endpoint="/predict",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+
+        config.base_image = BaseImage(
+            image=ENCODER_TRTLLM_BASE_IMAGE,
+            python_executable_path=ENCODER_TRTLLM_PYTHON_EXECUTABLE,
+        )
+
     def prepare_trtllm_build_dir(self, build_dir: Path):
         config = self._spec.config
-        trt_llm_config = config.trt_llm
-        if not trt_llm_config:
-            return
-        is_audio_model = (
-            trt_llm_config.build.base_model == TrussTRTLLMModel.WHISPER
-            if isinstance(trt_llm_config, TRTLLMConfiguration)
-            and trt_llm_config.build is not None
-            else False
+
+        # trt_llm is treated as an extension at model run time.
+        self._copy_into_build_dir(
+            TRTLLM_TRUSS_DIR / "src",
+            build_dir,
+            f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
         )
-        is_encoder_model = (
-            trt_llm_config.build.base_model == TrussTRTLLMModel.ENCODER
-            if isinstance(trt_llm_config, TRTLLMConfiguration)
-            and trt_llm_config.build is not None
-            else False
+        # TODO(pankaj) Do this differently. This is not ideal, user
+        # supplied code in bundled packages can conflict with those from
+        # the trtllm extension. We don't want to put this in the build
+        # directory directly either because of chances of conflict there
+        # as well and the noise it can create there. We need to find a
+        # new place that's made available in model's pythonpath. This is
+        # a bigger lift and feels overkill right now. Worth revisiting
+        # if we come across cases of actual conflicts.
+        self._copy_into_build_dir(
+            TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
+            build_dir,
+            DEFAULT_BUNDLED_PACKAGES_DIR,
         )
-        concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-        if is_audio_model:
-            copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
-        elif is_encoder_model:
-            concurrency = config.runtime.predict_concurrency
-            if concurrency == 1:
-                # for text-embeddings-router, predict concurrency of 1 doesn't make sense
-                # set it to the default, but respect the user's setting if its other than 1
-                concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
-            # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
-            # to 32 even if the engine.rank0 allows for higher batch_size
-            max_batch_size = max(trt_llm_config.build.max_batch_size, 32)
-            port = 7997
-            start_command = (
-                f"python-truss-download && text-embeddings-router "
-                f"--port {port} "
-                f"--max-batch-requests {max_batch_size} "
-                # how many sentences can be in a single json payload.
-                # limited default to improve request based autoscaling.
-                f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
-                # how many concurrent requests can be handled by the server until 429 is returned.
-                f"--max-concurrent-requests {int(ENCODER_TRTLLM_PREDICT_CONCURRENCY + 1)} "
-                # downloaded model path by `python-truss-download` cmd
-                "--model-id /app/data/tokenization"
-            )
-            self._spec.config.docker_server = DockerServer(
-                start_command=f"/bin/sh -c {start_command}",
-                server_port=port,
-                predict_endpoint="/predict",
-                readiness_endpoint="/health",
-                liveness_endpoint="/health",
-            )
-            copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
-        else:
-            # trt_llm is treated as an extension at model run time.
-            self._copy_into_build_dir(
-                TRTLLM_TRUSS_DIR / "src",
-                build_dir,
-                f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
-            )
-            # TODO(pankaj) Do this differently. This is not ideal, user
-            # supplied code in bundled packages can conflict with those from
-            # the trtllm extension. We don't want to put this in the build
-            # directory directly either because of chances of conflict there
-            # as well and the noise it can create there. We need to find a
-            # new place that's made available in model's pythonpath. This is
-            # a bigger lift and feels overkill right now. Worth revisiting
-            # if we come across cases of actual conflicts.
-            self._copy_into_build_dir(
-                TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
-                build_dir,
-                DEFAULT_BUNDLED_PACKAGES_DIR,
-            )
+        config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-        config.runtime.predict_concurrency = concurrency
-
-        if is_audio_model:
-            config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
-            config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
-            config.python_version = "py310"
-        elif is_encoder_model:
-            config.base_image = BaseImage(
-                image=ENCODER_TRTLLM_BASE_IMAGE,
-                python_executable_path=ENCODER_TRTLLM_PYTHON_EXECUTABLE,
-            )
-        else:
-            config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE,
-                python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
-            )
-            config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
+        config.base_image = BaseImage(
+            image=TRTLLM_BASE_IMAGE,
+            python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
+        )
+        config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -487,8 +470,15 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
-
-        self.prepare_trtllm_build_dir(build_dir=build_dir)
+        if (
+            isinstance(config.trt_llm, TRTLLMConfiguration)
+            and config.trt_llm.build is not None
+        ):
+            if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
+                # Run the specific encoder build
+                self.prepare_trtllm_encoder_build_dir(build_dir=build_dir)
+            else:
+                self.prepare_trtllm_build_dir(build_dir=build_dir)
 
         if config.docker_server is not None:
             self._copy_into_build_dir(

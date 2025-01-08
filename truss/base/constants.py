@@ -16,7 +16,6 @@ TEMPLATES_DIR = _TRUSS_ROOT / "templates"
 DOCKER_SERVER_TEMPLATES_DIR = TEMPLATES_DIR / "docker_server"
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
-AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"
 TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
@@ -112,29 +111,6 @@ TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
 TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.13.0-4fd8a10-5e5c3d7"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = ["briton==0.3.13.dev4"]
-AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
-    "--extra-index-url https://pypi.nvidia.com",
-    "tensorrt_cu12_bindings==10.2.0.post1",
-    "tensorrt_cu12_libs==10.2.0.post1",
-    "tensorrt-cu12==10.2.0.post1",
-    "tensorrt_llm==0.12.0.dev2024072301",
-    "hf_transfer",
-    "janus",
-    "kaldialign",
-    "librosa",
-    "mpi4py==3.1.4",
-    "safetensors",
-    "soundfile",
-    "tiktoken",
-    "torchaudio",
-    "async-batcher>=0.2.0",
-    "pydantic>=2.7.1",
-]
-AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES = [
-    "python3.10-venv",
-    "openmpi-bin",
-    "libopenmpi-dev",
-]
 ENCODER_TRTLLM_BASE_IMAGE = "baseten/trt_tei_prod:v0.0.6"
 ENCODER_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
