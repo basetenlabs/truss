@@ -5,7 +5,7 @@ on:
 
 jobs:
   truss-integration-tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +28,7 @@ jobs:
           report_paths: "report-${{ matrix.split_group }}.xml"
 
   chains-integration-tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
     steps:

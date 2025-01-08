@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   detect-version-changed:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     outputs:
       version_changed: ${{ steps.versions.outputs.version_changed }}
       new_version: ${{ steps.versions.outputs.new_version }}
@@ -32,7 +32,7 @@ jobs:
   build-and-push-truss-base-images-if-needed:
     needs: [detect-version-changed]
     if: needs.detect-version-changed.outputs.build_base_images == 'true'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         python_version: ["3.8", "3.9", "3.10", "3.11"]
@@ -68,7 +68,7 @@ jobs:
   publish-rc-to-pypi:
     needs: [detect-version-changed]
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && needs.detect-version-changed.outputs.is_prerelease_version == 'true' }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: "Git tag release"
         uses: actions/checkout@v4
