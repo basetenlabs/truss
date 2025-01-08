@@ -81,7 +81,7 @@ class TrussSpecDecMode(str, Enum):
 
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
-    enable_chunked_context: bool = False
+    enable_chunked_context: bool = True
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
@@ -135,6 +135,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             and not self.plugin_configuration.use_paged_context_fmha
         ):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
+        if (
+            self.plugin_configuration.use_fp8_context_fmha
+            and not self.quantization_type == TrussTRTLLMQuantizationType.FP8_KV
+        ):
+            raise ValueError("Using fp8 context fmha requires fp8 kv cache dtype")
         return self
 
     def _validate_speculator_config(self):
