@@ -402,7 +402,7 @@ class ServingImageBuilder(ImageBuilder):
             "--model-id /app/data/tokenization"
         )
         self._spec.config.docker_server = DockerServer(
-            start_command=f"/bin/sh -c {start_command}",
+            start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
             predict_endpoint="/predict",
             readiness_endpoint="/health",
