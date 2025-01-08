@@ -387,7 +387,7 @@ class ServingImageBuilder(ImageBuilder):
             config.runtime.predict_concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # to 32 even if the engine.rank0 allows for higher batch_size
-        max_batch_size = max(config.trt_llm.build.max_batch_size, 32)
+        max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
         port = 7997
         start_command = (
             f"python-truss-download && text-embeddings-router "
