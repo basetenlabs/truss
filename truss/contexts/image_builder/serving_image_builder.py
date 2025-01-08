@@ -417,6 +417,14 @@ class ServingImageBuilder(ImageBuilder):
 
     def prepare_trtllm_build_dir(self, build_dir: Path):
         config = self._spec.config
+        if (
+            not config.trt_llm
+            or not config.trt_llm.build
+            or config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
+        ):
+            raise ValueError(
+                "prepare_trtllm_build_dir should only be called for tensorrt-llm model"
+            )
 
         # trt_llm is treated as an extension at model run time.
         self._copy_into_build_dir(
