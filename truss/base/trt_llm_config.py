@@ -135,6 +135,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             and not self.plugin_configuration.use_paged_context_fmha
         ):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
+        if (
+            self.plugin_configuration.use_fp8_context_fmha
+            and not self.quantization_type == TrussTRTLLMQuantizationType.FP8_KV
+        ):
+            raise ValueError("Using fp8 context fmha requires fp8 kv cache dtype")
         return self
 
     def _validate_speculator_config(self):
