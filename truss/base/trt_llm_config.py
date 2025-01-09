@@ -92,8 +92,8 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel
     max_seq_len: int
-    max_batch_size: Optional[int] = 256
-    max_num_tokens: Optional[int] = 8192
+    max_batch_size: int = 256
+    max_num_tokens: int = 8192
     max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
