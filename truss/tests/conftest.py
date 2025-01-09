@@ -409,8 +409,8 @@ def custom_model_trt_llm(tmp_path):
                 },
                 "runtime": {
                     "kv_cache_free_gpu_mem_fraction": 0.9,
-                    "enabled_chunked_context": False,
-                    "num_draft_tokens": None,
+                    "kv_cache_host_memory_bytes": 1000,
+                    "enabled_chunked_context": True,
                     "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT.value,
                 },
             }
