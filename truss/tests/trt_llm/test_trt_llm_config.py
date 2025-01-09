@@ -17,6 +17,7 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields(
     trt_llm_config = TRTLLMConfiguration(**deprecated_trtllm_config["trt_llm"])
     assert trt_llm_config.runtime.model_dump() == {
         "kv_cache_free_gpu_mem_fraction": 0.1,
+        "kv_cache_host_memory_bytes": None,
         "enable_chunked_context": True,
         "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
         "request_default_max_tokens": 10,
@@ -32,6 +33,7 @@ def test_trt_llm_configuration_init_and_migrate_deprecated_runtime_fields_existi
     )
     assert trt_llm_config.runtime.model_dump() == {
         "kv_cache_free_gpu_mem_fraction": 0.1,
+        "kv_cache_host_memory_bytes": None,
         "enable_chunked_context": True,
         "batch_scheduler_policy": TrussTRTLLMBatchSchedulerPolicy.MAX_UTILIZATION.value,
         "request_default_max_tokens": 10,
