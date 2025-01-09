@@ -372,14 +372,11 @@ class ServingImageBuilder(ImageBuilder):
     def prepare_trtllm_encoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm ENCODER model"""
         config = self._spec.config
-        if (
-            not config.trt_llm
-            or not config.trt_llm.build
-            or config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
-        ):
-            raise ValueError(
-                "prepare_trtllm_encoder_build_dir should only be called for encoder model"
-            )
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
+        ), "prepare_trtllm_encoder_build_dir should only be called for encoder tensorrt-llm model"
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
@@ -416,14 +413,11 @@ class ServingImageBuilder(ImageBuilder):
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
         """prepares the build directory for a trtllm decoder-like modes"""
         config = self._spec.config
-        if (
-            not config.trt_llm
-            or not config.trt_llm.build
-            or config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
-        ):
-            raise ValueError(
-                "prepare_trtllm_build_dir should only be called for decoder tensorrt-llm model"
-            )
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+        ), "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
 
         # trt_llm is treated as an extension at model run time.
         self._copy_into_build_dir(
