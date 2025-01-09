@@ -326,6 +326,26 @@ class BasetenApi:
             chainlet["chain"] = {"id": resp["data"]["chain_deployment"]["chain"]["id"]}
         return chainlets
 
+    def delete_chain(self, chain_id: str) -> Any:
+        url = f"{self._rest_api_url}/v1/chains/{chain_id}"
+        headers = self._auth_token.header()
+        resp = requests.delete(url, headers=headers)
+        if not resp.ok:
+            resp.raise_for_status()
+
+        deployment = resp.json()
+        return deployment
+
+    def delete_chain_deployment(self, chain_id: str, chain_deployment_id: str) -> Any:
+        url = f"{self._rest_api_url}/v1/chains/{chain_id}/deployments/{chain_deployment_id}"
+        headers = self._auth_token.header()
+        resp = requests.delete(url, headers=headers)
+        if not resp.ok:
+            resp.raise_for_status()
+
+        deployment = resp.json()
+        return deployment
+
     def models(self):
         query_string = """
         {

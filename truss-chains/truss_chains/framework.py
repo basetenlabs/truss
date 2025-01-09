@@ -38,7 +38,7 @@ from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
-_STREAM_TYPES = {bytes, str}
+_STREAM_TYPES = {str, bytes}
 
 _DOCS_URL_CHAINING = (
     "https://docs.baseten.co/chains/concepts#depends-call-other-chainlets"
@@ -310,8 +310,9 @@ def _validate_streaming_output_type(
     assert origin in (collections.abc.AsyncIterator, collections.abc.Iterator)
     args = get_args(annotation)
     if len(args) < 1:
+        stream_types = sorted(list(x.__name__ for x in _STREAM_TYPES))
         _collect_error(
-            f"Iterators must be annotated with type (one of {list(x.__name__ for x in _STREAM_TYPES)}).",
+            f"Iterators must be annotated with type (one of {stream_types}).",
             _ErrorKind.IO_TYPE_ERROR,
             location,
         )

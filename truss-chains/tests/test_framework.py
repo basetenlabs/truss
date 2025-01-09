@@ -549,7 +549,7 @@ def test_raises_iterator_sync():
 def test_raises_iterator_no_arg():
     match = (
         rf"{TEST_FILE}:\d+ \(IteratorNoArg\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
-        r"Iterators must be annotated with type \(one of \['str', 'bytes'\]\)"
+        r"Iterators must be annotated with type \(one of \['bytes', 'str'\]\)"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():

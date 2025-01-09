@@ -210,20 +210,24 @@ def _resolve_exception_class(
     return exception_cls
 
 
-def _handle_response_error(response_json: dict, remote_name: str):
+def _handle_response_error(response_json: dict, remote_name: str, status: int):
     try:
         error_json = response_json["error"]
     except KeyError as e:
         logging.error(f"response_json: {response_json}")
         raise ValueError(
-            "Could not get `error` field from JSON from chainlet error response"
+            "Could not get `error` field from JSON from chainlet "
+            f"error response. HTTP status: {status}."
         ) from e
 
     try:
         error = definitions.RemoteErrorDetail.model_validate(error_json)
     except pydantic.ValidationError as e:
         if isinstance(error_json, str):
-            msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
+            msg = (
+                f"Remote error occurred in `{remote_name}` "
+                f"(HTTP status {status}): '{error_json}'"
+            )
             raise definitions.GenericRemoteException(msg) from None
         raise ValueError(
             "Could not parse chainlet error. Error details are expected to be either a "
@@ -238,7 +242,7 @@ def _handle_response_error(response_json: dict, remote_name: str):
     error_format = "\n".join(lines + [last_line])
     msg = (
         f"(showing chained remote errors, root error at the bottom)\n"
-        f"├─ Error in dependency Chainlet `{remote_name}`:\n"
+        f"├─ Error in dependency Chainlet `{remote_name}` (HTTP status {status}):\n"
         f"{error_format}"
     )
     raise exception_cls(msg)
@@ -255,38 +259,24 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
     Chainlet that raised an exception. E.g. the message might look like this:
 
     ```
-    RemoteChainletError in "Chain"
-    Traceback (most recent call last):
-      File "/app/model/Chainlet.py", line 112, in predict
-        result = await self._chainlet.run(
-      File "/app/model/Chainlet.py", line 79, in run
-        value += self._text_to_num.run(part)
-      File "/packages/remote_stubs.py", line 21, in run
-        json_result = self.predict_sync(json_args)
-      File "/packages/truss_chains/stub.py", line 37, in predict_sync
-        return utils.handle_response(
-    ValueError: (showing remote errors, root message at the bottom)
-    --> Preceding Remote Cause:
-        RemoteChainletError in "TextToNum"
-        Traceback (most recent call last):
-          File "/app/model/Chainlet.py", line 113, in predict
-            result = self._chainlet.run(data=payload["data"])
-          File "/app/model/Chainlet.py", line 54, in run
-            generated_text = self._replicator.run(data)
-          File "/packages/remote_stubs.py", line 7, in run
-            json_result = self.predict_sync(json_args)
-          File "/packages/truss_chains/stub.py", line 37, in predict_sync
-            return utils.handle_response(
-        ValueError: (showing remote errors, root message at the bottom)
-        --> Preceding Remote Cause:
-            RemoteChainletError in "TextReplicator"
-            Traceback (most recent call last):
-              File "/app/model/Chainlet.py", line 112, in predict
-                result = self._chainlet.run(data=payload["data"])
-              File "/app/model/Chainlet.py", line 36, in run
-                raise ValueError(f"This input is too long: {len(data)}.")
-            ValueError: This input is too long: 100.
-
+    Chainlet-Traceback (most recent call last):
+      File "/packages/itest_chain.py", line 132, in run_remote
+        value = self._accumulate_parts(text_parts.parts)
+      File "/packages/itest_chain.py", line 144, in _accumulate_parts
+        value += self._text_to_num.run_remote(part)
+    ValueError: (showing chained remote errors, root error at the bottom)
+    ├─ Error in dependency Chainlet `TextToNum` (HTTP status 500):
+    │   Chainlet-Traceback (most recent call last):
+    │     File "/packages/itest_chain.py", line 87, in run_remote
+    │       generated_text = self._replicator.run_remote(data)
+    │   ValueError: (showing chained remote errors, root error at the bottom)
+    │   ├─ Error in dependency Chainlet `TextReplicator` (HTTP status 500):
+    │   │   Chainlet-Traceback (most recent call last):
+    │   │     File "/packages/itest_chain.py", line 52, in run_remote
+    │   │       validate_data(data)
+    │   │     File "/packages/itest_chain.py", line 36, in validate_data
+    │   │       raise ValueError(f"This input is too long: {len(data)}.")
+    ╰   ╰   ValueError: This input is too long: 100.
     ```
     """
     if response.is_error:
@@ -297,7 +287,7 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
                 "Could not get JSON from error response. Status: "
                 f"`{response.status_code}`."
             ) from e
-        _handle_response_error(response_json=response_json, remote_name=remote_name)
+        _handle_response_error(response_json, remote_name, response.status_code)
 
 
 async def async_response_raise_errors(
@@ -312,4 +302,4 @@ async def async_response_raise_errors(
                 "Could not get JSON from error response. Status: "
                 f"`{response.status}`."
             ) from e
-        _handle_response_error(response_json=response_json, remote_name=remote_name)
+        _handle_response_error(response_json, remote_name, response.status)
