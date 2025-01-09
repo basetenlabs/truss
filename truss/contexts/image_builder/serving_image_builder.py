@@ -399,7 +399,7 @@ class ServingImageBuilder(ImageBuilder):
         self._spec.config.docker_server = DockerServer(
             start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
-            predict_endpoint="/predict",
+            predict_endpoint="/v1/embeddings",
             readiness_endpoint="/health",
             liveness_endpoint="/health",
         )
