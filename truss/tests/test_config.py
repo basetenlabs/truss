@@ -465,6 +465,22 @@ def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
         TrussConfig.from_dict(trtllm_config)
 
 
+def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
+    trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
+        "paged_kv_cache": True,
+        "use_paged_context_fmha": True,
+        "use_fp8_context_fmha": True,
+    }
+    trtllm_config["trt_llm"]["build"]["quantization_type"] = (
+        TrussTRTLLMQuantizationType.FP8_KV.value
+    )
+    TrussConfig.from_dict(trtllm_config)
+
+    del trtllm_config["trt_llm"]["build"]["quantization_type"]
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
 @pytest.mark.parametrize("verbose, expect_equal", [(False, True), (True, False)])
 def test_to_dict_trtllm(
     verbose,
