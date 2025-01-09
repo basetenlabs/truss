@@ -21,7 +21,6 @@ from truss.base.constants import (
     DOCKER_SERVER_TEMPLATES_DIR,
     ENCODER_TRTLLM_BASE_IMAGE,
     ENCODER_TRTLLM_CLIENT_BATCH_SIZE,
-    ENCODER_TRTLLM_PREDICT_CONCURRENCY,
     ENCODER_TRTLLM_PYTHON_EXECUTABLE,
     FILENAME_CONSTANTS_MAP,
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
@@ -381,11 +380,6 @@ class ServingImageBuilder(ImageBuilder):
             raise ValueError(
                 "prepare_trtllm_encoder_build_dir should only be called for encoder model"
             )
-
-        if config.runtime.predict_concurrency == 1:
-            # for text-embeddings-router, predict concurrency of 1 doesn't make sense
-            # set it to the default, but respect the user's setting if its other than 1
-            config.runtime.predict_concurrency = ENCODER_TRTLLM_PREDICT_CONCURRENCY
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # to 32 even if the engine.rank0 allows for higher batch_size
         max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
