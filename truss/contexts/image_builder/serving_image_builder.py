@@ -381,13 +381,14 @@ class ServingImageBuilder(ImageBuilder):
                 "prepare_trtllm_encoder_build_dir should only be called for encoder model"
             )
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
+        # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
-        max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
+        runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
         port = 7997
         start_command = (
             f"python-truss-download && text-embeddings-router "
             f"--port {port} "
-            f"--max-batch-requests {max_batch_size} "
+            f"--max-batch-requests {runtime_max_batch_size} "
             # how many sentences can be in a single json payload.
             # limited default to improve request based autoscaling.
             f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
