@@ -438,7 +438,7 @@ def test_plugin_paged_context_fmha_check(trtllm_config):
         "~/.huggingface/my--model--cache/model",
         "foo.git",
         "datasets/foo/bar",
-        ".repo_id" "other..repo..id",
+        ".repo_idother..repo..id",
     ],
 )
 def test_invalid_hf_repo(trtllm_config, repo):
@@ -515,9 +515,9 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
         with pytest.raises(ValueError):
             TrussConfig.from_dict(test_config)
         test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = (
-            trtllm_spec_dec_config[
-                "trt_llm"
-            ]["build"]["speculator"]["checkpoint_repository"]
+            trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
+                "checkpoint_repository"
+            ]
         )
         test_config["trt_llm"]["build"]["plugin_configuration"][
             "use_paged_context_fmha"
@@ -528,9 +528,9 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
             "use_paged_context_fmha"
         ] = True
         test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
-            trtllm_spec_dec_config[
-                "trt_llm"
-            ]["build"]["speculator"]["speculative_decoding_mode"]
+            trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
+                "speculative_decoding_mode"
+            ]
         )
         test_config["trt_llm"]["build"]["speculator"]["num_draft_tokens"] = None
         with pytest.raises(ValueError):

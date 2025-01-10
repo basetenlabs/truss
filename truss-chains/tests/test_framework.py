@@ -84,8 +84,7 @@ def test_raises_depends_usage():
             return self.chainlet1.run_remote()
 
     match = (
-        "`chains.depends(Chainlet1)` was used, but not as "
-        "an argument to the `__init__`"
+        "`chains.depends(Chainlet1)` was used, but not as an argument to the `__init__`"
     )
     with pytest.raises(definitions.ChainsRuntimeError, match=re.escape(match)):
         with chains.run_local():

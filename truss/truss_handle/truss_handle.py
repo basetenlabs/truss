@@ -1027,7 +1027,7 @@ class TrussHandle:
         )
         resp = self.patch_container(patch_request)
         if "error" in resp:
-            raise RuntimeError(f'Failed to patch control truss {resp["error"]}')
+            raise RuntimeError(f"Failed to patch control truss {resp['error']}")
         self._store_signature()
         return container
 

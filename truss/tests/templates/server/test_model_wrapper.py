@@ -114,9 +114,9 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
                 call_args[0][0] == "trt_llm"
                 for call_args in mock_init_extension.call_args_list
             )
-            assert (
-                called_with_specific_extension
-            ), "Expected extension_name was not called"
+            assert called_with_specific_extension, (
+                "Expected extension_name was not called"
+            )
 
 
 @pytest.mark.anyio

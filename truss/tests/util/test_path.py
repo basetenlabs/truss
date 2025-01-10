@@ -174,7 +174,7 @@ def test_get_ignored_relative_paths():
         ".git",
         ".git/HEAD",
         "data/should_ignore.txt",
-        "data.txt" "config.yaml",
+        "data.txtconfig.yaml",
         "model/model.py",
     }
 
