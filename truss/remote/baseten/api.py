@@ -148,10 +148,10 @@ class BasetenApi:
                 config: "{config}",
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
-                is_trusted: {'true' if is_trusted else 'false'},
-                allow_truss_download: {'true' if allow_truss_download else 'false'},
+                is_trusted: {"true" if is_trusted else "false"},
+                allow_truss_download: {"true" if allow_truss_download else "false"},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
-                {f'model_origin: {origin.value}' if origin else ""}
+                {f"model_origin: {origin.value}" if origin else ""}
             ) {{
                 id,
                 name,
@@ -183,8 +183,8 @@ class BasetenApi:
                 config: "{config}",
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
-                is_trusted: {'true' if is_trusted else 'false'},
-                scale_down_old_production: {'false' if preserve_previous_prod_deployment else 'true'},
+                is_trusted: {"true" if is_trusted else "false"},
+                scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"},
                 {f'name: "{deployment_name}"' if deployment_name else ""}
                 {f'environment_name: "{environment}"' if environment else ""}
             ) {{
@@ -212,9 +212,9 @@ class BasetenApi:
                     s3_key: "{s3_key}",
                     config: "{config}",
                     client_version: "{client_version}",
-                    is_trusted: {'true' if is_trusted else 'false'},
-                    allow_truss_download: {'true' if allow_truss_download else 'false'},
-                    {f'model_origin: {origin.value}' if origin else ""}
+                    is_trusted: {"true" if is_trusted else "false"},
+                    allow_truss_download: {"true" if allow_truss_download else "false"},
+                    {f"model_origin: {origin.value}" if origin else ""}
     ) {{
             id,
             name,

@@ -337,6 +337,6 @@ def _assert_copied(src_path: str, dest_path: str):
             src_file = os.path.join(dirpath, filename)
             dest_file = os.path.join(dest_path, rel_path, filename)
             assert os.path.exists(dest_file), f"{dest_file} was not copied"
-            assert filecmp.cmp(
-                src_file, dest_file, shallow=False
-            ), f"{src_file} and {dest_file} are not the same"
+            assert filecmp.cmp(src_file, dest_file, shallow=False), (
+                f"{src_file} and {dest_file} are not the same"
+            )

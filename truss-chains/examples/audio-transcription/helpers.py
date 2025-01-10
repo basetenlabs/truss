@@ -280,7 +280,7 @@ class DownloadSubprocess:
                 else "No stderr available."
             )
             raise ChildProcessError(
-                "FFMPEG hangs after terminating. Stderr:\n" f"{stderr}"
+                f"FFMPEG hangs after terminating. Stderr:\n{stderr}"
             ) from e
 
         logging.debug(f"return code={self._process.returncode}.")

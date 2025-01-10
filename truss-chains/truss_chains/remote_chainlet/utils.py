@@ -299,7 +299,6 @@ async def async_response_raise_errors(
             response_json = await response.json()
         except Exception as e:
             raise ValueError(
-                "Could not get JSON from error response. Status: "
-                f"`{response.status}`."
+                f"Could not get JSON from error response. Status: `{response.status}`."
             ) from e
         _handle_response_error(response_json, remote_name, response.status)
