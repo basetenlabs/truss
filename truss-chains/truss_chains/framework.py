@@ -1016,11 +1016,14 @@ def _create_modified_init_for_local(
             if up_func_name == _INIT_NAME and self_value == up_self_value:
                 continue  # OK, call to `super().__init__()`.
 
-            # Everything else is invalid.
+            # Everything else is invalid. We must turn formatting off because ruff
+            # attempts to move the ignore to an invalid line, causing mypy issues.
+            # fmt: off
             location = (
                 f"{up_frame.filename}:{up_frame.lineno} ({up_frame.function})\n"
-                f"    {up_frame.code_context[0].strip()}"
-            )  # type: ignore[index]
+                f"    {up_frame.code_context[0].strip()}" # type: ignore[index]
+            )
+            # fmt: on
             raise definitions.ChainsRuntimeError(
                 _instantiation_error_msg(chainlet_descriptor.name, location)
             )
