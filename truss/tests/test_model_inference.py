@@ -972,7 +972,6 @@ def test_setup_environment():
 @pytest.mark.integration
 def test_is_ready():
     model = """
-    import time
     class Model:
         def load(self) -> bool:
             raise Exception("not loaded")
@@ -1023,10 +1022,15 @@ def test_is_ready():
         assert (
             "Exception while checking if model is ready: not ready" in container.logs()
         )
-        assert "Model is not ready. Health checks failing." in container.logs()
+        assert "Model is not ready: Health checks failing." in container.logs()
 
     model = """
+    import time
+
     class Model:
+        def load(self) -> bool:
+            time.sleep(10)
+
         def is_ready(self) -> bool:
             return False
 
@@ -1037,22 +1041,23 @@ def test_is_ready():
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=False
         )
+        truss_server_addr = "http://localhost:8090"
+
+        time.sleep(5)
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 503
+        # Ensure we only log after model.load is complete
+        assert "Model is not ready: Health checks failing." not in container.logs()
 
         # Sleep a few seconds to get the server some time to wake up
         time.sleep(10)
 
-        truss_server_addr = "http://localhost:8090"
-
         ready = requests.get(f"{truss_server_addr}/v1/models/model")
         assert ready.status_code == 503
-        assert "Model is not ready. Health checks failing." in container.logs()
-        time.sleep(5)
+        assert container.logs().count("Model is not ready: Health checks failing.") == 1
         ready = requests.get(f"{truss_server_addr}/v1/models/model")
         assert ready.status_code == 503
-        assert (
-            "Model is not ready. Health checks failing for 5 seconds."
-            in container.logs()
-        )
+        assert container.logs().count("Model is not ready: Health checks failing.") == 2
 
     model = """
     class Model:

@@ -12,7 +12,6 @@ import sys
 import time
 import weakref
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from enum import Enum
 from functools import cached_property
 from multiprocessing import Lock
@@ -292,7 +291,6 @@ class ModelWrapper:
     _predict_semaphore: Semaphore
     _poll_for_environment_updates_task: Optional[asyncio.Task]
     _environment: Optional[dict]
-    _first_health_check_failure: Optional[datetime]
 
     class Status(Enum):
         NOT_READY = 0
@@ -322,7 +320,6 @@ class ModelWrapper:
         )
         self._poll_for_environment_updates_task = None
         self._environment = None
-        self._first_health_check_failure = None
 
     @property
     def _model(self) -> Any:
@@ -557,21 +554,10 @@ class ModelWrapper:
                 "Exception while checking if model is ready: " + str(e),
                 exc_info=errors.filter_traceback(self._model_file_name),
             )
-        if not is_ready:
-            if self._first_health_check_failure is None:
-                self._first_health_check_failure = datetime.now(timezone.utc)
-                self._logger.warning("Model is not ready. Health checks failing.")
-            else:
-                seconds_since_first_failure = round(
-                    (
-                        datetime.now(timezone.utc) - self._first_health_check_failure
-                    ).total_seconds()
-                )
-                self._logger.warning(
-                    f"Model is not ready. Health checks failing for {seconds_since_first_failure} seconds."
-                )
-        elif is_ready:
-            self._first_health_check_failure = None
+        if not is_ready and self.ready:
+            # self.ready evaluates to True when the model's load function has completed,
+            # we will only log health check failures to model logs when the model's load has completed
+            self._logger.warning("Model is not ready: Health checks failing.")
         return is_ready
 
     async def preprocess(
