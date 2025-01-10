@@ -157,7 +157,7 @@ class BasetenEndpoints:
 
         model: ModelWrapper = self._safe_lookup_model(model_name)
 
-        self.check_healthy(model)  # Do we still need this check?
+        self.check_healthy(model)
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
