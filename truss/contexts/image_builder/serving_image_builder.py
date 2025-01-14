@@ -391,8 +391,8 @@ class ServingImageBuilder(ImageBuilder):
             f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE}"
             # how many concurrent requests can be handled by the server until 429 is returned.
             # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
-            # 16384 is a safe max value for the server
-            f"--max-concurrent-requests 16384"
+            # 2048 is a safe max value for the server
+            f"--max-concurrent-requests 2048"
             # downloaded model path by `python-truss-download` cmd
             "--model-id /app/data/tokenization"
         ).join(" ")
