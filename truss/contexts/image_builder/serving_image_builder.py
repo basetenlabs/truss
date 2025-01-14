@@ -382,20 +382,22 @@ class ServingImageBuilder(ImageBuilder):
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
         port = 7997
-        start_command = (
-            f"python-truss-download && text-embeddings-router"
-            f"--port {port}"
-            f"--max-batch-requests {runtime_max_batch_size}"
-            # how many sentences can be in a single json payload.
-            # limited default to improve request based autoscaling.
-            f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE}"
-            # how many concurrent requests can be handled by the server until 429 is returned.
-            # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
-            # 2048 is a safe max value for the server
-            f"--max-concurrent-requests 2048"
-            # downloaded model path by `python-truss-download` cmd
-            "--model-id /app/data/tokenization"
-        ).join(" ")
+        start_command = " ".join(
+            [
+                "python-truss-download && text-embeddings-router",
+                f"--port {port}",
+                f"--max-batch-requests {runtime_max_batch_size}",
+                # how many sentences can be in a single json payload.
+                # limited default to improve request based autoscaling.
+                f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE}",
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
+                # 2048 is a safe max value for the server
+                "--max-concurrent-requests 2048",
+                # downloaded model path by `python-truss-download` cmd
+                "--model-id /app/data/tokenization",
+            ]
+        )
         self._spec.config.docker_server = DockerServer(
             start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
