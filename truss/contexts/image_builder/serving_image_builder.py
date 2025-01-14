@@ -311,18 +311,18 @@ def generate_docker_server_nginx_config(build_dir, config):
         DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
     )
 
-    assert (
-        config.docker_server.predict_endpoint is not None
-    ), "docker_server.predict_endpoint is required to use custom server"
-    assert (
-        config.docker_server.server_port is not None
-    ), "docker_server.server_port is required to use custom server"
-    assert (
-        config.docker_server.readiness_endpoint is not None
-    ), "docker_server.readiness_endpoint is required to use custom server"
-    assert (
-        config.docker_server.liveness_endpoint is not None
-    ), "docker_server.liveness_endpoint is required to use custom server"
+    assert config.docker_server.predict_endpoint is not None, (
+        "docker_server.predict_endpoint is required to use custom server"
+    )
+    assert config.docker_server.server_port is not None, (
+        "docker_server.server_port is required to use custom server"
+    )
+    assert config.docker_server.readiness_endpoint is not None, (
+        "docker_server.readiness_endpoint is required to use custom server"
+    )
+    assert config.docker_server.liveness_endpoint is not None, (
+        "docker_server.liveness_endpoint is required to use custom server"
+    )
 
     nginx_content = nginx_template.render(
         server_endpoint=config.docker_server.predict_endpoint,
@@ -339,9 +339,9 @@ def generate_docker_server_supervisord_config(build_dir, config):
     supervisord_template = read_template_from_fs(
         DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
-    assert (
-        config.docker_server.start_command is not None
-    ), "docker_server.start_command is required to use custom server"
+    assert config.docker_server.start_command is not None, (
+        "docker_server.start_command is required to use custom server"
+    )
     supervisord_contents = supervisord_template.render(
         start_command=config.docker_server.start_command,
     )
@@ -376,7 +376,9 @@ class ServingImageBuilder(ImageBuilder):
             config.trt_llm
             and config.trt_llm.build
             and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
-        ), "prepare_trtllm_encoder_build_dir should only be called for encoder tensorrt-llm model"
+        ), (
+            "prepare_trtllm_encoder_build_dir should only be called for encoder tensorrt-llm model"
+        )
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
@@ -419,7 +421,9 @@ class ServingImageBuilder(ImageBuilder):
             config.trt_llm
             and config.trt_llm.build
             and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
-        ), "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
+        ), (
+            "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
+        )
 
         # trt_llm is treated as an extension at model run time.
         self._copy_into_build_dir(
