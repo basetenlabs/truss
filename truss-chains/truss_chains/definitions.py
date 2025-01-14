@@ -27,8 +27,6 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.remote import baseten as baseten_remote
-from truss.remote import remote_factory
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -185,7 +183,6 @@ class DockerImage(SafeModelNonSerializable):
           is copied into the docker image and importable at runtime.
     """
 
-    # TODO: this is not stable yet and might change or refer back to truss.
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
@@ -209,7 +206,6 @@ class DockerImage(SafeModelNonSerializable):
 class ComputeSpec(pydantic.BaseModel):
     """Parsed and validated compute.  See ``Compute`` for more information."""
 
-    # TODO: this is not stable yet and might change or refer back to truss.
     cpu_count: int = 1
     predict_concurrency: int = 1
     memory: str = "2Gi"
@@ -293,7 +289,6 @@ class Compute:
 class AssetSpec(SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
-    # TODO: this is not stable yet and might change or refer back to truss.
     secrets: dict[str, str] = pydantic.Field({})
     cached: list[truss_config.ModelRepo] = []
     external_data: list[truss_config.ExternalDataItem] = []
@@ -691,7 +686,7 @@ class PushOptions(SafeModelNonSerializable):
 
 
 class PushOptionsBaseten(PushOptions):
-    remote_provider: baseten_remote.BasetenRemote
+    remote: str
     publish: bool
     environment: Optional[str]
 
@@ -709,12 +704,8 @@ class PushOptionsBaseten(PushOptions):
             environment = PRODUCTION_ENVIRONMENT_NAME
         if environment:
             publish = True
-        remote_provider = cast(
-            baseten_remote.BasetenRemote,
-            remote_factory.RemoteFactory.create(remote=remote),
-        )
         return PushOptionsBaseten(
-            remote_provider=remote_provider,
+            remote=remote,
             chain_name=chain_name,
             publish=publish,
             only_generate_trusses=only_generate_trusses,
