@@ -648,7 +648,7 @@ def _inplace_fill_base_image(
         )
 
 
-def _make_truss_config(
+def write_truss_config_yaml(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
@@ -707,7 +707,6 @@ def _make_truss_config(
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
-    return config
 
 
 def gen_truss_chainlet(
@@ -731,7 +730,7 @@ def gen_truss_chainlet(
         f"Code generation for Chainlet `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
-    _make_truss_config(
+    write_truss_config_yaml(
         chainlet_dir,
         chainlet_descriptor.chainlet_cls.remote_config,
         dep_services,
