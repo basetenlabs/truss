@@ -556,3 +556,92 @@ def test_raises_iterator_no_arg():
         class IteratorNoArg(chains.ChainletBase):
             async def run_remote(self) -> AsyncIterator:
                 yield "123"
+
+
+def test_raises_is_ready_not_a_method():
+    match = rf"{TEST_FILE}:\d+ \(IsReadyNotMethod\.is_ready\) \[kind: TYPE_ERROR\].* `IsReadyNotMethod.is_ready` must be a method."
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsReadyNotMethod(chains.ChainletBase):
+            is_ready = None
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_ready_no_arg():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsReadyNoArg\.is_ready\) \[kind: TYPE_ERROR\].*"
+        r"Health check must be a method, i.e. with `self` as first argument. Got function with no arguments."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsReadyNoArg(chains.ChainletBase):
+            async def is_ready() -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_ready_first_arg_not_self():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsReadyNoSelfArg\.is_ready\) \[kind: TYPE_ERROR\].*"
+        r"Health check must be a method, i.e. with `self` as first argument. Got `hi` as first argument."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsReadyNoSelfArg(chains.ChainletBase):
+            def is_ready(hi) -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_ready_multiple_args():
+    match = rf"{TEST_FILE}:\d+ \(IsReadyManyArgs\.is_ready\) \[kind: TYPE_ERROR\].* Health check must have only one argument: `self`."
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsReadyManyArgs(chains.ChainletBase):
+            def is_ready(self, hi) -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_ready_not_type_annotated():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsReadyNotTyped\.is_ready\) \[kind: IO_TYPE_ERROR\].*"
+        r"Return value of health check must be type annotated. Got:\n\tis_ready\(self\) -> !MISSING!"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsReadyNotTyped(chains.ChainletBase):
+            def is_ready(self):
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_ready_not_boolean_typed():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsReadyNotBoolTyped\.is_ready\) \[kind: IO_TYPE_ERROR\].*"
+        r"Return value of health check must be a boolean. Got:\n\tis_ready\(self\) -> str -> <class 'str'>"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsReadyNotBoolTyped(chains.ChainletBase):
+            def is_ready(self) -> str:  # type: ignore[misc]
+                return "not ready"
+
+            async def run_remote(self) -> str:
+                return ""

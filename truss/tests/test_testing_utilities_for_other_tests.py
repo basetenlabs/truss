@@ -60,6 +60,14 @@ def _show_container_logs_if_raised():
             logging.warning("\n".join(parts))
 
 
+def get_container_logs_from_prefix(prefix: str) -> str:
+    containers = get_containers({TRUSS: True})
+    for container in containers:
+        if container.name.startswith(prefix):
+            return container.logs()
+    return ""
+
+
 def kill_all_with_retries(num_retries: int = 10):
     kill_all()
     attempts = 0

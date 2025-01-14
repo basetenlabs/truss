@@ -49,7 +49,8 @@ class TrussChainletModel:
     #
     # If chainlet implements is_ready:
     # def is_ready(self) -> bool:
-    #     return self._chainlet.is_ready()
+    #     if hasattr(self, "_chainlet"):
+    #         return self._chainlet.is_ready()
     #
     # def predict(
     #     self, inputs: TextToNumInput, request: starlette.requests.Request

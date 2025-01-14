@@ -755,7 +755,7 @@ def _validate_chainlet_cls(
 def _validate_health_check(
     cls: Type[definitions.ABCChainlet], location: _ErrorLocation
 ) -> Optional[definitions.HealthCheckAPIDescriptor]:
-    """The is_ready method of a Chainlet must have the following signature:
+    """The `is_ready` method of a Chainlet must have the following signature:
     ```
     [async] def is_ready(self) -> bool:
     ```
@@ -767,6 +767,8 @@ def _validate_health_check(
     if not hasattr(cls, definitions.HEALTH_CHECK_NAME):
         return None
 
+    location.method_name = definitions.HEALTH_CHECK_NAME
+
     health_check_method = getattr(cls, definitions.HEALTH_CHECK_NAME)
     if not inspect.isfunction(health_check_method):
         _collect_error(
@@ -775,14 +777,12 @@ def _validate_health_check(
             location,
         )
         return None
-    is_async = False
-    if inspect.iscoroutinefunction(health_check_method):
-        is_async = True
+    is_async = inspect.iscoroutinefunction(health_check_method)
     signature = inspect.signature(health_check_method)
     params = list(signature.parameters.values())
     if len(params) == 0:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"Health check must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
             "first argument. Got function with no arguments.",
             _ErrorKind.TYPE_ERROR,
             location,
@@ -790,19 +790,32 @@ def _validate_health_check(
         return None
     if params[0].name != definitions.SELF_ARG_NAME:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"Health check must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
             f"first argument. Got `{params[0].name}` as first argument.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
-        return None
     if len(params) > 1:
         _collect_error(
-            f"`{cls.name}.{definitions.HEALTH_CHECK_NAME}` must have only one argument: `{definitions.SELF_ARG_NAME}`.",
+            f"Health check must have only one argument: `{definitions.SELF_ARG_NAME}`.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
+    if signature.return_annotation == inspect.Parameter.empty:
+        _collect_error(
+            "Return value of health check must be type annotated. Got:\n"
+            f"\t{location.method_name}{signature} -> !MISSING!",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
         return None
+    if signature.return_annotation != bool:
+        _collect_error(
+            "Return value of health check must be a boolean. Got:\n"
+            f"\t{location.method_name}{signature} -> {signature.return_annotation}",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
 
     return definitions.HealthCheckAPIDescriptor(is_async=is_async)
 
@@ -1034,9 +1047,9 @@ def _create_modified_init_for_local(
                     if len(name_parts) > 1:
                         init_owner_class = name_parts[-2]
                 elif func_name == _INIT_LOCAL_NAME:
-                    assert "init_owner_class" in local_vars, (
-                        f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
-                    )
+                    assert (
+                        "init_owner_class" in local_vars
+                    ), f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
                     init_owner_class = local_vars["init_owner_class"].__name__
 
                 if init_owner_class:

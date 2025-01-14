@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 import requests
-from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.tests.test_testing_utilities_for_other_tests import (
+    ensure_kill_all,
+    get_container_logs_from_prefix,
+)
 
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
@@ -270,3 +273,51 @@ TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds lim
         assert re.match(
             sync_error_regex.strip(), sync_error_str.strip(), re.MULTILINE
         ), sync_error_str
+
+
+@pytest.mark.integration
+def test_custom_health_checks_chain():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "custom_health_checks" / "custom_health_checks.py"
+        with framework.import_target(chain_root, "CustomHealthChecks") as entrypoint:
+            service = deployment_client.push(
+                entrypoint,
+                options=definitions.PushOptionsLocalDocker(
+                    chain_name="integration-test-custom-health-checks",
+                    only_generate_trusses=False,
+                    use_local_chains_src=True,
+                ),
+            )
+
+            assert service is not None
+            health_check_url = service.run_remote_url.split(":predict")[0]
+
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert "Model is not ready: Health checks failing" not in container_logs
+            response = requests.get(health_check_url)
+            assert response.status_code == 503
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert (
+                container_logs.count("Model is not ready: Health checks failing.") == 1
+            )
+            response = requests.get(health_check_url)
+            assert response.status_code == 503
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert (
+                container_logs.count("Model is not ready: Health checks failing.") == 2
+            )
+
+            sync_chainlet_container_logs = get_container_logs_from_prefix(
+                "SyncChainlet"
+            )
+            assert (
+                "Model is not ready: Health checks failing"
+                not in sync_chainlet_container_logs
+            )
+            async_chainlet_container_logs = get_container_logs_from_prefix(
+                "AsyncChainlet"
+            )
+            assert (
+                "Model is not ready: Health checks failing"
+                not in async_chainlet_container_logs
+            )
