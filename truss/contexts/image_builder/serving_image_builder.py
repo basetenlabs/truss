@@ -311,18 +311,18 @@ def generate_docker_server_nginx_config(build_dir, config):
         DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
     )
 
-    assert config.docker_server.predict_endpoint is not None, (
-        "docker_server.predict_endpoint is required to use custom server"
-    )
-    assert config.docker_server.server_port is not None, (
-        "docker_server.server_port is required to use custom server"
-    )
-    assert config.docker_server.readiness_endpoint is not None, (
-        "docker_server.readiness_endpoint is required to use custom server"
-    )
-    assert config.docker_server.liveness_endpoint is not None, (
-        "docker_server.liveness_endpoint is required to use custom server"
-    )
+    assert (
+        config.docker_server.predict_endpoint is not None
+    ), "docker_server.predict_endpoint is required to use custom server"
+    assert (
+        config.docker_server.server_port is not None
+    ), "docker_server.server_port is required to use custom server"
+    assert (
+        config.docker_server.readiness_endpoint is not None
+    ), "docker_server.readiness_endpoint is required to use custom server"
+    assert (
+        config.docker_server.liveness_endpoint is not None
+    ), "docker_server.liveness_endpoint is required to use custom server"
 
     nginx_content = nginx_template.render(
         server_endpoint=config.docker_server.predict_endpoint,
@@ -339,9 +339,9 @@ def generate_docker_server_supervisord_config(build_dir, config):
     supervisord_template = read_template_from_fs(
         DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
-    assert config.docker_server.start_command is not None, (
-        "docker_server.start_command is required to use custom server"
-    )
+    assert (
+        config.docker_server.start_command is not None
+    ), "docker_server.start_command is required to use custom server"
     supervisord_contents = supervisord_template.render(
         start_command=config.docker_server.start_command,
     )
@@ -376,28 +376,26 @@ class ServingImageBuilder(ImageBuilder):
             config.trt_llm
             and config.trt_llm.build
             and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
-        ), (
-            "prepare_trtllm_encoder_build_dir should only be called for encoder tensorrt-llm model"
-        )
+        ), "prepare_trtllm_encoder_build_dir should only be called for encoder tensorrt-llm model"
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
         port = 7997
         start_command = (
-            f"python-truss-download && text-embeddings-router "
-            f"--port {port} "
-            f"--max-batch-requests {runtime_max_batch_size} "
+            f"python-truss-download && text-embeddings-router"
+            f"--port {port}"
+            f"--max-batch-requests {runtime_max_batch_size}"
             # how many sentences can be in a single json payload.
             # limited default to improve request based autoscaling.
-            f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
+            f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE}"
             # how many concurrent requests can be handled by the server until 429 is returned.
             # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
             # 16384 is a safe max value for the server
             f"--max-concurrent-requests 16384"
             # downloaded model path by `python-truss-download` cmd
             "--model-id /app/data/tokenization"
-        )
+        ).join(" ")
         self._spec.config.docker_server = DockerServer(
             start_command=f"/bin/sh -c '{start_command}'",
             server_port=port,
@@ -419,9 +417,7 @@ class ServingImageBuilder(ImageBuilder):
             config.trt_llm
             and config.trt_llm.build
             and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
-        ), (
-            "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
-        )
+        ), "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
 
         # trt_llm is treated as an extension at model run time.
         self._copy_into_build_dir(
