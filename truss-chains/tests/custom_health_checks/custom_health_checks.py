@@ -1,5 +1,3 @@
-import time
-
 import truss_chains as chains
 
 
@@ -12,15 +10,12 @@ class SyncChainlet(chains.ChainletBase):
 
 
 class AsyncChainlet(chains.ChainletBase):
-    async def is_ready(self) -> bool:
-        return True
-
     async def run_remote(self, text: str) -> str:
         return text
 
 
 class CustomHealthChecks(chains.ChainletBase):
-    """Calls various chainlets in JSON mode."""
+    """Calls various chainlets using custom health checks."""
 
     def __init__(
         self,
@@ -29,12 +24,16 @@ class CustomHealthChecks(chains.ChainletBase):
     ):
         self._sync_chainlet = sync_chainlet
         self._async_chainlet = async_chainlet
-        time.sleep(10)
+        self._should_succeed_health_checks = True
 
     def is_ready(self) -> bool:
-        return False
+        return self._should_succeed_health_checks
 
-    async def run_remote(self, text: str) -> tuple[str, str]:
-        sync_result = self._sync_chainlet.run_remote(text)
-        async_result = await self._async_chainlet.run_remote(text)
-        return sync_result, async_result
+    async def run_remote(self, fail: bool) -> str:
+        if fail:
+            self._should_succeed_health_checks = False
+        else:
+            self._should_succeed_health_checks = True
+        sync_result = self._sync_chainlet.run_remote("hello")
+        async_result = await self._async_chainlet.run_remote("world")
+        return sync_result + async_result

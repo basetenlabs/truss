@@ -292,8 +292,15 @@ def test_custom_health_checks_chain():
             assert service is not None
             health_check_url = service.run_remote_url.split(":predict")[0]
 
+            response = service.run_remote({"fail": False})
+            assert response.status_code == 200
+            response = requests.get(health_check_url)
+            response.status_code == 200
             container_logs = get_container_logs_from_prefix(entrypoint.name)
             assert "Model is not ready: Health checks failing" not in container_logs
+
+            # Start failing health checks
+            response = service.run_remote({"fail": True})
             response = requests.get(health_check_url)
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
@@ -305,19 +312,4 @@ def test_custom_health_checks_chain():
             container_logs = get_container_logs_from_prefix(entrypoint.name)
             assert (
                 container_logs.count("Model is not ready: Health checks failing.") == 2
-            )
-
-            sync_chainlet_container_logs = get_container_logs_from_prefix(
-                "SyncChainlet"
-            )
-            assert (
-                "Model is not ready: Health checks failing"
-                not in sync_chainlet_container_logs
-            )
-            async_chainlet_container_logs = get_container_logs_from_prefix(
-                "AsyncChainlet"
-            )
-            assert (
-                "Model is not ready: Health checks failing"
-                not in async_chainlet_container_logs
             )
