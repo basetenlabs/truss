@@ -224,3 +224,49 @@ def test_numpy_chain(mode):
             response = service.run_remote({})
             assert response.status_code == 200
             print(response.json())
+
+
+@pytest.mark.asyncio
+async def test_timeout():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "timeout" / "timeout_chain.py"
+        with framework.import_target(chain_root, "TimeoutChain") as entrypoint:
+            options = definitions.PushOptionsLocalDocker(
+                chain_name="integration-test", use_local_chains_src=True
+            )
+            service = deployment_client.push(entrypoint, options)
+
+        url = service.run_remote_url.replace("host.docker.internal", "localhost")
+        time.sleep(1.0)  # Wait for models to be ready.
+
+        # Async.
+        response = requests.post(url, json={"use_sync": False})
+        # print(response.content)
+
+        assert response.status_code == 500
+        error = definitions.RemoteErrorDetail.model_validate(response.json()["error"])
+        error_str = error.format()
+        error_regex = r"""
+Chainlet-Traceback \(most recent call last\):
+  File \".*?/timeout_chain\.py\", line \d+, in run_remote
+    result = await self\._dep.run_remote\(\)
+TimeoutError: Timeout calling remote Chainlet `Dependency` \(0.5 seconds limit\)\.
+        """
+        assert re.match(error_regex.strip(), error_str.strip(), re.MULTILINE), error_str
+
+        # Sync:
+        sync_response = requests.post(url, json={"use_sync": True})
+        assert sync_response.status_code == 500
+        sync_error = definitions.RemoteErrorDetail.model_validate(
+            sync_response.json()["error"]
+        )
+        sync_error_str = sync_error.format()
+        sync_error_regex = r"""
+Chainlet-Traceback \(most recent call last\):
+  File \".*?/timeout_chain\.py\", line \d+, in run_remote
+    result = self\._dep_sync.run_remote\(\)
+TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds limit\)\.
+        """
+        assert re.match(
+            sync_error_regex.strip(), sync_error_str.strip(), re.MULTILINE
+        ), sync_error_str
