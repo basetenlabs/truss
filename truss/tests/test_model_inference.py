@@ -980,52 +980,39 @@ def test_health_check_configuration():
     config = """runtime:
     health_checks:
         restart_check_delay_seconds: 100
-        restart_failure_threshold_seconds: 1700
+        restart_threshold_seconds: 1700
     """
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
         assert (
-            tr.spec.config.runtime.health_checks.restart_failure_threshold_seconds
-            == 1700
-        )
-        assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_failure_threshold_seconds
-            == 1800
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 1800
         )
 
     config = """runtime:
     health_checks:
         restart_check_delay_seconds: 1200
-        restart_failure_threshold_seconds: 90
-        stop_traffic_failure_threshold_seconds: 50
+        restart_threshold_seconds: 90
+        stop_traffic_threshold_seconds: 50
     """
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
-        assert (
-            tr.spec.config.runtime.health_checks.restart_failure_threshold_seconds == 90
-        )
-        assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_failure_threshold_seconds
-            == 50
-        )
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
+        assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
 
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 0
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1800
         assert (
-            tr.spec.config.runtime.health_checks.restart_failure_threshold_seconds
-            == 1800
-        )
-        assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_failure_threshold_seconds
-            == 1800
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 1800
         )
 
 

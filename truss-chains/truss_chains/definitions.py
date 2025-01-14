@@ -359,6 +359,11 @@ class ChainletOptions(SafeModelNonSerializable):
 
 
 class Runtime(SafeModelNonSerializable):
+    """Configures runtime options for a chainlet.
+    Args:
+        health_checks: Configures health checks for the chainlet.
+    """
+
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
