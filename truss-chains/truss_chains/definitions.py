@@ -527,6 +527,23 @@ class ABCChainlet(abc.ABC):
     #     ...
 
 
+class ABCModel(abc.ABC):
+    remote_config: ClassVar[RemoteConfig] = RemoteConfig()
+
+    @classproperty
+    @classmethod
+    def name(cls) -> str:
+        return cls.__name__
+
+    @classproperty
+    @classmethod
+    def display_name(cls) -> str:
+        return cls.remote_config.name or cls.name
+
+    @abc.abstractmethod
+    def predict(self, request: Any) -> Any: ...
+
+
 class TypeDescriptor(SafeModelNonSerializable):
     """For describing I/O types of Chainlets."""
 
