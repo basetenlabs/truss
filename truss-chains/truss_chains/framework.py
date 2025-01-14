@@ -571,7 +571,7 @@ def _validate_dependency_arg(
     # Also lenient with type annotation: since the RHS / default is asserted to be a
     # chainlet class, proper type inference is possible even without annotation.
     # TODO: `Protocol` is not a proper class and this might be version dependent.
-    # Find a better way to inspect this.
+    #   Find a better way to inspect this.
     if not (
         param.annotation == inspect.Parameter.empty
         or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
@@ -1091,7 +1091,6 @@ def run_local(
     chainlet_to_service: Mapping[str, definitions.DeployedServiceDescriptor],
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
-    # TODO: support retries in local mode.
     type_to_instance: MutableMapping[
         Type[definitions.ABCChainlet], definitions.ABCChainlet
     ] = {}

@@ -21,6 +21,7 @@ from typing import (
     cast,
 )
 
+import requests
 import tenacity
 import watchfiles
 from truss.local import local_config_handler
@@ -39,63 +40,6 @@ from truss_chains.deployment import code_gen
 if TYPE_CHECKING:
     from rich import console as rich_console
     from rich import progress
-
-
-class DockerTrussService(b10_service.TrussService):
-    """This service is for Chainlets (not for Chains)."""
-
-    def __init__(self, port: int, is_draft: bool, **kwargs):
-        remote_url = f"http://localhost:{port}"
-        self._port = port
-
-        super().__init__(remote_url, is_draft, **kwargs)
-
-    def authenticate(self) -> Dict[str, str]:
-        return {}
-
-    def is_live(self) -> bool:
-        response = self._send_request(self._service_url, "GET")
-        if response.status_code == 200:
-            return True
-        return False
-
-    def is_ready(self) -> bool:
-        response = self._send_request(self._service_url, "GET")
-        if response.status_code == 200:
-            return True
-        return False
-
-    @property
-    def logs_url(self) -> str:
-        raise NotImplementedError()
-
-    @property
-    def port(self) -> int:
-        return self._port
-
-    @property
-    def predict_url(self) -> str:
-        return f"{self._service_url}/v1/models/model:predict"
-
-    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
-        raise NotImplementedError()
-
-
-def _push_service_docker(
-    truss_dir: pathlib.Path,
-    chainlet_display_name: str,
-    options: definitions.PushOptionsLocalDocker,
-    port: int,
-) -> None:
-    th = truss_handle.TrussHandle(truss_dir)
-    th.add_secret(definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
-    th.docker_run(
-        local_port=port,
-        detach=True,
-        wait_for_server_ready=True,
-        network="host",
-        container_name_prefix=chainlet_display_name,
-    )
 
 
 def _get_ordered_dependencies(
@@ -118,6 +62,16 @@ def _get_ordered_dependencies(
         for descr in framework.get_ordered_descriptors()
         if descr in needed_chainlets
     ]
+
+
+def _get_chain_root(entrypoint: Type[definitions.ABCChainlet]) -> pathlib.Path:
+    # TODO: revisit how chain root is inferred/specified, current might be brittle.
+    chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
+    logging.info(
+        f"Using chain workspace dir: `{chain_root}` (files under this dir will "
+        "be included as dependencies in the remote deployments and are importable)."
+    )
+    return chain_root
 
 
 class ChainService(abc.ABC):
@@ -180,153 +134,6 @@ class ChainService(abc.ABC):
         self._entrypoint_fake_json_data = fake_data
 
 
-class BasetenChainService(ChainService):
-    # TODO: entrypoint service is for truss model - make chains-specific.
-    #   E.g. chain/chainlet will not have model URLs anymore.
-    _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
-    _entrypoint_service: b10_service.BasetenService
-    _remote: b10_remote.BasetenRemote
-
-    def __init__(
-        self,
-        name: str,
-        entrypoint_service: b10_service.BasetenService,
-        chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
-        remote: b10_remote.BasetenRemote,
-    ) -> None:
-        super().__init__(name)
-        self._chain_deployment_handle = chain_deployment_handle
-        self._entrypoint_service = entrypoint_service
-        self._remote = remote
-
-    @property
-    def run_remote_url(self) -> str:
-        """URL to invoke the entrypoint."""
-        return b10_service.URLConfig.invocation_url(
-            self._remote.api.rest_api_url,
-            b10_service.URLConfig.CHAIN,
-            self._chain_deployment_handle.chain_id,
-            self._chain_deployment_handle.chain_deployment_id,
-            self._chain_deployment_handle.is_draft,
-        )
-
-    def run_remote(self, json: Dict) -> Any:
-        """Invokes the entrypoint with JSON data.
-
-        Returns:
-            The JSON response."""
-        return self._entrypoint_service.predict(json)
-
-    @property
-    def status_page_url(self) -> str:
-        """Link to status page on Baseten."""
-        return b10_service.URLConfig.status_page_url(
-            self._remote.remote_url,
-            b10_service.URLConfig.CHAIN,
-            self._chain_deployment_handle.chain_id,
-        )
-
-    @tenacity.retry(
-        stop=tenacity.stop_after_delay(300), wait=tenacity.wait_fixed(1), reraise=True
-    )
-    def get_info(self) -> list[b10_types.DeployedChainlet]:
-        """Queries the statuses of all chainlets in the chain.
-
-        Returns:
-            List of ``DeployedChainlet`` for each chainlet."""
-        return self._remote.get_chainlets(
-            self._chain_deployment_handle.chain_deployment_id
-        )
-
-
-class DockerChainService(ChainService):
-    _entrypoint_service: DockerTrussService
-
-    def __init__(self, name: str, entrypoint_service: DockerTrussService) -> None:
-        super().__init__(name)
-        self._entrypoint_service = entrypoint_service
-
-    @property
-    def run_remote_url(self) -> str:
-        """URL to invoke the entrypoint."""
-        return self._entrypoint_service.predict_url
-
-    def run_remote(self, json: Dict) -> Any:
-        """Invokes the entrypoint with JSON data.
-
-        Returns:
-            The JSON response."""
-        return self._entrypoint_service.predict(json)
-
-    @property
-    def status_page_url(self) -> str:
-        """Not Implemented.."""
-        raise NotImplementedError()
-
-    def get_info(self) -> list[b10_types.DeployedChainlet]:
-        """Not Implemented."""
-        raise NotImplementedError()
-
-
-def _get_chain_root(
-    entrypoint: Type[definitions.ABCChainlet],
-    non_entrypoint_root_dir: Optional[str] = None,
-) -> pathlib.Path:
-    # TODO: revisit how chain root is inferred/specified, current might be brittle.
-    if non_entrypoint_root_dir:
-        chain_root = pathlib.Path(non_entrypoint_root_dir).absolute()
-    else:
-        chain_root = pathlib.Path(inspect.getfile(entrypoint)).absolute().parent
-    logging.info(
-        f"Using chain workspace dir: `{chain_root}` (files under this dir will "
-        "be included as dependencies in the remote deployments and are importable)."
-    )
-    return chain_root
-
-
-def _create_baseten_chain(
-    baseten_options: definitions.PushOptionsBaseten,
-    entrypoint_artifact: b10_types.ChainletArtifact,
-    dependency_artifacts: list[b10_types.ChainletArtifact],
-    progress_bar: Optional[Type["progress.Progress"]],
-):
-    logging.info(
-        f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
-        f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
-    )
-    chain_deployment_handle, entrypoint_service = (
-        baseten_options.remote_provider.push_chain_atomic(
-            chain_name=baseten_options.chain_name,
-            entrypoint_artifact=entrypoint_artifact,
-            dependency_artifacts=dependency_artifacts,
-            publish=baseten_options.publish,
-            environment=baseten_options.environment,
-            progress_bar=progress_bar,
-        )
-    )
-    return BasetenChainService(
-        baseten_options.chain_name,
-        entrypoint_service,
-        chain_deployment_handle,
-        baseten_options.remote_provider,
-    )
-
-
-def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
-    secrets_info = remote_provider.api.get_all_secrets()
-    secret_names = {sec["name"] for sec in secrets_info["secrets"]}
-    if definitions.BASETEN_API_SECRET_NAME not in secret_names:
-        logging.info(
-            "It seems you are using chains for the first time, since there "
-            f"is no `{definitions.BASETEN_API_SECRET_NAME}` secret on baseten. "
-            "Creating secret automatically."
-        )
-        remote_provider.api.upsert_secret(
-            definitions.BASETEN_API_SECRET_NAME,
-            remote_provider.api.auth_token.value,
-        )
-
-
 class _ChainSourceGenerator:
     def __init__(
         self,
@@ -345,9 +152,8 @@ class _ChainSourceGenerator:
     def generate_chainlet_artifacts(
         self,
         entrypoint: Type[definitions.ABCChainlet],
-        non_entrypoint_root_dir: Optional[str] = None,
     ) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact]]:
-        chain_root = _get_chain_root(entrypoint, non_entrypoint_root_dir)
+        chain_root = _get_chain_root(entrypoint)
         entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
         dependency_artifacts: list[b10_types.ChainletArtifact] = []
         chainlet_display_names: set[str] = set()
@@ -399,7 +205,6 @@ class _ChainSourceGenerator:
 def push(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.PushOptions,
-    non_entrypoint_root_dir: Optional[str] = None,
     gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
@@ -407,73 +212,305 @@ def push(
         options, gen_root
     ).generate_chainlet_artifacts(
         entrypoint,
-        non_entrypoint_root_dir,
     )
-
     if options.only_generate_trusses:
         return None
-
     if isinstance(options, definitions.PushOptionsBaseten):
-        _create_chains_secret_if_missing(options.remote_provider)
         return _create_baseten_chain(
-            options, entrypoint_artifact, dependency_artifacts, progress_bar
+            options,
+            entrypoint_artifact,
+            dependency_artifacts,
+            progress_bar,
         )
     elif isinstance(options, definitions.PushOptionsLocalDocker):
-        chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
-        chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
-        chainlet_to_service: Dict[str, DockerTrussService] = {}
-
-        for chainlet_artifact in chainlet_artifacts:
-            port = utils.get_free_port()
-
-            service = DockerTrussService(
-                is_draft=True,
-                port=port,
-            )
-            docker_internal_url = service.predict_url.replace(
-                "localhost", "host.docker.internal"
-            )
-            chainlet_to_predict_url[chainlet_artifact.display_name] = {
-                "predict_url": docker_internal_url,
-            }
-            chainlet_to_service[chainlet_artifact.name] = service
-
-        local_config_handler.LocalConfigHandler.set_dynamic_config(
-            definitions.DYNAMIC_CHAINLET_CONFIG_KEY,
-            json.dumps(chainlet_to_predict_url),
-        )
-
-        # TODO(Tyron): We run the Docker containers in a
-        # separate for-loop to make sure that the dynamic
-        # config is populated (the same one gets mounted
-        # on all the containers). We should look into
-        # consolidating the logic into a single for-loop.
-        # One approach might be to use separate config
-        # paths for each container under the `/tmp` dir.
-        for chainlet_artifact in chainlet_artifacts:
-            truss_dir = chainlet_artifact.truss_dir
-            logging.info(
-                f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
-            )
-            _push_service_docker(
-                truss_dir,
-                chainlet_artifact.display_name,
-                options,
-                chainlet_to_service[chainlet_artifact.name].port,
-            )
-            logging.info(
-                f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
-            )
-            logging.debug(
-                "Internal model endpoint: "
-                f"`{chainlet_to_predict_url[chainlet_artifact.display_name]}`"
-            )
-
-        return DockerChainService(
-            options.chain_name, chainlet_to_service[entrypoint_artifact.name]
-        )
+        return _create_docker_chain(options, entrypoint_artifact, dependency_artifacts)
     else:
         raise NotImplementedError(options)
+
+
+# Docker ###############################################################################
+
+
+class DockerChainletService(b10_service.TrussService):
+    """This service is for Chainlets (not for Chains)."""
+
+    def __init__(self, port: int, is_draft: bool, **kwargs):
+        remote_url = f"http://localhost:{port}"
+        self._port = port
+
+        super().__init__(remote_url, is_draft, **kwargs)
+
+    def authenticate(self) -> Dict[str, str]:
+        return {}
+
+    def is_live(self) -> bool:
+        response = self._send_request(self._service_url, "GET")
+        if response.status_code == 200:
+            return True
+        return False
+
+    def is_ready(self) -> bool:
+        response = self._send_request(self._service_url, "GET")
+        if response.status_code == 200:
+            return True
+        return False
+
+    @property
+    def logs_url(self) -> str:
+        raise NotImplementedError()
+
+    @property
+    def port(self) -> int:
+        return self._port
+
+    @property
+    def predict_url(self) -> str:
+        return f"{self._service_url}/v1/models/model:predict"
+
+    def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
+        raise NotImplementedError()
+
+
+def _push_service_docker(
+    truss_dir: pathlib.Path,
+    chainlet_display_name: str,
+    options: definitions.PushOptionsLocalDocker,
+    port: int,
+) -> None:
+    th = truss_handle.TrussHandle(truss_dir)
+    th.add_secret(definitions.BASETEN_API_SECRET_NAME, options.baseten_chain_api_key)
+    th.docker_run(
+        local_port=port,
+        detach=True,
+        wait_for_server_ready=True,
+        network="host",
+        container_name_prefix=chainlet_display_name,
+    )
+
+
+class DockerChainService(ChainService):
+    _entrypoint_service: DockerChainletService
+
+    def __init__(self, name: str, entrypoint_service: DockerChainletService) -> None:
+        super().__init__(name)
+        self._entrypoint_service = entrypoint_service
+
+    @property
+    def run_remote_url(self) -> str:
+        """URL to invoke the entrypoint."""
+        return self._entrypoint_service.predict_url
+
+    def run_remote(self, json: Dict) -> Any:
+        """Invokes the entrypoint with JSON data.
+
+        Returns:
+            The JSON response."""
+        return self._entrypoint_service.predict(json)
+
+    @property
+    def status_page_url(self) -> str:
+        """Not Implemented."""
+        raise NotImplementedError()
+
+    def get_info(self) -> list[b10_types.DeployedChainlet]:
+        """Not Implemented."""
+        raise NotImplementedError()
+
+
+def _create_docker_chain(
+    docker_options: definitions.PushOptionsLocalDocker,
+    entrypoint_artifact: b10_types.ChainletArtifact,
+    dependency_artifacts: list[b10_types.ChainletArtifact],
+) -> DockerChainService:
+    chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
+    chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
+    chainlet_to_service: Dict[str, DockerChainletService] = {}
+    for chainlet_artifact in chainlet_artifacts:
+        port = utils.get_free_port()
+        service = DockerChainletService(
+            is_draft=True,
+            port=port,
+        )
+        docker_internal_url = service.predict_url.replace(
+            "localhost", "host.docker.internal"
+        )
+        chainlet_to_predict_url[chainlet_artifact.display_name] = {
+            "predict_url": docker_internal_url,
+        }
+        chainlet_to_service[chainlet_artifact.name] = service
+
+    local_config_handler.LocalConfigHandler.set_dynamic_config(
+        definitions.DYNAMIC_CHAINLET_CONFIG_KEY,
+        json.dumps(chainlet_to_predict_url),
+    )
+
+    # TODO(Tyron): We run the Docker containers in a
+    #   separate for-loop to make sure that the dynamic
+    #   config is populated (the same one gets mounted
+    #   on all the containers). We should look into
+    #   consolidating the logic into a single for-loop.
+    #   One approach might be to use separate config
+    #   paths for each container under the `/tmp` dir.
+    for chainlet_artifact in chainlet_artifacts:
+        truss_dir = chainlet_artifact.truss_dir
+        logging.info(
+            f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
+        )
+        _push_service_docker(
+            truss_dir,
+            chainlet_artifact.display_name,
+            docker_options,
+            chainlet_to_service[chainlet_artifact.name].port,
+        )
+        logging.info(
+            f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
+        )
+        logging.debug(
+            "Internal model endpoint: "
+            f"`{chainlet_to_predict_url[chainlet_artifact.display_name]}`"
+        )
+
+    return DockerChainService(
+        docker_options.chain_name, chainlet_to_service[entrypoint_artifact.name]
+    )
+
+
+# Baseten ##############################################################################
+
+
+class BasetenChainService(ChainService):
+    _chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic
+    _remote: b10_remote.BasetenRemote
+
+    def __init__(
+        self,
+        name: str,
+        chain_deployment_handle: b10_core.ChainDeploymentHandleAtomic,
+        remote: b10_remote.BasetenRemote,
+    ) -> None:
+        super().__init__(name)
+        self._chain_deployment_handle = chain_deployment_handle
+        self._remote = remote
+
+    @property
+    def run_remote_url(self) -> str:
+        """URL to invoke the entrypoint."""
+        return b10_service.URLConfig.invocation_url(
+            self._remote.api.rest_api_url,
+            b10_service.URLConfig.CHAIN,
+            self._chain_deployment_handle.chain_id,
+            self._chain_deployment_handle.chain_deployment_id,
+            self._chain_deployment_handle.is_draft,
+        )
+
+    def run_remote(self, json_data: Dict) -> Any:
+        """Invokes the entrypoint with JSON data.
+
+        Returns:
+            The JSON response."""
+        headers = self._remote._auth_service.authenticate().header()
+        response = requests.post(
+            self.run_remote_url, json=json_data, headers=headers, stream=True
+        )
+        if response.status_code == 401:
+            raise ValueError(
+                f"Authentication failed with status code {response.status_code}"
+            )
+
+        if response.headers.get("transfer-encoding") == "chunked":
+            # Case of streaming response, the backend does not set an encoding, so
+            # manually decode to the contents to utf-8 here.
+            def decode_content():
+                for chunk in response.iter_content(
+                    chunk_size=8192, decode_unicode=True
+                ):
+                    # Depending on the content-type of the response,
+                    # iter_content will either emit a byte stream, or a stream
+                    # of strings. Only decode in the bytes case.
+                    if isinstance(chunk, bytes):
+                        yield chunk.decode(
+                            response.encoding or b10_service.DEFAULT_STREAM_ENCODING
+                        )
+                    else:
+                        yield chunk
+
+            return decode_content()
+
+        parsed_response = response.json()
+
+        if "error" in parsed_response:
+            # In the case that the model is in a non-ready state, the response
+            # will be a json with an `error` key.
+            return parsed_response
+
+        return response.json()
+
+    @property
+    def status_page_url(self) -> str:
+        """Link to status page on Baseten."""
+        return b10_service.URLConfig.status_page_url(
+            self._remote.remote_url,
+            b10_service.URLConfig.CHAIN,
+            self._chain_deployment_handle.chain_id,
+        )
+
+    @tenacity.retry(
+        stop=tenacity.stop_after_delay(300), wait=tenacity.wait_fixed(1), reraise=True
+    )
+    def get_info(self) -> list[b10_types.DeployedChainlet]:
+        """Queries the statuses of all chainlets in the chain.
+
+        Returns:
+            List of ``DeployedChainlet`` for each chainlet."""
+        return self._remote.get_chainlets(
+            self._chain_deployment_handle.chain_deployment_id
+        )
+
+
+def _create_baseten_chain(
+    baseten_options: definitions.PushOptionsBaseten,
+    entrypoint_artifact: b10_types.ChainletArtifact,
+    dependency_artifacts: list[b10_types.ChainletArtifact],
+    progress_bar: Optional[Type["progress.Progress"]],
+):
+    logging.info(
+        f"Pushing Chain '{baseten_options.chain_name}' to Baseten "
+        f"(publish={baseten_options.publish}, environment={baseten_options.environment})."
+    )
+    remote_provider = cast(
+        b10_remote.BasetenRemote,
+        remote_factory.RemoteFactory.create(remote=baseten_options.remote),
+    )
+    _create_chains_secret_if_missing(remote_provider)
+
+    chain_deployment_handle = remote_provider.push_chain_atomic(
+        chain_name=baseten_options.chain_name,
+        entrypoint_artifact=entrypoint_artifact,
+        dependency_artifacts=dependency_artifacts,
+        publish=baseten_options.publish,
+        environment=baseten_options.environment,
+        progress_bar=progress_bar,
+    )
+    return BasetenChainService(
+        baseten_options.chain_name,
+        chain_deployment_handle,
+        remote_provider,
+    )
+
+
+def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) -> None:
+    secrets_info = remote_provider.api.get_all_secrets()
+    secret_names = {sec["name"] for sec in secrets_info["secrets"]}
+    if definitions.BASETEN_API_SECRET_NAME not in secret_names:
+        logging.info(
+            "It seems you are using chains for the first time, since there "
+            f"is no `{definitions.BASETEN_API_SECRET_NAME}` secret on baseten. "
+            "Creating secret automatically."
+        )
+        remote_provider.api.upsert_secret(
+            definitions.BASETEN_API_SECRET_NAME,
+            remote_provider.api.auth_token.value,
+        )
 
 
 # Watch / Live Patching ################################################################

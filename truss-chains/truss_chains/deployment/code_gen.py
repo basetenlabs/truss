@@ -102,7 +102,7 @@ def _update_src(new_source: _Source, src_parts: list[str], imports: set[str]) ->
 def _gen_pydantic_import_and_ref(raw_type: Any) -> _Source:
     """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     if raw_type.__module__ == "__main__":
-        # TODO: assuming that main is copied into package dir and can be imported.
+        # Assuming that main is copied into package dir and can be imported.
         module_obj = sys.modules[raw_type.__module__]
         if not module_obj.__file__:
             raise definitions.ChainsUsageError(
@@ -737,7 +737,7 @@ def gen_truss_chainlet(
         model_name,
         use_local_chains_src,
     )
-    # TODO This assumes all imports are absolute w.r.t chain root (or site-packages).
+    # This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(
         chain_root, chainlet_dir / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR
     )

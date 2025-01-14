@@ -260,7 +260,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
-    ) -> Tuple[ChainDeploymentHandleAtomic, BasetenService]:
+    ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
         if environment and not publish:
@@ -307,25 +307,8 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             environment=environment,
         )
-
-        model_id = chain_deployment_handle.entrypoint_model_id
-        model_version_id = chain_deployment_handle.entrypoint_model_version_id
-        # TODO: entrypoint service is for truss model - make chains-specific.
-        #   E.g. chain/chainlet will not have model URLs anymore.
-        entrypoint_service = BasetenService(
-            model_id=model_id,
-            model_version_id=model_version_id,
-            is_draft=not publish,
-            api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
-            truss_handle=truss_build.load(str(entrypoint_artifact.truss_dir)),
-            api=self._api,
-        )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
-        return (
-            chain_deployment_handle,
-            entrypoint_service,
-        )
+        return chain_deployment_handle
 
     @staticmethod
     def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
