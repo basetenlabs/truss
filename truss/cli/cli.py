@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import traceback
 import warnings
 from functools import wraps
 from pathlib import Path
@@ -1132,10 +1133,31 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
+    from truss_chains import framework
+    from truss_chains.deployment.code_gen import write_truss_config_yaml
+
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     remote_provider = RemoteFactory.create(remote=remote)
+
+    try:
+        # Check whether the model file extends our new base class type, if so write
+        # the config file so _get_truss_from_directory will pick it up
+        target_path = Path(target_directory)
+        with framework.import_model_target(
+            target_path / "model/model.py"
+        ) as entrypoint_cls:
+            write_truss_config_yaml(
+                target_path,
+                entrypoint_cls.remote_config,
+                {},
+                entrypoint_cls.remote_config.name,
+                False,  # use_local_chains_src
+            )
+    except Exception as e:
+        print(traceback.print_exc())
+        raise (e)
 
     tr = _get_truss_from_directory(target_directory=target_directory)
 
