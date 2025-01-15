@@ -48,7 +48,7 @@ class TrussChainletModel:
     #     )
     #
     # If chainlet implements is_ready:
-    # def is_ready(self) -> bool:
+    # def is_ready(self) -> Optional[bool]:
     #     if hasattr(self, "_chainlet"):
     #         return self._chainlet.is_ready()
     #

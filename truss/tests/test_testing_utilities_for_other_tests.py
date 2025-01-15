@@ -64,7 +64,7 @@ def get_container_logs_from_prefix(prefix: str) -> str:
     containers = get_containers({TRUSS: True})
     for container in containers:
         if container.name.startswith(prefix):
-            return container.logs()
+            return _human_readable_json_logs(container.logs())
     return ""
 
 

@@ -431,7 +431,7 @@ def _validate_and_describe_endpoint(
     ```
 
     * The name must be `run_remote`.
-    * It can be sync or async or def.
+    * It can be sync or async def.
     * The number and names of parameters are arbitrary, both positional and named
       parameters are ok.
     * All parameters and the return value must have type annotations. See
@@ -760,16 +760,19 @@ def _validate_health_check(
     [async] def is_ready(self) -> bool:
     ```
     * The name must be `is_ready`.
-    * It can be sync or async or def.
+    * It can be sync or async def.
     * Must not define any parameters other than `self`.
     * Must return a boolean.
     """
     if not hasattr(cls, definitions.HEALTH_CHECK_NAME):
         return None
 
-    location.method_name = definitions.HEALTH_CHECK_NAME
-
     health_check_method = getattr(cls, definitions.HEALTH_CHECK_NAME)
+    line = inspect.getsourcelines(health_check_method)[1]
+    location = location.model_copy(
+        update={"line": line, "method_name": definitions.HEALTH_CHECK_NAME}
+    )
+
     if not inspect.isfunction(health_check_method):
         _collect_error(
             f"`{cls.name}.{definitions.HEALTH_CHECK_NAME}` must be a method.",
@@ -809,7 +812,7 @@ def _validate_health_check(
             location,
         )
         return None
-    if signature.return_annotation != bool:
+    if signature.return_annotation is not bool:
         _collect_error(
             "Return value of health check must be a boolean. Got:\n"
             f"\t{location.method_name}{signature} -> {signature.return_annotation}",
