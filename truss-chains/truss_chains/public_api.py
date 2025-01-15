@@ -46,7 +46,7 @@ def depends_context() -> definitions.DeploymentContext:
 def depends(
     chainlet_cls: Type[framework.ChainletT],
     retries: int = 1,
-    timeout_sec: int = definitions.DEFAULT_TIMEOUT_SEC,
+    timeout_sec: float = definitions.DEFAULT_TIMEOUT_SEC,
     use_binary: bool = False,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a

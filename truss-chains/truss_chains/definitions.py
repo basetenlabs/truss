@@ -396,7 +396,7 @@ class RemoteConfig(SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
-DEFAULT_TIMEOUT_SEC = 600
+DEFAULT_TIMEOUT_SEC = 600.0
 
 
 class RPCOptions(SafeModel):
@@ -415,7 +415,7 @@ class RPCOptions(SafeModel):
     """
 
     retries: int = 1
-    timeout_sec: int = DEFAULT_TIMEOUT_SEC
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC
     use_binary: bool = False
 
 
