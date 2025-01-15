@@ -768,11 +768,18 @@ def _validate_health_check(
         return None
 
     health_check_method = getattr(cls, definitions.HEALTH_CHECK_NAME)
+    if not inspect.isfunction(health_check_method):
+        _collect_error(
+            f"`{cls.name}.{definitions.HEALTH_CHECK_NAME}` must be a method.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+        return None
+
     line = inspect.getsourcelines(health_check_method)[1]
     location = location.model_copy(
         update={"line": line, "method_name": definitions.HEALTH_CHECK_NAME}
     )
-
     if not inspect.isfunction(health_check_method):
         _collect_error(
             f"`{cls.name}.{definitions.HEALTH_CHECK_NAME}` must be a method.",

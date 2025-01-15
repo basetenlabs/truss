@@ -559,12 +559,12 @@ def test_raises_iterator_no_arg():
 
 
 def test_raises_is_ready_not_a_method():
-    match = rf"{TEST_FILE}:\d+ \(IsReadyNotMethod\.is_ready\) \[kind: TYPE_ERROR\].* `IsReadyNotMethod.is_ready` must be a method."
+    match = rf"{TEST_FILE}:\d+ \(IsReadyNotMethod\) \[kind: TYPE_ERROR\].* `IsReadyNotMethod.is_ready` must be a method."
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
         class IsReadyNotMethod(chains.ChainletBase):
-            is_ready = None
+            is_ready: int = 3
 
             async def run_remote(self) -> str:
                 return ""
