@@ -14,11 +14,13 @@ import pprint
 import sys
 import types
 import warnings
+from importlib.abc import Loader
 from typing import (
     Any,
     Callable,
     Iterable,
     Iterator,
+    Literal,
     Mapping,
     MutableMapping,
     Optional,
@@ -132,7 +134,9 @@ def _collect_error(msg: str, kind: _ErrorKind, location: _ErrorLocation):
     )
 
 
-def raise_validation_errors() -> None:
+def raise_validation_errors(
+    truss_type: Literal["Chainlet", "Model"] = "Chainlet",
+) -> None:
     """Raises validation errors as combined ``ChainsUsageError``"""
     if _global_error_collector.has_errors:
         error_msg = _global_error_collector.format_errors()
@@ -143,7 +147,7 @@ def raise_validation_errors() -> None:
         )
         _global_error_collector.clear()  # Clear errors so `atexit` won't display them
         raise definitions.ChainsUsageError(
-            f"The Chainlet definitions contain {errors_count}:\n{error_msg}"
+            f"The {truss_type} definitions contain {errors_count}:\n{error_msg}"
         )
 
 
@@ -725,34 +729,25 @@ class _ChainletInitValidator:
         return dependencies
 
 
-def _validate_chainlet_cls(
-    cls: Type[definitions.ABCChainlet], location: _ErrorLocation
-) -> None:
-    if not hasattr(cls, definitions.REMOTE_CONFIG_NAME):
-        _collect_error(
-            f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
-            f"`{definitions.REMOTE_CONFIG_NAME} = {definitions.RemoteConfig.__name__}"
-            f"(...)`. Missing for `{cls}`.",
-            _ErrorKind.MISSING_API_ERROR,
-            location,
-        )
-        return
-
+def _validate_remote_config(
+    cls: Union[Type[definitions.ABCChainlet], Type[definitions.ABCModel]],
+    truss_type: Literal["Chainlet", "Model"],
+    location: _ErrorLocation,
+):
     if not isinstance(
         remote_config := getattr(cls, definitions.REMOTE_CONFIG_NAME),
         definitions.RemoteConfig,
     ):
         _collect_error(
-            f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
+            f"{truss_type} must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
             f"for `{cls}`.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
-        return
 
 
-def validate_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
+def validate_and_register_chain(cls: Type[definitions.ABCChainlet]) -> None:
     """Note that validation errors will only be collected, not raised, and Chainlets.
     with issues, are still added to the registry.  Use `raise_validation_errors` to
     assert all Chainlets are valid and before performing operations that depend on
@@ -761,7 +756,7 @@ def validate_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
 
-    _validate_chainlet_cls(cls, location)
+    _validate_remote_config(cls, "Chainlet", location)
     init_validator = _ChainletInitValidator(cls, location)
     chainlet_descriptor = definitions.ChainletAPIDescriptor(
         chainlet_cls=cls,
@@ -777,35 +772,10 @@ def validate_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
 
 
 def validate_base_model(cls: Type[definitions.ABCModel]) -> None:
-    # NB(nikhil): Following lines cause ERROR TypeError: <class 'model.Model'> is a built-in class
-    # src_path = os.path.abspath(inspect.getfile(cls))
-    # line = inspect.getsourcelines(cls)[1]
-    location = _ErrorLocation(src_path="model.py", line=10, chainlet_name=cls.__name__)
-
-    # NB(nikhil): This seems to pass even when my definition doesn't have remote_config, likely
-    # pulling from default
-    if not hasattr(cls, definitions.REMOTE_CONFIG_NAME):
-        _collect_error(
-            f"Models must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
-            f"`{definitions.REMOTE_CONFIG_NAME} = {definitions.RemoteConfig.__name__}"
-            f"(...)`. Missing for `{cls}`.",
-            _ErrorKind.MISSING_API_ERROR,
-            location,
-        )
-        return
-
-    if not isinstance(
-        remote_config := getattr(cls, definitions.REMOTE_CONFIG_NAME),
-        definitions.RemoteConfig,
-    ):
-        _collect_error(
-            f"Models must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
-            f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
-            f"for `{cls}`.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return
+    src_path = os.path.abspath(inspect.getfile(cls))
+    line = inspect.getsourcelines(cls)[1]
+    location = _ErrorLocation(src_path=src_path, line=line)
+    _validate_remote_config(cls, "Model", location)
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1203,48 +1173,16 @@ def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
 def import_target(
     module_path: pathlib.Path, target_name: Optional[str]
 ) -> Iterator[Type[definitions.ABCChainlet]]:
-    """The context manager ensures that modules imported by the chain and
-    Chainlets registered in ``_global_chainlet_registry`` are removed upon exit.
-
-    I.e. aiming at making the import idempotent for common usages, although there could
-    be additional side effects not accounted for by this implementation."""
     resolved_module_path = pathlib.Path(module_path).resolve()
-    module_name = resolved_module_path.stem  # Use the file's name as the module name
-    if not os.path.isfile(resolved_module_path):
-        raise ImportError(
-            f"`{resolved_module_path}` is not a file. You must point to a python file where "
-            "the entrypoint Chainlet is defined."
-        )
-
-    import_error_msg = f"Could not import `{resolved_module_path}`. Check path."
-    spec = importlib.util.spec_from_file_location(module_name, resolved_module_path)
-    if not spec:
-        raise ImportError(import_error_msg)
-    if not spec.loader:
-        raise ImportError(import_error_msg)
-
-    module = importlib.util.module_from_spec(spec)
-    module.__file__ = str(resolved_module_path)
-    # Since the framework depends on tracking the source files via `inspect` and this
-    # depends on the modules bein properly registered in `sys.modules`, we have to
-    # manually do this here (because importlib does not do it automatically). This
-    # registration has to stay at least until the push command has finished.
-    if module_name in sys.modules:
-        raise ImportError(
-            f"{import_error_msg} There is already a module in `sys.modules` "
-            f"with name `{module_name}`. Overwriting that value is unsafe. "
-            "Try renaming your source file."
-        )
+    module, loader = _load_module(module_path, "Chainlet")
     modules_before = set(sys.modules.keys())
-    sys.modules[module_name] = module
-    # Add path for making absolute imports relative to the source_module's dir.
-    sys.path.insert(0, str(resolved_module_path.parent))
+    modules_after = set()
+
     chainlets_before = _global_chainlet_registry.get_chainlet_names()
     chainlets_after = set()
-    modules_after = set()
     try:
         try:
-            spec.loader.exec_module(module)
+            loader.exec_module(module)
             raise_validation_errors()
         finally:
             modules_after = set(sys.modules.keys())
@@ -1285,57 +1223,67 @@ def import_target(
 
         yield target_cls
     finally:
+        _cleanup_module_imports(modules_before, modules_after, resolved_module_path)
         for chainlet_name in chainlets_after - chainlets_before:
             _global_chainlet_registry.unregister_chainlet(chainlet_name)
 
-        modules_diff = modules_after - modules_before
-        # Apparently torch import leaves some side effects that cannot be reverted
-        # by deleting the modules and would lead to a crash when another import
-        # is attempted. Since torch is a common lib, we make this explicit special
-        # case and just leave those modules.
-        # TODO: this seems still brittle and other modules might cause similar problems.
-        #  it would be good to find a more principled solution.
-        modules_to_delete = {
-            s for s in modules_diff if not (s.startswith("torch.") or s == "torch")
-        }
-        if torch_modules := modules_diff - modules_to_delete:
-            logging.debug(
-                f"Keeping torch modules after import context: {torch_modules}"
-            )
 
-        logging.debug(
-            f"Deleting modules when exiting import context: {modules_to_delete}"
-        )
-        for mod in modules_to_delete:
-            del sys.modules[mod]
-        try:
-            sys.path.remove(str(resolved_module_path.parent))
-        except ValueError:  # In case the value was already removed for whatever reason.
-            pass
-
-
-# NB(nikhil): mainly taken from above, but with some dependency logic removed
 @contextlib.contextmanager
 def import_model_target(
     module_path: pathlib.Path,
 ) -> Iterator[Type[definitions.ABCModel]]:
     resolved_module_path = pathlib.Path(module_path).resolve()
-    module_name = resolved_module_path.stem  # Use the file's name as the module name
-    if not os.path.isfile(resolved_module_path):
+    module, loader = _load_module(resolved_module_path, "Model")
+    modules_before = set(sys.modules.keys())
+    modules_after = set()
+    try:
+        try:
+            loader.exec_module(module)
+            raise_validation_errors("Model")
+        finally:
+            modules_after = set(sys.modules.keys())
+
+        module_vars = (getattr(module, name) for name in dir(module))
+        models: set[Type[definitions.ABCModel]] = {
+            sym
+            for sym in module_vars
+            if utils.issubclass_safe(sym, definitions.ABCModel)
+        }
+        if len(models) == 0:
+            raise ValueError(f"No class in `{module_path}` extends `ModelBase`.")
+
+        target_cls = utils.expect_one(models)
+        if not utils.issubclass_safe(target_cls, definitions.ABCModel):
+            raise TypeError(f"Target `{target_cls}` is not a {definitions.ABCModel}.")
+
+        yield target_cls
+    finally:
+        _cleanup_module_imports(modules_before, modules_after, resolved_module_path)
+
+
+def _load_module(
+    module_path: pathlib.Path,
+    truss_type: Literal["Chainlet", "Model"],
+) -> tuple[types.ModuleType, Loader]:
+    """The context manager ensures that modules imported by the Model/Chain
+     are removed upon exit.
+
+    I.e. aiming at making the import idempotent for common usages, although there could
+    be additional side effects not accounted for by this implementation."""
+    module_name = module_path.stem  # Use the file's name as the module name
+    if not os.path.isfile(module_path):
         raise ImportError(
-            f"`{resolved_module_path}` is not a file. You must point to a python file where "
-            "the Model is defined."
+            f"`{module_path}` is not a file. You must point to a python file where "
+            f"the entrypoint {truss_type} is defined."
         )
 
-    import_error_msg = f"Could not import `{resolved_module_path}`. Check path."
-    spec = importlib.util.spec_from_file_location(module_name, resolved_module_path)
-    if not spec:
-        raise ImportError(import_error_msg)
-    if not spec.loader:
+    import_error_msg = f"Could not import `{module_path}`. Check path."
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if not spec or not spec.loader:
         raise ImportError(import_error_msg)
 
     module = importlib.util.module_from_spec(spec)
-    module.__file__ = str(resolved_module_path)
+    module.__file__ = str(module_path)
     # Since the framework depends on tracking the source files via `inspect` and this
     # depends on the modules bein properly registered in `sys.modules`, we have to
     # manually do this here (because importlib does not do it automatically). This
@@ -1347,43 +1295,14 @@ def import_model_target(
             "Try renaming your source file."
         )
 
-    modules_before = set(sys.modules.keys())
-    try:
-        try:
-            spec.loader.exec_module(module)
-            raise_validation_errors()
-        finally:
-            modules_after = set(sys.modules.keys())
+    sys.modules[module_name] = module
+    # Add path for making absolute imports relative to the source_module's dir.
+    sys.path.insert(0, str(module_path.parent))
 
-        module_vars = (getattr(module, name) for name in dir(module))
-        models: set[Type[definitions.ABCModel]] = [
-            sym
-            for sym in module_vars
-            if utils.issubclass_safe(sym, definitions.ABCModel)
-        ]
-        if len(models) == 0:
-            raise ValueError(
-                "No `target_name` was specified and no class in "
-                f"`{module_path}` extends `ModelBase`."
-            )
-        elif len(models) > 1:
-            raise ValueError(
-                "`target_name` was not specified and multiple classes in "
-                f"`{resolved_module_path}` extend `ModelBase`. Ensure "
-                "exactly one class serves as entrypoint; found classes: "
-                f"\n{list(cls.name for cls in models)}"
-            )
-        target_cls = utils.expect_one(models)
-        if not utils.issubclass_safe(target_cls, definitions.ABCModel):
-            raise TypeError(
-                f"Target `{target_cls}` is not a {definitions.ABCModel}."
-            )
-
-        yield target_cls
-    finally:
-        _cleanup_module_imports(modules_before, modules_after, resolved_module_path)
+    return module, spec.loader
 
 
+# Ensures the loaded system modules are restored to before we executed user defined code.
 def _cleanup_module_imports(
     modules_before: set[str], modules_after: set[str], module_path: pathlib.Path
 ):
@@ -1403,7 +1322,3 @@ def _cleanup_module_imports(
     logging.debug(f"Deleting modules when exiting import context: {modules_to_delete}")
     for mod in modules_to_delete:
         del sys.modules[mod]
-    try:
-        sys.path.remove(str(module_path.parent))
-    except ValueError:  # In case the value was already removed for whatever reason.
-        pass

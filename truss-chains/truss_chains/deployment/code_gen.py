@@ -651,10 +651,10 @@ def _inplace_fill_base_image(
 def write_truss_config_yaml(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
-    use_local_chains_src: bool,
-) -> truss_config.TrussConfig:
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor] = {},
+    use_local_chains_src: bool = False,
+):
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
     config.model_name = model_name
@@ -731,11 +731,11 @@ def gen_truss_chainlet(
         f"in `{chainlet_dir}`."
     )
     write_truss_config_yaml(
-        chainlet_dir,
-        chainlet_descriptor.chainlet_cls.remote_config,
-        dep_services,
-        model_name,
-        use_local_chains_src,
+        chainlet_dir=chainlet_dir,
+        chains_config=chainlet_descriptor.chainlet_cls.remote_config,
+        model_name=model_name,
+        chainlet_to_service=dep_services,
+        use_local_chains_src=use_local_chains_src,
     )
     # This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(
