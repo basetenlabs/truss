@@ -158,20 +158,16 @@ class ModelCache:
 
 @dataclass
 class HealthChecks:
-    restart_check_delay_seconds: int = 0
-    restart_threshold_seconds: int = MAX_FAILURE_THRESHOLD_SECONDS
-    stop_traffic_threshold_seconds: int = MAX_FAILURE_THRESHOLD_SECONDS
+    restart_check_delay_seconds: Optional[int] = None
+    restart_threshold_seconds: Optional[int] = None
+    stop_traffic_threshold_seconds: Optional[int] = None
 
     @staticmethod
     def from_dict(d):
         return HealthChecks(
-            restart_check_delay_seconds=d.get("restart_check_delay_seconds", 0),
-            restart_threshold_seconds=d.get(
-                "restart_threshold_seconds", MAX_FAILURE_THRESHOLD_SECONDS
-            ),
-            stop_traffic_threshold_seconds=d.get(
-                "stop_traffic_threshold_seconds", MAX_FAILURE_THRESHOLD_SECONDS
-            ),
+            restart_check_delay_seconds=d.get("restart_check_delay_seconds"),
+            restart_threshold_seconds=d.get("restart_threshold_seconds"),
+            stop_traffic_threshold_seconds=d.get("stop_traffic_threshold_seconds"),
         )
 
     def to_dict(self):

@@ -1,6 +1,10 @@
 import datetime
+import json
 import logging
+import textwrap
 from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+
+from truss.base.errors import ValidationError
 
 if TYPE_CHECKING:
     from rich import progress
@@ -404,3 +408,25 @@ def create_truss_service(
         raise e
     model_version_id = model_version_json["id"]
     return model_id, model_version_id
+
+
+def validate_truss_config(api: BasetenApi, config: str):
+    """
+    Validate a truss config as well as the truss version.
+
+    Args:
+        api: BasetenApi instance
+        config: Base64 encoded JSON string of the Truss config
+
+    Returns:
+        None if the config is valid, otherwise raises an error message
+    """
+    valid_config = api.validate_truss_config(truss.version(), config)
+    if not valid_config.get("success"):
+        details = json.loads(valid_config.get("details"))
+        errors = details.get("errors", [])
+        if errors:
+            error_messages = "\n".join(textwrap.indent(error, "  ") for error in errors)
+            raise ValidationError(
+                f"Validation failed with the following errors:\n{error_messages}"
+            )

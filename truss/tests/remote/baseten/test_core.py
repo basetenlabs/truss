@@ -1,8 +1,10 @@
+import json
 from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
 import pytest
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.errors import ValidationError
 from truss.remote.baseten import core
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import create_truss_service
@@ -240,3 +242,30 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
     create_model_mock.assert_called_once()
     _, kwargs = create_model_mock.call_args
     assert kwargs["allow_truss_download"] is allow_truss_download
+
+
+def test_validate_truss_config():
+    def mock_validate_truss_config(client_version, config):
+        if config == {}:
+            return {"success": True, "details": json.dumps({})}
+        elif "hi" in config:
+            return {"success": False, "details": json.dumps({"errors": ["error"]})}
+        else:
+            return {
+                "success": False,
+                "details": json.dumps({"errors": ["error", "and another one"]}),
+            }
+
+    api = MagicMock()
+    api.validate_truss_config.side_effect = mock_validate_truss_config
+
+    assert core.validate_truss_config(api, {}) is None
+    with pytest.raises(
+        ValidationError, match="Validation failed with the following errors:\n  error"
+    ):
+        core.validate_truss_config(api, {"hi": "hi"})
+    with pytest.raises(
+        ValidationError,
+        match="Validation failed with the following errors:\n  error\n  and another one",
+    ):
+        core.validate_truss_config(api, {"should_error": "hi"})
