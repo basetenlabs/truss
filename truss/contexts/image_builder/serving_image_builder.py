@@ -16,12 +16,13 @@ from truss.base import constants
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
+    BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
+    BEI_TRTLLM_BASE_IMAGE,
+    BEI_TRTLLM_CLIENT_BATCH_SIZE,
+    BEI_TRTLLM_PYTHON_EXECUTABLE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
-    ENCODER_TRTLLM_BASE_IMAGE,
-    ENCODER_TRTLLM_CLIENT_BATCH_SIZE,
-    ENCODER_TRTLLM_PYTHON_EXECUTABLE,
     FILENAME_CONSTANTS_MAP,
     MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
     MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE,
@@ -369,34 +370,36 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-    def prepare_trtllm_encoder_build_dir(self, build_dir: Path):
-        """prepares the build directory for a trtllm ENCODER model"""
+    def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
         assert (
             config.trt_llm
             and config.trt_llm.build
             and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
         ), (
-            "prepare_trtllm_encoder_build_dir should only be called for encoder tensorrt-llm model"
+            "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER tensorrt-llm model"
         )
         # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
         port = 7997
-        start_command = (
-            f"python-truss-download && text-embeddings-router "
-            f"--port {port} "
-            f"--max-batch-requests {runtime_max_batch_size} "
-            # how many sentences can be in a single json payload.
-            # limited default to improve request based autoscaling.
-            f"--max-client-batch-size {ENCODER_TRTLLM_CLIENT_BATCH_SIZE} "
-            # how many concurrent requests can be handled by the server until 429 is returned.
-            # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
-            # 16384 is a safe max value for the server
-            f"--max-concurrent-requests 16384"
-            # downloaded model path by `python-truss-download` cmd
-            "--model-id /app/data/tokenization"
+        start_command = " ".join(
+            [
+                "python-truss-download && text-embeddings-router",
+                f"--port {port}",
+                f"--max-batch-requests {runtime_max_batch_size}",
+                # how many sentences can be in a single json payload.
+                # limited default to improve request based autoscaling.
+                f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
+                # 2048 is a safe max value for the server
+                f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+                # downloaded model path by `python-truss-download` cmd
+                "--model-id /app/data/tokenization",
+            ]
         )
         self._spec.config.docker_server = DockerServer(
             start_command=f"/bin/sh -c '{start_command}'",
@@ -408,12 +411,12 @@ class ServingImageBuilder(ImageBuilder):
         copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
 
         config.base_image = BaseImage(
-            image=ENCODER_TRTLLM_BASE_IMAGE,
-            python_executable_path=ENCODER_TRTLLM_PYTHON_EXECUTABLE,
+            image=BEI_TRTLLM_BASE_IMAGE,
+            python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
         )
 
     def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
-        """prepares the build directory for a trtllm decoder-like modes"""
+        """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
         config = self._spec.config
         assert (
             config.trt_llm
@@ -481,7 +484,7 @@ class ServingImageBuilder(ImageBuilder):
         ):
             if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
                 # Run the specific encoder build
-                self.prepare_trtllm_encoder_build_dir(build_dir=build_dir)
+                self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
             else:
                 self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
