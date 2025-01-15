@@ -107,7 +107,7 @@ class ChainletBase(definitions.ABCChainlet):
         # Each sub-class has own, isolated metadata, e.g. we don't want
         # `mark_entrypoint` to propagate to subclasses.
         cls.meta_data = definitions.ChainletMetadata()
-        framework.validate_and_register_class(cls)  # Errors are collected, not raised!
+        framework.validate_and_register_chain(cls)  # Errors are collected, not raised!
         # For default init (from `object`) we don't need to check anything.
         if cls.has_custom_init():
             original_init = cls.__init__

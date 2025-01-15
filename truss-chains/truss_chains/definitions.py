@@ -540,8 +540,11 @@ class ABCModel(abc.ABC):
     def display_name(cls) -> str:
         return cls.remote_config.name or cls.name
 
-    @abc.abstractmethod
-    def predict(self, request: Any) -> Any: ...
+    # Cannot add this abstract method to API, because we want to allow arbitrary
+    # arg/kwarg names and specifying any function signature here would give type errors
+    # @abc.abstractmethod
+    # def predict(self, *args, **kwargs) -> Any:
+    #     ...
 
 
 class TypeDescriptor(SafeModelNonSerializable):

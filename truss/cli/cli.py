@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 import time
-import traceback
 import warnings
 from functools import wraps
 from pathlib import Path
@@ -51,7 +50,10 @@ from truss.trt_llm.config_checks import (
 )
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init as _init
-from truss.truss_handle.build import load
+from truss.truss_handle.build import (
+    load,
+    load_from_code_config,
+)
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
@@ -1133,32 +1135,11 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-    from truss_chains import framework
-    from truss_chains.deployment.code_gen import write_truss_config_yaml
 
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     remote_provider = RemoteFactory.create(remote=remote)
-
-    try:
-        # Check whether the model file extends our new base class type, if so write
-        # the config file so _get_truss_from_directory will pick it up
-        target_path = Path(target_directory)
-        with framework.import_model_target(
-            target_path / "model/model.py"
-        ) as entrypoint_cls:
-            write_truss_config_yaml(
-                target_path,
-                entrypoint_cls.remote_config,
-                {},
-                entrypoint_cls.remote_config.name,
-                False,  # use_local_chains_src
-            )
-    except Exception as e:
-        print(traceback.print_exc())
-        raise (e)
-
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
@@ -1359,7 +1340,11 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return load(target_directory)
+    if not os.path.isfile(target_directory):
+        return load(target_directory)
+    # NB(nikhil): if target_directory points to a specific file, assume they are using
+    # the Python driven DX for configuring a truss
+    return load_from_code_config(Path(target_directory))
 
 
 truss_cli.add_command(container)
