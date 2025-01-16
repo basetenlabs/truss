@@ -986,11 +986,11 @@ def test_is_healthy():
         truss_server_addr = "http://localhost:8090"
         for _ in range(5):
             time.sleep(1)
-            ready = requests.get(f"{truss_server_addr}/v1/models/model")
-            if ready.status_code == 503:
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            if healthy.status_code == 503:
                 break
-            assert ready.status_code == 200
-        assert ready.status_code == 503
+            assert healthy.status_code == 200
+        assert healthy.status_code == 503
         diff = container.diff()
         assert "/root/inference_server_crashed.txt" in diff
         assert diff["/root/inference_server_crashed.txt"] == "A"
@@ -1013,12 +1013,12 @@ def test_is_healthy():
 
         truss_server_addr = "http://localhost:8090"
 
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 503
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
         assert (
             "Exception while checking if model is ready: not ready" in container.logs()
         )
-        assert "Model is not ready: Health checks failing." in container.logs()
+        assert "Health check failed." in container.logs()
 
     model = """
     import time
@@ -1040,62 +1040,62 @@ def test_is_healthy():
         truss_server_addr = "http://localhost:8090"
 
         time.sleep(5)
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 503
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
         # Ensure we only log after model.load is complete
-        assert "Model is not ready: Health checks failing." not in container.logs()
+        assert "Health check failed." not in container.logs()
 
         # Sleep a few seconds to get the server some time to wake up
         time.sleep(10)
 
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 503
-        assert container.logs().count("Model is not ready: Health checks failing.") == 1
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 503
-        assert container.logs().count("Model is not ready: Health checks failing.") == 2
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 1
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 2
 
     model = """
     import time
 
     class Model:
         def __init__(self, **kwargs):
-            self._ready = False
+            self._healthy = False
 
         def load(self):
             time.sleep(10)
-            self._ready = True
+            self._healthy = True
 
         def is_healthy(self):
             return self._ready
 
         def predict(self, model_input):
-            self._ready = model_input["ready"]
+            self._healthy = model_input["healthy"]
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
         time.sleep(5)
         truss_server_addr = "http://localhost:8090"
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 503
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
         time.sleep(10)
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 200
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 200
 
-        ready_responses = [True, "yessss", 34, {"woo": "hoo"}]
-        for response in ready_responses:
-            predict_response = requests.post(PREDICT_URL, json={"ready": response})
+        healthy_responses = [True, "yessss", 34, {"woo": "hoo"}]
+        for response in healthy_responses:
+            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
             assert predict_response.status_code == 200
-            ready = requests.get(f"{truss_server_addr}/v1/models/model")
-            assert ready.status_code == 200
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert healthy.status_code == 200
 
-        not_ready_responses = [False, "", 0, {}]
-        for response in not_ready_responses:
-            predict_response = requests.post(PREDICT_URL, json={"ready": response})
+        not_healthy_responses = [False, "", 0, {}]
+        for response in not_healthy_responses:
+            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
             assert predict_response.status_code == 200
-            ready = requests.get(f"{truss_server_addr}/v1/models/model")
-            assert ready.status_code == 503
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert healthy.status_code == 503
 
     model = """
     class Model:
@@ -1110,8 +1110,8 @@ def test_is_healthy():
 
         truss_server_addr = "http://localhost:8090"
 
-        ready = requests.get(f"{truss_server_addr}/v1/models/model")
-        assert ready.status_code == 200
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 200
 
 
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):

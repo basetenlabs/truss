@@ -313,12 +313,8 @@ def test_custom_health_checks_chain():
             response = requests.get(health_check_url)
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
-            assert (
-                container_logs.count("Model is not ready: Health checks failing.") == 1
-            )
+            assert container_logs.count("Health check failed.") == 1
             response = requests.get(health_check_url)
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
-            assert (
-                container_logs.count("Model is not ready: Health checks failing.") == 2
-            )
+            assert container_logs.count("Health check failed.") == 2

@@ -525,6 +525,7 @@ class ModelWrapper:
         descriptor = self.model_descriptor.is_healthy
         is_healthy: Optional[bool] = None
         if not descriptor or self.load_failed:
+            # return early with None if model does not have is_healthy method or load failed
             return is_healthy
         try:
             if descriptor.is_async:
@@ -535,13 +536,13 @@ class ModelWrapper:
         except Exception as e:
             is_healthy = False
             self._logger.exception(
-                f"Exception while checking if model is ready: {str(e)}",
+                f"Exception while checking if model is healthy: {str(e)}",
                 exc_info=errors.filter_traceback(self._model_file_name),
             )
         if not is_healthy and self.ready:
             # self.ready evaluates to True when the model's load function has completed,
             # we will only log health check failures to model logs when the model's load has completed
-            self._logger.warning("Model is not ready: Health checks failing.")
+            self._logger.warning("Health check failed.")
         return is_healthy
 
     async def preprocess(
