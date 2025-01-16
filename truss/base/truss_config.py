@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
@@ -661,6 +662,8 @@ class TrussConfig:
 
     @staticmethod
     def from_yaml(yaml_path: Path):
+        if not os.path.isfile(yaml_path):
+            raise ValueError(f"Expected a truss configuration file at {yaml_path}")
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
             if "hf_cache" in raw_data:
