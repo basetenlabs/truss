@@ -989,7 +989,7 @@ def test_health_check_configuration():
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
         assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 1800
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
 
     config = """runtime:
@@ -1009,10 +1009,10 @@ def test_health_check_configuration():
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
-        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 0
-        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1800
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds is None
         assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 1800
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
 
 
