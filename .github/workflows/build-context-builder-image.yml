@@ -43,6 +43,10 @@ jobs:
       with:
         images: baseten/truss-context-builder
 
+    - name: Calculate short sha
+      id: git_sha
+      run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
     - name: Docker Build
       id: docker_build
       uses: docker/build-push-action@v5
@@ -50,5 +54,5 @@ jobs:
         context: ./
         file: ./context_builder.Dockerfile
         push: true
-        tags: baseten/truss-context-builder:v${{ needs.detect-version.outputs.version }}
+        tags: baseten/truss-context-builder:v${{ needs.detect-version.outputs.version }}-${{ steps.git_sha.outputs.sha_short }}
         labels: ${{ steps.meta.outputs.labels }}
