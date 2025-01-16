@@ -2,7 +2,7 @@ import truss_chains as chains
 
 
 class SyncChainlet(chains.ChainletBase):
-    def is_ready(self) -> bool:
+    def is_healthy(self) -> bool:
         return True
 
     def run_remote(self, text: str) -> str:
@@ -26,7 +26,7 @@ class CustomHealthChecks(chains.ChainletBase):
         self._async_chainlet = async_chainlet
         self._should_succeed_health_checks = True
 
-    def is_ready(self) -> bool:
+    def is_healthy(self) -> bool:
         return self._should_succeed_health_checks
 
     async def run_remote(self, fail: bool) -> str:

@@ -80,10 +80,10 @@ class BasetenEndpoints:
 
     async def model_ready(self, model_name: str) -> Dict[str, Union[str, bool]]:
         model: ModelWrapper = self._safe_lookup_model(model_name)
-        is_ready = await model.is_ready()
-        if is_ready is None:
+        is_healthy = await model.is_healthy()
+        if is_healthy is None:
             self.check_healthy(model)
-        elif not is_ready:
+        elif not is_healthy:
             raise errors.ModelNotReady(model.name)
 
         return {}

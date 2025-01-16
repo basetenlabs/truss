@@ -750,11 +750,11 @@ def _validate_remote_config(
 def _validate_health_check(
     cls: Type[definitions.ABCChainlet], location: _ErrorLocation
 ) -> Optional[definitions.HealthCheckAPIDescriptor]:
-    """The `is_ready` method of a Chainlet must have the following signature:
+    """The `is_healthy` method of a Chainlet must have the following signature:
     ```
-    [async] def is_ready(self) -> bool:
+    [async] def is_healthy(self) -> bool:
     ```
-    * The name must be `is_ready`.
+    * The name must be `is_healthy`.
     * It can be sync or async def.
     * Must not define any parameters other than `self`.
     * Must return a boolean.

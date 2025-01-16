@@ -197,7 +197,7 @@ class ModelDescriptor:
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
     setup_environment: Optional[MethodDescriptor]
-    is_ready: Optional[MethodDescriptor]
+    is_healthy: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -254,10 +254,10 @@ class ModelDescriptor:
         else:
             setup_environment = None
 
-        if hasattr(model, "is_ready"):
-            is_ready = MethodDescriptor.from_method(model.is_ready, "is_ready")
+        if hasattr(model, "is_healthy"):
+            is_healthy = MethodDescriptor.from_method(model.is_healthy, "is_healthy")
         else:
-            is_ready = None
+            is_healthy = None
 
         return cls(
             preprocess=preprocess,
@@ -265,7 +265,7 @@ class ModelDescriptor:
             postprocess=postprocess,
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
             setup_environment=setup_environment,
-            is_ready=is_ready,
+            is_healthy=is_healthy,
         )
 
 
@@ -521,28 +521,28 @@ class ModelWrapper:
                         exc_info=errors.filter_traceback(self._model_file_name),
                     )
 
-    async def is_ready(self) -> Optional[bool]:
-        descriptor = self.model_descriptor.is_ready
-        is_ready: Optional[bool] = None
+    async def is_healthy(self) -> Optional[bool]:
+        descriptor = self.model_descriptor.is_healthy
+        is_healthy: Optional[bool] = None
         if not descriptor or self.load_failed:
-            return is_ready
+            return is_healthy
         try:
             if descriptor.is_async:
-                is_ready = await self._model.is_ready()
+                is_healthy = await self._model.is_healthy()
             else:
                 # Offload sync functions to thread, to not block event loop.
-                is_ready = await to_thread.run_sync(self._model.is_ready)
+                is_healthy = await to_thread.run_sync(self._model.is_healthy)
         except Exception as e:
-            is_ready = False
+            is_healthy = False
             self._logger.exception(
                 f"Exception while checking if model is ready: {str(e)}",
                 exc_info=errors.filter_traceback(self._model_file_name),
             )
-        if not is_ready and self.ready:
+        if not is_healthy and self.ready:
             # self.ready evaluates to True when the model's load function has completed,
             # we will only log health check failures to model logs when the model's load has completed
             self._logger.warning("Model is not ready: Health checks failing.")
-        return is_ready
+        return is_healthy
 
     async def preprocess(
         self, inputs: InputType, request: starlette.requests.Request

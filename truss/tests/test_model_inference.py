@@ -966,13 +966,13 @@ def test_health_check_configuration():
 
     
 @pytest.mark.integration
-def test_is_ready():
+def test_is_healthy():
     model = """
     class Model:
         def load(self):
             raise Exception("not loaded")
 
-        def is_ready(self) -> bool:
+        def is_healthy(self) -> bool:
             return True
 
         def predict(self, model_input):
@@ -997,7 +997,7 @@ def test_is_ready():
 
     model = """
     class Model:
-        def is_ready(self) -> bool:
+        def is_healthy(self) -> bool:
             raise Exception("not ready")
 
         def predict(self, model_input):
@@ -1027,7 +1027,7 @@ def test_is_ready():
         def load(self):
             time.sleep(10)
 
-        def is_ready(self) -> bool:
+        def is_healthy(self) -> bool:
             return False
 
         def predict(self, model_input):
@@ -1066,7 +1066,7 @@ def test_is_ready():
             time.sleep(10)
             self._ready = True
 
-        def is_ready(self):
+        def is_healthy(self):
             return self._ready
 
         def predict(self, model_input):
@@ -1099,7 +1099,7 @@ def test_is_ready():
 
     model = """
     class Model:
-        def is_ready(self) -> bool:
+        def is_healthy(self) -> bool:
             return True
 
         def predict(self, model_input):

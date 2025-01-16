@@ -463,9 +463,9 @@ def _gen_health_check_src(
     def_str = "async def" if health_check.is_async else "def"
     maybe_await = "await " if health_check.is_async else ""
     src = (
-        f"{def_str} is_ready(self) -> Optional[bool]:\n"
+        f"{def_str} is_healthy(self) -> Optional[bool]:\n"
         f"""{_indent('if hasattr(self, "_chainlet"):')}"""
-        f"""{_indent(f"return {maybe_await}self._chainlet.is_ready()")}"""
+        f"""{_indent(f"return {maybe_await}self._chainlet.is_healthy()")}"""
     )
     return _Source(src=src)
 

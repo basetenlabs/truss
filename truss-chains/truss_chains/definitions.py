@@ -40,7 +40,7 @@ MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
-HEALTH_CHECK_NAME = "is_ready"
+HEALTH_CHECK_NAME = "is_healthy"
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
