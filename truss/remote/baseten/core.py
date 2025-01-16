@@ -421,7 +421,7 @@ def validate_truss_config(api: BasetenApi, config: str):
     Returns:
         None if the config is valid, otherwise raises an error message
     """
-    valid_config = api.validate_truss_config(truss.version(), config)
+    valid_config = api.validate_truss(truss.version(), config)
     if not valid_config.get("success"):
         details = json.loads(valid_config.get("details"))
         errors = details.get("errors", [])

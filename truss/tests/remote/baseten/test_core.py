@@ -245,7 +245,7 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
 
 
 def test_validate_truss_config():
-    def mock_validate_truss_config(client_version, config):
+    def mock_validate_truss(client_version, config):
         if config == {}:
             return {"success": True, "details": json.dumps({})}
         elif "hi" in config:
@@ -257,7 +257,7 @@ def test_validate_truss_config():
             }
 
     api = MagicMock()
-    api.validate_truss_config.side_effect = mock_validate_truss_config
+    api.validate_truss.side_effect = mock_validate_truss
 
     assert core.validate_truss_config(api, {}) is None
     with pytest.raises(

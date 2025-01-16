@@ -494,16 +494,16 @@ class BasetenApi:
             logging.debug(f"Failed to sync patch: {result}")
         return result
 
-    def validate_truss_config(self, client_version: str, config: str):
+    def validate_truss(self, client_version: str, config: str):
         query_string = f"""{{
-            valid_truss_config(client_version: "{client_version}", config: "{config}") {{
+            truss_validation(client_version: "{client_version}", config: "{config}") {{
                 success
                 details
             }}
         }}
         """
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["valid_truss_config"]
+        return resp["data"]["truss_validation"]
 
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
         headers = self._auth_token.header()
