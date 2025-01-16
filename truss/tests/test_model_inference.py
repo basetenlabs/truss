@@ -973,7 +973,7 @@ def test_setup_environment():
 def test_is_ready():
     model = """
     class Model:
-        def load(self) -> bool:
+        def load(self):
             raise Exception("not loaded")
 
         def is_ready(self) -> bool:
@@ -1028,7 +1028,7 @@ def test_is_ready():
     import time
 
     class Model:
-        def load(self) -> bool:
+        def load(self):
             time.sleep(10)
 
         def is_ready(self) -> bool:
@@ -1058,6 +1058,48 @@ def test_is_ready():
         ready = requests.get(f"{truss_server_addr}/v1/models/model")
         assert ready.status_code == 503
         assert container.logs().count("Model is not ready: Health checks failing.") == 2
+
+    model = """
+    import time
+
+    class Model:
+        def __init__(self, **kwargs):
+            self._ready = False
+
+        def load(self):
+            time.sleep(10)
+            self._ready = True
+
+        def is_ready(self):
+            return self._ready
+
+        def predict(self, model_input):
+            self._ready = model_input["ready"]
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+        time.sleep(5)
+        truss_server_addr = "http://localhost:8090"
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 503
+        time.sleep(10)
+        ready = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert ready.status_code == 200
+
+        ready_responses = [True, "yessss", 34, {"woo": "hoo"}]
+        for response in ready_responses:
+            predict_response = requests.post(PREDICT_URL, json={"ready": response})
+            assert predict_response.status_code == 200
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == 200
+
+        not_ready_responses = [False, "", 0, {}]
+        for response in not_ready_responses:
+            predict_response = requests.post(PREDICT_URL, json={"ready": response})
+            assert predict_response.status_code == 200
+            ready = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert ready.status_code == 503
 
     model = """
     class Model:
