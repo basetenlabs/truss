@@ -5,8 +5,15 @@ from pathlib import Path
 
 import pytest
 import requests
+<<<<<<< HEAD
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
 from truss.truss_handle.build import load
+=======
+from truss.tests.test_testing_utilities_for_other_tests import (
+    ensure_kill_all,
+    get_container_logs_from_prefix,
+)
+>>>>>>> 88d2b110 (Add `is_ready` to chains (#1289))
 
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
@@ -275,3 +282,43 @@ def test_traditional_truss():
         )
         assert response.status_code == 200
         assert response.json() == 5
+
+
+@pytest.mark.integration
+def test_custom_health_checks_chain():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "custom_health_checks" / "custom_health_checks.py"
+        with framework.import_target(chain_root, "CustomHealthChecks") as entrypoint:
+            service = deployment_client.push(
+                entrypoint,
+                options=definitions.PushOptionsLocalDocker(
+                    chain_name="integration-test-custom-health-checks",
+                    only_generate_trusses=False,
+                    use_local_chains_src=True,
+                ),
+            )
+
+            assert service is not None
+            health_check_url = service.run_remote_url.split(":predict")[0]
+
+            response = service.run_remote({"fail": False})
+            assert response.status_code == 200
+            response = requests.get(health_check_url)
+            response.status_code == 200
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert "Model is not ready: Health checks failing" not in container_logs
+
+            # Start failing health checks
+            response = service.run_remote({"fail": True})
+            response = requests.get(health_check_url)
+            assert response.status_code == 503
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert (
+                container_logs.count("Model is not ready: Health checks failing.") == 1
+            )
+            response = requests.get(health_check_url)
+            assert response.status_code == 503
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert (
+                container_logs.count("Model is not ready: Health checks failing.") == 2
+            )

@@ -40,6 +40,7 @@ MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
+HEALTH_CHECK_NAME = "is_ready"
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
@@ -625,12 +626,18 @@ class DependencyDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
+class HealthCheckAPIDescriptor(SafeModelNonSerializable):
+    name: str = HEALTH_CHECK_NAME
+    is_async: bool
+
+
 class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     has_context: bool
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
+    health_check: Optional[HealthCheckAPIDescriptor]
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)

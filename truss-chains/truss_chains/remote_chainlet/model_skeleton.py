@@ -47,6 +47,11 @@ class TrussChainletModel:
     #         side_effect=stub.factory(SideEffectOnlySubclass, self._context),
     #     )
     #
+    # If chainlet implements is_ready:
+    # def is_ready(self) -> Optional[bool]:
+    #     if hasattr(self, "_chainlet"):
+    #         return self._chainlet.is_ready()
+    #
     # def predict(
     #     self, inputs: TextToNumInput, request: starlette.requests.Request
     # ) -> TextToNumOutput:
