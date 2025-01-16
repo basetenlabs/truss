@@ -306,7 +306,7 @@ def test_custom_health_checks_chain():
             response = requests.get(health_check_url)
             response.status_code == 200
             container_logs = get_container_logs_from_prefix(entrypoint.name)
-            assert "Model is not ready: Health checks failing" not in container_logs
+            assert "Health check failed." not in container_logs
 
             # Start failing health checks
             response = service.run_remote({"fail": True})
