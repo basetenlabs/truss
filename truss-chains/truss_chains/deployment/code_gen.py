@@ -465,7 +465,7 @@ def _gen_health_check_src(
     src = (
         f"{def_str} is_ready(self) -> Optional[bool]:\n"
         f"""{_indent('if hasattr(self, "_chainlet"):')}"""
-        f"""{_indent(f'return {maybe_await}self._chainlet.is_ready()')}"""
+        f"""{_indent(f"return {maybe_await}self._chainlet.is_ready()")}"""
     )
     return _Source(src=src)
 
