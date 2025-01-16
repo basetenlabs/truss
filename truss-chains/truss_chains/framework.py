@@ -336,24 +336,29 @@ def _validate_streaming_output_type(
     )
 
 
-def _validate_endpoint_params(
-    params: list[inspect.Parameter], location: _ErrorLocation
-) -> list[definitions.InputArg]:
+def _validate_method_signature(
+    method_name: str, location: _ErrorLocation, params: list[inspect.Parameter]
+) -> None:
     if len(params) == 0:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"`{method_name}` must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
             "first argument. Got function with no arguments.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
-        return []
-    if params[0].name != definitions.SELF_ARG_NAME:
+    elif params[0].name != definitions.SELF_ARG_NAME:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"`{method_name}` must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
             f"first argument. Got `{params[0].name}` as first argument.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
+
+
+def _validate_endpoint_params(
+    params: list[inspect.Parameter], location: _ErrorLocation
+) -> list[definitions.InputArg]:
+    _validate_method_signature(definitions.ENDPOINT_METHOD_NAME, location, params)
     input_args = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
@@ -770,7 +775,7 @@ def _validate_health_check(
     health_check_method = getattr(cls, definitions.HEALTH_CHECK_NAME)
     if not inspect.isfunction(health_check_method):
         _collect_error(
-            f"`{cls.name}.{definitions.HEALTH_CHECK_NAME}` must be a method.",
+            f"`{definitions.HEALTH_CHECK_NAME}` must be a method.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
@@ -780,34 +785,13 @@ def _validate_health_check(
     location = location.model_copy(
         update={"line": line, "method_name": definitions.HEALTH_CHECK_NAME}
     )
-    if not inspect.isfunction(health_check_method):
-        _collect_error(
-            f"`{cls.name}.{definitions.HEALTH_CHECK_NAME}` must be a method.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return None
     is_async = inspect.iscoroutinefunction(health_check_method)
     signature = inspect.signature(health_check_method)
     params = list(signature.parameters.values())
-    if len(params) == 0:
-        _collect_error(
-            f"Health check must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
-            "first argument. Got function with no arguments.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return None
-    if params[0].name != definitions.SELF_ARG_NAME:
-        _collect_error(
-            f"Health check must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
-            f"first argument. Got `{params[0].name}` as first argument.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
+    _validate_method_signature(definitions.HEALTH_CHECK_NAME, location, params)
     if len(params) > 1:
         _collect_error(
-            f"Health check must have only one argument: `{definitions.SELF_ARG_NAME}`.",
+            f"`{definitions.HEALTH_CHECK_NAME}` must have only one argument: `{definitions.SELF_ARG_NAME}`.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
@@ -1057,9 +1041,9 @@ def _create_modified_init_for_local(
                     if len(name_parts) > 1:
                         init_owner_class = name_parts[-2]
                 elif func_name == _INIT_LOCAL_NAME:
-                    assert (
-                        "init_owner_class" in local_vars
-                    ), f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
+                    assert "init_owner_class" in local_vars, (
+                        f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
+                    )
                     init_owner_class = local_vars["init_owner_class"].__name__
 
                 if init_owner_class:

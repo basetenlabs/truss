@@ -282,7 +282,7 @@ def test_raises_unsupported_arg_type_str_annot():
 def test_raises_endpoint_no_method():
     match = (
         rf"{TEST_FILE}:\d+ \(StaticMethod\.run_remote\) \[kind: TYPE_ERROR\].*"
-        r"Endpoint must be a method"
+        r"`run_remote` must be a method"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -296,7 +296,7 @@ def test_raises_endpoint_no_method():
 def test_raises_endpoint_no_method_arg():
     match = (
         rf"{TEST_FILE}:\d+ \(StaticMethod\.run_remote\) \[kind: TYPE_ERROR\].*"
-        r"Endpoint must be a method"
+        r"`run_remote` must be a method"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -559,7 +559,7 @@ def test_raises_iterator_no_arg():
 
 
 def test_raises_is_ready_not_a_method():
-    match = rf"{TEST_FILE}:\d+ \(IsReadyNotMethod\) \[kind: TYPE_ERROR\].* `IsReadyNotMethod.is_ready` must be a method."
+    match = rf"{TEST_FILE}:\d+ \(IsReadyNotMethod\) \[kind: TYPE_ERROR\].* `is_ready` must be a method."
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
@@ -573,7 +573,7 @@ def test_raises_is_ready_not_a_method():
 def test_raises_is_ready_no_arg():
     match = (
         rf"{TEST_FILE}:\d+ \(IsReadyNoArg\.is_ready\) \[kind: TYPE_ERROR\].*"
-        r"Health check must be a method, i.e. with `self` as first argument. Got function with no arguments."
+        r"`is_ready` must be a method, i.e. with `self` as first argument. Got function with no arguments."
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -589,7 +589,7 @@ def test_raises_is_ready_no_arg():
 def test_raises_is_ready_first_arg_not_self():
     match = (
         rf"{TEST_FILE}:\d+ \(IsReadyNoSelfArg\.is_ready\) \[kind: TYPE_ERROR\].*"
-        r"Health check must be a method, i.e. with `self` as first argument. Got `hi` as first argument."
+        r"`is_ready` must be a method, i.e. with `self` as first argument. Got `hi` as first argument."
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -603,7 +603,7 @@ def test_raises_is_ready_first_arg_not_self():
 
 
 def test_raises_is_ready_multiple_args():
-    match = rf"{TEST_FILE}:\d+ \(IsReadyManyArgs\.is_ready\) \[kind: TYPE_ERROR\].* Health check must have only one argument: `self`."
+    match = rf"{TEST_FILE}:\d+ \(IsReadyManyArgs\.is_ready\) \[kind: TYPE_ERROR\].* `is_ready` must have only one argument: `self`."
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
