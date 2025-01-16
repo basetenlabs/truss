@@ -517,7 +517,7 @@ class ModelWrapper:
                                 self._environment = environment_json
                 except Exception as e:
                     self._logger.exception(
-                        "Exception while setting up environment: " + str(e),
+                        f"Exception while setting up environment: {str(e)}",
                         exc_info=errors.filter_traceback(self._model_file_name),
                     )
 
@@ -535,7 +535,7 @@ class ModelWrapper:
         except Exception as e:
             is_ready = False
             self._logger.exception(
-                "Exception while checking if model is ready: " + str(e),
+                f"Exception while checking if model is ready: {str(e)}",
                 exc_info=errors.filter_traceback(self._model_file_name),
             )
         if not is_ready and self.ready:
@@ -601,7 +601,7 @@ class ModelWrapper:
                     await queue.put(chunk)
             except Exception as e:
                 self._logger.exception(
-                    "Exception while generating streamed response: " + str(e),
+                    f"Exception while generating streamed response: {str(e)}",
                     exc_info=errors.filter_traceback(self._model_file_name),
                 )
             finally:
