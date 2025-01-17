@@ -68,7 +68,6 @@ fn lazy_data_resolve(download_dir: String, num_workers: usize) -> PyResult<()> {
 
 /// Asynchronous implementation of the lazy data resolver logic.
 async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
-    println!("[INFO] Starting lazy_data_resolve_async()");
     println!(
         "[INFO] Checking if manifest file at `{}` exists...",
         LAZY_DATA_RESOLVER_PATH

@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "truss_transfer"
+authors = [  {name = "Michael Feil", email = "no-reply@baseten.co"},]
 description = "Speed up file transfers with the B10 Infra."
 readme = "README.md"
 license = "MIT"

@@ -11,9 +11,8 @@ pip install truss_transfer
 ```python
 import truss_transfer
 
-
 def lazy_data_loader(download_dir: str, num_workers: int = 4):
-    print(f"download using {truss_transfer.__version__})
+    print(f"download using {truss_transfer.__version__}")
     try:
         truss_transfer.lazy_data_resolve(str(download_dir), int(num_workers))
     except Exception as e:
@@ -44,7 +43,7 @@ pip install maturin==1.7.8
 This will build you the wheels for your current `python3 --version`.
 The output should look like this:
 ```
-maturin build --relase
+maturin build --release
 🔗 Found pyo3 bindings
 🐍 Found CPython 3.9 at /workspace/model-performance/michaelfeil/.asdf/installs/python/3.9.21/bin/python3
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.75s
