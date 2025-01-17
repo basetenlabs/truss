@@ -1,5 +1,4 @@
 name: Build and Release truss-transfer CLI
-# relases a new version of the CLI binary on each Github release
 
 on:
   release:
@@ -18,31 +17,36 @@ jobs:
   build-and-upload-cli:
     name: Build and Upload CLI Binary
     runs-on: ubuntu-latest
-
+    env:
+      VERSION: ${{ github.ref_name }}     # or ${GITHUB_REF##*/}, see note below
+      OS: linux
+      ARCH: x86_64
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust with musl target
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           components: rust-src
 
-      - name: Build CLI Binary
+      - name: Add musl Target
+        run: rustup target add x86_64-unknown-linux-musl
+
+      - name: Build Statically Linked CLI Binary
         run: |
-          cargo build --release --features cli
+          cargo build --release --target x86_64-unknown-linux-musl --features cli --bin truss_transfer_cli
           mkdir -p dist/cli
-          cp target/release/truss_transfer_cli dist/cli/
+          cp target/x86_64-unknown-linux-musl/release/truss_transfer_cli dist/cli/truss_transfer_cli-${VERSION}-${OS}-${ARCH}
 
       - name: Test CLI Binary
         run: |
           sudo mkdir -p /bptr
           sudo chown $(whoami):$(whoami) /bptr
-          cp ./exampe-bptr-manifest.json /bptr/bptr-manifest
-          dist/cli/truss_transfer_cli ./example_bptr_resolved
-          # test files are created in example_bptr_resolved
+          cp ./example-bptr-manifest.json /bptr/bptr-manifest
+          dist/cli/truss_transfer_cli-${VERSION}-${OS}-${ARCH} ./example_bptr_resolved
           if [ ! -d "./example_bptr_resolved" ]; then
             echo "❌ Test failed: output directory not created."
             exit 1
@@ -51,6 +55,6 @@ jobs:
       - name: Upload CLI to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: truss-transfer/dist/cli/truss_transfer_cli
+          files: truss-transfer/dist/cli/truss_transfer_cli-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

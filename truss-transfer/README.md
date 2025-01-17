@@ -22,11 +22,15 @@ def lazy_data_loader(download_dir: str):
 
 ### Running the CLI as binary
 
+Compiling the libary as musl-linux target
 ```
 # To build with cargo:
-cargo build --release --bin truss_transfer_cli --features cli
+cargo build --release --target x86_64-unknown-linux-musl --features cli --bin truss_transfer_cli
+```
+
+```
 # To run the binary
-./target/release/truss_transfer_cli /tmp/ptr 4
+./target/x86_64-unknown-linux-musl/release/truss_transfer_cli /tmp/ptr
 ```
 
 ### Building a wheel from source
