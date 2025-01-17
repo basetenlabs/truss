@@ -4,17 +4,17 @@ Python-optional download utility
 
 
 ```base
-pip install truss_transfer
+pip install truss-transfer
 # pip install /workspace/model-performance/michaelfeil/truss/truss-transfer/target/wheels/truss_transfer-0.1.0-cp39-cp39-manylinux_2_34_x86_64.whl
 ```
 
 ```python
 import truss_transfer
 
-def lazy_data_loader(download_dir: str, num_workers: int = 64):
+def lazy_data_loader(download_dir: str):
     print(f"download using {truss_transfer.__version__}")
     try:
-        truss_transfer.lazy_data_resolve(str(download_dir), int(num_workers))
+        truss_transfer.lazy_data_resolve(str(download_dir))
     except Exception as e:
         print(f"Lazy data resolution failed: {e}")
         raise
