@@ -37,6 +37,7 @@ jobs:
       - name: Try download github file
         run: |
           sudo mkdir -p /bptr
+          sudo chown $(whoami):$(whoami) /bptr
           cp ./exampe-bptr-manifest.json /bptr/exampe-bptr-manifest
 
           source .venv/bin/activate
