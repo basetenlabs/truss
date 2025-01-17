@@ -1,4 +1,5 @@
 name: Build and Release truss-transfer CLI
+# relases a new version of the CLI binary on each Github release
 
 on:
   release:
