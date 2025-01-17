@@ -147,13 +147,13 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: 'true'
-      - name: Build free-threaded wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist -i python3.13t
-          sccache: 'true'
-          working-directory: truss-transfer
+      # - name: Build free-threaded wheels
+      #   uses: PyO3/maturin-action@v1
+      #   with:
+      #     target: ${{ matrix.platform.target }}
+      #     args: --release --out dist -i python3.13t
+      #     sccache: 'true'
+      #     working-directory: truss-transfer
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
