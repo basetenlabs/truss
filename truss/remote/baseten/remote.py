@@ -33,6 +33,7 @@ from truss.remote.baseten.core import (
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_truss,
+    validate_truss_config,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
@@ -180,6 +181,8 @@ class BasetenRemote(TrussRemote):
         encoded_config_str = base64_encoded_json_str(
             gathered_truss._spec._config.to_dict()
         )
+
+        validate_truss_config(self._api, encoded_config_str)
 
         return FinalPushData(
             model_name=model_name,
