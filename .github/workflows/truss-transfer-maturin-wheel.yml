@@ -71,6 +71,8 @@ jobs:
                 echo "No supported package manager found. Install OpenSSL manually."
                 exit 1
             fi
+        env:
+          CROSS_OPENSSL_DIR: /usr
       # - name: Build free-threaded wheels
       #   uses: PyO3/maturin-action@v1
       #   with:
@@ -122,6 +124,8 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: musllinux_1_2
+        env:
+          CROSS_OPENSSL_DIR: /usr
       # - name: Build free-threaded wheels
       #   uses: PyO3/maturin-action@v1
       #   with:
@@ -166,6 +170,8 @@ jobs:
           #     target: ${{ matrix.platform.target }}
           #     args: --release --out dist -i python3.13t
           #     sccache: 'true'
+        env:
+          CROSS_OPENSSL_DIR: /usr
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -196,6 +202,8 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: 'true'
+        env:
+          CROSS_OPENSSL_DIR: /usr
       # - name: Build free-threaded wheels
       #   uses: PyO3/maturin-action@v1
       #   with:
