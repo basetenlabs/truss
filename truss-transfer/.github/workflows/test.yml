@@ -1,0 +1,42 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: huggingface/huggingface_hub
+          path: huggingface_hub
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Create venv
+        run: python3 -m venv .venv
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          sccache: 'true'
+      - name: Install huggingface_hub dependencies
+        run: |
+          source .venv/bin/activate
+          python3 -m pip install -e 'huggingface_hub[testing]'
+      - name: Run tests
+        run: |
+          source .venv/bin/activate
+          HF_HUB_ENABLE_HF_TRANSFER=1 pytest huggingface_hub/tests/test_file_download.py
+          HF_HUB_ENABLE_HF_TRANSFER=1 pytest huggingface_hub/tests/test_hf_api.py -k 'test_upload_lfs_file_multipart'
