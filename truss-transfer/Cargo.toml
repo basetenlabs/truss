@@ -1,0 +1,29 @@
+[package]
+name = "truss_transfer"
+version = "0.0.1-rc0"
+edition = "2021"
+
+[lib]
+name = "truss_transfer"
+crate-type = ["cdylib"]  # For PyO3
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+bytes = "1.5"
+pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38"] }
+reqwest = { version = "0.12.2", features = ["stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
+openssl = { version = "0.10", features = ["vendored"] }
+
+[features]
+cli = [] # For the CLI
+
+[[bin]]
+name = "truss_transfer_cli"
+# This bin is only built if you do `cargo build --bin truss_transfer_cli --features cli`
+path = "src/lib.rs"
+required-features = ["cli"]
