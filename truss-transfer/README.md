@@ -22,7 +22,7 @@ def lazy_data_loader(download_dir: str):
 
 ### Running the CLI as binary
 
-Compiling the libary as musl-linux target
+Compiling the libary as musl-linux target for cross-platform usage.
 ```
 # To build with cargo:
 cargo build --release --target x86_64-unknown-linux-musl --features cli --bin truss_transfer_cli
