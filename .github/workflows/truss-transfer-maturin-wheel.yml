@@ -62,9 +62,9 @@ jobs:
           manylinux: auto
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
-                apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
+                apt-get update && apt-get install -y pkg-config libssl-dev libatomic-ops-dev -y
             elif command -v yum &> /dev/null; then
-                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+                yum install -y pkgconf openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd
             else
                 echo "Neither apt-get nor yum is installed. Please install a package manager."
                 exit 1
