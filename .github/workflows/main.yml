@@ -69,6 +69,9 @@ jobs:
     needs: [detect-version-changed]
     if: ${{ !failure() && !cancelled() && needs.detect-version-changed.outputs.release_version == 'true' && needs.detect-version-changed.outputs.is_prerelease_version == 'true' }}
     runs-on: ubuntu-22.04
+    permissions:
+      # this permission is mandatory for Trusted Publishing
+      id-token: write
     steps:
       - name: "Git tag release"
         uses: actions/checkout@v4
