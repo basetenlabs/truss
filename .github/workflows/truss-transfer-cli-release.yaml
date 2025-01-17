@@ -10,6 +10,10 @@ permissions:
   contents: write
   id-token: write
 
+defaults:
+  run:
+    working-directory: truss-transfer
+
 jobs:
   build-and-upload-cli:
     name: Build and Upload CLI Binary
@@ -47,6 +51,6 @@ jobs:
       - name: Upload CLI to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/cli/truss_transfer_cli
+          files: truss-transfer/dist/cli/truss_transfer_cli
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
