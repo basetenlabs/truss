@@ -97,6 +97,8 @@ jobs:
           skipIfReleaseExists: true
           tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
 
-      - name: Publish to PyPI
-        if: ${{ github.event_name != 'pull_request' }}
-        run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
+      - name: Publish package to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          print-hash: true
