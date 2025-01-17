@@ -352,18 +352,11 @@ class ChainletOptions(SafeModelNonSerializable):
           It is independent of a potentially user-configured tracing instrumentation.
           Turning this on, could add performance overhead.
         env_variables: static environment variables available to the deployed chainlet.
+        health_checks: Configures health checks for the chainlet.
     """
 
     enable_b10_tracing: bool = False
     env_variables: Mapping[str, str] = {}
-
-
-class Runtime(SafeModelNonSerializable):
-    """Configures runtime options for a chainlet.
-    Args:
-        health_checks: Configures health checks for the chainlet.
-    """
-
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
@@ -397,7 +390,6 @@ class RemoteConfig(SafeModelNonSerializable):
     assets: Assets = Assets()
     name: Optional[str] = None
     options: ChainletOptions = ChainletOptions()
-    runtime: Runtime = Runtime()
 
     def get_compute_spec(self) -> ComputeSpec:
         return self.compute.get_spec()
