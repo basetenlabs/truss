@@ -35,7 +35,7 @@ Prerequisites:
 ```sh
 # apt-get install patchelf
 # Install rust via Rustup https://www.rust-lang.org/tools/install
-pip install maturin==1.7.8
+pip install maturin==1.8.1
 ```
 
 This will build you the wheels for your current `python3 --version`.
