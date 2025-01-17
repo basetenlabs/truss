@@ -208,9 +208,6 @@ jobs:
 
   sdist:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: truss-transfer
     steps:
       - uses: actions/checkout@v4
       - name: Build sdist
