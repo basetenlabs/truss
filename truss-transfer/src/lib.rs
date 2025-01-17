@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
-use futures_util::stream::{FuturesUnordered, StreamExt};  // <-- from futures-util
+use futures_util::stream::{FuturesUnordered, StreamExt}; // <-- from futures-util
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -280,7 +280,7 @@ fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
         // Optionally check if the symlink points to the correct file
         return Ok(());
     }
-    std::os::unix::fs::symlink(src, dst)?;  // Direct usage
+    std::os::unix::fs::symlink(src, dst)?; // Direct usage
     Ok(())
 }
 
@@ -289,14 +289,17 @@ fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
     if dst.exists() {
         return Ok(());
     }
-    std::os::windows::fs::symlink_file(src, dst)?;  // Direct usage
+    std::os::windows::fs::symlink_file(src, dst)?; // Direct usage
     Ok(())
 }
 
 /// running the CLI directly.
 #[cfg(feature = "cli")]
 fn main() -> anyhow::Result<()> {
-    println!("[INFO] truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
+    println!(
+        "[INFO] truss_transfer_cli, version: {}",
+        env!("CARGO_PKG_VERSION")
+    );
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
