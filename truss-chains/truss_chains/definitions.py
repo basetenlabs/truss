@@ -352,10 +352,12 @@ class ChainletOptions(SafeModelNonSerializable):
           It is independent of a potentially user-configured tracing instrumentation.
           Turning this on, could add performance overhead.
         env_variables: static environment variables available to the deployed chainlet.
+        health_checks: Configures health checks for the chainlet.
     """
 
     enable_b10_tracing: bool = False
     env_variables: Mapping[str, str] = {}
+    health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
 class ChainletMetadata(SafeModelNonSerializable):
