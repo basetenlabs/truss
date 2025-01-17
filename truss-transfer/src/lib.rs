@@ -241,7 +241,7 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
         async_fs::create_dir_all(parent).await?;
     }
 
-    println!("[INFO] Starting download from {url} to {:?}", path);
+    println!("[INFO] Starting download to {:?}", path);
 
     // Start the request
     let resp = client.get(url).send().await?.error_for_status()?;
