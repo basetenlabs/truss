@@ -12,7 +12,7 @@ anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 bytes = "1.5"
-pyo3 = { version = "0.18", features = ["extension-module", "abi3-py38"] }
+pyo3 = { version = "0.20", features = ["extension-module", "abi3-py38"] }
 reqwest = { version = "0.12.2", features = ["stream"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
