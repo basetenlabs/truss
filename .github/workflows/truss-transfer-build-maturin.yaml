@@ -32,8 +32,8 @@ jobs:
             target: aarch64
           - runner: ubuntu-22.04
             target: armv7
-          - runner: ubuntu-22.04
-            target: s390x
+            # - runner: ubuntu-22.04
+            #   target: s390x
           - runner: ubuntu-22.04
             target: ppc64le
     steps:
@@ -46,9 +46,34 @@ jobs:
         with:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist
           sccache: 'true'
           manylinux: auto
+          before-script-linux: |
+            if command -v apt-get &> /dev/null; then
+                apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
+            elif command -v yum &> /dev/null; then
+                yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+            else
+                echo "Neither apt-get nor yum is installed. Please install a package manager."
+                exit 1
+            fi
+      # - name: Build free-threaded wheels
+      #   uses: PyO3/maturin-action@v1
+      #   with:
+      #     target: ${{ matrix.platform.target }}
+      #     args: --release --out dist -i python3.13t
+      #     sccache: 'true'
+      #     manylinux: auto
+      #     before-script-linux: |
+      #       if command -v apt-get &> /dev/null; then
+      #           apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
+      #       elif command -v yum &> /dev/null; then
+      #           yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
+      #       else
+      #           echo "Neither apt-get nor yum is installed. Please install a package manager."
+      #           exit 1
+      #       fi
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -81,6 +106,13 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: musllinux_1_2
+      # - name: Build free-threaded wheels
+      #   uses: PyO3/maturin-action@v1
+      #   with:
+      #     target: ${{ matrix.platform.target }}
+      #     args: --release --out dist -i python3.13t
+      #     sccache: 'true'
+      #     manylinux: musllinux_1_2
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -107,8 +139,14 @@ jobs:
         with:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist
           sccache: 'true'
+          # - name: Build free-threaded wheels
+          #   uses: PyO3/maturin-action@v1
+          #   with:
+          #     target: ${{ matrix.platform.target }}
+          #     args: --release --out dist -i python3.13t
+          #     sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -136,6 +174,12 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: 'true'
+      # - name: Build free-threaded wheels
+      #   uses: PyO3/maturin-action@v1
+      #   with:
+      #     target: ${{ matrix.platform.target }}
+      #     args: --release --out dist -i python3.13t
+      #     sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
