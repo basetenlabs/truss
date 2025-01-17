@@ -7,7 +7,7 @@ Python-optional download utility
 Prerequisites
 ```sh
 # apt-get install patchelf
-# Install rust via Rustup https://www.rust-lang.org/tools/install 
+# Install rust via Rustup https://www.rust-lang.org/tools/install
 pip install maturin
 ```
 

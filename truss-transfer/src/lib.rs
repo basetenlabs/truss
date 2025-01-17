@@ -298,7 +298,7 @@ fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
 /// running the CLI directly.
 #[cfg(feature = "cli")]
 fn main() -> anyhow::Result<()> {
-    println!("[INFO] CLI mode enabled.");
+    println!("[INFO] truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
