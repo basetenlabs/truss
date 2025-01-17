@@ -48,9 +48,9 @@ struct BasetenPointerManifest {
 }
 
 /// Python-callable function to read the manifest and download data.
-/// By default, uses 4 concurrent workers if you don't specify `num_workers`.
+/// By default, uses 64 concurrent workers if you don't specify `num_workers`.
 #[pyfunction]
-#[pyo3(signature = (download_dir, num_workers=4))]
+#[pyo3(signature = (download_dir, num_workers=64))]
 fn lazy_data_resolve(download_dir: String, num_workers: usize) -> PyResult<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -308,7 +308,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let download_dir = &args[1];
-    let num_workers = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(4);
+    let num_workers = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(64);
 
     println!(
         "[INFO] Invoking lazy_data_resolve_async with download_dir='{download_dir}' and num_workers={num_workers}"
@@ -325,7 +325,7 @@ fn main() -> anyhow::Result<()> {
 
 /// Python module definition
 #[pymodule]
-fn truss_transfer(_py: Python, m: &PyModule) -> PyResult<()> {
+fn truss_transfer(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lazy_data_resolve, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
