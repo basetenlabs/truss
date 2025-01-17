@@ -27,10 +27,16 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: truss-transfer  # <-- Added
+          working-directory: truss-transfer
           command: develop
           sccache: 'true'
       - name: Try import truss-transfer-maturin-publish
         run: |
           source .venv/bin/activate
           python -c "import truss_transfer; print(truss_transfer.__version__)"
+      - name: Try download github file
+        run: |
+          source .venv/bin/activate
+          mkdir -p /bptr
+          cp ./exampe-bptr-manifest.json /bptr/exampe-bptr-manifest
+          python -c "import truss_transfer; truss_transfer.lazy_data_resolve("/tmp", 1)""
