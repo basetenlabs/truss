@@ -45,6 +45,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Set RING_PREGENERATE_ASM for ARM builds
+        if: ${{ matrix.platform.target == 'aarch64' || matrix.platform.target == 'armv7' }}
+        run: echo "RING_PREGENERATE_ASM=false" >> $GITHUB_ENV
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
