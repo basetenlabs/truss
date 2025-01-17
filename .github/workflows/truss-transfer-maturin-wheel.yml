@@ -23,12 +23,15 @@ permissions:
   contents: read
 
 defaults:
-      run:
-        working-directory: truss-transfer
+  run:
+    working-directory: truss-transfer
 
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
+    defaults:
+      run:
+        working-directory: truss-transfer
     strategy:
       matrix:
         platform:
@@ -90,6 +93,9 @@ jobs:
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
+    defaults:
+      run:
+        working-directory: truss-transfer
     strategy:
       matrix:
         platform:
@@ -245,5 +251,6 @@ jobs:
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         with:
+          working-directory: truss-transfer
           command: upload
           args: --non-interactive --skip-existing wheels-*/*
