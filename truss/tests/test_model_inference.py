@@ -998,7 +998,7 @@ def test_is_healthy():
     model = """
     class Model:
         def is_healthy(self) -> bool:
-            raise Exception("not ready")
+            raise Exception("not healthy")
 
         def predict(self, model_input):
             return model_input
@@ -1016,7 +1016,8 @@ def test_is_healthy():
         healthy = requests.get(f"{truss_server_addr}/v1/models/model")
         assert healthy.status_code == 503
         assert (
-            "Exception while checking if model is ready: not ready" in container.logs()
+            "Exception while checking if model is healthy: not healthy"
+            in container.logs()
         )
         assert "Health check failed." in container.logs()
 
@@ -1067,7 +1068,7 @@ def test_is_healthy():
             self._healthy = True
 
         def is_healthy(self):
-            return self._ready
+            return self._healthy
 
         def predict(self, model_input):
             self._healthy = model_input["healthy"]
