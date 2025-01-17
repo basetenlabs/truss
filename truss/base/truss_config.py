@@ -42,8 +42,6 @@ DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
 DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
-MAX_FAILURE_THRESHOLD_SECONDS = 1800
-MIN_FAILURE_THRESHOLD_SECONDS = 30
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
@@ -850,7 +848,7 @@ def obj_to_dict(obj, verbose: bool = False):
                     field_curr_value, lambda data: data.to_dict()
                 )
             elif isinstance(field_curr_value, HealthChecks):
-                d[field_name] = transform_optional(
+                d["health_checks"] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
             else:
