@@ -22,9 +22,7 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: truss-transfer
+
 
 jobs:
   linux:
