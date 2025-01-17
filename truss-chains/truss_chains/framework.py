@@ -11,7 +11,9 @@ import logging
 import os
 import pathlib
 import pprint
+import shutil
 import sys
+import tempfile
 import types
 import warnings
 from importlib.abc import Loader
@@ -34,9 +36,11 @@ from typing import (
 )
 
 import pydantic
+from truss.truss_handle.truss_handle import TrussHandle
 from typing_extensions import ParamSpec
 
 from truss_chains import definitions, utils
+from truss_chains.deployment.code_gen import write_truss_config_yaml
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -1322,3 +1326,28 @@ def _cleanup_module_imports(
     logging.debug(f"Deleting modules when exiting import context: {modules_to_delete}")
     for mod in modules_to_delete:
         del sys.modules[mod]
+
+
+# NB(nikhil): Generates a TrussHandle whose spec points to a generated
+# directory that contains data dumped from the configuration in code.
+def truss_handle_from_code_config(model_file: pathlib.Path) -> TrussHandle:
+    # TODO(nikhil): Improve detection of directory structure, since right now
+    # we assume the traditional model/model.py format.
+    root_dir = model_file.absolute().parent.parent
+    with import_model_target(model_file) as entrypoint_cls:
+        tmp_dir = _copy_to_generated_dir(root_dir)
+        write_truss_config_yaml(
+            chainlet_dir=tmp_dir,
+            chains_config=entrypoint_cls.remote_config,
+            model_name=entrypoint_cls.display_name,
+        )
+
+        return TrussHandle(truss_dir=tmp_dir)
+
+
+def _copy_to_generated_dir(root_dir: pathlib.Path) -> pathlib.Path:
+    tmp_dir = pathlib.Path(tempfile.gettempdir()) / definitions.GENERATED_CODE_DIR
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    shutil.copytree(root_dir, tmp_dir)
+    return tmp_dir
