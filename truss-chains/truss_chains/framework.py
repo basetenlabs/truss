@@ -361,7 +361,7 @@ def _validate_method_signature(
 def _validate_endpoint_params(
     params: list[inspect.Parameter], location: _ErrorLocation
 ) -> list[definitions.InputArg]:
-    _validate_method_signature(definitions.ENDPOINT_METHOD_NAME, location, params)
+    _validate_method_signature(definitions.RUN_REMOTE_METHOD_NAME, location, params)
     input_args = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
@@ -759,13 +759,13 @@ def _validate_health_check(
     * Must not define any parameters other than `self`.
     * Must return a boolean.
     """
-    if not hasattr(cls, definitions.HEALTH_CHECK_NAME):
+    if not hasattr(cls, definitions.HEALTH_CHECK_METHOD_NAME):
         return None
 
-    health_check_method = getattr(cls, definitions.HEALTH_CHECK_NAME)
+    health_check_method = getattr(cls, definitions.HEALTH_CHECK_METHOD_NAME)
     if not inspect.isfunction(health_check_method):
         _collect_error(
-            f"`{definitions.HEALTH_CHECK_NAME}` must be a method.",
+            f"`{definitions.HEALTH_CHECK_METHOD_NAME}` must be a method.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
@@ -773,15 +773,15 @@ def _validate_health_check(
 
     line = inspect.getsourcelines(health_check_method)[1]
     location = location.model_copy(
-        update={"line": line, "method_name": definitions.HEALTH_CHECK_NAME}
+        update={"line": line, "method_name": definitions.HEALTH_CHECK_METHOD_NAME}
     )
     is_async = inspect.iscoroutinefunction(health_check_method)
     signature = inspect.signature(health_check_method)
     params = list(signature.parameters.values())
-    _validate_method_signature(definitions.HEALTH_CHECK_NAME, location, params)
+    _validate_method_signature(definitions.HEALTH_CHECK_METHOD_NAME, location, params)
     if len(params) > 1:
         _collect_error(
-            f"`{definitions.HEALTH_CHECK_NAME}` must have only one argument: `{definitions.SELF_ARG_NAME}`.",
+            f"`{definitions.HEALTH_CHECK_METHOD_NAME}` must have only one argument: `{definitions.SELF_ARG_NAME}`.",
             _ErrorKind.TYPE_ERROR,
             location,
         )

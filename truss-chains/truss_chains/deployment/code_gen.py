@@ -543,9 +543,6 @@ def _gen_truss_chainlet_model(
 
     load_src = _gen_load_src(chainlet_descriptor)
     imports.update(load_src.imports)
-    health_check_src = None
-    if chainlet_descriptor.health_check is not None:
-        health_check_src = _gen_health_check_src(chainlet_descriptor.health_check)
     predict_src = _gen_predict_src(chainlet_descriptor)
     imports.update(predict_src.imports)
 
@@ -553,7 +550,9 @@ def _gen_truss_chainlet_model(
         libcst.parse_statement(load_src.src),
         libcst.parse_statement(predict_src.src),
     ]
-    if health_check_src:
+
+    if chainlet_descriptor.health_check is not None:
+        health_check_src = _gen_health_check_src(chainlet_descriptor.health_check)
         new_body.extend([libcst.parse_statement(health_check_src.src)])
 
     user_chainlet_ref = _gen_chainlet_import_and_ref(chainlet_descriptor)
