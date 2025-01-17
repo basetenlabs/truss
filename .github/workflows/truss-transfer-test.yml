@@ -1,4 +1,4 @@
-name: Test truss-transfer import
+name: Test truss-transfer
 
 on:
   push:
@@ -41,6 +41,6 @@ jobs:
           cp ./exampe-bptr-manifest.json /bptr/exampe-bptr-manifest
 
           source .venv/bin/activate
-          python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test', 1)""
+          python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test', 1)"
           export BASETEN_FS_ENABLED=True
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test', 1)"

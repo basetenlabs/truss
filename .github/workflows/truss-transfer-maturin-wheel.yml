@@ -3,7 +3,7 @@
 #
 #    maturin generate-ci github
 
-name: truss-transfer-maturin-publish
+name: truss-transfer-maturin-wheel
 
 on:
   push:
