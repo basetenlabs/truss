@@ -64,9 +64,9 @@ jobs:
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install -y pkg-config libssl-dev libatomic-ops-dev
             elif command -v yum &> /dev/null; then
-                yum install -y pkgconf openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd
+                yum install -y pkgconfig openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd
             elif command -v dnf &> /dev/null; then
-                dnf install -y pkgconf openssl-devel libatomic
+                dnf install -y pkgconfig openssl-devel libatomic
             elif command -v apk &> /dev/null; then
                 apk add --no-cache pkgconf openssl-dev
             else
