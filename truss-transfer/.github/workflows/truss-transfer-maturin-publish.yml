@@ -3,7 +3,7 @@
 #
 #    maturin generate-ci github
 #
-name: CI
+name: truss-transfer-maturin-publish
 
 on:
   push:
@@ -17,6 +17,10 @@ on:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    working-directory: truss-transfer
 
 jobs:
   linux:

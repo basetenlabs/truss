@@ -10,8 +10,15 @@ pip install truss_transfer
 
 ```python
 import truss_transfer
-print(f"downloading using version: {truss_transfer.__version__}")
-truss_transfer.lazy_data_resolve(download_dir=str("/tmp"), num_workers=int(4))
+
+
+def lazy_data_loader(download_dir: str, num_workers: int = 4):
+    print(f"download using {truss_transfer.__version__})
+    try:
+        truss_transfer.lazy_data_resolve(str(download_dir), int(num_workers))
+    except Exception as e:
+        print(f"Lazy data resolution failed: {e}")
+        raise
 ```
 
 ### Installing the CLI as binary
@@ -25,18 +32,17 @@ cargo build --release --bin truss_transfer_cli --features cli
 ./target/release/truss_transfer_cli /tmp/ptr 4
 ```
 
-
 ### Building a wheel from source
 
 Prerequisites:
 ```sh
-python3 --version
 # apt-get install patchelf
 # Install rust via Rustup https://www.rust-lang.org/tools/install
-pip install maturin
+pip install maturin==1.7.8
 ```
 
-This will build you the wheels for your current `python3 --version`
+This will build you the wheels for your current `python3 --version`.
+The output should look like this:
 ```
 maturin build --relase
 🔗 Found pyo3 bindings
