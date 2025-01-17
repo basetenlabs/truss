@@ -34,7 +34,7 @@ jobs:
         run: |
           source .venv/bin/activate
           python -c "import truss_transfer; print(truss_transfer.__version__)"
-      - name: Try download github file
+      - name: Download github file & test real bptr resolution
         run: |
           sudo mkdir -p /bptr
           sudo chown $(whoami):$(whoami) /bptr
