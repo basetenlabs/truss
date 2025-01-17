@@ -46,7 +46,7 @@ jobs:
         with:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: auto
           before-script-linux: |
@@ -139,7 +139,7 @@ jobs:
         with:
           working-directory: truss-transfer
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist --find-interpreter
           sccache: 'true'
           # - name: Build free-threaded wheels
           #   uses: PyO3/maturin-action@v1
