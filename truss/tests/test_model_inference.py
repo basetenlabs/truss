@@ -964,7 +964,7 @@ def test_health_check_configuration():
             tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
 
-    
+
 @pytest.mark.integration
 def test_is_healthy():
     model = """
