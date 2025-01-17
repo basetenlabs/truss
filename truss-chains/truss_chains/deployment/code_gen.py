@@ -31,6 +31,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
 
@@ -711,11 +712,10 @@ def write_truss_config_yaml(
 
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
-    gen_root: pathlib.Path,
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    model_name: str,
-    use_local_chains_src: bool,
+    model_name: Optional[str] = None,
+    use_local_chains_src: bool = False,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
@@ -725,6 +725,7 @@ def gen_truss_chainlet(
             display_name=dep.display_name,
             options=dep.options,
         )
+    gen_root = pathlib.Path(tempfile.gettempdir())
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
     logging.info(
         f"Code generation for Chainlet `{chainlet_descriptor.name}` "
@@ -733,7 +734,7 @@ def gen_truss_chainlet(
     write_truss_config_yaml(
         chainlet_dir=chainlet_dir,
         chains_config=chainlet_descriptor.chainlet_cls.remote_config,
-        model_name=model_name,
+        model_name=model_name or chain_name,
         chainlet_to_service=dep_services,
         use_local_chains_src=use_local_chains_src,
     )

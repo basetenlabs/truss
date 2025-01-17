@@ -131,6 +131,7 @@ class ModelBase(definitions.ABCModel):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
         framework.validate_base_model(cls)
 
 

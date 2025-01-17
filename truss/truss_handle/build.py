@@ -1,9 +1,7 @@
 import logging
 import os
-import shutil
 import sys
 from pathlib import Path
-from tempfile import gettempdir
 from typing import List, Optional
 
 import yaml
@@ -107,36 +105,11 @@ def load(truss_directory: str) -> TrussHandle:
     return TrussHandle(Path(truss_directory))
 
 
-# NB(nikhil): Generates a TrussHandle whose spec points to a generated
-# directory that contains data dumped from the configuration in code.
 def load_from_code_config(model_file: Path) -> TrussHandle:
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains import framework
-    from truss_chains.deployment.code_gen import write_truss_config_yaml
 
-    # TODO(nikhil): Improve detection of directory structure, since right now
-    # we assume the traditional model/model.py format.
-    root_dir = model_file.absolute().parent.parent
-    with framework.import_model_target(model_file) as entrypoint_cls:
-        tmp_dir = _copy_to_generated_dir(root_dir)
-        write_truss_config_yaml(
-            chainlet_dir=tmp_dir,
-            chains_config=entrypoint_cls.remote_config,
-            model_name=entrypoint_cls.display_name,
-        )
-
-        return TrussHandle(truss_dir=tmp_dir)
-
-
-def _copy_to_generated_dir(root_dir: Path) -> Path:
-    # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains.definitions import GENERATED_CODE_DIR
-
-    tmp_dir = Path(gettempdir()) / GENERATED_CODE_DIR
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
-    shutil.copytree(root_dir, tmp_dir)
-    return tmp_dir
+    return framework.truss_handle_from_code_config(model_file)
 
 
 def cleanup() -> None:

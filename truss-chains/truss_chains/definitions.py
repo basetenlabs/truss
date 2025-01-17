@@ -512,6 +512,10 @@ class ABCChainlet(abc.ABC):
     def has_custom_init(cls) -> bool:
         return cls.__init__ is not object.__init__
 
+    @classmethod
+    def truss_type(cls) -> str:
+        return "Chainlet"
+
     @classproperty
     @classmethod
     def name(cls) -> str:
@@ -529,24 +533,10 @@ class ABCChainlet(abc.ABC):
     #     ...
 
 
-class ABCModel(abc.ABC):
-    remote_config: ClassVar[RemoteConfig] = RemoteConfig()
-
-    @classproperty
+class ABCModel(ABCChainlet):
     @classmethod
-    def name(cls) -> str:
-        return cls.__name__
-
-    @classproperty
-    @classmethod
-    def display_name(cls) -> str:
-        return cls.remote_config.name or cls.name
-
-    # Cannot add this abstract method to API, because we want to allow arbitrary
-    # arg/kwarg names and specifying any function signature here would give type errors
-    # @abc.abstractmethod
-    # def predict(self, *args, **kwargs) -> Any:
-    #     ...
+    def truss_type(cls) -> str:
+        return "Chainlet"
 
 
 class TypeDescriptor(SafeModelNonSerializable):
