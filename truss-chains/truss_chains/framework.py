@@ -34,9 +34,11 @@ from typing import (
 )
 
 import pydantic
+from truss.truss_handle.truss_handle import TrussHandle
 from typing_extensions import ParamSpec
 
 from truss_chains import definitions, utils
+from truss_chains.deployment import code_gen
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -730,8 +732,7 @@ class _ChainletInitValidator:
 
 
 def _validate_remote_config(
-    cls: Union[Type[definitions.ABCChainlet], Type[definitions.ABCModel]],
-    truss_type: Literal["Chainlet", "Model"],
+    cls: Type[definitions.ABCChainlet],
     location: _ErrorLocation,
 ):
     if not isinstance(
@@ -739,7 +740,7 @@ def _validate_remote_config(
         definitions.RemoteConfig,
     ):
         _collect_error(
-            f"{truss_type} must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
+            f"{cls.truss_type}s must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
             f"for `{cls}`.",
             _ErrorKind.TYPE_ERROR,
@@ -756,7 +757,7 @@ def validate_and_register_chain(cls: Type[definitions.ABCChainlet]) -> None:
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
 
-    _validate_remote_config(cls, "Chainlet", location)
+    _validate_remote_config(cls, location)
     init_validator = _ChainletInitValidator(cls, location)
     chainlet_descriptor = definitions.ChainletAPIDescriptor(
         chainlet_cls=cls,
@@ -775,7 +776,16 @@ def validate_base_model(cls: Type[definitions.ABCModel]) -> None:
     src_path = os.path.abspath(inspect.getfile(cls))
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line)
-    _validate_remote_config(cls, "Model", location)
+    _validate_remote_config(cls, location)
+
+    base_model_descriptor = definitions.ChainletAPIDescriptor(
+        chainlet_cls=cls,
+        dependencies={},
+        has_context=False,
+        endpoint=_validate_and_describe_endpoint(cls, location),
+        src_path=src_path,
+    )
+    _global_chainlet_registry.register_chainlet(base_model_descriptor)
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1322,3 +1332,20 @@ def _cleanup_module_imports(
     logging.debug(f"Deleting modules when exiting import context: {modules_to_delete}")
     for mod in modules_to_delete:
         del sys.modules[mod]
+
+
+# NB(nikhil): Generates a TrussHandle whose spec points to a generated
+# directory that contains data dumped from the configuration in code.
+def truss_handle_from_code_config(model_file: pathlib.Path) -> TrussHandle:
+    # TODO(nikhil): Improve detection of directory structure, since right now
+    # we assume a flat structure
+    root_dir = model_file.absolute().parent
+    with import_model_target(model_file) as entrypoint_cls:
+        descriptor = _global_chainlet_registry.get_descriptor(entrypoint_cls)
+        generated_dir = code_gen.gen_truss_chainlet(
+            chain_root=root_dir,
+            chain_name=entrypoint_cls.display_name,
+            chainlet_descriptor=descriptor,
+        )
+
+        return TrussHandle(truss_dir=generated_dir)

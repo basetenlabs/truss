@@ -406,6 +406,9 @@ class ModelWrapper:
             if not spec.loader:
                 raise ImportError(import_error_msg)
             module = importlib.util.module_from_spec(spec)
+            module.__file__ = str(module_path)
+            sys.modules[module_name] = module
+            sys.path.insert(0, str(module_path.parent))
             try:
                 spec.loader.exec_module(module)
             except ImportError as e:
