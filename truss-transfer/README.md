@@ -20,14 +20,12 @@ def lazy_data_loader(download_dir: str, num_workers: int = 4):
         raise
 ```
 
-### Installing the CLI as binary
+### Running the CLI as binary
 
 ```
+# To build with cargo:
 cargo build --release --bin truss_transfer_cli --features cli
-```
-
-### Running the binary
-```
+# To run the binary
 ./target/release/truss_transfer_cli /tmp/ptr 4
 ```
 
