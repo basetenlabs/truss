@@ -1,0 +1,51 @@
+name: Build and Release truss-transfer CLI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-upload-cli:
+    name: Build and Upload CLI Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rust-src
+
+      - name: Build CLI Binary
+        run: |
+          cargo build --release --features cli
+          mkdir -p dist/cli
+          cp target/release/truss_transfer_cli dist/cli/
+
+      - name: Test CLI Binary
+        run: |
+          sudo mkdir -p /bptr
+          sudo chown $(whoami):$(whoami) /bptr
+          cp ./exampe-bptr-manifest.json /bptr/bptr-manifest
+          dist/cli/truss_transfer_cli ./example_bptr_resolved
+          # test files are created in example_bptr_resolved
+          if [ ! -d "./example_bptr_resolved" ]; then
+            echo "❌ Test failed: output directory not created."
+            exit 1
+          fi
+
+      - name: Upload CLI to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/cli/truss_transfer_cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

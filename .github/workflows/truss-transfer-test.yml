@@ -38,9 +38,20 @@ jobs:
         run: |
           sudo mkdir -p /bptr
           sudo chown $(whoami):$(whoami) /bptr
-          cp ./exampe-bptr-manifest.json /bptr/exampe-bptr-manifest
+          cp ./exampe-bptr-manifest.json /bptr/bptr-manifest
 
           source .venv/bin/activate
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test', 4)"
+          if [ ! -d "./tmp_no_cache/test" ]; then
+            echo "❌ Test failed: output directory not created."
+            exit 1
+          fi
+
           export BASETEN_FS_ENABLED=True
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test', 32)"
+          # test files are created in example_bptr_resolved
+
+          if [ ! -d "./tmp_fs_enabled/test" ]; then
+            echo "❌ Test failed: output directory not created."
+            exit 1
+          fi
