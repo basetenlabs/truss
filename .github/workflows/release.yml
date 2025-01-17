@@ -98,6 +98,7 @@ jobs:
           tag: "v${{ needs.detect-version-changed.outputs.new_version }}"
 
       - name: Publish package to PyPI (Trusted Publishing)
+        if: ${{ github.event_name != 'pull_request' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
