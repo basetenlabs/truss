@@ -9,7 +9,7 @@ on:
   push:
     branches:
       - main
-      - master
+      # - master
     tags:
       - '*'
   pull_request:

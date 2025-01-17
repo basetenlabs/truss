@@ -36,7 +36,8 @@ jobs:
           python -c "import truss_transfer; print(truss_transfer.__version__)"
       - name: Try download github file
         run: |
-          source .venv/bin/activate
-          mkdir -p /bptr
+          sudo mkdir -p /bptr
           cp ./exampe-bptr-manifest.json /bptr/exampe-bptr-manifest
+
+          source .venv/bin/activate
           python -c "import truss_transfer; truss_transfer.lazy_data_resolve("/tmp", 1)""
