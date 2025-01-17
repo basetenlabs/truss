@@ -60,35 +60,23 @@ jobs:
           manylinux: auto
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
-                apt-get update && apt-get install -y pkg-config libssl-dev libatomic-ops-dev
+              apt-get update && apt-get install -y pkg-config libssl-dev libatomic-ops-dev
             elif command -v yum &> /dev/null; then
-                yum install -y pkgconfig openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd
+              yum install -y pkgconfig openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd
             elif command -v dnf &> /dev/null; then
-                dnf install -y pkgconfig openssl-devel libatomic
+              dnf install -y pkgconfig openssl-devel libatomic
             elif command -v apk &> /dev/null; then
-                apk add --no-cache pkgconf openssl-dev
+              apk add --no-cache pkgconf openssl-dev
             else
-                echo "No supported package manager found. Install OpenSSL manually."
-                exit 1
+              echo "No supported package manager found. Install OpenSSL + pkg-config manually."
+              exit 1
             fi
         env:
-          CROSS_OPENSSL_DIR: /usr
-      # - name: Build free-threaded wheels
-      #   uses: PyO3/maturin-action@v1
-      #   with:
-      #     target: ${{ matrix.platform.target }}
-      #     args: --release --out dist -i python3.13t
-      #     sccache: 'true'
-      #     manylinux: auto
-      #     before-script-linux: |
-      #       if command -v apt-get &> /dev/null; then
-      #           apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
-      #       elif command -v yum &> /dev/null; then
-      #           yum install openssl-devel devtoolset-10-libatomic-devel perl-IPC-Cmd -y
-      #       else
-      #           echo "Neither apt-get nor yum is installed. Please install a package manager."
-      #           exit 1
-      #       fi
+          # Only set for demonstration. If you really need static linking, keep OPENSSL_STATIC=1
+          OPENSSL_DIR: /usr
+          OPENSSL_LIB_DIR: /usr/lib
+          OPENSSL_INCLUDE_DIR: /usr/include
+          OPENSSL_STATIC: 1
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -124,15 +112,23 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: musllinux_1_2
+          before-script-linux: |
+            # Minimal packages needed in the musllinux Docker container:
+            if command -v yum &> /dev/null; then
+              yum install -y pkgconfig openssl-devel perl-IPC-Cmd
+            elif command -v apt-get &> /dev/null; then
+              apt-get update && apt-get install -y pkg-config libssl-dev
+            elif command -v apk &> /dev/null; then
+              apk add --no-cache pkgconfig openssl-dev
+            else
+              echo "Could not install pkg-config / OpenSSL. Please adjust the script."
+              exit 1
+            fi
         env:
-          CROSS_OPENSSL_DIR: /usr
-      # - name: Build free-threaded wheels
-      #   uses: PyO3/maturin-action@v1
-      #   with:
-      #     target: ${{ matrix.platform.target }}
-      #     args: --release --out dist -i python3.13t
-      #     sccache: 'true'
-      #     manylinux: musllinux_1_2
+          OPENSSL_DIR: /usr
+          OPENSSL_LIB_DIR: /usr/lib
+          OPENSSL_INCLUDE_DIR: /usr/include
+          OPENSSL_STATIC: 1
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -164,14 +160,9 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: 'true'
-          # - name: Build free-threaded wheels
-          #   uses: PyO3/maturin-action@v1
-          #   with:
-          #     target: ${{ matrix.platform.target }}
-          #     args: --release --out dist -i python3.13t
-          #     sccache: 'true'
         env:
-          CROSS_OPENSSL_DIR: /usr
+          OPENSSL_DIR: C:/OpenSSL-Win64
+          OPENSSL_STATIC: 1
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -203,13 +194,8 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
         env:
-          CROSS_OPENSSL_DIR: /usr
-      # - name: Build free-threaded wheels
-      #   uses: PyO3/maturin-action@v1
-      #   with:
-      #     target: ${{ matrix.platform.target }}
-      #     args: --release --out dist -i python3.13t
-      #     sccache: 'true'
+          OPENSSL_DIR: /usr/local/opt/openssl  # If you installed brew openssl
+          OPENSSL_STATIC: 1
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
