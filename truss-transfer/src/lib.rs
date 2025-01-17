@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::os::unix::fs as unix_fs; // For symlink on Unix-like systems
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -278,10 +277,10 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
 #[cfg(unix)]
 fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
     if dst.exists() {
-        // Optionally verify the symlink target here
+        // Optionally check if the symlink points to the correct file
         return Ok(());
     }
-    unix_fs::symlink(src, dst)?;
+    std::os::unix::fs::symlink(src, dst)?;  // Direct usage
     Ok(())
 }
 
@@ -290,7 +289,7 @@ fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
     if dst.exists() {
         return Ok(());
     }
-    std::os::windows::fs::symlink_file(src, dst)?;
+    std::os::windows::fs::symlink_file(src, dst)?;  // Direct usage
     Ok(())
 }
 
