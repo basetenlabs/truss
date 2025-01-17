@@ -11,7 +11,7 @@ pip install truss_transfer
 ```python
 import truss_transfer
 
-def lazy_data_loader(download_dir: str, num_workers: int = 4):
+def lazy_data_loader(download_dir: str, num_workers: int = 64):
     print(f"download using {truss_transfer.__version__}")
     try:
         truss_transfer.lazy_data_resolve(str(download_dir), int(num_workers))
