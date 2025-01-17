@@ -256,6 +256,10 @@ class ModelDescriptor:
 
         if hasattr(model, "is_healthy"):
             is_healthy = MethodDescriptor.from_method(model.is_healthy, "is_healthy")
+            if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
+                raise errors.ModelDefinitionError(
+                    "`is_healthy` must have only one argument: `self`."
+                )
         else:
             is_healthy = None
 

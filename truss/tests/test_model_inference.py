@@ -997,6 +997,25 @@ def test_is_healthy():
 
     model = """
     class Model:
+        def is_healthy(self, argument) -> bool:
+            pass
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="`is_healthy` must have only one argument: `self`",
+        )
+
+    model = """
+    class Model:
         def is_healthy(self) -> bool:
             raise Exception("not healthy")
 
