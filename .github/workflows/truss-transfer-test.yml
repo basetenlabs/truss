@@ -15,7 +15,7 @@ defaults:
     working-directory: truss-transfer  # Keeps default for run commands
 
 jobs:
-  tests:
+  test-truss-transfer:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
