@@ -23,10 +23,10 @@ openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [features]
 # CLI uses reqwest with rustls-tls
-cli = ["reqwest/blocking", "reqwest/json", "reqwest/stream", "reqwest/rustls-tls"]
+cli = ["reqwest/blocking", "reqwest/stream", "reqwest/rustls-tls"]
 
 # Python extension uses OpenSSL
-python_extension = ["reqwest/blocking", "reqwest/json", "reqwest/stream", "reqwest/default-tls", "openssl"]
+python_extension = ["reqwest/blocking", "reqwest/stream", "reqwest/default-tls", "openssl"]
 
 [[bin]]
 name = "truss_transfer_cli"
