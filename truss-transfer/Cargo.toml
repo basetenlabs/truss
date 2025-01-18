@@ -21,13 +21,13 @@ tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
 
 
 
-[target.'cfg(target_arch = "aarch64")'.dependencies]
+[target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
 # https://github.com/briansmith/ring/issues/1789
-reqwest = { version = "0.12.2", features = ["blocking", "json", "stream"] }
+reqwest = { version = "0.12.2", optional = true, features = ["blocking", "json", "stream"] }
 openssl = { version = "0.10", features = ["vendored"] }
-# else:
-[target.'cfg(not(target_arch = "aarch64"))'.dependencies]
-reqwest = { version = "0.12.2", default-features = false, features = ["blocking", "json", "stream", "rustls-tls"] }
+
+[target.'cfg(not(any(target_arch = "aarch64", target_arch = "arm")))'.dependencies]
+reqwest = { version = "0.12.2", optional = true, default-features = false, features = ["blocking", "json", "stream", "rustls-tls"] }
 
 
 [features]
