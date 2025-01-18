@@ -13,6 +13,7 @@ use pyo3::wrap_pyfunction;
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::fs as async_fs;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 
 // Constants
