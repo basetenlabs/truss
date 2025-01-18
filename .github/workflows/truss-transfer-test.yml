@@ -57,8 +57,8 @@ jobs:
           fi
 
       ## CLI direct install
-      - name: Install musl-tools and musl-gcc
-        run: sudo apt-get update && sudo apt-get install -y musl-tools musl-gcc
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Install Rust with musl target
         uses: actions-rs/toolchain@v1
