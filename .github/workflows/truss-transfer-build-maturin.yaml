@@ -54,7 +54,7 @@ jobs:
           sccache: 'true'
           manylinux: auto
           docker-options: >
-            ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=""' || '' }}
+            ${{ matrix.platform.target == 'aarch64' && '--env RING_PREGENERATE_ASM=""' || '' }}
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
