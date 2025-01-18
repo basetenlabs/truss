@@ -17,19 +17,18 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
 
-# Default reqwest dependency with rustls for portability
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "stream", "rustls-tls"] }
-
-# Use OpenSSL for all ARM-based architectures
-[target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "stream", "default-tls"] }
-openssl = { version = "0.10", features = ["vendored"] }
+# Base reqwest dependency without default features
+reqwest = { version = "0.12.12", default-features = false, optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [features]
-cli = []  # For the CLI
+# CLI uses reqwest with rustls-tls
+cli = ["reqwest/blocking", "reqwest/json", "reqwest/stream", "reqwest/rustls-tls"]
+
+# Python extension uses OpenSSL
+python_extension = ["reqwest/blocking", "reqwest/json", "reqwest/stream", "reqwest/default-tls", "openssl"]
 
 [[bin]]
 name = "truss_transfer_cli"
-# This bin is only built if you do `cargo build --bin truss_transfer_cli --features cli`
-path = "src/lib.rs"
+path = "src/lib.rs"  # Assuming this is the CLI entry point
 required-features = ["cli"]
