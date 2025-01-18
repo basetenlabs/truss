@@ -16,19 +16,17 @@ pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
-# Avoid openssl, to improve portability
-# openssl = { version = "0.10", features = ["vendored"] }
 
-# Default for non-aarch64 targets
+# Default reqwest dependency with rustls for portability
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "stream", "rustls-tls"] }
 
-[target.'cfg(target_arch = "aarch64")'.dependencies]
-# https://github.com/briansmith/ring/issues/1789
-reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
+# Use OpenSSL for all ARM-based architectures
+[target.'cfg(any(target_arch = "aarch64", target_arch = "arm"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "stream", "default-tls"] }
 openssl = { version = "0.10", features = ["vendored"] }
 
 [features]
-cli = [] # For the CLI
+cli = []  # For the CLI
 
 [[bin]]
 name = "truss_transfer_cli"
