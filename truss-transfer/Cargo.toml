@@ -19,6 +19,7 @@ serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
 # Avoid openssl, to improve portability
 # openssl = { version = "0.10", features = ["vendored"] }
+ring = "0.16" # https://github.com/briansmith/ring/issues/1789
 
 [features]
 cli = [] # For the CLI
