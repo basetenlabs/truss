@@ -13,18 +13,23 @@ chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 bytes = "1.5"
 pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38"] }
-reqwest = { version = "0.12.2", default-features = false, features = ["blocking", "json", "stream", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
-# Avoid openssl, to improve portability
-# openssl = { version = "0.10", features = ["vendored"] }
+
+# Base reqwest dependency without default features
+reqwest = { version = "0.12.2", default-features = false, optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [features]
-cli = [] # For the CLI
+# CLI uses reqwest with rustls-tls
+cli = ["reqwest/blocking", "reqwest/stream", "reqwest/rustls-tls"]
+
+# Python extension uses OpenSSL
+python_extension = ["reqwest/blocking", "reqwest/stream", "reqwest/default-tls", "openssl"]
+default = ["python_extension"]
 
 [[bin]]
 name = "truss_transfer_cli"
-# This bin is only built if you do `cargo build --bin truss_transfer_cli --features cli`
-path = "src/lib.rs"
+path = "src/lib.rs"  # Assuming this is the CLI entry point
 required-features = ["cli"]
