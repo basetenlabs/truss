@@ -27,6 +27,7 @@ cli = ["reqwest/blocking", "reqwest/stream", "reqwest/rustls-tls"]
 
 # Python extension uses OpenSSL
 python_extension = ["reqwest/blocking", "reqwest/stream", "reqwest/default-tls", "openssl"]
+default = ["python_extension"]
 
 [[bin]]
 name = "truss_transfer_cli"
