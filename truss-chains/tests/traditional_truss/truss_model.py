@@ -12,7 +12,7 @@ class PassthroughModel(chains.ModelBase):
         ),
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self._call_count = 0
 
     async def run_remote(self, call_count_increment: int) -> int:

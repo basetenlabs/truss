@@ -20,7 +20,6 @@ from typing import (
     Callable,
     Iterable,
     Iterator,
-    Literal,
     Mapping,
     MutableMapping,
     Optional,
@@ -136,9 +135,7 @@ def _collect_error(msg: str, kind: _ErrorKind, location: _ErrorLocation):
     )
 
 
-def raise_validation_errors(
-    truss_type: Literal["Chainlet", "Model"] = "Chainlet",
-) -> None:
+def raise_validation_errors() -> None:
     """Raises validation errors as combined ``ChainsUsageError``"""
     if _global_error_collector.has_errors:
         error_msg = _global_error_collector.format_errors()
@@ -149,7 +146,7 @@ def raise_validation_errors(
         )
         _global_error_collector.clear()  # Clear errors so `atexit` won't display them
         raise definitions.ChainsUsageError(
-            f"The {truss_type} definitions contain {errors_count}:\n{error_msg}"
+            f"The Chainlet definitions contain {errors_count}:\n{error_msg}"
         )
 
 
@@ -740,7 +737,7 @@ def _validate_remote_config(
         definitions.RemoteConfig,
     ):
         _collect_error(
-            f"{cls.truss_type}s must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
+            f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
             f"for `{cls}`.",
             _ErrorKind.TYPE_ERROR,
@@ -770,22 +767,6 @@ def validate_and_register_chain(cls: Type[definitions.ABCChainlet]) -> None:
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"
     )
     _global_chainlet_registry.register_chainlet(chainlet_descriptor)
-
-
-def validate_base_model(cls: Type[definitions.ABCModel]) -> None:
-    src_path = os.path.abspath(inspect.getfile(cls))
-    line = inspect.getsourcelines(cls)[1]
-    location = _ErrorLocation(src_path=src_path, line=line)
-    _validate_remote_config(cls, location)
-
-    base_model_descriptor = definitions.ChainletAPIDescriptor(
-        chainlet_cls=cls,
-        dependencies={},
-        has_context=False,
-        endpoint=_validate_and_describe_endpoint(cls, location),
-        src_path=src_path,
-    )
-    _global_chainlet_registry.register_chainlet(base_model_descriptor)
 
 
 # Dependency-Injection / Registry ######################################################
@@ -1181,10 +1162,10 @@ def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
 
 @contextlib.contextmanager
 def import_target(
-    module_path: pathlib.Path, target_name: Optional[str]
+    module_path: pathlib.Path, target_name: Optional[str] = None
 ) -> Iterator[Type[definitions.ABCChainlet]]:
     resolved_module_path = pathlib.Path(module_path).resolve()
-    module, loader = _load_module(module_path, "Chainlet")
+    module, loader = _load_module(module_path)
     modules_before = set(sys.modules.keys())
     modules_after = set()
 
@@ -1238,42 +1219,8 @@ def import_target(
             _global_chainlet_registry.unregister_chainlet(chainlet_name)
 
 
-@contextlib.contextmanager
-def import_model_target(
-    module_path: pathlib.Path,
-) -> Iterator[Type[definitions.ABCModel]]:
-    resolved_module_path = pathlib.Path(module_path).resolve()
-    module, loader = _load_module(resolved_module_path, "Model")
-    modules_before = set(sys.modules.keys())
-    modules_after = set()
-    try:
-        try:
-            loader.exec_module(module)
-            raise_validation_errors("Model")
-        finally:
-            modules_after = set(sys.modules.keys())
-
-        module_vars = (getattr(module, name) for name in dir(module))
-        models: set[Type[definitions.ABCModel]] = {
-            sym
-            for sym in module_vars
-            if utils.issubclass_safe(sym, definitions.ABCModel)
-        }
-        if len(models) == 0:
-            raise ValueError(f"No class in `{module_path}` extends `ModelBase`.")
-
-        target_cls = utils.expect_one(models)
-        if not utils.issubclass_safe(target_cls, definitions.ABCModel):
-            raise TypeError(f"Target `{target_cls}` is not a {definitions.ABCModel}.")
-
-        yield target_cls
-    finally:
-        _cleanup_module_imports(modules_before, modules_after, resolved_module_path)
-
-
 def _load_module(
     module_path: pathlib.Path,
-    truss_type: Literal["Chainlet", "Model"],
 ) -> tuple[types.ModuleType, Loader]:
     """The context manager ensures that modules imported by the Model/Chain
      are removed upon exit.
@@ -1284,7 +1231,7 @@ def _load_module(
     if not os.path.isfile(module_path):
         raise ImportError(
             f"`{module_path}` is not a file. You must point to a python file where "
-            f"the entrypoint {truss_type} is defined."
+            f"the entrypoint Chainlet is defined."
         )
 
     import_error_msg = f"Could not import `{module_path}`. Check path."
@@ -1340,7 +1287,7 @@ def truss_handle_from_code_config(model_file: pathlib.Path) -> TrussHandle:
     # TODO(nikhil): Improve detection of directory structure, since right now
     # we assume a flat structure
     root_dir = model_file.absolute().parent
-    with import_model_target(model_file) as entrypoint_cls:
+    with import_target(model_file) as entrypoint_cls:
         descriptor = _global_chainlet_registry.get_descriptor(entrypoint_cls)
         generated_dir = code_gen.gen_truss_chainlet(
             chain_root=root_dir,

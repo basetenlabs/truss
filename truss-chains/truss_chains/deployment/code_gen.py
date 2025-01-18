@@ -652,9 +652,9 @@ def _inplace_fill_base_image(
 def write_truss_config_yaml(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
+    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor] = {},
-    use_local_chains_src: bool = False,
+    use_local_chains_src: bool,
 ):
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
