@@ -512,10 +512,6 @@ class ABCChainlet(abc.ABC):
     def has_custom_init(cls) -> bool:
         return cls.__init__ is not object.__init__
 
-    @classmethod
-    def truss_type(cls) -> str:
-        return "Chainlet"
-
     @classproperty
     @classmethod
     def name(cls) -> str:
@@ -531,12 +527,6 @@ class ABCChainlet(abc.ABC):
     # @abc.abstractmethod
     # def run_remote(self, *args, **kwargs) -> Any:
     #     ...
-
-
-class ABCModel(ABCChainlet):
-    @classmethod
-    def truss_type(cls) -> str:
-        return "Chainlet"
 
 
 class TypeDescriptor(SafeModelNonSerializable):

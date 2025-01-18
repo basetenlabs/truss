@@ -122,7 +122,7 @@ class ChainletBase(definitions.ABCChainlet):
             cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
 
 
-class ModelBase(definitions.ABCModel):
+class ModelBase(definitions.ABCChainlet):
     """Base class for all singular truss models.
 
     Inheriting from this class adds validations to make sure subclasses adhere to the
@@ -132,7 +132,7 @@ class ModelBase(definitions.ABCModel):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
-        framework.validate_base_model(cls)
+        framework.validate_and_register_chain(cls)
 
 
 @overload
