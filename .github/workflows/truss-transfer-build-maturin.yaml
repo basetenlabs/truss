@@ -45,9 +45,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Set RING_PREGENERATE_ASM for ARM builds
-        if: ${{ matrix.platform.target == 'aarch64' || matrix.platform.target == 'armv7' }}
-        run: echo "RING_PREGENERATE_ASM=false" >> $GITHUB_ENV
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -56,8 +53,8 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: auto
-          docker-options: |
-            -e RING_PREGENERATE_ASM=${RING_PREGENERATE_ASM}
+          docker-options: >
+            ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=false' || '' }}
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
@@ -75,6 +72,8 @@ jobs:
           args: --release --out dist -i python3.13t
           sccache: 'true'
           manylinux: auto
+          docker-options: >
+            ${{ matrix.platform.target == 'armv7' && '--env RING_PREGENERATE_ASM=false' || '' }}
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
