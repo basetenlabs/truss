@@ -56,6 +56,8 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: auto
+          docker-options: |
+            -e RING_PREGENERATE_ASM=${RING_PREGENERATE_ASM}
           before-script-linux: |
             if command -v apt-get &> /dev/null; then
                 apt-get update && apt-get install libssl-dev libatomic-ops-dev -y
