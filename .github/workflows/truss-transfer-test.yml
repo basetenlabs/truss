@@ -72,7 +72,6 @@ jobs:
 
       - name: Build Statically Linked CLI Binary
         run: |
-          apt-get update && apt-get install -y musl-tools musl-gcc
           cargo build --release --target x86_64-unknown-linux-musl --features cli --bin truss_transfer_cli
           chmod +x target/x86_64-unknown-linux-musl/release/truss_transfer_cli
           ./target/x86_64-unknown-linux-musl/release/truss_transfer_cli "./tmp_cli_no_fs_cache/test"
