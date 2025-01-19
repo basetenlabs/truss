@@ -23,6 +23,7 @@ static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 7200;
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
+static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 
 // Global lock to serialize downloads
 static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
@@ -36,14 +37,15 @@ fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) ->
     // Order:
     // 1. optional_download_dir, if provided
     // 2. TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR
-    // else: raise error
+    // 3. TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK and print a warning
     optional_download_dir
         .or_else(|| env::var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR).ok())
         .unwrap_or_else(|| {
-            panic!(
-                "No download directory provided. Please set `export {}=/path/to/dir` or pass it as an argument.",
-                TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR
-            )
+            println!(
+                "[WARN] No download directory provided. Please set `export {}=/path/to/dir` or pass it as an argument. Using fallback: {}",
+                TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK
+            );
+            TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK.into()
         })
 }
 
@@ -75,7 +77,7 @@ struct BasetenPointerManifest {
 /// Python-callable function to read the manifest and download data.
 /// By default, it will use the `TRUSS_TRANSFER_DOWNLOAD_DIR` environment variable.
 #[pyfunction]
-#[pyo3(signature = (download_dir))]
+#[pyo3(signature = (download_dir=None))]
 fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<()> {
     lazy_data_resolve_entrypoint(download_dir).map_err(|err| PyException::new_err(err.to_string()))
 }
