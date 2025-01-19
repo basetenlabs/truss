@@ -18,15 +18,15 @@ serde_yaml = "0.9"
 tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
 
 # Base reqwest dependency without default features
-reqwest = { version = "0.12.2", default-features = false, optional = true }
+reqwest = { version = "0.12.2", default-features = false, optional = true, features = ["blocking", "stream", "http2"] }
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [features]
-# CLI uses reqwest with rustls-tls
-cli = ["reqwest/blocking", "reqwest/stream", "reqwest/rustls-tls"]
+# CLI uses reqwest with rustls-tls, so that it is musl compatible
+cli = ["reqwest/rustls-tls"]
 
-# Python extension uses OpenSSL
-python_extension = ["reqwest/blocking", "reqwest/stream", "reqwest/default-tls", "openssl"]
+# Python extension uses OpenSSL, as rustls-tls is not supported on aaarch64
+python_extension = ["reqwest/default-tls", "openssl"]
 default = ["python_extension"]
 
 [[bin]]

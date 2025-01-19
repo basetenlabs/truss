@@ -19,7 +19,7 @@ use tokio::sync::Semaphore;
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
 static CACHE_DIR: &str = "/cache/org/artifacts";
-static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 3600;
+static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 7200;
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
 
 // Global lock to serialize downloads
@@ -130,6 +130,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     let client = Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
         .tcp_keepalive(std::time::Duration::from_secs(15))
+        .http2_keep_alive_interval(Some(std::time::Duration::from_secs(15)))
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
         .build()?;
 
