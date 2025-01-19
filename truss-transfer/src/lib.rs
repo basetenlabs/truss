@@ -78,12 +78,14 @@ struct BasetenPointerManifest {
 /// By default, it will use the `TRUSS_TRANSFER_DOWNLOAD_DIR` environment variable.
 #[pyfunction]
 #[pyo3(signature = (download_dir=None))]
-fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<()> {
-    lazy_data_resolve_entrypoint(download_dir).map_err(|err| PyException::new_err(err.to_string()))
+fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
+    lazy_data_resolve_entrypoint(download_dir)
+        .map(|resolved_dir| resolved_dir)
+        .map_err(|err| PyException::new_err(err.to_string()))
 }
 
 /// Shared entrypoint for both Python and CLI
-fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<()> {
+fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
     let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
 
     let download_dir = resolve_truss_transfer_download_dir(download_dir);
@@ -102,7 +104,8 @@ fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<()> {
         .context("Failed to build Tokio runtime")?;
 
     // Run the async logic within the runtime
-    rt.block_on(async { lazy_data_resolve_async(download_dir.into(), num_workers).await })
+    rt.block_on(async { lazy_data_resolve_async(download_dir.clone().into(), num_workers).await })?;
+    Ok(download_dir)
 }
 
 /// Asynchronous implementation of the lazy data resolver logic.
@@ -356,10 +359,10 @@ fn main() -> anyhow::Result<()> {
         env!("CARGO_PKG_VERSION")
     );
 
-
     let download_dir = std::env::args().nth(1);
 
-    lazy_data_resolve_entrypoint(download_dir.into())
+    let _ = lazy_data_resolve_entrypoint(download_dir.into());
+    Ok(())
 }
 
 /// Python module definition
