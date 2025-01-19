@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -19,8 +19,17 @@ use tokio::sync::Semaphore;
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
 static CACHE_DIR: &str = "/cache/org/artifacts";
-static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 60;
+static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 3600;
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
+
+// Global lock to serialize downloads
+static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
+
+/// Initialize the global lock if it hasn't been initialized yet.
+fn get_global_lock() -> &'static Arc<Mutex<()>> {
+    GLOBAL_DOWNLOAD_LOCK.get_or_init(|| Arc::new(Mutex::new(())))
+}
+
 
 /// Corresponds to `Resolution` in the Python code
 #[derive(Debug, Deserialize)]
@@ -52,16 +61,28 @@ struct BasetenPointerManifest {
 #[pyfunction]
 #[pyo3(signature = (download_dir, num_workers=64))]
 fn lazy_data_resolve(download_dir: String, num_workers: usize) -> PyResult<()> {
+    lazy_data_resolve_entrypoint(download_dir, num_workers)
+        .map_err(|err| PyException::new_err(err.to_string()))
+}
+
+/// Shared entrypoint for both Python and CLI
+fn lazy_data_resolve_entrypoint(download_dir: String, num_workers: usize) -> Result<()> {
+    // Ensure the global lock is initialized
+    let lock = get_global_lock();
+
+    // Acquire the global lock, will be dropped when guard goes out of scope (also in case of errors)
+    println!("[INFO] Acquiring global download lock...");
+    let _guard = lock.lock().unwrap();
+
+    // Build the runtime after acquiring the lock
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|err| PyException::new_err(format!("Failed building tokio runtime: {err}")))?;
+        .context("Failed to build Tokio runtime")?;
 
-    rt.block_on(async move {
-        match lazy_data_resolve_async(download_dir.into(), num_workers).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PyException::new_err(e.to_string())),
-        }
+    // Run the async logic within the runtime
+    rt.block_on(async {
+        lazy_data_resolve_async(download_dir.into(), num_workers).await
     })
 }
 
@@ -107,6 +128,8 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     println!("[INFO] Using {num_workers} concurrent workers.");
     let semaphore = Arc::new(Semaphore::new(num_workers));
     let client = Client::builder()
+        // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
+        .tcp_keepalive(std::time::Duration::from_secs(15))
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
         .build()?;
 
@@ -326,13 +349,7 @@ fn main() -> anyhow::Result<()> {
         "[INFO] Invoking lazy_data_resolve_async with download_dir='{download_dir}' and num_workers={num_workers}"
     );
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    rt.block_on(async {
-        lazy_data_resolve_async(download_dir.into(), num_workers).await?;
-        Ok(())
-    })
+    lazy_data_resolve_entrypoint(download_dir.into(), num_workers)
 }
 
 /// Python module definition
