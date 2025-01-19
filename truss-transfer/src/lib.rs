@@ -190,6 +190,19 @@ async fn download_file_with_cache(
 ) -> Result<()> {
     let destination = download_dir.join(file_name);
 
+    // If the file already exists, check if it's the correct size, and skip download if so
+    if destination.exists() {
+        let metadata = fs::metadata(&destination)?;
+        if metadata.len() as i64 == size {
+            println!(
+                "[INFO] File {file_name} already exists with correct size. Skipping download."
+            );
+            return Ok(());
+        } else {
+            println!("[INFO] File {file_name} exists but size mismatch. Redownloading.");
+        }
+    }
+
     // If Baseten FS cache is enabled, try symlinking from the cache
     if uses_b10_cache {
         let cache_path = Path::new(CACHE_DIR).join(hash);
@@ -273,23 +286,22 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
     Ok(())
 }
 
-/// On Unix, create a symlink if the destination doesn't exist.
-#[cfg(unix)]
-fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
-    if dst.exists() {
-        // Optionally check if the symlink points to the correct file
-        return Ok(());
-    }
-    std::os::unix::fs::symlink(src, dst)?; // Direct usage
-    Ok(())
-}
-
-#[cfg(windows)]
 fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
     if dst.exists() {
         return Ok(());
     }
-    std::os::windows::fs::symlink_file(src, dst)?; // Direct usage
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)
+            .context("Failed to create parent directory for symlink destination")?;
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(src, dst).context("Failed to create Unix symlink")?;
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_file(src, dst).context("Failed to create Windows symlink")?;
+    }
     Ok(())
 }
 
