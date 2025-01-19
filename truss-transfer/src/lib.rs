@@ -21,6 +21,7 @@ static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
 static CACHE_DIR: &str = "/cache/org/artifacts";
 static BLOB_DOWNLOAD_TIMEOUT_SECS: u64 = 7200;
 static BASETEN_FS_ENABLED_ENV_VAR: &str = "BASETEN_FS_ENABLED";
+static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 
 // Global lock to serialize downloads
 static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
@@ -29,7 +30,6 @@ static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
 fn get_global_lock() -> &'static Arc<Mutex<()>> {
     GLOBAL_DOWNLOAD_LOCK.get_or_init(|| Arc::new(Mutex::new(())))
 }
-
 
 /// Corresponds to `Resolution` in the Python code
 #[derive(Debug, Deserialize)]
@@ -59,14 +59,15 @@ struct BasetenPointerManifest {
 /// Python-callable function to read the manifest and download data.
 /// By default, uses 64 concurrent workers if you don't specify `num_workers`.
 #[pyfunction]
-#[pyo3(signature = (download_dir, num_workers=64))]
-fn lazy_data_resolve(download_dir: String, num_workers: usize) -> PyResult<()> {
-    lazy_data_resolve_entrypoint(download_dir, num_workers)
-        .map_err(|err| PyException::new_err(err.to_string()))
+#[pyo3(signature = (download_dir))]
+fn lazy_data_resolve(download_dir: String) -> PyResult<()> {
+    lazy_data_resolve_entrypoint(download_dir).map_err(|err| PyException::new_err(err.to_string()))
 }
 
 /// Shared entrypoint for both Python and CLI
-fn lazy_data_resolve_entrypoint(download_dir: String, num_workers: usize) -> Result<()> {
+fn lazy_data_resolve_entrypoint(download_dir: String) -> Result<()> {
+    let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
+
     // Ensure the global lock is initialized
     let lock = get_global_lock();
 
@@ -81,9 +82,7 @@ fn lazy_data_resolve_entrypoint(download_dir: String, num_workers: usize) -> Res
         .context("Failed to build Tokio runtime")?;
 
     // Run the async logic within the runtime
-    rt.block_on(async {
-        lazy_data_resolve_async(download_dir.into(), num_workers).await
-    })
+    rt.block_on(async { lazy_data_resolve_async(download_dir.into(), num_workers).await })
 }
 
 /// Asynchronous implementation of the lazy data resolver logic.
@@ -339,18 +338,15 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        println!("Usage: {} <download_dir> [num_workers]", args[0]);
+        println!("Usage: {} <download_dir>", args[0]);
         return Ok(());
     }
 
     let download_dir = &args[1];
-    let num_workers = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(64);
 
-    println!(
-        "[INFO] Invoking lazy_data_resolve_async with download_dir='{download_dir}' and num_workers={num_workers}"
-    );
+    println!("[INFO] Invoking lazy_data_resolve_async with download_dir='{download_dir}'");
 
-    lazy_data_resolve_entrypoint(download_dir.into(), num_workers)
+    lazy_data_resolve_entrypoint(download_dir.into())
 }
 
 /// Python module definition
