@@ -2,6 +2,7 @@ from pathlib import Path
 
 try:
     import truss_transfer
+
     TRUSS_TRANSFER_AVAILABLE = True
 except ImportError:
     TRUSS_TRANSFER_AVAILABLE = False

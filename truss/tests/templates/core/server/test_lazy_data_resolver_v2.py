@@ -1,23 +1,32 @@
 import json
+import tempfile
+import time
 from pathlib import Path
 
 import pytest
 from truss.templates.shared.lazy_data_resolver_v2 import (
-    LazyDataResolverV2,
     TRUSS_TRANSFER_AVAILABLE,
+    LazyDataResolverV2,
 )
-import time
-import tempfile
 
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 TARGET_FILE = Path("nested/config.json")
+
 
 def write_bptr_manifest_to_file(expiration_timestamp: int = 2683764059):
     bptr_manifest = {
         "pointers": [
             {
-            "resolution": {"url": "https://raw.githubusercontent.com/basetenlabs/truss/00e01b679afbe353b0b2fe4de6b138d912bb7167/.circleci/config.yml", "expiration_timestamp": expiration_timestamp},
-            "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375", "file_name": TARGET_FILE.as_posix(), "hashtype": "blake3", "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375", "size": 1482}
+                "resolution": {
+                    "url": "https://raw.githubusercontent.com/basetenlabs/truss/00e01b679afbe353b0b2fe4de6b138d912bb7167/.circleci/config.yml",
+                    "expiration_timestamp": expiration_timestamp,
+                },
+                "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                "file_name": TARGET_FILE.as_posix(),
+                "hashtype": "blake3",
+                "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
+                "size": 1482,
+            }
         ]
     }
     # write to LAZY_DATA_RESOLVER_PATH
@@ -30,13 +39,13 @@ def test_lazy_data_resolver_v2():
     # truss_transfer reads from LAZY_DATA_RESOLVER_PATH
     if LAZY_DATA_RESOLVER_PATH.exists():
         LAZY_DATA_RESOLVER_PATH.unlink()
-        
+
     # without LAZY_DATA_RESOLVER_PATH -> does not create folder / file
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
         resolver = LazyDataResolverV2(data_dir)
         assert not (data_dir / TARGET_FILE).exists()
-            
+
     # with LAZY_DATA_RESOLVER_PATH -> fetches data
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
@@ -45,7 +54,7 @@ def test_lazy_data_resolver_v2():
         resolver.fetch()
         assert (data_dir / TARGET_FILE).exists()
         assert (data_dir / TARGET_FILE).stat().st_size == 1482
-    
+
     # with expired LAZY_DATA_RESOLVER_PATH -> raises exception
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
@@ -53,6 +62,7 @@ def test_lazy_data_resolver_v2():
         resolver = LazyDataResolverV2(data_dir)
         with pytest.raises(Exception):
             resolver.fetch()
-            
+
+
 if __name__ == "__main__":
     test_lazy_data_resolver_v2()
