@@ -649,7 +649,7 @@ def _inplace_fill_base_image(
         )
 
 
-def write_truss_config_yaml(
+def _write_truss_config_yaml(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
@@ -710,6 +710,20 @@ def write_truss_config_yaml(
     )
 
 
+# Thin wrapper around gen_truss_chainlet to generate a directory containing valid
+# truss files for a single model.
+def gen_truss_model(
+    model_root: pathlib.Path,
+    model_name: str,
+    model_descriptor: definitions.ChainletAPIDescriptor,
+) -> pathlib.Path:
+    return gen_truss_chainlet(
+        chain_root=model_root,
+        chain_name=model_name,
+        chainlet_descriptor=model_descriptor,
+    )
+
+
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
     chain_name: str,
@@ -731,7 +745,7 @@ def gen_truss_chainlet(
         f"Code generation for Chainlet `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
-    write_truss_config_yaml(
+    _write_truss_config_yaml(
         chainlet_dir=chainlet_dir,
         chains_config=chainlet_descriptor.chainlet_cls.remote_config,
         model_name=model_name or chain_name,
@@ -771,3 +785,18 @@ def gen_truss_chainlet(
         / "_model_dbg.py",
     )
     return chainlet_dir
+
+
+# Returns a TrussHandle representing an individual model generated via the
+# chains framework.
+def generate_truss_directory(model_file: pathlib.Path) -> pathlib.Path:
+    # TODO(nikhil): Improve detection of directory structure, since right now
+    # we assume a flat structure
+    root_dir = model_file.absolute().parent
+    with framework.import_target(model_file) as entrypoint_cls:
+        descriptor = framework.get_descriptor(entrypoint_cls)
+        return gen_truss_model(
+            model_root=root_dir,
+            model_name=entrypoint_cls.display_name,
+            model_descriptor=descriptor,
+        )

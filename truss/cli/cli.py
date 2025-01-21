@@ -52,7 +52,6 @@ from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init as _init
 from truss.truss_handle.build import (
     load,
-    load_from_code_config,
 )
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
@@ -1135,7 +1134,6 @@ def push(
     TARGET_DIRECTORY: A Truss directory. If none, use current directory.
 
     """
-
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
@@ -1342,9 +1340,11 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
         target_directory = os.getcwd()
     if not os.path.isfile(target_directory):
         return load(target_directory)
-    # NB(nikhil): if target_directory points to a specific file, assume they are using
-    # the Python driven DX for configuring a truss
-    return load_from_code_config(Path(target_directory))
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains.deployment import code_gen
+
+    truss_dir = code_gen.generate_truss_directory(Path(target_directory))
+    return load(str(truss_dir))
 
 
 truss_cli.add_command(container)

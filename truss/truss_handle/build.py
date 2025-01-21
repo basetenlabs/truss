@@ -105,13 +105,6 @@ def load(truss_directory: str) -> TrussHandle:
     return TrussHandle(Path(truss_directory))
 
 
-def load_from_code_config(model_file: Path) -> TrussHandle:
-    # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import framework
-
-    return framework.truss_handle_from_code_config(model_file)
-
-
 def cleanup() -> None:
     """
     Cleans up .truss directory.

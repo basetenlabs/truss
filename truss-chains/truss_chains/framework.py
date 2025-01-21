@@ -745,7 +745,7 @@ def _validate_remote_config(
         )
 
 
-def validate_and_register_chain(cls: Type[definitions.ABCChainlet]) -> None:
+def validate_and_register_cls(cls: Type[definitions.ABCChainlet]) -> None:
     """Note that validation errors will only be collected, not raised, and Chainlets.
     with issues, are still added to the registry.  Use `raise_validation_errors` to
     assert all Chainlets are valid and before performing operations that depend on
@@ -1165,8 +1165,8 @@ def import_target(
     module_path: pathlib.Path, target_name: Optional[str] = None
 ) -> Iterator[Type[definitions.ABCChainlet]]:
     resolved_module_path = pathlib.Path(module_path).resolve()
-    module, loader = _load_module(module_path)
     modules_before = set(sys.modules.keys())
+    module, loader = _load_module(module_path)
     modules_after = set()
 
     chainlets_before = _global_chainlet_registry.get_chainlet_names()
@@ -1279,6 +1279,10 @@ def _cleanup_module_imports(
     logging.debug(f"Deleting modules when exiting import context: {modules_to_delete}")
     for mod in modules_to_delete:
         del sys.modules[mod]
+    try:
+        sys.path.remove(str(module_path.parent))
+    except ValueError:  # In case the value was already removed for whatever reason.
+        pass
 
 
 # NB(nikhil): Generates a TrussHandle whose spec points to a generated
