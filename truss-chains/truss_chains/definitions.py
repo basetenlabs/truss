@@ -36,6 +36,7 @@ DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
 # Below arg names must correspond to `definitions.ABCChainlet`.
 ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
+MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
@@ -521,6 +522,21 @@ class ABCChainlet(abc.ABC):
     @classmethod
     def display_name(cls) -> str:
         return cls.remote_config.name or cls.name
+
+    @classmethod
+    @abc.abstractmethod
+    def supports_dependencies(cls) -> bool:
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def rpc_method(cls) -> str:
+        pass
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors

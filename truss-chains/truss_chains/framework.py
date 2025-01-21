@@ -47,6 +47,12 @@ _DOCS_URL_CHAINING = (
 _DOCS_URL_LOCAL = "https://docs.baseten.co/chains/guide#local-development"
 _DOCS_URL_STREAMING = "https://docs.baseten.co/chains/guide#streaming"
 
+# A "neutral dummy" endpoint descriptor if validation fails, this allows to safely
+# continue checking for more errors.
+_DUMMY_ENDPOINT_DESCRIPTOR = definitions.EndpointAPIDescriptor(
+    input_args=[], output_types=[], is_async=False, is_streaming=False
+)
+
 
 ChainletT = TypeVar("ChainletT", bound=definitions.ABCChainlet)
 _P = ParamSpec("_P")
@@ -144,7 +150,7 @@ def raise_validation_errors() -> None:
         )
         _global_error_collector.clear()  # Clear errors so `atexit` won't display them
         raise definitions.ChainsUsageError(
-            f"The Chainlet definitions contain {errors_count}:\n{error_msg}"
+            f"The definitions contain {errors_count}:\n{error_msg}"
         )
 
 
@@ -431,7 +437,7 @@ def _validate_and_describe_endpoint(
         self, [param_0: anno_0, param_1: anno_1 = default_1, ...]) -> ret_anno:
     ```
 
-    * The name must be `run`.
+    * The name must be `run_remote` for Chainlets, or `predict` for Models.
     * It can be sync or async or def.
     * The number and names of parameters are arbitrary, both positional and named
       parameters are ok.
@@ -439,35 +445,27 @@ def _validate_and_describe_endpoint(
       `_validate_io_type` for valid types.
     * Generators are allowed, too (but not yet supported).
     """
-    if not hasattr(cls, definitions.ENDPOINT_METHOD_NAME):
+    expected_rpc_method_name = cls.rpc_method()
+    if not hasattr(cls, expected_rpc_method_name):
         _collect_error(
-            f"Chainlets must have a `{definitions.ENDPOINT_METHOD_NAME}` method.",
+            f"{cls.entity_type()}s must have a `{expected_rpc_method_name}` method.",
             _ErrorKind.MISSING_API_ERROR,
             location,
         )
-        # Return a "neutral dummy" if validation fails, this allows to safely
-        # continue checking for more errors.
-        return definitions.EndpointAPIDescriptor(
-            input_args=[], output_types=[], is_async=False, is_streaming=False
-        )
+        return _DUMMY_ENDPOINT_DESCRIPTOR
 
     # This is the unbound method.
-    endpoint_method = getattr(cls, definitions.ENDPOINT_METHOD_NAME)
-
+    endpoint_method = getattr(cls, expected_rpc_method_name)
     line = inspect.getsourcelines(endpoint_method)[1]
     location = location.model_copy(
-        update={"line": line, "method_name": definitions.ENDPOINT_METHOD_NAME}
+        update={"line": line, "method_name": expected_rpc_method_name}
     )
 
     if not inspect.isfunction(endpoint_method):
         _collect_error("`Endpoints must be a method.", _ErrorKind.TYPE_ERROR, location)
         # If it's not a function, it might be a class var and subsequent inspections
         # fail.
-        # Return a "neutral dummy" if validation fails, this allows to safely
-        # continue checking for more errors.
-        return definitions.EndpointAPIDescriptor(
-            input_args=[], output_types=[], is_async=False, is_streaming=False
-        )
+        return _DUMMY_ENDPOINT_DESCRIPTOR
     signature = inspect.signature(endpoint_method)
     input_args = _validate_endpoint_params(
         list(signature.parameters.values()), location
@@ -501,7 +499,7 @@ def _validate_and_describe_endpoint(
 
     if not is_async:
         warnings.warn(
-            "`run_remote` must be an async (coroutine) function in future releases. "
+            f"`{expected_rpc_method_name}` must be an async (coroutine) function in future releases. "
             "Replace `def run_remote(...)` with `async def run_remote(...)`. "
             "Local testing and execution can be done with  "
             "`asyncio.run(my_chainlet.run_remote(...))`.\n"
@@ -519,6 +517,7 @@ def _validate_and_describe_endpoint(
         )
 
     return definitions.EndpointAPIDescriptor(
+        name=expected_rpc_method_name,
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
@@ -530,62 +529,6 @@ def _get_generic_class_type(var):
     """Extracts `SomeGeneric` from `SomeGeneric` or `SomeGeneric[T]` uniformly."""
     origin = get_origin(var)
     return origin if origin is not None else var
-
-
-def _validate_dependency_arg(
-    param, location: _ErrorLocation
-) -> Optional[ChainletDependencyMarker]:
-    # Returns `None` if unvalidated.
-    # TODO: handle subclasses, unions, optionals, check default value etc.
-    if param.name == definitions.CONTEXT_ARG_NAME:
-        _collect_error(
-            f"The init argument name `{definitions.CONTEXT_ARG_NAME}` is reserved for "
-            "the optional context argument, which must be trailing if used. Example "
-            "of correct `__init__` with context:\n"
-            f"{_example_chainlet_code()}",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-
-    if not isinstance(param.default, ChainletDependencyMarker):
-        _collect_error(
-            f"Any arguments of a Chainlet's __init__ (besides `context`) must have "
-            "dependency Chainlets with default values from `chains.depends`-directive. "
-            f"Got `{param}`.\n"
-            f"Example of correct `__init__` with dependencies:\n"
-            f"{_example_chainlet_code()}",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return None
-
-    chainlet_cls = param.default.chainlet_cls
-    if not utils.issubclass_safe(chainlet_cls, definitions.ABCChainlet):
-        _collect_error(
-            f"`chains.depends` must be used with a Chainlet class as argument, got "
-            f"{chainlet_cls} instead.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return None
-    # Check type annotation.
-    # Also lenient with type annotation: since the RHS / default is asserted to be a
-    # chainlet class, proper type inference is possible even without annotation.
-    # TODO: `Protocol` is not a proper class and this might be version dependent.
-    #   Find a better way to inspect this.
-    if not (
-        param.annotation == inspect.Parameter.empty
-        or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
-        or utils.issubclass_safe(chainlet_cls, param.annotation)
-    ):
-        _collect_error(
-            f"The type annotation for `{param.name}` must be a class/subclass of the "
-            "Chainlet type specified by `chains.provides` or a compatible "
-            f"typing.Protocol`. Got `{param.annotation}`.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-    return param.default  # The Marker.
 
 
 class _ChainletInitValidator:
@@ -614,29 +557,33 @@ class _ChainletInitValidator:
     """
 
     _location: _ErrorLocation
-    has_context: bool
+    cls: Type[definitions.ABCChainlet]
+    has_context: bool = False
     validated_dependencies: Mapping[str, definitions.DependencyDescriptor]
 
     def __init__(
         self, cls: Type[definitions.ABCChainlet], location: _ErrorLocation
     ) -> None:
-        if not cls.has_custom_init():
+        self.cls = cls
+        if not self.cls.has_custom_init():
             self.has_context = False
             self.validated_dependencies = {}
             return
-        # Each validation pops of "processed" arguments from the list.
         line = inspect.getsourcelines(cls.__init__)[1]
         self._location = location.model_copy(
             update={"line": line, "method_name": "__init__"}
         )
-        params = list(inspect.signature(cls.__init__).parameters.values())
-        params = self._validate_self_arg(list(params))
-        params, self.has_context = self._validate_context_arg(params)
-        self.validated_dependencies = self._validate_dependencies(params)
 
-    def _validate_self_arg(
-        self, params: list[inspect.Parameter]
-    ) -> list[inspect.Parameter]:
+        params = list(inspect.signature(cls.__init__).parameters.values())
+        self._validate_args(params)
+
+    def _validate_args(self, params: list[inspect.Parameter]):
+        # Each validation pops of "processed" arguments from the list.
+        self._validate_self_arg(params)
+        self._validate_context_arg(params)
+        self._validate_dependencies(params)
+
+    def _validate_self_arg(self, params: list[inspect.Parameter]):
         if len(params) == 0:
             _collect_error(
                 "Methods must have first argument `self`, got no arguments.",
@@ -651,14 +598,11 @@ class _ChainletInitValidator:
                 _ErrorKind.TYPE_ERROR,
                 self._location,
             )
-        return params
 
-    def _validate_context_arg(
-        self, params: list[inspect.Parameter]
-    ) -> tuple[list[inspect.Parameter], bool]:
+    def _validate_context_arg(self, params: list[inspect.Parameter]):
         def make_context_error_msg():
             return (
-                f"If `{definitions.ABCChainlet}` uses context for initialization, it "
+                f"If `{self.cls.entity_type()}` uses context for initialization, it "
                 f"must have `{definitions.CONTEXT_ARG_NAME}` argument of type "
                 f"`{definitions.DeploymentContext}` as the last argument.\n"
                 f"Got arguments: `{params}`.\n"
@@ -666,8 +610,8 @@ class _ChainletInitValidator:
                 f"{_example_chainlet_code()}"
             )
 
-        if not params:
-            return params, False
+        if len(params) == 0:
+            return
 
         has_context = params[-1].name == definitions.CONTEXT_ARG_NAME
         has_context_marker = isinstance(params[-1].default, ContextDependencyMarker)
@@ -677,8 +621,9 @@ class _ChainletInitValidator:
             )
 
         if not has_context:
-            return params, has_context
+            return
 
+        self.has_context = True
         param = params.pop(-1)
         param_type = _get_generic_class_type(param.annotation)
         # We are lenient and allow omitting the type annotation for context.
@@ -699,15 +644,11 @@ class _ChainletInitValidator:
                 self._location,
             )
 
-        return params, has_context
-
-    def _validate_dependencies(
-        self, params
-    ) -> Mapping[str, definitions.DependencyDescriptor]:
+    def _validate_dependencies(self, params: list[inspect.Parameter]):
         used = set()
         dependencies = {}
         for param in params:
-            marker = _validate_dependency_arg(param, self._location)
+            marker = self._validate_dependency_param(param)
             if marker is None:
                 continue
             if marker.chainlet_cls in used:
@@ -723,7 +664,71 @@ class _ChainletInitValidator:
                 chainlet_cls=marker.chainlet_cls, options=marker.options
             )
             used.add(marker.chainlet_cls)
-        return dependencies
+
+        self.validated_dependencies = dependencies
+
+    def _validate_dependency_param(
+        self, param: inspect.Parameter
+    ) -> Optional[ChainletDependencyMarker]:
+        # Returns `None` if unvalidated.
+        if not self.cls.supports_dependencies():
+            _collect_error(
+                f"Chainlet dependencies are not supported for {self.cls.entity_type()}s, "
+                f"only the optional context argument is allowed.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return None
+        # TODO: handle subclasses, unions, optionals, check default value etc.
+        if param.name == definitions.CONTEXT_ARG_NAME:
+            _collect_error(
+                f"The init argument name `{definitions.CONTEXT_ARG_NAME}` is reserved for "
+                "the optional context argument, which must be trailing if used. Example "
+                "of correct `__init__` with context:\n"
+                f"{_example_chainlet_code()}",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+
+        if not isinstance(param.default, ChainletDependencyMarker):
+            _collect_error(
+                f"Any arguments of a Chainlet's __init__ (besides `context`) must have "
+                "dependency Chainlets with default values from `chains.depends`-directive. "
+                f"Got `{param}`.\n"
+                f"Example of correct `__init__` with dependencies:\n"
+                f"{_example_chainlet_code()}",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return None
+
+        chainlet_cls = param.default.chainlet_cls
+        if not utils.issubclass_safe(chainlet_cls, definitions.ABCChainlet):
+            _collect_error(
+                f"`chains.depends` must be used with a Chainlet class as argument, got "
+                f"{chainlet_cls} instead.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return None
+        # Check type annotation.
+        # Also lenient with type annotation: since the RHS / default is asserted to be a
+        # chainlet class, proper type inference is possible even without annotation.
+        # TODO: `Protocol` is not a proper class and this might be version dependent.
+        #   Find a better way to inspect this.
+        if not (
+            param.annotation == inspect.Parameter.empty
+            or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
+            or utils.issubclass_safe(chainlet_cls, param.annotation)
+        ):
+            _collect_error(
+                f"The type annotation for `{param.name}` must be a class/subclass of the "
+                "Chainlet type specified by `chains.provides` or a compatible "
+                f"typing.Protocol`. Got `{param.annotation}`.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+        return param.default  # The Marker.
 
 
 def _validate_remote_config(
@@ -735,7 +740,7 @@ def _validate_remote_config(
         definitions.RemoteConfig,
     ):
         _collect_error(
-            f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
+            f"{cls.entity_type()}s must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
             f"for `{cls}`.",
             _ErrorKind.TYPE_ERROR,
@@ -875,14 +880,14 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
         if name == definitions.CONTEXT_ARG_NAME:
             if not isinstance(value, definitions.DeploymentContext):
                 logging.error(
-                    f"When initializing Chainlet `{cls.name}`, for context "
+                    f"When initializing {cls.entity_type} `{cls.name}`, for context "
                     f"argument an incompatible value was passed, value: `{value}`."
                 )
                 raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
         # The argument is a dependency chainlet.
         elif isinstance(value, _BaseProvisionMarker):
             logging.error(
-                f"When initializing Chainlet `{cls.name}`, for dependency Chainlet"
+                f"When initializing {cls.entity_type} `{cls.name}`, for dependency Chainlet"
                 f"argument `{name}` an incompatible value was passed, value: `{value}`."
             )
             raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
