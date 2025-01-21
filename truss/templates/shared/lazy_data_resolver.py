@@ -44,6 +44,10 @@ class BasetenPointerManifest(pydantic.BaseModel):
 
 
 class LazyDataResolver:
+    """Deprecation warning: This class is deprecated and will be removed in a future release.
+    
+    Please use LazyDataResolverV2 instead (using the `truss_transfer` package).
+    """
     def __init__(self, data_dir: Path):
         self._data_dir: Path = data_dir
         self._bptr_resolution: Dict[str, Tuple[str, str, int]] = _read_bptr_resolution()
