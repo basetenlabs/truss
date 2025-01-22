@@ -31,6 +31,9 @@ def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ) -> Mapping[str, definitions.DeployedServiceDescriptor]:
     chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
+    # If there are no dependencies of this chainlet, no need to derive dynamic URLs
+    if len(chainlet_to_service) == 0:
+        return chainlet_to_deployed_service
 
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY

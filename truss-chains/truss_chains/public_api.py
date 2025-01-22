@@ -107,7 +107,7 @@ class ChainletBase(definitions.ABCChainlet):
         # Each sub-class has own, isolated metadata, e.g. we don't want
         # `mark_entrypoint` to propagate to subclasses.
         cls.meta_data = definitions.ChainletMetadata()
-        framework.validate_and_register_class(cls)  # Errors are collected, not raised!
+        framework.validate_and_register_cls(cls)  # Errors are collected, not raised!
         # For default init (from `object`) we don't need to check anything.
         if cls.has_custom_init():
             original_init = cls.__init__
@@ -120,6 +120,19 @@ class ChainletBase(definitions.ABCChainlet):
                 original_init(self, *args, **kwargs)
 
             cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
+
+
+class ModelBase(definitions.ABCChainlet):
+    """Base class for all singular truss models.
+
+    Inheriting from this class adds validations to make sure subclasses adhere to the
+    truss model pattern.
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
+        framework.validate_and_register_cls(cls)
 
 
 @overload

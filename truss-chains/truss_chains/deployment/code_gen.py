@@ -31,6 +31,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
 
@@ -648,13 +649,13 @@ def _inplace_fill_base_image(
         )
 
 
-def _make_truss_config(
+def _write_truss_config_yaml(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
     use_local_chains_src: bool,
-) -> truss_config.TrussConfig:
+):
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
     config.model_name = model_name
@@ -707,16 +708,44 @@ def _make_truss_config(
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
-    return config
+
+
+def gen_truss_model_from_source(
+    model_src: pathlib.Path, use_local_chains_src: bool = False
+) -> pathlib.Path:
+    # TODO(nikhil): Improve detection of directory structure, since right now
+    # we assume a flat structure
+    root_dir = model_src.absolute().parent
+    with framework.import_target(model_src) as entrypoint_cls:
+        descriptor = framework.get_descriptor(entrypoint_cls)
+        return gen_truss_model(
+            model_root=root_dir,
+            model_name=entrypoint_cls.display_name,
+            model_descriptor=descriptor,
+            use_local_chains_src=use_local_chains_src,
+        )
+
+
+def gen_truss_model(
+    model_root: pathlib.Path,
+    model_name: str,
+    model_descriptor: definitions.ChainletAPIDescriptor,
+    use_local_chains_src: bool = False,
+) -> pathlib.Path:
+    return gen_truss_chainlet(
+        chain_root=model_root,
+        chain_name=model_name,
+        chainlet_descriptor=model_descriptor,
+        use_local_chains_src=use_local_chains_src,
+    )
 
 
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
-    gen_root: pathlib.Path,
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    model_name: str,
-    use_local_chains_src: bool,
+    model_name: Optional[str] = None,
+    use_local_chains_src: bool = False,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
@@ -726,17 +755,18 @@ def gen_truss_chainlet(
             display_name=dep.display_name,
             options=dep.options,
         )
+    gen_root = pathlib.Path(tempfile.gettempdir())
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
     logging.info(
         f"Code generation for Chainlet `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
-    _make_truss_config(
-        chainlet_dir,
-        chainlet_descriptor.chainlet_cls.remote_config,
-        dep_services,
-        model_name,
-        use_local_chains_src,
+    _write_truss_config_yaml(
+        chainlet_dir=chainlet_dir,
+        chains_config=chainlet_descriptor.chainlet_cls.remote_config,
+        model_name=model_name or chain_name,
+        chainlet_to_service=dep_services,
+        use_local_chains_src=use_local_chains_src,
     )
     # This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(

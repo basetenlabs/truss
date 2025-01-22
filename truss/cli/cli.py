@@ -1136,7 +1136,6 @@ def push(
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     remote_provider = RemoteFactory.create(remote=remote)
-
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
@@ -1337,7 +1336,13 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return load(target_directory)
+    if not os.path.isfile(target_directory):
+        return load(target_directory)
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains.deployment import code_gen
+
+    truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
+    return load(truss_dir)
 
 
 truss_cli.add_command(container)
