@@ -112,8 +112,8 @@ class ChainletBase(definitions.ABCChainlet):
         return True
 
     @classmethod
-    def rpc_method(cls) -> str:
-        return definitions.ENDPOINT_METHOD_NAME
+    def endpoint_method_name(cls) -> str:
+        return definitions.RUN_REMOTE_METHOD_NAME
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -151,7 +151,7 @@ class ModelBase(definitions.ABCChainlet):
         return False
 
     @classmethod
-    def rpc_method(cls) -> str:
+    def endpoint_method_name(cls) -> str:
         return definitions.MODEL_ENDPOINT_METHOD_NAME
 
     def __init_subclass__(cls, **kwargs) -> None:

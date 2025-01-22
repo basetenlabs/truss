@@ -35,7 +35,7 @@ GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
 # Below arg names must correspond to `definitions.ABCChainlet`.
-ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
+RUN_REMOTE_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
@@ -535,7 +535,7 @@ class ABCChainlet(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def rpc_method(cls) -> str:
+    def endpoint_method_name(cls) -> str:
         pass
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
@@ -590,7 +590,7 @@ class InputArg(SafeModelNonSerializable):
 
 
 class EndpointAPIDescriptor(SafeModelNonSerializable):
-    name: str = ENDPOINT_METHOD_NAME
+    name: str = RUN_REMOTE_METHOD_NAME
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
     is_async: bool

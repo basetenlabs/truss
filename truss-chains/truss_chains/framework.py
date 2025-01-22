@@ -143,14 +143,10 @@ def raise_validation_errors() -> None:
     """Raises validation errors as combined ``ChainsUsageError``"""
     if _global_error_collector.has_errors:
         error_msg = _global_error_collector.format_errors()
-        errors_count = (
-            "an error"
-            if _global_error_collector.num_errors == 1
-            else f"{_global_error_collector.num_errors} errors"
-        )
         _global_error_collector.clear()  # Clear errors so `atexit` won't display them
         raise definitions.ChainsUsageError(
-            f"The definitions contain {errors_count}:\n{error_msg}"
+            "The user defined code does not comply with the required spec, "
+            f"please fix below:\n{error_msg}"
         )
 
 
@@ -445,20 +441,19 @@ def _validate_and_describe_endpoint(
       `_validate_io_type` for valid types.
     * Generators are allowed, too (but not yet supported).
     """
-    expected_rpc_method_name = cls.rpc_method()
-    if not hasattr(cls, expected_rpc_method_name):
+    if not hasattr(cls, cls.endpoint_method_name()):
         _collect_error(
-            f"{cls.entity_type()}s must have a `{expected_rpc_method_name}` method.",
+            f"{cls.entity_type()}s must have a `{cls.endpoint_method_name()}` method.",
             _ErrorKind.MISSING_API_ERROR,
             location,
         )
         return _DUMMY_ENDPOINT_DESCRIPTOR
 
     # This is the unbound method.
-    endpoint_method = getattr(cls, expected_rpc_method_name)
+    endpoint_method = getattr(cls, cls.endpoint_method_name())
     line = inspect.getsourcelines(endpoint_method)[1]
     location = location.model_copy(
-        update={"line": line, "method_name": expected_rpc_method_name}
+        update={"line": line, "method_name": cls.endpoint_method_name()}
     )
 
     if not inspect.isfunction(endpoint_method):
@@ -499,7 +494,7 @@ def _validate_and_describe_endpoint(
 
     if not is_async:
         warnings.warn(
-            f"`{expected_rpc_method_name}` must be an async (coroutine) function in future releases. "
+            f"`{cls.endpoint_method_name()}` must be an async (coroutine) function in future releases. "
             "Replace `def run_remote(...)` with `async def run_remote(...)`. "
             "Local testing and execution can be done with  "
             "`asyncio.run(my_chainlet.run_remote(...))`.\n"
@@ -517,7 +512,7 @@ def _validate_and_describe_endpoint(
         )
 
     return definitions.EndpointAPIDescriptor(
-        name=expected_rpc_method_name,
+        name=cls.endpoint_method_name(),
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
@@ -557,15 +552,15 @@ class _ChainletInitValidator:
     """
 
     _location: _ErrorLocation
-    cls: Type[definitions.ABCChainlet]
+    _cls: Type[definitions.ABCChainlet]
     has_context: bool = False
-    validated_dependencies: Mapping[str, definitions.DependencyDescriptor]
+    validated_dependencies: Mapping[str, definitions.DependencyDescriptor] = {}
 
     def __init__(
         self, cls: Type[definitions.ABCChainlet], location: _ErrorLocation
     ) -> None:
-        self.cls = cls
-        if not self.cls.has_custom_init():
+        self._cls = cls
+        if not self._cls.has_custom_init():
             self.has_context = False
             self.validated_dependencies = {}
             return
@@ -602,7 +597,7 @@ class _ChainletInitValidator:
     def _validate_context_arg(self, params: list[inspect.Parameter]):
         def make_context_error_msg():
             return (
-                f"If `{self.cls.entity_type()}` uses context for initialization, it "
+                f"If `{self._cls.entity_type()}` uses context for initialization, it "
                 f"must have `{definitions.CONTEXT_ARG_NAME}` argument of type "
                 f"`{definitions.DeploymentContext}` as the last argument.\n"
                 f"Got arguments: `{params}`.\n"
@@ -610,7 +605,7 @@ class _ChainletInitValidator:
                 f"{_example_chainlet_code()}"
             )
 
-        if len(params) == 0:
+        if not params:
             return
 
         has_context = params[-1].name == definitions.CONTEXT_ARG_NAME
@@ -647,6 +642,15 @@ class _ChainletInitValidator:
     def _validate_dependencies(self, params: list[inspect.Parameter]):
         used = set()
         dependencies = {}
+
+        if params and not self._cls.supports_dependencies():
+            _collect_error(
+                f"The only supported argument to `__init__` for {self._cls.entity_type()}s "
+                f"is the optional context argument.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return
         for param in params:
             marker = self._validate_dependency_param(param)
             if marker is None:
@@ -670,15 +674,9 @@ class _ChainletInitValidator:
     def _validate_dependency_param(
         self, param: inspect.Parameter
     ) -> Optional[ChainletDependencyMarker]:
-        # Returns `None` if unvalidated.
-        if not self.cls.supports_dependencies():
-            _collect_error(
-                f"Chainlet dependencies are not supported for {self.cls.entity_type()}s, "
-                f"only the optional context argument is allowed.",
-                _ErrorKind.TYPE_ERROR,
-                self._location,
-            )
-            return None
+        """
+        Returns a valid ChainletDependencyMarker if found, None otherwise.
+        """
         # TODO: handle subclasses, unions, optionals, check default value etc.
         if param.name == definitions.CONTEXT_ARG_NAME:
             _collect_error(

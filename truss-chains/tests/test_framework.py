@@ -111,7 +111,7 @@ def test_raises_model_dependencies_not_allowed():
         def run_remote(self) -> str:
             return self.__class__.name
 
-    match = "Chainlet dependencies are not supported for Models"
+    match = "The only supported argument to `__init__` for Models"
     with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
         with chains.run_local():
             ModelWithDependencies()
@@ -503,7 +503,7 @@ def test_raises_chainlet_reuse():
 
 
 def test_collects_multiple_errors():
-    match = r"The definitions contain 5 errors:"
+    match = r"The user defined code does not comply with the required spec"
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
@@ -523,7 +523,7 @@ def test_collects_multiple_errors_run_local():
 
         def run_remote(argument: object): ...
 
-    match = r"The definitions contain 5 errors:"
+    match = r"The user defined code does not comply with the required spec"
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
         with public_api.run_local():
             MultiIssue()
