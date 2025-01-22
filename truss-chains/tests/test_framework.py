@@ -92,6 +92,31 @@ def test_raises_depends_usage():
             chain.run_remote()
 
 
+def test_raises_model_requires_predict_method():
+    class ModelWithRunRemote(chains.ModelBase):
+        def run_remote(self) -> str:
+            return self.__class__.name
+
+    match = "Models must have a `predict` method."
+    with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
+        with chains.run_local():
+            ModelWithRunRemote()
+
+
+def test_raises_model_dependencies_not_allowed():
+    class ModelWithDependencies(chains.ModelBase):
+        def __init__(self, c1=chains.depends(Chainlet1)):
+            self.c1 = c1
+
+        def run_remote(self) -> str:
+            return self.__class__.name
+
+    match = "The only supported argument to `__init__` for Models"
+    with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
+        with chains.run_local():
+            ModelWithDependencies()
+
+
 # The problem with supporting helper functions in `run_local` is that the stack trace
 # looks similar to the forbidden one in `InitInRun`.
 @pytest.mark.skip(reason="Helper functions not supported yet.")
@@ -433,9 +458,8 @@ def test_raises_dep_not_chainlet_annot():
 def test_raises_context_missing_default():
     match = (
         rf"{TEST_FILE}:\d+ \(ContextMissingDefault\.__init__\) \[kind: TYPE_ERROR\].*"
-        r"f `<class \'truss_chains.definitions.ABCChainlet\'>` uses context for "
-        r"initialization, it must have `context` argument of type `<class "
-        f"'truss_chains.definitions.DeploymentContext'>`"
+        r"If `Chainlet` uses context for initialization, it must have "
+        r"`context` argument of type `<class 'truss_chains.definitions.DeploymentContext'>`"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -447,9 +471,8 @@ def test_raises_context_missing_default():
 def test_raises_context_wrong_annot():
     match = (
         rf"{TEST_FILE}:\d+ \(ConextWrongAnnot\.__init__\) \[kind: TYPE_ERROR\].*"
-        r"f `<class \'truss_chains.definitions.ABCChainlet\'>` uses context for "
-        r"initialization, it must have `context` argument of type `<class "
-        f"'truss_chains.definitions.DeploymentContext'>`"
+        r"If `Chainlet` uses context for initialization, it must have "
+        r"`context` argument of type `<class 'truss_chains.definitions.DeploymentContext'>`"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -480,7 +503,7 @@ def test_raises_chainlet_reuse():
 
 
 def test_collects_multiple_errors():
-    match = r"The Chainlet definitions contain 5 errors:"
+    match = r"The user defined code does not comply with the required spec"
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
@@ -500,7 +523,7 @@ def test_collects_multiple_errors_run_local():
 
         def run_remote(argument: object): ...
 
-    match = r"The Chainlet definitions contain 5 errors:"
+    match = r"The user defined code does not comply with the required spec"
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
         with public_api.run_local():
             MultiIssue()

@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Callable,
     ContextManager,
+    Literal,
     Mapping,
     Optional,
     Type,
@@ -102,6 +103,18 @@ class ChainletBase(definitions.ABCChainlet):
     for more guidance on how to create subclasses.
     """
 
+    @classmethod
+    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+        return "Chainlet"
+
+    @classmethod
+    def supports_dependencies(cls) -> bool:
+        return True
+
+    @classmethod
+    def endpoint_method_name(cls) -> str:
+        return definitions.RUN_REMOTE_METHOD_NAME
+
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         # Each sub-class has own, isolated metadata, e.g. we don't want
@@ -128,6 +141,18 @@ class ModelBase(definitions.ABCChainlet):
     Inheriting from this class adds validations to make sure subclasses adhere to the
     truss model pattern.
     """
+
+    @classmethod
+    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+        return "Model"
+
+    @classmethod
+    def supports_dependencies(cls) -> bool:
+        return False
+
+    @classmethod
+    def endpoint_method_name(cls) -> str:
+        return definitions.MODEL_ENDPOINT_METHOD_NAME
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
