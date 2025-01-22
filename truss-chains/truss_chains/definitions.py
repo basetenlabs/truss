@@ -367,6 +367,12 @@ class ChainletMetadata(SafeModelNonSerializable):
     init_is_patched: bool = False
 
 
+class FrameworkConfig(SafeModelNonSerializable):
+    entity_type: Literal["Chainlet", "Model"]
+    supports_dependencies: bool
+    endpoint_method_name: str
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -508,6 +514,7 @@ class ABCChainlet(abc.ABC):
     remote_config: ClassVar[RemoteConfig] = RemoteConfig()
     # `meta_data` is not shared between subclasses, each has an isolated copy.
     meta_data: ClassVar[ChainletMetadata] = ChainletMetadata()
+    _framework_config: ClassVar[FrameworkConfig]
 
     @classmethod
     def has_custom_init(cls) -> bool:
@@ -523,20 +530,20 @@ class ABCChainlet(abc.ABC):
     def display_name(cls) -> str:
         return cls.remote_config.name or cls.name
 
+    @classproperty
     @classmethod
-    @abc.abstractmethod
     def supports_dependencies(cls) -> bool:
-        pass
+        return cls._framework_config.supports_dependencies
 
+    @classproperty
     @classmethod
-    @abc.abstractmethod
     def entity_type(cls) -> Literal["Chainlet", "Model"]:
-        pass
+        return cls._framework_config.entity_type
 
+    @classproperty
     @classmethod
-    @abc.abstractmethod
     def endpoint_method_name(cls) -> str:
-        pass
+        return cls._framework_config.endpoint_method_name
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
