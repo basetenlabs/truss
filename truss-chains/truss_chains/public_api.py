@@ -108,6 +108,7 @@ class ChainletBase(definitions.ABCChainlet):
         return "Chainlet"
 
     @classmethod
+    @definitions.classproperty
     def supports_dependencies(cls) -> bool:
         return True
 

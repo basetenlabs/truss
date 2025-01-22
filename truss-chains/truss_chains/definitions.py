@@ -524,6 +524,7 @@ class ABCChainlet(abc.ABC):
         return cls.remote_config.name or cls.name
 
     @classmethod
+    @classproperty
     @abc.abstractmethod
     def supports_dependencies(cls) -> bool:
         pass
