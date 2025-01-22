@@ -50,9 +50,7 @@ from truss.trt_llm.config_checks import (
 )
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init as _init
-from truss.truss_handle.build import (
-    load,
-)
+from truss.truss_handle.build import load
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
