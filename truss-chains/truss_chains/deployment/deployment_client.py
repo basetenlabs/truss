@@ -4,7 +4,6 @@ import inspect
 import json
 import logging
 import pathlib
-import tempfile
 import textwrap
 import traceback
 import uuid
@@ -138,10 +137,8 @@ class _ChainSourceGenerator:
     def __init__(
         self,
         options: definitions.PushOptions,
-        gen_root: pathlib.Path,
     ) -> None:
         self._options = options
-        self._gen_root = gen_root or pathlib.Path(tempfile.gettempdir())
 
     @property
     def _use_local_chains_src(self) -> bool:
@@ -175,7 +172,6 @@ class _ChainSourceGenerator:
 
             chainlet_dir = code_gen.gen_truss_chainlet(
                 chain_root,
-                self._gen_root,
                 self._options.chain_name,
                 chainlet_descriptor,
                 model_name,
@@ -205,11 +201,10 @@ class _ChainSourceGenerator:
 def push(
     entrypoint: Type[definitions.ABCChainlet],
     options: definitions.PushOptions,
-    gen_root: pathlib.Path = pathlib.Path(tempfile.gettempdir()),
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
     entrypoint_artifact, dependency_artifacts = _ChainSourceGenerator(
-        options, gen_root
+        options
     ).generate_chainlet_artifacts(
         entrypoint,
     )
@@ -632,7 +627,6 @@ class _Watcher:
             # TODO: Maybe try-except code_gen errors explicitly.
             chainlet_dir = code_gen.gen_truss_chainlet(
                 self._chain_root,
-                pathlib.Path(tempfile.gettempdir()),
                 self._deployed_chain_name,
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
