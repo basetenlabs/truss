@@ -33,11 +33,9 @@ from typing import (
 )
 
 import pydantic
-from truss.truss_handle.truss_handle import TrussHandle
 from typing_extensions import ParamSpec
 
 from truss_chains import definitions, utils
-from truss_chains.deployment import code_gen
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -1283,20 +1281,3 @@ def _cleanup_module_imports(
         sys.path.remove(str(module_path.parent))
     except ValueError:  # In case the value was already removed for whatever reason.
         pass
-
-
-# NB(nikhil): Generates a TrussHandle whose spec points to a generated
-# directory that contains data dumped from the configuration in code.
-def truss_handle_from_code_config(model_file: pathlib.Path) -> TrussHandle:
-    # TODO(nikhil): Improve detection of directory structure, since right now
-    # we assume a flat structure
-    root_dir = model_file.absolute().parent
-    with import_target(model_file) as entrypoint_cls:
-        descriptor = _global_chainlet_registry.get_descriptor(entrypoint_cls)
-        generated_dir = code_gen.gen_truss_chainlet(
-            chain_root=root_dir,
-            chain_name=entrypoint_cls.display_name,
-            chainlet_descriptor=descriptor,
-        )
-
-        return TrussHandle(truss_dir=generated_dir)

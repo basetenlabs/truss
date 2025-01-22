@@ -1343,8 +1343,8 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     # These imports are delayed, to handle pydantic v1 envs gracefully.
     from truss_chains.deployment import code_gen
 
-    truss_dir = code_gen.generate_truss_directory(Path(target_directory))
-    return load(str(truss_dir))
+    truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
+    return load(truss_dir)
 
 
 truss_cli.add_command(container)

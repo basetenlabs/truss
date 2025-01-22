@@ -710,17 +710,33 @@ def _write_truss_config_yaml(
     )
 
 
-# Thin wrapper around gen_truss_chainlet to generate a directory containing valid
-# truss files for a single model.
+def gen_truss_model_from_source(
+    model_src: pathlib.Path, use_local_chains_src: bool = False
+) -> pathlib.Path:
+    # TODO(nikhil): Improve detection of directory structure, since right now
+    # we assume a flat structure
+    root_dir = model_src.absolute().parent
+    with framework.import_target(model_src) as entrypoint_cls:
+        descriptor = framework.get_descriptor(entrypoint_cls)
+        return gen_truss_model(
+            model_root=root_dir,
+            model_name=entrypoint_cls.display_name,
+            model_descriptor=descriptor,
+            use_local_chains_src=use_local_chains_src,
+        )
+
+
 def gen_truss_model(
     model_root: pathlib.Path,
     model_name: str,
     model_descriptor: definitions.ChainletAPIDescriptor,
+    use_local_chains_src: bool = False,
 ) -> pathlib.Path:
     return gen_truss_chainlet(
         chain_root=model_root,
         chain_name=model_name,
         chainlet_descriptor=model_descriptor,
+        use_local_chains_src=use_local_chains_src,
     )
 
 
@@ -785,18 +801,3 @@ def gen_truss_chainlet(
         / "_model_dbg.py",
     )
     return chainlet_dir
-
-
-# Returns a TrussHandle representing an individual model generated via the
-# chains framework.
-def generate_truss_directory(model_file: pathlib.Path) -> pathlib.Path:
-    # TODO(nikhil): Improve detection of directory structure, since right now
-    # we assume a flat structure
-    root_dir = model_file.absolute().parent
-    with framework.import_target(model_file) as entrypoint_cls:
-        descriptor = framework.get_descriptor(entrypoint_cls)
-        return gen_truss_model(
-            model_root=root_dir,
-            model_name=entrypoint_cls.display_name,
-            model_descriptor=descriptor,
-        )

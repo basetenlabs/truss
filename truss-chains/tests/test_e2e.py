@@ -10,7 +10,7 @@ from truss.truss_handle.build import load
 
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
-from truss_chains.deployment.code_gen import generate_truss_directory
+from truss_chains.deployment.code_gen import gen_truss_model_from_source
 
 utils.setup_dev_logging(logging.DEBUG)
 
@@ -278,8 +278,8 @@ TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds lim
 def test_traditional_truss():
     with ensure_kill_all():
         chain_root = TEST_ROOT / "traditional_truss" / "truss_model.py"
-        truss_dir = generate_truss_directory(Path(chain_root))
-        truss_handle = load(str(truss_dir))
+        truss_dir = gen_truss_model_from_source(chain_root, use_local_chains_src=True)
+        truss_handle = load(truss_dir)
 
         assert truss_handle.spec.config.resources.cpu == "4"
         assert truss_handle.spec.config.model_name == "OverridePassthroughModelName"
