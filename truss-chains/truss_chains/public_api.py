@@ -148,6 +148,7 @@ class ModelBase(definitions.ABCChainlet):
         return "Model"
 
     @classmethod
+    @definitions.classproperty
     def supports_dependencies(cls) -> bool:
         return False
 

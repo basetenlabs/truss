@@ -45,7 +45,7 @@ K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
 
 
-C = TypeVar("C")
+C = TypeVar("C", covariant=True)
 
 
 class _classproperty(Generic[C, V]):

@@ -643,7 +643,7 @@ class _ChainletInitValidator:
         used = set()
         dependencies = {}
 
-        if params and not self._cls.supports_dependencies():
+        if params and not self._cls.supports_dependencies:
             _collect_error(
                 f"The only supported argument to `__init__` for {self._cls.entity_type()}s "
                 f"is the optional context argument.",
