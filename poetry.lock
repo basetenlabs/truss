@@ -3983,7 +3983,7 @@ version = "0.0.1rc3"
 description = "Speed up file transfers with the B10 Infra."
 optional = false
 python-versions = ">=3.8"
-groups = ["transfer"]
+groups = ["dev-server"]
 files = [
     {file = "truss_transfer-0.0.1rc3-cp313-cp313t-macosx_10_12_x86_64.whl", hash = "sha256:31655a848010ec80e274a1c40bc88b09a316203cb689e38e6e41e379a58a70bd"},
     {file = "truss_transfer-0.0.1rc3-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:0442b9b42e64d5e17254c2c8d710663d1055d02f4a7fdf72a3ba1b48b9c2e714"},
@@ -4546,4 +4546,4 @@ all = []
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.8,<3.13"
-content-hash = "7f87ce69b4e62d63e222b3cb8fd98933b785a5179b50e98e78b8f0a3f310d31e"
+content-hash = "830a97430d36adaf6f9d0a3b511d7a981dfe66f30ef5a48c200397dff9f28245"
