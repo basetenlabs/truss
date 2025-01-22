@@ -37,6 +37,17 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+    - name: Generate image name
+      id: generate_image_tag
+      run: echo "tag=baseten/truss-context-builder:v${{ needs.detect-version.outputs.version }}" >> $GITHUB_OUTPUT
+
+    - name: Check if image already exists
+      run: |
+        if docker manifest inspect ${{ steps.generate_image_tag.outputs.tag }} > /dev/null 2>&1; then
+          echo "Context builder image with tag ${{ needs.detect-version.outputs.version }} already exists, please update pyproject.toml"
+          exit 1
+        fi
+
     - name: Docker meta
       id: meta
       uses: docker/metadata-action@v4
@@ -50,5 +61,5 @@ jobs:
         context: ./
         file: ./context_builder.Dockerfile
         push: true
-        tags: baseten/truss-context-builder:v${{ needs.detect-version.outputs.version }}
+        tags: ${{ steps.generate_image_tag.outputs.tag }}
         labels: ${{ steps.meta.outputs.labels }}

@@ -112,7 +112,7 @@ TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
 TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.16.0-6fc872b"
 TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 BASE_TRTLLM_REQUIREMENTS = ["briton==0.4.0"]
-BEI_TRTLLM_BASE_IMAGE = "baseten/trt_tei_prod:v0.0.11"
+BEI_TRTLLM_BASE_IMAGE = "baseten/trt_tei_prod:v0.0.12"
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 
 OPENAI_COMPATIBLE_TAG = "openai-compatible"

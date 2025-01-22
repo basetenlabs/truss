@@ -106,7 +106,7 @@ class RunningContainer:
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
-        self._spec = TrussSpec(truss_dir)
+        self._spec = TrussSpec(self._truss_dir)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
         if validate:
             self.validate()

@@ -35,6 +35,7 @@ from truss_chains.definitions import (
 )
 from truss_chains.public_api import (
     ChainletBase,
+    ModelBase,
     depends,
     depends_context,
     mark_entrypoint,
@@ -50,6 +51,7 @@ __all__ = [
     "Assets",
     "BasetenImage",
     "ChainletBase",
+    "ModelBase",
     "ChainletOptions",
     "Compute",
     "CustomImage",

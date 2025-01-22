@@ -6,9 +6,11 @@ from pathlib import Path
 import pytest
 import requests
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.truss_handle.build import load
 
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
+from truss_chains.deployment.code_gen import gen_truss_model_from_source
 
 utils.setup_dev_logging(logging.DEBUG)
 
@@ -270,3 +272,28 @@ TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds lim
         assert re.match(
             sync_error_regex.strip(), sync_error_str.strip(), re.MULTILINE
         ), sync_error_str
+
+
+@pytest.mark.integration
+def test_traditional_truss():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "traditional_truss" / "truss_model.py"
+        truss_dir = gen_truss_model_from_source(chain_root, use_local_chains_src=True)
+        truss_handle = load(truss_dir)
+
+        assert truss_handle.spec.config.resources.cpu == "4"
+        assert truss_handle.spec.config.model_name == "OverridePassthroughModelName"
+
+        port = utils.get_free_port()
+        truss_handle.docker_run(
+            local_port=port,
+            detach=True,
+            network="host",
+        )
+
+        response = requests.post(
+            f"http://localhost:{port}/v1/models/model:predict",
+            json={"call_count_increment": 5},
+        )
+        assert response.status_code == 200
+        assert response.json() == 5

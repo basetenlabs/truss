@@ -280,7 +280,7 @@ def archive_truss(
     Returns:
         A file-like object containing the tar file
     """
-    truss_dir = truss_handle._spec.truss_dir
+    truss_dir = truss_handle._truss_dir
 
     # check for a truss_ignore file and read the ignore patterns if it exists
     ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)

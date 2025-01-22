@@ -139,9 +139,10 @@ class BasetenRemote(TrussRemote):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        gathered_truss = TrussHandle(truss_handle.gather())
+        if truss_handle.is_scattered():
+            truss_handle = TrussHandle(truss_handle.gather())
 
-        if gathered_truss.spec.model_server != ModelServer.TrussServer:
+        if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
 
         if promote:
@@ -176,10 +177,10 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        temp_file = archive_truss(gathered_truss, progress_bar)
+        temp_file = archive_truss(truss_handle, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
         encoded_config_str = base64_encoded_json_str(
-            gathered_truss._spec._config.to_dict()
+            truss_handle._spec._config.to_dict()
         )
 
         validate_truss_config(self._api, encoded_config_str)

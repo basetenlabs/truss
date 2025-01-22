@@ -15,6 +15,13 @@ try:
 except ModuleNotFoundError:
     from truss.templates.shared.util import BLOB_DOWNLOAD_TIMEOUT_SECS
 
+try:
+    import truss_transfer
+
+    TRUSS_TRANSFER_AVAILABLE = True
+except ImportError:
+    TRUSS_TRANSFER_AVAILABLE = False
+
 LAZY_DATA_RESOLVER_PATH = Path("/bptr/bptr-manifest")
 NUM_WORKERS = 4
 CACHE_DIR = Path("/cache/org/artifacts")
@@ -44,6 +51,11 @@ class BasetenPointerManifest(pydantic.BaseModel):
 
 
 class LazyDataResolver:
+    """Deprecation warning: This class is deprecated and will be removed in a future release.
+
+    Please use LazyDataResolverV2 instead (using the `truss_transfer` package).
+    """
+
     def __init__(self, data_dir: Path):
         self._data_dir: Path = data_dir
         self._bptr_resolution: Dict[str, Tuple[str, str, int]] = _read_bptr_resolution()
@@ -129,6 +141,14 @@ class LazyDataResolver:
                     file_name = futures[future]
                     raise RuntimeError(f"Download failure for file {file_name}")
         self._resolution_done = True
+
+
+class LazyDataResolverV2:
+    def __init__(self, data_dir: Path):
+        self._data_dir: Path = data_dir
+
+    def fetch(self):
+        truss_transfer.lazy_data_resolve(str(self._data_dir))
 
 
 def _read_bptr_resolution() -> Dict[str, Tuple[str, str, int]]:

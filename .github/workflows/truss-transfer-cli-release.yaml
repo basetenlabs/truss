@@ -1,5 +1,4 @@
 name: Build and Release truss-transfer CLI
-# relases a new version of the CLI binary on each Github release
 
 on:
   release:
@@ -10,35 +9,55 @@ permissions:
   contents: write
   id-token: write
 
+defaults:
+  run:
+    working-directory: truss-transfer
+
 jobs:
   build-and-upload-cli:
-    name: Build and Upload CLI Binary
-    runs-on: ubuntu-latest
-
+    name: Build and Upload CLI Binaries
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        target:
+          - x86_64-unknown-linux-musl
+          # Can't build OpenSSL on the platforms below from x86 environment
+          # - aarch64-unknown-linux-musl
+          # - i686-unknown-linux-musl
+          # - armv7-unknown-linux-musleabihf
+          # - powerpc64le-unknown-linux-musl
+    runs-on: ${{ matrix.os }}
+    env:
+      NAME: truss-transfer-cli-${{ github.ref_name }}-linux-${{ matrix.target }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev libatomic-ops-dev
+
+      - name: Install Rust with musl target
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           components: rust-src
 
-      - name: Build CLI Binary
+      - name: Add musl Target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build Statically Linked CLI Binary
         run: |
-          cargo build --release --features cli
+          cargo build --release --target ${{ matrix.target }} --features cli --bin truss_transfer_cli
           mkdir -p dist/cli
-          cp target/release/truss_transfer_cli dist/cli/
+          cp target/${{ matrix.target }}/release/truss_transfer_cli dist/cli/${{ env.NAME }}
 
       - name: Test CLI Binary
         run: |
           sudo mkdir -p /bptr
           sudo chown $(whoami):$(whoami) /bptr
-          cp ./exampe-bptr-manifest.json /bptr/bptr-manifest
-          dist/cli/truss_transfer_cli ./example_bptr_resolved
-          # test files are created in example_bptr_resolved
+          cp ./example-bptr-manifest.json /bptr/bptr-manifest
+          dist/cli/${{ env.NAME }} ./example_bptr_resolved
           if [ ! -d "./example_bptr_resolved" ]; then
             echo "❌ Test failed: output directory not created."
             exit 1
@@ -47,6 +66,6 @@ jobs:
       - name: Upload CLI to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/cli/truss_transfer_cli
+          files: truss-transfer/dist/cli/truss-transfer-cli-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
