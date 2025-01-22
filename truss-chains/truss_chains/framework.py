@@ -441,19 +441,19 @@ def _validate_and_describe_endpoint(
       `_validate_io_type` for valid types.
     * Generators are allowed, too (but not yet supported).
     """
-    if not hasattr(cls, cls.endpoint_method_name()):
+    if not hasattr(cls, cls.endpoint_method_name):
         _collect_error(
-            f"{cls.entity_type()}s must have a `{cls.endpoint_method_name()}` method.",
+            f"{cls.entity_type}s must have a `{cls.endpoint_method_name}` method.",
             _ErrorKind.MISSING_API_ERROR,
             location,
         )
         return _DUMMY_ENDPOINT_DESCRIPTOR
 
     # This is the unbound method.
-    endpoint_method = getattr(cls, cls.endpoint_method_name())
+    endpoint_method = getattr(cls, cls.endpoint_method_name)
     line = inspect.getsourcelines(endpoint_method)[1]
     location = location.model_copy(
-        update={"line": line, "method_name": cls.endpoint_method_name()}
+        update={"line": line, "method_name": cls.endpoint_method_name}
     )
 
     if not inspect.isfunction(endpoint_method):
@@ -494,7 +494,7 @@ def _validate_and_describe_endpoint(
 
     if not is_async:
         warnings.warn(
-            f"`{cls.endpoint_method_name()}` must be an async (coroutine) function in future releases. "
+            f"`{cls.endpoint_method_name}` must be an async (coroutine) function in future releases. "
             "Replace `def run_remote(...)` with `async def run_remote(...)`. "
             "Local testing and execution can be done with  "
             "`asyncio.run(my_chainlet.run_remote(...))`.\n"
@@ -512,7 +512,7 @@ def _validate_and_describe_endpoint(
         )
 
     return definitions.EndpointAPIDescriptor(
-        name=cls.endpoint_method_name(),
+        name=cls.endpoint_method_name,
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
@@ -597,7 +597,7 @@ class _ChainletInitValidator:
     def _validate_context_arg(self, params: list[inspect.Parameter]):
         def make_context_error_msg():
             return (
-                f"If `{self._cls.entity_type()}` uses context for initialization, it "
+                f"If `{self._cls.entity_type}` uses context for initialization, it "
                 f"must have `{definitions.CONTEXT_ARG_NAME}` argument of type "
                 f"`{definitions.DeploymentContext}` as the last argument.\n"
                 f"Got arguments: `{params}`.\n"
@@ -643,9 +643,9 @@ class _ChainletInitValidator:
         used = set()
         dependencies = {}
 
-        if params and not self._cls.supports_dependencies():
+        if params and not self._cls.supports_dependencies:
             _collect_error(
-                f"The only supported argument to `__init__` for {self._cls.entity_type()}s "
+                f"The only supported argument to `__init__` for {self._cls.entity_type}s "
                 f"is the optional context argument.",
                 _ErrorKind.TYPE_ERROR,
                 self._location,
@@ -738,7 +738,7 @@ def _validate_remote_config(
         definitions.RemoteConfig,
     ):
         _collect_error(
-            f"{cls.entity_type()}s must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
+            f"{cls.entity_type}s must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
             f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
             f"for `{cls}`.",
             _ErrorKind.TYPE_ERROR,
