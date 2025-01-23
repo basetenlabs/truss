@@ -8,7 +8,7 @@ from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx import URL, ConnectError, RemoteProtocolError
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
-from tenacity import RetryCallState, Retrying, retry_if_exception_type
+from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
 
@@ -57,7 +57,7 @@ async def proxy(request: Request):
             | retry_if_exception_type(httpx.ConnectTimeout)
         ),
         stop=_custom_stop_strategy,
-        wait=_custom_wait_strategy,
+        wait=wait_fixed(1),
     ):
         with attempt:
             try:
@@ -155,20 +155,13 @@ def _is_streaming_response(resp) -> bool:
 
 
 def _reroute_if_health_check(path: str) -> str:
+    """
+    Reroutes calls from the Operator to the inference server's health check endpoint (/v1/models/model) to /v1/models/model/loaded instead.
+    This is done to avoid running custom health checks when the Operator is checking if the inference server is ready.
+    """
     if path == "/v1/models/model":
-        # Reroute health checks to the inference server's /v1/models/model/loaded endpoint
         path = "/v1/models/model/loaded"
     return path
-
-
-def _custom_wait_strategy(retry_state: RetryCallState) -> int:
-    # Apply exponential backoff only for ModelNotReady
-    if retry_state.outcome is not None and isinstance(
-        retry_state.outcome.exception(), ModelNotReady
-    ):
-        return min(2**retry_state.attempt_number, 10)
-    # Use fixed wait for other exception types
-    return 1
 
 
 def _custom_stop_strategy(retry_state: RetryCallState) -> bool:

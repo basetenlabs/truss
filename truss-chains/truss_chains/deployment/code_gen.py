@@ -460,6 +460,7 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
 def _gen_health_check_src(
     health_check: definitions.HealthCheckAPIDescriptor,
 ) -> _Source:
+    """Generates AST for the `is_healthy` method of the truss model."""
     def_str = "async def" if health_check.is_async else "def"
     maybe_await = "await " if health_check.is_async else ""
     src = (

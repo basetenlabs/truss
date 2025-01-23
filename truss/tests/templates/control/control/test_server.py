@@ -230,9 +230,7 @@ async def test_health_check_retries(client, app):
 
     app.state.proxy_client.send = AsyncMock(side_effect=mock_send)
 
-    with patch("endpoints._custom_wait_strategy", return_value=0), pytest.raises(
-        RetryError
-    ):
+    with pytest.raises(RetryError):
         await client.get("/v1/models/model")
 
     # Health check was retried 10 times
