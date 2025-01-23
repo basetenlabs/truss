@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from enum import Enum
 from typing import Any, Optional
@@ -13,6 +14,10 @@ from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, vali
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
+
+ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION = (
+    os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION", "False") == "True"
+)
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -243,6 +248,27 @@ class TRTLLMConfiguration(BaseModel):
             data.update({"build": valid_build_fields})
             return data
         return data
+
+    @model_validator(mode="after")
+    def after(self):
+        # check if there is an error wrt. runtime.enable_chunked_context
+        if self.runtime.enable_chunked_context and not all(
+            self.build.plugin_configuration.use_paged_context_fmha
+            and self.build.plugin_configuration.paged_kv_cache
+        ):
+            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION:
+                logger.warning(
+                    "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
+                    "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
+                )
+                self.build.plugin_configuration.use_paged_context_fmha = True
+                self.build.plugin_configuration.paged_kv_cache = True
+            else:
+                raise ValueError(
+                    "If runtime.enable_chunked_context is True, then build.plugin_configuration.use_paged_context_fmha and build.plugin_configuration.paged_kv_cache should be True"
+                )
+
+        return self
 
     @property
     def requires_build(self):
