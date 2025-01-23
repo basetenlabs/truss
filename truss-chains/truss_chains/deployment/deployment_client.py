@@ -134,10 +134,7 @@ class ChainService(abc.ABC):
 
 
 class _ChainSourceGenerator:
-    def __init__(
-        self,
-        options: definitions.PushOptions,
-    ) -> None:
+    def __init__(self, options: definitions.PushOptions) -> None:
         self._options = options
 
     @property
@@ -147,8 +144,7 @@ class _ChainSourceGenerator:
         return False
 
     def generate_chainlet_artifacts(
-        self,
-        entrypoint: Type[definitions.ABCChainlet],
+        self, entrypoint: Type[definitions.ABCChainlet]
     ) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact]]:
         chain_root = _get_chain_root(entrypoint)
         entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
@@ -205,17 +201,12 @@ def push(
 ) -> Optional[ChainService]:
     entrypoint_artifact, dependency_artifacts = _ChainSourceGenerator(
         options
-    ).generate_chainlet_artifacts(
-        entrypoint,
-    )
+    ).generate_chainlet_artifacts(entrypoint)
     if options.only_generate_trusses:
         return None
     if isinstance(options, definitions.PushOptionsBaseten):
         return _create_baseten_chain(
-            options,
-            entrypoint_artifact,
-            dependency_artifacts,
-            progress_bar,
+            options, entrypoint_artifact, dependency_artifacts, progress_bar
         )
     elif isinstance(options, definitions.PushOptionsLocalDocker):
         return _create_docker_chain(options, entrypoint_artifact, dependency_artifacts)
@@ -322,21 +313,17 @@ def _create_docker_chain(
     chainlet_to_service: Dict[str, DockerChainletService] = {}
     for chainlet_artifact in chainlet_artifacts:
         port = utils.get_free_port()
-        service = DockerChainletService(
-            is_draft=True,
-            port=port,
-        )
+        service = DockerChainletService(is_draft=True, port=port)
         docker_internal_url = service.predict_url.replace(
             "localhost", "host.docker.internal"
         )
         chainlet_to_predict_url[chainlet_artifact.display_name] = {
-            "predict_url": docker_internal_url,
+            "predict_url": docker_internal_url
         }
         chainlet_to_service[chainlet_artifact.name] = service
 
     local_config_handler.LocalConfigHandler.set_dynamic_config(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY,
-        json.dumps(chainlet_to_predict_url),
+        definitions.DYNAMIC_CHAINLET_CONFIG_KEY, json.dumps(chainlet_to_predict_url)
     )
 
     # TODO(Tyron): We run the Docker containers in a
@@ -487,9 +474,7 @@ def _create_baseten_chain(
         progress_bar=progress_bar,
     )
     return BasetenChainService(
-        baseten_options.chain_name,
-        chain_deployment_handle,
-        remote_provider,
+        baseten_options.chain_name, chain_deployment_handle, remote_provider
     )
 
 
@@ -503,8 +488,7 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
             "Creating secret automatically."
         )
         remote_provider.api.upsert_secret(
-            definitions.BASETEN_API_SECRET_NAME,
-            remote_provider.api.auth_token.value,
+            definitions.BASETEN_API_SECRET_NAME, remote_provider.api.auth_token.value
         )
 
 
@@ -540,8 +524,7 @@ class _Watcher:
         self._error_console = error_console
         self._show_stack_trace = show_stack_trace
         self._remote_provider = cast(
-            b10_remote.BasetenRemote,
-            remote_factory.RemoteFactory.create(remote=remote),
+            b10_remote.BasetenRemote, remote_factory.RemoteFactory.create(remote=remote)
         )
         with framework.import_target(source, entrypoint) as entrypoint_cls:
             self._deployed_chain_name = name or entrypoint_cls.__name__
@@ -666,8 +649,7 @@ class _Watcher:
                             continue
 
                         future = executor.submit(
-                            self._code_gen_and_patch_thread,
-                            chainlet_descr,
+                            self._code_gen_and_patch_thread, chainlet_descr
                         )
                         future_to_display_name[future] = chainlet_descr.display_name
                     # Threads need to finish while inside the `import_target`-context.

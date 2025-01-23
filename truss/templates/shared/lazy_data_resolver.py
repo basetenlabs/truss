@@ -82,10 +82,7 @@ class LazyDataResolver:
 
         # Streaming download to keep memory usage low
         resp = requests.get(
-            URL,
-            allow_redirects=True,
-            stream=True,
-            timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
+            URL, allow_redirects=True, stream=True, timeout=BLOB_DOWNLOAD_TIMEOUT_SECS
         )
         resp.raise_for_status()
 

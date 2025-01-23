@@ -119,9 +119,7 @@ async def test_reading_items_with_wrong_model():
 @pytest.mark.asyncio
 async def test_streaming_with_wrong_order():
     types = streaming.stream_types(
-        item_type=MyDataChunk,
-        header_type=Header,
-        footer_type=Footer,
+        item_type=MyDataChunk, header_type=Header, footer_type=Footer
     )
 
     writer = streaming.stream_writer(types)

@@ -50,10 +50,7 @@ def _chainlet_data_atomic_to_graphql_mutation(
 ) -> str:
     oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
 
-    args = [
-        f'name: "{chainlet.name}"',
-        f"oracle: {oracle_data_string}",
-    ]
+    args = [f'name: "{chainlet.name}"', f"oracle: {oracle_data_string}"]
 
     args_str = ",\n".join(args)
 
@@ -531,10 +528,7 @@ class BasetenApi:
 
     def get_all_secrets(self) -> Any:
         headers = self._auth_token.header()
-        resp = requests.get(
-            f"{self._rest_api_url}/v1/secrets",
-            headers=headers,
-        )
+        resp = requests.get(f"{self._rest_api_url}/v1/secrets", headers=headers)
         if not resp.ok:
             resp.raise_for_status()
 

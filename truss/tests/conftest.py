@@ -14,10 +14,7 @@ import requests
 import yaml
 
 from truss.base.custom_types import Example
-from truss.base.trt_llm_config import (
-    TrussSpecDecMode,
-    TrussTRTLLMBatchSchedulerPolicy,
-)
+from truss.base.trt_llm_config import TrussSpecDecMode, TrussTRTLLMBatchSchedulerPolicy
 from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, Accelerator
 from truss.contexts.image_builder.serving_image_builder import (
     ServingImageBuilderContext,
@@ -238,29 +235,19 @@ def pytorch_model_init_args():
 
 @pytest.fixture
 def custom_model_truss_dir(tmp_path) -> Path:
-    yield _custom_model_from_code(
-        tmp_path,
-        "custom_truss",
-        CUSTOM_MODEL_CODE,
-    )
+    yield _custom_model_from_code(tmp_path, "custom_truss", CUSTOM_MODEL_CODE)
 
 
 @pytest.fixture
 def no_preprocess_custom_model(tmp_path):
     yield _custom_model_from_code(
-        tmp_path,
-        "my_no_preprocess_model",
-        NO_PREPROCESS_CUSTOM_MODEL_CODE,
+        tmp_path, "my_no_preprocess_model", NO_PREPROCESS_CUSTOM_MODEL_CODE
     )
 
 
 @pytest.fixture
 def long_load_model(tmp_path):
-    yield _custom_model_from_code(
-        tmp_path,
-        "long_load_model",
-        LONG_LOAD_MODEL_CODE,
-    )
+    yield _custom_model_from_code(tmp_path, "long_load_model", LONG_LOAD_MODEL_CODE)
 
 
 @pytest.fixture
@@ -280,8 +267,7 @@ def custom_model_external_data_access_tuple_fixture(tmp_path: Path):
     (tmp_path / filename).write_text(content)
     port = 9089
     proc = subprocess.Popen(
-        ["python", "-m", "http.server", str(port), "--bind", "*"],
-        cwd=tmp_path,
+        ["python", "-m", "http.server", str(port), "--bind", "*"], cwd=tmp_path
     )
     try:
         url = f"http://localhost:{port}/{filename}"
@@ -311,8 +297,7 @@ def custom_model_external_data_access_tuple_fixture_gpu(tmp_path: Path):
     (tmp_path / filename).write_text(content)
     port = 9089
     proc = subprocess.Popen(
-        ["python", "-m", "http.server", str(port), "--bind", "*"],
-        cwd=tmp_path,
+        ["python", "-m", "http.server", str(port), "--bind", "*"], cwd=tmp_path
     )
     try:
         url = f"http://localhost:{port}/{filename}"
@@ -368,27 +353,21 @@ def custom_model_with_external_package(tmp_path: Path):
 @pytest.fixture
 def no_postprocess_custom_model(tmp_path):
     yield _custom_model_from_code(
-        tmp_path,
-        "my_no_postprocess_model",
-        NO_POSTPROCESS_CUSTOM_MODEL_CODE,
+        tmp_path, "my_no_postprocess_model", NO_POSTPROCESS_CUSTOM_MODEL_CODE
     )
 
 
 @pytest.fixture
 def no_load_custom_model(tmp_path):
     yield _custom_model_from_code(
-        tmp_path,
-        "my_no_load_model",
-        NO_LOAD_CUSTOM_MODEL_CODE,
+        tmp_path, "my_no_load_model", NO_LOAD_CUSTOM_MODEL_CODE
     )
 
 
 @pytest.fixture
 def no_params_init_custom_model(tmp_path):
     yield _custom_model_from_code(
-        tmp_path,
-        "my_no_params_init_load_model",
-        NO_PARAMS_INIT_CUSTOM_MODEL_CODE,
+        tmp_path, "my_no_params_init_load_model", NO_PARAMS_INIT_CUSTOM_MODEL_CODE
     )
 
 
@@ -534,8 +513,8 @@ def custom_model_truss_dir_with_pre_and_post_str_example(tmp_path):
                     "inputs": [
                         {
                             "image_url": "https://github.com/pytorch/hub/raw/master/images/dog.jpg"
-                        },
-                    ],
+                        }
+                    ]
                 },
             )
         ]
@@ -642,10 +621,7 @@ def _pytorch_model_from_content(
 
 
 def _custom_model_from_code(
-    where_dir: Path,
-    truss_name: str,
-    model_code: str,
-    handle_ops: callable = None,
+    where_dir: Path, truss_name: str, model_code: str, handle_ops: callable = None
 ) -> Path:
     dir_path = where_dir / truss_name
     handle = init(str(dir_path))
@@ -664,10 +640,7 @@ def custom_model_data_dir(tmp_path: Path):
         handle.add_data(str(data_file.resolve()))
 
     yield _custom_model_from_code(
-        tmp_path,
-        "data_dir_truss",
-        CUSTOM_MODEL_CODE,
-        handle_ops=add_data,
+        tmp_path, "data_dir_truss", CUSTOM_MODEL_CODE, handle_ops=add_data
     )
 
 
@@ -778,10 +751,7 @@ def trtllm_config(default_config) -> Dict[str, Any]:
             "base_model": "llama",
             "max_seq_len": 2048,
             "max_batch_size": 512,
-            "checkpoint_repository": {
-                "source": "HF",
-                "repo": "meta/llama4-500B",
-            },
+            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "gather_all_token_logits": False,
         },
         "runtime": {},
@@ -810,12 +780,9 @@ def deprecated_trtllm_config(default_config) -> Dict[str, Any]:
             "request_default_max_tokens": 10,
             "total_token_limit": 50,
             # end deprecated fields
-            "checkpoint_repository": {
-                "source": "HF",
-                "repo": "meta/llama4-500B",
-            },
+            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "gather_all_token_logits": False,
-        },
+        }
     }
     return trtllm_config
 
@@ -841,10 +808,7 @@ def deprecated_trtllm_config_with_runtime_existing(default_config) -> Dict[str, 
             "request_default_max_tokens": 10,
             "total_token_limit": 50,
             # end deprecated fields
-            "checkpoint_repository": {
-                "source": "HF",
-                "repo": "meta/llama4-500B",
-            },
+            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "gather_all_token_logits": False,
         },
         "runtime": {"total_token_limit": 100},
@@ -860,10 +824,7 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
             "base_model": "llama",
             "max_seq_len": 2048,
             "max_batch_size": 512,
-            "checkpoint_repository": {
-                "source": "HF",
-                "repo": "meta/llama4-500B",
-            },
+            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "plugin_configuration": {
                 "paged_kv_cache": True,
                 "gemm_plugin": "auto",
@@ -882,7 +843,7 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
                     },
                 },
             },
-        },
+        }
     }
     return spec_dec_config
 
@@ -895,10 +856,7 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
             "base_model": "llama",
             "max_seq_len": 2048,
             "max_batch_size": 512,
-            "checkpoint_repository": {
-                "source": "HF",
-                "repo": "meta/llama4-500B",
-            },
+            "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "plugin_configuration": {
                 "paged_kv_cache": True,
                 "gemm_plugin": "auto",
@@ -907,11 +865,8 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
             "speculator": {
                 "speculative_decoding_mode": TrussSpecDecMode.DRAFT_EXTERNAL.value,
                 "num_draft_tokens": 4,
-                "checkpoint_repository": {
-                    "source": "HF",
-                    "repo": "meta/llama4-500B",
-                },
+                "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             },
-        },
+        }
     }
     return spec_dec_config

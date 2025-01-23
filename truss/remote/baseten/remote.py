@@ -115,10 +115,7 @@ class BasetenRemote(TrussRemote):
         )
         workspace_name = resp["data"]["organization"]["workspace_name"]
         user_email = resp["data"]["user"]["email"]
-        return RemoteUser(
-            workspace_name,
-            user_email,
-        )
+        return RemoteUser(workspace_name, user_email)
 
     # Validate and finalize options.
     # Upload Truss files to S3 and return S3 key.
@@ -298,8 +295,7 @@ class BasetenRemote(TrussRemote):
             )
             chainlet_data.append(
                 custom_types.ChainletDataAtomic(
-                    name=artifact.display_name,
-                    oracle=oracle_data,
+                    name=artifact.display_name, oracle=oracle_data
                 )
             )
 
@@ -380,12 +376,10 @@ class BasetenRemote(TrussRemote):
             raise ValueError("Baseten Service requires a model_identifier")
 
         published = kwargs.get("published", False)
-        (
-            service_url_path,
-            model_id,
-            model_version_id,
-        ) = self._get_service_url_path_and_model_ids(
-            self._api, model_identifier, published
+        (service_url_path, model_id, model_version_id) = (
+            self._get_service_url_path_and_model_ids(
+                self._api, model_identifier, published
+            )
         )
 
         return BasetenService(
@@ -415,10 +409,7 @@ class BasetenRemote(TrussRemote):
         truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(watch_path)
 
         def watch_filter(_, path):
-            return not is_ignored(
-                Path(path),
-                truss_ignore_patterns,
-            )
+            return not is_ignored(Path(path), truss_ignore_patterns)
 
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
@@ -547,8 +538,7 @@ class BasetenRemote(TrussRemote):
             return PatchResult(
                 PatchStatus.SUCCESS,
                 resp.get(
-                    "success_message",
-                    f"Model {model_name} patched successfully.",
+                    "success_message", f"Model {model_name} patched successfully."
                 ),
             )
 
@@ -566,8 +556,6 @@ class BasetenRemote(TrussRemote):
             error_console.print(result.message)
 
     def patch_for_chainlet(
-        self,
-        watch_path: Path,
-        truss_ignore_patterns: List[str],
+        self, watch_path: Path, truss_ignore_patterns: List[str]
     ) -> PatchResult:
         return self._patch(watch_path, truss_ignore_patterns, console=None)

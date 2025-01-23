@@ -22,11 +22,7 @@ class DockerBuildEmulator:
     Support COPY, ENV, ENTRYPOINT, WORKDIR commands. All other commands are ignored.
     """
 
-    def __init__(
-        self,
-        dockerfile_path: Path,
-        context_dir: Path,
-    ) -> None:
+    def __init__(self, dockerfile_path: Path, context_dir: Path) -> None:
         import dockerfile
 
         self._commands = dockerfile.parse_file(str(dockerfile_path))

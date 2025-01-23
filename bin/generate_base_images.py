@@ -39,20 +39,14 @@ def _docker_login():
     subprocess.run(["docker", "login", "-u", "basetenservice", "-p", pw])
 
 
-def _render_dockerfile(
-    job_type: str,
-    python_version: str,
-    use_gpu: bool,
-) -> str:
+def _render_dockerfile(job_type: str, python_version: str, use_gpu: bool) -> str:
     # Render jinja
     jinja_env = Environment(
-        loader=FileSystemLoader(str(base_path / "docker" / "base_images")),
+        loader=FileSystemLoader(str(base_path / "docker" / "base_images"))
     )
     template = jinja_env.get_template("base_image.Dockerfile.jinja")
     return template.render(
-        use_gpu=use_gpu,
-        job_type=job_type,
-        python_version=python_version,
+        use_gpu=use_gpu, job_type=job_type, python_version=python_version
     )
 
 
@@ -66,9 +60,7 @@ def _build(
 ):
     image_name = truss_base_image_name(job_type=job_type)
     tag = truss_base_image_tag(
-        python_version=python_version,
-        use_gpu=use_gpu,
-        version_tag=version_tag,
+        python_version=python_version, use_gpu=use_gpu, version_tag=version_tag
     )
     image_with_tag = f"{image_name}:{tag}"
     print(f"Building image :: {image_with_tag}")
@@ -76,9 +68,7 @@ def _build(
         return
 
     dockerfile_content = _render_dockerfile(
-        job_type=job_type,
-        python_version=python_version,
-        use_gpu=use_gpu,
+        job_type=job_type, python_version=python_version, use_gpu=use_gpu
     )
     with tempfile.TemporaryDirectory() as temp_dir:
         build_ctx_path = Path(temp_dir)
@@ -90,13 +80,9 @@ def _build(
         else:
             raise ValueError(f"Unknown job type {job_type}")
 
-        shutil.copyfile(
-            str(reqs_copy_from),
-            str(build_ctx_path / "requirements.txt"),
-        )
+        shutil.copyfile(str(reqs_copy_from), str(build_ctx_path / "requirements.txt"))
         shutil.copytree(
-            str(templates_path / "control"),
-            str(build_ctx_path / "control"),
+            str(templates_path / "control"), str(build_ctx_path / "control")
         )
         cmd = [
             "docker",

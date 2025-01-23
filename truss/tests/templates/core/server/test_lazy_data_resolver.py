@@ -165,8 +165,7 @@ def test_lazy_data_fetch_to_cache_non_200_status(
         "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
         manifest_path,
     ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR",
-        cache_dir,
+        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
     ) as _:
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
@@ -209,8 +208,7 @@ def test_lazy_data_fetch_to_cache(
         "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
         manifest_path,
     ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR",
-        cache_dir,
+        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
     ) as CACHE_DIR:
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
@@ -259,8 +257,7 @@ def test_lazy_data_fetch_to_cache_fallback_if_no_space(
         "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
         manifest_path,
     ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR",
-        cache_dir,
+        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
     ) as _, patch(
         "truss.templates.shared.lazy_data_resolver.shutil.disk_usage"
     ) as mock_disk_usage:
@@ -312,8 +309,7 @@ def test_lazy_data_fetch_cached(
         "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
         manifest_path,
     ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR",
-        cache_dir,
+        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
     ) as CACHE_DIR:
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)

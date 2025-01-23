@@ -477,10 +477,7 @@ def _validate_and_describe_endpoint(
         is_streaming = inspect.isgeneratorfunction(endpoint_method)
 
     output_types = _validate_endpoint_output_types(
-        signature.return_annotation,
-        signature,
-        location,
-        is_streaming,
+        signature.return_annotation, signature, location, is_streaming
     )
 
     if is_streaming:
@@ -730,8 +727,7 @@ class _ChainletInitValidator:
 
 
 def _validate_remote_config(
-    cls: Type[definitions.ABCChainlet],
-    location: _ErrorLocation,
+    cls: Type[definitions.ABCChainlet], location: _ErrorLocation
 ):
     if not isinstance(
         remote_config := getattr(cls, definitions.REMOTE_CONFIG_NAME),
@@ -1220,9 +1216,7 @@ def import_target(
             _global_chainlet_registry.unregister_chainlet(chainlet_name)
 
 
-def _load_module(
-    module_path: pathlib.Path,
-) -> tuple[types.ModuleType, Loader]:
+def _load_module(module_path: pathlib.Path) -> tuple[types.ModuleType, Loader]:
     """The context manager ensures that modules imported by the Model/Chain
      are removed upon exit.
 

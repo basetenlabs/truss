@@ -344,7 +344,7 @@ def generate_docker_server_supervisord_config(build_dir, config):
         "docker_server.start_command is required to use custom server"
     )
     supervisord_contents = supervisord_template.render(
-        start_command=config.docker_server.start_command,
+        start_command=config.docker_server.start_command
     )
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
@@ -449,8 +449,7 @@ class ServingImageBuilder(ImageBuilder):
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
         config.base_image = BaseImage(
-            image=TRTLLM_BASE_IMAGE,
-            python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
+            image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
         )
         config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
@@ -508,10 +507,7 @@ class ServingImageBuilder(ImageBuilder):
         if self._spec.external_data is not None:
             for ext_file in self._spec.external_data.items:
                 external_data_files.append(
-                    (
-                        ext_file.url,
-                        (data_dir / ext_file.local_data_path).resolve(),
-                    )
+                    (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
                 )
 
         # Download from HuggingFace

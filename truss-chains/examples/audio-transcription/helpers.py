@@ -170,9 +170,7 @@ async def _extract_wav_info(
 
 
 def _find_silent_split_point(
-    wav_block: bytes,
-    smoothing_num_samples: int,
-    wav_info: data_types.WavInfo,
+    wav_block: bytes, smoothing_num_samples: int, wav_info: data_types.WavInfo
 ) -> int:
     # Note: this function uses both indices w.r.t to the bytes array and the numpy
     # array, with `bytes_per_sample` as a conversion factor. To avoid confusion
@@ -200,8 +198,7 @@ def _find_silent_split_point(
     if _DEBUG_PLOTS:
         dbg_data = np.frombuffer(wav_block, dtype=np.int16)
         _dbg_show_waveform(
-            abs(dbg_data),
-            split_index_np + half_index_bytes / wav_info.bytes_per_sample,
+            abs(dbg_data), split_index_np + half_index_bytes / wav_info.bytes_per_sample
         )
         # _dbg_show_waveform(data, split_index)
         # _dbg_show_waveform(smoothed_data, split_index)
@@ -317,8 +314,7 @@ class DownloadSubprocess:
 
 
 async def wav_chunker(
-    params: data_types.TranscribeParams,
-    download: DownloadSubprocess,
+    params: data_types.TranscribeParams, download: DownloadSubprocess
 ) -> AsyncIterator[tuple[data_types.ChunkInfo, str]]:
     """Consumes the download stream and yields small chunks of b64-encoded wav."""
     wav_info, initial_audio_data = await _extract_wav_info(download.wav_stream)

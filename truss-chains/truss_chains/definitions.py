@@ -73,9 +73,7 @@ class SafeModel(pydantic.BaseModel):
     """Pydantic base model with reasonable config."""
 
     model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False,
-        strict=True,
-        validate_assignment=True,
+        arbitrary_types_allowed=False, strict=True, validate_assignment=True
     )
 
 

@@ -104,9 +104,7 @@ class Model:
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
-            path="model.py",
-            content=mock_model_file_content,
+            action=Action.UPDATE, path="model.py", content=mock_model_file_content
         ),
     )
     await _verify_apply_patch_success(client, patch)
@@ -129,9 +127,7 @@ class Model:
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
-            path="model.py",
-            content=mock_model_file_content,
+            action=Action.UPDATE, path="model.py", content=mock_model_file_content
         ),
     )
     await _verify_apply_patch_success(client, patch)
@@ -146,9 +142,7 @@ async def test_patch_model_code_create_new(app, client):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
-            path="touched",
-            content=empty_content,
+            action=Action.UPDATE, path="touched", content=empty_content
         ),
     )
     await _verify_apply_patch_success(client, patch)
@@ -161,9 +155,7 @@ async def test_patch_model_code_create_in_new_dir(app, client):
     patch = Patch(
         type=PatchType.MODEL_CODE,
         body=ModelCodePatch(
-            action=Action.UPDATE,
-            path="new_directory/touched",
-            content=empty_content,
+            action=Action.UPDATE, path="new_directory/touched", content=empty_content
         ),
     )
     await _verify_apply_patch_success(client, patch)
