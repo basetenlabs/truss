@@ -175,6 +175,12 @@ def test_model_load_failure_truss(test_data_path):
             return True
 
         @handle_request_exception
+        def _test_is_loaded(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model/loaded")
+            assert ready.status_code == expected_code
+            return True
+
+        @handle_request_exception
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
@@ -190,8 +196,9 @@ def test_model_load_failure_truss(test_data_path):
 
         # The server should be completely down so all requests should result in a RequestException.
         # The decorator handle_request_exception catches the RequestException and returns False.
-        assert not _test_readiness_probe(expected_code=200)
         assert not _test_liveness_probe(expected_code=200)
+        assert not _test_readiness_probe(expected_code=200)
+        assert not _test_is_loaded(expected_code=200)
         assert not _test_ping(expected_code=200)
         assert not _test_invocations(expected_code=200)
 

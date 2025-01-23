@@ -8,10 +8,9 @@ from helpers.errors import ModelLoadFailed, ModelNotReady
 from httpx import URL, ConnectError, RemoteProtocolError
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
-from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
+from tenacity import RetryCallState, Retrying, retry_if_exception_type
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
-
 
 control_app = APIRouter()
 
@@ -26,7 +25,12 @@ async def proxy(request: Request):
         request.app.state.inference_server_process_controller
     )
     client: httpx.AsyncClient = request.app.state.proxy_client
-    url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
+
+    path = request.url.path
+    if path == "/v1/models/model":
+        # Reroute health checks to the inference server's /v1/models/model/loaded endpoint
+        path = "/v1/models/model/loaded"
+    url = URL(path=path, query=request.url.query.encode("utf-8"))
 
     # 2 min connect timeouts, no timeout for requests.
     # We don't want requests to fail due to timeout on the proxy
@@ -55,8 +59,8 @@ async def proxy(request: Request):
             | retry_if_exception_type(httpx.ReadTimeout)
             | retry_if_exception_type(httpx.ConnectTimeout)
         ),
-        stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
-        wait=wait_fixed(1),
+        stop=_custom_stop_strategy,
+        wait=_custom_wait_strategy,
     ):
         with attempt:
             try:
@@ -151,3 +155,29 @@ def _is_streaming_response(resp) -> bool:
         if header_name.lower() == "transfer-encoding" and value.lower() == "chunked":
             return True
     return False
+
+
+def _custom_wait_strategy(retry_state: RetryCallState) -> int:
+    # Apply exponential backoff only for ModelNotReady
+    if retry_state.outcome is not None and isinstance(
+        retry_state.outcome.exception(), ModelNotReady
+    ):
+        return min(2**retry_state.attempt_number, 10)
+    # Use fixed wait for other exception types
+    return 1
+
+
+def _custom_stop_strategy(retry_state: RetryCallState) -> bool:
+    # Stop after 10 attempts for ModelNotReady
+    if retry_state.outcome is not None and isinstance(
+        retry_state.outcome.exception(), ModelNotReady
+    ):
+        # Check if the retry limit for ModelNotReady has been reached
+        return retry_state.attempt_number >= 10
+    # For all other exceptions, stop after INFERENCE_SERVER_START_WAIT_SECS
+    seconds_since_start = (
+        retry_state.seconds_since_start
+        if retry_state.seconds_since_start is not None
+        else 0.0
+    )
+    return seconds_since_start >= INFERENCE_SERVER_START_WAIT_SECS
