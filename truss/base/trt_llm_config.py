@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
-ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION = (
-    os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION", "False") == "True"
+ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
+    os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
 
 
@@ -250,13 +250,13 @@ class TRTLLMConfiguration(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def after(self):
+    def after(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
         # check if there is an error wrt. runtime.enable_chunked_context
-        if self.runtime.enable_chunked_context and not all(
+        if self.runtime.enable_chunked_context and not (
             self.build.plugin_configuration.use_paged_context_fmha
             and self.build.plugin_configuration.paged_kv_cache
         ):
-            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION:
+            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
                 logger.warning(
                     "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
                     "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
