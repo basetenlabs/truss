@@ -384,6 +384,12 @@ class ServingImageBuilder(ImageBuilder):
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
+
+        # fixes: misconfguration of predict_concurrency
+        # from client.
+        if config.runtime.predict_concurrency < 4:
+            config.runtime.predict_concurrency = 128
+
         port = 7997
         start_command = " ".join(
             [
@@ -397,8 +403,6 @@ class ServingImageBuilder(ImageBuilder):
                 # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
                 # 2048 is a safe max value for the server
                 f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
-                # downloaded model path by `python-truss-download` cmd
-                "--model-id /app/data/tokenization",
             ]
         )
         self._spec.config.docker_server = DockerServer(
