@@ -19,6 +19,7 @@ class HealthCheckFilter(logging.Filter):
         return (
             record.getMessage().find("GET / ") == -1
             and record.getMessage().find("GET /v1/models/model ") == -1
+            and record.getMessage().find("GET /v1/models/model/loaded ") == -1
         )
 
 
