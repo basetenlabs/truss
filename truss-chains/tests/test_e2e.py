@@ -5,15 +5,11 @@ from pathlib import Path
 
 import pytest
 import requests
-<<<<<<< HEAD
-from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
-from truss.truss_handle.build import load
-=======
 from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     get_container_logs_from_prefix,
 )
->>>>>>> 88d2b110 (Add `is_ready` to chains (#1289))
+from truss.truss_handle.build import load
 
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
