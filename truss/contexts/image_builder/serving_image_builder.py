@@ -385,11 +385,6 @@ class ServingImageBuilder(ImageBuilder):
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
 
-        # fixes: misconfguration of predict_concurrency
-        # from client.
-        if config.runtime.predict_concurrency < 4:
-            config.runtime.predict_concurrency = 128
-
         port = 7997
         start_command = " ".join(
             [
