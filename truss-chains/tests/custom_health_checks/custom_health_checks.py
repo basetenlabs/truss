@@ -2,7 +2,7 @@ import truss_chains as chains
 
 
 class CustomHealthChecks(chains.ChainletBase):
-    """Calls various chainlets using custom health checks."""
+    """Implements custom health checks."""
 
     def __init__(self):
         self._should_succeed_health_checks = True

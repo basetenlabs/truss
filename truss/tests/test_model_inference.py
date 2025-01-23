@@ -742,6 +742,10 @@ def test_slow_truss(test_data_path):
             ready = requests.get(f"{truss_server_addr}/v1/models/model")
             assert ready.status_code == expected_code
 
+        def _test_is_loaded(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model/loaded")
+            assert ready.status_code == expected_code
+
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
@@ -763,6 +767,7 @@ def test_slow_truss(test_data_path):
         for _ in range(LOAD_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(503)
+            _test_is_loaded(503)
             _test_ping(503)
             _test_invocations(503)
             time.sleep(1)
@@ -770,6 +775,7 @@ def test_slow_truss(test_data_path):
         time.sleep(LOAD_BUFFER_TIME)
         _test_liveness_probe(200)
         _test_readiness_probe(200)
+        _test_is_loaded(200)
         _test_ping(200)
 
         predict_call = Thread(
@@ -782,6 +788,7 @@ def test_slow_truss(test_data_path):
         for _ in range(PREDICT_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(200)
+            _test_is_loaded(200)
             _test_ping(200)
             time.sleep(1)
 
