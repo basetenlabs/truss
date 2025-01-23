@@ -26,10 +26,7 @@ async def proxy(request: Request):
     )
     client: httpx.AsyncClient = request.app.state.proxy_client
 
-    path = request.url.path
-    if path == "/v1/models/model":
-        # Reroute health checks to the inference server's /v1/models/model/loaded endpoint
-        path = "/v1/models/model/loaded"
+    path = _reroute_if_health_check(request.url.path)
     url = URL(path=path, query=request.url.query.encode("utf-8"))
 
     # 2 min connect timeouts, no timeout for requests.
@@ -155,6 +152,13 @@ def _is_streaming_response(resp) -> bool:
         if header_name.lower() == "transfer-encoding" and value.lower() == "chunked":
             return True
     return False
+
+
+def _reroute_if_health_check(path: str) -> str:
+    if path == "/v1/models/model":
+        # Reroute health checks to the inference server's /v1/models/model/loaded endpoint
+        path = "/v1/models/model/loaded"
+    return path
 
 
 def _custom_wait_strategy(retry_state: RetryCallState) -> int:
