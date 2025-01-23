@@ -259,9 +259,10 @@ class TRTLLMConfiguration(BaseModel):
             if ENGINE_BUILDER_TRUSS_RUNTIME_MIGATION:
                 logger.warning(
                     "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
-                    "Disabling trt_llm.runtime.enable_chunked_context"
+                    "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
                 )
-                self.runtime.enable_chunked_context = False
+                self.build.plugin_configuration.use_paged_context_fmha = True
+                self.build.plugin_configuration.paged_kv_cache = True
             else:
                 raise ValueError(
                     "If runtime.enable_chunked_context is True, then build.plugin_configuration.use_paged_context_fmha and build.plugin_configuration.paged_kv_cache should be True"
