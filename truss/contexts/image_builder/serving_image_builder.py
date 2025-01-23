@@ -387,7 +387,7 @@ class ServingImageBuilder(ImageBuilder):
         port = 7997
         start_command = " ".join(
             [
-                "python-truss-download && text-embeddings-router",
+                "truss-transfer-cli && text-embeddings-router",
                 f"--port {port}",
                 f"--max-batch-requests {runtime_max_batch_size}",
                 # how many sentences can be in a single json payload.
