@@ -25,11 +25,11 @@ class Model:
 
         if audio_base64 and audio_url:
             return {
-                "error": "Only a base64 audio file OR a URL can be passed to the API, not both of them.",
+                "error": "Only a base64 audio file OR a URL can be passed to the API, not both of them."
             }
         if not audio_base64 and not audio_url:
             return {
-                "error": "Please provide either an audio file in base64 string format or a URL to an audio file.",
+                "error": "Please provide either an audio file in base64 string format or a URL to an audio file."
             }
 
         binary_data = None

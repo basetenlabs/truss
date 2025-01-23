@@ -39,10 +39,7 @@ def test_serving_image_dockerfile_from_user_base_image(
         image_builder.prepare_image_build_dir(tmp_path)
         with open(tmp_path / "Dockerfile", "r") as f:
             gen_docker_lines = f.readlines()
-        with open(
-            test_data_path / "server.Dockerfile",
-            "r",
-        ) as f:
+        with open(test_data_path / "server.Dockerfile", "r") as f:
             server_docker_lines = f.readlines()
 
         def filter_empty_lines(lines):
@@ -78,8 +75,7 @@ def flatten_cached_files(local_cache_files):
 def test_correct_hf_files_accessed_for_caching():
     model = "openai/whisper-small"
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
+        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -114,8 +110,7 @@ def test_correct_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
+        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -148,8 +143,7 @@ def test_correct_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
+        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -182,8 +176,7 @@ def test_correct_nested_gcs_files_accessed_for_caching(mock_list_bucket_files):
     model = "gs://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
+        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -220,8 +213,7 @@ def test_correct_nested_s3_files_accessed_for_caching(mock_list_bucket_files):
     model = "s3://crazy-good-new-model-7b/folder_a/folder_b"
 
     config = TrussConfig(
-        python_version="py39",
-        model_cache=ModelCache(models=[ModelRepo(repo_id=model)]),
+        python_version="py39", model_cache=ModelCache(models=[ModelRepo(repo_id=model)])
     )
 
     with TemporaryDirectory() as tmp_dir:
@@ -310,13 +302,9 @@ def test_trt_llm_build_dir(custom_model_trt_llm):
 
         # Check that all files were copied
         _assert_copied(
-            TRTLLM_TRUSS_DIR / "src",
-            tmp_path / "server" / "extensions" / "trt_llm",
+            TRTLLM_TRUSS_DIR / "src", tmp_path / "server" / "extensions" / "trt_llm"
         )
-        _assert_copied(
-            TRTLLM_TRUSS_DIR / "packages",
-            tmp_path / "packages",
-        )
+        _assert_copied(TRTLLM_TRUSS_DIR / "packages", tmp_path / "packages")
 
         assert (
             build_th.spec.config.runtime.predict_concurrency

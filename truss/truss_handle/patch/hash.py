@@ -7,8 +7,7 @@ from truss.util.path import get_unignored_relative_paths_from_root
 
 
 def directory_content_hash(
-    root: Path,
-    ignore_patterns: Optional[List[str]] = None,
+    root: Path, ignore_patterns: Optional[List[str]] = None
 ) -> str:
     """Calculate content based hash of a filesystem directory.
 

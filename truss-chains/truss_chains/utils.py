@@ -5,13 +5,7 @@ import logging
 import os
 import random
 import socket
-from typing import (
-    Any,
-    Iterable,
-    Iterator,
-    TypeVar,
-    Union,
-)
+from typing import Any, Iterable, Iterator, TypeVar, Union
 
 from truss_chains import definitions
 

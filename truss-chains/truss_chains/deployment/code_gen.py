@@ -264,8 +264,7 @@ def _stub_endpoint_signature_src(
 
     def_str = "async def" if endpoint.is_async else "def"
     return _Source(
-        src=f"{def_str} {endpoint.name}({','.join(args)}) -> {output}:",
-        imports=imports,
+        src=f"{def_str} {endpoint.name}({','.join(args)}) -> {output}:", imports=imports
     )
 
 
@@ -301,7 +300,7 @@ def _stub_endpoint_body_src(
     else:
         if endpoint.is_async:
             parts.append(
-                f"async for data in await self.predict_async_stream({inputs}):",
+                f"async for data in await self.predict_async_stream({inputs}):"
             )
             if endpoint.streaming_type.is_string:
                 parts.append(_indent("yield data.decode()"))
@@ -751,9 +750,7 @@ def gen_truss_chainlet(
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
         dep_services[dep.name] = definitions.ServiceDescriptor(
-            name=dep.name,
-            display_name=dep.display_name,
-            options=dep.options,
+            name=dep.name, display_name=dep.display_name, options=dep.options
         )
     gen_root = pathlib.Path(tempfile.gettempdir())
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)

@@ -410,12 +410,7 @@ class Model:
                 )
             ],
         )
-        th._update_config(
-            lambda conf: replace(
-                conf,
-                external_data=new_external_data,
-            )
-        )
+        th._update_config(lambda conf: replace(conf, external_data=new_external_data))
         result = th.docker_predict([], tag=tag, network="host")
         assert result == content and orig_num_truss_images == current_num_docker_images(
             th

@@ -44,10 +44,7 @@ class LocalConfigHandler:
         LocalConfigHandler._ensure_config_dir()
         validate_secret_name(secret_name)
         local_config = LocalConfigHandler.get_config()
-        new_secrets = {
-            **local_config.secrets,
-            secret_name: secret_value,
-        }
+        new_secrets = {**local_config.secrets, secret_name: secret_value}
         new_local_config = replace(local_config, secrets=new_secrets)
         new_local_config.write_to_yaml_file(LocalConfigHandler._config_path())
 

@@ -162,8 +162,7 @@ def get_ignored_relative_paths(
 
 
 def get_unignored_relative_paths_from_root(
-    root: Path,
-    ignore_patterns: Optional[List[str]] = None,
+    root: Path, ignore_patterns: Optional[List[str]] = None
 ) -> Set[Path]:
     """Given a root directory, returns an iterator of the relative paths that do not match ignore_patterns."""
     root_relative_paths = set(path.relative_to(root) for path in root.glob("**/*"))

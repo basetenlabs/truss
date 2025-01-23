@@ -36,9 +36,7 @@ def truss_base_image_name(job_type: str) -> str:
 
 
 def truss_base_image_tag(
-    python_version: str,
-    use_gpu: bool,
-    version_tag: Optional[str] = None,
+    python_version: str, use_gpu: bool, version_tag: Optional[str] = None
 ) -> str:
     if version_tag is None:
         version_tag = f"v{__version__}"

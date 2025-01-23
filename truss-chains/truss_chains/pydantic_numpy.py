@@ -81,7 +81,7 @@ class NumpyArrayField:
             except (ValueError, TypeError) as e:
                 raise TypeError(
                     "numpy_array_validation"
-                    f"Invalid data, shape, or dtype for NumPy array: {str(e)}",
+                    f"Invalid data, shape, or dtype for NumPy array: {str(e)}"
                 )
         if isinstance(value, np.ndarray):
             return cls(value)

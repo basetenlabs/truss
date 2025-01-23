@@ -13,8 +13,7 @@ class LocalConfig:
     @staticmethod
     def from_dict(d):
         return LocalConfig(
-            secrets=d.get("secrets", {}),
-            use_sudo=d.get("use_sudo", False),
+            secrets=d.get("secrets", {}), use_sudo=d.get("use_sudo", False)
         )
 
     @staticmethod
@@ -23,10 +22,7 @@ class LocalConfig:
             return LocalConfig.from_dict(yaml.safe_load(yaml_file))
 
     def to_dict(self):
-        return {
-            "secrets": self.secrets,
-            "use_sudo": self.use_sudo,
-        }
+        return {"secrets": self.secrets, "use_sudo": self.use_sudo}
 
     def write_to_yaml_file(self, path: Path):
         with path.open("w") as config_file:

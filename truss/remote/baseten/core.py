@@ -156,9 +156,7 @@ def create_chain_atomic(
         raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
     else:
         res = api.deploy_chain_atomic(
-            chain_name=chain_name,
-            entrypoint=entrypoint,
-            dependencies=dependencies,
+            chain_name=chain_name, entrypoint=entrypoint, dependencies=dependencies
         )
 
     return ChainDeploymentHandleAtomic(

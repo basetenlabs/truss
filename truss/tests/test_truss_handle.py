@@ -70,8 +70,7 @@ def test_readme_generation_int_example(
 
 
 def test_readme_generation_no_example(
-    test_data_path,
-    custom_model_truss_dir_with_pre_and_post_no_example,
+    test_data_path, custom_model_truss_dir_with_pre_and_post_no_example
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_no_example)
     if os.path.exists(th._spec.examples_path):
@@ -84,8 +83,7 @@ def test_readme_generation_no_example(
 
 
 def test_readme_generation_str_example(
-    test_data_path,
-    custom_model_truss_dir_with_pre_and_post_str_example,
+    test_data_path, custom_model_truss_dir_with_pre_and_post_str_example
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post_str_example)
     readme_contents = th.generate_readme()
@@ -402,17 +400,10 @@ def test_enable_gpu(custom_model_truss_dir_with_pre_and_post):
 
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
-    [
-        ("3.8", "py38"),
-        ("py38", "py38"),
-        ("3.9", "py39"),
-        ("py39", "py39"),
-    ],
+    [("3.8", "py38"), ("py38", "py38"), ("3.9", "py39"), ("py39", "py39")],
 )
 def test_update_python_version(
-    python_version,
-    expected_python_version,
-    custom_model_truss_dir_with_pre_and_post,
+    python_version, expected_python_version, custom_model_truss_dir_with_pre_and_post
 ):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.update_python_version(python_version)
@@ -421,10 +412,7 @@ def test_update_python_version(
 
 def test_update_requirements(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
-    requirements = [
-        "tensorflow==2.3.1",
-        "uvicorn==0.12.2",
-    ]
+    requirements = ["tensorflow==2.3.1", "uvicorn==0.12.2"]
     th.update_requirements(requirements)
     sc_requirements = th.spec.requirements
     assert sc_requirements == requirements
@@ -440,10 +428,7 @@ def test_update_requirements_from_file(
         "    # this is comment with a big space. Please don't add.",
         "uvicorn==0.12.2",
     ]
-    allowed_requirements = [
-        "tensorflow==2.3.1",
-        "uvicorn==0.12.2",
-    ]
+    allowed_requirements = ["tensorflow==2.3.1", "uvicorn==0.12.2"]
     req_file_path = tmp_path / "requirements.txt"
     with req_file_path.open("w") as req_file:
         for req in file_requirements:
@@ -547,18 +532,13 @@ def test_add_example_new(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     orig_examples = th.examples()
     th.add_example("example2", [[1]])
-    assert th.examples() == [
-        *orig_examples,
-        Example("example2", [[1]]),
-    ]
+    assert th.examples() == [*orig_examples, Example("example2", [[1]])]
 
 
 def test_add_example_update(custom_model_truss_dir_with_pre_and_post):
     th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
     th.add_example("example1", [[1]])
-    assert th.examples() == [
-        Example("example1", [[1]]),
-    ]
+    assert th.examples() == [Example("example1", [[1]])]
 
 
 def test_model_without_pre_post(custom_model_truss_dir):
@@ -596,11 +576,9 @@ class Model:
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
-                        action=Action.UPDATE,
-                        path="model.py",
-                        content=new_model_code,
+                        action=Action.UPDATE, path="model.py", content=new_model_code
                     ),
-                ),
+                )
             ],
         )
 
@@ -640,8 +618,7 @@ class Model:
 
 @patch("truss.truss_handle.truss_handle.directory_content_hash")
 def test_truss_hash_caching_based_on_max_mod_time(
-    directory_content_patcher,
-    custom_model_truss_dir,
+    directory_content_patcher, custom_model_truss_dir
 ):
     directory_content_patcher.return_value = "mock_hash"
     th = TrussHandle(custom_model_truss_dir)
@@ -708,10 +685,7 @@ class Model:
 @pytest.mark.integration
 @pytest.mark.parametrize(
     "patch_path, expected_call_count",
-    [
-        ("hash_is_current", 1),
-        ("hash_is_current_but_only_every_third_call_succeeds", 3),
-    ],
+    [("hash_is_current", 1), ("hash_is_current_but_only_every_third_call_succeeds", 3)],
 )
 def test_patch_ping_flow(
     patch_path, expected_call_count, custom_model_control, patch_ping_test_server
@@ -721,11 +695,7 @@ def test_patch_ping_flow(
     th = TrussHandle(custom_model_control)
     tag = "test-docker-custom-model-control-tag:0.0.1"
     with ensure_kill_all():
-        result = th.docker_predict(
-            [1],
-            tag=tag,
-            patch_ping_url=patch_ping_url,
-        )
+        result = th.docker_predict([1], tag=tag, patch_ping_url=patch_ping_url)
         assert result == [1]
 
         # Make sure the patch ping url was actually hit
@@ -809,9 +779,7 @@ def verify_python_requirement_not_installed_on_container(container, req: str):
 
 
 def verify_environment_variable_on_container(
-    container,
-    env_var_name: str,
-    env_var_value: str,
+    container, env_var_name: str, env_var_value: str
 ):
     resp = container.execute(["env"])
     needle = f"{env_var_name}={env_var_value}"

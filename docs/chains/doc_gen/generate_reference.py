@@ -210,6 +210,4 @@ def generate_sphinx_docs(output_dir: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
-    generate_sphinx_docs(
-        output_dir=pathlib.Path("/tmp/doc_gen"),
-    )
+    generate_sphinx_docs(output_dir=pathlib.Path("/tmp/doc_gen"))

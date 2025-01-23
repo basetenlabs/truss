@@ -12,12 +12,7 @@ def test_directory_content_signature(tmp_path):
 
     content_sign = directory_content_signature(root)
 
-    assert content_sign.keys() == {
-        "dir",
-        "dir/file3",
-        "file1",
-        "file2",
-    }
+    assert content_sign.keys() == {"dir", "dir/file3", "file1", "file2"}
 
 
 def test_directory_content_signature_ignore_patterns(tmp_path):
@@ -40,8 +35,4 @@ def test_directory_content_signature_ignore_patterns(tmp_path):
         root=root, ignore_patterns=["data/*", ".git"]
     )
 
-    assert content_sign.keys() == {
-        "data",
-        "file1",
-        "file2",
-    }
+    assert content_sign.keys() == {"data", "file1", "file2"}
