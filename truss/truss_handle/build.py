@@ -75,17 +75,14 @@ def init(
                           Truss in. The directory is created if it doesn't exist.
     """
     config = TrussConfig(
-        model_name=model_name,
-        python_version=map_local_to_supported_python_version(),
+        model_name=model_name, python_version=map_local_to_supported_python_version()
     )
 
     if build_config:
         config.build = build_config
 
     target_directory_path = _populate_target_directory(
-        config=config,
-        target_directory_path=target_directory,
-        populate_dirs=True,
+        config=config, target_directory_path=target_directory, populate_dirs=True
     )
 
     scaf = TrussHandle(target_directory_path)

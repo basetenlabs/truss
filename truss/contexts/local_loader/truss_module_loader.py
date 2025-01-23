@@ -33,7 +33,7 @@ class TrussModuleFinder(PathFinder):
             truss_modules_path = [cls._truss_dir]
         else:
             truss_modules_path = [
-                str(Path(cls._truss_dir) / cls._bundled_packages_dir_name),
+                str(Path(cls._truss_dir) / cls._bundled_packages_dir_name)
             ]
             if cls._external_packages_dirs:
                 truss_modules_path += [

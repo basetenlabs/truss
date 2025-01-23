@@ -7,9 +7,7 @@ import pytest
 import yaml
 
 from truss.base.custom_types import ModelFrameworkType
-from truss.base.trt_llm_config import (
-    TrussTRTLLMQuantizationType,
-)
+from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
@@ -158,10 +156,7 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
 
 
 def test_default_config_not_crowded_end_to_end():
-    config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-    )
+    config = TrussConfig(python_version="py39", requirements=[])
 
     config_yaml = """build_commands: []
 environment_variables: {}
@@ -188,9 +183,7 @@ system_packages: []
 )
 def test_model_framework(model_framework, default_config):
     config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        model_framework=model_framework,
+        python_version="py39", requirements=[], model_framework=model_framework
     )
 
     new_config = default_config
@@ -225,11 +218,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     )
 
     new_config = default_config
-    new_config["model_cache"] = [
-        {
-            "repo_id": "test/model",
-        }
-    ]
+    new_config["model_cache"] = [{"repo_id": "test/model"}]
 
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
@@ -250,19 +239,14 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         python_version="py39",
         requirements=[],
         model_cache=ModelCache(
-            models=[
-                ModelRepo("test/model1", "main"),
-                ModelRepo("test/model2"),
-            ]
+            models=[ModelRepo("test/model1", "main"), ModelRepo("test/model2")]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
         {"repo_id": "test/model1", "revision": "main"},
-        {
-            "repo_id": "test/model2",
-        },
+        {"repo_id": "test/model2"},
     ]
 
     assert new_config == config.to_dict(verbose=False)
@@ -275,18 +259,13 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
         python_version="py39",
         requirements=[],
         model_cache=ModelCache(
-            models=[
-                ModelRepo("test/model1"),
-                ModelRepo("test/model2", "not-main2"),
-            ]
+            models=[ModelRepo("test/model1"), ModelRepo("test/model2", "not-main2")]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
-        {
-            "repo_id": "test/model1",
-        },
+        {"repo_id": "test/model1"},
         {"repo_id": "test/model2", "revision": "not-main2"},
     ]
 

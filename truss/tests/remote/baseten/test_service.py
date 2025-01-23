@@ -31,18 +31,14 @@ def test_chain_invocation_url_draft():
 
 def test_model_status_page_url():
     url = service.URLConfig.status_page_url(
-        "https://app.baseten.co",
-        service.URLConfig.MODEL,
-        "123",
+        "https://app.baseten.co", service.URLConfig.MODEL, "123"
     )
     assert url == "https://app.baseten.co/models/123/overview"
 
 
 def test_chain_status_page_url():
     url = service.URLConfig.status_page_url(
-        "https://app.baseten.co",
-        service.URLConfig.CHAIN,
-        "abc",
+        "https://app.baseten.co", service.URLConfig.CHAIN, "abc"
     )
     assert url == "https://app.baseten.co/chains/abc/overview"
 

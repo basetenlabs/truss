@@ -131,30 +131,12 @@ class ModelContainerPatchApplier:
 
         if action == Action.REMOVE:
             subprocess.run(
-                [
-                    "apt",
-                    "remove",
-                    "-y",
-                    system_package_patch.package,
-                ],
-                check=True,
+                ["apt", "remove", "-y", system_package_patch.package], check=True
             )
         elif action in [Action.ADD, Action.UPDATE]:
+            subprocess.run(["apt", "update"], check=True)
             subprocess.run(
-                [
-                    "apt",
-                    "update",
-                ],
-                check=True,
-            )
-            subprocess.run(
-                [
-                    "apt",
-                    "install",
-                    "-y",
-                    system_package_patch.package,
-                ],
-                check=True,
+                ["apt", "install", "-y", system_package_patch.package], check=True
             )
         else:
             raise ValueError(f"Unknown python requirement patch action {action}")

@@ -47,8 +47,7 @@ class TrussTestRemote(TrussRemote):
 
 def mock_service_config():
     return RemoteConfig(
-        name="mock-service",
-        configs={"remote_provider": "test_remote", **SAMPLE_CONFIG},
+        name="mock-service", configs={"remote_provider": "test_remote", **SAMPLE_CONFIG}
     )
 
 

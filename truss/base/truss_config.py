@@ -8,9 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
-from truss.base.constants import (
-    HTTP_PUBLIC_BLOB_BACKEND,
-)
+from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
@@ -274,10 +272,7 @@ class Resources:
             use_gpu = True
 
         return Resources(
-            cpu=cpu,
-            memory=memory,
-            use_gpu=use_gpu,
-            accelerator=accelerator,
+            cpu=cpu, memory=memory, use_gpu=use_gpu, accelerator=accelerator
         )
 
     def to_dict(self):
@@ -593,12 +588,9 @@ class TrussConfig:
 
     @property
     def canonical_python_version(self) -> str:
-        return {
-            "py311": "3.11",
-            "py310": "3.10",
-            "py39": "3.9",
-            "py38": "3.8",
-        }[self.python_version]
+        return {"py311": "3.11", "py310": "3.10", "py39": "3.9", "py38": "3.8"}[
+            self.python_version
+        ]
 
     @property
     def parsed_trt_llm_build_configs(self) -> List[TrussTRTLLMBuildConfiguration]:

@@ -3,10 +3,7 @@ import time
 import pydantic
 
 from truss.remote.baseten import service
-from truss.remote.baseten.core import (
-    ACTIVE_STATUS,
-    DEPLOYING_STATUSES,
-)
+from truss.remote.baseten.core import ACTIVE_STATUS, DEPLOYING_STATUSES
 
 
 class ModelDeployment:

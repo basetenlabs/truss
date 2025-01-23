@@ -4,14 +4,7 @@ import sys
 import textwrap
 from http import HTTPStatus
 from types import TracebackType
-from typing import (
-    Generator,
-    Mapping,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Generator, Mapping, Optional, Tuple, Type, Union
 
 import fastapi
 import pydantic
@@ -68,9 +61,7 @@ def add_error_headers_to_user_response(response: starlette.responses.Response) -
 
 
 def _make_baseten_response(
-    http_status: int,
-    info: Union[str, Exception],
-    baseten_error_code: int,
+    http_status: int, info: Union[str, Exception], baseten_error_code: int
 ) -> fastapi.Response:
     msg = str(info) if isinstance(info, Exception) else info
     return JSONResponse(
@@ -91,9 +82,7 @@ async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Respo
         )
     if isinstance(exc, InputParsingError):
         return _make_baseten_response(
-            HTTPStatus.BAD_REQUEST.value,
-            exc,
-            _BASETEN_CLIENT_ERROR_CODE,
+            HTTPStatus.BAD_REQUEST.value, exc, _BASETEN_CLIENT_ERROR_CODE
         )
     if isinstance(exc, ModelDefinitionError):
         return _make_baseten_response(
@@ -134,8 +123,7 @@ HANDLED_EXCEPTIONS = {
 def filter_traceback(
     model_file_name: str,
 ) -> Union[
-    Tuple[Type[BaseException], BaseException, TracebackType],
-    Tuple[None, None, None],
+    Tuple[Type[BaseException], BaseException, TracebackType], Tuple[None, None, None]
 ]:
     exc_type, exc_value, tb = sys.exc_info()
     if tb is None:

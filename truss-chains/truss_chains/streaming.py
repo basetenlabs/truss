@@ -50,26 +50,19 @@ class StreamTypes(Generic[ItemT, HeaderTT, FooterTT]):
 
 @overload
 def stream_types(
-    item_type: Type[ItemT],
-    *,
-    header_type: Type[HeaderT],
-    footer_type: Type[FooterT],
+    item_type: Type[ItemT], *, header_type: Type[HeaderT], footer_type: Type[FooterT]
 ) -> StreamTypes[ItemT, HeaderT, FooterT]: ...
 
 
 @overload
 def stream_types(
-    item_type: Type[ItemT],
-    *,
-    header_type: Type[HeaderT],
+    item_type: Type[ItemT], *, header_type: Type[HeaderT]
 ) -> StreamTypes[ItemT, HeaderT, None]: ...
 
 
 @overload
 def stream_types(
-    item_type: Type[ItemT],
-    *,
-    footer_type: Type[FooterT],
+    item_type: Type[ItemT], *, footer_type: Type[FooterT]
 ) -> StreamTypes[ItemT, None, FooterT]: ...
 
 
@@ -244,35 +237,30 @@ class StreamReaderFull(
 
 @overload
 def stream_reader(
-    types: StreamTypes[ItemT, None, None],
-    stream: AsyncIterator[bytes],
+    types: StreamTypes[ItemT, None, None], stream: AsyncIterator[bytes]
 ) -> _StreamReader[ItemT, None, None]: ...
 
 
 @overload
 def stream_reader(
-    types: StreamTypes[ItemT, HeaderT, None],
-    stream: AsyncIterator[bytes],
+    types: StreamTypes[ItemT, HeaderT, None], stream: AsyncIterator[bytes]
 ) -> StreamReaderWithHeader[ItemT, HeaderT, None]: ...
 
 
 @overload
 def stream_reader(
-    types: StreamTypes[ItemT, None, FooterT],
-    stream: AsyncIterator[bytes],
+    types: StreamTypes[ItemT, None, FooterT], stream: AsyncIterator[bytes]
 ) -> StreamReaderWithFooter[ItemT, None, FooterT]: ...
 
 
 @overload
 def stream_reader(
-    types: StreamTypes[ItemT, HeaderT, FooterT],
-    stream: AsyncIterator[bytes],
+    types: StreamTypes[ItemT, HeaderT, FooterT], stream: AsyncIterator[bytes]
 ) -> StreamReaderFull[ItemT, HeaderT, FooterT]: ...
 
 
 def stream_reader(
-    types: StreamTypes[ItemT, HeaderTT, FooterTT],
-    stream: AsyncIterator[bytes],
+    types: StreamTypes[ItemT, HeaderTT, FooterTT], stream: AsyncIterator[bytes]
 ) -> _StreamReader:
     if types.header_type is None and types.footer_type is None:
         return _StreamReader(types, stream)
@@ -379,9 +367,7 @@ def stream_writer(
 ) -> StreamWriterFull[ItemT, HeaderT, FooterT]: ...
 
 
-def stream_writer(
-    types: StreamTypes[ItemT, HeaderTT, FooterTT],
-) -> _StreamWriter:
+def stream_writer(types: StreamTypes[ItemT, HeaderTT, FooterTT]) -> _StreamWriter:
     if types.header_type is None and types.footer_type is None:
         return _StreamWriter(types)
     if types.header_type is None:

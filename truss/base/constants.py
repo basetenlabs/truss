@@ -84,20 +84,12 @@ XGBOOST_REQ_MODULE_NAMES: Set[str] = {"xgboost"}
 
 # list from https://www.tensorflow.org/install/pip
 # if problematic, lets look to https://www.tensorflow.org/install/source
-TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {
-    "tensorflow",
-}
+TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {"tensorflow"}
 
-LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {
-    "lightgbm",
-}
+LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {"lightgbm"}
 
 # list from https://pytorch.org/get-started/locally/
-PYTORCH_REQ_MODULE_NAMES: Set[str] = {
-    "torch",
-    "torchvision",
-    "torchaudio",
-}
+PYTORCH_REQ_MODULE_NAMES: Set[str] = {"torch", "torchvision", "torchaudio"}
 
 MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
 

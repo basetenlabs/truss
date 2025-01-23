@@ -2,13 +2,7 @@ import enum
 import time
 import urllib.parse
 import warnings
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    NamedTuple,
-    Optional,
-)
+from typing import Any, Dict, Iterator, NamedTuple, Optional
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
@@ -128,10 +122,7 @@ class BasetenService(TrussService):
     def invocation_url(self) -> str:
         return f"{self._service_url}/predict"
 
-    def predict(
-        self,
-        model_request_body: Dict,
-    ) -> Any:
+    def predict(self, model_request_body: Dict) -> Any:
         response = self._send_request(
             self.predict_url, "POST", data=model_request_body, stream=True
         )

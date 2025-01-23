@@ -23,13 +23,7 @@ class Example:
 
     @staticmethod
     def from_dict(example_dict):
-        return Example(
-            name=example_dict["name"],
-            input=example_dict["input"],
-        )
+        return Example(name=example_dict["name"], input=example_dict["input"])
 
     def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "input": self.input,
-        }
+        return {"name": self.name, "input": self.input}

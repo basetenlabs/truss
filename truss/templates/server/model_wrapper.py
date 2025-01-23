@@ -17,14 +17,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -128,9 +121,7 @@ class ArgConfig(enum.Enum):
 
     @classmethod
     def from_signature(
-        cls,
-        signature: inspect.Signature,
-        method_name: str,
+        cls, signature: inspect.Signature, method_name: str
     ) -> "ArgConfig":
         parameters = list(signature.parameters.values())
 
@@ -221,10 +212,7 @@ class ModelDescriptor:
             preprocess = None
 
         if hasattr(model, "predict"):
-            predict = MethodDescriptor.from_method(
-                model.predict,
-                method_name="predict",
-            )
+            predict = MethodDescriptor.from_method(model.predict, method_name="predict")
             if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
                 raise errors.ModelDefinitionError(
                     "When using preprocessing, the predict method cannot only have the "
@@ -423,11 +411,7 @@ class ModelWrapper:
 
             model_class = getattr(module, self._config["model_class_name"])
             model_init_params = _prepare_init_args(
-                model_class,
-                self._config,
-                data_dir,
-                secrets,
-                lazy_data_resolver,
+                model_class, self._config, data_dir, secrets, lazy_data_resolver
             )
             signature = inspect.signature(model_class)
             for ext_name, ext in extensions.items():
@@ -529,9 +513,7 @@ class ModelWrapper:
                     )
 
     async def preprocess(
-        self,
-        inputs: InputType,
-        request: starlette.requests.Request,
+        self, inputs: InputType, request: starlette.requests.Request
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
         assert descriptor, "`preprocess` must only be called if model has it."
@@ -543,9 +525,7 @@ class ModelWrapper:
                 return await to_thread.run_sync(self._model.preprocess, *args)
 
     async def predict(
-        self,
-        inputs: Any,
-        request: starlette.requests.Request,
+        self, inputs: Any, request: starlette.requests.Request
     ) -> Union[OutputType, Any]:
         # The result can be a serializable data structure, byte-generator, a request,
         # or, if `postprocessing` is used, anything. In the last case postprocessing
@@ -562,9 +542,7 @@ class ModelWrapper:
             return await to_thread.run_sync(self._model.predict, *args)
 
     async def postprocess(
-        self,
-        result: Union[InputType, Any],
-        request: starlette.requests.Request,
+        self, result: Union[InputType, Any], request: starlette.requests.Request
     ) -> OutputType:
         # The postprocess function can handle outputs of `predict`, but not
         # generators and responses - in that case predict must return directly
@@ -637,8 +615,7 @@ class ModelWrapper:
             ):
                 while True:
                     chunk = await asyncio.wait_for(
-                        response_queue.get(),
-                        timeout=streaming_read_timeout,
+                        response_queue.get(), timeout=streaming_read_timeout
                     )
                     if chunk == SENTINEL:
                         return
@@ -647,9 +624,7 @@ class ModelWrapper:
         return _buffered_response_generator()
 
     async def __call__(
-        self,
-        inputs: Optional[InputType],
-        request: starlette.requests.Request,
+        self, inputs: Optional[InputType], request: starlette.requests.Request
     ) -> OutputType:
         """
         Returns result from: preprocess -> predictor -> postprocess.
@@ -796,23 +771,13 @@ def _init_extensions(config, data_dir, secrets, lazy_data_resolver):
             if extension_path.is_dir():
                 extension_name = extension_path.name
                 extension = _init_extension(
-                    extension_name,
-                    config,
-                    data_dir,
-                    secrets,
-                    lazy_data_resolver,
+                    extension_name, config, data_dir, secrets, lazy_data_resolver
                 )
                 extensions[extension_name] = extension
     return extensions
 
 
-def _init_extension(
-    extension_name: str,
-    config,
-    data_dir,
-    secrets,
-    lazy_data_resolver,
-):
+def _init_extension(extension_name: str, config, data_dir, secrets, lazy_data_resolver):
     extension_module = importlib.import_module(
         f"{EXTENSIONS_DIR_NAME}.{extension_name}.{EXTENSION_FILE_NAME}"
     )

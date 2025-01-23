@@ -62,10 +62,7 @@ class Model:
 
     def predict(inp):
         time.sleep(random.uniform(0, 0.5))
-        resp = requests.post(
-            f"{ctrl_url}/v1/models/model:predict",
-            json=inp,
-        )
+        resp = requests.post(f"{ctrl_url}/v1/models/model:predict", json=inp)
         return resp.json()
 
     with ThreadPool(10) as p:
@@ -98,8 +95,7 @@ class Model:
 def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path):
     for _ in range(10):
         with _configured_control_server(
-            truss_control_container_fs,
-            with_patch_ping_flow=True,
+            truss_control_container_fs, with_patch_ping_flow=True
         ) as control_server:
             # Account for patch ping delays
             time.sleep(PATCH_PING_MAX_DELAY_SECS)
@@ -171,8 +167,7 @@ def _process_tree_is_dead(pid: int):
 
 @contextmanager
 def _configured_control_server(
-    truss_control_container_fs: Path,
-    with_patch_ping_flow: bool = False,
+    truss_control_container_fs: Path, with_patch_ping_flow: bool = False
 ):
     # Pick random ports to reduce reuse, port release may take time
     # which can interfere with tests
