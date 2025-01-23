@@ -79,9 +79,7 @@ class BasetenSession:
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
-        self,
-        service_descriptor: definitions.DeployedServiceDescriptor,
-        api_key: str,
+        self, service_descriptor: definitions.DeployedServiceDescriptor, api_key: str
     ) -> None:
         logging.info(
             f"Creating BasetenSession (HTTP) for `{service_descriptor.name}`.\n"
@@ -158,9 +156,7 @@ class BasetenSession:
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
-                    connector = aiohttp.TCPConnector(
-                        limit=DEFAULT_MAX_CONNECTIONS,
-                    )
+                    connector = aiohttp.TCPConnector(limit=DEFAULT_MAX_CONNECTIONS)
                     self._cached_async_client = (
                         aiohttp.ClientSession(
                             headers=self._auth_header,
@@ -230,9 +226,7 @@ class StubBase(BasetenSession, abc.ABC):
 
     @final
     def __init__(
-        self,
-        service_descriptor: definitions.DeployedServiceDescriptor,
-        api_key: str,
+        self, service_descriptor: definitions.DeployedServiceDescriptor, api_key: str
     ) -> None:
         """
         Args:

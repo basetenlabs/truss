@@ -19,24 +19,12 @@ from starlette.datastructures import State
 
 async def handle_patch_error(_, exc):
     error_type = _camel_to_snake_case(type(exc).__name__)
-    return JSONResponse(
-        content={
-            "error": {
-                "type": error_type,
-                "msg": str(exc),
-            }
-        }
-    )
+    return JSONResponse(content={"error": {"type": error_type, "msg": str(exc)}})
 
 
 async def generic_error_handler(_, exc):
     return JSONResponse(
-        content={
-            "error": {
-                "type": "unknown",
-                "msg": f"{type(exc)}: {exc}",
-            }
-        }
+        content={"error": {"type": "unknown", "msg": f"{type(exc)}: {exc}"}}
     )
 
 
@@ -69,9 +57,7 @@ def create_app(base_config: Dict):
     pip_path = getattr(app_state, "pip_path", None)
 
     patch_applier = ModelContainerPatchApplier(
-        Path(app_state.inference_server_home),
-        app_logger,
-        pip_path,
+        Path(app_state.inference_server_home), app_logger, pip_path
     )
 
     oversee_inference_server = getattr(app_state, "oversee_inference_server", True)
@@ -86,8 +72,7 @@ def create_app(base_config: Dict):
     async def start_background_inference_startup():
         asyncio.create_task(
             async_inference_server_startup_flow(
-                app_state.inference_server_controller,
-                app_logger,
+                app_state.inference_server_controller, app_logger
             )
         )
 

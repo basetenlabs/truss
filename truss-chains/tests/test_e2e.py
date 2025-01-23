@@ -42,10 +42,7 @@ def test_chain():
             6280,
             "erodfderodfderodfderodfderodfd",
             123,
-            {
-                "parts": [],
-                "part_lens": [10],
-            },
+            {"parts": [], "part_lens": [10]},
             ["a", "b"],
         ]
         # Call with values for default arguments.
@@ -54,10 +51,7 @@ def test_chain():
             json={
                 "length": 30,
                 "num_partitions": 3,
-                "pydantic_default_arg": {
-                    "parts": ["marius"],
-                    "part_lens": [3],
-                },
+                "pydantic_default_arg": {"parts": ["marius"], "part_lens": [3]},
                 "simple_default_arg": ["bola"],
             },
         )
@@ -67,10 +61,7 @@ def test_chain():
             6280,
             "erodfderodfderodfderodfderodfd",
             123,
-            {
-                "parts": ["marius"],
-                "part_lens": [3],
-            },
+            {"parts": ["marius"], "part_lens": [3]},
             ["bola"],
         ]
 
@@ -125,21 +116,12 @@ async def test_chain_local():
                 4198,
                 "erodfderodfderodfder",
                 123,
-                {
-                    "parts": [],
-                    "part_lens": [10],
-                },
+                {"parts": [], "part_lens": [10]},
                 ["a", "b"],
             )
 
             # Convert the pydantic model to a dict for comparison
-            result_dict = (
-                result[0],
-                result[1],
-                result[2],
-                result[3].dict(),
-                result[4],
-            )
+            result_dict = (result[0], result[1], result[2], result[3].dict(), result[4])
 
             assert result_dict == expected
 
@@ -285,11 +267,7 @@ def test_traditional_truss():
         assert truss_handle.spec.config.model_name == "OverridePassthroughModelName"
 
         port = utils.get_free_port()
-        truss_handle.docker_run(
-            local_port=port,
-            detach=True,
-            network="host",
-        )
+        truss_handle.docker_run(local_port=port, detach=True, network="host")
 
         response = requests.post(
             f"http://localhost:{port}/v1/models/model:predict",

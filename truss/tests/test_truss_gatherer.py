@@ -21,9 +21,7 @@ def test_gather(custom_model_with_external_package):
     ext_pkg_top_module2.unlink()
 
     assert _same_dir_content(
-        custom_model_with_external_package,
-        gathered_truss_path,
-        ["config.yaml"],
+        custom_model_with_external_package, gathered_truss_path, ["config.yaml"]
     )
 
 

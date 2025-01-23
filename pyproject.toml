@@ -197,6 +197,9 @@ lint.ignore = [
     "E402", # module-import-not-at-top
 ]
 
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
 [tool.ruff.lint.isort]
 # Matches the Google Python Style Guide.
 section-order = [
@@ -206,6 +209,7 @@ section-order = [
     "first-party",
     "local-folder",
 ]
+split-on-trailing-comma = false
 
 [tool.ruff.lint.extend-per-file-ignores]
 "**tests/samples.py" = [

@@ -44,9 +44,7 @@ class Generator(chains.ChainletBase):
         header = Header(time=time.time(), msg="Start.")
         yield streamer.yield_header(header)
         for i in range(1, 5):
-            data = MyDataChunk(
-                words=[chr(x + 70) * x for x in range(1, i + 1)],
-            )
+            data = MyDataChunk(words=[chr(x + 70) * x for x in range(1, i + 1)])
             print("Yield")
             yield streamer.yield_item(data)
             if cause_error and i > 2:

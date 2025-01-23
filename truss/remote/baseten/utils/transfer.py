@@ -45,9 +45,6 @@ def multipart_upload_boto3(
         with progress_context:
             s3_resource.Object(bucket_name, key).upload_file(
                 file_path,
-                Config=TransferConfig(
-                    max_concurrency=10,
-                    use_threads=True,
-                ),
+                Config=TransferConfig(max_concurrency=10, use_threads=True),
                 Callback=callback,
             )

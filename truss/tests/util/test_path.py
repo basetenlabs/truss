@@ -116,9 +116,7 @@ def test_is_ignored_with_base_dir(custom_model_truss_dir_with_hidden_files):
     )
 
 
-def test_ignored_files_in_docker_context(
-    custom_model_truss_dir_with_hidden_files,
-):
+def test_ignored_files_in_docker_context(custom_model_truss_dir_with_hidden_files):
     tr = load(custom_model_truss_dir_with_hidden_files)
 
     with path.given_or_temporary_dir() as dir:
@@ -159,13 +157,7 @@ def test_copy_tree_path_with_truss_ignore(custom_model_truss_dir_with_truss_igno
 
 
 def test_get_ignored_relative_paths():
-    ignore_patterns = [
-        ".mypy_cache/",
-        "venv/",
-        "*.tmp",
-        ".git",
-        "data/*",
-    ]
+    ignore_patterns = [".mypy_cache/", "venv/", "*.tmp", ".git", "data/*"]
 
     root_relative_paths = {
         ".mypy_cache/should_ignore.json",
@@ -192,12 +184,7 @@ def test_get_ignored_relative_paths():
 
 
 def test_get_ignored_relative_paths_from_root(custom_model_truss_dir_with_hidden_files):
-    ignore_patterns = [
-        "__pycache__",
-        ".DS_Store",
-        ".git",
-        "data/*",
-    ]
+    ignore_patterns = ["__pycache__", ".DS_Store", ".git", "data/*"]
 
     unignored_relative_paths = path.get_unignored_relative_paths_from_root(
         custom_model_truss_dir_with_hidden_files, ignore_patterns

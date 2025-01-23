@@ -178,11 +178,7 @@ class TrussHandle:
         return _docker_image_from_labels(labels)
 
     @proxy_to_shadow_if_scattered
-    def run_python_script(
-        self,
-        script_path: Path,
-        build_dir: Optional[Path] = None,
-    ):
+    def run_python_script(self, script_path: Path, build_dir: Optional[Path] = None):
         from python_on_whales.exceptions import DockerException
 
         image = self.build_serving_docker_image(build_dir=build_dir)
@@ -495,11 +491,7 @@ class TrussHandle:
         validate_secret_name(secret_name)
         self._update_config(
             lambda conf: replace(
-                conf,
-                secrets={
-                    **conf.secrets,
-                    secret_name: default_secret_value,
-                },
+                conf, secrets={**conf.secrets, secret_name: default_secret_value}
             )
         )
 
@@ -521,23 +513,12 @@ class TrussHandle:
             self._spec.config.external_data or ExternalData([])
         )
         new_external_data = replace(
-            current_external_data,
-            items=current_external_data.items + [item],
+            current_external_data, items=current_external_data.items + [item]
         )
-        self._update_config(
-            lambda conf: replace(
-                conf,
-                external_data=new_external_data,
-            )
-        )
+        self._update_config(lambda conf: replace(conf, external_data=new_external_data))
 
     def remove_all_external_data(self):
-        self._update_config(
-            lambda conf: replace(
-                conf,
-                external_data=None,
-            )
-        )
+        self._update_config(lambda conf: replace(conf, external_data=None))
 
     def update_requirements(self, requirements: List[str]):
         """Update requirements in truss model's config.
@@ -665,9 +646,7 @@ class TrussHandle:
 
     @proxy_to_shadow_if_scattered
     def get_serving_docker_containers_from_labels(
-        self,
-        all: bool = False,
-        labels: Optional[dict] = None,
+        self, all: bool = False, labels: Optional[dict] = None
     ) -> list:
         """Get serving docker containers, with given labels.
 
@@ -679,10 +658,7 @@ class TrussHandle:
             labels = self._get_serving_lookup_labels()
         else:
             # Make sure we're looking for serving container for this truss.
-            labels = {
-                TRUSS: True,
-                **labels,
-            }
+            labels = {TRUSS: True, **labels}
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
@@ -741,10 +717,7 @@ class TrussHandle:
                     python_executable_path=python_executable_path,
                 )
                 return replace(conf, base_image=new_base_image)
-            new_base_image = BaseImage(
-                image,
-                python_executable_path,
-            )
+            new_base_image = BaseImage(image, python_executable_path)
             return replace(conf, base_image=new_base_image)
 
         self._update_config(define_base_image_fn)
@@ -802,10 +775,7 @@ class TrussHandle:
             inferred_python_version = f"py{version_parts[0]}{version_parts[1]}"
 
         self._update_config(
-            lambda conf: replace(
-                conf,
-                python_version=inferred_python_version,
-            )
+            lambda conf: replace(conf, python_version=inferred_python_version)
         )
 
     def _control_serving_container_has_partially_applied_patch(self) -> Optional[bool]:

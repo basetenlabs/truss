@@ -14,9 +14,7 @@ def test_truss_init(tmp_path):
     assert spec.config_path.exists()
 
 
-def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(
-    tmp_path,
-):
+def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(tmp_path):
     dir_path = tmp_path / "truss"
     dir_name = str(dir_path)
 
@@ -27,10 +25,7 @@ def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(
 
     # Init requirements file
     req_file_path = tmp_path / "requirements.txt"
-    requirements = [
-        "tensorflow==2.3.1",
-        "uvicorn==0.12.2",
-    ]
+    requirements = ["tensorflow==2.3.1", "uvicorn==0.12.2"]
     with req_file_path.open("w") as req_file:
         for req in requirements:
             req_file.write(f"{req}\n")

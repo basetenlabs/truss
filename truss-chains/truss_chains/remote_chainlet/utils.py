@@ -7,14 +7,7 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import (
-    Dict,
-    Iterator,
-    Mapping,
-    NoReturn,
-    Type,
-    TypeVar,
-)
+from typing import Dict, Iterator, Mapping, NoReturn, Type, TypeVar
 
 import aiohttp
 import fastapi
@@ -47,10 +40,7 @@ def populate_chainlet_service_predict_urls(
 
     dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
 
-    for (
-        chainlet_name,
-        service_descriptor,
-    ) in chainlet_to_service.items():
+    for chainlet_name, service_descriptor in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
         # NOTE: The Chainlet `display_name` in the Truss CLI
@@ -185,9 +175,7 @@ def exception_to_http_error() -> Iterator[None]:
         _handle_exception(e)
 
 
-def _resolve_exception_class(
-    error: definitions.RemoteErrorDetail,
-) -> Type[Exception]:
+def _resolve_exception_class(error: definitions.RemoteErrorDetail) -> Type[Exception]:
     """Tries to find the exception class in builtins or imported libs,
     falls back to `definitions.GenericRemoteError` if not found."""
     exception_cls = None

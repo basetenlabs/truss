@@ -35,8 +35,7 @@ class Model:
         return request
     """
     with helpers.file_content(
-        truss_container_app_path / "model" / "model.py",
-        model_file_content,
+        truss_container_app_path / "model" / "model.py", model_file_content
     ), helpers.sys_path(truss_container_app_path):
         yield truss_container_app_path
 

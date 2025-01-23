@@ -26,9 +26,7 @@ def test_truss_with_no_annotations(test_data_path):
         _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
         response = requests.post(INFERENCE_URL, json={"prompt": "value"})
-        assert response.json() == {
-            "prompt": "value",
-        }
+        assert response.json() == {"prompt": "value"}
 
         schema_response = requests.get(SCHEMA_URL)
         assert schema_response.status_code == 404
@@ -105,9 +103,7 @@ def test_truss_with_annotated_inputs_outputs(test_data_path):
         # Valid JSON input.
         json_input = {"prompt": "value"}
         response = requests.post(INFERENCE_URL, json=json_input)
-        assert response.json() == {
-            "generated_text": "value",
-        }
+        assert response.json() == {"generated_text": "value"}
 
         # Valid binary input.
         byte_input = serialization.truss_msgpack_serialize(json_input)
@@ -455,9 +451,7 @@ class Model:
         schema = schema_response.json()
 
         assert schema["input_schema"] == {
-            "properties": {
-                "prompt": {"title": "Prompt", "type": "string"},
-            },
+            "properties": {"prompt": {"title": "Prompt", "type": "string"}},
             "required": ["prompt"],
             "title": "ModelInput",
             "type": "object",

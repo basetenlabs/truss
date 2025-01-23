@@ -1,7 +1,5 @@
 from briton.spec_dec_truss_model import Model as SpecDecModel
-from briton.trtllm_config import (
-    TRTLLMConfiguration,
-)
+from briton.trtllm_config import TRTLLMConfiguration
 from briton.truss_model import Model
 
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in

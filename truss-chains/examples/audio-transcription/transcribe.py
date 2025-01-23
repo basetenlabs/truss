@@ -49,13 +49,10 @@ class MacroChunkWorker(chains.ChainletBase):
     _whisper: DeployedWhisper
 
     def __init__(
-        self,
-        context: chains.DeploymentContext = chains.depends_context(),
+        self, context: chains.DeploymentContext = chains.depends_context()
     ) -> None:
         self._whisper = DeployedWhisper.from_url(
-            WHISPER_PREDICT_URL,
-            context,
-            options=chains.RPCOptions(retries=2),
+            WHISPER_PREDICT_URL, context, options=chains.RPCOptions(retries=2)
         )
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -128,9 +125,7 @@ class Transcribe(chains.ChainletBase):
         logging.info(f"Transcribe request for `{duration_secs:.1f}` seconds.")
         # TODO: use silence-aware time chunking.
         macro_chunks = helpers.generate_time_chunks(
-            duration_secs,
-            params.macro_chunk_size_sec,
-            params.macro_chunk_overlap_sec,
+            duration_secs, params.macro_chunk_size_sec, params.macro_chunk_overlap_sec
         )
         tasks = []
         for i, macro_chunk in enumerate(macro_chunks):

@@ -36,11 +36,7 @@ def test_identify_requirement_name(req, expected_name):
 
 
 def test_reqs_by_name():
-    reqs = [
-        "pytorch",
-        " ",
-        "jinja==1.0",
-    ]
+    reqs = ["pytorch", " ", "jinja==1.0"]
     assert reqs_by_name(reqs) == {"pytorch": "pytorch", "jinja": "jinja==1.0"}
 
 

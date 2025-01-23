@@ -31,15 +31,8 @@ from truss.truss_handle.patch.hash import file_content_hash_str
 from truss.util.path import get_ignored_relative_paths
 
 logger: logging.Logger = logging.getLogger(__name__)
-PYCACHE_IGNORE_PATTERNS = [
-    "**/__pycache__/**/*",
-    "**/__pycache__/**",
-]
-UNPATCHABLE_CONFIG_KEYS = [
-    "live_reload",
-    "python_version",
-    "resources",
-]
+PYCACHE_IGNORE_PATTERNS = ["**/__pycache__/**/*", "**/__pycache__/**"]
+UNPATCHABLE_CONFIG_KEYS = ["live_reload", "python_version", "resources"]
 
 
 def calc_truss_patch(
@@ -67,9 +60,7 @@ def calc_truss_patch(
         ignore_patterns = PYCACHE_IGNORE_PATTERNS
 
     changed_paths = _calc_changed_paths(
-        truss_dir,
-        previous_truss_signature.content_hashes_by_path,
-        ignore_patterns,
+        truss_dir, previous_truss_signature.content_hashes_by_path, ignore_patterns
     )
 
     new_config = TrussConfig.from_yaml(truss_dir / CONFIG_FILE)
@@ -98,8 +89,7 @@ def calc_truss_patch(
                 Patch(
                     type=PatchType.MODEL_CODE,
                     body=ModelCodePatch(
-                        action=Action.REMOVE,
-                        path=_relative_to(path, model_module_path),
+                        action=Action.REMOVE, path=_relative_to(path, model_module_path)
                     ),
                 )
             )
@@ -228,8 +218,7 @@ def _calc_changed_paths(
 
 
 def _calc_unignored_paths(
-    root_relative_paths: Set[str],
-    ignore_patterns: Optional[List[str]] = None,
+    root_relative_paths: Set[str], ignore_patterns: Optional[List[str]] = None
 ) -> Set[str]:
     ignored_paths = set(
         get_ignored_relative_paths(root_relative_paths, ignore_patterns)
@@ -302,10 +291,7 @@ def _calc_env_var_patches(
     removed_items = prev_item_names.difference(new_item_names)
     for removed_item in removed_items:
         patches.append(
-            _mk_env_var_patch(
-                Action.REMOVE,
-                {removed_item: prev_items[removed_item]},
-            )
+            _mk_env_var_patch(Action.REMOVE, {removed_item: prev_items[removed_item]})
         )
     added_items = new_item_names.difference(prev_item_names)
     for added_item in added_items:
@@ -331,12 +317,7 @@ def _calc_external_data_patches(
 
     removed_items = [x for x in prev_items if x not in new_items]
     for removed_item in removed_items:
-        patches.append(
-            _mk_external_data_patch(
-                Action.REMOVE,
-                removed_item,
-            )
-        )
+        patches.append(_mk_external_data_patch(Action.REMOVE, removed_item))
     added_items = [x for x in new_items if x not in prev_items]
     for added_item in added_items:
         patches.append(_mk_external_data_patch(Action.ADD, added_item))
@@ -457,60 +438,39 @@ def _calc_system_packages_patches(
 
 
 def _mk_config_patch(action: Action, config: dict) -> Patch:
-    return Patch(
-        type=PatchType.CONFIG,
-        body=ConfigPatch(
-            action=action,
-            config=config,
-        ),
-    )
+    return Patch(type=PatchType.CONFIG, body=ConfigPatch(action=action, config=config))
 
 
 # Support for patching data changes yet to be implemented
 def _mk_data_patch(action: Action, item: str, path: str) -> Patch:
     return Patch(
-        type=PatchType.DATA,
-        body=DataPatch(action=action, content=item, path=path),
+        type=PatchType.DATA, body=DataPatch(action=action, content=item, path=path)
     )
 
 
 def _mk_env_var_patch(action: Action, item: dict) -> Patch:
     return Patch(
-        type=PatchType.ENVIRONMENT_VARIABLE,
-        body=EnvVarPatch(
-            action=action,
-            item=item,
-        ),
+        type=PatchType.ENVIRONMENT_VARIABLE, body=EnvVarPatch(action=action, item=item)
     )
 
 
 def _mk_external_data_patch(action: Action, item: Dict[str, str]) -> Patch:
     return Patch(
-        type=PatchType.EXTERNAL_DATA,
-        body=ExternalDataPatch(
-            action=action,
-            item=item,
-        ),
+        type=PatchType.EXTERNAL_DATA, body=ExternalDataPatch(action=action, item=item)
     )
 
 
 def _mk_python_requirement_patch(action: Action, requirement: str) -> Patch:
     return Patch(
         type=PatchType.PYTHON_REQUIREMENT,
-        body=PythonRequirementPatch(
-            action=action,
-            requirement=requirement,
-        ),
+        body=PythonRequirementPatch(action=action, requirement=requirement),
     )
 
 
 def _mk_system_package_patch(action: Action, package: str) -> Patch:
     return Patch(
         type=PatchType.SYSTEM_PACKAGE,
-        body=SystemPackagePatch(
-            action=action,
-            package=package,
-        ),
+        body=SystemPackagePatch(action=action, package=package),
     )
 
 

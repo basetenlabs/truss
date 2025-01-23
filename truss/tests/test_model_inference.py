@@ -134,22 +134,10 @@ def test_model_load_logs(test_data_path):
             local_port=8090, detach=True, wait_for_server_ready=True
         )
         logs = container.logs()
-        _assert_logs_contain(
-            logs,
-            message="Executing model.load()",
-        )
-        _assert_logs_contain(
-            logs,
-            message="Loading truss model from file",
-        )
-        _assert_logs_contain(
-            logs,
-            message="Completed model.load()",
-        )
-        _assert_logs_contain(
-            logs,
-            message="User Load Message",
-        )
+        _assert_logs_contain(logs, message="Executing model.load()")
+        _assert_logs_contain(logs, message="Loading truss model from file")
+        _assert_logs_contain(logs, message="Completed model.load()")
+        _assert_logs_contain(logs, message="User Load Message")
 
 
 @pytest.mark.integration
@@ -294,10 +282,7 @@ def test_async_streaming(test_data_path):
         ] == ["0", "1", "2", "3", "4"]
 
         predict_non_stream_response = requests.post(
-            PREDICT_URL,
-            json={},
-            stream=True,
-            headers={"accept": "application/json"},
+            PREDICT_URL, json={}, stream=True, headers={"accept": "application/json"}
         )
         assert "transfer-encoding" not in predict_non_stream_response.headers
         assert predict_non_stream_response.json() == "01234"
@@ -357,13 +342,7 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
         assert [
             byte_string.decode()
             for byte_string in predict_non_error_response.iter_content()
-        ] == [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-        ]
+        ] == ["0", "1", "2", "3", "4"]
         expected_stack_trace = (
             "Traceback (most recent call last):\n"
             '  File "/app/model/model.py", line 12, in inner\n'
@@ -828,29 +807,19 @@ def test_init_environment_parameter():
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         assert "Executing model.load with environment: staging" in container.logs()
         response = requests.post(PREDICT_URL, json={})
         assert response.json() == "staging"
         assert response.status_code == 200
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
     # Test a truss deployment with no associated environment
     config = "model_name: init-no-environment-truss"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         assert "Executing model.load with environment: None" in container.logs()
         response = requests.post(PREDICT_URL, json={})
@@ -874,9 +843,7 @@ def test_setup_environment():
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
@@ -899,13 +866,7 @@ def test_setup_environment():
             in container.logs()
         )
         assert "in beta environment" in container.logs()
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
     # Test a truss that uses the environment in load()
     model = """
@@ -928,9 +889,7 @@ def test_setup_environment():
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
         assert (
@@ -948,11 +907,7 @@ def test_setup_environment():
         no_env = None
         no_env_str = json.dumps(no_env)
         container.execute(
-            [
-                "bash",
-                "-c",
-                f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment",
-            ]
+            ["bash", "-c", f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment"]
         )
         time.sleep(30)
         assert (
@@ -960,13 +915,7 @@ def test_setup_environment():
             in container.logs()
         )
         assert "setup_environment called with None" in container.logs()
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
 
 @pytest.mark.integration
@@ -1258,13 +1207,7 @@ class Model:
         )
 
         lines = predict_response.text.strip().split("\n")
-        assert lines == [
-            "data: 0",
-            "",
-            "data: 1",
-            "",
-            "data: 2",
-        ]
+        assert lines == ["data: 0", "", "data: 1", "", "data: 2"]
 
 
 # Using Request in Model ###############################################################

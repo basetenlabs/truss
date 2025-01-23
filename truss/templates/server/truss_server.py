@@ -331,9 +331,7 @@ class TrussServer:
                 # Endpoint aliases for Sagemaker hosting
                 FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
                 FastAPIRoute(
-                    r"/invocations",
-                    self._endpoints.invocations,
-                    methods=["POST"],
+                    r"/invocations", self._endpoints.invocations, methods=["POST"]
                 ),
             ],
             exception_handlers={

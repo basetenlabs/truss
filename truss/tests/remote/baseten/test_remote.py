@@ -32,19 +32,11 @@ def request_matches_expected_query(request, expected_query):
 def test_get_service_by_version_id():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    version = {
-        "id": "version_id",
-        "oracle": {
-            "id": "model_id",
-        },
-    }
+    version = {"id": "version_id", "oracle": {"id": "model_id"}}
     model_version_response = {"data": {"model_version": version}}
 
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_version_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_version_response)
         service = remote.get_service(model_identifier=ModelVersionId("version_id"))
 
     assert service.model_id == "model_id"
@@ -55,10 +47,7 @@ def test_get_service_by_version_id_no_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_version_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_version_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_version_response)
         with pytest.raises(RemoteError):
             remote.get_service(model_identifier=ModelVersionId("version_id"))
 
@@ -73,19 +62,12 @@ def test_get_service_by_model_name():
     ]
     model_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "versions": versions,
-            }
+            "model": {"name": "model_name", "id": "model_id", "versions": versions}
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
 
         # Check that the production version is returned when published is True.
         service = remote.get_service(
@@ -105,24 +87,15 @@ def test_get_service_by_model_name():
 def test_get_service_by_model_name_no_dev_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [
-        {"id": "1", "is_draft": False, "is_primary": True},
-    ]
+    versions = [{"id": "1", "is_draft": False, "is_primary": True}]
     model_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "versions": versions,
-            }
+            "model": {"name": "model_name", "id": "model_id", "versions": versions}
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
 
         # Check that the production version is returned when published is True.
         service = remote.get_service(
@@ -142,24 +115,15 @@ def test_get_service_by_model_name_no_dev_version():
 def test_get_service_by_model_name_no_prod_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [
-        {"id": "1", "is_draft": True, "is_primary": False},
-    ]
+    versions = [{"id": "1", "is_draft": True, "is_primary": False}]
     model_response = {
         "data": {
-            "model": {
-                "name": "model_name",
-                "id": "model_id",
-                "versions": versions,
-            }
+            "model": {"name": "model_name", "id": "model_id", "versions": versions}
         }
     }
 
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
 
         # Since no production version exists, calling get_service with
         # published=True should raise an error.
@@ -188,10 +152,7 @@ def test_get_service_by_model_id():
     }
 
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
 
         service = remote.get_service(model_identifier=ModelId("model_id"))
         assert service.model_id == "model_id"
@@ -202,10 +163,7 @@ def test_get_service_by_model_id_no_model():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
         with pytest.raises(RemoteError):
             remote.get_service(model_identifier=ModelId("model_id"))
 
@@ -224,10 +182,7 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
         }
     }
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
         with pytest.raises(
@@ -259,10 +214,7 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
         }
     }
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
         with pytest.raises(
@@ -294,10 +246,7 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
         }
     }
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
         with pytest.raises(
@@ -707,13 +656,9 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-@pytest.mark.parametrize(
-    "publish",
-    [True, False],
-)
+@pytest.mark.parametrize("publish", [True, False])
 def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
-    publish,
-    custom_model_truss_dir_with_pre_and_post,
+    publish, custom_model_truss_dir_with_pre_and_post
 ):
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_response = {
@@ -726,14 +671,10 @@ def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
         }
     }
     with requests_mock.Mocker() as m:
-        m.post(
-            _TEST_REMOTE_GRAPHQL_PATH,
-            json=model_response,
-        )
+        m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
         th = TrussHandle(custom_model_truss_dir_with_pre_and_post)
 
         with pytest.raises(
-            ValueError,
-            match="disable-truss-download can only be used for new models",
+            ValueError, match="disable-truss-download can only be used for new models"
         ):
             remote.push(th, "model_name", publish=publish, disable_truss_download=True)

@@ -136,8 +136,4 @@ class MDXAdapterBuilder(MarkdownBuilder):
 
 def setup(app: Any) -> Dict[str, Any]:
     app.add_builder(MDXAdapterBuilder)
-    return {
-        "version": "0.1",
-        "parallel_read_safe": True,
-        "parallel_write_safe": True,
-    }
+    return {"version": "0.1", "parallel_read_safe": True, "parallel_write_safe": True}
