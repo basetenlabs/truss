@@ -35,7 +35,8 @@ GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
 # Below arg names must correspond to `definitions.ABCChainlet`.
-ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
+RUN_REMOTE_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
+MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
@@ -366,6 +367,12 @@ class ChainletMetadata(SafeModelNonSerializable):
     init_is_patched: bool = False
 
 
+class FrameworkConfig(SafeModelNonSerializable):
+    entity_type: Literal["Chainlet", "Model"]
+    supports_dependencies: bool
+    endpoint_method_name: str
+
+
 class RemoteConfig(SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
@@ -507,6 +514,7 @@ class ABCChainlet(abc.ABC):
     remote_config: ClassVar[RemoteConfig] = RemoteConfig()
     # `meta_data` is not shared between subclasses, each has an isolated copy.
     meta_data: ClassVar[ChainletMetadata] = ChainletMetadata()
+    _framework_config: ClassVar[FrameworkConfig]
 
     @classmethod
     def has_custom_init(cls) -> bool:
@@ -521,6 +529,21 @@ class ABCChainlet(abc.ABC):
     @classmethod
     def display_name(cls) -> str:
         return cls.remote_config.name or cls.name
+
+    @classproperty
+    @classmethod
+    def supports_dependencies(cls) -> bool:
+        return cls._framework_config.supports_dependencies
+
+    @classproperty
+    @classmethod
+    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+        return cls._framework_config.entity_type
+
+    @classproperty
+    @classmethod
+    def endpoint_method_name(cls) -> str:
+        return cls._framework_config.endpoint_method_name
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
@@ -574,7 +597,7 @@ class InputArg(SafeModelNonSerializable):
 
 
 class EndpointAPIDescriptor(SafeModelNonSerializable):
-    name: str = ENDPOINT_METHOD_NAME
+    name: str = RUN_REMOTE_METHOD_NAME
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
     is_async: bool

@@ -104,6 +104,11 @@ class ChainletBase(definitions.ABCChainlet):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type="Chainlet",
+            supports_dependencies=True,
+            endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
+        )
         # Each sub-class has own, isolated metadata, e.g. we don't want
         # `mark_entrypoint` to propagate to subclasses.
         cls.meta_data = definitions.ChainletMetadata()
@@ -131,6 +136,11 @@ class ModelBase(definitions.ABCChainlet):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type="Model",
+            supports_dependencies=False,
+            endpoint_method_name=definitions.MODEL_ENDPOINT_METHOD_NAME,
+        )
         cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
         framework.validate_and_register_cls(cls)
 
