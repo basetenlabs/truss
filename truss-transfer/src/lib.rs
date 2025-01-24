@@ -96,7 +96,7 @@ fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> 
     // Acquire the global lock, will be dropped when guard goes out of scope (also in case of errors)
     println!("[INFO] Acquiring global download lock...");
     let _guard = lock.lock().unwrap();
-
+    println!("[INFO] Starting downloading to: {}", download_dir);
     // Build the runtime after acquiring the lock
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -118,8 +118,10 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     // 1. Check if bptr-manifest file exists
     let manifest_path = Path::new(LAZY_DATA_RESOLVER_PATH);
     if !manifest_path.is_file() {
-        println!("[INFO] Manifest file not found, nothing to resolve.");
-        return Ok(());
+        return Err(anyhow!(
+            "Manifest file not found at `{}`. Please ensure the file exists before running.",
+            LAZY_DATA_RESOLVER_PATH
+        ));
     }
 
     // 2. Parse YAML
