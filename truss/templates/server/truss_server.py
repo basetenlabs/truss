@@ -78,7 +78,17 @@ class BasetenEndpoints:
         if not model.ready:
             raise errors.ModelNotReady(model.name)
 
-    async def model_ready(self, model_name: str) -> Dict[str, Union[str, bool]]:
+    async def model_ready(self, model_name: str) -> dict:
+        model: ModelWrapper = self._safe_lookup_model(model_name)
+        is_healthy = await model.is_healthy()
+        if is_healthy is None:
+            self.check_healthy(model)
+        elif not is_healthy:
+            raise errors.ModelNotReady(model.name)
+
+        return {}
+
+    async def model_loaded(self, model_name: str) -> dict:
         self.check_healthy(self._safe_lookup_model(model_name))
 
         return {}
@@ -309,6 +319,12 @@ class TrussServer:
                 # readiness endpoint
                 FastAPIRoute(
                     r"/v1/models/{model_name}", self._endpoints.model_ready, tags=["V1"]
+                ),
+                # loaded endpoint
+                FastAPIRoute(
+                    r"/v1/models/{model_name}/loaded",
+                    self._endpoints.model_loaded,
+                    tags=["V1"],
                 ),
                 FastAPIRoute(
                     r"/v1/models/{model_name}/schema",

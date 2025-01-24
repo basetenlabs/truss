@@ -3,9 +3,11 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, List
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from tenacity import RetryError
 from truss.truss_handle.patch.custom_types import PatchRequest
 
 # Needed to simulate the set up on the model docker container
@@ -210,6 +212,50 @@ async def test_patch_failed_unrecoverable(client):
     assert resp.status_code == 200
     assert "error" in resp.json()
     assert resp.json()["error"]["type"] == "patch_failed_unrecoverable"
+
+
+@pytest.mark.anyio
+async def test_health_check(client):
+    resp = await client.get("/v1/models/model")
+    assert resp.status_code == 200
+    assert resp.json() == {}
+
+
+@pytest.mark.anyio
+async def test_health_check_retries(client, app):
+    async def mock_send(*args, **kwargs):
+        return httpx.Response(
+            status_code=503, json={"error": "Model with name model is not ready."}
+        )
+
+    app.state.proxy_client.send = AsyncMock(side_effect=mock_send)
+
+    with pytest.raises(RetryError):
+        await client.get("/v1/models/model")
+
+    # Health check was retried 10 times
+    assert app.state.proxy_client.send.call_count == 10
+
+
+@pytest.mark.anyio
+async def test_retries(client, app):
+    app.state.proxy_client.send = AsyncMock(
+        side_effect=[
+            httpx.ConnectTimeout("Connect timeout"),
+            httpx.ReadTimeout("Read timeout"),
+            httpx.ReadError("Read error"),
+            httpx.ConnectError("Connect error"),
+            httpx.RemoteProtocolError("Remote protocol error"),
+        ]
+    )
+
+    with patch("endpoints.INFERENCE_SERVER_START_WAIT_SECS", new=4), pytest.raises(
+        RetryError
+    ):
+        await client.get("/v1/models/model")
+
+    # We should have made 5 attempts
+    assert app.state.proxy_client.send.call_count == 5
 
 
 async def _verify_apply_patch_success(client, patch: Patch):

@@ -307,7 +307,7 @@ def test_raises_unsupported_arg_type_str_annot():
 def test_raises_endpoint_no_method():
     match = (
         rf"{TEST_FILE}:\d+ \(StaticMethod\.run_remote\) \[kind: TYPE_ERROR\].*"
-        r"Endpoint must be a method"
+        r"`run_remote` must be a method"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -321,7 +321,7 @@ def test_raises_endpoint_no_method():
 def test_raises_endpoint_no_method_arg():
     match = (
         rf"{TEST_FILE}:\d+ \(StaticMethod\.run_remote\) \[kind: TYPE_ERROR\].*"
-        r"Endpoint must be a method"
+        r"`run_remote` must be a method"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -579,3 +579,92 @@ def test_raises_iterator_no_arg():
         class IteratorNoArg(chains.ChainletBase):
             async def run_remote(self) -> AsyncIterator:
                 yield "123"
+
+
+def test_raises_is_healthy_not_a_method():
+    match = rf"{TEST_FILE}:\d+ \(IsHealthyNotMethod\) \[kind: TYPE_ERROR\].* `is_healthy` must be a method."
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNotMethod(chains.ChainletBase):
+            is_healthy: int = 3
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_no_arg():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNoArg\.is_healthy\) \[kind: TYPE_ERROR\].*"
+        r"`is_healthy` must be a method, i.e. with `self` as first argument. Got function with no arguments."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNoArg(chains.ChainletBase):
+            async def is_healthy() -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_first_arg_not_self():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNoSelfArg\.is_healthy\) \[kind: TYPE_ERROR\].*"
+        r"`is_healthy` must be a method, i.e. with `self` as first argument. Got `hi` as first argument."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNoSelfArg(chains.ChainletBase):
+            def is_healthy(hi) -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_multiple_args():
+    match = rf"{TEST_FILE}:\d+ \(IsHealthyManyArgs\.is_healthy\) \[kind: TYPE_ERROR\].* `is_healthy` must have only one argument: `self`."
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyManyArgs(chains.ChainletBase):
+            def is_healthy(self, hi) -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_not_type_annotated():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNotTyped\.is_healthy\) \[kind: IO_TYPE_ERROR\].*"
+        r"Return value of health check must be type annotated. Got:\n\tis_healthy\(self\) -> !MISSING!"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNotTyped(chains.ChainletBase):
+            def is_healthy(self):
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_not_boolean_typed():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNotBoolTyped\.is_healthy\) \[kind: IO_TYPE_ERROR\].*"
+        r"Return value of health check must be a boolean. Got:\n\tis_healthy\(self\) -> str -> <class 'str'>"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNotBoolTyped(chains.ChainletBase):
+            def is_healthy(self) -> str:  # type: ignore[misc]
+                return "not ready"
+
+            async def run_remote(self) -> str:
+                return ""

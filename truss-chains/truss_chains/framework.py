@@ -339,24 +339,29 @@ def _validate_streaming_output_type(
     )
 
 
-def _validate_endpoint_params(
-    params: list[inspect.Parameter], location: _ErrorLocation
-) -> list[definitions.InputArg]:
+def _validate_method_signature(
+    method_name: str, location: _ErrorLocation, params: list[inspect.Parameter]
+) -> None:
     if len(params) == 0:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"`{method_name}` must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
             "first argument. Got function with no arguments.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
-        return []
-    if params[0].name != definitions.SELF_ARG_NAME:
+    elif params[0].name != definitions.SELF_ARG_NAME:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"`{method_name}` must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
             f"first argument. Got `{params[0].name}` as first argument.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
+
+
+def _validate_endpoint_params(
+    params: list[inspect.Parameter], location: _ErrorLocation
+) -> list[definitions.InputArg]:
+    _validate_method_signature(definitions.RUN_REMOTE_METHOD_NAME, location, params)
     input_args = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
@@ -434,7 +439,7 @@ def _validate_and_describe_endpoint(
     ```
 
     * The name must be `run_remote` for Chainlets, or `predict` for Models.
-    * It can be sync or async or def.
+    * It can be sync or async def.
     * The number and names of parameters are arbitrary, both positional and named
       parameters are ok.
     * All parameters and the return value must have type annotations. See
@@ -742,6 +747,63 @@ def _validate_remote_config(
         )
 
 
+def _validate_health_check(
+    cls: Type[definitions.ABCChainlet], location: _ErrorLocation
+) -> Optional[definitions.HealthCheckAPIDescriptor]:
+    """The `is_healthy` method of a Chainlet must have the following signature:
+    ```
+    [async] def is_healthy(self) -> bool:
+    ```
+    * The name must be `is_healthy`.
+    * It can be sync or async def.
+    * Must not define any parameters other than `self`.
+    * Must return a boolean.
+    """
+    if not hasattr(cls, definitions.HEALTH_CHECK_METHOD_NAME):
+        return None
+
+    health_check_method = getattr(cls, definitions.HEALTH_CHECK_METHOD_NAME)
+    if not inspect.isfunction(health_check_method):
+        _collect_error(
+            f"`{definitions.HEALTH_CHECK_METHOD_NAME}` must be a method.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+        return None
+
+    line = inspect.getsourcelines(health_check_method)[1]
+    location = location.model_copy(
+        update={"line": line, "method_name": definitions.HEALTH_CHECK_METHOD_NAME}
+    )
+    is_async = inspect.iscoroutinefunction(health_check_method)
+    signature = inspect.signature(health_check_method)
+    params = list(signature.parameters.values())
+    _validate_method_signature(definitions.HEALTH_CHECK_METHOD_NAME, location, params)
+    if len(params) > 1:
+        _collect_error(
+            f"`{definitions.HEALTH_CHECK_METHOD_NAME}` must have only one argument: `{definitions.SELF_ARG_NAME}`.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+    if signature.return_annotation == inspect.Parameter.empty:
+        _collect_error(
+            "Return value of health check must be type annotated. Got:\n"
+            f"\t{location.method_name}{signature} -> !MISSING!",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+        return None
+    if signature.return_annotation is not bool:
+        _collect_error(
+            "Return value of health check must be a boolean. Got:\n"
+            f"\t{location.method_name}{signature} -> {signature.return_annotation}",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    return definitions.HealthCheckAPIDescriptor(is_async=is_async)
+
+
 def validate_and_register_cls(cls: Type[definitions.ABCChainlet]) -> None:
     """Note that validation errors will only be collected, not raised, and Chainlets.
     with issues, are still added to the registry.  Use `raise_validation_errors` to
@@ -759,6 +821,7 @@ def validate_and_register_cls(cls: Type[definitions.ABCChainlet]) -> None:
         has_context=init_validator.has_context,
         endpoint=_validate_and_describe_endpoint(cls, location),
         src_path=src_path,
+        health_check=_validate_health_check(cls, location),
     )
     logging.debug(
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"

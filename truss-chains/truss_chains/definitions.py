@@ -34,9 +34,10 @@ TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
-# Below arg names must correspond to `definitions.ABCChainlet`.
 RUN_REMOTE_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
+HEALTH_CHECK_METHOD_NAME = "is_healthy"
+# Below arg names must correspond to `definitions.ABCChainlet`.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
@@ -625,12 +626,18 @@ class DependencyDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
+class HealthCheckAPIDescriptor(SafeModelNonSerializable):
+    name: str = HEALTH_CHECK_METHOD_NAME
+    is_async: bool
+
+
 class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     has_context: bool
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
+    health_check: Optional[HealthCheckAPIDescriptor]
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)

@@ -92,6 +92,14 @@ class Model:
 
 
 @pytest.mark.integration
+def test_truss_control_server_health_check(control_server: ControlServerDetails):
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    resp = requests.get(f"{ctrl_url}/v1/models/model")
+    assert resp.status_code == 200
+    assert resp.json() == {}
+
+
+@pytest.mark.integration
 def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path):
     for _ in range(10):
         with _configured_control_server(

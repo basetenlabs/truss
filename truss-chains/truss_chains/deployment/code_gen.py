@@ -457,6 +457,20 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
     return _Source(src=src, imports=imports)
 
 
+def _gen_health_check_src(
+    health_check: definitions.HealthCheckAPIDescriptor,
+) -> _Source:
+    """Generates AST for the `is_healthy` method of the truss model."""
+    def_str = "async def" if health_check.is_async else "def"
+    maybe_await = "await " if health_check.is_async else ""
+    src = (
+        f"{def_str} is_healthy(self) -> Optional[bool]:\n"
+        f"""{_indent('if hasattr(self, "_chainlet"):')}"""
+        f"""{_indent(f"return {maybe_await}self._chainlet.is_healthy()")}"""
+    )
+    return _Source(src=src)
+
+
 def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates AST for the `predict` method of the truss model."""
     imports: set[str] = {
@@ -537,6 +551,10 @@ def _gen_truss_chainlet_model(
         libcst.parse_statement(load_src.src),
         libcst.parse_statement(predict_src.src),
     ]
+
+    if chainlet_descriptor.health_check is not None:
+        health_check_src = _gen_health_check_src(chainlet_descriptor.health_check)
+        new_body.extend([libcst.parse_statement(health_check_src.src)])
 
     user_chainlet_ref = _gen_chainlet_import_and_ref(chainlet_descriptor)
     imports.update(user_chainlet_ref.imports)
