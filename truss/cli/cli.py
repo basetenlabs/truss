@@ -65,23 +65,17 @@ click.rich_click.COMMAND_GROUPS = {
         {
             "name": "Main usage",
             "commands": ["init", "push", "watch", "predict"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["green"]
-            },
+            "table_styles": {"row_styles": ["green"]},  # type: ignore
         },
         {
             "name": "Advanced Usage",
             "commands": ["image", "container", "cleanup"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["yellow"]
-            },
+            "table_styles": {"row_styles": ["yellow"]},  # type: ignore
         },
         {
             "name": "Chains",
             "commands": ["chains"],
-            "table_styles": {  # type: ignore
-                "row_styles": ["red"]
-            },
+            "table_styles": {"row_styles": ["red"]},  # type: ignore
         },
     ]
 }
@@ -1179,6 +1173,8 @@ def push(
                     "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
                 )
                 console.print(fp8_and_num_builder_gpus_text, style="yellow")
+        # dump full config to yaml to ensure forward compatibility of current defaults
+        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
