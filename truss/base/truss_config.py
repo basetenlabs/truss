@@ -825,7 +825,7 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(
-                    field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
+                    field_curr_value, lambda data: data.to_json_dict()
                 )
             elif isinstance(field_curr_value, BaseImage):
                 d["base_image"] = transform_optional(
