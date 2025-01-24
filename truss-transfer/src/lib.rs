@@ -136,7 +136,6 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     );
 
     // 3. Validate expiration and build the resolution map
-    println!("[INFO] Validating pointers...");
     let resolution_map = build_resolution_map(&bptr_manifest)?;
     println!("[INFO] All pointers validated OK.");
 
@@ -145,7 +144,7 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         env::var(BASETEN_FS_ENABLED_ENV_VAR).unwrap_or_else(|_| "False".into()) == "True";
     println!(
         "[INFO] Baseten FS cache enabled: {}",
-        if uses_b10_cache { "Yes" } else { "No" }
+        if uses_b10_cache { "True" } else { "False" }
     );
 
     // 5. Build concurrency limit
