@@ -39,6 +39,11 @@ def test_lazy_data_resolver_v2():
     # truss_transfer reads from LAZY_DATA_RESOLVER_PATH
     if LAZY_DATA_RESOLVER_PATH.exists():
         LAZY_DATA_RESOLVER_PATH.unlink()
+    with pytest.raises(Exception):
+        # LAZY_DATA_RESOLVER_PATH does not exist
+        # should raise an exception
+        LazyDataResolverV2(Path("/tmp"))
+
     try:
         LAZY_DATA_RESOLVER_PATH.mkdir(parents=True, exist_ok=True)
     except Exception as e:
