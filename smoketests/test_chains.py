@@ -10,21 +10,19 @@ import uuid
 import pytest
 import pytest_check
 
+from smoketests.utils import BACKEND_ENV_DOMAIN, BASETEN_API_KEY, BASETEN_REMOTE_URL
 from truss.remote.baseten import core
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten.utils import status as status_utils
 from truss_chains import public_types
 from truss_chains.remote_chainlet import stub, utils
 
-backend_env_domain = "staging.baseten.co"
-BASETEN_API_KEY = os.environ["BASETEN_API_KEY_STAGING"]
 LEAVE_DEPLOYMENTS = os.getenv("LEAVE_DEPLOYMENTS", "false").lower() == "true"
 
-BASETEN_REMOTE_URL = f"https://app.{backend_env_domain}"
 VENV_PATH = pathlib.Path(os.environ["TRUSS_ENV_PATH"])
 CHAINS_ROOT = pathlib.Path(__file__).parent.parent.resolve() / "truss-chains"
 URL_RE = re.compile(
-    rf"https://chain-([a-zA-Z0-9]+)\.api\.{re.escape(backend_env_domain)}/deployment/([a-zA-Z0-9]+)/run_remote"
+    rf"https://chain-([a-zA-Z0-9]+)\.api\.{re.escape(BACKEND_ENV_DOMAIN)}/deployment/([a-zA-Z0-9]+)/run_remote"
 )
 DEPLOY_TIMEOUT_SEC = 500
 
