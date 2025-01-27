@@ -397,9 +397,22 @@ def watch(target_directory: str, remote: str) -> None:
     console.print(
         f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
     )
-    remote_provider.sync_truss_to_dev_version_by_name(
-        model_name, target_directory, console, error_console
-    )
+
+    if not os.path.isfile(target_directory):
+        remote_provider.sync_truss_to_dev_version_by_name(
+            model_name, target_directory, console, error_console
+        )
+    else:
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import deployment_client
+
+        deployment_client.watch_model(
+            source=Path(target_directory),
+            model_name=model_name,
+            remote_provider=remote_provider,
+            console=console,
+            error_console=error_console,
+        )
 
 
 # Chains Stuff #########################################################################

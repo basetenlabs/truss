@@ -1,6 +1,5 @@
 import enum
 import logging
-import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
@@ -406,16 +405,8 @@ class BasetenRemote(TrussRemote):
                 "No development model found. Run `truss push` then try again."
             )
 
-        patch_path = Path(target_directory)
-        truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(patch_path)
-
-        # For trusses that use the new chains DX, we need to watch the original source code
-        # but patch generated code over to the control server.
-        watch_path = patch_path
-        patch_fn = self._patch_model
-        if os.path.isfile(watch_path):
-            patch_fn = self._patch_code_gen_model
-            watch_path = patch_path.absolute().parent
+        watch_path = Path(target_directory)
+        truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(watch_path)
 
         def watch_filter(_, path):
             return not is_ignored(Path(path), truss_ignore_patterns)
@@ -424,11 +415,11 @@ class BasetenRemote(TrussRemote):
         logging.getLogger("watchfiles.main").disabled = True
 
         console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
-        patch_fn(patch_path, truss_ignore_patterns, console, error_console)
+        self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
         console.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
-            patch_fn(patch_path, truss_ignore_patterns, console, error_console)
+            self.patch(watch_path, truss_ignore_patterns, console, error_console)
 
     def _patch(
         self,
@@ -551,29 +542,14 @@ class BasetenRemote(TrussRemote):
                 ),
             )
 
-    def _patch_code_gen_model(
+    def patch(
         self,
-        patch_path: Path,
+        watch_path: Path,
         truss_ignore_patterns: List[str],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
     ):
-        # These imports are delayed, to handle pydantic v1 envs gracefully.
-        from truss_chains.deployment import code_gen
-
-        gen_truss_path = code_gen.gen_truss_model_from_source(patch_path)
-        return self._patch_model(
-            gen_truss_path, truss_ignore_patterns, console, error_console
-        )
-
-    def _patch_model(
-        self,
-        patch_path: Path,
-        truss_ignore_patterns: List[str],
-        console: "rich_console.Console",
-        error_console: "rich_console.Console",
-    ):
-        result = self._patch(patch_path, truss_ignore_patterns)
+        result = self._patch(watch_path, truss_ignore_patterns)
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
         else:
