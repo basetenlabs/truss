@@ -27,9 +27,9 @@ from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
+from truss.remote.baseten import error as b10_errors
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
-from truss.remote.baseten.error import RemoteError
 from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
@@ -563,7 +563,7 @@ class _ModelWatcher:
 
         dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
         if not dev_version:
-            raise RemoteError(
+            raise b10_errors.RemoteError(
                 "No development model found. Run `truss push` then try again."
             )
 
