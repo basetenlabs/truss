@@ -1,0 +1,28 @@
+
+{% extends "base.Dockerfile.jinja" %}
+
+# source the secrets 
+{% for secret in secrets %}
+ENV {{secret.environment_variable}}="{{secret.value}}"
+{% endfor %}
+
+# install system requirements
+{%- if should_install_system_requirements %}
+COPY ./{{system_packages_filename}} {{system_packages_filename}}
+RUN apt-get update && apt-get install -y --no-install-recommends $(cat {{system_packages_filename}}) && apt-get clean && rm -rf /var/lib/apt/lists/*
+{%- endif %}
+
+# install python requirements
+{%- if should_install_user_requirements_file %}
+COPY ./{{user_supplied_requirements_filename}} {{user_supplied_requirements_filename}}
+RUN pip install -r {{user_supplied_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
+{%- endif %}
+
+ Duplicated from server.Dockerfile.jinja
+{%- if should_run_build_commands %}
+{% for command in build_commands %}
+# do we need to mount the secrets here?
+RUN {{ command }}
+{% endfor %}
+{%- endif  %}
+
