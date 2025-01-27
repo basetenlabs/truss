@@ -410,14 +410,12 @@ class BasetenRemote(TrussRemote):
         truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(patch_path)
 
         # For trusses that use the new chains DX, we need to watch the original source code
-        # but patch generated code over to the control server. We currently indicate that
-        # a truss relies on code gen by pointing target_directory at a specific file, but
-        # we need to watch for changes across all source files at the root level.
-        watch_path = Path(target_directory)
-        if self._watch_path_requires_code_gen(watch_path):
-            # TODO(nikhil): Improve detection of directory structure, since right now
-            # we assume a flat structure
-            watch_path = watch_path.absolute().parent
+        # but patch generated code over to the control server.
+        watch_path = patch_path
+        patch_fn = self._patch_model
+        if os.path.isfile(watch_path):
+            patch_fn = self._patch_code_gen_model
+            watch_path = patch_path.absolute().parent
 
         def watch_filter(_, path):
             return not is_ignored(Path(path), truss_ignore_patterns)
@@ -425,12 +423,12 @@ class BasetenRemote(TrussRemote):
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
 
-        console.print(f"🚰 Attempting to sync truss at '{patch_path}' with remote")
-        self.patch_model(patch_path, truss_ignore_patterns, console, error_console)
+        console.print(f"🚰 Attempting to sync truss at '{watch_path}' with remote")
+        patch_fn(patch_path, truss_ignore_patterns, console, error_console)
 
-        console.print(f"👀 Watching for changes to truss at '{patch_path}' ...")
+        console.print(f"👀 Watching for changes to truss at '{watch_path}' ...")
         for _ in watch(watch_path, watch_filter=watch_filter, raise_interrupt=False):
-            self.patch_model(patch_path, truss_ignore_patterns, console, error_console)
+            patch_fn(patch_path, truss_ignore_patterns, console, error_console)
 
     def _patch(
         self,
@@ -553,25 +551,29 @@ class BasetenRemote(TrussRemote):
                 ),
             )
 
-    # TODO(nikhil): inspect source code rather than assume that watching an individual
-    # file indicates standalone models using the chains code gen framework
-    def _watch_path_requires_code_gen(self, watch_path: Path):
-        return os.path.isfile(watch_path)
-
-    def patch_model(
+    def _patch_code_gen_model(
         self,
-        watch_path: Path,
+        patch_path: Path,
         truss_ignore_patterns: List[str],
         console: "rich_console.Console",
         error_console: "rich_console.Console",
     ):
-        if self._watch_path_requires_code_gen(watch_path):
-            # These imports are delayed, to handle pydantic v1 envs gracefully.
-            from truss_chains.deployment import code_gen
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import code_gen
 
-            watch_path = code_gen.gen_truss_model_from_source(watch_path)
+        gen_truss_path = code_gen.gen_truss_model_from_source(patch_path)
+        return self._patch_model(
+            gen_truss_path, truss_ignore_patterns, console, error_console
+        )
 
-        result = self._patch(watch_path, truss_ignore_patterns)
+    def _patch_model(
+        self,
+        patch_path: Path,
+        truss_ignore_patterns: List[str],
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ):
+        result = self._patch(patch_path, truss_ignore_patterns)
         if result.status in (PatchStatus.SUCCESS, PatchStatus.SKIPPED):
             console.print(result.message, style="green")
         else:
