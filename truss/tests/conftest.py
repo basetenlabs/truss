@@ -731,6 +731,7 @@ def default_config() -> Dict[str, Any]:
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
+            "node_count": 1,
         },
         "secrets": {},
         "system_packages": [],
@@ -745,6 +746,7 @@ def trtllm_config(default_config) -> Dict[str, Any]:
         "cpu": "1",
         "memory": "24Gi",
         "use_gpu": True,
+        "node_count": 1,
     }
     trtllm_config["trt_llm"] = {
         "build": {

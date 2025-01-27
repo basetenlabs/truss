@@ -169,6 +169,7 @@ resources:
   accelerator: null
   cpu: '1'
   memory: 2Gi
+  node_count: 1
   use_gpu: false
 secrets: {}
 system_packages: []
