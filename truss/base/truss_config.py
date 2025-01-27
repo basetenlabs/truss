@@ -280,7 +280,7 @@ class Resources:
             memory=memory,
             use_gpu=use_gpu,
             accelerator=accelerator,
-            node_count=d.get("node_count", node_count),
+            node_count=node_count,
         )
 
     def to_dict(self):
