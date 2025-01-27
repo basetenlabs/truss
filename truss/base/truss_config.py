@@ -43,6 +43,7 @@ DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
+DEFAULT_NODE_COUNT = 1
 
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
@@ -259,6 +260,7 @@ class Resources:
     memory: str = DEFAULT_MEMORY
     use_gpu: bool = DEFAULT_USE_GPU
     accelerator: AcceleratorSpec = field(default_factory=AcceleratorSpec)
+    node_count: int = DEFAULT_NODE_COUNT
 
     @staticmethod
     def from_dict(d):
@@ -270,9 +272,15 @@ class Resources:
         use_gpu = d.get("use_gpu", DEFAULT_USE_GPU)
         if accelerator.accelerator is not None:
             use_gpu = True
+        # TODO[rcano]: add validation for node count
+        node_count = d.get("node_count", DEFAULT_NODE_COUNT)
 
         return Resources(
-            cpu=cpu, memory=memory, use_gpu=use_gpu, accelerator=accelerator
+            cpu=cpu,
+            memory=memory,
+            use_gpu=use_gpu,
+            accelerator=accelerator,
+            node_count=node_count,
         )
 
     def to_dict(self):
@@ -521,6 +529,7 @@ class TrussConfig:
               memory: 14Gi
               use_gpu: true
               accelerator: A10G
+              node_count: 2
             ```
         secrets (Dict[str, str]):
             <Warning>
@@ -765,7 +774,7 @@ def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {
-    Resources: {"accelerator", "cpu", "memory", "use_gpu"},
+    Resources: {"accelerator", "cpu", "memory", "use_gpu", "node_count"},
     Runtime: {"predict_concurrency"},
     Build: {"model_server"},
     TrussConfig: {
