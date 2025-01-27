@@ -27,8 +27,6 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-from truss.remote import baseten as baseten_remote
-from truss.remote import remote_factory
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -36,8 +34,10 @@ TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
 GENERATED_CODE_DIR = ".chains_generated"
 DYNAMIC_CHAINLET_CONFIG_KEY = "dynamic_chainlet_config"
 OTEL_TRACE_PARENT_HEADER_KEY = "traceparent"
+RUN_REMOTE_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
+MODEL_ENDPOINT_METHOD_NAME = "predict"  # Model method name exposed as endpoint.
+HEALTH_CHECK_METHOD_NAME = "is_healthy"
 # Below arg names must correspond to `definitions.ABCChainlet`.
-ENDPOINT_METHOD_NAME = "run_remote"  # Chainlet method name exposed as endpoint.
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
@@ -74,9 +74,7 @@ class SafeModel(pydantic.BaseModel):
     """Pydantic base model with reasonable config."""
 
     model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False,
-        strict=True,
-        validate_assignment=True,
+        arbitrary_types_allowed=False, strict=True, validate_assignment=True
     )
 
 
@@ -185,7 +183,6 @@ class DockerImage(SafeModelNonSerializable):
           is copied into the docker image and importable at runtime.
     """
 
-    # TODO: this is not stable yet and might change or refer back to truss.
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
     pip_requirements_file: Optional[AbsPath] = None
     pip_requirements: list[str] = []
@@ -209,7 +206,6 @@ class DockerImage(SafeModelNonSerializable):
 class ComputeSpec(pydantic.BaseModel):
     """Parsed and validated compute.  See ``Compute`` for more information."""
 
-    # TODO: this is not stable yet and might change or refer back to truss.
     cpu_count: int = 1
     predict_concurrency: int = 1
     memory: str = "2Gi"
@@ -293,7 +289,6 @@ class Compute:
 class AssetSpec(SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
-    # TODO: this is not stable yet and might change or refer back to truss.
     secrets: dict[str, str] = pydantic.Field({})
     cached: list[truss_config.ModelRepo] = []
     external_data: list[truss_config.ExternalDataItem] = []
@@ -357,16 +352,24 @@ class ChainletOptions(SafeModelNonSerializable):
           It is independent of a potentially user-configured tracing instrumentation.
           Turning this on, could add performance overhead.
         env_variables: static environment variables available to the deployed chainlet.
+        health_checks: Configures health checks for the chainlet.
     """
 
     enable_b10_tracing: bool = False
     env_variables: Mapping[str, str] = {}
+    health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
 class ChainletMetadata(SafeModelNonSerializable):
     is_entrypoint: bool = False
     chain_name: Optional[str] = None
     init_is_patched: bool = False
+
+
+class FrameworkConfig(SafeModelNonSerializable):
+    entity_type: Literal["Chainlet", "Model"]
+    supports_dependencies: bool
+    endpoint_method_name: str
 
 
 class RemoteConfig(SafeModelNonSerializable):
@@ -401,7 +404,7 @@ class RemoteConfig(SafeModelNonSerializable):
         return self.assets.get_spec()
 
 
-DEFAULT_TIMEOUT_SEC = 600
+DEFAULT_TIMEOUT_SEC = 600.0
 
 
 class RPCOptions(SafeModel):
@@ -420,7 +423,7 @@ class RPCOptions(SafeModel):
     """
 
     retries: int = 1
-    timeout_sec: int = DEFAULT_TIMEOUT_SEC
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC
     use_binary: bool = False
 
 
@@ -510,6 +513,7 @@ class ABCChainlet(abc.ABC):
     remote_config: ClassVar[RemoteConfig] = RemoteConfig()
     # `meta_data` is not shared between subclasses, each has an isolated copy.
     meta_data: ClassVar[ChainletMetadata] = ChainletMetadata()
+    _framework_config: ClassVar[FrameworkConfig]
 
     @classmethod
     def has_custom_init(cls) -> bool:
@@ -524,6 +528,21 @@ class ABCChainlet(abc.ABC):
     @classmethod
     def display_name(cls) -> str:
         return cls.remote_config.name or cls.name
+
+    @classproperty
+    @classmethod
+    def supports_dependencies(cls) -> bool:
+        return cls._framework_config.supports_dependencies
+
+    @classproperty
+    @classmethod
+    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+        return cls._framework_config.entity_type
+
+    @classproperty
+    @classmethod
+    def endpoint_method_name(cls) -> str:
+        return cls._framework_config.endpoint_method_name
 
     # Cannot add this abstract method to API, because we want to allow arbitrary
     # arg/kwarg names and specifying any function signature here would give type errors
@@ -577,7 +596,7 @@ class InputArg(SafeModelNonSerializable):
 
 
 class EndpointAPIDescriptor(SafeModelNonSerializable):
-    name: str = ENDPOINT_METHOD_NAME
+    name: str = RUN_REMOTE_METHOD_NAME
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
     is_async: bool
@@ -607,12 +626,18 @@ class DependencyDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
+class HealthCheckAPIDescriptor(SafeModelNonSerializable):
+    name: str = HEALTH_CHECK_METHOD_NAME
+    is_async: bool
+
+
 class ChainletAPIDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     has_context: bool
     dependencies: Mapping[str, DependencyDescriptor]
     endpoint: EndpointAPIDescriptor
+    health_check: Optional[HealthCheckAPIDescriptor]
 
     def __hash__(self) -> int:
         return hash(self.chainlet_cls)
@@ -691,7 +716,7 @@ class PushOptions(SafeModelNonSerializable):
 
 
 class PushOptionsBaseten(PushOptions):
-    remote_provider: baseten_remote.BasetenRemote
+    remote: str
     publish: bool
     environment: Optional[str]
 
@@ -709,12 +734,8 @@ class PushOptionsBaseten(PushOptions):
             environment = PRODUCTION_ENVIRONMENT_NAME
         if environment:
             publish = True
-        remote_provider = cast(
-            baseten_remote.BasetenRemote,
-            remote_factory.RemoteFactory.create(remote=remote),
-        )
         return PushOptionsBaseten(
-            remote_provider=remote_provider,
+            remote=remote,
             chain_name=chain_name,
             publish=publish,
             only_generate_trusses=only_generate_trusses,

@@ -59,10 +59,7 @@ def test_python_requirement_patch(custom_model_truss_dir: Path):
         [
             Patch(
                 type=PatchType.PYTHON_REQUIREMENT,
-                body=PythonRequirementPatch(
-                    action=Action.ADD,
-                    requirement=req,
-                ),
+                body=PythonRequirementPatch(action=Action.ADD, requirement=req),
             ),
             Patch(
                 type=PatchType.CONFIG,
@@ -91,10 +88,7 @@ def test_system_requirement_patch(custom_model_truss_dir: Path):
             ),
             Patch(
                 type=PatchType.SYSTEM_PACKAGE,
-                body=SystemPackagePatch(
-                    action=Action.ADD,
-                    package="curl",
-                ),
+                body=SystemPackagePatch(action=Action.ADD, package="curl"),
             ),
         ]
     )

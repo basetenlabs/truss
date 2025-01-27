@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
@@ -7,9 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
-from truss.base.constants import (
-    HTTP_PUBLIC_BLOB_BACKEND,
-)
+from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
@@ -41,7 +40,6 @@ DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
 DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
-
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
@@ -155,11 +153,34 @@ class ModelCache:
 
 
 @dataclass
+class HealthChecks:
+    restart_check_delay_seconds: Optional[int] = None
+    restart_threshold_seconds: Optional[int] = None
+    stop_traffic_threshold_seconds: Optional[int] = None
+
+    @staticmethod
+    def from_dict(d):
+        return HealthChecks(
+            restart_check_delay_seconds=d.get("restart_check_delay_seconds"),
+            restart_threshold_seconds=d.get("restart_threshold_seconds"),
+            stop_traffic_threshold_seconds=d.get("stop_traffic_threshold_seconds"),
+        )
+
+    def to_dict(self):
+        return {
+            "restart_check_delay_seconds": self.restart_check_delay_seconds,
+            "restart_threshold_seconds": self.restart_threshold_seconds,
+            "stop_traffic_threshold_seconds": self.stop_traffic_threshold_seconds,
+        }
+
+
+@dataclass
 class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
     enable_debug_logs: bool = False
+    health_checks: HealthChecks = field(default_factory=HealthChecks)
 
     @staticmethod
     def from_dict(d):
@@ -176,11 +197,13 @@ class Runtime:
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
         enable_tracing_data = d.get("enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA)
+        health_checks = HealthChecks.from_dict(d.get("health_checks", {}))
 
         return Runtime(
             predict_concurrency=predict_concurrency,
             streaming_read_timeout=streaming_read_timeout,
             enable_tracing_data=enable_tracing_data,
+            health_checks=health_checks,
         )
 
     def to_dict(self):
@@ -188,6 +211,7 @@ class Runtime:
             "predict_concurrency": self.predict_concurrency,
             "streaming_read_timeout": self.streaming_read_timeout,
             "enable_tracing_data": self.enable_tracing_data,
+            "health_checks": self.health_checks.to_dict(),
         }
 
 
@@ -248,10 +272,7 @@ class Resources:
             use_gpu = True
 
         return Resources(
-            cpu=cpu,
-            memory=memory,
-            use_gpu=use_gpu,
-            accelerator=accelerator,
+            cpu=cpu, memory=memory, use_gpu=use_gpu, accelerator=accelerator
         )
 
     def to_dict(self):
@@ -567,12 +588,9 @@ class TrussConfig:
 
     @property
     def canonical_python_version(self) -> str:
-        return {
-            "py311": "3.11",
-            "py310": "3.10",
-            "py39": "3.9",
-            "py38": "3.8",
-        }[self.python_version]
+        return {"py311": "3.11", "py310": "3.10", "py39": "3.9", "py38": "3.8"}[
+            self.python_version
+        ]
 
     @property
     def parsed_trt_llm_build_configs(self) -> List[TrussTRTLLMBuildConfiguration]:
@@ -661,6 +679,8 @@ class TrussConfig:
 
     @staticmethod
     def from_yaml(yaml_path: Path):
+        if not os.path.isfile(yaml_path):
+            raise ValueError(f"Expected a truss configuration file at {yaml_path}")
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
             if "hf_cache" in raw_data:
@@ -817,6 +837,10 @@ def obj_to_dict(obj, verbose: bool = False):
                 )
             elif isinstance(field_curr_value, DockerAuthSettings):
                 d["docker_auth"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
+            elif isinstance(field_curr_value, HealthChecks):
+                d["health_checks"] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
             else:

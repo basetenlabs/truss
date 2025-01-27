@@ -16,6 +16,9 @@ concurrency:
 jobs:
   publish-to-pypi:
     runs-on: ubuntu-22.04
+    permissions:
+      # this permission is mandatory for Trusted Publishing
+      id-token: write
     steps:
       - name: "Git tag release"
         uses: actions/checkout@v4
@@ -46,7 +49,9 @@ jobs:
         working-directory: truss-utils
         run: poetry build
 
-      - name: Publish to PyPI
+      - name: Publish package to PyPI (Trusted Publishing)
         if: ${{ github.event_name != 'pull_request' }}
-        working-directory: truss-utils
-        run: poetry publish -u "${{ secrets.PYPI_USERNAME }}" -p "${{ secrets.PYPI_PASSWORD }}"
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          print-hash: true

@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import yaml
 
@@ -75,17 +75,14 @@ def init(
                           Truss in. The directory is created if it doesn't exist.
     """
     config = TrussConfig(
-        model_name=model_name,
-        python_version=map_local_to_supported_python_version(),
+        model_name=model_name, python_version=map_local_to_supported_python_version()
     )
 
     if build_config:
         config.build = build_config
 
     target_directory_path = _populate_target_directory(
-        config=config,
-        target_directory_path=target_directory,
-        populate_dirs=True,
+        config=config, target_directory_path=target_directory, populate_dirs=True
     )
 
     scaf = TrussHandle(target_directory_path)
@@ -93,12 +90,12 @@ def init(
     return scaf
 
 
-def load(truss_directory: str) -> TrussHandle:
+def load(truss_directory: Union[str, Path]) -> TrussHandle:
     """Get a handle to a Truss. A Truss is a build context designed to be built
     as a container locally or uploaded into a model serving environment.
 
     Args:
-        truss_directory (str): The local directory of an existing Truss
+        truss_directory (str | Path): The local directory of an existing Truss
     Returns:
         TrussHandle
     """

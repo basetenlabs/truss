@@ -11,11 +11,7 @@ except ModuleNotFoundError as exc:
     from truss.templates.control.control.helpers.custom_types import Action, Patch
 
 
-def apply_code_patch(
-    relative_dir: Path,
-    patch: Patch,
-    logger: logging.Logger,
-):
+def apply_code_patch(relative_dir: Path, patch: Patch, logger: logging.Logger):
     logger.debug(f"Applying code patch {patch.to_dict()}")
     filepath: Path = relative_dir / patch.path
     action = patch.action

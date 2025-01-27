@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from enum import Enum
 from typing import Any, Optional
@@ -13,6 +14,10 @@ from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, vali
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
+
+ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
+    os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
+)
 
 
 class TrussTRTLLMModel(str, Enum):
@@ -39,7 +44,7 @@ class TrussTRTLLMQuantizationType(str, Enum):
 class TrussTRTLLMPluginConfiguration(BaseModel):
     paged_kv_cache: bool = True
     gemm_plugin: str = "auto"
-    use_paged_context_fmha: bool = False
+    use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
 
 
@@ -81,7 +86,8 @@ class TrussSpecDecMode(str, Enum):
 
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
     kv_cache_free_gpu_mem_fraction: float = 0.9
-    enable_chunked_context: bool = False
+    kv_cache_host_memory_bytes: Optional[int] = None
+    enable_chunked_context: bool = True
     batch_scheduler_policy: TrussTRTLLMBatchSchedulerPolicy = (
         TrussTRTLLMBatchSchedulerPolicy.GUARANTEED_NO_EVICT
     )
@@ -92,8 +98,8 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel
     max_seq_len: int
-    max_batch_size: Optional[int] = 256
-    max_num_tokens: Optional[int] = 8192
+    max_batch_size: int = 256
+    max_num_tokens: int = 8192
     max_beam_width: int = 1
     max_prompt_embedding_table_size: int = 0
     checkpoint_repository: CheckpointRepository
@@ -135,6 +141,11 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
             and not self.plugin_configuration.use_paged_context_fmha
         ):
             raise ValueError("Using fp8 context fmha requires paged context fmha")
+        if (
+            self.plugin_configuration.use_fp8_context_fmha
+            and not self.quantization_type == TrussTRTLLMQuantizationType.FP8_KV
+        ):
+            raise ValueError("Using fp8 context fmha requires fp8 kv cache dtype")
         return self
 
     def _validate_speculator_config(self):
@@ -237,6 +248,27 @@ class TRTLLMConfiguration(BaseModel):
             data.update({"build": valid_build_fields})
             return data
         return data
+
+    @model_validator(mode="after")
+    def after(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
+        # check if there is an error wrt. runtime.enable_chunked_context
+        if self.runtime.enable_chunked_context and not (
+            self.build.plugin_configuration.use_paged_context_fmha
+            and self.build.plugin_configuration.paged_kv_cache
+        ):
+            if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                logger.warning(
+                    "If trt_llm.runtime.enable_chunked_context is True, then trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache should be True. "
+                    "Setting trt_llm.build.plugin_configuration.use_paged_context_fmha and trt_llm.build.plugin_configuration.paged_kv_cache to True."
+                )
+                self.build.plugin_configuration.use_paged_context_fmha = True
+                self.build.plugin_configuration.paged_kv_cache = True
+            else:
+                raise ValueError(
+                    "If runtime.enable_chunked_context is True, then build.plugin_configuration.use_paged_context_fmha and build.plugin_configuration.paged_kv_cache should be True"
+                )
+
+        return self
 
     @property
     def requires_build(self):

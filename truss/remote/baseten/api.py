@@ -50,10 +50,7 @@ def _chainlet_data_atomic_to_graphql_mutation(
 ) -> str:
     oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
 
-    args = [
-        f'name: "{chainlet.name}"',
-        f"oracle: {oracle_data_string}",
-    ]
+    args = [f'name: "{chainlet.name}"', f"oracle: {oracle_data_string}"]
 
     args_str = ",\n".join(args)
 
@@ -148,10 +145,10 @@ class BasetenApi:
                 config: "{config}",
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
-                is_trusted: {'true' if is_trusted else 'false'},
-                allow_truss_download: {'true' if allow_truss_download else 'false'},
+                is_trusted: {"true" if is_trusted else "false"},
+                allow_truss_download: {"true" if allow_truss_download else "false"},
                 {f'version_name: "{deployment_name}"' if deployment_name else ""}
-                {f'model_origin: {origin.value}' if origin else ""}
+                {f"model_origin: {origin.value}" if origin else ""}
             ) {{
                 id,
                 name,
@@ -183,8 +180,8 @@ class BasetenApi:
                 config: "{config}",
                 semver_bump: "{semver_bump}",
                 client_version: "{client_version}",
-                is_trusted: {'true' if is_trusted else 'false'},
-                scale_down_old_production: {'false' if preserve_previous_prod_deployment else 'true'},
+                is_trusted: {"true" if is_trusted else "false"},
+                scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"},
                 {f'name: "{deployment_name}"' if deployment_name else ""}
                 {f'environment_name: "{environment}"' if environment else ""}
             ) {{
@@ -212,9 +209,9 @@ class BasetenApi:
                     s3_key: "{s3_key}",
                     config: "{config}",
                     client_version: "{client_version}",
-                    is_trusted: {'true' if is_trusted else 'false'},
-                    allow_truss_download: {'true' if allow_truss_download else 'false'},
-                    {f'model_origin: {origin.value}' if origin else ""}
+                    is_trusted: {"true" if is_trusted else "false"},
+                    allow_truss_download: {"true" if allow_truss_download else "false"},
+                    {f"model_origin: {origin.value}" if origin else ""}
     ) {{
             id,
             name,
@@ -494,6 +491,17 @@ class BasetenApi:
             logging.debug(f"Failed to sync patch: {result}")
         return result
 
+    def validate_truss(self, client_version: str, config: str):
+        query_string = f"""{{
+            truss_validation(client_version: "{client_version}", config: "{config}") {{
+                success
+                details
+            }}
+        }}
+        """
+        resp = self._post_graphql_query(query_string)
+        return resp["data"]["truss_validation"]
+
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
         headers = self._auth_token.header()
         resp = requests.get(
@@ -520,10 +528,7 @@ class BasetenApi:
 
     def get_all_secrets(self) -> Any:
         headers = self._auth_token.header()
-        resp = requests.get(
-            f"{self._rest_api_url}/v1/secrets",
-            headers=headers,
-        )
+        resp = requests.get(f"{self._rest_api_url}/v1/secrets", headers=headers)
         if not resp.ok:
             resp.raise_for_status()
 

@@ -31,6 +31,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
 
@@ -102,7 +103,7 @@ def _update_src(new_source: _Source, src_parts: list[str], imports: set[str]) ->
 def _gen_pydantic_import_and_ref(raw_type: Any) -> _Source:
     """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     if raw_type.__module__ == "__main__":
-        # TODO: assuming that main is copied into package dir and can be imported.
+        # Assuming that main is copied into package dir and can be imported.
         module_obj = sys.modules[raw_type.__module__]
         if not module_obj.__file__:
             raise definitions.ChainsUsageError(
@@ -263,8 +264,7 @@ def _stub_endpoint_signature_src(
 
     def_str = "async def" if endpoint.is_async else "def"
     return _Source(
-        src=f"{def_str} {endpoint.name}({','.join(args)}) -> {output}:",
-        imports=imports,
+        src=f"{def_str} {endpoint.name}({','.join(args)}) -> {output}:", imports=imports
     )
 
 
@@ -300,7 +300,7 @@ def _stub_endpoint_body_src(
     else:
         if endpoint.is_async:
             parts.append(
-                f"async for data in await self.predict_async_stream({inputs}):",
+                f"async for data in await self.predict_async_stream({inputs}):"
             )
             if endpoint.streaming_type.is_string:
                 parts.append(_indent("yield data.decode()"))
@@ -457,6 +457,20 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
     return _Source(src=src, imports=imports)
 
 
+def _gen_health_check_src(
+    health_check: definitions.HealthCheckAPIDescriptor,
+) -> _Source:
+    """Generates AST for the `is_healthy` method of the truss model."""
+    def_str = "async def" if health_check.is_async else "def"
+    maybe_await = "await " if health_check.is_async else ""
+    src = (
+        f"{def_str} is_healthy(self) -> Optional[bool]:\n"
+        f"""{_indent('if hasattr(self, "_chainlet"):')}"""
+        f"""{_indent(f"return {maybe_await}self._chainlet.is_healthy()")}"""
+    )
+    return _Source(src=src)
+
+
 def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
     """Generates AST for the `predict` method of the truss model."""
     imports: set[str] = {
@@ -537,6 +551,10 @@ def _gen_truss_chainlet_model(
         libcst.parse_statement(load_src.src),
         libcst.parse_statement(predict_src.src),
     ]
+
+    if chainlet_descriptor.health_check is not None:
+        health_check_src = _gen_health_check_src(chainlet_descriptor.health_check)
+        new_body.extend([libcst.parse_statement(health_check_src.src)])
 
     user_chainlet_ref = _gen_chainlet_import_and_ref(chainlet_descriptor)
     imports.update(user_chainlet_ref.imports)
@@ -648,13 +666,13 @@ def _inplace_fill_base_image(
         )
 
 
-def _make_truss_config(
+def _write_truss_config_yaml(
     chainlet_dir: pathlib.Path,
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
     use_local_chains_src: bool,
-) -> truss_config.TrussConfig:
+):
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
     config.model_name = model_name
@@ -662,6 +680,7 @@ def _make_truss_config(
     config.model_class_name = _MODEL_CLS_NAME
     config.runtime.enable_tracing_data = chains_config.options.enable_b10_tracing
     config.environment_variables = dict(chains_config.options.env_variables)
+    config.runtime.health_checks = chains_config.options.health_checks
     # Compute.
     compute = chains_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)
@@ -706,38 +725,65 @@ def _make_truss_config(
     config.write_to_yaml_file(
         chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
     )
-    return config
+
+
+def gen_truss_model_from_source(
+    model_src: pathlib.Path, use_local_chains_src: bool = False
+) -> pathlib.Path:
+    # TODO(nikhil): Improve detection of directory structure, since right now
+    # we assume a flat structure
+    root_dir = model_src.absolute().parent
+    with framework.import_target(model_src) as entrypoint_cls:
+        descriptor = framework.get_descriptor(entrypoint_cls)
+        return gen_truss_model(
+            model_root=root_dir,
+            model_name=entrypoint_cls.display_name,
+            model_descriptor=descriptor,
+            use_local_chains_src=use_local_chains_src,
+        )
+
+
+def gen_truss_model(
+    model_root: pathlib.Path,
+    model_name: str,
+    model_descriptor: definitions.ChainletAPIDescriptor,
+    use_local_chains_src: bool = False,
+) -> pathlib.Path:
+    return gen_truss_chainlet(
+        chain_root=model_root,
+        chain_name=model_name,
+        chainlet_descriptor=model_descriptor,
+        use_local_chains_src=use_local_chains_src,
+    )
 
 
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
-    gen_root: pathlib.Path,
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    model_name: str,
-    use_local_chains_src: bool,
+    model_name: Optional[str] = None,
+    use_local_chains_src: bool = False,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
         dep_services[dep.name] = definitions.ServiceDescriptor(
-            name=dep.name,
-            display_name=dep.display_name,
-            options=dep.options,
+            name=dep.name, display_name=dep.display_name, options=dep.options
         )
+    gen_root = pathlib.Path(tempfile.gettempdir())
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
     logging.info(
         f"Code generation for Chainlet `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
-    _make_truss_config(
-        chainlet_dir,
-        chainlet_descriptor.chainlet_cls.remote_config,
-        dep_services,
-        model_name,
-        use_local_chains_src,
+    _write_truss_config_yaml(
+        chainlet_dir=chainlet_dir,
+        chains_config=chainlet_descriptor.chainlet_cls.remote_config,
+        model_name=model_name or chain_name,
+        chainlet_to_service=dep_services,
+        use_local_chains_src=use_local_chains_src,
     )
-    # TODO This assumes all imports are absolute w.r.t chain root (or site-packages).
+    # This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(
         chain_root, chainlet_dir / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR
     )

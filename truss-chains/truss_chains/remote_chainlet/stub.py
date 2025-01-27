@@ -79,9 +79,7 @@ class BasetenSession:
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
-        self,
-        service_descriptor: definitions.DeployedServiceDescriptor,
-        api_key: str,
+        self, service_descriptor: definitions.DeployedServiceDescriptor, api_key: str
     ) -> None:
         logging.info(
             f"Creating BasetenSession (HTTP) for `{service_descriptor.name}`.\n"
@@ -158,9 +156,7 @@ class BasetenSession:
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
-                    connector = aiohttp.TCPConnector(
-                        limit=DEFAULT_MAX_CONNECTIONS,
-                    )
+                    connector = aiohttp.TCPConnector(limit=DEFAULT_MAX_CONNECTIONS)
                     self._cached_async_client = (
                         aiohttp.ClientSession(
                             headers=self._auth_header,
@@ -230,9 +226,7 @@ class StubBase(BasetenSession, abc.ABC):
 
     @final
     def __init__(
-        self,
-        service_descriptor: definitions.DeployedServiceDescriptor,
-        api_key: str,
+        self, service_descriptor: definitions.DeployedServiceDescriptor, api_key: str
     ) -> None:
         """
         Args:
@@ -329,7 +323,16 @@ class StubBase(BasetenSession, abc.ABC):
             utils.response_raise_errors(response, self.name)
             return response.content
 
-        response_bytes = retry(_rpc)
+        try:
+            response_bytes = retry(_rpc)
+        except httpx.ReadTimeout:
+            msg = (
+                f"Timeout calling remote Chainlet `{self.name}` "
+                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+            )
+            logging.warning(msg)
+            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
+
         if output_model:
             return self._response_to_pydantic(response_bytes, output_model)
         return self._response_to_json(response_bytes)
@@ -357,7 +360,16 @@ class StubBase(BasetenSession, abc.ABC):
                     await utils.async_response_raise_errors(response, self.name)
                     return await response.read()
 
-        response_bytes: bytes = await retry(_rpc)
+        try:
+            response_bytes: bytes = await retry(_rpc)
+        except asyncio.TimeoutError:
+            msg = (
+                f"Timeout calling remote Chainlet `{self.name}` "
+                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+            )
+            logging.warning(msg)
+            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
+
         if output_model:
             return self._response_to_pydantic(response_bytes, output_model)
         return self._response_to_json(response_bytes)
@@ -375,7 +387,15 @@ class StubBase(BasetenSession, abc.ABC):
                 await utils.async_response_raise_errors(response, self.name)
                 return response.content.iter_any()
 
-        return await retry(_rpc)
+        try:
+            return await retry(_rpc)
+        except asyncio.TimeoutError:
+            msg = (
+                f"Timeout calling remote Chainlet `{self.name}` "
+                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+            )
+            logging.warning(msg)
+            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
 
 
 StubT = TypeVar("StubT", bound=StubBase)

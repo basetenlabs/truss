@@ -1,8 +1,10 @@
+import json
 from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock
 
 import pytest
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.errors import ValidationError
 from truss.remote.baseten import core
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import create_truss_service
@@ -42,27 +44,19 @@ def test_upload_truss():
 
 
 def test_get_dev_version_from_versions():
-    versions = [
-        {"id": "1", "is_draft": False},
-        {"id": "2", "is_draft": True},
-    ]
+    versions = [{"id": "1", "is_draft": False}, {"id": "2", "is_draft": True}]
     dev_version = core.get_dev_version_from_versions(versions)
     assert dev_version["id"] == "2"
 
 
 def test_get_dev_version_from_versions_error():
-    versions = [
-        {"id": "1", "is_draft": False},
-    ]
+    versions = [{"id": "1", "is_draft": False}]
     dev_version = core.get_dev_version_from_versions(versions)
     assert dev_version is None
 
 
 def test_get_dev_version():
-    versions = [
-        {"id": "1", "is_draft": False},
-        {"id": "2", "is_draft": True},
-    ]
+    versions = [{"id": "1", "is_draft": False}, {"id": "2", "is_draft": True}]
     api = MagicMock()
     api.get_model.return_value = {"model": {"versions": versions}}
 
@@ -89,19 +83,10 @@ def test_get_prod_version_from_versions_error():
     assert prod_version is None
 
 
-@pytest.mark.parametrize(
-    "environment",
-    [
-        None,
-        PRODUCTION_ENVIRONMENT_NAME,
-    ],
-)
+@pytest.mark.parametrize("environment", [None, PRODUCTION_ENVIRONMENT_NAME])
 def test_create_truss_service_handles_eligible_environment_values(environment):
     api = MagicMock()
-    return_value = {
-        "id": "id",
-        "version_id": "model_version_id",
-    }
+    return_value = {"id": "id", "version_id": "model_version_id"}
     api.create_model_from_truss.return_value = return_value
     model_id, model_version_id = create_truss_service(
         api,
@@ -120,19 +105,10 @@ def test_create_truss_service_handles_eligible_environment_values(environment):
     api.create_model_from_truss.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    "model_id",
-    [
-        "some_model_id",
-        None,
-    ],
-)
+@pytest.mark.parametrize("model_id", ["some_model_id", None])
 def test_create_truss_services_handles_is_draft(model_id):
     api = MagicMock()
-    return_value = {
-        "id": "id",
-        "version_id": "model_version_id",
-    }
+    return_value = {"id": "id", "version_id": "model_version_id"}
     api.create_development_model_from_truss.return_value = return_value
     model_id, model_version_id = create_truss_service(
         api,
@@ -175,9 +151,7 @@ def test_create_truss_services_handles_is_draft(model_id):
 )
 def test_create_truss_service_handles_existing_model(inputs):
     api = MagicMock()
-    return_value = {
-        "id": "model_version_id",
-    }
+    return_value = {"id": "model_version_id"}
     api.create_model_version_from_truss.return_value = return_value
     model_id, model_version_id = create_truss_service(
         api,
@@ -197,22 +171,13 @@ def test_create_truss_service_handles_existing_model(inputs):
         assert kwargs[k] == v
 
 
-@pytest.mark.parametrize(
-    "allow_truss_download",
-    [True, False],
-)
-@pytest.mark.parametrize(
-    "is_draft",
-    [True, False],
-)
+@pytest.mark.parametrize("allow_truss_download", [True, False])
+@pytest.mark.parametrize("is_draft", [True, False])
 def test_create_truss_service_handles_allow_truss_download_for_new_models(
     is_draft, allow_truss_download
 ):
     api = MagicMock()
-    return_value = {
-        "id": "id",
-        "version_id": "model_version_id",
-    }
+    return_value = {"id": "id", "version_id": "model_version_id"}
     api.create_model_from_truss.return_value = return_value
     api.create_development_model_from_truss.return_value = return_value
 
@@ -240,3 +205,30 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
     create_model_mock.assert_called_once()
     _, kwargs = create_model_mock.call_args
     assert kwargs["allow_truss_download"] is allow_truss_download
+
+
+def test_validate_truss_config():
+    def mock_validate_truss(client_version, config):
+        if config == {}:
+            return {"success": True, "details": json.dumps({})}
+        elif "hi" in config:
+            return {"success": False, "details": json.dumps({"errors": ["error"]})}
+        else:
+            return {
+                "success": False,
+                "details": json.dumps({"errors": ["error", "and another one"]}),
+            }
+
+    api = MagicMock()
+    api.validate_truss.side_effect = mock_validate_truss
+
+    assert core.validate_truss_config(api, {}) is None
+    with pytest.raises(
+        ValidationError, match="Validation failed with the following errors:\n  error"
+    ):
+        core.validate_truss_config(api, {"hi": "hi"})
+    with pytest.raises(
+        ValidationError,
+        match="Validation failed with the following errors:\n  error\n  and another one",
+    ):
+        core.validate_truss_config(api, {"should_error": "hi"})

@@ -66,21 +66,21 @@ click.rich_click.COMMAND_GROUPS = {
             "name": "Main usage",
             "commands": ["init", "push", "watch", "predict"],
             "table_styles": {  # type: ignore
-                "row_styles": ["green"],
+                "row_styles": ["green"]
             },
         },
         {
             "name": "Advanced Usage",
             "commands": ["image", "container", "cleanup"],
             "table_styles": {  # type: ignore
-                "row_styles": ["yellow"],
+                "row_styles": ["yellow"]
             },
         },
         {
             "name": "Chains",
             "commands": ["chains"],
             "table_styles": {  # type: ignore
-                "row_styles": ["red"],
+                "row_styles": ["red"]
             },
         },
     ]
@@ -372,10 +372,7 @@ def whoami(remote: Optional[str]):
 )
 @log_level_option
 @error_handling
-def watch(
-    target_directory: str,
-    remote: str,
-) -> None:
+def watch(target_directory: str, remote: str) -> None:
     """
     Seamless remote development with truss
 
@@ -779,9 +776,7 @@ def watch_chains(
 @click.argument("directory", type=Path, required=False)
 @log_level_option
 @error_handling
-def init_chain(
-    directory: Optional[Path],
-) -> None:
+def init_chain(directory: Optional[Path]) -> None:
     """
     Initializes a chains project directory.
 
@@ -914,12 +909,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     required=False,
     help="ID of model deployment to call",
 )
-@click.option(
-    "--model",
-    type=str,
-    required=False,
-    help="ID of model to call",
-)
+@click.option("--model", type=str, required=False, help="ID of model to call")
 @log_level_option
 def predict(
     target_directory: str,
@@ -1136,7 +1126,6 @@ def push(
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     remote_provider = RemoteFactory.create(remote=remote)
-
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
@@ -1189,10 +1178,7 @@ def push(
                     "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
                     "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
                 )
-                console.print(
-                    fp8_and_num_builder_gpus_text,
-                    style="yellow",
-                )
+                console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
@@ -1337,7 +1323,13 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return load(target_directory)
+    if not os.path.isfile(target_directory):
+        return load(target_directory)
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains.deployment import code_gen
+
+    truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
+    return load(truss_dir)
 
 
 truss_cli.add_command(container)

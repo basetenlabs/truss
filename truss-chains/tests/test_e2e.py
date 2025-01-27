@@ -5,10 +5,15 @@ from pathlib import Path
 
 import pytest
 import requests
-from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
+from truss.tests.test_testing_utilities_for_other_tests import (
+    ensure_kill_all,
+    get_container_logs_from_prefix,
+)
+from truss.truss_handle.build import load
 
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
+from truss_chains.deployment.code_gen import gen_truss_model_from_source
 
 utils.setup_dev_logging(logging.DEBUG)
 
@@ -40,10 +45,7 @@ def test_chain():
             6280,
             "erodfderodfderodfderodfderodfd",
             123,
-            {
-                "parts": [],
-                "part_lens": [10],
-            },
+            {"parts": [], "part_lens": [10]},
             ["a", "b"],
         ]
         # Call with values for default arguments.
@@ -52,10 +54,7 @@ def test_chain():
             json={
                 "length": 30,
                 "num_partitions": 3,
-                "pydantic_default_arg": {
-                    "parts": ["marius"],
-                    "part_lens": [3],
-                },
+                "pydantic_default_arg": {"parts": ["marius"], "part_lens": [3]},
                 "simple_default_arg": ["bola"],
             },
         )
@@ -65,10 +64,7 @@ def test_chain():
             6280,
             "erodfderodfderodfderodfderodfd",
             123,
-            {
-                "parts": ["marius"],
-                "part_lens": [3],
-            },
+            {"parts": ["marius"], "part_lens": [3]},
             ["bola"],
         ]
 
@@ -123,21 +119,12 @@ async def test_chain_local():
                 4198,
                 "erodfderodfderodfder",
                 123,
-                {
-                    "parts": [],
-                    "part_lens": [10],
-                },
+                {"parts": [], "part_lens": [10]},
                 ["a", "b"],
             )
 
             # Convert the pydantic model to a dict for comparison
-            result_dict = (
-                result[0],
-                result[1],
-                result[2],
-                result[3].dict(),
-                result[4],
-            )
+            result_dict = (result[0], result[1], result[2], result[3].dict(), result[4])
 
             assert result_dict == expected
 
@@ -224,3 +211,106 @@ def test_numpy_chain(mode):
             response = service.run_remote({})
             assert response.status_code == 200
             print(response.json())
+
+
+@pytest.mark.asyncio
+async def test_timeout():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "timeout" / "timeout_chain.py"
+        with framework.import_target(chain_root, "TimeoutChain") as entrypoint:
+            options = definitions.PushOptionsLocalDocker(
+                chain_name="integration-test", use_local_chains_src=True
+            )
+            service = deployment_client.push(entrypoint, options)
+
+        url = service.run_remote_url.replace("host.docker.internal", "localhost")
+        time.sleep(1.0)  # Wait for models to be ready.
+
+        # Async.
+        response = requests.post(url, json={"use_sync": False})
+        # print(response.content)
+
+        assert response.status_code == 500
+        error = definitions.RemoteErrorDetail.model_validate(response.json()["error"])
+        error_str = error.format()
+        error_regex = r"""
+Chainlet-Traceback \(most recent call last\):
+  File \".*?/timeout_chain\.py\", line \d+, in run_remote
+    result = await self\._dep.run_remote\(\)
+TimeoutError: Timeout calling remote Chainlet `Dependency` \(0.5 seconds limit\)\.
+        """
+        assert re.match(error_regex.strip(), error_str.strip(), re.MULTILINE), error_str
+
+        # Sync:
+        sync_response = requests.post(url, json={"use_sync": True})
+        assert sync_response.status_code == 500
+        sync_error = definitions.RemoteErrorDetail.model_validate(
+            sync_response.json()["error"]
+        )
+        sync_error_str = sync_error.format()
+        sync_error_regex = r"""
+Chainlet-Traceback \(most recent call last\):
+  File \".*?/timeout_chain\.py\", line \d+, in run_remote
+    result = self\._dep_sync.run_remote\(\)
+TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds limit\)\.
+        """
+        assert re.match(
+            sync_error_regex.strip(), sync_error_str.strip(), re.MULTILINE
+        ), sync_error_str
+
+
+@pytest.mark.integration
+def test_traditional_truss():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "traditional_truss" / "truss_model.py"
+        truss_dir = gen_truss_model_from_source(chain_root, use_local_chains_src=True)
+        truss_handle = load(truss_dir)
+
+        assert truss_handle.spec.config.resources.cpu == "4"
+        assert truss_handle.spec.config.model_name == "OverridePassthroughModelName"
+
+        port = utils.get_free_port()
+        truss_handle.docker_run(local_port=port, detach=True, network="host")
+
+        response = requests.post(
+            f"http://localhost:{port}/v1/models/model:predict",
+            json={"call_count_increment": 5},
+        )
+        assert response.status_code == 200
+        assert response.json() == 5
+
+
+@pytest.mark.integration
+def test_custom_health_checks_chain():
+    with ensure_kill_all():
+        chain_root = TEST_ROOT / "custom_health_checks" / "custom_health_checks.py"
+        with framework.import_target(chain_root, "CustomHealthChecks") as entrypoint:
+            service = deployment_client.push(
+                entrypoint,
+                options=definitions.PushOptionsLocalDocker(
+                    chain_name="integration-test-custom-health-checks",
+                    only_generate_trusses=False,
+                    use_local_chains_src=True,
+                ),
+            )
+
+            assert service is not None
+            health_check_url = service.run_remote_url.split(":predict")[0]
+
+            response = service.run_remote({"fail": False})
+            assert response.status_code == 200
+            response = requests.get(health_check_url)
+            response.status_code == 200
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert "Health check failed." not in container_logs
+
+            # Start failing health checks
+            response = service.run_remote({"fail": True})
+            response = requests.get(health_check_url)
+            assert response.status_code == 503
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert container_logs.count("Health check failed.") == 1
+            response = requests.get(health_check_url)
+            assert response.status_code == 503
+            container_logs = get_container_logs_from_prefix(entrypoint.name)
+            assert container_logs.count("Health check failed.") == 2

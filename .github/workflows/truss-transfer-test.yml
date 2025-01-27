@@ -1,0 +1,81 @@
+name: Test truss-transfer
+
+on:
+  push:
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: truss-transfer  # Keeps default for run commands
+
+jobs:
+  test-truss-transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Create venv
+        run: python3 -m venv .venv
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: truss-transfer
+          command: develop
+          sccache: 'true'
+      - name: Try import truss-transfer-maturin-publish
+        run: |
+          source .venv/bin/activate
+          python -c "import truss_transfer; print(truss_transfer.__version__)"
+      - name: Download github file & test real bptr resolution
+        run: |
+          sudo mkdir -p /bptr
+          sudo chown $(whoami):$(whoami) /bptr
+          cp ./example-bptr-manifest.json /bptr/bptr-manifest
+
+          source .venv/bin/activate
+          python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_no_cache/test')"
+          if [ ! -d "./tmp_no_cache/test" ]; then
+            echo "❌ Test failed: output directory not created."
+            exit 1
+          fi
+
+          export BASETEN_FS_ENABLED=True
+          python -c "import truss_transfer; truss_transfer.lazy_data_resolve('./tmp_fs_enabled/test')"
+          # test files are created in example_bptr_resolved
+
+          if [ ! -d "./tmp_fs_enabled/test" ]; then
+            echo "❌ Test failed: output directory not created."
+            exit 1
+          fi
+
+      ## CLI direct install
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev libatomic-ops-dev
+
+      - name: Install Rust with musl target
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rust-src
+
+      - name: Add musl Target
+        run: rustup target add x86_64-unknown-linux-musl
+
+      - name: Build & Test Statically Linked CLI Binary
+        run: |
+          cargo build --release --target x86_64-unknown-linux-musl --features cli --bin truss_transfer_cli
+          chmod +x target/x86_64-unknown-linux-musl/release/truss_transfer_cli
+          ./target/x86_64-unknown-linux-musl/release/truss_transfer_cli "./tmp_cli_no_fs_cache/test"
+          if [ ! -d "./tmp_cli_no_fs_cache/test" ]; then
+            echo "❌ Test failed: output directory not created."
+            exit 1
+          fi

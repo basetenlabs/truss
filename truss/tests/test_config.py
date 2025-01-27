@@ -7,9 +7,7 @@ import pytest
 import yaml
 
 from truss.base.custom_types import ModelFrameworkType
-from truss.base.trt_llm_config import (
-    TrussTRTLLMQuantizationType,
-)
+from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import (
     DEFAULT_CPU,
     DEFAULT_MEMORY,
@@ -158,10 +156,7 @@ def test_parse_base_image(input_dict, expect_base_image, output_dict):
 
 
 def test_default_config_not_crowded_end_to_end():
-    config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-    )
+    config = TrussConfig(python_version="py39", requirements=[])
 
     config_yaml = """build_commands: []
 environment_variables: {}
@@ -188,9 +183,7 @@ system_packages: []
 )
 def test_model_framework(model_framework, default_config):
     config = TrussConfig(
-        python_version="py39",
-        requirements=[],
-        model_framework=model_framework,
+        python_version="py39", requirements=[], model_framework=model_framework
     )
 
     new_config = default_config
@@ -225,11 +218,7 @@ def test_huggingface_cache_single_model_default_revision(default_config):
     )
 
     new_config = default_config
-    new_config["model_cache"] = [
-        {
-            "repo_id": "test/model",
-        }
-    ]
+    new_config["model_cache"] = [{"repo_id": "test/model"}]
 
     assert new_config == config.to_dict(verbose=False)
     assert config.to_dict(verbose=True)["model_cache"][0].get("revision") is None
@@ -250,19 +239,14 @@ def test_huggingface_cache_multiple_models_default_revision(default_config):
         python_version="py39",
         requirements=[],
         model_cache=ModelCache(
-            models=[
-                ModelRepo("test/model1", "main"),
-                ModelRepo("test/model2"),
-            ]
+            models=[ModelRepo("test/model1", "main"), ModelRepo("test/model2")]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
         {"repo_id": "test/model1", "revision": "main"},
-        {
-            "repo_id": "test/model2",
-        },
+        {"repo_id": "test/model2"},
     ]
 
     assert new_config == config.to_dict(verbose=False)
@@ -275,18 +259,13 @@ def test_huggingface_cache_multiple_models_mixed_revision(default_config):
         python_version="py39",
         requirements=[],
         model_cache=ModelCache(
-            models=[
-                ModelRepo("test/model1"),
-                ModelRepo("test/model2", "not-main2"),
-            ]
+            models=[ModelRepo("test/model1"), ModelRepo("test/model2", "not-main2")]
         ),
     )
 
     new_config = default_config
     new_config["model_cache"] = [
-        {
-            "repo_id": "test/model1",
-        },
+        {"repo_id": "test/model1"},
         {"repo_id": "test/model2", "revision": "not-main2"},
     ]
 
@@ -438,7 +417,7 @@ def test_plugin_paged_context_fmha_check(trtllm_config):
         "~/.huggingface/my--model--cache/model",
         "foo.git",
         "datasets/foo/bar",
-        ".repo_id" "other..repo..id",
+        ".repo_idother..repo..id",
     ],
 )
 def test_invalid_hf_repo(trtllm_config, repo):
@@ -461,6 +440,22 @@ def test_plugin_paged_fp8_context_fmha_check(trtllm_config):
         "use_paged_context_fmha": False,
         "use_fp8_context_fmha": True,
     }
+    with pytest.raises(ValueError):
+        TrussConfig.from_dict(trtllm_config)
+
+
+def test_fp8_context_fmha_check_kv_dtype(trtllm_config):
+    trtllm_config["trt_llm"]["build"]["plugin_configuration"] = {
+        "paged_kv_cache": True,
+        "use_paged_context_fmha": True,
+        "use_fp8_context_fmha": True,
+    }
+    trtllm_config["trt_llm"]["build"]["quantization_type"] = (
+        TrussTRTLLMQuantizationType.FP8_KV.value
+    )
+    TrussConfig.from_dict(trtllm_config)
+
+    del trtllm_config["trt_llm"]["build"]["quantization_type"]
     with pytest.raises(ValueError):
         TrussConfig.from_dict(trtllm_config)
 
@@ -499,9 +494,9 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
         with pytest.raises(ValueError):
             TrussConfig.from_dict(test_config)
         test_config["trt_llm"]["build"]["speculator"]["checkpoint_repository"] = (
-            trtllm_spec_dec_config[
-                "trt_llm"
-            ]["build"]["speculator"]["checkpoint_repository"]
+            trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
+                "checkpoint_repository"
+            ]
         )
         test_config["trt_llm"]["build"]["plugin_configuration"][
             "use_paged_context_fmha"
@@ -512,9 +507,9 @@ def test_from_dict_spec_dec_trt_llm(should_raise, trtllm_spec_dec_config):
             "use_paged_context_fmha"
         ] = True
         test_config["trt_llm"]["build"]["speculator"]["speculative_decoding_mode"] = (
-            trtllm_spec_dec_config[
-                "trt_llm"
-            ]["build"]["speculator"]["speculative_decoding_mode"]
+            trtllm_spec_dec_config["trt_llm"]["build"]["speculator"][
+                "speculative_decoding_mode"
+            ]
         )
         test_config["trt_llm"]["build"]["speculator"]["num_draft_tokens"] = None
         with pytest.raises(ValueError):

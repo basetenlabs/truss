@@ -14,11 +14,12 @@ from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
 from truss.base import constants
 from truss.base.constants import (
-    AUDIO_MODEL_TRTLLM_REQUIREMENTS,
-    AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES,
-    AUDIO_MODEL_TRTLLM_TRUSS_DIR,
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
+    BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
+    BEI_TRTLLM_BASE_IMAGE,
+    BEI_TRTLLM_CLIENT_BATCH_SIZE,
+    BEI_TRTLLM_PYTHON_EXECUTABLE,
     CHAINS_CODE_DIR,
     CONTROL_SERVER_CODE_DIR,
     DOCKER_SERVER_TEMPLATES_DIR,
@@ -42,7 +43,12 @@ from truss.base.constants import (
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
 from truss.base.trt_llm_config import TRTLLMConfiguration, TrussTRTLLMModel
-from truss.base.truss_config import DEFAULT_BUNDLED_PACKAGES_DIR, BaseImage, TrussConfig
+from truss.base.truss_config import (
+    DEFAULT_BUNDLED_PACKAGES_DIR,
+    BaseImage,
+    DockerServer,
+    TrussConfig,
+)
 from truss.base.truss_spec import TrussSpec
 from truss.contexts.image_builder.cache_warmer import (
     AWSCredentials,
@@ -306,18 +312,18 @@ def generate_docker_server_nginx_config(build_dir, config):
         DOCKER_SERVER_TEMPLATES_DIR, "proxy.conf.jinja"
     )
 
-    assert (
-        config.docker_server.predict_endpoint is not None
-    ), "docker_server.predict_endpoint is required to use custom server"
-    assert (
-        config.docker_server.server_port is not None
-    ), "docker_server.server_port is required to use custom server"
-    assert (
-        config.docker_server.readiness_endpoint is not None
-    ), "docker_server.readiness_endpoint is required to use custom server"
-    assert (
-        config.docker_server.liveness_endpoint is not None
-    ), "docker_server.liveness_endpoint is required to use custom server"
+    assert config.docker_server.predict_endpoint is not None, (
+        "docker_server.predict_endpoint is required to use custom server"
+    )
+    assert config.docker_server.server_port is not None, (
+        "docker_server.server_port is required to use custom server"
+    )
+    assert config.docker_server.readiness_endpoint is not None, (
+        "docker_server.readiness_endpoint is required to use custom server"
+    )
+    assert config.docker_server.liveness_endpoint is not None, (
+        "docker_server.liveness_endpoint is required to use custom server"
+    )
 
     nginx_content = nginx_template.render(
         server_endpoint=config.docker_server.predict_endpoint,
@@ -334,11 +340,11 @@ def generate_docker_server_supervisord_config(build_dir, config):
     supervisord_template = read_template_from_fs(
         DOCKER_SERVER_TEMPLATES_DIR, "supervisord.conf.jinja"
     )
-    assert (
-        config.docker_server.start_command is not None
-    ), "docker_server.start_command is required to use custom server"
+    assert config.docker_server.start_command is not None, (
+        "docker_server.start_command is required to use custom server"
+    )
     supervisord_contents = supervisord_template.render(
-        start_command=config.docker_server.start_command,
+        start_command=config.docker_server.start_command
     )
     supervisord_filepath = build_dir / "supervisord.conf"
     supervisord_filepath.write_text(supervisord_contents)
@@ -364,53 +370,87 @@ class ServingImageBuilder(ImageBuilder):
     ):
         copy_tree_or_file(from_path, build_dir / path_in_build_dir)  # type: ignore[operator]
 
-    def prepare_trtllm_build_dir(self, build_dir: Path):
+    def prepare_trtllm_bei_encoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm ENCODER model to launch a Baseten Embeddings Inference (BEI) server"""
         config = self._spec.config
-        trt_llm_config = config.trt_llm
-        if not trt_llm_config:
-            return
-        is_audio_model = (
-            trt_llm_config.build.base_model == TrussTRTLLMModel.WHISPER
-            if isinstance(trt_llm_config, TRTLLMConfiguration)
-            and trt_llm_config.build is not None
-            else False
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER
+        ), (
+            "prepare_trtllm_bei_encoder_build_dir should only be called for ENCODER tensorrt-llm model"
+        )
+        # TRTLLM has performance degradation with batch size >> 32, so we limit the runtime settings
+        # runtime batch size may not be higher than what the build settings of the model allow
+        # to 32 even if the engine.rank0 allows for higher batch_size
+        runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
+
+        port = 7997
+        start_command = " ".join(
+            [
+                "truss-transfer-cli && text-embeddings-router",
+                f"--port {port}",
+                f"--max-batch-requests {runtime_max_batch_size}",
+                # how many sentences can be in a single json payload.
+                # limited default to improve request based autoscaling.
+                f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
+                # how many concurrent requests can be handled by the server until 429 is returned.
+                # limited by https://docs.baseten.co/performance/concurrency#concurrency-target
+                # 2048 is a safe max value for the server
+                f"--max-concurrent-requests {BEI_MAX_CONCURRENCY_TARGET_REQUESTS}",
+            ]
+        )
+        self._spec.config.docker_server = DockerServer(
+            start_command=f"/bin/sh -c '{start_command}'",
+            server_port=port,
+            predict_endpoint="/v1/embeddings",
+            readiness_endpoint="/health",
+            liveness_endpoint="/health",
+        )
+        copy_tree_path(DOCKER_SERVER_TEMPLATES_DIR, build_dir, ignore_patterns=[])
+
+        config.base_image = BaseImage(
+            image=BEI_TRTLLM_BASE_IMAGE,
+            python_executable_path=BEI_TRTLLM_PYTHON_EXECUTABLE,
         )
 
-        if is_audio_model:
-            copy_tree_path(AUDIO_MODEL_TRTLLM_TRUSS_DIR, build_dir, ignore_patterns=[])
-        else:
-            # trt_llm is treated as an extension at model run time.
-            self._copy_into_build_dir(
-                TRTLLM_TRUSS_DIR / "src",
-                build_dir,
-                f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
-            )
-            # TODO(pankaj) Do this differently. This is not ideal, user
-            # supplied code in bundled packages can conflict with those from
-            # the trtllm extension. We don't want to put this in the build
-            # directory directly either because of chances of conflict there
-            # as well and the noise it can create there. We need to find a
-            # new place that's made available in model's pythonpath. This is
-            # a bigger lift and feels overkill right now. Worth revisiting
-            # if we come across cases of actual conflicts.
-            self._copy_into_build_dir(
-                TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
-                build_dir,
-                DEFAULT_BUNDLED_PACKAGES_DIR,
-            )
+    def prepare_trtllm_decoder_build_dir(self, build_dir: Path):
+        """prepares the build directory for a trtllm decoder-like models to launch BRITON server"""
+        config = self._spec.config
+        assert (
+            config.trt_llm
+            and config.trt_llm.build
+            and config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+        ), (
+            "prepare_trtllm_decoder_build_dir should only be called for decoder tensorrt-llm model"
+        )
+
+        # trt_llm is treated as an extension at model run time.
+        self._copy_into_build_dir(
+            TRTLLM_TRUSS_DIR / "src",
+            build_dir,
+            f"{BUILD_SERVER_DIR_NAME}/{BUILD_SERVER_EXTENSIONS_PATH}/trt_llm",
+        )
+        # TODO(pankaj) Do this differently. This is not ideal, user
+        # supplied code in bundled packages can conflict with those from
+        # the trtllm extension. We don't want to put this in the build
+        # directory directly either because of chances of conflict there
+        # as well and the noise it can create there. We need to find a
+        # new place that's made available in model's pythonpath. This is
+        # a bigger lift and feels overkill right now. Worth revisiting
+        # if we come across cases of actual conflicts.
+        self._copy_into_build_dir(
+            TRTLLM_TRUSS_DIR / DEFAULT_BUNDLED_PACKAGES_DIR,
+            build_dir,
+            DEFAULT_BUNDLED_PACKAGES_DIR,
+        )
 
         config.runtime.predict_concurrency = TRTLLM_PREDICT_CONCURRENCY
 
-        if not is_audio_model:
-            config.base_image = BaseImage(
-                image=TRTLLM_BASE_IMAGE,
-                python_executable_path=TRTLLM_PYTHON_EXECUTABLE,
-            )
-            config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
-        else:
-            config.requirements.extend(AUDIO_MODEL_TRTLLM_REQUIREMENTS)
-            config.system_packages.extend(AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES)
-            config.python_version = "py310"
+        config.base_image = BaseImage(
+            image=TRTLLM_BASE_IMAGE, python_executable_path=TRTLLM_PYTHON_EXECUTABLE
+        )
+        config.requirements.extend(BASE_TRTLLM_REQUIREMENTS)
 
     def prepare_image_build_dir(
         self, build_dir: Optional[Path] = None, use_hf_secret: bool = False
@@ -436,6 +476,15 @@ class ServingImageBuilder(ImageBuilder):
 
         # Copy over truss
         copy_tree_path(truss_dir, build_dir, ignore_patterns=truss_ignore_patterns)
+        if (
+            isinstance(config.trt_llm, TRTLLMConfiguration)
+            and config.trt_llm.build is not None
+        ):
+            if config.trt_llm.build.base_model == TrussTRTLLMModel.ENCODER:
+                # Run the specific encoder build
+                self.prepare_trtllm_bei_encoder_build_dir(build_dir=build_dir)
+            else:
+                self.prepare_trtllm_decoder_build_dir(build_dir=build_dir)
 
         if config.docker_server is not None:
             self._copy_into_build_dir(
@@ -448,8 +497,6 @@ class ServingImageBuilder(ImageBuilder):
 
             generate_docker_server_supervisord_config(build_dir, config)
 
-        self.prepare_trtllm_build_dir(build_dir=build_dir)
-
         # Override config.yml
         with (build_dir / CONFIG_FILE).open("w") as config_file:
             yaml.dump(config.to_dict(verbose=True), config_file)
@@ -459,10 +506,7 @@ class ServingImageBuilder(ImageBuilder):
         if self._spec.external_data is not None:
             for ext_file in self._spec.external_data.items:
                 external_data_files.append(
-                    (
-                        ext_file.url,
-                        (data_dir / ext_file.local_data_path).resolve(),
-                    )
+                    (ext_file.url, (data_dir / ext_file.local_data_path).resolve())
                 )
 
         # Download from HuggingFace

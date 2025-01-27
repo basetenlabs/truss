@@ -1,6 +1,10 @@
 import datetime
+import json
 import logging
+import textwrap
 from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
+
+from truss.base.errors import ValidationError
 
 if TYPE_CHECKING:
     from rich import progress
@@ -152,9 +156,7 @@ def create_chain_atomic(
         raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
     else:
         res = api.deploy_chain_atomic(
-            chain_name=chain_name,
-            entrypoint=entrypoint,
-            dependencies=dependencies,
+            chain_name=chain_name, entrypoint=entrypoint, dependencies=dependencies
         )
 
     return ChainDeploymentHandleAtomic(
@@ -276,7 +278,7 @@ def archive_truss(
     Returns:
         A file-like object containing the tar file
     """
-    truss_dir = truss_handle._spec.truss_dir
+    truss_dir = truss_handle._truss_dir
 
     # check for a truss_ignore file and read the ignore patterns if it exists
     ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
@@ -404,3 +406,25 @@ def create_truss_service(
         raise e
     model_version_id = model_version_json["id"]
     return model_id, model_version_id
+
+
+def validate_truss_config(api: BasetenApi, config: str):
+    """
+    Validate a truss config as well as the truss version.
+
+    Args:
+        api: BasetenApi instance
+        config: Base64 encoded JSON string of the Truss config
+
+    Returns:
+        None if the config is valid, otherwise raises an error message
+    """
+    valid_config = api.validate_truss(truss.version(), config)
+    if not valid_config.get("success"):
+        details = json.loads(valid_config.get("details"))
+        errors = details.get("errors", [])
+        if errors:
+            error_messages = "\n".join(textwrap.indent(error, "  ") for error in errors)
+            raise ValidationError(
+                f"Validation failed with the following errors:\n{error_messages}"
+            )

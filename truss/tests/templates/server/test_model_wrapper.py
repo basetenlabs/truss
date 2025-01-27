@@ -35,8 +35,7 @@ class Model:
         return request
     """
     with helpers.file_content(
-        truss_container_app_path / "model" / "model.py",
-        model_file_content,
+        truss_container_app_path / "model" / "model.py", model_file_content
     ), helpers.sys_path(truss_container_app_path):
         yield truss_container_app_path
 
@@ -114,9 +113,9 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
                 call_args[0][0] == "trt_llm"
                 for call_args in mock_init_extension.call_args_list
             )
-            assert (
-                called_with_specific_extension
-            ), "Expected extension_name was not called"
+            assert called_with_specific_extension, (
+                "Expected extension_name was not called"
+            )
 
 
 @pytest.mark.anyio

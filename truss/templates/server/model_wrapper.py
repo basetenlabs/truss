@@ -17,14 +17,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -122,23 +115,23 @@ def _is_request_type(obj: Any) -> bool:
 
 
 class ArgConfig(enum.Enum):
+    NONE = enum.auto()
     INPUTS_ONLY = enum.auto()
     REQUEST_ONLY = enum.auto()
     INPUTS_AND_REQUEST = enum.auto()
 
     @classmethod
     def from_signature(
-        cls,
-        signature: inspect.Signature,
-        method_name: str,
+        cls, signature: inspect.Signature, method_name: str
     ) -> "ArgConfig":
         parameters = list(signature.parameters.values())
 
-        if len(parameters) == 1:
+        if len(parameters) == 0:
+            return cls.NONE
+        elif len(parameters) == 1:
             if _is_request_type(parameters[0].annotation):
                 return cls.REQUEST_ONLY
             return cls.INPUTS_ONLY
-
         elif len(parameters) == 2:
             # First arg can be whatever, except request. Second arg must be request.
             param1, param2 = parameters
@@ -204,6 +197,7 @@ class ModelDescriptor:
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
     setup_environment: Optional[MethodDescriptor]
+    is_healthy: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -221,10 +215,7 @@ class ModelDescriptor:
             preprocess = None
 
         if hasattr(model, "predict"):
-            predict = MethodDescriptor.from_method(
-                model.predict,
-                method_name="predict",
-            )
+            predict = MethodDescriptor.from_method(model.predict, method_name="predict")
             if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
                 raise errors.ModelDefinitionError(
                     "When using preprocessing, the predict method cannot only have the "
@@ -263,12 +254,22 @@ class ModelDescriptor:
         else:
             setup_environment = None
 
+        if hasattr(model, "is_healthy"):
+            is_healthy = MethodDescriptor.from_method(model.is_healthy, "is_healthy")
+            if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
+                raise errors.ModelDefinitionError(
+                    "`is_healthy` must have only one argument: `self`."
+                )
+        else:
+            is_healthy = None
+
         return cls(
             preprocess=preprocess,
             predict=predict,
             postprocess=postprocess,
             truss_schema=TrussSchema.from_signature(parameters, return_annotation),
             setup_environment=setup_environment,
+            is_healthy=is_healthy,
         )
 
 
@@ -423,11 +424,7 @@ class ModelWrapper:
 
             model_class = getattr(module, self._config["model_class_name"])
             model_init_params = _prepare_init_args(
-                model_class,
-                self._config,
-                data_dir,
-                secrets,
-                lazy_data_resolver,
+                model_class, self._config, data_dir, secrets, lazy_data_resolver
             )
             signature = inspect.signature(model_class)
             for ext_name, ext in extensions.items():
@@ -524,14 +521,36 @@ class ModelWrapper:
                                 self._environment = environment_json
                 except Exception as e:
                     self._logger.exception(
-                        "Exception while setting up environment: " + str(e),
+                        f"Exception while setting up environment: {str(e)}",
                         exc_info=errors.filter_traceback(self._model_file_name),
                     )
 
+    async def is_healthy(self) -> Optional[bool]:
+        descriptor = self.model_descriptor.is_healthy
+        is_healthy: Optional[bool] = None
+        if not descriptor or self.load_failed:
+            # return early with None if model does not have is_healthy method or load failed
+            return is_healthy
+        try:
+            if descriptor.is_async:
+                is_healthy = await self._model.is_healthy()
+            else:
+                # Offload sync functions to thread, to not block event loop.
+                is_healthy = await to_thread.run_sync(self._model.is_healthy)
+        except Exception as e:
+            is_healthy = False
+            self._logger.exception(
+                f"Exception while checking if model is healthy: {str(e)}",
+                exc_info=errors.filter_traceback(self._model_file_name),
+            )
+        if not is_healthy and self.ready:
+            # self.ready evaluates to True when the model's load function has completed,
+            # we will only log health check failures to model logs when the model's load has completed
+            self._logger.warning("Health check failed.")
+        return is_healthy
+
     async def preprocess(
-        self,
-        inputs: InputType,
-        request: starlette.requests.Request,
+        self, inputs: InputType, request: starlette.requests.Request
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
         assert descriptor, "`preprocess` must only be called if model has it."
@@ -543,9 +562,7 @@ class ModelWrapper:
                 return await to_thread.run_sync(self._model.preprocess, *args)
 
     async def predict(
-        self,
-        inputs: Any,
-        request: starlette.requests.Request,
+        self, inputs: Any, request: starlette.requests.Request
     ) -> Union[OutputType, Any]:
         # The result can be a serializable data structure, byte-generator, a request,
         # or, if `postprocessing` is used, anything. In the last case postprocessing
@@ -562,9 +579,7 @@ class ModelWrapper:
             return await to_thread.run_sync(self._model.predict, *args)
 
     async def postprocess(
-        self,
-        result: Union[InputType, Any],
-        request: starlette.requests.Request,
+        self, result: Union[InputType, Any], request: starlette.requests.Request
     ) -> OutputType:
         # The postprocess function can handle outputs of `predict`, but not
         # generators and responses - in that case predict must return directly
@@ -591,7 +606,7 @@ class ModelWrapper:
                     await queue.put(chunk)
             except Exception as e:
                 self._logger.exception(
-                    "Exception while generating streamed response: " + str(e),
+                    f"Exception while generating streamed response: {str(e)}",
                     exc_info=errors.filter_traceback(self._model_file_name),
                 )
             finally:
@@ -637,8 +652,7 @@ class ModelWrapper:
             ):
                 while True:
                     chunk = await asyncio.wait_for(
-                        response_queue.get(),
-                        timeout=streaming_read_timeout,
+                        response_queue.get(), timeout=streaming_read_timeout
                     )
                     if chunk == SENTINEL:
                         return
@@ -647,9 +661,7 @@ class ModelWrapper:
         return _buffered_response_generator()
 
     async def __call__(
-        self,
-        inputs: Optional[InputType],
-        request: starlette.requests.Request,
+        self, inputs: Optional[InputType], request: starlette.requests.Request
     ) -> OutputType:
         """
         Returns result from: preprocess -> predictor -> postprocess.
@@ -796,23 +808,13 @@ def _init_extensions(config, data_dir, secrets, lazy_data_resolver):
             if extension_path.is_dir():
                 extension_name = extension_path.name
                 extension = _init_extension(
-                    extension_name,
-                    config,
-                    data_dir,
-                    secrets,
-                    lazy_data_resolver,
+                    extension_name, config, data_dir, secrets, lazy_data_resolver
                 )
                 extensions[extension_name] = extension
     return extensions
 
 
-def _init_extension(
-    extension_name: str,
-    config,
-    data_dir,
-    secrets,
-    lazy_data_resolver,
-):
+def _init_extension(extension_name: str, config, data_dir, secrets, lazy_data_resolver):
     extension_module = importlib.import_module(
         f"{EXTENSIONS_DIR_NAME}.{extension_name}.{EXTENSION_FILE_NAME}"
     )

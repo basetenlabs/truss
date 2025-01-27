@@ -77,3 +77,5 @@ yarn.lock
 **/.chains_generated/**
 
 .hypothesis
+
+truss-transfer/target/

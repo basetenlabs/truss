@@ -134,22 +134,10 @@ def test_model_load_logs(test_data_path):
             local_port=8090, detach=True, wait_for_server_ready=True
         )
         logs = container.logs()
-        _assert_logs_contain(
-            logs,
-            message="Executing model.load()",
-        )
-        _assert_logs_contain(
-            logs,
-            message="Loading truss model from file",
-        )
-        _assert_logs_contain(
-            logs,
-            message="Completed model.load()",
-        )
-        _assert_logs_contain(
-            logs,
-            message="User Load Message",
-        )
+        _assert_logs_contain(logs, message="Executing model.load()")
+        _assert_logs_contain(logs, message="Loading truss model from file")
+        _assert_logs_contain(logs, message="Completed model.load()")
+        _assert_logs_contain(logs, message="User Load Message")
 
 
 @pytest.mark.integration
@@ -187,6 +175,12 @@ def test_model_load_failure_truss(test_data_path):
             return True
 
         @handle_request_exception
+        def _test_is_loaded(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model/loaded")
+            assert ready.status_code == expected_code
+            return True
+
+        @handle_request_exception
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
@@ -202,8 +196,9 @@ def test_model_load_failure_truss(test_data_path):
 
         # The server should be completely down so all requests should result in a RequestException.
         # The decorator handle_request_exception catches the RequestException and returns False.
-        assert not _test_readiness_probe(expected_code=200)
         assert not _test_liveness_probe(expected_code=200)
+        assert not _test_readiness_probe(expected_code=200)
+        assert not _test_is_loaded(expected_code=200)
         assert not _test_ping(expected_code=200)
         assert not _test_invocations(expected_code=200)
 
@@ -294,10 +289,7 @@ def test_async_streaming(test_data_path):
         ] == ["0", "1", "2", "3", "4"]
 
         predict_non_stream_response = requests.post(
-            PREDICT_URL,
-            json={},
-            stream=True,
-            headers={"accept": "application/json"},
+            PREDICT_URL, json={}, stream=True, headers={"accept": "application/json"}
         )
         assert "transfer-encoding" not in predict_non_stream_response.headers
         assert predict_non_stream_response.json() == "01234"
@@ -357,13 +349,7 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
         assert [
             byte_string.decode()
             for byte_string in predict_non_error_response.iter_content()
-        ] == [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-        ]
+        ] == ["0", "1", "2", "3", "4"]
         expected_stack_trace = (
             "Traceback (most recent call last):\n"
             '  File "/app/model/model.py", line 12, in inner\n'
@@ -756,6 +742,10 @@ def test_slow_truss(test_data_path):
             ready = requests.get(f"{truss_server_addr}/v1/models/model")
             assert ready.status_code == expected_code
 
+        def _test_is_loaded(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model/loaded")
+            assert ready.status_code == expected_code
+
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
@@ -777,6 +767,7 @@ def test_slow_truss(test_data_path):
         for _ in range(LOAD_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(503)
+            _test_is_loaded(503)
             _test_ping(503)
             _test_invocations(503)
             time.sleep(1)
@@ -784,6 +775,7 @@ def test_slow_truss(test_data_path):
         time.sleep(LOAD_BUFFER_TIME)
         _test_liveness_probe(200)
         _test_readiness_probe(200)
+        _test_is_loaded(200)
         _test_ping(200)
 
         predict_call = Thread(
@@ -796,6 +788,7 @@ def test_slow_truss(test_data_path):
         for _ in range(PREDICT_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(200)
+            _test_is_loaded(200)
             _test_ping(200)
             time.sleep(1)
 
@@ -828,29 +821,19 @@ def test_init_environment_parameter():
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         assert "Executing model.load with environment: staging" in container.logs()
         response = requests.post(PREDICT_URL, json={})
         assert response.json() == "staging"
         assert response.status_code == 200
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
     # Test a truss deployment with no associated environment
     config = "model_name: init-no-environment-truss"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         assert "Executing model.load with environment: None" in container.logs()
         response = requests.post(PREDICT_URL, json={})
@@ -874,9 +857,7 @@ def test_setup_environment():
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
@@ -899,13 +880,7 @@ def test_setup_environment():
             in container.logs()
         )
         assert "in beta environment" in container.logs()
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
     # Test a truss that uses the environment in load()
     model = """
@@ -928,9 +903,7 @@ def test_setup_environment():
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
         assert (
@@ -948,11 +921,7 @@ def test_setup_environment():
         no_env = None
         no_env_str = json.dumps(no_env)
         container.execute(
-            [
-                "bash",
-                "-c",
-                f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment",
-            ]
+            ["bash", "-c", f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment"]
         )
         time.sleep(30)
         assert (
@@ -960,13 +929,223 @@ def test_setup_environment():
             in container.logs()
         )
         assert "setup_environment called with None" in container.logs()
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
+
+
+@pytest.mark.integration
+def test_health_check_configuration():
+    model = """
+    class Model:
+        def predict(self, model_input):
+            return model_input
+    """
+
+    config = """runtime:
+    health_checks:
+        restart_check_delay_seconds: 100
+        restart_threshold_seconds: 1700
+    """
+
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
+        assert (
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
+
+    config = """runtime:
+    health_checks:
+        restart_check_delay_seconds: 1200
+        restart_threshold_seconds: 90
+        stop_traffic_threshold_seconds: 50
+    """
+
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
+        assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
+
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds is None
+        assert (
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
+        )
+
+
+@pytest.mark.integration
+def test_is_healthy():
+    model = """
+    class Model:
+        def load(self):
+            raise Exception("not loaded")
+
+        def is_healthy(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        truss_server_addr = "http://localhost:8090"
+        for _ in range(5):
+            time.sleep(1)
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            if healthy.status_code == 503:
+                break
+            assert healthy.status_code == 200
+        assert healthy.status_code == 503
+        diff = container.diff()
+        assert "/root/inference_server_crashed.txt" in diff
+        assert diff["/root/inference_server_crashed.txt"] == "A"
+
+    model = """
+    class Model:
+        def is_healthy(self, argument) -> bool:
+            pass
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="`is_healthy` must have only one argument: `self`",
+        )
+
+    model = """
+    class Model:
+        def is_healthy(self) -> bool:
+            raise Exception("not healthy")
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        truss_server_addr = "http://localhost:8090"
+
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert (
+            "Exception while checking if model is healthy: not healthy"
+            in container.logs()
+        )
+        assert "Health check failed." in container.logs()
+
+    model = """
+    import time
+
+    class Model:
+        def load(self):
+            time.sleep(10)
+
+        def is_healthy(self) -> bool:
+            return False
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        truss_server_addr = "http://localhost:8090"
+
+        time.sleep(5)
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        # Ensure we only log after model.load is complete
+        assert "Health check failed." not in container.logs()
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 1
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 2
+
+    model = """
+    import time
+
+    class Model:
+        def __init__(self, **kwargs):
+            self._healthy = False
+
+        def load(self):
+            time.sleep(10)
+            self._healthy = True
+
+        def is_healthy(self):
+            return self._healthy
+
+        def predict(self, model_input):
+            self._healthy = model_input["healthy"]
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+        time.sleep(5)
+        truss_server_addr = "http://localhost:8090"
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        time.sleep(10)
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 200
+
+        healthy_responses = [True, "yessss", 34, {"woo": "hoo"}]
+        for response in healthy_responses:
+            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
+            assert predict_response.status_code == 200
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert healthy.status_code == 200
+
+        not_healthy_responses = [False, "", 0, {}]
+        for response in not_healthy_responses:
+            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
+            assert predict_response.status_code == 200
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert healthy.status_code == 503
+
+    model = """
+    class Model:
+        def is_healthy(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        truss_server_addr = "http://localhost:8090"
+
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 200
 
 
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
@@ -1211,13 +1390,7 @@ class Model:
         )
 
         lines = predict_response.text.strip().split("\n")
-        assert lines == [
-            "data: 0",
-            "",
-            "data: 1",
-            "",
-            "data: 2",
-        ]
+        assert lines == ["data: 0", "", "data: 1", "", "data: 2"]
 
 
 # Using Request in Model ###############################################################

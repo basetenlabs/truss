@@ -84,13 +84,37 @@ def test_raises_depends_usage():
             return self.chainlet1.run_remote()
 
     match = (
-        "`chains.depends(Chainlet1)` was used, but not as "
-        "an argument to the `__init__`"
+        "`chains.depends(Chainlet1)` was used, but not as an argument to the `__init__`"
     )
     with pytest.raises(definitions.ChainsRuntimeError, match=re.escape(match)):
         with chains.run_local():
             chain = InlinedDepends()
             chain.run_remote()
+
+
+def test_raises_model_requires_predict_method():
+    class ModelWithRunRemote(chains.ModelBase):
+        def run_remote(self) -> str:
+            return self.__class__.name
+
+    match = "Models must have a `predict` method."
+    with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
+        with chains.run_local():
+            ModelWithRunRemote()
+
+
+def test_raises_model_dependencies_not_allowed():
+    class ModelWithDependencies(chains.ModelBase):
+        def __init__(self, c1=chains.depends(Chainlet1)):
+            self.c1 = c1
+
+        def run_remote(self) -> str:
+            return self.__class__.name
+
+    match = "The only supported argument to `__init__` for Models"
+    with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
+        with chains.run_local():
+            ModelWithDependencies()
 
 
 # The problem with supporting helper functions in `run_local` is that the stack trace
@@ -283,7 +307,7 @@ def test_raises_unsupported_arg_type_str_annot():
 def test_raises_endpoint_no_method():
     match = (
         rf"{TEST_FILE}:\d+ \(StaticMethod\.run_remote\) \[kind: TYPE_ERROR\].*"
-        r"Endpoint must be a method"
+        r"`run_remote` must be a method"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -297,7 +321,7 @@ def test_raises_endpoint_no_method():
 def test_raises_endpoint_no_method_arg():
     match = (
         rf"{TEST_FILE}:\d+ \(StaticMethod\.run_remote\) \[kind: TYPE_ERROR\].*"
-        r"Endpoint must be a method"
+        r"`run_remote` must be a method"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -434,9 +458,8 @@ def test_raises_dep_not_chainlet_annot():
 def test_raises_context_missing_default():
     match = (
         rf"{TEST_FILE}:\d+ \(ContextMissingDefault\.__init__\) \[kind: TYPE_ERROR\].*"
-        r"f `<class \'truss_chains.definitions.ABCChainlet\'>` uses context for "
-        r"initialization, it must have `context` argument of type `<class "
-        f"'truss_chains.definitions.DeploymentContext'>`"
+        r"If `Chainlet` uses context for initialization, it must have "
+        r"`context` argument of type `<class 'truss_chains.definitions.DeploymentContext'>`"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -448,9 +471,8 @@ def test_raises_context_missing_default():
 def test_raises_context_wrong_annot():
     match = (
         rf"{TEST_FILE}:\d+ \(ConextWrongAnnot\.__init__\) \[kind: TYPE_ERROR\].*"
-        r"f `<class \'truss_chains.definitions.ABCChainlet\'>` uses context for "
-        r"initialization, it must have `context` argument of type `<class "
-        f"'truss_chains.definitions.DeploymentContext'>`"
+        r"If `Chainlet` uses context for initialization, it must have "
+        r"`context` argument of type `<class 'truss_chains.definitions.DeploymentContext'>`"
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -481,7 +503,7 @@ def test_raises_chainlet_reuse():
 
 
 def test_collects_multiple_errors():
-    match = r"The Chainlet definitions contain 5 errors:"
+    match = r"The user defined code does not comply with the required spec"
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
 
@@ -501,7 +523,7 @@ def test_collects_multiple_errors_run_local():
 
         def run_remote(argument: object): ...
 
-    match = r"The Chainlet definitions contain 5 errors:"
+    match = r"The user defined code does not comply with the required spec"
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
         with public_api.run_local():
             MultiIssue()
@@ -557,3 +579,92 @@ def test_raises_iterator_no_arg():
         class IteratorNoArg(chains.ChainletBase):
             async def run_remote(self) -> AsyncIterator:
                 yield "123"
+
+
+def test_raises_is_healthy_not_a_method():
+    match = rf"{TEST_FILE}:\d+ \(IsHealthyNotMethod\) \[kind: TYPE_ERROR\].* `is_healthy` must be a method."
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNotMethod(chains.ChainletBase):
+            is_healthy: int = 3
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_no_arg():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNoArg\.is_healthy\) \[kind: TYPE_ERROR\].*"
+        r"`is_healthy` must be a method, i.e. with `self` as first argument. Got function with no arguments."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNoArg(chains.ChainletBase):
+            async def is_healthy() -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_first_arg_not_self():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNoSelfArg\.is_healthy\) \[kind: TYPE_ERROR\].*"
+        r"`is_healthy` must be a method, i.e. with `self` as first argument. Got `hi` as first argument."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNoSelfArg(chains.ChainletBase):
+            def is_healthy(hi) -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_multiple_args():
+    match = rf"{TEST_FILE}:\d+ \(IsHealthyManyArgs\.is_healthy\) \[kind: TYPE_ERROR\].* `is_healthy` must have only one argument: `self`."
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyManyArgs(chains.ChainletBase):
+            def is_healthy(self, hi) -> bool:
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_not_type_annotated():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNotTyped\.is_healthy\) \[kind: IO_TYPE_ERROR\].*"
+        r"Return value of health check must be type annotated. Got:\n\tis_healthy\(self\) -> !MISSING!"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNotTyped(chains.ChainletBase):
+            def is_healthy(self):
+                return True
+
+            async def run_remote(self) -> str:
+                return ""
+
+
+def test_raises_is_healthy_not_boolean_typed():
+    match = (
+        rf"{TEST_FILE}:\d+ \(IsHealthyNotBoolTyped\.is_healthy\) \[kind: IO_TYPE_ERROR\].*"
+        r"Return value of health check must be a boolean. Got:\n\tis_healthy\(self\) -> str -> <class 'str'>"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class IsHealthyNotBoolTyped(chains.ChainletBase):
+            def is_healthy(self) -> str:  # type: ignore[misc]
+                return "not ready"
+
+            async def run_remote(self) -> str:
+                return ""

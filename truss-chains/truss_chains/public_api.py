@@ -46,7 +46,7 @@ def depends_context() -> definitions.DeploymentContext:
 def depends(
     chainlet_cls: Type[framework.ChainletT],
     retries: int = 1,
-    timeout_sec: int = definitions.DEFAULT_TIMEOUT_SEC,
+    timeout_sec: float = definitions.DEFAULT_TIMEOUT_SEC,
     use_binary: bool = False,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
@@ -104,10 +104,15 @@ class ChainletBase(definitions.ABCChainlet):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type="Chainlet",
+            supports_dependencies=True,
+            endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
+        )
         # Each sub-class has own, isolated metadata, e.g. we don't want
         # `mark_entrypoint` to propagate to subclasses.
         cls.meta_data = definitions.ChainletMetadata()
-        framework.validate_and_register_class(cls)  # Errors are collected, not raised!
+        framework.validate_and_register_cls(cls)  # Errors are collected, not raised!
         # For default init (from `object`) we don't need to check anything.
         if cls.has_custom_init():
             original_init = cls.__init__
@@ -120,6 +125,24 @@ class ChainletBase(definitions.ABCChainlet):
                 original_init(self, *args, **kwargs)
 
             cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
+
+
+class ModelBase(definitions.ABCChainlet):
+    """Base class for all singular truss models.
+
+    Inheriting from this class adds validations to make sure subclasses adhere to the
+    truss model pattern.
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type="Model",
+            supports_dependencies=False,
+            endpoint_method_name=definitions.MODEL_ENDPOINT_METHOD_NAME,
+        )
+        cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
+        framework.validate_and_register_cls(cls)
 
 
 @overload

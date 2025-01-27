@@ -7,14 +7,7 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import (
-    Dict,
-    Iterator,
-    Mapping,
-    NoReturn,
-    Type,
-    TypeVar,
-)
+from typing import Dict, Iterator, Mapping, NoReturn, Type, TypeVar
 
 import aiohttp
 import fastapi
@@ -31,6 +24,9 @@ def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
 ) -> Mapping[str, definitions.DeployedServiceDescriptor]:
     chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
+    # If there are no dependencies of this chainlet, no need to derive dynamic URLs
+    if len(chainlet_to_service) == 0:
+        return chainlet_to_deployed_service
 
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         definitions.DYNAMIC_CHAINLET_CONFIG_KEY
@@ -44,10 +40,7 @@ def populate_chainlet_service_predict_urls(
 
     dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
 
-    for (
-        chainlet_name,
-        service_descriptor,
-    ) in chainlet_to_service.items():
+    for chainlet_name, service_descriptor in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
         # NOTE: The Chainlet `display_name` in the Truss CLI
@@ -182,9 +175,7 @@ def exception_to_http_error() -> Iterator[None]:
         _handle_exception(e)
 
 
-def _resolve_exception_class(
-    error: definitions.RemoteErrorDetail,
-) -> Type[Exception]:
+def _resolve_exception_class(error: definitions.RemoteErrorDetail) -> Type[Exception]:
     """Tries to find the exception class in builtins or imported libs,
     falls back to `definitions.GenericRemoteError` if not found."""
     exception_cls = None
@@ -299,7 +290,6 @@ async def async_response_raise_errors(
             response_json = await response.json()
         except Exception as e:
             raise ValueError(
-                "Could not get JSON from error response. Status: "
-                f"`{response.status}`."
+                f"Could not get JSON from error response. Status: `{response.status}`."
             ) from e
         _handle_response_error(response_json, remote_name, response.status)

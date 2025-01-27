@@ -31,16 +31,7 @@ def test_get_dynamic_chainlet_config_value_sync(
 
 
 @pytest.mark.parametrize(
-    "config",
-    [
-        {
-            "environment_name": "production",
-            "foo": "bar",
-        },
-        {},
-        "",
-        None,
-    ],
+    "config", [{"environment_name": "production", "foo": "bar"}, {}, "", None]
 )
 def test_get_dynamic_config_environment_value_sync(
     config, tmp_path, dynamic_config_mount_dir
@@ -92,16 +83,7 @@ async def test_get_dynamic_chainlet_config_value_async(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "config",
-    [
-        {
-            "environment_name": "production",
-            "foo": "bar",
-        },
-        {},
-        "",
-        None,
-    ],
+    "config", [{"environment_name": "production", "foo": "bar"}, {}, "", None]
 )
 async def test_get_dynamic_config_environment_value_async(
     config, tmp_path, dynamic_config_mount_dir

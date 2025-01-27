@@ -47,6 +47,11 @@ class TrussChainletModel:
     #         side_effect=stub.factory(SideEffectOnlySubclass, self._context),
     #     )
     #
+    # If chainlet implements is_healthy:
+    # def is_healthy(self) -> Optional[bool]:
+    #     if hasattr(self, "_chainlet"):
+    #         return self._chainlet.is_healthy()
+    #
     # def predict(
     #     self, inputs: TextToNumInput, request: starlette.requests.Request
     # ) -> TextToNumOutput:

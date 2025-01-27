@@ -42,11 +42,7 @@ class ModelCodePatch(PatchBody):
     content: Optional[str] = None
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "path": self.path,
-            "content": self.content,
-        }
+        return {"action": self.action.value, "path": self.path, "content": self.content}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
@@ -65,17 +61,13 @@ class PythonRequirementPatch(PatchBody):
     requirement: str
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "requirement": self.requirement,
-        }
+        return {"action": self.action.value, "requirement": self.requirement}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
         return PythonRequirementPatch(
-            action=Action[action_str],
-            requirement=patch_dict["requirement"],
+            action=Action[action_str], requirement=patch_dict["requirement"]
         )
 
 
@@ -86,17 +78,13 @@ class SystemPackagePatch(PatchBody):
     package: str
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "package": self.package,
-        }
+        return {"action": self.action.value, "package": self.package}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
         return SystemPackagePatch(
-            action=Action[action_str],
-            package=patch_dict["package"],
+            action=Action[action_str], package=patch_dict["package"]
         )
 
 
@@ -106,11 +94,7 @@ class ConfigPatch(PatchBody):
     path: str = "config.yaml"
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "config": self.config,
-            "path": self.path,
-        }
+        return {"action": self.action.value, "config": self.config, "path": self.path}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
@@ -128,11 +112,7 @@ class DataPatch(PatchBody):
     content: Optional[str] = None
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "content": self.content,
-            "path": self.path,
-        }
+        return {"action": self.action.value, "content": self.content, "path": self.path}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
@@ -150,11 +130,7 @@ class PackagePatch(PatchBody):
     content: Optional[str] = None
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "content": self.content,
-            "path": self.path,
-        }
+        return {"action": self.action.value, "content": self.content, "path": self.path}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
@@ -171,18 +147,12 @@ class EnvVarPatch(PatchBody):
     item: dict
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "item": self.item,
-        }
+        return {"action": self.action.value, "item": self.item}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
-        return EnvVarPatch(
-            action=Action[action_str],
-            item=patch_dict["item"],
-        )
+        return EnvVarPatch(action=Action[action_str], item=patch_dict["item"])
 
 
 @dataclass
@@ -190,18 +160,12 @@ class ExternalDataPatch(PatchBody):
     item: Dict[str, str]
 
     def to_dict(self):
-        return {
-            "action": self.action.value,
-            "item": self.item,
-        }
+        return {"action": self.action.value, "item": self.item}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
         action_str = patch_dict["action"]
-        return ExternalDataPatch(
-            action=Action[action_str],
-            item=patch_dict["item"],
-        )
+        return ExternalDataPatch(action=Action[action_str], item=patch_dict["item"])
 
 
 PATCH_BODY_BY_TYPE: Dict[
@@ -238,10 +202,7 @@ class Patch:
     body: PatchBody
 
     def to_dict(self):
-        return {
-            "type": self.type.value,
-            "body": self.body.to_dict(),
-        }
+        return {"type": self.type.value, "body": self.body.to_dict()}
 
     @staticmethod
     def from_dict(patch_dict: Dict):
