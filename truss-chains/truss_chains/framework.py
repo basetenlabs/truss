@@ -219,28 +219,28 @@ def _example_chainlet_code() -> str:
     # called on erroneous code branches (which will not be triggered if
     # `example_chainlet` is free of errors).
     try:
-        from truss_chains import example_chainlet
+        from truss_chains.reference_code import reference_chainlet
     # If `example_chainlet` fails validation and `_example_chainlet_code` is
     # called as a result of that, we have a circular import ("partially initialized
     # module 'truss_chains.example_chainlet' ...").
     except AttributeError:
-        logging.error("`example_chainlet` is broken.", exc_info=True, stack_info=True)
+        logging.error("`reference_chainlet` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_chainlet.HelloWorld.name
-    return _get_cls_source(example_chainlet.__file__, example_name)
+    example_name = reference_chainlet.HelloWorld.name
+    return _get_cls_source(reference_chainlet.__file__, example_name)
 
 
 @functools.cache
 def _example_model_code() -> str:
     try:
-        from truss_chains import example_model
+        from truss_chains.reference_code import reference_model
     except AttributeError:
-        logging.error("`example_model` is broken.", exc_info=True, stack_info=True)
+        logging.error("`reference_model` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_model.HelloWorld.name
-    return _get_cls_source(example_model.__file__, example_name)
+    example_name = reference_model.HelloWorld.name
+    return _get_cls_source(reference_model.__file__, example_name)
 
 
 def _get_cls_source(src_path: str, target_class_name: str) -> str:
