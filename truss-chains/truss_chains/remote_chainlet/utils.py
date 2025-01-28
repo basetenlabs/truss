@@ -1,18 +1,20 @@
 import asyncio
 import builtins
 import contextlib
+import contextvars
 import json
 import logging
 import sys
 import textwrap
 import threading
 import traceback
-from typing import Dict, Iterator, Mapping, NoReturn, Type, TypeVar
+from typing import Dict, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
 
 import aiohttp
 import fastapi
 import httpx
 import pydantic
+import starlette.requests
 from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
@@ -111,6 +113,35 @@ class ThreadSafeCounter:
         self.decrement()
 
 
+_trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "trace_parent"
+)
+
+
+@contextlib.contextmanager
+def _trace_parent(request: starlette.requests.Request) -> Iterator[None]:
+    token = _trace_parent_context.set(
+        request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
+    )
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
+
+
+@contextlib.contextmanager
+def trace_parent_raw(trace_parent: str) -> Iterator[None]:
+    token = _trace_parent_context.set(trace_parent)
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
+
+
+def get_trace_parent() -> Optional[str]:
+    return _trace_parent_context.get()
+
+
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
     """Like `BaseModel.model_dump(exclude_unset=True), but only top-level.
 
@@ -168,7 +199,7 @@ def _handle_exception(exception: Exception) -> NoReturn:
 
 
 @contextlib.contextmanager
-def exception_to_http_error() -> Iterator[None]:
+def _exception_to_http_error() -> Iterator[None]:
     try:
         yield
     except Exception as e:
@@ -201,28 +232,24 @@ def _resolve_exception_class(error: definitions.RemoteErrorDetail) -> Type[Excep
     return exception_cls
 
 
-def _handle_response_error(response_json: dict, remote_name: str, status: int):
+def _handle_response_error(response_json: dict, base_msg: str):
     try:
         error_json = response_json["error"]
     except KeyError as e:
         logging.error(f"response_json: {response_json}")
         raise ValueError(
-            "Could not get `error` field from JSON from chainlet "
-            f"error response. HTTP status: {status}."
+            f"{base_msg}. Could not get `error` field from JSON response."
         ) from e
 
     try:
         error = definitions.RemoteErrorDetail.model_validate(error_json)
     except pydantic.ValidationError as e:
         if isinstance(error_json, str):
-            msg = (
-                f"Remote error occurred in `{remote_name}` "
-                f"(HTTP status {status}): '{error_json}'"
-            )
+            msg = f"{base_msg}: '{error_json}'"
             raise definitions.GenericRemoteException(msg) from None
         raise ValueError(
-            "Could not parse chainlet error. Error details are expected to be either a "
-            "plain string (old truss models) or a serialized "
+            f"{base_msg}: Could not parse chainlet error. Error details are expected "
+            "to be either a plain string (old truss models) or a serialized "
             f"`{definitions.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
         ) from e
 
@@ -233,10 +260,17 @@ def _handle_response_error(response_json: dict, remote_name: str, status: int):
     error_format = "\n".join(lines + [last_line])
     msg = (
         f"(showing chained remote errors, root error at the bottom)\n"
-        f"├─ Error in dependency Chainlet `{remote_name}` (HTTP status {status}):\n"
+        f"├─ {base_msg}\n"
         f"{error_format}"
     )
     raise exception_cls(msg)
+
+
+def _make_base_error_message(remote_name, http_status: int):
+    return (
+        f"Error calling dependency Chainlet `{remote_name}`, "
+        f"HTTP status={http_status}, trace ID=`{get_trace_parent()}`."
+    )
 
 
 def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
@@ -271,14 +305,12 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
     ```
     """
     if response.is_error:
+        base_msg = _make_base_error_message(remote_name, response.status_code)
         try:
             response_json = response.json()
         except Exception as e:
-            raise ValueError(
-                "Could not get JSON from error response. Status: "
-                f"`{response.status_code}`."
-            ) from e
-        _handle_response_error(response_json, remote_name, response.status_code)
+            raise ValueError(base_msg) from e
+        _handle_response_error(response_json, base_msg)
 
 
 async def async_response_raise_errors(
@@ -286,10 +318,15 @@ async def async_response_raise_errors(
 ) -> None:
     """Async version of `async_response_raise_errors`."""
     if response.status >= 400:
+        base_msg = _make_base_error_message(remote_name, response.status)
         try:
             response_json = await response.json()
         except Exception as e:
-            raise ValueError(
-                f"Could not get JSON from error response. Status: `{response.status}`."
-            ) from e
-        _handle_response_error(response_json, remote_name, response.status)
+            raise ValueError(base_msg) from e
+        _handle_response_error(response_json, base_msg)
+
+
+@contextlib.contextmanager
+def predict_context(request: starlette.requests.Request) -> Iterator[None]:
+    with _trace_parent(request), _exception_to_http_error():
+        yield

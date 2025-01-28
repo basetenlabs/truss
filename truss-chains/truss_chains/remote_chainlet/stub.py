@@ -1,7 +1,6 @@
 import abc
 import asyncio
 import contextlib
-import contextvars
 import json
 import logging
 import threading
@@ -24,7 +23,6 @@ from typing import (
 import aiohttp
 import httpx
 import pydantic
-import starlette.requests
 import tenacity
 from truss.templates.shared import serialization
 
@@ -38,31 +36,6 @@ DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 400
 _RetryPolicyT = TypeVar("_RetryPolicyT", tenacity.AsyncRetrying, tenacity.Retrying)
 InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
 OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
-
-
-_trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "trace_parent"
-)
-
-
-@contextlib.contextmanager
-def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
-    token = _trace_parent_context.set(
-        request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
-    )
-    try:
-        yield
-    finally:
-        _trace_parent_context.reset(token)
-
-
-@contextlib.contextmanager
-def trace_parent_raw(trace_parent: str) -> Iterator[None]:
-    token = _trace_parent_context.set(trace_parent)
-    try:
-        yield
-    finally:
-        _trace_parent_context.reset(token)
 
 
 class BasetenSession:
@@ -264,9 +237,7 @@ class StubBase(BasetenSession, abc.ABC):
         self, inputs: InputT, for_httpx: bool = False
     ) -> Mapping[str, Any]:
         kwargs: Dict[str, Any] = {}
-        headers = {
-            definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-        }
+        headers = {definitions.OTEL_TRACE_PARENT_HEADER_KEY: utils.get_trace_parent()}
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:
                 data_dict = inputs.model_dump(mode="python")

@@ -495,9 +495,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         f"request: starlette.requests.Request) -> {output_type_name}:"
     )
     # Add error handling context manager:
-    parts.append(
-        _indent("with stub.trace_parent(request), utils.exception_to_http_error():")
-    )
+    parts.append(_indent("with utils.predict_context(request):"))
     # Invoke Chainlet.
     if (
         chainlet_descriptor.endpoint.is_async
