@@ -213,6 +213,7 @@ def test_numpy_chain(mode):
             print(response.json())
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_timeout():
     with ensure_kill_all():

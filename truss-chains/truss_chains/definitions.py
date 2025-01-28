@@ -206,6 +206,7 @@ class DockerImage(SafeModelNonSerializable):
 class ComputeSpec(pydantic.BaseModel):
     """Parsed and validated compute.  See ``Compute`` for more information."""
 
+    # TODO[rcano] add node count
     cpu_count: int = 1
     predict_concurrency: int = 1
     memory: str = "2Gi"
