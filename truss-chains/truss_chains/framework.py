@@ -1,3 +1,4 @@
+import abc
 import ast
 import atexit
 import collections
@@ -35,7 +36,7 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss_chains import definitions, utils
+from truss_chains import definitions, public_api, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -1211,133 +1212,193 @@ def entrypoint(
     return decorator(cls_or_chain_name)  # Decorator used without arguments
 
 
-def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
-    return {
-        sym
-        for sym in symbols
-        if utils.issubclass_safe(sym, definitions.ABCChainlet)
-        and cast(definitions.ABCChainlet, sym).meta_data.is_entrypoint
-    }
-
-
-@contextlib.contextmanager
-def import_target(
-    module_path: pathlib.Path, target_name: Optional[str] = None
-) -> Iterator[Type[definitions.ABCChainlet]]:
-    resolved_module_path = pathlib.Path(module_path).resolve()
-    modules_before = set(sys.modules.keys())
-    module, loader = _load_module(module_path)
-    modules_after = set()
-
-    chainlets_before = _global_chainlet_registry.get_chainlet_names()
-    chainlets_after = set()
-    try:
-        try:
-            loader.exec_module(module)
-            raise_validation_errors()
-        finally:
-            modules_after = set(sys.modules.keys())
-            chainlets_after = _global_chainlet_registry.get_chainlet_names()
-
-        if target_name:
-            target_cls = getattr(module, target_name, None)
-            if not target_cls:
-                raise AttributeError(
-                    f"Target Chainlet class `{target_name}` not found "
-                    f"in `{resolved_module_path}`."
-                )
-            if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
-                raise TypeError(
-                    f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
-                )
-        else:
-            module_vars = (getattr(module, name) for name in dir(module))
-            entrypoints = _get_entrypoint_chainlets(module_vars)
-            if len(entrypoints) == 0:
-                raise ValueError(
-                    "No `target_name` was specified and no Chainlet in "
-                    f"`{module_path}` was tagged with `@chains.mark_entrypoint`. Tag "
-                    "one Chainlet or provide the Chainlet class name."
-                )
-            elif len(entrypoints) > 1:
-                raise ValueError(
-                    "`target_name` was not specified and multiple Chainlets in "
-                    f"`{resolved_module_path}` were tagged with `@chains.mark_entrypoint`. Tag "
-                    "one Chainlet or provide the Chainlet class name. Found Chainlets: "
-                    f"\n{list(cls.name for cls in entrypoints)}"
-                )
-            target_cls = utils.expect_one(entrypoints)
-            if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
-                raise TypeError(
-                    f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
-                )
-
-        yield target_cls
-    finally:
-        _cleanup_module_imports(modules_before, modules_after, resolved_module_path)
-        for chainlet_name in chainlets_after - chainlets_before:
-            _global_chainlet_registry.unregister_chainlet(chainlet_name)
-
-
-def _load_module(module_path: pathlib.Path) -> tuple[types.ModuleType, Loader]:
-    """The context manager ensures that modules imported by the Model/Chain
-     are removed upon exit.
-
-    I.e. aiming at making the import idempotent for common usages, although there could
-    be additional side effects not accounted for by this implementation."""
-    module_name = module_path.stem  # Use the file's name as the module name
-    if not os.path.isfile(module_path):
-        raise ImportError(
-            f"`{module_path}` is not a file. You must point to a python file where "
-            f"the entrypoint Chainlet is defined."
-        )
-
-    import_error_msg = f"Could not import `{module_path}`. Check path."
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if not spec or not spec.loader:
-        raise ImportError(import_error_msg)
-
-    module = importlib.util.module_from_spec(spec)
-    module.__file__ = str(module_path)
-    # Since the framework depends on tracking the source files via `inspect` and this
-    # depends on the modules bein properly registered in `sys.modules`, we have to
-    # manually do this here (because importlib does not do it automatically). This
-    # registration has to stay at least until the push command has finished.
-    if module_name in sys.modules:
-        raise ImportError(
-            f"{import_error_msg} There is already a module in `sys.modules` "
-            f"with name `{module_name}`. Overwriting that value is unsafe. "
-            "Try renaming your source file."
-        )
-
-    sys.modules[module_name] = module
-    # Add path for making absolute imports relative to the source_module's dir.
-    sys.path.insert(0, str(module_path.parent))
-
-    return module, spec.loader
-
-
-# Ensures the loaded system modules are restored to before we executed user defined code.
-def _cleanup_module_imports(
-    modules_before: set[str], modules_after: set[str], module_path: pathlib.Path
-):
-    modules_diff = modules_after - modules_before
-    # Apparently torch import leaves some side effects that cannot be reverted
-    # by deleting the modules and would lead to a crash when another import
-    # is attempted. Since torch is a common lib, we make this explicit special
-    # case and just leave those modules.
-    # TODO: this seems still brittle and other modules might cause similar problems.
-    #  it would be good to find a more principled solution.
-    modules_to_delete = {
-        s for s in modules_diff if not (s.startswith("torch.") or s == "torch")
-    }
-    if torch_modules := modules_diff - modules_to_delete:
-        logging.debug(f"Keeping torch modules after import context: {torch_modules}")
-
-    logging.debug(f"Deleting modules when exiting import context: {modules_to_delete}")
-    for mod in modules_to_delete:
-        del sys.modules[mod]
-    try:
-        sys.path.remove(str(module_path.parent))
-    except ValueError:  # In case the value was already removed for whatever reason.
+class _ABCImporter(abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    def no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
         pass
+
+    @classmethod
+    @abc.abstractmethod
+    def multiple_entrypoints_error(
+        cls, module_path: pathlib.Path, entrypoints: set[type[definitions.ABCChainlet]]
+    ) -> ValueError:
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def target_cls_type(cls) -> Type[definitions.ABCChainlet]:
+        pass
+
+    @classmethod
+    def _get_entrypoint_chainlets(cls, symbols) -> set[Type[definitions.ABCChainlet]]:
+        return {
+            sym
+            for sym in symbols
+            if utils.issubclass_safe(sym, cls.target_cls_type())
+            and cast(definitions.ABCChainlet, sym).meta_data.is_entrypoint
+        }
+
+    @classmethod
+    def _load_module(cls, module_path: pathlib.Path) -> tuple[types.ModuleType, Loader]:
+        """The context manager ensures that modules imported by the Model/Chain
+         are removed upon exit.
+
+        I.e. aiming at making the import idempotent for common usages, although there could
+        be additional side effects not accounted for by this implementation."""
+        module_name = module_path.stem  # Use the file's name as the module name
+        if not os.path.isfile(module_path):
+            raise ImportError(
+                f"`{module_path}` is not a file. You must point to a python file where "
+                f"the entrypoint is defined."
+            )
+
+        import_error_msg = f"Could not import `{module_path}`. Check path."
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if not spec or not spec.loader:
+            raise ImportError(import_error_msg)
+
+        module = importlib.util.module_from_spec(spec)
+        module.__file__ = str(module_path)
+        # Since the framework depends on tracking the source files via `inspect` and this
+        # depends on the modules bein properly registered in `sys.modules`, we have to
+        # manually do this here (because importlib does not do it automatically). This
+        # registration has to stay at least until the push command has finished.
+        if module_name in sys.modules:
+            raise ImportError(
+                f"{import_error_msg} There is already a module in `sys.modules` "
+                f"with name `{module_name}`. Overwriting that value is unsafe. "
+                "Try renaming your source file."
+            )
+
+        sys.modules[module_name] = module
+        # Add path for making absolute imports relative to the source_module's dir.
+        sys.path.insert(0, str(module_path.parent))
+
+        return module, spec.loader
+
+    @classmethod
+    def _cleanup_module_imports(
+        cls,
+        modules_before: set[str],
+        modules_after: set[str],
+        module_path: pathlib.Path,
+    ):
+        modules_diff = modules_after - modules_before
+        # Apparently torch import leaves some side effects that cannot be reverted
+        # by deleting the modules and would lead to a crash when another import
+        # is attempted. Since torch is a common lib, we make this explicit special
+        # case and just leave those modules.
+        # TODO: this seems still brittle and other modules might cause similar problems.
+        #  it would be good to find a more principled solution.
+        modules_to_delete = {
+            s for s in modules_diff if not (s.startswith("torch.") or s == "torch")
+        }
+        if torch_modules := modules_diff - modules_to_delete:
+            logging.debug(
+                f"Keeping torch modules after import context: {torch_modules}"
+            )
+
+        logging.debug(
+            f"Deleting modules when exiting import context: {modules_to_delete}"
+        )
+        for mod in modules_to_delete:
+            del sys.modules[mod]
+        try:
+            sys.path.remove(str(module_path.parent))
+        except ValueError:  # In case the value was already removed for whatever reason.
+            pass
+
+    @classmethod
+    @contextlib.contextmanager
+    def import_target(
+        cls, module_path: pathlib.Path, target_name: Optional[str] = None
+    ) -> Iterator[Type[definitions.ABCChainlet]]:
+        resolved_module_path = pathlib.Path(module_path).resolve()
+        modules_before = set(sys.modules.keys())
+        module, loader = cls._load_module(module_path)
+        modules_after = set()
+
+        chainlets_before = _global_chainlet_registry.get_chainlet_names()
+        chainlets_after = set()
+        try:
+            try:
+                loader.exec_module(module)
+                raise_validation_errors()
+            finally:
+                modules_after = set(sys.modules.keys())
+                chainlets_after = _global_chainlet_registry.get_chainlet_names()
+
+            if target_name:
+                target_cls = getattr(module, target_name, None)
+                if not target_cls:
+                    raise AttributeError(
+                        f"Target class `{target_name}` not found "
+                        f"in `{resolved_module_path}`."
+                    )
+                if not utils.issubclass_safe(target_cls, cls.target_cls_type()):
+                    raise TypeError(
+                        f"Target `{target_cls}` is not a {cls.target_cls_type()}."
+                    )
+            else:
+                module_vars = (getattr(module, name) for name in dir(module))
+                entrypoints = cls._get_entrypoint_chainlets(module_vars)
+                if len(entrypoints) == 0:
+                    raise cls.no_entrypoint_error(module_path)
+                elif len(entrypoints) > 1:
+                    raise cls.multiple_entrypoints_error(module_path, entrypoints)
+                target_cls = utils.expect_one(entrypoints)
+            yield target_cls
+        finally:
+            cls._cleanup_module_imports(
+                modules_before, modules_after, resolved_module_path
+            )
+            for chainlet_name in chainlets_after - chainlets_before:
+                _global_chainlet_registry.unregister_chainlet(chainlet_name)
+
+
+class ChainletImporter(_ABCImporter):
+    @classmethod
+    def no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+        return ValueError(
+            "No `target_name` was specified and no Chainlet in "
+            f"`{module_path}` was tagged with `@chains.mark_entrypoint`. Tag "
+            "one Chainlet or provide the Chainlet class name."
+        )
+
+    @classmethod
+    def multiple_entrypoints_error(
+        cls, module_path: pathlib.Path, entrypoints: set[type[definitions.ABCChainlet]]
+    ) -> ValueError:
+        return ValueError(
+            "`target_name` was not specified and multiple Chainlets in "
+            f"`{module_path}` were tagged with `@chains.mark_entrypoint`. Tag "
+            "one Chainlet or provide the Chainlet class name. Found Chainlets: "
+            f"\n{list(cls.name for cls in entrypoints)}"
+        )
+
+    @classmethod
+    def target_cls_type(cls) -> Type[definitions.ABCChainlet]:
+        return public_api.ChainletBase
+
+
+class ModelImporter(_ABCImporter):
+    @classmethod
+    def no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+        return ValueError(
+            f"No Model class in `{module_path}` inherits from {cls.target_cls_type()}."
+        )
+
+    @classmethod
+    def multiple_entrypoints_error(
+        cls, module_path: pathlib.Path, entrypoints: set[type[definitions.ABCChainlet]]
+    ) -> ValueError:
+        return ValueError(
+            f"Multiple Model classes in `{module_path}` inherit from {cls.target_cls_type()}, "
+            "but only one allowed. Found classes: "
+            f"\n{list(cls.name for cls in entrypoints)}"
+        )
+
+    @classmethod
+    def target_cls_type(cls) -> Type[definitions.ABCChainlet]:
+        return public_api.ModelBase

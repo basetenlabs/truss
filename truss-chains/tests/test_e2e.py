@@ -24,7 +24,9 @@ TEST_ROOT = Path(__file__).parent.resolve()
 def test_chain():
     with ensure_kill_all():
         chain_root = TEST_ROOT / "itest_chain" / "itest_chain.py"
-        with framework.import_target(chain_root, "ItestChain") as entrypoint:
+        with framework.ChainletImporter.import_target(
+            chain_root, "ItestChain"
+        ) as entrypoint:
             options = definitions.PushOptionsLocalDocker(
                 chain_name="integration-test", use_local_chains_src=True
             )
@@ -106,7 +108,9 @@ ValueError: \(showing chained remote errors, root error at the bottom\)
 @pytest.mark.asyncio
 async def test_chain_local():
     chain_root = TEST_ROOT / "itest_chain" / "itest_chain.py"
-    with framework.import_target(chain_root, "ItestChain") as entrypoint:
+    with framework.ChainletImporter.import_target(
+        chain_root, "ItestChain"
+    ) as entrypoint:
         with public_api.run_local():
             with pytest.raises(ValueError):
                 # First time `SplitTextFailOnce` raises an error and
@@ -140,7 +144,9 @@ def test_streaming_chain():
     with ensure_kill_all():
         examples_root = Path(__file__).parent.parent.resolve() / "examples"
         chain_root = examples_root / "streaming" / "streaming_chain.py"
-        with framework.import_target(chain_root, "Consumer") as entrypoint:
+        with framework.ChainletImporter.import_target(
+            chain_root, "Consumer"
+        ) as entrypoint:
             service = deployment_client.push(
                 entrypoint,
                 options=definitions.PushOptionsLocalDocker(
@@ -176,7 +182,7 @@ def test_streaming_chain():
 async def test_streaming_chain_local():
     examples_root = Path(__file__).parent.parent.resolve() / "examples"
     chain_root = examples_root / "streaming" / "streaming_chain.py"
-    with framework.import_target(chain_root, "Consumer") as entrypoint:
+    with framework.ChainletImporter.import_target(chain_root, "Consumer") as entrypoint:
         with public_api.run_local():
             result = await entrypoint().run_remote(cause_error=False)
             print(result)
@@ -198,7 +204,7 @@ def test_numpy_chain(mode):
         target = "HostBinary"
     with ensure_kill_all():
         chain_root = TEST_ROOT / "numpy_and_binary" / "chain.py"
-        with framework.import_target(chain_root, target) as entrypoint:
+        with framework.ChainletImporter.import_target(chain_root, target) as entrypoint:
             service = deployment_client.push(
                 entrypoint,
                 options=definitions.PushOptionsLocalDocker(
@@ -218,7 +224,9 @@ def test_numpy_chain(mode):
 async def test_timeout():
     with ensure_kill_all():
         chain_root = TEST_ROOT / "timeout" / "timeout_chain.py"
-        with framework.import_target(chain_root, "TimeoutChain") as entrypoint:
+        with framework.ChainletImporter.import_target(
+            chain_root, "TimeoutChain"
+        ) as entrypoint:
             options = definitions.PushOptionsLocalDocker(
                 chain_name="integration-test", use_local_chains_src=True
             )
@@ -285,7 +293,9 @@ def test_traditional_truss():
 def test_custom_health_checks_chain():
     with ensure_kill_all():
         chain_root = TEST_ROOT / "custom_health_checks" / "custom_health_checks.py"
-        with framework.import_target(chain_root, "CustomHealthChecks") as entrypoint:
+        with framework.ChainletImporter.import_target(
+            chain_root, "CustomHealthChecks"
+        ) as entrypoint:
             service = deployment_client.push(
                 entrypoint,
                 options=definitions.PushOptionsLocalDocker(

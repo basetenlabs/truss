@@ -733,7 +733,7 @@ def gen_truss_model_from_source(
     # TODO(nikhil): Improve detection of directory structure, since right now
     # we assume a flat structure
     root_dir = model_src.absolute().parent
-    with framework.import_target(model_src) as entrypoint_cls:
+    with framework.ModelImporter.import_target(model_src) as entrypoint_cls:
         descriptor = framework.get_descriptor(entrypoint_cls)
         return gen_truss_model(
             model_root=root_dir,
@@ -773,7 +773,7 @@ def gen_truss_chainlet(
     gen_root = pathlib.Path(tempfile.gettempdir())
     chainlet_dir = _make_chainlet_dir(chain_name, chainlet_descriptor, gen_root)
     logging.info(
-        f"Code generation for Chainlet `{chainlet_descriptor.name}` "
+        f"Code generation for {chainlet_descriptor.chainlet_cls.entity_type} `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
     _write_truss_config_yaml(
