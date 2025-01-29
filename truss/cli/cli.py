@@ -626,7 +626,7 @@ def push_chain(
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
-    with framework.import_target(source, entrypoint) as entrypoint_cls:
+    with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
             name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
         )

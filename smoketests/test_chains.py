@@ -14,7 +14,7 @@ from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten.utils import status as status_utils
 
 from truss_chains import definitions
-from truss_chains.remote_chainlet import stub
+from truss_chains.remote_chainlet import stub, utils
 
 backend_env_domain = "staging.baseten.co"
 BASETEN_API_KEY = os.environ["BASETEN_API_KEY_STAGING"]
@@ -153,7 +153,7 @@ def test_itest_chain_publish(prepare) -> None:
     # Test regular (JSON) invocation.
     chain_stub = make_stub(url, definitions.RPCOptions(timeout_sec=10))
     trace_parent = generate_traceparent()
-    with stub.trace_parent_raw(trace_parent):
+    with utils.trace_parent_raw(trace_parent):
         result = chain_stub.predict_sync({"length": 30, "num_partitions": 3})
 
     expected = [
@@ -169,7 +169,7 @@ def test_itest_chain_publish(prepare) -> None:
     invocation_times_sec = []
     for i in range(10):
         t0 = time.perf_counter()
-        with stub.trace_parent_raw(trace_parent):
+        with utils.trace_parent_raw(trace_parent):
             chain_stub.predict_sync({"length": 30, "num_partitions": 3})
         invocation_times_sec.append(time.perf_counter() - t0)
 
@@ -182,7 +182,7 @@ def test_itest_chain_publish(prepare) -> None:
         url, definitions.RPCOptions(timeout_sec=10, use_binary=True)
     )
     trace_parent = generate_traceparent()
-    with stub.trace_parent_raw(trace_parent):
+    with utils.trace_parent_raw(trace_parent):
         result = chain_stub_binary.predict_sync({"length": 30, "num_partitions": 3})
 
     expected = [
@@ -198,7 +198,7 @@ def test_itest_chain_publish(prepare) -> None:
     invocation_times_sec = []
     for i in range(10):
         t0 = time.perf_counter()
-        with stub.trace_parent_raw(trace_parent):
+        with utils.trace_parent_raw(trace_parent):
             chain_stub_binary.predict_sync({"length": 30, "num_partitions": 3})
         invocation_times_sec.append(time.perf_counter() - t0)
 

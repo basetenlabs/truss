@@ -94,6 +94,7 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
         ("A10G:4", AcceleratorSpec(Accelerator.A10G, 4)),
         ("A100:8", AcceleratorSpec(Accelerator.A100, 8)),
         ("H100", AcceleratorSpec(Accelerator.H100, 1)),
+        ("H200", AcceleratorSpec(Accelerator.H200, 1)),
         ("H100_40GB", AcceleratorSpec(Accelerator.H100_40GB, 1)),
     ],
 )
