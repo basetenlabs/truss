@@ -341,7 +341,7 @@ def test_create_chain_with_no_publish():
                     is_draft: true
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "truss=={truss.version()}"
+                    client_version: "{truss.version()}"
                 ) {{
                     chain_id
                     chain_deployment_id
@@ -435,7 +435,7 @@ def test_create_chain_no_existing_chain():
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "truss=={truss.version()}"
+                    client_version: "{truss.version()}"
                 ) {{
                     chain_id
                     chain_deployment_id
@@ -538,7 +538,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "truss=={truss.version()}"
+                    client_version: "{truss.version()}"
                 ) {{
                     chain_id
                     chain_deployment_id
@@ -638,7 +638,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "truss=={truss.version()}"
+                    client_version: "{truss.version()}"
                 ) {{
                     chain_id
                     chain_deployment_id
