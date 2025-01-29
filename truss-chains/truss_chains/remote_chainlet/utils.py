@@ -266,7 +266,7 @@ def _handle_response_error(response_json: dict, base_msg: str):
     raise exception_cls(msg)
 
 
-def _make_base_error_message(remote_name, http_status: int):
+def _make_base_error_message(remote_name: str, http_status: int) -> str:
     return (
         f"Error calling dependency Chainlet `{remote_name}`, "
         f"HTTP status={http_status}, trace ID=`{get_trace_parent()}`."

@@ -55,6 +55,6 @@ class TrussChainletModel:
     # def predict(
     #     self, inputs: TextToNumInput, request: starlette.requests.Request
     # ) -> TextToNumOutput:
-    #     with stub.predict_context(request):
+    #     with utils.predict_context(request):
     #         result = self._chainlet.run_remote(**utils.pydantic_set_field_dict(inputs))
     #     return TextToNumOutput(result)
