@@ -378,13 +378,14 @@ class BasetenChainService(ChainService):
     @property
     def run_remote_url(self) -> str:
         """URL to invoke the entrypoint."""
-        return b10_service.URLConfig.invocation_url(
-            self._remote.api.rest_api_url,
-            b10_service.URLConfig.CHAIN,
-            self._chain_deployment_handle.chain_id,
-            self._chain_deployment_handle.chain_deployment_id,
-            self._chain_deployment_handle.is_draft,
-        )
+
+        handle = self._chain_deployment_handle
+        config = b10_service.URLConfig.CHAIN
+
+        if handle.is_draft:
+            return f"{handle.hostname}/development/{config.value.invoke_endpoint}"
+        else:
+            return f"{handle.hostname}/deployment/{handle.chain_deployment_id}/{config.value.invoke_endpoint}"
 
     def run_remote(self, json_data: Dict) -> Any:
         """Invokes the entrypoint with JSON data.
@@ -678,9 +679,9 @@ class _Watcher:
         non_draft_chainlets = [
             chainlet.name for chainlet in deployed_chainlets if not chainlet.is_draft
         ]
-        assert not (non_draft_chainlets), (
-            "If the chain is draft, the oracles must be draft."
-        )
+        assert not (
+            non_draft_chainlets
+        ), "If the chain is draft, the oracles must be draft."
 
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)

@@ -11,7 +11,6 @@ class DeployedChainlet(pydantic.BaseModel):
     is_draft: bool
     status: str
     logs_url: str
-    oracle_predict_url: str
     oracle_name: str
 
 

@@ -1,34 +1,6 @@
 from truss.remote.baseten import service
 
 
-def test_model_invocation_url_prod():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.MODEL, "123", "789", is_draft=False
-    )
-    assert url == "https://model-123.api.baseten.co/deployment/789/predict"
-
-
-def test_model_invocation_url_draft():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.MODEL, "123", "789", is_draft=True
-    )
-    assert url == "https://model-123.api.baseten.co/development/predict"
-
-
-def test_chain_invocation_url_prod():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.CHAIN, "abc", "666", is_draft=False
-    )
-    assert url == "https://chain-abc.api.baseten.co/deployment/666/run_remote"
-
-
-def test_chain_invocation_url_draft():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.CHAIN, "abc", "666", is_draft=True
-    )
-    assert url == "https://chain-abc.api.baseten.co/development/run_remote"
-
-
 def test_model_status_page_url():
     url = service.URLConfig.status_page_url(
         "https://app.baseten.co", service.URLConfig.MODEL, "123"

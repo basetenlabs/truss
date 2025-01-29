@@ -275,10 +275,10 @@ def test_create_chain_with_no_publish():
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {"id": "new-chain-id"},
+                                }
                             }
                         }
                     }
@@ -343,10 +343,12 @@ def test_create_chain_with_no_publish():
                     dependencies: []
                     client_version: "truss=={truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                        }}
+                    }}
                 }}
             }}
         """.strip()
@@ -371,10 +373,10 @@ def test_create_chain_no_existing_chain():
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {"id": "new-chain-id"},
+                                }
                             }
                         }
                     }
@@ -437,10 +439,12 @@ def test_create_chain_no_existing_chain():
                     dependencies: []
                     client_version: "truss=={truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                        }}
+                    }}
                 }}
             }}
         """.strip()
@@ -471,10 +475,10 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {"id": "new-chain-id"},
+                                }
                             }
                         }
                     }
@@ -540,10 +544,12 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     dependencies: []
                     client_version: "truss=={truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                        }}
+                    }}
                 }}
             }}
         """.strip()
@@ -574,10 +580,10 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {"id": "new-chain-id"},
+                                }
                             }
                         }
                     }
@@ -640,10 +646,12 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     dependencies: []
                     client_version: "truss=={truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                        }}
+                    }}
                 }}
             }}
         """.strip()
