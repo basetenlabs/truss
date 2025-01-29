@@ -17,7 +17,7 @@ from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -48,6 +48,17 @@ EXTENSION_CLASS_NAME = "Extension"
 EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
 POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
+
+
+class ModelMethod(Enum):
+    PREPROCESS = "preprocess"
+    PREDICT = "predict"
+    POSTPROCESS = "postprocess"
+    IS_HEALTHY = "is_healthy"
+    SETUP_ENVIRONMENT = "setup_environment"
+    COMPLETIONS = "completions"
+    CHAT_COMPLETIONS = "chat_completions"
+
 
 InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
 OutputType = Union[
@@ -198,6 +209,8 @@ class ModelDescriptor:
     truss_schema: Optional[TrussSchema]
     setup_environment: Optional[MethodDescriptor]
     is_healthy: Optional[MethodDescriptor]
+    completions: Optional[MethodDescriptor]
+    chat_completions: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -206,37 +219,13 @@ class ModelDescriptor:
         )
 
     @classmethod
-    def from_model(cls, model) -> "ModelDescriptor":
-        if hasattr(model, "preprocess"):
-            preprocess = MethodDescriptor.from_method(
-                model.preprocess, method_name="preprocess"
-            )
-        else:
-            preprocess = None
-
-        if hasattr(model, "predict"):
-            predict = MethodDescriptor.from_method(model.predict, method_name="predict")
-            if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
-                raise errors.ModelDefinitionError(
-                    "When using preprocessing, the predict method cannot only have the "
-                    "request argument (because the result of preprocessing would be "
-                    "discarded)."
-                )
-        else:
-            raise errors.ModelDefinitionError(
-                "Truss model must have a `predict` method."
-            )
-
-        if hasattr(model, "postprocess"):
-            postprocess = MethodDescriptor.from_method(model.postprocess, "postprocess")
-            if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
-                raise errors.ModelDefinitionError(
-                    "The postprocessing method cannot only have the request "
-                    "argument (because the result of predict would be discarded)."
-                )
-        else:
-            postprocess = None
-
+    def _gen_truss_schema(
+        cls,
+        model: Any,
+        predict: MethodDescriptor,
+        preprocess: Optional[MethodDescriptor],
+        postprocess: Optional[MethodDescriptor],
+    ) -> TrussSchema:
         if preprocess:
             parameters = inspect.signature(model.preprocess).parameters
         else:
@@ -247,29 +236,58 @@ class ModelDescriptor:
         else:
             return_annotation = inspect.signature(model.predict).return_annotation
 
-        if hasattr(model, "setup_environment"):
-            setup_environment = MethodDescriptor.from_method(
-                model.setup_environment, "setup_environment"
+        return TrussSchema.from_signature(parameters, return_annotation)
+
+    @classmethod
+    def _safe_extract_descriptor(
+        cls, model: Any, method: str
+    ) -> Union[MethodDescriptor, None]:
+        if hasattr(model, method):
+            return MethodDescriptor.from_method(getattr(model, method), method)
+        return None
+
+    @classmethod
+    def from_model(cls, model) -> "ModelDescriptor":
+        preprocess = cls._safe_extract_descriptor(model, ModelMethod.PREPROCESS.value)
+        predict = cls._safe_extract_descriptor(model, ModelMethod.PREDICT.value)
+        if predict and predict.arg_config == ArgConfig.REQUEST_ONLY:
+            raise errors.ModelDefinitionError(
+                f"When using `{ModelMethod.PREPROCESS.value}`, the {ModelMethod.PREDICT.value} method "
+                f"cannot only have the request argument (because the result of `{ModelMethod.PREPROCESS.value}` "
+                "would be  discarded)."
             )
-        else:
-            setup_environment = None
+        elif predict is None:
+            raise errors.ModelDefinitionError(
+                f"Truss model must have a `{ModelMethod.PREDICT.value}` method."
+            )
 
-        if hasattr(model, "is_healthy"):
-            is_healthy = MethodDescriptor.from_method(model.is_healthy, "is_healthy")
-            if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
-                raise errors.ModelDefinitionError(
-                    "`is_healthy` must have only one argument: `self`."
-                )
-        else:
-            is_healthy = None
+        postprocess = cls._safe_extract_descriptor(model, ModelMethod.POSTPROCESS.value)
+        if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
+            raise errors.ModelDefinitionError(
+                f"The `{ModelMethod.POSTPROCESS.value}` method cannot only have the request "
+                f"argument (because the result of `{ModelMethod.PREDICT.value}` would be discarded)."
+            )
+        setup = cls._safe_extract_descriptor(model, ModelMethod.SETUP_ENVIRONMENT.value)
+        completions = cls._safe_extract_descriptor(model, ModelMethod.COMPLETIONS.value)
+        chats = cls._safe_extract_descriptor(model, ModelMethod.CHAT_COMPLETIONS.value)
+        is_healthy = cls._safe_extract_descriptor(model, ModelMethod.IS_HEALTHY.value)
+        if is_healthy and is_healthy.arg_config is not ArgConfig.NONE:
+            raise errors.ModelDefinitionError(
+                f"`{ModelMethod.IS_HEALTHY.value}` must have only one argument: `self`."
+            )
 
+        truss_schema = cls._gen_truss_schema(
+            model=model, predict=predict, preprocess=preprocess, postprocess=postprocess
+        )
         return cls(
             preprocess=preprocess,
             predict=predict,
             postprocess=postprocess,
-            truss_schema=TrussSchema.from_signature(parameters, return_annotation),
-            setup_environment=setup_environment,
+            truss_schema=truss_schema,
+            setup_environment=setup,
             is_healthy=is_healthy,
+            completions=completions,
+            chat_completions=chats,
         )
 
 
@@ -360,7 +378,8 @@ class ModelWrapper:
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
-            except Exception:
+            except Exception as e:
+                raise e
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
 
@@ -554,12 +573,9 @@ class ModelWrapper:
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
         assert descriptor, "`preprocess` must only be called if model has it."
-        args = ArgConfig.prepare_args(descriptor, inputs, request)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.is_async:
-                return await self._model.preprocess(*args)
-            else:
-                return await to_thread.run_sync(self._model.preprocess, *args)
+        return await self._execute_async_model_fn(
+            descriptor, inputs, request, self._model.preprocess
+        )
 
     async def predict(
         self, inputs: Any, request: starlette.requests.Request
@@ -568,15 +584,9 @@ class ModelWrapper:
         # or, if `postprocessing` is used, anything. In the last case postprocessing
         # must convert the result to something serializable.
         descriptor = self.model_descriptor.predict
-        args = ArgConfig.prepare_args(descriptor, inputs, request)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.is_generator:
-                # Even for async generators, don't await here.
-                return self._model.predict(*args)
-            if descriptor.is_async:
-                return await self._model.predict(*args)
-            # Offload sync functions to thread, to not block event loop.
-            return await to_thread.run_sync(self._model.predict, *args)
+        return await self._execute_async_model_fn(
+            descriptor, inputs, request, self._model.predict
+        )
 
     async def postprocess(
         self, result: Union[InputType, Any], request: starlette.requests.Request
@@ -587,12 +597,9 @@ class ModelWrapper:
         # The result type can be the same as for predict.
         descriptor = self.model_descriptor.postprocess
         assert descriptor, "`postprocess` must only be called if model has it."
-        args = ArgConfig.prepare_args(descriptor, result, request)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.is_async:
-                return await self._model.postprocess(*args)
-            # Offload sync functions to thread, to not block event loop.
-            return await to_thread.run_sync(self._model.postprocess, *args)
+        return await self._execute_async_model_fn(
+            descriptor, result, request, self._model.postprocess
+        )
 
     async def _write_response_to_queue(
         self,
@@ -617,7 +624,7 @@ class ModelWrapper:
         generator: Union[Generator[bytes, None, None], AsyncGenerator[bytes, None]],
         span: trace.Span,
         trace_ctx: trace.Context,
-        release_and_end: Callable[[], None],
+        release_and_end: Callable[[], None] = lambda: None,
     ) -> AsyncGenerator[bytes, None]:
         # The streaming read timeout is the amount of time in between streamed chunk
         # before a timeout is triggered.
@@ -659,6 +666,90 @@ class ModelWrapper:
                     yield chunk
 
         return _buffered_response_generator()
+
+    async def _execute_async_model_fn(
+        self,
+        descriptor: MethodDescriptor,
+        inputs: Union[InputType, Any],
+        request: starlette.requests.Request,
+        model_fn: Any,
+    ) -> OutputType:
+        args = ArgConfig.prepare_args(descriptor, inputs, request)
+        with errors.intercept_exceptions(self._logger, self._model_file_name):
+            if descriptor.is_generator:
+                return model_fn(*args)
+            if descriptor.is_async:
+                return await model_fn(*args)
+            return await to_thread.run_sync(model_fn, *args)
+
+    async def _trace_and_process_model_fn(
+        self,
+        inputs: InputType,
+        request: starlette.requests.Request,
+        method: ModelMethod,
+        exec_fn: Callable[
+            [InputType, starlette.requests.Request], Awaitable[OutputType]
+        ],
+    ) -> OutputType:
+        fn_span = self._tracer.start_span(f"call-{method.value}")
+        with tracing.section_as_event(
+            fn_span, method.value
+        ), tracing.detach_context() as detached_ctx:
+            result = await exec_fn(inputs, request)
+
+        if inspect.isgenerator(result) or inspect.isasyncgen(result):
+            if request.headers.get("accept") == "application/json":
+                return await _gather_generator(result)
+            else:
+                return await self._stream_with_background_task(
+                    result, fn_span, detached_ctx
+                )
+
+        return result
+
+    async def completions(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self.model_descriptor.completions
+        assert descriptor, (
+            f"`{ModelMethod.COMPLETIONS}` must only be called if model has it."
+        )
+
+        async def exec_fn(
+            inputs: InputType, request: starlette.requests.Request
+        ) -> OutputType:
+            return await self._execute_async_model_fn(
+                descriptor, inputs, request, self._model.completions
+            )
+
+        return await self._trace_and_process_model_fn(
+            inputs=inputs,
+            request=request,
+            method=ModelMethod.COMPLETIONS,
+            exec_fn=exec_fn,
+        )
+
+    async def chat_completions(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self.model_descriptor.chat_completions
+        assert descriptor, (
+            f"`{ModelMethod.CHAT_COMPLETIONS.value}` must only be called if model has it."
+        )
+
+        async def exec_fn(
+            inputs: InputType, request: starlette.requests.Request
+        ) -> OutputType:
+            return await self._execute_async_model_fn(
+                descriptor, inputs, request, self._model.chat_completions
+            )
+
+        return await self._trace_and_process_model_fn(
+            inputs=inputs,
+            request=request,
+            method=ModelMethod.CHAT_COMPLETIONS,
+            exec_fn=exec_fn,
+        )
 
     async def __call__(
         self, inputs: Optional[InputType], request: starlette.requests.Request

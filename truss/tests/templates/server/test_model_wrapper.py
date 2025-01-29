@@ -190,6 +190,31 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
             assert resp == expected_predict_response
 
 
+@pytest.mark.anyio
+async def test_open_ai_completion_endpoints(open_ai_container_fs, helpers):
+    app_path = open_ai_container_fs / "app"
+    print(app_path)
+    with _clear_model_load_modules(), helpers.sys_paths(app_path), _change_directory(
+        app_path
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper.load()
+
+        mock_req = MagicMock(spec=Request)
+        predict_resp = await model_wrapper.predict({}, mock_req)
+        assert predict_resp == "predict"
+
+        completions_resp = await model_wrapper.completions({}, mock_req)
+        assert completions_resp == "completions"
+
+        chat_completions_resp = await model_wrapper.chat_completions({}, mock_req)
+        assert chat_completions_resp == "chat_completions"
+
+
 @contextmanager
 def _change_directory(new_directory: Path):
     original_directory = os.getcwd()
