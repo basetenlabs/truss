@@ -328,3 +328,32 @@ def test_custom_health_checks_chain():
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
             assert container_logs.count("Health check failed.") == 2
+
+
+@pytest.mark.integration
+def test_custom_openai_endpoints():
+    with ensure_kill_all():
+        model_root = TEST_ROOT / "openai"
+        truss_handle = load(model_root)
+
+        assert truss_handle.spec.config.model_name == "OpenAIModel"
+
+        port = utils.get_free_port()
+        truss_handle.docker_run(local_port=port, detach=True, network="host")
+
+        base_url = f"http://localhost:{port}"
+        response = requests.post(
+            f"{base_url}/v1/models/model:predict", json={"increment": 1}
+        )
+        assert response.status_code == 200
+        assert response.json() == 1
+
+        response = requests.post(f"{base_url}/v1/completions", json={"increment": 2})
+        assert response.status_code == 200
+        assert response.json() == 2
+
+        response = requests.post(
+            f"{base_url}/v1/chat/completions", json={"increment": 3}
+        )
+        assert response.status_code == 200
+        assert response.json() == 3

@@ -562,6 +562,11 @@ def trt_llm_truss_container_fs(tmp_path, test_data_path):
 
 
 @pytest.fixture
+def open_ai_container_fs(tmp_path, test_data_path):
+    return _build_truss_fs(test_data_path / "test_openai", tmp_path)
+
+
+@pytest.fixture
 def truss_control_container_fs(tmp_path, test_data_path):
     test_truss_dir = test_data_path / "test_truss"
     control_truss_dir = tmp_path / "control_truss"

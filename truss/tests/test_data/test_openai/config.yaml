@@ -1,0 +1,12 @@
+environment_variables: {}
+external_package_dirs: []
+model_metadata: {}
+model_name: Test OpenAI Compatibility
+python_version: py39
+resources:
+  accelerator: null
+  cpu: '1'
+  memory: 2Gi
+  use_gpu: false
+secrets: {}
+system_packages: []
