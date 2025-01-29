@@ -1,4 +1,3 @@
-import functools
 import pathlib
 from typing import (
     TYPE_CHECKING,
@@ -89,60 +88,6 @@ def depends(
     # to facilitate type inference, code-completion and type checking within the code
     # of chainlets that depend on the other chainlet.
     return framework.ChainletDependencyMarker(chainlet_cls, options)  # type: ignore
-
-
-class ChainletBase(definitions.ABCChainlet):
-    """Base class for all chainlets.
-
-    Inheriting from this class adds validations to make sure subclasses adhere to the
-    chainlet pattern and facilitates remote chainlet deployment.
-
-    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
-    for more guidance on how to create subclasses.
-    """
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._framework_config = definitions.FrameworkConfig(
-            entity_type="Chainlet",
-            supports_dependencies=True,
-            endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
-        )
-        # Each sub-class has own, isolated metadata, e.g. we don't want
-        # `mark_entrypoint` to propagate to subclasses.
-        cls.meta_data = definitions.ChainletMetadata()
-        framework.validate_and_register_cls(cls)  # Errors are collected, not raised!
-        # For default init (from `object`) we don't need to check anything.
-        if cls.has_custom_init():
-            original_init = cls.__init__
-
-            @functools.wraps(original_init)
-            def __init_with_arg_check__(self, *args, **kwargs):
-                if args:
-                    raise definitions.ChainsRuntimeError("Only kwargs are allowed.")
-                framework.ensure_args_are_injected(cls, original_init, kwargs)
-                original_init(self, *args, **kwargs)
-
-            cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
-
-
-class ModelBase(definitions.ABCChainlet):
-    """Base class for all singular truss models.
-
-    Inheriting from this class adds validations to make sure subclasses adhere to the
-    truss model pattern.
-    """
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._framework_config = definitions.FrameworkConfig(
-            entity_type="Model",
-            supports_dependencies=False,
-            endpoint_method_name=definitions.MODEL_ENDPOINT_METHOD_NAME,
-        )
-        cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
-        framework.validate_and_register_cls(cls)
 
 
 @overload

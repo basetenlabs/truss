@@ -635,7 +635,9 @@ class _Watcher:
         self._remote_provider = cast(
             b10_remote.BasetenRemote, remote_factory.RemoteFactory.create(remote=remote)
         )
-        with framework.import_target(source, entrypoint) as entrypoint_cls:
+        with framework.ChainletImporter.import_target(
+            source, entrypoint
+        ) as entrypoint_cls:
             self._deployed_chain_name = name or entrypoint_cls.__name__
             self._chain_root = _get_chain_root(entrypoint_cls)
             chainlet_names = set(
@@ -733,7 +735,7 @@ class _Watcher:
             # Handle import errors gracefully (e.g. if user saved file, but there
             # are syntax errors, undefined symbols etc.).
             try:
-                with framework.import_target(
+                with framework.ChainletImporter.import_target(
                     self._source, self._entrypoint
                 ) as entrypoint_cls:
                     chainlet_descriptors = _get_ordered_dependencies([entrypoint_cls])
