@@ -24,6 +24,7 @@ requires-poetry = ">=2.0"
 
 [tool.poetry.scripts]
 truss = "truss.cli.cli:truss_cli"
+truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup"
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"

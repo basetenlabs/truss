@@ -1,13 +1,11 @@
-{%- if model_cache %}
-{%- include "cache.Dockerfile.jinja" %}
-{%- endif %}
+{%- if model_cache %}{%- include "cache.Dockerfile.jinja" %}{%- endif %}
 
-{% extends "base.Dockerfile.jinja" %}
+{% extends "base.Dockerfile.jinja" -%}
 
-{% block base_image_patch %}
+{% block base_image_patch -%}
 # If user base image is supplied in config, apply build commands from truss base image
-{% if config.base_image %}
-    {%- if not config.docker_server %}
+{%- if config.base_image -%}
+    {%- if not config.docker_server -%}
 ENV PYTHONUNBUFFERED="True"
 ENV DEBIAN_FRONTEND="noninteractive"
 
@@ -17,112 +15,108 @@ RUN apt update && \
                 git \
                 curl \
                 ca-certificates \
-                software-properties-common \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*
+                software-properties-common && \
+    apt-get autoremove -y && \
+    apt-get clean -y && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY ./{{base_server_requirements_filename}} {{base_server_requirements_filename}}
-RUN pip install -r {{base_server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
-    {%- endif %}
+COPY ./{{ base_server_requirements_filename }} {{ base_server_requirements_filename }}
+RUN pip install -r {{ base_server_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+    {%- endif -%}
 
-    {%- if config.live_reload  and not config.docker_server%}
+    {%- if config.live_reload and not config.docker_server -%}
 RUN $PYTHON_EXECUTABLE -m venv -h >/dev/null \
-    || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt update -y && apt install -y --no-install-recommends python$pythonVersion-venv \
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*; }
-# Create symlink for control server to start inference server process with correct python executable
-RUN readlink {{config.base_image.python_executable_path}} &>/dev/null \
-    && echo "WARNING: Overwriting existing link at /usr/local/bin/python"
-RUN ln -sf {{config.base_image.python_executable_path}} /usr/local/bin/python
-    {%- endif %}
-{% endif %}
+    || { pythonVersion=$(echo $($PYTHON_EXECUTABLE --version) | cut -d" " -f2 | cut -d"." -f1,2) && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt update -y && apt install -y --no-install-recommends python$pythonVersion-venv && \
+    apt-get autoremove -y && \
+    apt-get clean -y && \
+    rm -rf /var/lib/apt/lists/*; }
+RUN ln -sf {{ config.base_image.python_executable_path }} /usr/local/bin/python
+    {%- endif -%}
+{%- endif -%}
+{% endblock -%}
 
-{% endblock %}
-
-{% block install_requirements %}
-    {%- if should_install_server_requirements %}
-COPY ./{{server_requirements_filename}} {{server_requirements_filename}}
-RUN pip install -r {{server_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
-    {%- endif %}
+{% block install_requirements -%}
+{%- if should_install_server_requirements -%}
+COPY ./{{ server_requirements_filename }} {{ server_requirements_filename }}
+RUN pip install -r {{ server_requirements_filename }} --no-cache-dir && rm -rf /root/.cache/pip
+{%- endif -%}
 {{ super() }}
-{% endblock %}
+{% endblock -%}
 
-
-{% block app_copy %}
-{%- if model_cache %}
+{% block app_copy -%}
 # Copy data before code for better caching
-    {%- include "copy_cache_files.Dockerfile.jinja"%}
-{%- endif %}
+{%- if model_cache %}{%- include "copy_cache_files.Dockerfile.jinja" %}{%- endif %}
 
-{%- if external_data_files %}
-{% for url, dst in external_data_files %}
+{%- if external_data_files -%}
+{%- for url, dst in external_data_files -%}
 RUN mkdir -p {{ dst.parent }}; curl -L "{{ url }}" -o {{ dst }}
-{% endfor %}
-{%- endif  %}
+{%- endfor -%}
+{%- endif -%}
 
-
-{%- if build_commands %}
-{% for command in build_commands %}
-RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount=type=secret,id={{secret}},target={{path}}{% endfor %} {{ command }}
-{% endfor %}
-{%- endif  %}
+{%- if build_commands -%}
+{%- for command in build_commands -%}
+RUN {% for secret, path in config.build.secret_to_path_mapping.items() %}--mount=type=secret,id={{ secret }},target={{ path }}{% endfor %} {{ command }}
+{%- endfor -%}
+{%- endif -%}
 
 # Copy data before code for better caching
-{%- if data_dir_exists %}
-COPY ./{{config.data_dir}} /app/data
-{%- endif %}
+{%- if data_dir_exists -%}
+COPY ./{{ config.data_dir }} /app/data
+{%- endif -%}
 
-{%- if not config.docker_server %}
+{%- if not config.docker_server -%}
 COPY ./server /app
-{%- endif %}
+{%- endif -%}
 
-{%- if use_local_chains_src %}
-{# This path takes precedence over site-packages. #}
+{%- if use_local_chains_src -%}
+# This path takes precedence over site-packages.
 COPY ./truss_chains /app/truss_chains
-{%- endif %}
+{%- endif -%}
 
 COPY ./config.yaml /app/config.yaml
-    {%- if config.live_reload and not config.docker_server%}
+{%- if config.live_reload and not config.docker_server -%}
 COPY ./control /control
-RUN python3 -m venv /control/.env \
-    && /control/.env/bin/pip3 install -r /control/requirements.txt
-    {%- endif %}
-{%- if model_dir_exists %}
+RUN python3 -m venv /control/.env && /control/.env/bin/pip3 install -r /control/requirements.txt
+{%- endif -%}
+{%- if model_dir_exists -%}
 COPY ./{{ config.model_module_dir }} /app/model
-{%- endif %}
-{% endblock %}
+{%- endif -%}
+{% endblock -%}
 
-
-{% block run %}
-    {%- if config.docker_server %}
+{% block run -%}
+{%- if config.docker_server -%}
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        curl nginx python3-pip && \
-        rm -rf /var/lib/apt/lists/*
+    curl nginx python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
 RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-{% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
-{% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
-{% set supervisor_log_dir = "/var/log/supervisor" %}
-{% set supervisor_server_url = "http://localhost:8080" %}
+
+{% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" -%}
+{% set supervisor_config_path = "/etc/supervisor/supervisord.conf" -%}
+{% set supervisor_log_dir = "/var/log/supervisor" -%}
+{% set supervisor_server_url = "http://localhost:8080" -%}
+
 COPY ./proxy.conf {{ proxy_config_path }}
 RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
+
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
 ENTRYPOINT ["supervisord", "-c", "{{ supervisor_config_path }}"]
-    {%- elif config.live_reload %}
-ENV HASH_TRUSS="{{truss_hash}}"
+
+{%- elif config.live_reload -%}
+ENV HASH_TRUSS="{{ truss_hash }}"
 ENV CONTROL_SERVER_PORT="8080"
 ENV INFERENCE_SERVER_PORT="8090"
 ENV SERVER_START_CMD="/control/.env/bin/python3 /control/control/server.py"
 ENTRYPOINT ["/control/.env/bin/python3", "/control/control/server.py"]
-    {%- else %}
+
+{%- else -%}
 ENV INFERENCE_SERVER_PORT="8080"
-ENV SERVER_START_CMD="{{(config.base_image.python_executable_path or "python3") ~ " /app/main.py"}}"
-ENTRYPOINT ["{{config.base_image.python_executable_path or "python3"}}", "/app/main.py"]
-    {%- endif %}
-{% endblock %}
+ENV SERVER_START_CMD="{{ (config.base_image.python_executable_path or "python3") ~ " /app/main.py" }}"
+ENTRYPOINT ["{{ config.base_image.python_executable_path or "python3" }}", "/app/main.py"]
+{%- endif -%}
+{% endblock -%}
