@@ -827,12 +827,12 @@ def init_chain(directory: Optional[Path]) -> None:
 
 def _load_example_chainlet_code() -> str:
     try:
-        from truss_chains import example_chainlet
+        from truss_chains.reference_code import reference_chainlet
     # if the example is faulty, a validation error would be raised
     except Exception as e:
         raise Exception("Failed to load starter code. Please notify support.") from e
 
-    source = Path(example_chainlet.__file__).read_text()
+    source = Path(reference_chainlet.__file__).read_text()
     return source
 
 

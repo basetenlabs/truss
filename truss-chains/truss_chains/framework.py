@@ -219,20 +219,36 @@ def _example_chainlet_code() -> str:
     # called on erroneous code branches (which will not be triggered if
     # `example_chainlet` is free of errors).
     try:
-        from truss_chains import example_chainlet
+        from truss_chains.reference_code import reference_chainlet
     # If `example_chainlet` fails validation and `_example_chainlet_code` is
     # called as a result of that, we have a circular import ("partially initialized
     # module 'truss_chains.example_chainlet' ...").
     except AttributeError:
-        logging.error("example_chainlet` is broken.", exc_info=True, stack_info=True)
+        logging.error("`reference_chainlet` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_chainlet.HelloWorld.name
-    source = pathlib.Path(example_chainlet.__file__).read_text()
+    example_name = reference_chainlet.HelloWorld.name
+    return _get_cls_source(reference_chainlet.__file__, example_name)
+
+
+@functools.cache
+def _example_model_code() -> str:
+    try:
+        from truss_chains.reference_code import reference_model
+    except AttributeError:
+        logging.error("`reference_model` is broken.", exc_info=True, stack_info=True)
+        return "<EXAMPLE CODE MISSING/BROKEN>"
+
+    example_name = reference_model.HelloWorld.name
+    return _get_cls_source(reference_model.__file__, example_name)
+
+
+def _get_cls_source(src_path: str, target_class_name: str) -> str:
+    source = pathlib.Path(src_path).read_text()
     tree = ast.parse(source)
     class_code = ""
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == example_name:
+        if isinstance(node, ast.ClassDef) and node.name == target_class_name:
             # Extract the source code of the class definition
             lines = source.splitlines()
             class_code = "\n".join(lines[node.lineno - 1 : node.end_lineno])
@@ -605,7 +621,7 @@ class _ChainletInitValidator:
                 f"`{definitions.DeploymentContext}` as the last argument.\n"
                 f"Got arguments: `{params}`.\n"
                 "Example of correct `__init__` with context:\n"
-                f"{_example_chainlet_code()}"
+                f"{self._example_code()}"
             )
 
         if not params:
@@ -637,7 +653,7 @@ class _ChainletInitValidator:
             _collect_error(
                 f"Incorrect default value `{param.default}` for `context` argument. "
                 "Example of correct `__init__` with dependencies:\n"
-                f"{_example_chainlet_code()}",
+                f"{self._example_code()}",
                 _ErrorKind.TYPE_ERROR,
                 self._location,
             )
@@ -686,7 +702,7 @@ class _ChainletInitValidator:
                 f"The init argument name `{definitions.CONTEXT_ARG_NAME}` is reserved for "
                 "the optional context argument, which must be trailing if used. Example "
                 "of correct `__init__` with context:\n"
-                f"{_example_chainlet_code()}",
+                f"{self._example_code()}",
                 _ErrorKind.TYPE_ERROR,
                 self._location,
             )
@@ -697,7 +713,7 @@ class _ChainletInitValidator:
                 "dependency Chainlets with default values from `chains.depends`-directive. "
                 f"Got `{param}`.\n"
                 f"Example of correct `__init__` with dependencies:\n"
-                f"{_example_chainlet_code()}",
+                f"{self._example_code()}",
                 _ErrorKind.TYPE_ERROR,
                 self._location,
             )
@@ -730,6 +746,12 @@ class _ChainletInitValidator:
                 self._location,
             )
         return param.default  # The Marker.
+
+    @functools.cache
+    def _example_code(self) -> str:
+        if self._cls.entity_type == "Model":
+            return _example_model_code()
+        return _example_chainlet_code()
 
 
 def _validate_remote_config(
