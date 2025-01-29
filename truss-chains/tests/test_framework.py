@@ -1,8 +1,8 @@
 import asyncio
 import contextlib
 import logging
+import pathlib
 import re
-from pathlib import Path
 from typing import AsyncIterator, Iterator, List
 
 import pydantic
@@ -13,7 +13,7 @@ from truss_chains import definitions, framework, public_api, utils
 
 utils.setup_dev_logging(logging.DEBUG)
 
-TEST_ROOT = Path(__file__).parent.resolve()
+TEST_ROOT = pathlib.Path(__file__).parent.resolve()
 
 # Assert that naive chainlet initialization is detected and prevented. #################
 
@@ -673,7 +673,7 @@ def test_raises_is_healthy_not_boolean_typed():
 
 
 def test_import_model_requires_entrypoint():
-    model_src = TEST_ROOT / "import" / "standalone_without_entrypoint.py"
+    model_src = TEST_ROOT / "import" / "model_without_inheritance.py"
     match = r"No Model class in `.+` inherits from"
     with pytest.raises(ValueError, match=match), _raise_errors():
         with framework.ModelImporter.import_target(model_src):

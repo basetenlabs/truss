@@ -1,4 +1,4 @@
-class PassthroughModel:
+class ClassWithoutModelInheritance:
     def __init__(self):
         self._call_count = 0
 

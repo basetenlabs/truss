@@ -33,9 +33,8 @@ from truss_chains.definitions import (
     RemoteErrorDetail,
     RPCOptions,
 )
+from truss_chains.framework import ChainletBase, ModelBase
 from truss_chains.public_api import (
-    ChainletBase,
-    ModelBase,
     depends,
     depends_context,
     mark_entrypoint,

@@ -36,7 +36,7 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss_chains import definitions, public_api, utils
+from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -1215,19 +1215,19 @@ def entrypoint(
 class _ABCImporter(abc.ABC):
     @classmethod
     @abc.abstractmethod
-    def no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+    def _no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
         pass
 
     @classmethod
     @abc.abstractmethod
-    def multiple_entrypoints_error(
+    def _multiple_entrypoints_error(
         cls, module_path: pathlib.Path, entrypoints: set[type[definitions.ABCChainlet]]
     ) -> ValueError:
         pass
 
     @classmethod
     @abc.abstractmethod
-    def target_cls_type(cls) -> Type[definitions.ABCChainlet]:
+    def _target_cls_type(cls) -> Type[definitions.ABCChainlet]:
         pass
 
     @classmethod
@@ -1235,7 +1235,7 @@ class _ABCImporter(abc.ABC):
         return {
             sym
             for sym in symbols
-            if utils.issubclass_safe(sym, cls.target_cls_type())
+            if utils.issubclass_safe(sym, cls._target_cls_type())
             and cast(definitions.ABCChainlet, sym).meta_data.is_entrypoint
         }
 
@@ -1336,17 +1336,17 @@ class _ABCImporter(abc.ABC):
                         f"Target class `{target_name}` not found "
                         f"in `{resolved_module_path}`."
                     )
-                if not utils.issubclass_safe(target_cls, cls.target_cls_type()):
+                if not utils.issubclass_safe(target_cls, cls._target_cls_type()):
                     raise TypeError(
-                        f"Target `{target_cls}` is not a {cls.target_cls_type()}."
+                        f"Target `{target_cls}` is not a {cls._target_cls_type()}."
                     )
             else:
                 module_vars = (getattr(module, name) for name in dir(module))
                 entrypoints = cls._get_entrypoint_chainlets(module_vars)
                 if len(entrypoints) == 0:
-                    raise cls.no_entrypoint_error(module_path)
+                    raise cls._no_entrypoint_error(module_path)
                 elif len(entrypoints) > 1:
-                    raise cls.multiple_entrypoints_error(module_path, entrypoints)
+                    raise cls._multiple_entrypoints_error(module_path, entrypoints)
                 target_cls = utils.expect_one(entrypoints)
             yield target_cls
         finally:
@@ -1359,7 +1359,7 @@ class _ABCImporter(abc.ABC):
 
 class ChainletImporter(_ABCImporter):
     @classmethod
-    def no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+    def _no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
         return ValueError(
             "No `target_name` was specified and no Chainlet in "
             f"`{module_path}` was tagged with `@chains.mark_entrypoint`. Tag "
@@ -1367,7 +1367,7 @@ class ChainletImporter(_ABCImporter):
         )
 
     @classmethod
-    def multiple_entrypoints_error(
+    def _multiple_entrypoints_error(
         cls, module_path: pathlib.Path, entrypoints: set[type[definitions.ABCChainlet]]
     ) -> ValueError:
         return ValueError(
@@ -1378,27 +1378,81 @@ class ChainletImporter(_ABCImporter):
         )
 
     @classmethod
-    def target_cls_type(cls) -> Type[definitions.ABCChainlet]:
-        return public_api.ChainletBase
+    def _target_cls_type(cls) -> Type[definitions.ABCChainlet]:
+        return ChainletBase
 
 
 class ModelImporter(_ABCImporter):
     @classmethod
-    def no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+    def _no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
         return ValueError(
-            f"No Model class in `{module_path}` inherits from {cls.target_cls_type()}."
+            f"No Model class in `{module_path}` inherits from {cls._target_cls_type()}."
         )
 
     @classmethod
-    def multiple_entrypoints_error(
+    def _multiple_entrypoints_error(
         cls, module_path: pathlib.Path, entrypoints: set[type[definitions.ABCChainlet]]
     ) -> ValueError:
         return ValueError(
-            f"Multiple Model classes in `{module_path}` inherit from {cls.target_cls_type()}, "
+            f"Multiple Model classes in `{module_path}` inherit from {cls._target_cls_type()}, "
             "but only one allowed. Found classes: "
             f"\n{list(cls.name for cls in entrypoints)}"
         )
 
     @classmethod
-    def target_cls_type(cls) -> Type[definitions.ABCChainlet]:
-        return public_api.ModelBase
+    def _target_cls_type(cls) -> Type[definitions.ABCChainlet]:
+        return ModelBase
+
+
+class ChainletBase(definitions.ABCChainlet):
+    """Base class for all chainlets.
+
+    Inheriting from this class adds validations to make sure subclasses adhere to the
+    chainlet pattern and facilitates remote chainlet deployment.
+
+    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
+    for more guidance on how to create subclasses.
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type="Chainlet",
+            supports_dependencies=True,
+            endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
+        )
+        # Each sub-class has own, isolated metadata, e.g. we don't want
+        # `mark_entrypoint` to propagate to subclasses.
+        cls.meta_data = definitions.ChainletMetadata()
+        validate_and_register_cls(cls)  # Errors are collected, not raised!
+        # For default init (from `object`) we don't need to check anything.
+        if cls.has_custom_init():
+            original_init = cls.__init__
+
+            @functools.wraps(original_init)
+            def __init_with_arg_check__(self, *args, **kwargs):
+                if args:
+                    raise definitions.ChainsRuntimeError("Only kwargs are allowed.")
+                ensure_args_are_injected(cls, original_init, kwargs)
+                original_init(self, *args, **kwargs)
+
+            cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
+
+
+class ModelBase(definitions.ABCChainlet):
+    """Base class for all standalone models.
+
+    Inheriting from this class adds validations to make sure subclasses adhere to the
+    truss model pattern.
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type="Model",
+            supports_dependencies=False,
+            endpoint_method_name=definitions.MODEL_ENDPOINT_METHOD_NAME,
+        )
+        cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
+        validate_and_register_cls(cls)
