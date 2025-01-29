@@ -37,7 +37,7 @@ def test_chain():
         response = requests.post(
             url,
             json={"length": 30, "num_partitions": 3},
-            headers={"traceparent": "TEST TEST TEST"},
+            headers={"traceparent": "TRACE_ID"},
         )
         print(response.content)
         assert response.status_code == 200
@@ -70,7 +70,10 @@ def test_chain():
 
         # Test with errors.
         response = requests.post(
-            url, json={"length": 300, "num_partitions": 3}, stream=True
+            url,
+            json={"length": 300, "num_partitions": 3},
+            stream=True,
+            headers={"traceparent": "TRACE_ID"},
         )
         print(response)
         assert response.status_code == 500
@@ -86,12 +89,12 @@ Chainlet-Traceback \(most recent call last\):
   File \".*?/itest_chain\.py\", line \d+, in _accumulate_parts
     value \+= self\._text_to_num\.run_remote\(part\)
 ValueError: \(showing chained remote errors, root error at the bottom\)
-├─ Error in dependency Chainlet `TextToNum` \(HTTP status 500\):
+├─ Error calling dependency Chainlet `TextToNum`, HTTP status=500, trace ID=`TRACE_ID`.
 │   Chainlet-Traceback \(most recent call last\):
 │     File \".*?/itest_chain\.py\", line \d+, in run_remote
 │       generated_text = self\._replicator\.run_remote\(data\)
 │   ValueError: \(showing chained remote errors, root error at the bottom\)
-│   ├─ Error in dependency Chainlet `TextReplicator` \(HTTP status 500\):
+│   ├─ Error calling dependency Chainlet `TextReplicator`, HTTP status=500, trace ID=`TRACE_ID`.
 │   │   Chainlet-Traceback \(most recent call last\):
 │   │     File \".*?/itest_chain\.py\", line \d+, in run_remote
 │   │       validate_data\(data\)
