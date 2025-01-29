@@ -42,24 +42,26 @@ def test_lazy_data_resolver_v2():
     with pytest.raises(Exception):
         # LAZY_DATA_RESOLVER_PATH does not exist
         # should raise an exception
-        LazyDataResolverV2(Path("/tmp"))
+        LazyDataResolverV2(Path("/tmp")).fetch()
 
     try:
         LAZY_DATA_RESOLVER_PATH.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        pytest.skip(f"Unable to create {LAZY_DATA_RESOLVER_PATH}: {e}")
+        pytest.skip(
+            f"Unable to create {LAZY_DATA_RESOLVER_PATH} due to missing os permissions: {e}"
+        )
 
     # without LAZY_DATA_RESOLVER_PATH -> does not create folder / file
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
-        resolver = LazyDataResolverV2(data_dir)
+        resolver = LazyDataResolverV2(data_dir).fetch()
         assert not (data_dir / TARGET_FILE).exists()
 
     # with LAZY_DATA_RESOLVER_PATH -> fetches data
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
         write_bptr_manifest_to_file()
-        resolver = LazyDataResolverV2(data_dir)
+        resolver = LazyDataResolverV2(data_dir).fetch()
         resolver.fetch()
         assert (data_dir / TARGET_FILE).exists()
         assert (data_dir / TARGET_FILE).stat().st_size == 1482
@@ -68,7 +70,7 @@ def test_lazy_data_resolver_v2():
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
         write_bptr_manifest_to_file(expiration_timestamp=int(time.time()) - 1)
-        resolver = LazyDataResolverV2(data_dir)
+        resolver = LazyDataResolverV2(data_dir).fetch()
         with pytest.raises(Exception):
             resolver.fetch()
 
