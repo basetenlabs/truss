@@ -7,7 +7,7 @@ import signal
 import sys
 from http import HTTPStatus
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Awaitable, Callable, Dict, Optional, Union
 
 import pydantic
 import uvicorn
@@ -17,7 +17,14 @@ from common.schema import TrussSchema
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import InputType, ModelWrapper, OutputType
+from model_wrapper import (
+    MODEL_BASENAME,
+    InputType,
+    MethodDescriptor,
+    ModelMethod,
+    ModelWrapper,
+    OutputType,
+)
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
@@ -148,14 +155,21 @@ class BasetenEndpoints:
 
         return inputs
 
-    async def predict(
-        self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
+    async def _execute_request(
+        self,
+        model_name: str,
+        method: ModelMethod,
+        request: Request,
+        body_raw: bytes,
+        execution_fn: Callable[
+            [ModelWrapper, InputType, Request], Awaitable[OutputType]
+        ],
     ) -> Response:
         """
-        This method calls the user-provided predict method
+        Executes a predictive endpoint
         """
         if await request.is_disconnected():
-            msg = "Client disconnected. Skipping `predict`."
+            msg = f"Client disconnected. Skipping `{method.value}`."
             logging.info(msg)
             raise ClientDisconnect(msg)
 
@@ -166,7 +180,7 @@ class BasetenEndpoints:
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
         with self._tracer.start_as_current_span(
-            "predict-endpoint", context=trace_ctx
+            f"{method.value}-endpoint", context=trace_ctx
         ) as span:
             inputs: Optional[InputType]
             if model.model_descriptor.skip_input_parsing:
@@ -175,9 +189,8 @@ class BasetenEndpoints:
                 inputs = await self._parse_body(
                     request, body_raw, model.model_descriptor.truss_schema, span
                 )
-            # Calls ModelWrapper which runs: preprocess, predict, postprocess.
             with tracing.section_as_event(span, "model-call"):
-                result: OutputType = await model(inputs, request)
+                result: OutputType = await execution_fn(model, inputs, request)
 
             # In the case that the model returns a Generator object, return a
             # StreamingResponse instead.
@@ -189,6 +202,69 @@ class BasetenEndpoints:
                     errors.add_error_headers_to_user_response(result)
                 return result
             return self._serialize_result(result, self.is_binary(request), span)
+
+    async def chat_completions(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        async def execution_fn(
+            model: ModelWrapper, inputs: InputType, request: Request
+        ) -> OutputType:
+            self._raise_if_not_supported(
+                ModelMethod.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
+            )
+            return await model.chat_completions(inputs, request)
+
+        return await self._execute_request(
+            model_name=MODEL_BASENAME,
+            method=ModelMethod.CHAT_COMPLETIONS,
+            request=request,
+            body_raw=body_raw,
+            execution_fn=execution_fn,
+        )
+
+    def _raise_if_not_supported(
+        self, method: ModelMethod, descriptor: Optional[MethodDescriptor]
+    ):
+        if not descriptor:
+            raise HTTPException(
+                status_code=404, detail=f"{method.value} not supported."
+            )
+
+    async def completions(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        async def execution_fn(
+            model: ModelWrapper, inputs: InputType, request: Request
+        ) -> OutputType:
+            self._raise_if_not_supported(
+                ModelMethod.COMPLETIONS, model.model_descriptor.completions
+            )
+            return await model.completions(inputs, request)
+
+        return await self._execute_request(
+            model_name=MODEL_BASENAME,
+            method=ModelMethod.COMPLETIONS,
+            request=request,
+            body_raw=body_raw,
+            execution_fn=execution_fn,
+        )
+
+    async def predict(
+        self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        async def execution_fn(
+            model: ModelWrapper, inputs: InputType, request: Request
+        ) -> OutputType:
+            # Calls ModelWrapper which runs: preprocess, predict, postprocess.
+            return await model(inputs, request)
+
+        return await self._execute_request(
+            model_name=model_name,
+            method=ModelMethod.PREDICT,
+            request=request,
+            body_raw=body_raw,
+            execution_fn=execution_fn,
+        )
 
     def _serialize_result(
         self, result: OutputType, is_binary: bool, span: trace.Span
@@ -335,6 +411,19 @@ class TrussServer:
                 FastAPIRoute(
                     r"/v1/models/{model_name}:predict_binary",
                     self._endpoints.predict,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                # OpenAI Spec
+                FastAPIRoute(
+                    r"/v1/chat/completions",
+                    self._endpoints.chat_completions,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/completions",
+                    self._endpoints.completions,
                     methods=["POST"],
                     tags=["V1"],
                 ),
