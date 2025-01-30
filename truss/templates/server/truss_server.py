@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import logging.config
 import os
 import signal
 import sys
@@ -21,8 +22,7 @@ from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
 from pydantic import BaseModel
-from shared import serialization
-from shared.logging import setup_logging
+from shared import log_config, serialization
 from shared.secrets_resolver import SecretsResolver
 from starlette.requests import ClientDisconnect
 from starlette.responses import Response
@@ -37,7 +37,6 @@ PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
 TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 async def parse_body(request: Request) -> bytes:
@@ -260,12 +259,10 @@ class TrussServer:
 
     _server: Optional[uvicorn.Server]
 
-    def __init__(
-        self,
-        http_port: int,
-        config_or_path: Union[str, Path, Dict],
-        setup_json_logger: bool = True,
-    ):
+    def __init__(self, http_port: int, config_or_path: Union[str, Path, Dict]):
+        # This is run before uvicorn is up. Need explicit logging config here.
+        logging.config.dictConfig(log_config.make_log_config("INFO"))
+
         if isinstance(config_or_path, (str, Path)):
             with open(config_or_path, encoding="utf-8") as config_file:
                 config = yaml.safe_load(config_file)
@@ -274,7 +271,6 @@ class TrussServer:
 
         secrets = SecretsResolver.get_secrets(config)
         tracer = tracing.get_truss_tracer(secrets, config)
-        self._setup_json_logger = setup_json_logger
         self._http_port = http_port
         self._config = config
         self._model = ModelWrapper(self._config, tracer)
@@ -291,8 +287,6 @@ class TrussServer:
         we want to setup our logging and model.
         """
         self.cleanup()
-        if self._setup_json_logger:
-            setup_logging()
         self._model.start_load_thread()
         asyncio.create_task(self._shutdown_if_load_fails())
         self._model.setup_polling_for_environment_updates()
@@ -366,9 +360,6 @@ class TrussServer:
             if self._config["runtime"].get("enable_debug_logs", False)
             else "INFO"
         )
-        # Warning: `ModelWrapper` depends on correctly setup `uvicorn` logger,
-        # if you change/remove that logger, make sure `ModelWrapper` has a suitable
-        # alternative logger that is also correctly setup in the load thread.
         cfg = uvicorn.Config(
             self.create_application(),
             # We hard-code the http parser as h11 (the default) in case the user has
@@ -379,45 +370,7 @@ class TrussServer:
             port=self._http_port,
             workers=1,
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
-            log_config={
-                "version": 1,
-                "formatters": {
-                    "default": {
-                        "()": "uvicorn.logging.DefaultFormatter",
-                        "datefmt": DATE_FORMAT,
-                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(message)s",
-                        "use_colors": None,
-                    },
-                    "access": {
-                        "()": "uvicorn.logging.AccessFormatter",
-                        "datefmt": DATE_FORMAT,
-                        "fmt": "%(asctime)s.%(msecs)03d %(name)s %(levelprefix)s %(client_addr)s %(process)s - "
-                        '"%(request_line)s" %(status_code)s',
-                        # noqa: E501
-                    },
-                },
-                "handlers": {
-                    "default": {
-                        "formatter": "default",
-                        "class": "logging.StreamHandler",
-                        "stream": "ext://sys.stderr",
-                    },
-                    "access": {
-                        "formatter": "access",
-                        "class": "logging.StreamHandler",
-                        "stream": "ext://sys.stdout",
-                    },
-                },
-                "loggers": {
-                    "uvicorn": {"handlers": ["default"], "level": log_level},
-                    "uvicorn.error": {"level": "INFO"},
-                    "uvicorn.access": {
-                        "handlers": ["access"],
-                        "level": "INFO",
-                        "propagate": False,
-                    },
-                },
-            },
+            log_config=log_config.make_log_config(log_level),
         )
         cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)

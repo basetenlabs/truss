@@ -272,6 +272,7 @@ def _push_service_docker(
         wait_for_server_ready=True,
         network="host",
         container_name_prefix=chainlet_display_name,
+        disable_json_logging=True,
     )
 
 
@@ -309,12 +310,13 @@ def _create_docker_chain(
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
 ) -> DockerChainService:
-    chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
+    chainlet_artifacts = [*dependency_artifacts, entrypoint_artifact]
     chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
     chainlet_to_service: Dict[str, DockerChainletService] = {}
     for chainlet_artifact in chainlet_artifacts:
         port = utils.get_free_port()
         service = DockerChainletService(is_draft=True, port=port)
+
         docker_internal_url = service.predict_url.replace(
             "localhost", "host.docker.internal"
         )
@@ -323,27 +325,16 @@ def _create_docker_chain(
         }
         chainlet_to_service[chainlet_artifact.name] = service
 
-    local_config_handler.LocalConfigHandler.set_dynamic_config(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY, json.dumps(chainlet_to_predict_url)
-    )
+        local_config_handler.LocalConfigHandler.set_dynamic_config(
+            definitions.DYNAMIC_CHAINLET_CONFIG_KEY, json.dumps(chainlet_to_predict_url)
+        )
 
-    # TODO(Tyron): We run the Docker containers in a
-    #   separate for-loop to make sure that the dynamic
-    #   config is populated (the same one gets mounted
-    #   on all the containers). We should look into
-    #   consolidating the logic into a single for-loop.
-    #   One approach might be to use separate config
-    #   paths for each container under the `/tmp` dir.
-    for chainlet_artifact in chainlet_artifacts:
         truss_dir = chainlet_artifact.truss_dir
         logging.info(
             f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
         )
         _push_service_docker(
-            truss_dir,
-            chainlet_artifact.display_name,
-            docker_options,
-            chainlet_to_service[chainlet_artifact.name].port,
+            truss_dir, chainlet_artifact.display_name, docker_options, port
         )
         logging.info(
             f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
