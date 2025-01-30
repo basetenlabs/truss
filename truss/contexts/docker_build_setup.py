@@ -11,26 +11,25 @@ from truss.templates.control.control.helpers.custom_types import Patch
 from truss.truss_handle import truss_handle
 from truss.truss_handle.patch import signature
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
-# working_dir = pathlib.Path("/")
-working_dir = pathlib.Path(os.getcwd())
+working_dir = pathlib.Path("/")
 
 TRUSS_SRC_DIR = working_dir / "build/model_scaffold"
 TRUSS_HASH_FILE = working_dir / "scaffold/truss_hash"
-TRUSS_SIGNATURE_FILE = working_dir / "build/truss_signature"
+TRUSS_SIGNATURE_FILE = working_dir / "scaffold/truss_signature"
 TRUSS_BUILD_CONTEXT_DIR = working_dir / "build/context"
 
 
 @click.command()
 @click.option("--truss_type", required=True)
 def docker_build_setup(truss_type: str) -> None:
-    print("Loading truss")
+    logging.info("Loading truss")
     tr = truss_handle.TrussHandle(TRUSS_SRC_DIR)
-    print("Truss is loaded")
+    logging.info("Truss is loaded")
 
     if patches_dir := os.environ.get("PATCHES_DIR"):
-        print("Applying patches")
+        logging.info("Applying patches")
         logger = logging.getLogger("patch_applier")
         patch_applier = TrussDirPatchApplier(TRUSS_SRC_DIR, logger)
         patches = json.loads(pathlib.Path(patches_dir).read_text())
@@ -38,14 +37,13 @@ def docker_build_setup(truss_type: str) -> None:
 
     # Important to do this before making changes to truss, we want
     # to capture hash of original truss.
-    print("Recording truss hash")
+    logging.info("Recording truss hash")
     TRUSS_HASH_FILE.write_text(directory_content_hash(TRUSS_SRC_DIR))
 
-    print("Recording truss signature.")
+    logging.info("Recording truss signature.")
     sign = signature.calc_truss_signature(TRUSS_SRC_DIR)
     TRUSS_SIGNATURE_FILE.write_text(json.dumps(sign.to_dict()))
 
-    print("Setting up docker build context for truss.")
     if truss_type == "server_control":
         tr.live_reload(enable=True)
     else:

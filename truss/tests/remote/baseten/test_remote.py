@@ -18,15 +18,17 @@ _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
 
 
-def request_matches_expected_query(request, expected_query):
+def assert_request_matches_expected_query(request, expected_query) -> None:
     unescaped_content = parse.unquote_plus(request.text)
-
-    # Remove 'query=' prefix and any leading/trailing whitespace
-    actual_query = unescaped_content.replace("query=", "").strip()
-
-    return tuple(
-        line.strip() for line in actual_query.split("\n") if line.strip()
-    ) == tuple(line.strip() for line in expected_query.split("\n") if line.strip())
+    actual_lines = tuple(
+        line.strip()
+        for line in unescaped_content.replace("query=", "").strip().split("\n")
+        if line.strip()
+    )
+    expected_lines = tuple(
+        line.strip() for line in expected_query.split("\n") if line.strip()
+    )
+    assert actual_lines == expected_lines
 
 
 def test_get_service_by_version_id():
@@ -315,7 +317,7 @@ def test_create_chain_with_no_publish():
             }
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             get_chains_graphql_request, expected_get_chains_query
         )
 
@@ -351,7 +353,7 @@ def test_create_chain_with_no_publish():
             }}
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             create_chain_graphql_request, expected_create_chain_mutation
         )
 
@@ -411,7 +413,7 @@ def test_create_chain_no_existing_chain():
             }
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             get_chains_graphql_request, expected_get_chains_query
         )
 
@@ -445,7 +447,7 @@ def test_create_chain_no_existing_chain():
             }}
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             create_chain_graphql_request, expected_create_chain_mutation
         )
 
@@ -511,7 +513,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
             }
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             get_chains_graphql_request, expected_get_chains_query
         )
 
@@ -548,7 +550,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
             }}
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             create_chain_graphql_request, expected_create_chain_mutation
         )
 
@@ -614,7 +616,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
             }
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             get_chains_graphql_request, expected_get_chains_query
         )
 
@@ -648,7 +650,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
             }}
         """.strip()
 
-        assert request_matches_expected_query(
+        assert_request_matches_expected_query(
             create_chain_graphql_request, expected_create_chain_mutation
         )
 
