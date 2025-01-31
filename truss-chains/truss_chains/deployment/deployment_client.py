@@ -221,11 +221,10 @@ def push(
 class DockerChainletService(b10_service.TrussService):
     """This service is for Chainlets (not for Chains)."""
 
-    def __init__(self, port: int, is_draft: bool, **kwargs):
+    def __init__(self, port: int, **kwargs):
         remote_url = f"http://localhost:{port}"
-        self._port = port
 
-        super().__init__(remote_url, is_draft, **kwargs)
+        super().__init__(remote_url, is_draft=False, **kwargs)
 
     def authenticate(self) -> Dict[str, str]:
         return {}
@@ -245,10 +244,6 @@ class DockerChainletService(b10_service.TrussService):
     @property
     def logs_url(self) -> str:
         raise NotImplementedError()
-
-    @property
-    def port(self) -> int:
-        return self._port
 
     @property
     def predict_url(self) -> str:
@@ -315,7 +310,7 @@ def _create_docker_chain(
     chainlet_to_service: Dict[str, DockerChainletService] = {}
     for chainlet_artifact in chainlet_artifacts:
         port = utils.get_free_port()
-        service = DockerChainletService(is_draft=True, port=port)
+        service = DockerChainletService(port)
 
         docker_internal_url = service.predict_url.replace(
             "localhost", "host.docker.internal"
