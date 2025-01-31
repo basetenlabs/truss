@@ -21,6 +21,7 @@ from truss.base.truss_config import (
     ModelRepo,
     Resources,
     TrussConfig,
+    _map_to_supported_python_version,
 )
 from truss.truss_handle.truss_handle import TrussHandle
 
@@ -570,3 +571,20 @@ def test_validate_quant_format_and_accelerator_for_trt_llm_builder(
     config.resources.accelerator.accelerator = accelerator
     with expectation:
         TrussConfig.from_dict(config.to_dict())
+
+
+@pytest.mark.parametrize(
+    "python_version, expected_python_version",
+    [
+        ("py37", "py38"),
+        ("py38", "py38"),
+        ("py39", "py39"),
+        ("py310", "py310"),
+        ("py311", "py311"),
+        ("py312", "py311"),
+        ("py36", "py38"),
+    ],
+)
+def test_map_to_supported_python_version(python_version, expected_python_version):
+    out_python_version = _map_to_supported_python_version(python_version)
+    assert out_python_version == expected_python_version

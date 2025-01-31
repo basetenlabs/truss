@@ -26,7 +26,6 @@ from python_on_whales import Container
 from requests.exceptions import RequestException
 from websockets.exceptions import ConnectionClosed
 
-from truss.base.truss_config import map_to_supported_python_version
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -105,19 +104,26 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
 # Test Cases ###########################################################################
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
-    "python_version, expected_python_version",
-    [
-        ("py38", "py38"),
-        ("py39", "py39"),
-        ("py310", "py310"),
-        ("py311", "py311"),
-        ("py312", "py311"),
-    ],
+    "config_python_version, inspected_python_version",
+    [("py38", "3.8"), ("py39", "3.9"), ("py310", "3.10"), ("py311", "3.11"), ("py312", "3.11")],
 )
-def test_map_to_supported_python_version(python_version, expected_python_version):
-    out_python_version = map_to_supported_python_version(python_version)
-    assert out_python_version == expected_python_version
+def test_predict_python_versions(config_python_version, inspected_python_version):
+    model = """
+    import sys
+    class Model:
+        def predict(self, data):
+            version = sys.version_info
+            return f"{version.major}.{version.minor}"
+    """
+
+    config = f"python_version: {config_python_version}"
+
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        response = requests.post(PREDICT_URL, json={})
+        assert inspected_python_version == response.json()
 
 
 def test_not_supported_python_minor_versions():
@@ -418,9 +424,10 @@ secrets:
         assert response.json() == "secret_value"
 
     # Case where the secret is not specified in the config
-    with ensure_kill_all(), _temp_truss(
-        inspect.getsource(Model), config_with_no_secret
-    ) as tr:
+    with (
+        ensure_kill_all(),
+        _temp_truss(inspect.getsource(Model), config_with_no_secret) as tr,
+    ):
         LocalConfigHandler.set_secret("secret", "secret_value")
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
