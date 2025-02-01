@@ -891,11 +891,9 @@ def map_to_supported_python_version(python_version: str) -> str:
         return "py311"
 
     if python_minor_version < 8:
-        # TODO: consider raising an error instead - it doesn't' seem safe.
-        logger.info(
+        raise ValueError(
             f"Mapping python version {python_major_version}.{python_minor_version}"
             " to 3.8, the lowest version that Truss currently supports."
         )
-        return "py38"
 
     return python_version
