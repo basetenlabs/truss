@@ -36,5 +36,5 @@ repos:
         entry: poetry run mypy
         language: python
         types: [python]
-        exclude: ^examples/|^truss/test.+/|model.py$|
+        exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true

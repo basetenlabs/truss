@@ -9,7 +9,6 @@ from truss.base.errors import ValidationError
 if TYPE_CHECKING:
     from rich import progress
 
-import truss
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 DEPLOYING_STATUSES = ["BUILDING", "DEPLOYING", "LOADING_MODEL", "UPDATING"]
 ACTIVE_STATUS = "ACTIVE"
 NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING = (
-    "Model hasn't been deployed yet. No evironments exist."
+    "Model hasn't been deployed yet. No environments exist."
 )
 
 
@@ -330,7 +329,6 @@ def create_truss_service(
     s3_key: str,
     config: str,
     semver_bump: str = "MINOR",
-    is_trusted: bool = False,
     preserve_previous_prod_deployment: bool = False,
     allow_truss_download: bool = False,
     is_draft: Optional[bool] = False,
@@ -348,7 +346,6 @@ def create_truss_service(
         s3_key: S3 key of the uploaded TrussHandle.
         config: Base64 encoded JSON string of the Truss config.
         semver_bump: Semver bump type, defaults to "MINOR".
-        is_trusted: Whether the model is trusted, defaults to False.
         promote: Whether to promote the model after deploy, defaults to False.
         preserve_previous_prod_deployment: Whether to scale old production deployment
             to zero.
@@ -358,14 +355,11 @@ def create_truss_service(
     Returns:
         A Model Version handle.
     """
-
     if is_draft:
         model_version_json = api.create_development_model_from_truss(
             model_name,
             s3_key,
             config,
-            truss.version(),
-            is_trusted=is_trusted,
             allow_truss_download=allow_truss_download,
             origin=origin,
         )
@@ -385,8 +379,6 @@ def create_truss_service(
             s3_key=s3_key,
             config=config,
             semver_bump=semver_bump,
-            client_version=truss.version(),
-            is_trusted=is_trusted,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
@@ -404,8 +396,6 @@ def create_truss_service(
             s3_key=s3_key,
             config=config,
             semver_bump=semver_bump,
-            client_version=truss.version(),
-            is_trusted=is_trusted,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
             environment=environment,
@@ -416,7 +406,8 @@ def create_truss_service(
             == BasetenApi.GraphQLErrorCodes.RESOURCE_NOT_FOUND.value
         ):
             raise ValueError(
-                f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
+                f"Environment `{environment}` does not exist. You can create "
+                "environments in the Baseten UI."
             ) from e
         raise e
 
@@ -438,7 +429,7 @@ def validate_truss_config(api: BasetenApi, config: str):
     Returns:
         None if the config is valid, otherwise raises an error message
     """
-    valid_config = api.validate_truss(truss.version(), config)
+    valid_config = api.validate_truss(config)
     if not valid_config.get("success"):
         details = json.loads(valid_config.get("details"))
         errors = details.get("errors", [])

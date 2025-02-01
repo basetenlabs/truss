@@ -2,7 +2,7 @@ from urllib import parse
 
 import pytest
 import requests_mock
-import truss
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
     ModelName,
@@ -211,7 +211,6 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
                 th,
                 "model_name",
                 publish=False,
-                trusted=False,
                 promote=False,
                 preserve_previous_prod_deployment=False,
                 deployment_name="dep_name",
@@ -243,7 +242,6 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
                 th,
                 "model_name",
                 publish=True,
-                trusted=False,
                 promote=False,
                 preserve_previous_prod_deployment=False,
                 deployment_name="dep//name",
@@ -275,7 +273,6 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
                 th,
                 "model_name",
                 publish=False,
-                trusted=False,
                 promote=False,
                 preserve_previous_prod_deployment=True,
             )
@@ -316,7 +313,6 @@ def test_create_chain_with_no_publish():
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -347,11 +343,12 @@ def test_create_chain_with_no_publish():
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
         """.strip()
+
+        user_env_json = b10_types.TrussUserEnv.collect().model_dump_json()
 
         # Note that if publish=False and promote=True, we set publish to True and create
         # a non-draft deployment
@@ -362,7 +359,7 @@ def test_create_chain_with_no_publish():
                     is_draft: true
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: "{user_env_json}"
                 ) {{
                     chain_deployment {{
                         id
@@ -418,7 +415,6 @@ def test_create_chain_no_existing_chain():
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -449,11 +445,12 @@ def test_create_chain_no_existing_chain():
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
         """.strip()
+
+        user_env_json = b10_types.TrussUserEnv.collect().model_dump_json()
 
         expected_create_chain_mutation = f"""
             mutation {{
@@ -462,7 +459,7 @@ def test_create_chain_no_existing_chain():
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: "{user_env_json}"
                 ) {{
                     chain_deployment {{
                         id
@@ -524,7 +521,6 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -557,11 +553,12 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
         """.strip()
+
+        user_env_json = b10_types.TrussUserEnv.collect().model_dump_json()
 
         expected_create_chain_mutation = f"""
             mutation {{
@@ -571,7 +568,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: "{user_env_json}"
                 ) {{
                     chain_deployment {{
                         id
@@ -633,7 +630,6 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -664,11 +660,12 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
         """.strip()
+
+        user_env_json = b10_types.TrussUserEnv.collect().model_dump_json()
 
         expected_create_chain_mutation = f"""
             mutation {{
@@ -677,7 +674,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: "{user_env_json}"
                 ) {{
                     chain_deployment {{
                         id

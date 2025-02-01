@@ -668,9 +668,10 @@ def push_chain(
         num_failed = 0
         # Logging inferences with live display (even when using richHandler)
         # -> capture logs and print later.
-        with LogInterceptor() as log_interceptor, rich.live.Live(
-            table, console=console, refresh_per_second=4
-        ) as live:
+        with (
+            LogInterceptor() as log_interceptor,
+            rich.live.Live(table, console=console, refresh_per_second=4) as live,
+        ):
             while True:
                 table, statuses = _create_chains_table(service)
                 live.update(table)
@@ -1208,7 +1209,6 @@ def push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,

@@ -1,3 +1,4 @@
+import warnings
 from typing import TYPE_CHECKING, Optional, Type, cast
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ def push(
     publish: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
-    trusted: bool = False,
+    trusted: Optional[bool] = None,
     deployment_name: Optional[str] = None,
     environment: Optional[str] = None,
     progress_bar: Optional[Type["progress.Progress"]] = None,
@@ -76,7 +77,7 @@ def push(
         preserve_previous_production_deployment: Preserve the previous production deployment’s autoscaling
             setting. When not specified, the previous production deployment will be updated to allow it to
             scale to zero. Can only be use in combination with `promote` option.
-        trusted: Give Truss access to secrets on remote host.
+        trusted: [DEPRECATED]
         deployment_name: Name of the deployment created by the push. Can only be
             used in combination with `publish` or `promote`. Deployment name must
             only contain alphanumeric, ’.’, ’-’ or ’_’ characters.
@@ -86,6 +87,12 @@ def push(
     Returns:
         The newly created ModelDeployment.
     """
+    if trusted is not None:
+        warnings.warn(
+            "`trusted` is deprecated and will be ignored, all models are "
+            "trusted by default now.",
+            DeprecationWarning,
+        )
 
     if not remote:
         available_remotes = RemoteFactory.get_available_config_names()
@@ -112,7 +119,6 @@ def push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=trusted,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
