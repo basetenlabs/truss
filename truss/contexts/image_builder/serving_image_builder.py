@@ -384,13 +384,16 @@ class ServingImageBuilder(ImageBuilder):
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
-
+        runtime_max_batch_tokens = config.trt_llm.build.max_num_tokens
         port = 7997
         start_command = " ".join(
             [
                 "truss-transfer-cli && text-embeddings-router",
                 f"--port {port}",
+                # assert the max_batch_size is within trt-engine limits
                 f"--max-batch-requests {runtime_max_batch_size}",
+                # assert the max_batch_tokens is within trt-engine limits
+                f"--max-batch-tokens {runtime_max_batch_tokens}"
                 # how many sentences can be in a single json payload.
                 # limited default to improve request based autoscaling.
                 f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
