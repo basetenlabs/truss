@@ -352,8 +352,8 @@ def test_custom_openai_endpoints():
         assert response.status_code == 200
         assert response.json() == 2
 
+        # Written model intentionally does not support chat completions
         response = requests.post(
             f"{base_url}/v1/chat/completions", json={"increment": 3}
         )
-        assert response.status_code == 200
-        assert response.json() == 3
+        assert response.status_code == 404
