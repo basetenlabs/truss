@@ -193,7 +193,6 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
 @pytest.mark.anyio
 async def test_open_ai_completion_endpoints(open_ai_container_fs, helpers):
     app_path = open_ai_container_fs / "app"
-    print(app_path)
     with _clear_model_load_modules(), helpers.sys_paths(app_path), _change_directory(
         app_path
     ):
