@@ -44,7 +44,6 @@ DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
-DEFAULT_NODE_COUNT = 1
 
 DEFAULT_BLOB_BACKEND = HTTP_PUBLIC_BLOB_BACKEND
 
@@ -287,12 +286,14 @@ class Resources:
         return r
 
     def to_dict(self):
-        return {
+        d = {
             "cpu": self.cpu,
             "memory": self.memory,
             "use_gpu": self.use_gpu,
             "accelerator": self.accelerator.to_str(),
         }
+        if self.node_count is not None:
+            d["node_count"] = self.node_count
 
 
 @dataclass
