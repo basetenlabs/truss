@@ -386,7 +386,9 @@ class ServingImageBuilder(ImageBuilder):
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
         # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
-        runtime_max_batch_tokens = max(config.trt_llm.build.max_num_tokens, BEI_MINIUMUM_MAX_NUM_TOKENS)
+        runtime_max_batch_tokens = max(
+            config.trt_llm.build.max_num_tokens, BEI_MINIUMUM_MAX_NUM_TOKENS
+        )
         port = 7997
         start_command = " ".join(
             [
