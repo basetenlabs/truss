@@ -12,6 +12,7 @@ from huggingface_hub.utils import validate_repo_id
 from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
 
 from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
+
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
@@ -119,12 +120,12 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
     class Config:
         extra = "forbid"
-        
+
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
-        self._bei_specfic_patches()
+        self._bei_specfic_migration()
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
@@ -134,7 +135,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                     "max_beam_width greater than 1 is not currently supported"
                 )
         return v
-    
+
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
         if self.base_model == TrussTRTLLMModel.ENCODER:
@@ -143,7 +144,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
                 "automatically inferred from the model repo config.json -> `max_position_embeddings`"
             )
-            
+
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
                 logger.warning(
                     f"build.max_num_tokens={self.max_num_tokens}, upgrading to {BEI_REQUIRED_MAX_NUM_TOKENS}"
@@ -151,7 +152,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 self.max_num_tokens = BEI_REQUIRED_MAX_NUM_TOKENS
             self.plugin_configuration.paged_kv_cache = False
             self.plugin_configuration.use_paged_context_fmha = False
-            
+
             if "_kv" in self.quantization_type.value:
                 raise ValueError(
                     "encoder does not have a kv-cache, therefore a kv specfic datatype is not valid"
@@ -205,8 +206,6 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         if self.speculator:
             return self.speculator.num_draft_tokens
         return None
-
-    
 
 
 class TrussSpeculatorConfiguration(BaseModel):
