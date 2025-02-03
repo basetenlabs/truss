@@ -250,15 +250,15 @@ class ModelDescriptor:
     def from_model(cls, model) -> "ModelDescriptor":
         preprocess = cls._safe_extract_descriptor(model, ModelMethod.PREPROCESS.value)
         predict = cls._safe_extract_descriptor(model, ModelMethod.PREDICT.value)
-        if predict and predict.arg_config == ArgConfig.REQUEST_ONLY:
+        if predict is None:
+            raise errors.ModelDefinitionError(
+                f"Truss model must have a `{ModelMethod.PREDICT.value}` method."
+            )
+        elif preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
             raise errors.ModelDefinitionError(
                 f"When using `{ModelMethod.PREPROCESS.value}`, the {ModelMethod.PREDICT.value} method "
                 f"cannot only have the request argument (because the result of `{ModelMethod.PREPROCESS.value}` "
                 "would be  discarded)."
-            )
-        elif predict is None:
-            raise errors.ModelDefinitionError(
-                f"Truss model must have a `{ModelMethod.PREDICT.value}` method."
             )
 
         postprocess = cls._safe_extract_descriptor(model, ModelMethod.POSTPROCESS.value)
@@ -271,7 +271,7 @@ class ModelDescriptor:
         completions = cls._safe_extract_descriptor(model, ModelMethod.COMPLETIONS.value)
         chats = cls._safe_extract_descriptor(model, ModelMethod.CHAT_COMPLETIONS.value)
         is_healthy = cls._safe_extract_descriptor(model, ModelMethod.IS_HEALTHY.value)
-        if is_healthy and is_healthy.arg_config is not ArgConfig.NONE:
+        if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
             raise errors.ModelDefinitionError(
                 f"`{ModelMethod.IS_HEALTHY.value}` must have only one argument: `self`."
             )
@@ -378,8 +378,7 @@ class ModelWrapper:
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
                 )
-            except Exception as e:
-                raise e
+            except Exception:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
 
@@ -712,7 +711,7 @@ class ModelWrapper:
     ) -> OutputType:
         descriptor = self.model_descriptor.completions
         assert descriptor, (
-            f"`{ModelMethod.COMPLETIONS}` must only be called if model has it."
+            f"`{ModelMethod.COMPLETIONS.value}` must only be called if model has it."
         )
 
         async def exec_fn(
