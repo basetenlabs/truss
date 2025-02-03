@@ -122,3 +122,10 @@ def validate_python_executable_path(path: str) -> None:
         raise ValidationError(
             f"Invalid relative python executable path {path}. Provide an absolute path"
         )
+
+
+def validate_node_count(node_count: int) -> None:
+    if node_count < 1:
+        raise ValidationError(
+            f"resources.node_count must be a positive integer. Got {node_count}."
+        )
