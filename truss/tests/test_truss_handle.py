@@ -806,7 +806,6 @@ def generate_default_config():
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
-            "node_count": None,
         },
         "secrets": {},
         "system_packages": [],

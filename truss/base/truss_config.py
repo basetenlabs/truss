@@ -779,7 +779,7 @@ def _handle_env_vars(env_vars: Dict[str, Any]) -> Dict[str, str]:
 
 
 DATACLASS_TO_REQ_KEYS_MAP = {
-    Resources: {"accelerator", "cpu", "memory", "use_gpu", "node_count"},
+    Resources: {"accelerator", "cpu", "memory", "use_gpu"},
     Runtime: {"predict_concurrency"},
     Build: {"model_server"},
     TrussConfig: {
