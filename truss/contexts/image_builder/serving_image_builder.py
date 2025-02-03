@@ -17,6 +17,7 @@ from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
     BASE_TRTLLM_REQUIREMENTS,
     BEI_MAX_CONCURRENCY_TARGET_REQUESTS,
+    BEI_REQUIRED_MAX_NUM_TOKENS,
     BEI_TRTLLM_BASE_IMAGE,
     BEI_TRTLLM_CLIENT_BATCH_SIZE,
     BEI_TRTLLM_PYTHON_EXECUTABLE,
@@ -384,13 +385,19 @@ class ServingImageBuilder(ImageBuilder):
         # runtime batch size may not be higher than what the build settings of the model allow
         # to 32 even if the engine.rank0 allows for higher batch_size
         runtime_max_batch_size = min(config.trt_llm.build.max_batch_size, 32)
-
+        # make sure the user gets good performance, enforcing max_num_tokens here and in engine-builder
+        runtime_max_batch_tokens = max(
+            config.trt_llm.build.max_num_tokens, BEI_REQUIRED_MAX_NUM_TOKENS
+        )
         port = 7997
         start_command = " ".join(
             [
                 "truss-transfer-cli && text-embeddings-router",
                 f"--port {port}",
+                # assert the max_batch_size is within trt-engine limits
                 f"--max-batch-requests {runtime_max_batch_size}",
+                # assert the max_num_tokens is within trt-engine limits
+                f"--max-batch-tokens {runtime_max_batch_tokens}",
                 # how many sentences can be in a single json payload.
                 # limited default to improve request based autoscaling.
                 f"--max-client-batch-size {BEI_TRTLLM_CLIENT_BATCH_SIZE}",
