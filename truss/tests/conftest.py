@@ -731,7 +731,7 @@ def default_config() -> Dict[str, Any]:
             "cpu": "1",
             "memory": "2Gi",
             "use_gpu": False,
-            "node_count": 1,
+            "node_count": None,
         },
         "secrets": {},
         "system_packages": [],

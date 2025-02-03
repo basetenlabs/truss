@@ -294,6 +294,7 @@ class Resources:
         }
         if self.node_count is not None:
             d["node_count"] = self.node_count
+        return d
 
 
 @dataclass
