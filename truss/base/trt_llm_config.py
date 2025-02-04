@@ -278,9 +278,13 @@ class TRTLLMConfiguration(BaseModel):
     @model_validator(mode="after")
     def after(self: "TRTLLMConfiguration") -> "TRTLLMConfiguration":
         # check if there is an error wrt. runtime.enable_chunked_context
-        if self.runtime.enable_chunked_context and not (
-            self.build.plugin_configuration.use_paged_context_fmha
-            and self.build.plugin_configuration.paged_kv_cache
+        if (
+            self.runtime.enable_chunked_context
+            and (self.build.base_model != TrussTRTLLMModel.ENCODER)
+            and not (
+                self.build.plugin_configuration.use_paged_context_fmha
+                and self.build.plugin_configuration.paged_kv_cache
+            )
         ):
             if ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
                 logger.warning(
