@@ -139,11 +139,11 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     let resolution_map = build_resolution_map(&bptr_manifest)?;
     println!("[INFO] All pointers validated OK.");
 
-    // 4. Check if Baseten FS cache is enabled
+    // 4. Check if b10cache is enabled
     let uses_b10_cache =
         env::var(BASETEN_FS_ENABLED_ENV_VAR).unwrap_or_else(|_| "False".into()) == "True";
     println!(
-        "[INFO] Baseten FS cache enabled: {}",
+        "[INFO] b10cache enabled: {}",
         if uses_b10_cache { "True" } else { "False" }
     );
 
@@ -224,7 +224,7 @@ fn build_resolution_map(
     Ok(out)
 }
 
-/// Attempts to find file in cache (if enabled), symlink it, or else downloads it.
+/// Attempts to find file in b10cache (if enabled), symlink it, or else downloads it.
 /// Fallback to direct download if caching fails.
 async fn download_file_with_cache(
     client: &Client,
@@ -250,13 +250,13 @@ async fn download_file_with_cache(
         }
     }
 
-    // If Baseten FS cache is enabled, try symlinking from the cache
+    // If b10cache is enabled, try symlinking from the cache
     if uses_b10_cache {
         let cache_path = Path::new(CACHE_DIR).join(hash);
         if cache_path.exists() {
-            println!("[INFO] Found {hash} in cache. Attempting to symlink...");
+            println!("[INFO] Found {hash} in b10cache. Attempting to symlink...");
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
-                println!("[DEBUG] Symlink from cache failed: {e}");
+                println!("[DEBUG] Symlink from b10cache failed: {e}");
             } else {
                 println!("[INFO] Symlink successful, skipping download.");
                 // If we succeeded in symlinking, we can stop here
@@ -269,14 +269,14 @@ async fn download_file_with_cache(
     if uses_b10_cache {
         // Attempt to download to the cache, then symlink
         let cache_path = Path::new(CACHE_DIR).join(hash);
-        println!("[INFO] Downloading file to cache path: {:?}", cache_path);
+        println!("[INFO] Downloading file to b10cache path: {:?}", cache_path);
         if let Err(e) = download_to_path(client, url, &cache_path, size).await {
-            println!("[DEBUG] Download to cache failed ({e}). Falling back to direct path.");
+            println!("[DEBUG] Download to b10cache failed ({e}). Falling back to direct path.");
             // fallback
             download_to_path(client, url, &destination, size).await?;
         } else {
             // success in caching => symlink to final dest
-            println!("[INFO] Download to cache successful, creating symlink to final destination.");
+            println!("[INFO] Download to b10cache successful, creating symlink to final destination.");
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
                 println!("[DEBUG] Symlink to data dir failed: {e}");
             }
@@ -284,7 +284,7 @@ async fn download_file_with_cache(
     } else {
         // No caching => direct download
         println!(
-            "[INFO] No caching enabled. Downloading file directly: {:?}",
+            "[INFO] No b10cache enabled. Downloading file directly: {:?}",
             destination
         );
         download_to_path(client, url, &destination, size).await?;
