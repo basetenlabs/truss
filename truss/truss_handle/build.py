@@ -6,7 +6,11 @@ from typing import List, Optional, Union
 
 import yaml
 
-from truss.base.constants import CONFIG_FILE, TEMPLATES_DIR
+from truss.base.constants import (
+    CONFIG_FILE,
+    PYTHON_DX_CUSTOM_TEMPLATE_DIR,
+    TRADITIONAL_CUSTOM_TEMPLATE_DIR,
+)
 from truss.base.truss_config import (
     Build,
     TrussConfig,
@@ -14,7 +18,7 @@ from truss.base.truss_config import (
 )
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.notebook import is_notebook_or_ipython
-from truss.util.path import build_truss_target_directory, copy_tree_path
+from truss.util.path import copy_tree_path
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -24,36 +28,62 @@ if is_notebook_or_ipython():
 
 
 def _populate_target_directory(
-    config: TrussConfig,
-    target_directory_path: Optional[str] = None,
-    template: str = "custom",
-    populate_dirs: bool = True,
+    config: TrussConfig, target_directory: str, python_dx: bool = False
 ) -> Path:
-    target_directory_path_typed = None
-    if target_directory_path is None:
-        target_directory_path_typed = build_truss_target_directory(template)
-    else:
-        target_directory_path_typed = Path(target_directory_path)
-        target_directory_path_typed.mkdir(parents=True, exist_ok=True)
+    target_directory_path = Path(target_directory)
+    target_directory_path.mkdir(parents=True, exist_ok=True)
 
-    if populate_dirs:
+    if not python_dx:
         # Create data dir
-        (target_directory_path_typed / config.data_dir).mkdir()
+        (target_directory_path / config.data_dir).mkdir()
 
         # Create bundled packages dir
         # TODO: Drop by default
-        (target_directory_path_typed / config.bundled_packages_dir).mkdir()
+        (target_directory_path / config.bundled_packages_dir).mkdir()
 
         # Create model module dir
-        model_dir = target_directory_path_typed / config.model_module_dir
-        template_path = TEMPLATES_DIR / template
-        copy_tree_path(template_path / "model", model_dir)
+        model_dir = target_directory_path / config.model_module_dir
+        copy_tree_path(TRADITIONAL_CUSTOM_TEMPLATE_DIR / "model", model_dir)
 
-    # Write config
-    with (target_directory_path_typed / CONFIG_FILE).open("w") as config_file:
-        yaml.dump(config.to_dict(verbose=False), config_file)
+        # Write config
+        with (target_directory_path / CONFIG_FILE).open("w") as config_file:
+            yaml.dump(config.to_dict(verbose=False), config_file)
+    else:
+        copy_tree_path(PYTHON_DX_CUSTOM_TEMPLATE_DIR, target_directory_path)
 
-    return target_directory_path_typed
+        # Hack: We want to place the user provided model name into generated code. Until
+        # this gets more complicated, we rely on a brittle string replace. Eventually, we
+        # can consider moving to jinja templates.
+        model_file_path = target_directory_path / "my_model.py"
+        with open(model_file_path, "r") as f:
+            content = f.read()
+
+        assert config.model_name is not None
+        content = content.replace("{{ MODEL_NAME }}", config.model_name)
+        with open(model_file_path, "w") as f:
+            f.write(content)
+
+    return target_directory_path
+
+
+def init_directory(
+    target_directory: str,
+    build_config: Optional[Build] = None,
+    model_name: Optional[str] = None,
+    python_dx: bool = False,
+) -> Path:
+    config = TrussConfig(
+        model_name=model_name, python_version=map_local_to_supported_python_version()
+    )
+
+    if build_config:
+        config.build = build_config
+
+    target_directory_path = _populate_target_directory(
+        config=config, target_directory=target_directory, python_dx=python_dx
+    )
+
+    return target_directory_path
 
 
 def init(
@@ -74,18 +104,13 @@ def init(
         target_directory: Absolute or relative path of the directory to create
                           Truss in. The directory is created if it doesn't exist.
     """
-    config = TrussConfig(
-        model_name=model_name, python_version=map_local_to_supported_python_version()
+    target_path = init_directory(
+        target_directory=target_directory,
+        build_config=build_config,
+        model_name=model_name,
     )
 
-    if build_config:
-        config.build = build_config
-
-    target_directory_path = _populate_target_directory(
-        config=config, target_directory_path=target_directory, populate_dirs=True
-    )
-
-    scaf = TrussHandle(target_directory_path)
+    scaf = TrussHandle(target_path)
     _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
     return scaf
 
