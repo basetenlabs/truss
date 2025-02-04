@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_ERROR = "Internal Server Error"
 PREDICT_URL = "http://localhost:8090/v1/models/model:predict"
+COMPLETIONS_URL = "http://localhost:8090/v1/completions"
+CHAT_COMPLETIONS_URL = "http://localhost:8090/v1/chat/completions"
 
 
 @pytest.fixture
@@ -1714,3 +1716,42 @@ def test_limit_concurrency_with_sse():
 
         result = make_request(True, timeout=0.55, task_id=4)
         print(f"Final chunks: {result}")
+
+
+@pytest.mark.integration
+def test_custom_openai_endpoints():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            self._predict_count = 0
+            self._completions_count = 0
+
+        async def predict(self, inputs: Dict) -> int:
+            self._predict_count += inputs["increment"]
+            return self._predict_count
+
+        async def completions(self, inputs: Dict) -> int:
+            self._completions_count += inputs["increment"]
+            return self._completions_count
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"increment": 1})
+        assert response.status_code == 200
+        assert response.json() == 1
+
+        response = requests.post(COMPLETIONS_URL, json={"increment": 2})
+        assert response.status_code == 200
+        assert response.json() == 2
+
+        response = requests.post(CHAT_COMPLETIONS_URL, json={"increment": 3})
+        assert response.status_code == 404
