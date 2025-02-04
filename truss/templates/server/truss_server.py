@@ -21,7 +21,7 @@ from model_wrapper import (
     MODEL_BASENAME,
     InputType,
     MethodDescriptor,
-    ModelMethod,
+    MethodName,
     ModelWrapper,
     OutputType,
 )
@@ -158,7 +158,7 @@ class BasetenEndpoints:
     async def _execute_request(
         self,
         model_name: str,
-        method: ModelMethod,
+        method_name: MethodName,
         request: Request,
         body_raw: bytes,
         execution_fn: Callable[
@@ -169,7 +169,7 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         if await request.is_disconnected():
-            msg = f"Client disconnected. Skipping `{method.value}`."
+            msg = f"Client disconnected. Skipping `{method_name}`."
             logging.info(msg)
             raise ClientDisconnect(msg)
 
@@ -180,7 +180,7 @@ class BasetenEndpoints:
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
         with self._tracer.start_as_current_span(
-            f"{method.value}-endpoint", context=trace_ctx
+            f"{method_name}-endpoint", context=trace_ctx
         ) as span:
             inputs: Optional[InputType]
             if model.model_descriptor.skip_input_parsing:
@@ -210,25 +210,23 @@ class BasetenEndpoints:
             model: ModelWrapper, inputs: InputType, request: Request
         ) -> OutputType:
             self._raise_if_not_supported(
-                ModelMethod.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
+                MethodName.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
             )
             return await model.chat_completions(inputs, request)
 
         return await self._execute_request(
             model_name=MODEL_BASENAME,
-            method=ModelMethod.CHAT_COMPLETIONS,
+            method_name=MethodName.CHAT_COMPLETIONS,
             request=request,
             body_raw=body_raw,
             execution_fn=execution_fn,
         )
 
     def _raise_if_not_supported(
-        self, method: ModelMethod, descriptor: Optional[MethodDescriptor]
+        self, method_name: MethodName, descriptor: Optional[MethodDescriptor]
     ):
         if not descriptor:
-            raise HTTPException(
-                status_code=404, detail=f"{method.value} not supported."
-            )
+            raise HTTPException(status_code=404, detail=f"{method_name} not supported.")
 
     async def completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
@@ -237,13 +235,13 @@ class BasetenEndpoints:
             model: ModelWrapper, inputs: InputType, request: Request
         ) -> OutputType:
             self._raise_if_not_supported(
-                ModelMethod.COMPLETIONS, model.model_descriptor.completions
+                MethodName.COMPLETIONS, model.model_descriptor.completions
             )
             return await model.completions(inputs, request)
 
         return await self._execute_request(
             model_name=MODEL_BASENAME,
-            method=ModelMethod.COMPLETIONS,
+            method_name=MethodName.COMPLETIONS,
             request=request,
             body_raw=body_raw,
             execution_fn=execution_fn,
@@ -260,7 +258,7 @@ class BasetenEndpoints:
 
         return await self._execute_request(
             model_name=model_name,
-            method=ModelMethod.PREDICT,
+            method_name=MethodName.PREDICT,
             request=request,
             body_raw=body_raw,
             execution_fn=execution_fn,
