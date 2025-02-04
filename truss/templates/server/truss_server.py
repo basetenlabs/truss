@@ -170,7 +170,7 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         if await request.is_disconnected():
-            msg = f"Client disconnected. Skipping `{method.value}`."
+            msg = f"Client disconnected. Skipping `{method}`."
             logging.info(msg)
             raise ClientDisconnect(msg)
 
@@ -181,7 +181,7 @@ class BasetenEndpoints:
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
         with self._tracer.start_as_current_span(
-            f"{method.value}-endpoint", context=trace_ctx
+            f"{method}-endpoint", context=trace_ctx
         ) as span:
             inputs: Optional[InputType]
             if model.model_descriptor.skip_input_parsing:
@@ -227,9 +227,7 @@ class BasetenEndpoints:
         self, method: ModelMethod, descriptor: Optional[MethodDescriptor]
     ):
         if not descriptor:
-            raise HTTPException(
-                status_code=404, detail=f"{method.value} not supported."
-            )
+            raise HTTPException(status_code=404, detail=f"{method} not supported.")
 
     async def completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)

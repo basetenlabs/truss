@@ -1,3 +1,4 @@
+import enum
 import multiprocessing
 import os
 import sys
@@ -75,3 +76,22 @@ def kill_child_processes(parent_pid: int):
     )
     for process in alive:
         process.kill()
+
+
+# Similar to truss-chains/truss_chains/utils.py::StrEnum, but lowercases
+# the enum value.
+class LowerStrEnum(str, enum.Enum):
+    def __new__(cls, value, *args, **kwargs):
+        if not isinstance(value, str):
+            raise TypeError(
+                f"Values of LowerStrEnum must be strings: Got `{repr(value)}`."
+            )
+        return super().__new__(cls, value, *args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def _generate_next_value_(name, *_) -> str:  # type: ignore[override]
+        if name.upper() != name:
+            raise ValueError(f"Python enum members should be upper case. Got `{name}`.")
+        return name.lower()
