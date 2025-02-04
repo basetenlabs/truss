@@ -24,6 +24,13 @@ TRUSS_BUILD_CONTEXT_DIR = working_dir / "build/context"
 @click.command()
 @click.option("--truss_type", required=True)
 def docker_build_setup(truss_type: str) -> None:
+    """
+    Prepares source and asset files in a build directory (build context), on which a
+    docker build command can be run.
+
+    This is to be run for remote builds on baseten.
+    Local builds use `TrussHandle.build_serving_docker_image`.
+    """
     logging.info("Loading truss")
     tr = truss_handle.TrussHandle(TRUSS_SRC_DIR)
     logging.info("Truss is loaded")
