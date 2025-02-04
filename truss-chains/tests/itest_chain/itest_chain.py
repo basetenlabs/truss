@@ -1,9 +1,12 @@
+import logging
 import math
 
 from user_package import shared_chainlet
 from user_package.nested_package import io_types
 
 import truss_chains as chains
+
+logger = logging.getLogger(__name__)
 
 IMAGE_BASETEN = chains.DockerImage(
     base_image=chains.BasetenImage.PY310,
@@ -103,6 +106,7 @@ class ItestChain(chains.ChainletBase):
         text_to_num: TextToNum = chains.depends(TextToNum),
         context=chains.depends_context(),
     ) -> None:
+        logging.info("User log root during load.")
         self._context = context
         self._data_generator = data_generator
         self._data_splitter = splitter
@@ -117,6 +121,8 @@ class ItestChain(chains.ChainletBase):
         ),
         simple_default_arg: list[str] = ["a", "b"],
     ) -> tuple[int, str, int, shared_chainlet.SplitTextOutput, list[str]]:
+        logging.info("User log root.")
+        logger.info("User log module.")
         data = self._data_generator.run_remote(length)
         text_parts, number, items = await self._data_splitter.run_remote(
             io_types.SplitTextInput(

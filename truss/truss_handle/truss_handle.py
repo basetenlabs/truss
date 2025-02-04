@@ -240,6 +240,7 @@ class TrussHandle:
         network: Optional[str] = None,
         container_name_prefix: Optional[str] = None,
         model_server_stop_retry_override=None,
+        disable_json_logging: bool = False,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -281,6 +282,8 @@ class TrussHandle:
             envs = {}
             if patch_ping_url is not None:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
+            if disable_json_logging:
+                envs["DISABLE_JSON_LOGGING"] = "true"
 
             if container_name_prefix:
                 suffix = str(uuid.uuid4()).split("-")[0]
