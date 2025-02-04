@@ -46,7 +46,10 @@ class _AccessFormatter(logging.Formatter):
         if record.name == "uvicorn.access" and record.args and len(record.args) == 5:
             client_addr, method, raw_path, version, status = record.args
             path_decoded = urllib.parse.unquote(str(raw_path))
-            new_message = f"Incoming {client_addr} - {method} {path_decoded} HTTP/{version} {status}"
+            new_message = (
+                f"Handled request from  {client_addr} - {method} "
+                f"{path_decoded} HTTP/{version} {status}"
+            )
             record.msg = new_message
             record.args = ()
         return super().format(record)
