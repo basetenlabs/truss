@@ -1755,3 +1755,36 @@ def test_custom_openai_endpoints():
 
         response = requests.post(CHAT_COMPLETIONS_URL, json={"increment": 3})
         assert response.status_code == 404
+
+
+@pytest.mark.integration
+def test_streaming_post_process():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, List
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def predict(self, inputs: Dict) -> List[int]:
+            nums: List[int] = inputs["nums"]
+            return nums
+
+        async def postprocess(self, nums: List[int]) -> Generator[int, None, None]:
+            for num in nums:
+                yield num
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": [1, 2, 3, 4]}, stream=True)
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == [1, 2, 3, 4]
