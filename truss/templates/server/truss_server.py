@@ -157,13 +157,11 @@ class BasetenEndpoints:
 
     async def _execute_request(
         self,
-        model_name: str,
+        model: ModelWrapper,
+        method: Callable[[InputType, Request], Awaitable[OutputType]],
         method_name: MethodName,
         request: Request,
         body_raw: bytes,
-        execution_fn: Callable[
-            [ModelWrapper, InputType, Request], Awaitable[OutputType]
-        ],
     ) -> Response:
         """
         Executes a predictive endpoint
@@ -172,8 +170,6 @@ class BasetenEndpoints:
             msg = f"Client disconnected. Skipping `{method_name}`."
             logging.info(msg)
             raise ClientDisconnect(msg)
-
-        model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
         trace_ctx = otel_propagate.extract(request.headers) or None
@@ -190,7 +186,7 @@ class BasetenEndpoints:
                     request, body_raw, model.model_descriptor.truss_schema, span
                 )
             with tracing.section_as_event(span, "model-call"):
-                result: OutputType = await execution_fn(model, inputs, request)
+                result: OutputType = await method(inputs, request)
 
             # In the case that the model returns a Generator object, return a
             # StreamingResponse instead.
@@ -206,20 +202,17 @@ class BasetenEndpoints:
     async def chat_completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        async def execution_fn(
-            model: ModelWrapper, inputs: InputType, request: Request
-        ) -> OutputType:
-            self._raise_if_not_supported(
-                MethodName.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
-            )
-            return await model.chat_completions(inputs, request)
+        model = self._safe_lookup_model(MODEL_BASENAME)
+        self._raise_if_not_supported(
+            MethodName.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
+        )
 
         return await self._execute_request(
-            model_name=MODEL_BASENAME,
+            model=model,
+            method=model.chat_completions,
             method_name=MethodName.CHAT_COMPLETIONS,
             request=request,
             body_raw=body_raw,
-            execution_fn=execution_fn,
         )
 
     def _raise_if_not_supported(
@@ -231,37 +224,30 @@ class BasetenEndpoints:
     async def completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        async def execution_fn(
-            model: ModelWrapper, inputs: InputType, request: Request
-        ) -> OutputType:
-            self._raise_if_not_supported(
-                MethodName.COMPLETIONS, model.model_descriptor.completions
-            )
-            return await model.completions(inputs, request)
+        model = self._safe_lookup_model(MODEL_BASENAME)
+        self._raise_if_not_supported(
+            MethodName.COMPLETIONS, model.model_descriptor.completions
+        )
 
         return await self._execute_request(
-            model_name=MODEL_BASENAME,
+            model=model,
+            method=model.completions,
             method_name=MethodName.COMPLETIONS,
             request=request,
             body_raw=body_raw,
-            execution_fn=execution_fn,
         )
 
     async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        async def execution_fn(
-            model: ModelWrapper, inputs: InputType, request: Request
-        ) -> OutputType:
-            # Calls ModelWrapper which runs: preprocess, predict, postprocess.
-            return await model(inputs, request)
+        model = self._safe_lookup_model(model_name)
 
         return await self._execute_request(
-            model_name=model_name,
+            model=model,
+            method=model,  # We overwrote __call__ on ModelWrapper
             method_name=MethodName.PREDICT,
             request=request,
             body_raw=body_raw,
-            execution_fn=execution_fn,
         )
 
     def _serialize_result(
