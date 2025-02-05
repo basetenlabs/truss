@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
@@ -97,6 +97,11 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
     total_token_limit: int = 500000
 
 
+class TrussAdapterConfiguration(BaseModel):
+    name: str
+    checkpoint_repository: CheckpointRepository
+
+
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel
     max_seq_len: int
@@ -117,6 +122,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     )
     num_builder_gpus: Optional[int] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
+    adapters: Optional[List[TrussAdapterConfiguration]] = None
 
     class Config:
         extra = "forbid"
