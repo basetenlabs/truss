@@ -190,22 +190,17 @@ class MethodDescriptor:
     is_generator: bool
     arg_config: ArgConfig
     method_name: MethodName
-    method_fn: ModelFn
-    # Whether we explicitly handle generators, or defer to normal processing.
-    process_generators: bool
+    method: ModelFn
 
     @classmethod
-    def from_method(
-        cls, method: Any, method_name: MethodName, process_generators
-    ) -> "MethodDescriptor":
+    def from_method(cls, method: Any, method_name: MethodName) -> "MethodDescriptor":
         return cls(
             is_async=cls._is_async(method),
             is_generator=cls._is_generator(method),
             arg_config=ArgConfig.from_signature(inspect.signature(method), method_name),
             method_name=method_name,
             # ArgConfig ensures that the Callable has an appropriate signature.
-            method_fn=cast(ModelFn, method),
-            process_generators=process_generators,
+            method=cast(ModelFn, method),
         )
 
     @classmethod
@@ -258,21 +253,17 @@ class ModelDescriptor:
 
     @classmethod
     def _safe_extract_descriptor(
-        cls, model_cls: Any, method_name: MethodName, process_generators: bool = True
+        cls, model_cls: Any, method_name: MethodName
     ) -> Union[MethodDescriptor, None]:
         if hasattr(model_cls, method_name):
             return MethodDescriptor.from_method(
-                method=getattr(model_cls, method_name),
-                method_name=method_name,
-                process_generators=process_generators,
+                method=getattr(model_cls, method_name), method_name=method_name
             )
         return None
 
     @classmethod
     def from_model(cls, model_cls) -> "ModelDescriptor":
-        preprocess = cls._safe_extract_descriptor(
-            model_cls, MethodName.PREPROCESS, process_generators=False
-        )
+        preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
         predict = cls._safe_extract_descriptor(model_cls, MethodName.PREDICT)
         if predict is None:
             raise errors.ModelDefinitionError(
@@ -285,9 +276,7 @@ class ModelDescriptor:
                 "would be  discarded)."
             )
 
-        postprocess = cls._safe_extract_descriptor(
-            model_cls, MethodName.POSTPROCESS, process_generators=False
-        )
+        postprocess = cls._safe_extract_descriptor(model_cls, MethodName.POSTPROCESS)
         if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
             raise errors.ModelDefinitionError(
                 f"The `{MethodName.POSTPROCESS}` method cannot only have the request "
@@ -701,14 +690,14 @@ class ModelWrapper:
     ) -> OutputType:
         args = ArgConfig.prepare_args(inputs, request, descriptor)
         with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.process_generators and descriptor.is_generator:
+            if descriptor.is_generator:
                 # Even for async generators, don't await here.
-                return descriptor.method_fn(*args)
+                return descriptor.method(*args)
             if descriptor.is_async:
-                return await cast(Awaitable[OutputType], descriptor.method_fn(*args))
-            return await to_thread.run_sync(descriptor.method_fn, *args)
+                return await cast(Awaitable[OutputType], descriptor.method(*args))
+            return await to_thread.run_sync(descriptor.method, *args)
 
-    async def _trace_and_process_model_fn(
+    async def _process_model_fn(
         self,
         inputs: InputType,
         request: starlette.requests.Request,
@@ -745,7 +734,7 @@ class ModelWrapper:
             f"`{MethodName.COMPLETIONS}` must only be called if model has it."
         )
 
-        return await self._trace_and_process_model_fn(inputs, request, descriptor)
+        return await self._process_model_fn(inputs, request, descriptor)
 
     async def chat_completions(
         self, inputs: InputType, request: starlette.requests.Request
@@ -755,7 +744,7 @@ class ModelWrapper:
             f"`{MethodName.CHAT_COMPLETIONS}` must only be called if model has it."
         )
 
-        return await self._trace_and_process_model_fn(inputs, request, descriptor)
+        return await self._process_model_fn(inputs, request, descriptor)
 
     async def __call__(
         self, inputs: Optional[InputType], request: starlette.requests.Request

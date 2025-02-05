@@ -1755,3 +1755,66 @@ def test_custom_openai_endpoints():
 
         response = requests.post(CHAT_COMPLETIONS_URL, json={"increment": 3})
         assert response.status_code == 404
+
+
+@pytest.mark.integration
+def test_postprocess_async_generator_streaming():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, List, Generator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def predict(self, inputs: Dict) -> List[str]:
+            nums: List[int] = inputs["nums"]
+            return nums
+
+        async def postprocess(self, nums: List[str]) -> Generator[str, None, None]:
+            for num in nums:
+                yield num
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]}, stream=True)
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_preprocess_async_generator():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, List, AsyncGenerator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def preprocess(self, inputs: Dict) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, nums: AsyncGenerator[str, None]) -> List[str]:
+            return [num async for num in nums]
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]})
+        assert response.status_code == 200
+        assert response.json() == ["1", "2"]
