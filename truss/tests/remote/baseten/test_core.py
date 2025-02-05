@@ -86,9 +86,12 @@ def test_get_prod_version_from_versions_error():
 @pytest.mark.parametrize("environment", [None, PRODUCTION_ENVIRONMENT_NAME])
 def test_create_truss_service_handles_eligible_environment_values(environment):
     api = MagicMock()
-    return_value = {"id": "id", "version_id": "model_version_id"}
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+    }
     api.create_model_from_truss.return_value = return_value
-    model_id, model_version_id = create_truss_service(
+    version_handle = create_truss_service(
         api,
         "model_name",
         "s3_key",
@@ -100,17 +103,20 @@ def test_create_truss_service_handles_eligible_environment_values(environment):
         deployment_name="deployment_name",
         environment=environment,
     )
-    assert model_id == return_value["id"]
-    assert model_version_id == return_value["version_id"]
+    assert version_handle.id == "model_version_id"
+    assert version_handle.model_id == "model_id"
     api.create_model_from_truss.assert_called_once()
 
 
 @pytest.mark.parametrize("model_id", ["some_model_id", None])
 def test_create_truss_services_handles_is_draft(model_id):
     api = MagicMock()
-    return_value = {"id": "id", "version_id": "model_version_id"}
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+    }
     api.create_development_model_from_truss.return_value = return_value
-    model_id, model_version_id = create_truss_service(
+    version_handle = create_truss_service(
         api,
         "model_name",
         "s3_key",
@@ -121,8 +127,8 @@ def test_create_truss_services_handles_is_draft(model_id):
         model_id=model_id,
         deployment_name="deployment_name",
     )
-    assert model_id == return_value["id"]
-    assert model_version_id == return_value["version_id"]
+    assert version_handle.id == "model_version_id"
+    assert version_handle.model_id == "model_id"
     api.create_development_model_from_truss.assert_called_once()
 
 
@@ -151,9 +157,12 @@ def test_create_truss_services_handles_is_draft(model_id):
 )
 def test_create_truss_service_handles_existing_model(inputs):
     api = MagicMock()
-    return_value = {"id": "model_version_id"}
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+    }
     api.create_model_version_from_truss.return_value = return_value
-    model_id, model_version_id = create_truss_service(
+    version_handle = create_truss_service(
         api,
         "model_name",
         "s3_key",
@@ -163,8 +172,8 @@ def test_create_truss_service_handles_existing_model(inputs):
         **inputs,
     )
 
-    assert model_id == "model_id"
-    assert model_version_id == return_value["id"]
+    assert version_handle.id == "model_version_id"
+    assert version_handle.model_id == "model_id"
     api.create_model_version_from_truss.assert_called_once()
     _, kwargs = api.create_model_version_from_truss.call_args
     for k, v in inputs.items():
@@ -177,12 +186,14 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
     is_draft, allow_truss_download
 ):
     api = MagicMock()
-    return_value = {"id": "id", "version_id": "model_version_id"}
+    return_value = {
+        "id": "model_version_id",
+        "oracle": {"id": "model_id", "hostname": "hostname"},
+    }
     api.create_model_from_truss.return_value = return_value
     api.create_development_model_from_truss.return_value = return_value
 
-    model_id = None
-    model_id, model_version_id = create_truss_service(
+    version_handle = create_truss_service(
         api,
         "model_name",
         "s3_key",
@@ -190,12 +201,12 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
         is_trusted=False,
         preserve_previous_prod_deployment=False,
         is_draft=is_draft,
-        model_id=model_id,
+        model_id=None,
         deployment_name="deployment_name",
         allow_truss_download=allow_truss_download,
     )
-    assert model_id == return_value["id"]
-    assert model_version_id == return_value["version_id"]
+    assert version_handle.id == "model_version_id"
+    assert version_handle.model_id == "model_id"
 
     create_model_mock = (
         api.create_development_model_from_truss

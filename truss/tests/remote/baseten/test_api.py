@@ -40,7 +40,11 @@ def mock_create_model_version_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
-        return_value={"data": {"create_model_version_from_truss": {"id": "12345"}}}
+        return_value={
+            "data": {
+                "create_model_version_from_truss": {"model_version": {"id": "12345"}}
+            }
+        }
     )
     return response
 
@@ -49,7 +53,9 @@ def mock_create_model_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
-        return_value={"data": {"create_model_from_truss": {"id": "12345"}}}
+        return_value={
+            "data": {"create_model_from_truss": {"model_version": {"id": "12345"}}}
+        }
     )
     return response
 
@@ -58,7 +64,9 @@ def mock_create_development_model_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
-        return_value={"data": {"deploy_draft_truss": {"id": "12345"}}}
+        return_value={
+            "data": {"deploy_draft_truss": {"model_version": {"id": "12345"}}}
+        }
     )
     return response
 

@@ -190,14 +190,18 @@ class BasetenApi:
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
                 ) {{
-                    id
-                    hostname
+                    model_version {{
+                        id
+                        oracle {{
+                            hostname
+                        }}
+                    }}
                 }}
             }}
         """
 
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["create_model_version_from_truss"]
+        return resp["data"]["create_model_version_from_truss"]["model_version"]
 
     def create_development_model_from_truss(
         self,
