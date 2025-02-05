@@ -32,7 +32,7 @@ def request_matches_expected_query(request, expected_query):
 def test_get_service_by_version_id():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    version = {"id": "version_id", "oracle": {"id": "model_id"}}
+    version = {"id": "version_id", "oracle": {"id": "model_id", "hostname": "hostname"}}
     model_version_response = {"data": {"model_version": version}}
 
     with requests_mock.Mocker() as m:
@@ -56,9 +56,24 @@ def test_get_service_by_model_name():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
     versions = [
-        {"id": "1", "is_draft": False, "is_primary": False},
-        {"id": "2", "is_draft": False, "is_primary": True},
-        {"id": "3", "is_draft": True, "is_primary": False},
+        {
+            "id": "1",
+            "is_draft": False,
+            "is_primary": False,
+            "oracle": {"hostname": "hostname"},
+        },
+        {
+            "id": "2",
+            "is_draft": False,
+            "is_primary": True,
+            "oracle": {"hostname": "hostname"},
+        },
+        {
+            "id": "3",
+            "is_draft": True,
+            "is_primary": False,
+            "oracle": {"hostname": "hostname"},
+        },
     ]
     model_response = {
         "data": {
@@ -87,7 +102,14 @@ def test_get_service_by_model_name():
 def test_get_service_by_model_name_no_dev_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [{"id": "1", "is_draft": False, "is_primary": True}]
+    versions = [
+        {
+            "id": "1",
+            "is_draft": False,
+            "is_primary": True,
+            "oracle": {"hostname": "hostname"},
+        }
+    ]
     model_response = {
         "data": {
             "model": {"name": "model_name", "id": "model_id", "versions": versions}
@@ -115,7 +137,14 @@ def test_get_service_by_model_name_no_dev_version():
 def test_get_service_by_model_name_no_prod_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [{"id": "1", "is_draft": True, "is_primary": False}]
+    versions = [
+        {
+            "id": "1",
+            "is_draft": True,
+            "is_primary": False,
+            "oracle": {"hostname": "hostname"},
+        }
+    ]
     model_response = {
         "data": {
             "model": {"name": "model_name", "id": "model_id", "versions": versions}
@@ -147,6 +176,7 @@ def test_get_service_by_model_id():
                 "name": "model_name",
                 "id": "model_id",
                 "primary_version": {"id": "version_id"},
+                "hostname": "hostname",
             }
         }
     }
@@ -277,7 +307,10 @@ def test_create_chain_with_no_publish():
                             "deploy_chain_atomic": {
                                 "chain_deployment": {
                                     "id": "new-chain-deployment-id",
-                                    "chain": {"id": "new-chain-id"},
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
                                 }
                             }
                         }
@@ -347,6 +380,7 @@ def test_create_chain_with_no_publish():
                         id
                         chain {{
                             id
+                            hostname
                         }}
                     }}
                 }}
@@ -375,7 +409,10 @@ def test_create_chain_no_existing_chain():
                             "deploy_chain_atomic": {
                                 "chain_deployment": {
                                     "id": "new-chain-deployment-id",
-                                    "chain": {"id": "new-chain-id"},
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
                                 }
                             }
                         }
@@ -443,6 +480,7 @@ def test_create_chain_no_existing_chain():
                         id
                         chain {{
                             id
+                            hostname
                         }}
                     }}
                 }}
@@ -477,7 +515,10 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                             "deploy_chain_atomic": {
                                 "chain_deployment": {
                                     "id": "new-chain-deployment-id",
-                                    "chain": {"id": "new-chain-id"},
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
                                 }
                             }
                         }
@@ -548,6 +589,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                         id
                         chain {{
                             id
+                            hostname
                         }}
                     }}
                 }}
@@ -582,7 +624,10 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                             "deploy_chain_atomic": {
                                 "chain_deployment": {
                                     "id": "new-chain-deployment-id",
-                                    "chain": {"id": "new-chain-id"},
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
                                 }
                             }
                         }
@@ -650,6 +695,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                         id
                         chain {{
                             id
+                            hostname
                         }}
                     }}
                 }}
