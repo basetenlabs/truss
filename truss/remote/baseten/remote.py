@@ -332,12 +332,12 @@ class BasetenRemote(TrussRemote):
             except ApiError:
                 raise RemoteError(f"Model version {model_identifier.value} not found.")
             model_version_id = model_version["model_version"]["id"]
-            invoke_base_url = model_version["model_version"]["invoke_base_url"]
+            hostname = model_version["model_version"]["oracle"]["hostname"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
 
             return service_url_path, ModelVersionHandle(
-                id=model_version_id, model_id=model_id, invoke_base_url=invoke_base_url
+                id=model_version_id, model_id=model_id, hostname=hostname
             )
 
         if isinstance(model_identifier, ModelName):
@@ -346,7 +346,7 @@ class BasetenRemote(TrussRemote):
                 model_versions, published
             )
             model_version_id = model_version["id"]
-            invoke_base_url = model_version["invoke_base_url"]
+            hostname = model_version["oracle"]["hostname"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
             # TODO(helen): consider making this consistent with getting the
@@ -357,7 +357,7 @@ class BasetenRemote(TrussRemote):
                 raise RemoteError(f"Model {model_identifier.value} not found.")
             model_id = model["model"]["id"]
             model_version_id = model["model"]["primary_version"]["id"]
-            invoke_base_url = model["model"]["primary_version"]["invoke_base_url"]
+            hostname = model["model"]["hostname"]
             service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
@@ -367,7 +367,7 @@ class BasetenRemote(TrussRemote):
             )
 
         return service_url_path, ModelVersionHandle(
-            id=model_version_id, model_id=model_id, invoke_base_url=invoke_base_url
+            id=model_version_id, model_id=model_id, hostname=hostname
         )
 
     def get_service(self, **kwargs) -> BasetenService:

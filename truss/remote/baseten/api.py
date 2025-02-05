@@ -152,10 +152,10 @@ class BasetenApi:
                 ) {{
                     model_version {{
                         id
-                        invoke_base_url
                         oracle {{
                             id
                             name
+                            hostname
                         }}
                     }}
                 }}
@@ -191,7 +191,7 @@ class BasetenApi:
                     {f'environment_name: "{environment}"' if environment else ""}
                 ) {{
                     id
-                    invoke_base_url
+                    hostname
                 }}
             }}
         """
@@ -221,10 +221,10 @@ class BasetenApi:
                 ) {{
                     model_version {{
                         id
-                        invoke_base_url
                         oracle {{
                             id
                             name
+                            hostname
                         }}
                     }}
                 }}
@@ -400,8 +400,9 @@ class BasetenApi:
         query_string = f"""
         {{
             model(name: "{model_name}") {{
-                name
                 id
+                name
+                hostname
                 versions{{
                     id
                     semver
@@ -409,7 +410,6 @@ class BasetenApi:
                     truss_signature
                     is_draft
                     is_primary
-                    invoke_base_url
                     current_model_deployment_status {{
                         status
                     }}
@@ -424,15 +424,15 @@ class BasetenApi:
         query_string = f"""
         {{
             model(id: "{model_id}") {{
-                name
                 id
+                name
+                hostname
                 primary_version{{
                     id
                     semver
                     truss_hash
                     truss_signature
                     is_draft
-                    invoke_base_url
                     current_model_deployment_status {{
                         status
                     }}
@@ -451,10 +451,10 @@ class BasetenApi:
                 is_draft
                 truss_hash
                 truss_signature
-                invoke_base_url
                 oracle{{
                     id
                     name
+                    hostname
                 }}
             }}
           }}

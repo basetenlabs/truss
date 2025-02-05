@@ -37,6 +37,20 @@ class URLConfig(enum.Enum):
     CHAIN = Data("chain", "run_remote", "chains")
 
     @staticmethod
+    def invoke_url(
+        hostname: str,  # E.g. https://model-{model_id}.api.baseten.co
+        config: "URLConfig",
+        entity_version_id: str,
+        is_draft,
+    ) -> str:
+        """Get the URL for the predict/run_remote endpoint."""
+
+        if is_draft:
+            return f"{hostname}/development/{config.value.invoke_endpoint}"
+        else:
+            return f"{hostname}/deployment/{entity_version_id}/{config.value.invoke_endpoint}"
+
+    @staticmethod
     def status_page_url(
         app_url: str,  # E.g. https://app.baseten.co/
         config: "URLConfig",
@@ -140,7 +154,14 @@ class BasetenService(TrussService):
 
     @property
     def predict_url(self) -> str:
-        return f"{self._model_version_handle.invoke_base_url}/{URLConfig.MODEL.value.invoke_endpoint}"
+        handle = self._model_version_handle
+
+        return URLConfig.invoke_url(
+            hostname=handle.hostname,
+            config=URLConfig.MODEL,
+            entity_version_id=handle.id,
+            is_draft=self.is_draft,
+        )
 
     @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
     def _fetch_deployment(self) -> Any:

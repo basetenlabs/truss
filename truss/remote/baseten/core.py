@@ -73,7 +73,7 @@ class ChainDeploymentHandleAtomic(NamedTuple):
 class ModelVersionHandle(NamedTuple):
     id: str
     model_id: str
-    invoke_base_url: str
+    hostname: str
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -372,8 +372,8 @@ def create_truss_service(
 
         return ModelVersionHandle(
             id=model_version_json["id"],
-            invoke_base_url=model_version_json["invoke_base_url"],
             model_id=model_version_json["oracle"]["id"],
+            hostname=model_version_json["oracle"]["hostname"],
         )
 
     if model_id is None:
@@ -394,8 +394,8 @@ def create_truss_service(
 
         return ModelVersionHandle(
             id=model_version_json["id"],
-            invoke_base_url=model_version_json["invoke_base_url"],
             model_id=model_version_json["oracle"]["id"],
+            hostname=model_version_json["oracle"]["hostname"],
         )
 
     try:
@@ -423,7 +423,7 @@ def create_truss_service(
     return ModelVersionHandle(
         id=model_version_json["id"],
         model_id=model_id,
-        invoke_base_url=model_version_json["invoke_base_url"],
+        hostname=model_version_json["oracle"]["hostname"],
     )
 
 
