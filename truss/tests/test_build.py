@@ -61,7 +61,7 @@ def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(tm
 
 def test_truss_init_with_python_dx(tmp_path):
     dir_name = str(tmp_path)
-    init_directory(dir_name, model_name="Test Model Name", python_dx=True)
+    init_directory(dir_name, model_name="Test Model Name", python_configuration=True)
 
     generated_truss_dir = code_gen.gen_truss_model_from_source(tmp_path / "my_model.py")
     truss_handle = load(generated_truss_dir)

@@ -27,50 +27,44 @@ if is_notebook_or_ipython():
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
-def _populate_target_directory(
-    config: TrussConfig, target_directory: str, python_dx: bool = False
-) -> Path:
-    target_directory_path = Path(target_directory)
-    target_directory_path.mkdir(parents=True, exist_ok=True)
+def _populate_traditional_target_directory(config: TrussConfig, dir_path: Path):
+    # Create data dir
+    (dir_path / config.data_dir).mkdir()
 
-    if not python_dx:
-        # Create data dir
-        (target_directory_path / config.data_dir).mkdir()
+    # Create bundled packages dir
+    # TODO: Drop by default
+    (dir_path / config.bundled_packages_dir).mkdir()
 
-        # Create bundled packages dir
-        # TODO: Drop by default
-        (target_directory_path / config.bundled_packages_dir).mkdir()
+    # Create model module dir
+    model_dir = dir_path / config.model_module_dir
+    copy_tree_path(TRADITIONAL_CUSTOM_TEMPLATE_DIR / "model", model_dir)
 
-        # Create model module dir
-        model_dir = target_directory_path / config.model_module_dir
-        copy_tree_path(TRADITIONAL_CUSTOM_TEMPLATE_DIR / "model", model_dir)
+    # Write config
+    with (dir_path / CONFIG_FILE).open("w") as config_file:
+        yaml.dump(config.to_dict(verbose=False), config_file)
 
-        # Write config
-        with (target_directory_path / CONFIG_FILE).open("w") as config_file:
-            yaml.dump(config.to_dict(verbose=False), config_file)
-    else:
-        copy_tree_path(PYTHON_DX_CUSTOM_TEMPLATE_DIR, target_directory_path)
 
-        # Hack: We want to place the user provided model name into generated code. Until
-        # this gets more complicated, we rely on a brittle string replace. Eventually, we
-        # can consider moving to jinja templates.
-        model_file_path = target_directory_path / "my_model.py"
-        with open(model_file_path, "r") as f:
-            content = f.read()
+def _populate_python_dx_target_directory(config: TrussConfig, dir_path: Path):
+    copy_tree_path(PYTHON_DX_CUSTOM_TEMPLATE_DIR, dir_path)
 
-        assert config.model_name is not None
-        content = content.replace("{{ MODEL_NAME }}", config.model_name)
-        with open(model_file_path, "w") as f:
-            f.write(content)
+    # Hack: We want to place the user provided model name into generated code. Until
+    # this gets more complicated, we rely on a brittle string replace. Eventually, we
+    # can consider moving to jinja templates.
+    model_file_path = dir_path / "my_model.py"
+    with open(model_file_path, "r") as f:
+        content = f.read()
 
-    return target_directory_path
+    assert config.model_name is not None
+    content = content.replace("{{ MODEL_NAME }}", config.model_name)
+    with open(model_file_path, "w") as f:
+        f.write(content)
 
 
 def init_directory(
     target_directory: str,
     build_config: Optional[Build] = None,
     model_name: Optional[str] = None,
-    python_dx: bool = False,
+    python_configuration: bool = False,
 ) -> Path:
     config = TrussConfig(
         model_name=model_name, python_version=map_local_to_supported_python_version()
@@ -79,9 +73,17 @@ def init_directory(
     if build_config:
         config.build = build_config
 
-    target_directory_path = _populate_target_directory(
-        config=config, target_directory=target_directory, python_dx=python_dx
-    )
+    target_directory_path = Path(target_directory)
+    target_directory_path.mkdir(parents=True, exist_ok=True)
+
+    if not python_configuration:
+        _populate_traditional_target_directory(
+            config=config, dir_path=target_directory_path
+        )
+    else:
+        _populate_python_dx_target_directory(
+            config=config, dir_path=target_directory_path
+        )
 
     return target_directory_path
 
@@ -110,9 +112,9 @@ def init(
         model_name=model_name,
     )
 
-    scaf = TrussHandle(target_path)
-    _update_truss_props(scaf, data_files, requirements_file, bundled_packages)
-    return scaf
+    th = TrussHandle(target_path)
+    _update_truss_props(th, data_files, requirements_file, bundled_packages)
+    return th
 
 
 def load(truss_directory: Union[str, Path]) -> TrussHandle:
