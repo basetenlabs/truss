@@ -3,28 +3,40 @@ from truss.remote.baseten import service
 
 def test_model_invoke_url_prod():
     url = service.URLConfig.invoke_url(
-        "https://model-123.api.baseten.co", service.URLConfig.MODEL, "789", is_draft=False
+        "https://model-123.api.baseten.co",
+        service.URLConfig.MODEL,
+        "789",
+        is_draft=False,
     )
     assert url == "https://model-123.api.baseten.co/deployment/789/predict"
 
 
 def test_model_invoke_url_draft():
     url = service.URLConfig.invoke_url(
-        "https://model-123.api.baseten.co", service.URLConfig.MODEL, "789", is_draft=True
+        "https://model-123.api.baseten.co",
+        service.URLConfig.MODEL,
+        "789",
+        is_draft=True,
     )
     assert url == "https://model-123.api.baseten.co/development/predict"
 
 
 def test_chain_invoke_url_prod():
     url = service.URLConfig.invoke_url(
-        "https://chain-abc.api.baseten.co", service.URLConfig.CHAIN, "666", is_draft=False
+        "https://chain-abc.api.baseten.co",
+        service.URLConfig.CHAIN,
+        "666",
+        is_draft=False,
     )
     assert url == "https://chain-abc.api.baseten.co/deployment/666/run_remote"
 
 
 def test_chain_invoke_url_draft():
     url = service.URLConfig.invoke_url(
-        "https://chain-abc.api.baseten.co", service.URLConfig.CHAIN, "666", is_draft=True
+        "https://chain-abc.api.baseten.co",
+        service.URLConfig.CHAIN,
+        "666",
+        is_draft=True,
     )
     assert url == "https://chain-abc.api.baseten.co/development/run_remote"
 

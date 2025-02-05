@@ -680,9 +680,9 @@ class _Watcher:
         non_draft_chainlets = [
             chainlet.name for chainlet in deployed_chainlets if not chainlet.is_draft
         ]
-        assert not (
-            non_draft_chainlets
-        ), "If the chain is draft, the oracles must be draft."
+        assert not (non_draft_chainlets), (
+            "If the chain is draft, the oracles must be draft."
+        )
 
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
