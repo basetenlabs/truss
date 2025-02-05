@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import yaml
 
@@ -61,41 +61,11 @@ def _populate_python_dx_target_directory(config: TrussConfig, dir_path: Path):
 
 
 def init_directory(
-    target_directory: str,
+    target_directory: Union[str, Path],
     build_config: Optional[Build] = None,
     model_name: Optional[str] = None,
-    python_configuration: bool = False,
+    python_config: bool = False,
 ) -> Path:
-    config = TrussConfig(
-        model_name=model_name, python_version=map_local_to_supported_python_version()
-    )
-
-    if build_config:
-        config.build = build_config
-
-    target_directory_path = Path(target_directory)
-    target_directory_path.mkdir(parents=True, exist_ok=True)
-
-    if not python_configuration:
-        _populate_traditional_target_directory(
-            config=config, dir_path=target_directory_path
-        )
-    else:
-        _populate_python_dx_target_directory(
-            config=config, dir_path=target_directory_path
-        )
-
-    return target_directory_path
-
-
-def init(
-    target_directory: str,
-    data_files: Optional[List[str]] = None,
-    requirements_file: Optional[str] = None,
-    bundled_packages: Optional[List[str]] = None,
-    build_config: Optional[Build] = None,
-    model_name: Optional[str] = None,
-) -> TrussHandle:
     """
     Initialize an empty placeholder Truss. A Truss is a build context designed
     to be built as a container locally or uploaded into a baseten serving
@@ -106,15 +76,26 @@ def init(
         target_directory: Absolute or relative path of the directory to create
                           Truss in. The directory is created if it doesn't exist.
     """
-    target_path = init_directory(
-        target_directory=target_directory,
-        build_config=build_config,
-        model_name=model_name,
+    config = TrussConfig(
+        model_name=model_name, python_version=map_local_to_supported_python_version()
     )
 
-    th = TrussHandle(target_path)
-    _update_truss_props(th, data_files, requirements_file, bundled_packages)
-    return th
+    if build_config:
+        config.build = build_config
+
+    target_directory_path = Path(target_directory)
+    target_directory_path.mkdir(parents=True, exist_ok=True)
+
+    if not python_config:
+        _populate_traditional_target_directory(
+            config=config, dir_path=target_directory_path
+        )
+    else:
+        _populate_python_dx_target_directory(
+            config=config, dir_path=target_directory_path
+        )
+
+    return target_directory_path
 
 
 def load(truss_directory: Union[str, Path]) -> TrussHandle:
@@ -139,21 +120,3 @@ def cleanup() -> None:
             if (not obj.name == "config.yaml") and (obj.is_file()):
                 os.remove(obj)
     return
-
-
-def _update_truss_props(
-    scaf: TrussHandle,
-    data_files: Optional[List[str]] = None,
-    requirements_file: Optional[str] = None,
-    bundled_packages: Optional[List[str]] = None,
-) -> None:
-    if data_files is not None:
-        for data_file in data_files:
-            scaf.add_data(data_file)
-
-    if bundled_packages is not None:
-        for package in bundled_packages:
-            scaf.add_bundled_package(package)
-
-    if requirements_file is not None:
-        scaf.update_requirements_from_file(requirements_file)

@@ -205,14 +205,14 @@ def image():
 )
 @click.option("-n", "--name", type=click.STRING)
 @click.option(
-    "--python-configuration/--no-python-configuration",
+    "--python-config/--no-python-config",
     type=bool,
     default=False,
     help="Uses the code first tooling to build models.",
 )
 @log_level_option
 @error_handling
-def init(target_directory, backend, name, python_configuration) -> None:
+def init(target_directory, backend, name, python_config) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -232,7 +232,7 @@ def init(target_directory, backend, name, python_configuration) -> None:
         target_directory=target_directory,
         build_config=build_config,
         model_name=model_name,
-        python_configuration=python_configuration,
+        python_config=python_config,
     )
     click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
