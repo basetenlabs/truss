@@ -7,7 +7,7 @@ import signal
 import sys
 from http import HTTPStatus
 from pathlib import Path
-from typing import Awaitable, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional, Union
 
 import pydantic
 import uvicorn
@@ -17,14 +17,7 @@ from common.schema import TrussSchema
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import (
-    MODEL_BASENAME,
-    InputType,
-    MethodDescriptor,
-    MethodName,
-    ModelWrapper,
-    OutputType,
-)
+from model_wrapper import MODEL_BASENAME, MethodName, ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
@@ -44,6 +37,9 @@ PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
 TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
+
+if TYPE_CHECKING:
+    from model_wrapper import InputType, MethodDescriptor, OutputType
 
 
 async def parse_body(request: Request) -> bytes:
@@ -123,7 +119,7 @@ class BasetenEndpoints:
         body_raw: bytes,
         truss_schema: Optional[TrussSchema],
         span: trace.Span,
-    ) -> InputType:
+    ) -> "InputType":
         if self.is_binary(request):
             with tracing.section_as_event(span, "binary-deserialize"):
                 inputs = serialization.truss_msgpack_deserialize(body_raw)
@@ -158,7 +154,7 @@ class BasetenEndpoints:
     async def _execute_request(
         self,
         model: ModelWrapper,
-        method: Callable[[InputType, Request], Awaitable[OutputType]],
+        method: Callable[["InputType", Request], Awaitable["OutputType"]],
         method_name: MethodName,
         request: Request,
         body_raw: bytes,
@@ -178,7 +174,7 @@ class BasetenEndpoints:
         with self._tracer.start_as_current_span(
             f"{method_name}-endpoint", context=trace_ctx
         ) as span:
-            inputs: Optional[InputType]
+            inputs: Optional["InputType"]
             if model.model_descriptor.skip_input_parsing:
                 inputs = None
             else:
@@ -186,7 +182,7 @@ class BasetenEndpoints:
                     request, body_raw, model.model_descriptor.truss_schema, span
                 )
             with tracing.section_as_event(span, "model-call"):
-                result: OutputType = await method(inputs, request)
+                result: "OutputType" = await method(inputs, request)
 
             # In the case that the model returns a Generator object, return a
             # StreamingResponse instead.
@@ -216,7 +212,7 @@ class BasetenEndpoints:
         )
 
     def _raise_if_not_supported(
-        self, method_name: MethodName, descriptor: Optional[MethodDescriptor]
+        self, method_name: MethodName, descriptor: Optional["MethodDescriptor"]
     ):
         if not descriptor:
             raise HTTPException(status_code=404, detail=f"{method_name} not supported.")
@@ -251,7 +247,7 @@ class BasetenEndpoints:
         )
 
     def _serialize_result(
-        self, result: OutputType, is_binary: bool, span: trace.Span
+        self, result: "OutputType", is_binary: bool, span: trace.Span
     ) -> Response:
         response_headers = {}
         if is_binary:

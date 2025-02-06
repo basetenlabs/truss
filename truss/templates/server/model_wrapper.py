@@ -205,7 +205,9 @@ class MethodDescriptor:
 
     @classmethod
     def _is_async(cls, method: Any):
-        return inspect.iscoroutinefunction(method) or inspect.isasyncgenfunction(method)
+        # We intentionally do not check inspect.isasyncgenfunction(method) because you cannot
+        # `await` an async generator, you must use `async for` syntax.
+        return inspect.iscoroutinefunction(method)
 
     @classmethod
     def _is_generator(cls, method: Any):
