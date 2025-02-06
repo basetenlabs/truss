@@ -110,7 +110,7 @@ class BasetenService(TrussService):
 
     @property
     def model_version_id(self) -> str:
-        return self._model_version_handle.id
+        return self._model_version_handle.version_id
 
     def predict(self, model_request_body: Dict) -> Any:
         response = self._send_request(
@@ -159,7 +159,7 @@ class BasetenService(TrussService):
         return URLConfig.invoke_url(
             hostname=handle.hostname,
             config=URLConfig.MODEL,
-            entity_version_id=handle.id,
+            entity_version_id=handle.version_id,
             is_draft=self.is_draft,
         )
 

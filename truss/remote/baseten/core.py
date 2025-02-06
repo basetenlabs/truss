@@ -71,7 +71,7 @@ class ChainDeploymentHandleAtomic(NamedTuple):
 
 
 class ModelVersionHandle(NamedTuple):
-    id: str
+    version_id: str
     model_id: str
     hostname: str
 
@@ -371,7 +371,7 @@ def create_truss_service(
         )
 
         return ModelVersionHandle(
-            id=model_version_json["id"],
+            version_id=model_version_json["id"],
             model_id=model_version_json["oracle"]["id"],
             hostname=model_version_json["oracle"]["hostname"],
         )
@@ -393,7 +393,7 @@ def create_truss_service(
         )
 
         return ModelVersionHandle(
-            id=model_version_json["id"],
+            version_id=model_version_json["id"],
             model_id=model_version_json["oracle"]["id"],
             hostname=model_version_json["oracle"]["hostname"],
         )
@@ -421,7 +421,7 @@ def create_truss_service(
         raise e
 
     return ModelVersionHandle(
-        id=model_version_json["id"],
+        version_id=model_version_json["id"],
         model_id=model_id,
         hostname=model_version_json["oracle"]["hostname"],
     )

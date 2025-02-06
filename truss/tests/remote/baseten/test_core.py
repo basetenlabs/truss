@@ -103,7 +103,7 @@ def test_create_truss_service_handles_eligible_environment_values(environment):
         deployment_name="deployment_name",
         environment=environment,
     )
-    assert version_handle.id == "model_version_id"
+    assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
     api.create_model_from_truss.assert_called_once()
 
@@ -127,7 +127,7 @@ def test_create_truss_services_handles_is_draft(model_id):
         model_id=model_id,
         deployment_name="deployment_name",
     )
-    assert version_handle.id == "model_version_id"
+    assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
     api.create_development_model_from_truss.assert_called_once()
 
@@ -172,7 +172,7 @@ def test_create_truss_service_handles_existing_model(inputs):
         **inputs,
     )
 
-    assert version_handle.id == "model_version_id"
+    assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
     api.create_model_version_from_truss.assert_called_once()
     _, kwargs = api.create_model_version_from_truss.call_args
@@ -205,7 +205,7 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
         deployment_name="deployment_name",
         allow_truss_download=allow_truss_download,
     )
-    assert version_handle.id == "model_version_id"
+    assert version_handle.version_id == "model_version_id"
     assert version_handle.model_id == "model_id"
 
     create_model_mock = (

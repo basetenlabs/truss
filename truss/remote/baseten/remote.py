@@ -241,7 +241,7 @@ class BasetenRemote(TrussRemote):
             model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,
             api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_handle.id}",
+            service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
         )
@@ -337,7 +337,7 @@ class BasetenRemote(TrussRemote):
             service_url_path = f"/model_versions/{model_version_id}"
 
             return service_url_path, ModelVersionHandle(
-                id=model_version_id, model_id=model_id, hostname=hostname
+                version_id=model_version_id, model_id=model_id, hostname=hostname
             )
 
         if isinstance(model_identifier, ModelName):
@@ -367,7 +367,7 @@ class BasetenRemote(TrussRemote):
             )
 
         return service_url_path, ModelVersionHandle(
-            id=model_version_id, model_id=model_id, hostname=hostname
+            version_id=model_version_id, model_id=model_id, hostname=hostname
         )
 
     def get_service(self, **kwargs) -> BasetenService:
