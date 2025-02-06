@@ -66,7 +66,7 @@ class BasetenEndpoints:
         self._model = model
         self._tracer = tracer
 
-    def _safe_lookup_model(self, model_name: str) -> ModelWrapper:
+    def _safe_lookup_model(self, model_name: str = MODEL_BASENAME) -> ModelWrapper:
         if model_name != self._model.name:
             raise errors.ModelMissingError(model_name)
         return self._model
@@ -198,7 +198,7 @@ class BasetenEndpoints:
     async def chat_completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        model = self._safe_lookup_model(MODEL_BASENAME)
+        model = self._safe_lookup_model()
         self._raise_if_not_supported(
             MethodName.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
         )
@@ -220,7 +220,7 @@ class BasetenEndpoints:
     async def completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        model = self._safe_lookup_model(MODEL_BASENAME)
+        model = self._safe_lookup_model()
         self._raise_if_not_supported(
             MethodName.COMPLETIONS, model.model_descriptor.completions
         )

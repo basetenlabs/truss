@@ -709,6 +709,7 @@ class ModelWrapper:
         Wraps the execution of any model code other than `predict`.
         """
         fn_span = self._tracer.start_span(f"call-{descriptor.method_name}")
+        # TODO(nikhil): Make it easier to start a section with detached context.
         with tracing.section_as_event(
             fn_span, descriptor.method_name
         ), tracing.detach_context() as detached_ctx:
@@ -756,6 +757,7 @@ class ModelWrapper:
         """
         if self.model_descriptor.preprocess:
             with self._tracer.start_as_current_span("call-pre") as span_pre:
+                # TODO(nikhil): Make it easier to start a section with detached context.
                 with tracing.section_as_event(
                     span_pre, "preprocess"
                 ), tracing.detach_context():
@@ -767,6 +769,7 @@ class ModelWrapper:
         async with deferred_semaphore_and_span(
             self._predict_semaphore, span_predict
         ) as get_defer_fn:
+            # TODO(nikhil): Make it easier to start a section with detached context.
             with tracing.section_as_event(
                 span_predict, "predict"
             ), tracing.detach_context() as detached_ctx:
@@ -831,6 +834,7 @@ class ModelWrapper:
 
         if self.model_descriptor.postprocess:
             with self._tracer.start_as_current_span("call-post") as span_post:
+                # TODO(nikhil): Make it easier to start a section with detached context.
                 with tracing.section_as_event(
                     span_post, "postprocess"
                 ), tracing.detach_context():
