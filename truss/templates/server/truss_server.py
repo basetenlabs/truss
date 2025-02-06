@@ -17,7 +17,7 @@ from common.schema import TrussSchema
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import MODEL_BASENAME, MethodName, ModelWrapper
+from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
@@ -39,7 +39,7 @@ TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 
 if TYPE_CHECKING:
-    from model_wrapper import InputType, MethodDescriptor, OutputType
+    from model_wrapper import InputType, OutputType
 
 
 async def parse_body(request: Request) -> bytes:
@@ -66,33 +66,25 @@ class BasetenEndpoints:
         self._model = model
         self._tracer = tracer
 
-    def _safe_lookup_model(self, model_name: str = MODEL_BASENAME) -> ModelWrapper:
-        if model_name != self._model.name:
-            raise errors.ModelMissingError(model_name)
-        return self._model
-
-    @staticmethod
-    def check_healthy(model: ModelWrapper):
-        if model.load_failed:
+    def check_healthy(self):
+        if self._model.load_failed:
             INFERENCE_SERVER_FAILED_FILE.touch()
             os.kill(os.getpid(), signal.SIGKILL)
 
-        if not model.ready:
-            raise errors.ModelNotReady(model.name)
+        if not self._model.ready:
+            raise errors.ModelNotReady(self._model.name)
 
     async def model_ready(self, model_name: str) -> dict:
-        model: ModelWrapper = self._safe_lookup_model(model_name)
-        is_healthy = await model.is_healthy()
+        is_healthy = await self._model.is_healthy()
         if is_healthy is None:
-            self.check_healthy(model)
+            self.check_healthy()
         elif not is_healthy:
-            raise errors.ModelNotReady(model.name)
+            raise errors.ModelNotReady(self._model.name)
 
         return {}
 
     async def model_loaded(self, model_name: str) -> dict:
-        self.check_healthy(self._safe_lookup_model(model_name))
-
+        self.check_healthy()
         return {}
 
     async def invocations_ready(self) -> Dict[str, Union[str, bool]]:
@@ -101,7 +93,7 @@ class BasetenEndpoints:
         """
         if self._model is None:
             raise errors.ModelMissingError("model")
-        self.check_healthy(self._model)
+        self.check_healthy()
 
         return {}
 
@@ -153,9 +145,7 @@ class BasetenEndpoints:
 
     async def _execute_request(
         self,
-        model: ModelWrapper,
         method: Callable[["InputType", Request], Awaitable["OutputType"]],
-        method_name: MethodName,
         request: Request,
         body_raw: bytes,
     ) -> Response:
@@ -163,23 +153,23 @@ class BasetenEndpoints:
         Executes a predictive endpoint
         """
         if await request.is_disconnected():
-            msg = f"Client disconnected. Skipping `{method_name}`."
+            msg = f"Client disconnected. Skipping `{method.__name__}`."
             logging.info(msg)
             raise ClientDisconnect(msg)
 
-        self.check_healthy(model)
+        self.check_healthy()
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
         with self._tracer.start_as_current_span(
-            f"{method_name}-endpoint", context=trace_ctx
+            f"{method.__name__}-endpoint", context=trace_ctx
         ) as span:
             inputs: Optional["InputType"]
-            if model.model_descriptor.skip_input_parsing:
+            if self._model.skip_input_parsing:
                 inputs = None
             else:
                 inputs = await self._parse_body(
-                    request, body_raw, model.model_descriptor.truss_schema, span
+                    request, body_raw, self._model.truss_schema, span
                 )
             with tracing.section_as_event(span, "model-call"):
                 result: "OutputType" = await method(inputs, request)
@@ -198,52 +188,22 @@ class BasetenEndpoints:
     async def chat_completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        model = self._safe_lookup_model()
-        self._raise_if_not_supported(
-            MethodName.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
-        )
-
         return await self._execute_request(
-            model=model,
-            method=model.chat_completions,
-            method_name=MethodName.CHAT_COMPLETIONS,
-            request=request,
-            body_raw=body_raw,
+            method=self._model.chat_completions, request=request, body_raw=body_raw
         )
-
-    def _raise_if_not_supported(
-        self, method_name: MethodName, descriptor: Optional["MethodDescriptor"]
-    ):
-        if not descriptor:
-            raise HTTPException(status_code=404, detail=f"{method_name} not supported.")
 
     async def completions(
         self, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        model = self._safe_lookup_model()
-        self._raise_if_not_supported(
-            MethodName.COMPLETIONS, model.model_descriptor.completions
-        )
-
         return await self._execute_request(
-            model=model,
-            method=model.completions,
-            method_name=MethodName.COMPLETIONS,
-            request=request,
-            body_raw=body_raw,
+            method=self._model.completions, request=request, body_raw=body_raw
         )
 
     async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
-        model = self._safe_lookup_model(model_name)
-
         return await self._execute_request(
-            model=model,
-            method=model,  # We overwrote __call__ on ModelWrapper
-            method_name=MethodName.PREDICT,
-            request=request,
-            body_raw=body_raw,
+            method=self._model.predict, request=request, body_raw=body_raw
         )
 
     def _serialize_result(
@@ -282,10 +242,9 @@ class BasetenEndpoints:
                 return Response(content=content, headers=response_headers)
 
     async def schema(self, model_name: str) -> Dict:
-        model: ModelWrapper = self._safe_lookup_model(model_name)
-        if model.model_descriptor.truss_schema is None:
+        if self._model.truss_schema is None:
             # If there is not a TrussSchema, we return a 404.
-            if model.ready:
+            if self._model.ready:
                 raise HTTPException(status_code=404, detail="No schema found")
             else:
                 raise HTTPException(
@@ -293,7 +252,7 @@ class BasetenEndpoints:
                     detail="Schema not available, please try again later.",
                 )
         else:
-            return model.model_descriptor.truss_schema.serialize()
+            return self._model.truss_schema.serialize()
 
     @staticmethod
     def is_binary(request: Request):

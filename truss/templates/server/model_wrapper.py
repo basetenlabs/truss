@@ -103,6 +103,7 @@ async def deferred_semaphore_and_span(
 
 
 _ArgsType = Union[
+    Tuple[()],
     Tuple[Any],
     Tuple[Any, starlette.requests.Request],
     Tuple[starlette.requests.Request],
@@ -132,11 +133,9 @@ class ArgConfig(enum.Enum):
     INPUTS_AND_REQUEST = enum.auto()
 
     @classmethod
-    def from_signature(
-        cls, signature: inspect.Signature, method_name: str
-    ) -> "ArgConfig":
+    def from_signature(cls, method: Any, method_name: MethodName) -> "ArgConfig":
+        signature = inspect.signature(method)
         parameters = list(signature.parameters.values())
-
         if len(parameters) == 0:
             return cls.NONE
         elif len(parameters) == 1:
@@ -173,6 +172,8 @@ class ArgConfig(enum.Enum):
         descriptor: "MethodDescriptor",
     ) -> _ArgsType:
         args: _ArgsType
+        if descriptor.arg_config == ArgConfig.NONE:
+            args = ()
         if descriptor.arg_config == ArgConfig.INPUTS_ONLY:
             args = (inputs,)
         elif descriptor.arg_config == ArgConfig.REQUEST_ONLY:
@@ -197,7 +198,7 @@ class MethodDescriptor:
         return cls(
             is_async=cls._is_async(method),
             is_generator=cls._is_generator(method),
-            arg_config=ArgConfig.from_signature(inspect.signature(method), method_name),
+            arg_config=ArgConfig.from_signature(method, method_name),
             method_name=method_name,
             # ArgConfig ensures that the Callable has an appropriate signature.
             method=cast(ModelFn, method),
@@ -234,22 +235,19 @@ class ModelDescriptor:
     @classmethod
     def _gen_truss_schema(
         cls,
-        model_cls: Any,
         predict: MethodDescriptor,
         preprocess: Optional[MethodDescriptor],
         postprocess: Optional[MethodDescriptor],
     ) -> TrussSchema:
         if preprocess:
-            parameters = inspect.signature(model_cls.preprocess).parameters
+            parameters = inspect.signature(preprocess.method).parameters
         else:
-            parameters = inspect.signature(model_cls.predict).parameters
+            parameters = inspect.signature(predict.method).parameters
 
         if postprocess:
-            return_annotation = inspect.signature(
-                model_cls.postprocess
-            ).return_annotation
+            return_annotation = inspect.signature(postprocess.method).return_annotation
         else:
-            return_annotation = inspect.signature(model_cls.predict).return_annotation
+            return_annotation = inspect.signature(predict.method).return_annotation
 
         return TrussSchema.from_signature(parameters, return_annotation)
 
@@ -267,7 +265,7 @@ class ModelDescriptor:
     def from_model(cls, model_cls) -> "ModelDescriptor":
         preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
         predict = cls._safe_extract_descriptor(model_cls, MethodName.PREDICT)
-        if predict is None:
+        if not predict:
             raise errors.ModelDefinitionError(
                 f"Truss model must have a `{MethodName.PREDICT}` method."
             )
@@ -294,11 +292,9 @@ class ModelDescriptor:
             )
 
         truss_schema = cls._gen_truss_schema(
-            model_cls=model_cls,
-            predict=predict,
-            preprocess=preprocess,
-            postprocess=postprocess,
+            predict=predict, preprocess=preprocess, postprocess=postprocess
         )
+
         return cls(
             preprocess=preprocess,
             predict=predict,
@@ -376,6 +372,14 @@ class ModelWrapper:
     @property
     def _model_file_name(self) -> str:
         return self._config["model_class_filename"]
+
+    @property
+    def skip_input_parsing(self) -> bool:
+        return self.model_descriptor.skip_input_parsing
+
+    @property
+    def truss_schema(self) -> Optional[TrussSchema]:
+        return self.model_descriptor.truss_schema
 
     def start_load_thread(self):
         # Don't retry failed loads.
@@ -568,7 +572,7 @@ class ModelWrapper:
         is_healthy: Optional[bool] = None
         if not descriptor or self.load_failed:
             # return early with None if model does not have is_healthy method or load failed
-            return is_healthy
+            return None
         try:
             if descriptor.is_async:
                 is_healthy = await self._model.is_healthy()
@@ -596,7 +600,7 @@ class ModelWrapper:
         )
         return await self._execute_async_model_fn(inputs, request, descriptor)
 
-    async def predict(
+    async def _predict(
         self, inputs: Any, request: starlette.requests.Request
     ) -> Union[OutputType, Any]:
         # The result can be a serializable data structure, byte-generator, a request,
@@ -747,27 +751,33 @@ class ModelWrapper:
                 generator, span, trace_ctx, cleanup_fn=get_cleanup_fn()
             )
 
+    def _must_get_descriptor(
+        self, descriptor: Optional[MethodDescriptor], method_name: MethodName
+    ) -> MethodDescriptor:
+        if not descriptor:
+            raise errors.ModelMethodNotImplemented(
+                f"`{method_name}` must only be called if model has it."
+            )
+
+        return descriptor
+
     async def completions(
         self, inputs: InputType, request: starlette.requests.Request
     ) -> OutputType:
-        descriptor = self.model_descriptor.completions
-        assert descriptor, (
-            f"`{MethodName.COMPLETIONS}` must only be called if model has it."
+        descriptor = self._must_get_descriptor(
+            self.model_descriptor.completions, MethodName.COMPLETIONS
         )
-
-        return await self._process_model_fn(inputs, request, descriptor)
+        return await self._process_model_fn(inputs, request, descriptor=descriptor)
 
     async def chat_completions(
         self, inputs: InputType, request: starlette.requests.Request
     ) -> OutputType:
-        descriptor = self.model_descriptor.chat_completions
-        assert descriptor, (
-            f"`{MethodName.CHAT_COMPLETIONS}` must only be called if model has it."
+        descriptor = self._must_get_descriptor(
+            self.model_descriptor.chat_completions, MethodName.CHAT_COMPLETIONS
         )
+        return await self._process_model_fn(inputs, request, descriptor=descriptor)
 
-        return await self._process_model_fn(inputs, request, descriptor)
-
-    async def __call__(
+    async def predict(
         self, inputs: Optional[InputType], request: starlette.requests.Request
     ) -> OutputType:
         """
@@ -804,7 +814,7 @@ class ModelWrapper:
                 # exactly handle that case we would need to apply `detach_context`
                 # around each `next`-invocation that consumes the generator, which is
                 # prohibitive.
-                predict_result = await self.predict(preprocess_result, request)
+                predict_result = await self._predict(preprocess_result, request)
 
             if inspect.isgenerator(predict_result) or inspect.isasyncgen(
                 predict_result
