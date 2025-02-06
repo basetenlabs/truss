@@ -78,6 +78,17 @@ from truss.truss_handle.truss_handle import TrussHandle
                 "accelerator": "A10G:4",
             },
         ),
+        (
+            {"node_count": 2},
+            Resources(node_count=2),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "node_count": 2,
+            },
+        ),
     ],
 )
 def test_parse_resources(input_dict, expect_resources, output_dict):
@@ -170,7 +181,6 @@ resources:
   accelerator: null
   cpu: '1'
   memory: 2Gi
-  node_count: 1
   use_gpu: false
 secrets: {}
 system_packages: []

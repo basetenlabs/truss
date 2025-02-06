@@ -1,7 +1,7 @@
 import math
 import re
 from pathlib import PurePosixPath
-from typing import Dict, Pattern
+from typing import Any, Dict, Pattern
 
 from truss.base.constants import REGISTRY_BUILD_SECRET_PREFIX
 from truss.base.errors import ValidationError
@@ -121,4 +121,18 @@ def validate_python_executable_path(path: str) -> None:
     if path and not PurePosixPath(path).is_absolute():
         raise ValidationError(
             f"Invalid relative python executable path {path}. Provide an absolute path"
+        )
+
+
+def validate_node_count(node_count: Any) -> None:
+    fieldpath = "resources.node_count"
+    if node_count is None:
+        return None
+    if not isinstance(node_count, int):
+        raise ValidationError(
+            f"{fieldpath} must be a postiive integer. Got {node_count} of type '{type(node_count)}'"
+        )
+    if node_count < 1:
+        raise ValidationError(
+            f"{fieldpath} must be a positive integer. Got {node_count}."
         )
