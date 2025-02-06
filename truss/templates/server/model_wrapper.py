@@ -298,9 +298,9 @@ class ModelWrapper:
         # We need a logger that has all our server JSON logging setup applied in its
         # handlers and where this also hold in the loading thread. Creating a new
         # instance does not carry over the setup into the thread and using unspecified
-        # `getLogger` may return non-compliant loggers if depdencies override the root
+        # `getLogger` may return non-compliant loggers if dependencies override the root
         # logger (c.g. https://github.com/numpy/numpy/issues/24213). We chose to get
-        # the uvicorn logger that is setup in `truss_server`.
+        # the uvicorn logger that is set up in `truss_server`.
         self._logger = logging.getLogger("uvicorn")
         self.name = MODEL_BASENAME
         self._load_lock = Lock()

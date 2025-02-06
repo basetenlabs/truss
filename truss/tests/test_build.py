@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from truss.base.truss_spec import TrussSpec
-from truss.truss_handle.build import init
+from truss.truss_handle.build import init, init_directory, load
+from truss_chains.deployment import code_gen
 
 
 def test_truss_init(tmp_path):
@@ -56,3 +57,13 @@ def test_truss_init_with_data_file_and_requirements_file_and_bundled_packages(tm
     assert spec.requirements == requirements
     assert (spec.bundled_packages_dir / "dep_pkg" / "__init__.py").exists()
     assert (spec.bundled_packages_dir / "dep_pkg" / "file.py").exists()
+
+
+def test_truss_init_with_python_dx(tmp_path):
+    dir_name = str(tmp_path)
+    init_directory(dir_name, model_name="Test Model Name", python_configuration=True)
+
+    generated_truss_dir = code_gen.gen_truss_model_from_source(tmp_path / "my_model.py")
+    truss_handle = load(generated_truss_dir)
+
+    assert truss_handle.spec.config.model_name == "Test Model Name"

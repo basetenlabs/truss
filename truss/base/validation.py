@@ -1,6 +1,6 @@
 import math
 import re
-from pathlib import PosixPath
+from pathlib import PurePosixPath
 from typing import Any, Dict, Pattern
 
 from truss.base.constants import REGISTRY_BUILD_SECRET_PREFIX
@@ -116,9 +116,9 @@ def validate_python_executable_path(path: str) -> None:
     """
     This python executable path determines the python executable
     used to run the inference server - check to see that it is an absolute path.
-    We use PosixPath -- TrussServer always runs on a Posix machine.
+    We use PurePosixPath -- TrussServer always runs on a Posix machine.
     """
-    if path and not PosixPath(path).is_absolute():
+    if path and not PurePosixPath(path).is_absolute():
         raise ValidationError(
             f"Invalid relative python executable path {path}. Provide an absolute path"
         )
