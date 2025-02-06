@@ -1512,7 +1512,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "When using preprocessing, the predict method cannot only have the request argument",
+            "When using `preprocess`, the predict method cannot only have the request argument",
             "Exception while loading model",
         )
 
@@ -1532,7 +1532,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "The postprocessing method cannot only have the request argument",
+            "The `postprocess` method cannot only have the request argument",
             "Exception while loading model",
         )
 
