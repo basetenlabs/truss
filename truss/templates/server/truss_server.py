@@ -7,7 +7,7 @@ import signal
 import sys
 from http import HTTPStatus
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional, Union
 
 import pydantic
 import uvicorn
@@ -17,7 +17,7 @@ from common.schema import TrussSchema
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
-from model_wrapper import InputType, ModelWrapper, OutputType
+from model_wrapper import MODEL_BASENAME, MethodName, ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
@@ -37,6 +37,9 @@ PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 # [IMPORTANT] A lot of things depend on this currently, change with extreme care.
 TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
+
+if TYPE_CHECKING:
+    from model_wrapper import InputType, MethodDescriptor, OutputType
 
 
 async def parse_body(request: Request) -> bytes:
@@ -63,7 +66,7 @@ class BasetenEndpoints:
         self._model = model
         self._tracer = tracer
 
-    def _safe_lookup_model(self, model_name: str) -> ModelWrapper:
+    def _safe_lookup_model(self, model_name: str = MODEL_BASENAME) -> ModelWrapper:
         if model_name != self._model.name:
             raise errors.ModelMissingError(model_name)
         return self._model
@@ -116,7 +119,7 @@ class BasetenEndpoints:
         body_raw: bytes,
         truss_schema: Optional[TrussSchema],
         span: trace.Span,
-    ) -> InputType:
+    ) -> "InputType":
         if self.is_binary(request):
             with tracing.section_as_event(span, "binary-deserialize"):
                 inputs = serialization.truss_msgpack_deserialize(body_raw)
@@ -148,36 +151,38 @@ class BasetenEndpoints:
 
         return inputs
 
-    async def predict(
-        self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
+    async def _execute_request(
+        self,
+        model: ModelWrapper,
+        method: Callable[["InputType", Request], Awaitable["OutputType"]],
+        method_name: MethodName,
+        request: Request,
+        body_raw: bytes,
     ) -> Response:
         """
-        This method calls the user-provided predict method
+        Executes a predictive endpoint
         """
         if await request.is_disconnected():
-            msg = "Client disconnected. Skipping `predict`."
+            msg = f"Client disconnected. Skipping `{method_name}`."
             logging.info(msg)
             raise ClientDisconnect(msg)
-
-        model: ModelWrapper = self._safe_lookup_model(model_name)
 
         self.check_healthy(model)
         trace_ctx = otel_propagate.extract(request.headers) or None
         # This is the top-level span in the truss-server, so we set the context here.
         # Nested spans "inherit" context automatically.
         with self._tracer.start_as_current_span(
-            "predict-endpoint", context=trace_ctx
+            f"{method_name}-endpoint", context=trace_ctx
         ) as span:
-            inputs: Optional[InputType]
+            inputs: Optional["InputType"]
             if model.model_descriptor.skip_input_parsing:
                 inputs = None
             else:
                 inputs = await self._parse_body(
                     request, body_raw, model.model_descriptor.truss_schema, span
                 )
-            # Calls ModelWrapper which runs: preprocess, predict, postprocess.
             with tracing.section_as_event(span, "model-call"):
-                result: OutputType = await model(inputs, request)
+                result: "OutputType" = await method(inputs, request)
 
             # In the case that the model returns a Generator object, return a
             # StreamingResponse instead.
@@ -190,8 +195,59 @@ class BasetenEndpoints:
                 return result
             return self._serialize_result(result, self.is_binary(request), span)
 
+    async def chat_completions(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        model = self._safe_lookup_model()
+        self._raise_if_not_supported(
+            MethodName.CHAT_COMPLETIONS, model.model_descriptor.chat_completions
+        )
+
+        return await self._execute_request(
+            model=model,
+            method=model.chat_completions,
+            method_name=MethodName.CHAT_COMPLETIONS,
+            request=request,
+            body_raw=body_raw,
+        )
+
+    def _raise_if_not_supported(
+        self, method_name: MethodName, descriptor: Optional["MethodDescriptor"]
+    ):
+        if not descriptor:
+            raise HTTPException(status_code=404, detail=f"{method_name} not supported.")
+
+    async def completions(
+        self, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        model = self._safe_lookup_model()
+        self._raise_if_not_supported(
+            MethodName.COMPLETIONS, model.model_descriptor.completions
+        )
+
+        return await self._execute_request(
+            model=model,
+            method=model.completions,
+            method_name=MethodName.COMPLETIONS,
+            request=request,
+            body_raw=body_raw,
+        )
+
+    async def predict(
+        self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
+    ) -> Response:
+        model = self._safe_lookup_model(model_name)
+
+        return await self._execute_request(
+            model=model,
+            method=model,  # We overwrote __call__ on ModelWrapper
+            method_name=MethodName.PREDICT,
+            request=request,
+            body_raw=body_raw,
+        )
+
     def _serialize_result(
-        self, result: OutputType, is_binary: bool, span: trace.Span
+        self, result: "OutputType", is_binary: bool, span: trace.Span
     ) -> Response:
         response_headers = {}
         if is_binary:
@@ -335,6 +391,19 @@ class TrussServer:
                 FastAPIRoute(
                     r"/v1/models/{model_name}:predict_binary",
                     self._endpoints.predict,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                # OpenAI Spec
+                FastAPIRoute(
+                    r"/v1/chat/completions",
+                    self._endpoints.chat_completions,
+                    methods=["POST"],
+                    tags=["V1"],
+                ),
+                FastAPIRoute(
+                    r"/v1/completions",
+                    self._endpoints.completions,
                     methods=["POST"],
                     tags=["V1"],
                 ),
