@@ -14,8 +14,8 @@ class ModelDeployment:
     _baseten_service: service.BasetenService
 
     def __init__(self, service: service.BasetenService):
-        self.model_id = service._model_id
-        self.model_deployment_id = service._model_version_id
+        self.model_id = service.model_id
+        self.model_deployment_id = service.model_version_id
         self._baseten_service = service
 
     def wait_for_active(self, timeout_seconds: int = 600) -> bool:

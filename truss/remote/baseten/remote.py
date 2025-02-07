@@ -22,6 +22,7 @@ from truss.remote.baseten.core import (
     ModelId,
     ModelIdentifier,
     ModelName,
+    ModelVersionHandle,
     ModelVersionId,
     archive_truss,
     create_chain_atomic,
@@ -29,7 +30,7 @@ from truss.remote.baseten.core import (
     exists_model,
     get_dev_version,
     get_dev_version_from_versions,
-    get_model_versions,
+    get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_truss,
@@ -94,13 +95,6 @@ class BasetenRemote(TrussRemote):
                     chainlet["chain"]["id"],
                     chain_deployment_id,
                     chainlet["id"],
-                ),
-                oracle_predict_url=URLConfig.invocation_url(
-                    self._api.rest_api_url,
-                    URLConfig.MODEL,
-                    chainlet["oracle"]["id"],
-                    chainlet["oracle_version"]["id"],
-                    chainlet["oracle_version"]["is_draft"],
                 ),
                 oracle_name=chainlet["oracle"]["name"],
             )
@@ -228,7 +222,7 @@ class BasetenRemote(TrussRemote):
         # many functions. We should consolidate them into a
         # data class with standardized default values so
         # we're not drilling these arguments everywhere.
-        model_id, model_version_id = create_truss_service(
+        model_version_handle = create_truss_service(
             api=self._api,
             model_name=push_data.model_name,
             s3_key=push_data.s3_key,
@@ -244,11 +238,10 @@ class BasetenRemote(TrussRemote):
         )
 
         return BasetenService(
-            model_id=model_id,
-            model_version_id=model_version_id,
+            model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,
             api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
+            service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
         )
@@ -332,23 +325,29 @@ class BasetenRemote(TrussRemote):
     @staticmethod
     def _get_service_url_path_and_model_ids(
         api: BasetenApi, model_identifier: ModelIdentifier, published: bool
-    ) -> Tuple[str, str, str]:
+    ) -> Tuple[str, ModelVersionHandle]:
         if isinstance(model_identifier, ModelVersionId):
             try:
                 model_version = api.get_model_version_by_id(model_identifier.value)
             except ApiError:
                 raise RemoteError(f"Model version {model_identifier.value} not found.")
             model_version_id = model_version["model_version"]["id"]
+            hostname = model_version["model_version"]["oracle"]["hostname"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
-            return service_url_path, model_id, model_version_id
+
+            return service_url_path, ModelVersionHandle(
+                version_id=model_version_id, model_id=model_id, hostname=hostname
+            )
 
         if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions(api, model_identifier)
+            model, model_versions = get_model_and_versions(api, model_identifier)
             model_version = BasetenRemote._get_matching_version(
                 model_versions, published
             )
+            model_id = model["id"]
             model_version_id = model_version["id"]
+            hostname = model["hostname"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
             # TODO(helen): consider making this consistent with getting the
@@ -359,6 +358,7 @@ class BasetenRemote(TrussRemote):
                 raise RemoteError(f"Model {model_identifier.value} not found.")
             model_id = model["model"]["id"]
             model_version_id = model["model"]["primary_version"]["id"]
+            hostname = model["model"]["hostname"]
             service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
@@ -367,7 +367,9 @@ class BasetenRemote(TrussRemote):
                 "--model-deployment or --model options."
             )
 
-        return service_url_path, model_id, model_version_id
+        return service_url_path, ModelVersionHandle(
+            version_id=model_version_id, model_id=model_id, hostname=hostname
+        )
 
     def get_service(self, **kwargs) -> BasetenService:
         try:
@@ -376,15 +378,14 @@ class BasetenRemote(TrussRemote):
             raise ValueError("Baseten Service requires a model_identifier")
 
         published = kwargs.get("published", False)
-        (service_url_path, model_id, model_version_id) = (
+        (service_url_path, model_version_handle) = (
             self._get_service_url_path_and_model_ids(
                 self._api, model_identifier, published
             )
         )
 
         return BasetenService(
-            model_id=model_id,
-            model_version_id=model_version_id,
+            model_version_handle=model_version_handle,
             is_draft=not published,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}{service_url_path}",

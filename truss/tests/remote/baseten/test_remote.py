@@ -34,7 +34,7 @@ def assert_request_matches_expected_query(request, expected_query) -> None:
 def test_get_service_by_version_id():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    version = {"id": "version_id", "oracle": {"id": "model_id"}}
+    version = {"id": "version_id", "oracle": {"id": "model_id", "hostname": "hostname"}}
     model_version_response = {"data": {"model_version": version}}
 
     with requests_mock.Mocker() as m:
@@ -64,7 +64,12 @@ def test_get_service_by_model_name():
     ]
     model_response = {
         "data": {
-            "model": {"name": "model_name", "id": "model_id", "versions": versions}
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
         }
     }
 
@@ -92,7 +97,12 @@ def test_get_service_by_model_name_no_dev_version():
     versions = [{"id": "1", "is_draft": False, "is_primary": True}]
     model_response = {
         "data": {
-            "model": {"name": "model_name", "id": "model_id", "versions": versions}
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
         }
     }
 
@@ -120,7 +130,12 @@ def test_get_service_by_model_name_no_prod_version():
     versions = [{"id": "1", "is_draft": True, "is_primary": False}]
     model_response = {
         "data": {
-            "model": {"name": "model_name", "id": "model_id", "versions": versions}
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
         }
     }
 
@@ -149,6 +164,7 @@ def test_get_service_by_model_id():
                 "name": "model_name",
                 "id": "model_id",
                 "primary_version": {"id": "version_id"},
+                "hostname": "hostname",
             }
         }
     }
@@ -277,10 +293,13 @@ def test_create_chain_with_no_publish():
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
+                                }
                             }
                         }
                     }
@@ -345,10 +364,13 @@ def test_create_chain_with_no_publish():
                     dependencies: []
                     client_version: "{truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                            hostname
+                        }}
+                    }}
                 }}
             }}
         """.strip()
@@ -373,10 +395,13 @@ def test_create_chain_no_existing_chain():
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
+                                }
                             }
                         }
                     }
@@ -439,10 +464,13 @@ def test_create_chain_no_existing_chain():
                     dependencies: []
                     client_version: "{truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                            hostname
+                        }}
+                    }}
                 }}
             }}
         """.strip()
@@ -473,10 +501,13 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
+                                }
                             }
                         }
                     }
@@ -542,10 +573,13 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     dependencies: []
                     client_version: "{truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                            hostname
+                        }}
+                    }}
                 }}
             }}
         """.strip()
@@ -576,10 +610,13 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     "json": {
                         "data": {
                             "deploy_chain_atomic": {
-                                "chain_id": "new-chain-id",
-                                "chain_deployment_id": "new-chain-deployment-id",
-                                "entrypoint_model_id": "new-entrypoint-model-id",
-                                "entrypoint_model_version_id": "new-entrypoint-model-version-id",
+                                "chain_deployment": {
+                                    "id": "new-chain-deployment-id",
+                                    "chain": {
+                                        "id": "new-chain-id",
+                                        "hostname": "hostname",
+                                    },
+                                }
                             }
                         }
                     }
@@ -642,10 +679,13 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     dependencies: []
                     client_version: "{truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                            hostname
+                        }}
+                    }}
                 }}
             }}
         """.strip()

@@ -138,27 +138,32 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
-        mutation {{
-            create_model_from_truss(
-                name: "{model_name}",
-                s3_key: "{s3_key}",
-                config: "{config}",
-                semver_bump: "{semver_bump}",
-                client_version: "{client_version}",
-                is_trusted: {"true" if is_trusted else "false"},
-                allow_truss_download: {"true" if allow_truss_download else "false"},
-                {f'version_name: "{deployment_name}"' if deployment_name else ""}
-                {f"model_origin: {origin.value}" if origin else ""}
-            ) {{
-                id,
-                name,
-                version_id
+            mutation {{
+                create_model_from_truss(
+                    name: "{model_name}"
+                    s3_key: "{s3_key}"
+                    config: "{config}"
+                    semver_bump: "{semver_bump}"
+                    client_version: "{client_version}"
+                    is_trusted: {"true" if is_trusted else "false"}
+                    allow_truss_download: {"true" if allow_truss_download else "false"}
+                    {f'version_name: "{deployment_name}"' if deployment_name else ""}
+                    {f"model_origin: {origin.value}" if origin else ""}
+                ) {{
+                    model_version {{
+                        id
+                        oracle {{
+                            id
+                            name
+                            hostname
+                        }}
+                    }}
+                }}
             }}
-        }}
         """
 
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["create_model_from_truss"]
+        return resp["data"]["create_model_from_truss"]["model_version"]
 
     def create_model_version_from_truss(
         self,
@@ -173,25 +178,30 @@ class BasetenApi:
         environment: Optional[str] = None,
     ):
         query_string = f"""
-        mutation {{
-            create_model_version_from_truss(
-                model_id: "{model_id}"
-                s3_key: "{s3_key}",
-                config: "{config}",
-                semver_bump: "{semver_bump}",
-                client_version: "{client_version}",
-                is_trusted: {"true" if is_trusted else "false"},
-                scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"},
-                {f'name: "{deployment_name}"' if deployment_name else ""}
-                {f'environment_name: "{environment}"' if environment else ""}
-            ) {{
-                id
+            mutation {{
+                create_model_version_from_truss(
+                    model_id: "{model_id}"
+                    s3_key: "{s3_key}"
+                    config: "{config}"
+                    semver_bump: "{semver_bump}"
+                    client_version: "{client_version}"
+                    is_trusted: {"true" if is_trusted else "false"}
+                    scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
+                    {f'name: "{deployment_name}"' if deployment_name else ""}
+                    {f'environment_name: "{environment}"' if environment else ""}
+                ) {{
+                    model_version {{
+                        id
+                        oracle {{
+                            hostname
+                        }}
+                    }}
+                }}
             }}
-        }}
         """
 
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["create_model_version_from_truss"]
+        return resp["data"]["create_model_version_from_truss"]["model_version"]
 
     def create_development_model_from_truss(
         self,
@@ -204,23 +214,29 @@ class BasetenApi:
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
-        mutation {{
-        deploy_draft_truss(name: "{model_name}",
-                    s3_key: "{s3_key}",
-                    config: "{config}",
-                    client_version: "{client_version}",
-                    is_trusted: {"true" if is_trusted else "false"},
-                    allow_truss_download: {"true" if allow_truss_download else "false"},
+            mutation {{
+                deploy_draft_truss(name: "{model_name}"
+                    s3_key: "{s3_key}"
+                    config: "{config}"
+                    client_version: "{client_version}"
+                    is_trusted: {"true" if is_trusted else "false"}
+                    allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
-    ) {{
-            id,
-            name,
-            version_id
-        }}
-        }}
+                ) {{
+                    model_version {{
+                        id
+                        oracle {{
+                            id
+                            name
+                            hostname
+                        }}
+                    }}
+                }}
+            }}
         """
+
         resp = self._post_graphql_query(query_string)
-        return resp["data"]["deploy_draft_truss"]
+        return resp["data"]["deploy_draft_truss"]["model_version"]
 
     def deploy_chain_atomic(
         self,
@@ -251,10 +267,13 @@ class BasetenApi:
                     dependencies: [{dependencies_str}]
                     client_version: "{truss.version()}"
                 ) {{
-                    chain_id
-                    chain_deployment_id
-                    entrypoint_model_id
-                    entrypoint_model_version_id
+                    chain_deployment {{
+                        id
+                        chain {{
+                            id
+                            hostname
+                        }}
+                    }}
                 }}
             }}
         """
@@ -385,9 +404,10 @@ class BasetenApi:
         query_string = f"""
         {{
             model(name: "{model_name}") {{
-                name
                 id
-                versions{{
+                name
+                hostname
+                versions {{
                     id
                     semver
                     truss_hash
@@ -408,8 +428,9 @@ class BasetenApi:
         query_string = f"""
         {{
             model(id: "{model_id}") {{
-                name
                 id
+                name
+                hostname
                 primary_version{{
                     id
                     semver
@@ -437,6 +458,7 @@ class BasetenApi:
                 oracle{{
                     id
                     name
+                    hostname
                 }}
             }}
           }}

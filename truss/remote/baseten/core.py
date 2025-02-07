@@ -64,11 +64,16 @@ class TrussWatchState(NamedTuple):
 
 
 class ChainDeploymentHandleAtomic(NamedTuple):
+    hostname: str
     chain_id: str
     chain_deployment_id: str
     is_draft: bool
-    entrypoint_model_id: str
-    entrypoint_model_version_id: str
+
+
+class ModelVersionHandle(NamedTuple):
+    version_id: str
+    model_id: str
+    hostname: str
 
 
 def get_chain_id_by_name(api: BasetenApi, chain_name: str) -> Optional[str]:
@@ -160,10 +165,9 @@ def create_chain_atomic(
         )
 
     return ChainDeploymentHandleAtomic(
-        chain_id=res["chain_id"],
-        chain_deployment_id=res["chain_deployment_id"],
-        entrypoint_model_id=res["entrypoint_model_id"],
-        entrypoint_model_version_id=res["entrypoint_model_version_id"],
+        chain_deployment_id=res["chain_deployment"]["id"],
+        chain_id=res["chain_deployment"]["chain"]["id"],
+        hostname=res["chain_deployment"]["chain"]["hostname"],
         is_draft=is_draft,
     )
 
@@ -193,9 +197,9 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     return model["model"]["id"]
 
 
-def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:
+def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
     query_result = api.get_model(model_name.value)["model"]
-    return query_result["id"], query_result["versions"]
+    return query_result, query_result["versions"]
 
 
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
@@ -334,7 +338,7 @@ def create_truss_service(
     deployment_name: Optional[str] = None,
     origin: Optional[b10_types.ModelOrigin] = None,
     environment: Optional[str] = None,
-) -> Tuple[str, str]:
+) -> ModelVersionHandle:
     """
     Create a model in the Baseten remote.
 
@@ -352,8 +356,9 @@ def create_truss_service(
             development model.
 
     Returns:
-        A tuple of the model ID and version ID
+        A Model Version handle.
     """
+
     if is_draft:
         model_version_json = api.create_development_model_from_truss(
             model_name,
@@ -365,11 +370,16 @@ def create_truss_service(
             origin=origin,
         )
 
-        return model_version_json["id"], model_version_json["version_id"]
+        return ModelVersionHandle(
+            version_id=model_version_json["id"],
+            model_id=model_version_json["oracle"]["id"],
+            hostname=model_version_json["oracle"]["hostname"],
+        )
 
     if model_id is None:
         if environment and environment != PRODUCTION_ENVIRONMENT_NAME:
             raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
+
         model_version_json = api.create_model_from_truss(
             model_name=model_name,
             s3_key=s3_key,
@@ -381,7 +391,12 @@ def create_truss_service(
             deployment_name=deployment_name,
             origin=origin,
         )
-        return model_version_json["id"], model_version_json["version_id"]
+
+        return ModelVersionHandle(
+            version_id=model_version_json["id"],
+            model_id=model_version_json["oracle"]["id"],
+            hostname=model_version_json["oracle"]["hostname"],
+        )
 
     try:
         model_version_json = api.create_model_version_from_truss(
@@ -404,8 +419,12 @@ def create_truss_service(
                 f'Environment "{environment}" does not exist. You can create environments in the Baseten UI.'
             ) from e
         raise e
-    model_version_id = model_version_json["id"]
-    return model_id, model_version_id
+
+    return ModelVersionHandle(
+        version_id=model_version_json["id"],
+        model_id=model_id,
+        hostname=model_version_json["oracle"]["hostname"],
+    )
 
 
 def validate_truss_config(api: BasetenApi, config: str):
