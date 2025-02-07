@@ -1818,3 +1818,44 @@ def test_preprocess_async_generator():
         response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]})
         assert response.status_code == 200
         assert response.json() == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_openai_client_streaming():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, AsyncGenerator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def chat_completions(self, inputs: Dict) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, inputs: Dict):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(
+            CHAT_COMPLETIONS_URL,
+            json={"nums": ["1", "2"]},
+            stream=True,
+            # Despite requesting json, we should still stream results back.
+            headers={
+                "accept": "application/json",
+                "user-agent": "OpenAI/Python 1.61.0",
+            },
+        )
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]

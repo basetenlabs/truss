@@ -716,18 +716,36 @@ class ModelWrapper:
             result = await self._execute_async_model_fn(inputs, request, descriptor)
 
         if inspect.isgenerator(result) or inspect.isasyncgen(result):
-            if request.headers.get("accept") == "application/json":
-                return await _gather_generator(result)
-            else:
-                return await self._stream_with_background_task(
-                    result,
-                    fn_span,
-                    detached_ctx,
-                    # No semaphores needed for non-predict model functions.
-                    release_and_end=lambda: None,
-                )
+            return await self._handle_generator_response(
+                request, result, fn_span, detached_ctx, release_and_end=lambda: None
+            )
 
         return result
+
+    def _should_gather_generator(self, request: starlette.requests.Request) -> bool:
+        # The OpenAI SDK sends an accept header for JSON even in a streaming context,
+        # but we need to stream results back for client compatibility. Luckily,
+        # we can differentiate by looking at the user agent (e.g. OpenAI/Python 1.61.0)
+        user_agent = request.headers.get("user-agent", "")
+        if "openai" in user_agent.lower():
+            return False
+        # TODO(nikhil): determine if we can safely deprecate this behavior.
+        return request.headers.get("accept") == "application/json"
+
+    async def _handle_generator_response(
+        self,
+        request: starlette.requests.Request,
+        generator: Union[Generator[bytes, None, None], AsyncGenerator[bytes, None]],
+        span: trace.Span,
+        trace_ctx: trace.Context,
+        release_and_end: Callable[[], None],
+    ):
+        if self._should_gather_generator(request):
+            return await _gather_generator(generator)
+        else:
+            return await self._stream_with_background_task(
+                generator, span, trace_ctx, release_and_end
+            )
 
     async def completions(
         self, inputs: InputType, request: starlette.requests.Request
@@ -801,17 +819,13 @@ class ModelWrapper:
                             "the predict method."
                         )
 
-                if request.headers.get("accept") == "application/json":
-                    # In the case of a streaming response, consume stream
-                    # if the http accept header is set, and json is requested.
-                    return await _gather_generator(predict_result)
-                else:
-                    return await self._stream_with_background_task(
-                        predict_result,
-                        span_predict,
-                        detached_ctx,
-                        release_and_end=get_defer_fn(),
-                    )
+                return await self._handle_generator_response(
+                    request,
+                    predict_result,
+                    span_predict,
+                    detached_ctx,
+                    release_and_end=get_defer_fn(),
+                )
 
             if isinstance(predict_result, starlette.responses.Response):
                 if self.model_descriptor.postprocess:
