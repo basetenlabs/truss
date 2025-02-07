@@ -79,26 +79,27 @@ async def deferred_semaphore_and_span(
     Context manager that allows deferring the release of a semaphore and the ending of a
     trace span.
 
-    Yields a function that, when called, releases the semaphore and ends the span.
-    If that function is not called, the resources are cleand up when exiting.
+    Yields a function that, when called, returns another function that releases the
+    semaphore and ends the span. If the yielded function is not called, the
+    resources are cleaned up when exiting.
     """
     await semaphore.acquire()
     trace.use_span(span, end_on_exit=False)
-    released = False
+    deferred = False
 
     def release_and_end() -> None:
-        nonlocal released
-        released = True
         semaphore.release()
         span.end()
 
     def defer() -> Callable[[], None]:
+        nonlocal deferred
+        deferred = True
         return release_and_end
 
     try:
         yield defer
     finally:
-        if not released:
+        if not deferred:
             release_and_end()
 
 
@@ -738,13 +739,13 @@ class ModelWrapper:
         generator: Union[Generator[bytes, None, None], AsyncGenerator[bytes, None]],
         span: trace.Span,
         trace_ctx: trace.Context,
-        cleanup_fn: Callable[[], None] = lambda: None,
+        get_cleanup_fn: Callable[[], Callable[[], None]] = lambda: lambda: None,
     ):
         if self._should_gather_generator(request):
             return await _gather_generator(generator)
         else:
             return await self._stream_with_background_task(
-                generator, span, trace_ctx, cleanup_fn=cleanup_fn
+                generator, span, trace_ctx, cleanup_fn=get_cleanup_fn()
             )
 
     async def completions(
@@ -824,7 +825,7 @@ class ModelWrapper:
                     predict_result,
                     span_predict,
                     detached_ctx,
-                    cleanup_fn=get_defer_fn(),
+                    get_cleanup_fn=get_defer_fn,
                 )
 
             if isinstance(predict_result, starlette.responses.Response):
