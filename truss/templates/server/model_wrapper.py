@@ -724,7 +724,8 @@ class ModelWrapper:
 
     def _should_gather_generator(self, request: starlette.requests.Request) -> bool:
         # The OpenAI SDK sends an accept header for JSON even in a streaming context,
-        # but we need to stream results back for client compatibility.
+        # but we need to stream results back for client compatibility. Luckily,
+        # we can differentiate by looking at the user agent (e.g. OpenAI/Python 1.61.0)
         user_agent = request.headers.get("user-agent", "")
         if "openai" in user_agent.lower():
             return False
