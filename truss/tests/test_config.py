@@ -78,6 +78,17 @@ from truss.truss_handle.truss_handle import TrussHandle
                 "accelerator": "A10G:4",
             },
         ),
+        (
+            {"node_count": 2},
+            Resources(node_count=2),
+            {
+                "cpu": DEFAULT_CPU,
+                "memory": DEFAULT_MEMORY,
+                "use_gpu": False,
+                "accelerator": None,
+                "node_count": 2,
+            },
+        ),
     ],
 )
 def test_parse_resources(input_dict, expect_resources, output_dict):
@@ -94,6 +105,7 @@ def test_parse_resources(input_dict, expect_resources, output_dict):
         ("A10G:4", AcceleratorSpec(Accelerator.A10G, 4)),
         ("A100:8", AcceleratorSpec(Accelerator.A100, 8)),
         ("H100", AcceleratorSpec(Accelerator.H100, 1)),
+        ("H200", AcceleratorSpec(Accelerator.H200, 1)),
         ("H100_40GB", AcceleratorSpec(Accelerator.H100_40GB, 1)),
     ],
 )

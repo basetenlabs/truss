@@ -155,7 +155,30 @@ def intercept_exceptions(
         yield
     # Note that logger.error logs the stacktrace, such that the user can
     # debug this error from the logs.
-    except fastapi.HTTPException:
+    except fastapi.HTTPException as e:
+        # TODO: we try to avoid any dependency of the truss server on chains, but for
+        #  the purpose of getting readable chained-stack traces in the server logs,
+        #  we have to add a special-case here.
+        if "user_stack_trace" in e.detail:
+            try:
+                from truss_chains import definitions
+
+                chains_error = definitions.RemoteErrorDetail.model_validate(e.detail)
+                # The formatted error contains a (potentially chained) stack trace
+                # with all framework code removed, see
+                # truss_chains/remote_chainlet/utils.py::response_raise_errors.
+                logger.error(f"Chainlet raised Exception:\n{chains_error.format()}")
+            except:  # If we cannot import chains or parse the error.
+                logger.error(
+                    "Model raised HTTPException",
+                    exc_info=filter_traceback(model_file_name),
+                )
+                raise
+            # If error was extracted successfully, the customized stack trace is
+            # already printed above, so we raise with a clear traceback.
+            e.__traceback__ = None
+            raise e from None
+
         logger.error(
             "Model raised HTTPException", exc_info=filter_traceback(model_file_name)
         )

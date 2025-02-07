@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.59"
+version = "0.60.0"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -24,6 +24,7 @@ requires-poetry = ">=2.0"
 
 [tool.poetry.scripts]
 truss = "truss.cli.cli:truss_cli"
+truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup"
 
 [tool.poetry.urls]
 "Homepage" = "https://truss.baseten.co"
@@ -165,7 +166,7 @@ numpy = ">=1.23.5"
 opentelemetry-api = ">=1.25.0"
 opentelemetry-exporter-otlp = ">=1.25.0"
 opentelemetry-sdk = ">=1.25.0"
-truss_transfer="0.0.1rc4"
+truss_transfer="0.0.1"
 uvicorn = ">=0.24.0"
 uvloop = ">=0.17.0"
 

@@ -49,7 +49,7 @@ from truss.trt_llm.config_checks import (
     uses_trt_llm_builder,
 )
 from truss.truss_handle.build import cleanup as _cleanup
-from truss.truss_handle.build import init as _init
+from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
@@ -204,9 +204,15 @@ def image():
     type=click.Choice([server.value for server in ModelServer]),
 )
 @click.option("-n", "--name", type=click.STRING)
+@click.option(
+    "--python-config/--no-python-config",
+    type=bool,
+    default=False,
+    help="Uses the code first tooling to build models.",
+)
 @log_level_option
 @error_handling
-def init(target_directory, backend, name) -> None:
+def init(target_directory, backend, name, python_config) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -226,6 +232,7 @@ def init(target_directory, backend, name) -> None:
         target_directory=target_directory,
         build_config=build_config,
         model_name=model_name,
+        python_config=python_config,
     )
     click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
@@ -397,9 +404,22 @@ def watch(target_directory: str, remote: str) -> None:
     console.print(
         f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
     )
-    remote_provider.sync_truss_to_dev_version_by_name(
-        model_name, target_directory, console, error_console
-    )
+
+    if not os.path.isfile(target_directory):
+        remote_provider.sync_truss_to_dev_version_by_name(
+            model_name, target_directory, console, error_console
+        )
+    else:
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import deployment_client
+
+        deployment_client.watch_model(
+            source=Path(target_directory),
+            model_name=model_name,
+            remote_provider=remote_provider,
+            console=console,
+            error_console=error_console,
+        )
 
 
 # Chains Stuff #########################################################################
@@ -613,7 +633,7 @@ def push_chain(
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
-    with framework.import_target(source, entrypoint) as entrypoint_cls:
+    with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
         chain_name = (
             name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
         )
@@ -814,12 +834,12 @@ def init_chain(directory: Optional[Path]) -> None:
 
 def _load_example_chainlet_code() -> str:
     try:
-        from truss_chains import example_chainlet
+        from truss_chains.reference_code import reference_chainlet
     # if the example is faulty, a validation error would be raised
     except Exception as e:
         raise Exception("Failed to load starter code. Please notify support.") from e
 
-    source = Path(example_chainlet.__file__).read_text()
+    source = Path(reference_chainlet.__file__).read_text()
     return source
 
 

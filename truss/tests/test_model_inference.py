@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_ERROR = "Internal Server Error"
 PREDICT_URL = "http://localhost:8090/v1/models/model:predict"
+COMPLETIONS_URL = "http://localhost:8090/v1/completions"
+CHAT_COMPLETIONS_URL = "http://localhost:8090/v1/chat/completions"
 
 
 @pytest.fixture
@@ -102,18 +104,36 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
 @pytest.mark.parametrize(
     "python_version, expected_python_version",
     [
-        ("py37", "py38"),
         ("py38", "py38"),
         ("py39", "py39"),
         ("py310", "py310"),
         ("py311", "py311"),
         ("py312", "py311"),
-        ("py36", "py38"),
     ],
 )
 def test_map_to_supported_python_version(python_version, expected_python_version):
     out_python_version = map_to_supported_python_version(python_version)
     assert out_python_version == expected_python_version
+
+
+def test_not_supported_python_minor_versions():
+    with pytest.raises(
+        ValueError,
+        match="Mapping python version 3.6 to 3.8, "
+        "the lowest version that Truss currently supports.",
+    ):
+        map_to_supported_python_version("py36")
+    with pytest.raises(
+        ValueError,
+        match="Mapping python version 3.7 to 3.8, "
+        "the lowest version that Truss currently supports.",
+    ):
+        map_to_supported_python_version("py37")
+
+
+def test_not_supported_python_major_versions():
+    with pytest.raises(NotImplementedError, match="Only python version 3 is supported"):
+        map_to_supported_python_version("py211")
 
 
 @pytest.mark.integration
@@ -1492,7 +1512,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "When using preprocessing, the predict method cannot only have the request argument",
+            "When using `preprocess`, the predict method cannot only have the request argument",
             "Exception while loading model",
         )
 
@@ -1512,7 +1532,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "The postprocessing method cannot only have the request argument",
+            "The `postprocess` method cannot only have the request argument",
             "Exception while loading model",
         )
 
@@ -1696,3 +1716,146 @@ def test_limit_concurrency_with_sse():
 
         result = make_request(True, timeout=0.55, task_id=4)
         print(f"Final chunks: {result}")
+
+
+@pytest.mark.integration
+def test_custom_openai_endpoints():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            self._predict_count = 0
+            self._completions_count = 0
+
+        async def predict(self, inputs: Dict) -> int:
+            self._predict_count += inputs["increment"]
+            return self._predict_count
+
+        async def completions(self, inputs: Dict) -> int:
+            self._completions_count += inputs["increment"]
+            return self._completions_count
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"increment": 1})
+        assert response.status_code == 200
+        assert response.json() == 1
+
+        response = requests.post(COMPLETIONS_URL, json={"increment": 2})
+        assert response.status_code == 200
+        assert response.json() == 2
+
+        response = requests.post(CHAT_COMPLETIONS_URL, json={"increment": 3})
+        assert response.status_code == 404
+
+
+@pytest.mark.integration
+def test_postprocess_async_generator_streaming():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, List, Generator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def predict(self, inputs: Dict) -> List[str]:
+            nums: List[int] = inputs["nums"]
+            return nums
+
+        async def postprocess(self, nums: List[str]) -> Generator[str, None, None]:
+            for num in nums:
+                yield num
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]}, stream=True)
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_preprocess_async_generator():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, List, AsyncGenerator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def preprocess(self, inputs: Dict) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, nums: AsyncGenerator[str, None]) -> List[str]:
+            return [num async for num in nums]
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]})
+        assert response.status_code == 200
+        assert response.json() == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_openai_client_streaming():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import Dict, AsyncGenerator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def chat_completions(self, inputs: Dict) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, inputs: Dict):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(
+            CHAT_COMPLETIONS_URL,
+            json={"nums": ["1", "2"]},
+            stream=True,
+            # Despite requesting json, we should still stream results back.
+            headers={
+                "accept": "application/json",
+                "user-agent": "OpenAI/Python 1.61.0",
+            },
+        )
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]

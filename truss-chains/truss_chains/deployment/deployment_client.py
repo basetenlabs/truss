@@ -27,6 +27,7 @@ from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
 from truss.remote.baseten import custom_types as b10_types
+from truss.remote.baseten import error as b10_errors
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
@@ -220,11 +221,10 @@ def push(
 class DockerChainletService(b10_service.TrussService):
     """This service is for Chainlets (not for Chains)."""
 
-    def __init__(self, port: int, is_draft: bool, **kwargs):
+    def __init__(self, port: int, **kwargs):
         remote_url = f"http://localhost:{port}"
-        self._port = port
 
-        super().__init__(remote_url, is_draft, **kwargs)
+        super().__init__(remote_url, is_draft=False, **kwargs)
 
     def authenticate(self) -> Dict[str, str]:
         return {}
@@ -244,10 +244,6 @@ class DockerChainletService(b10_service.TrussService):
     @property
     def logs_url(self) -> str:
         raise NotImplementedError()
-
-    @property
-    def port(self) -> int:
-        return self._port
 
     @property
     def predict_url(self) -> str:
@@ -271,6 +267,7 @@ def _push_service_docker(
         wait_for_server_ready=True,
         network="host",
         container_name_prefix=chainlet_display_name,
+        disable_json_logging=True,
     )
 
 
@@ -308,12 +305,13 @@ def _create_docker_chain(
     entrypoint_artifact: b10_types.ChainletArtifact,
     dependency_artifacts: list[b10_types.ChainletArtifact],
 ) -> DockerChainService:
-    chainlet_artifacts = [entrypoint_artifact, *dependency_artifacts]
+    chainlet_artifacts = [*dependency_artifacts, entrypoint_artifact]
     chainlet_to_predict_url: Dict[str, Dict[str, str]] = {}
     chainlet_to_service: Dict[str, DockerChainletService] = {}
     for chainlet_artifact in chainlet_artifacts:
         port = utils.get_free_port()
-        service = DockerChainletService(is_draft=True, port=port)
+        service = DockerChainletService(port)
+
         docker_internal_url = service.predict_url.replace(
             "localhost", "host.docker.internal"
         )
@@ -322,27 +320,16 @@ def _create_docker_chain(
         }
         chainlet_to_service[chainlet_artifact.name] = service
 
-    local_config_handler.LocalConfigHandler.set_dynamic_config(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY, json.dumps(chainlet_to_predict_url)
-    )
+        local_config_handler.LocalConfigHandler.set_dynamic_config(
+            definitions.DYNAMIC_CHAINLET_CONFIG_KEY, json.dumps(chainlet_to_predict_url)
+        )
 
-    # TODO(Tyron): We run the Docker containers in a
-    #   separate for-loop to make sure that the dynamic
-    #   config is populated (the same one gets mounted
-    #   on all the containers). We should look into
-    #   consolidating the logic into a single for-loop.
-    #   One approach might be to use separate config
-    #   paths for each container under the `/tmp` dir.
-    for chainlet_artifact in chainlet_artifacts:
         truss_dir = chainlet_artifact.truss_dir
         logging.info(
             f"Building Chainlet `{chainlet_artifact.display_name}` docker image."
         )
         _push_service_docker(
-            truss_dir,
-            chainlet_artifact.display_name,
-            docker_options,
-            chainlet_to_service[chainlet_artifact.name].port,
+            truss_dir, chainlet_artifact.display_name, docker_options, port
         )
         logging.info(
             f"Pushed Chainlet `{chainlet_artifact.display_name}` as docker container."
@@ -495,6 +482,114 @@ def _create_chains_secret_if_missing(remote_provider: b10_remote.BasetenRemote) 
 # Watch / Live Patching ################################################################
 
 
+def _create_watch_filter(root_dir: pathlib.Path):
+    ignore_patterns = truss_path.load_trussignore_patterns_from_truss_dir(root_dir)
+
+    def watch_filter(_: watchfiles.Change, path: str) -> bool:
+        return not truss_path.is_ignored(pathlib.Path(path), ignore_patterns)
+
+    logging.getLogger("watchfiles.main").disabled = True
+    return ignore_patterns, watch_filter
+
+
+def _handle_intercepted_logs(logs: list[str], console: "rich_console.Console"):
+    if logs:
+        formatted_logs = textwrap.indent("\n".join(logs), " " * 4)
+        console.print(f"Intercepted logs from importing source code:\n{formatted_logs}")
+
+
+def _handle_import_error(
+    exception: Exception,
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+    stack_trace: Optional[str] = None,
+):
+    error_console.print(
+        "Source files were changed, but pre-conditions for "
+        "live patching are not given. Most likely there is a "
+        "syntax error in the source files or names changed. "
+        "Try to fix the issue and save the file. Error:\n"
+        f"{textwrap.indent(str(exception), ' ' * 4)}"
+    )
+    if stack_trace:
+        error_console.print(stack_trace)
+
+    console.print(
+        "The watcher will continue and if you can resolve the "
+        "issue, subsequent patches might succeed.",
+        style="blue",
+    )
+
+
+class _ModelWatcher:
+    _source: pathlib.Path
+    _model_name: str
+    _remote_provider: b10_remote.BasetenRemote
+    _ignore_patterns: list[str]
+    _watch_filter: Callable[[watchfiles.Change, str], bool]
+    _console: "rich_console.Console"
+    _error_console: "rich_console.Console"
+
+    def __init__(
+        self,
+        source: pathlib.Path,
+        model_name: str,
+        remote_provider: b10_remote.BasetenRemote,
+        console: "rich_console.Console",
+        error_console: "rich_console.Console",
+    ) -> None:
+        self._source = source
+        self._model_name = model_name
+        self._remote_provider = remote_provider
+        self._console = console
+        self._error_console = error_console
+        self._ignore_patterns, self._watch_filter = _create_watch_filter(
+            source.absolute().parent
+        )
+
+        dev_version = b10_core.get_dev_version(self._remote_provider.api, model_name)
+        if not dev_version:
+            raise b10_errors.RemoteError(
+                "No development model found. Run `truss push` then try again."
+            )
+
+    def _patch(self) -> None:
+        exception_raised = None
+        with log_utils.LogInterceptor() as log_interceptor, self._console.status(
+            " Live Patching Model.\n", spinner="arrow3"
+        ):
+            try:
+                gen_truss_path = code_gen.gen_truss_model_from_source(self._source)
+                return self._remote_provider.patch(
+                    gen_truss_path,
+                    self._ignore_patterns,
+                    self._console,
+                    self._error_console,
+                )
+            except Exception as e:
+                exception_raised = e
+            finally:
+                logs = log_interceptor.get_logs()
+
+        _handle_intercepted_logs(logs, self._console)
+        if exception_raised:
+            _handle_import_error(exception_raised, self._console, self._error_console)
+
+    def watch(self) -> None:
+        # Perform one initial patch at startup.
+        self._patch()
+        self._console.print("👀 Watching for new changes.", style="blue")
+
+        # TODO(nikhil): Improve detection of directory structure, since right now
+        # we assume a flat structure
+        root_dir = self._source.absolute().parent
+        for _ in watchfiles.watch(
+            root_dir, watch_filter=self._watch_filter, raise_interrupt=False
+        ):
+            self._patch()
+            self._console.print("👀 Watching for new changes.", style="blue")
+
+
 class _Watcher:
     _source: pathlib.Path
     _entrypoint: Optional[str]
@@ -526,7 +621,9 @@ class _Watcher:
         self._remote_provider = cast(
             b10_remote.BasetenRemote, remote_factory.RemoteFactory.create(remote=remote)
         )
-        with framework.import_target(source, entrypoint) as entrypoint_cls:
+        with framework.ChainletImporter.import_target(
+            source, entrypoint
+        ) as entrypoint_cls:
             self._deployed_chain_name = name or entrypoint_cls.__name__
             self._chain_root = _get_chain_root(entrypoint_cls)
             chainlet_names = set(
@@ -573,15 +670,9 @@ class _Watcher:
 
         self._chainlet_data = {c.name: c for c in deployed_chainlets}
         self._assert_chainlet_names_same(chainlet_names)
-        self._ignore_patterns = truss_path.load_trussignore_patterns_from_truss_dir(
+        self._ignore_patterns, self._watch_filter = _create_watch_filter(
             self._chain_root
         )
-
-        def watch_filter(_: watchfiles.Change, path: str) -> bool:
-            return not truss_path.is_ignored(pathlib.Path(path), self._ignore_patterns)
-
-        logging.getLogger("watchfiles.main").disabled = True
-        self._watch_filter = watch_filter
 
     @property
     def _original_chainlet_names(self) -> set[str]:
@@ -630,7 +721,7 @@ class _Watcher:
             # Handle import errors gracefully (e.g. if user saved file, but there
             # are syntax errors, undefined symbols etc.).
             try:
-                with framework.import_target(
+                with framework.ChainletImporter.import_target(
                     self._source, self._entrypoint
                 ) as entrypoint_cls:
                     chainlet_descriptors = _get_ordered_dependencies([entrypoint_cls])
@@ -665,27 +756,13 @@ class _Watcher:
             finally:
                 logs = log_interceptor.get_logs()
 
-        if logs:
-            formatted_logs = textwrap.indent("\n".join(logs), " " * 4)
-            self._console.print(
-                f"Intercepted logs from importing chain source code:\n{formatted_logs}"
-            )
-
+        _handle_intercepted_logs(logs, self._console)
         if exception_raised:
-            self._error_console.print(
-                "Source files were changed, but pre-conditions for "
-                "live patching are not given. Most likely there is a "
-                "syntax in the source files or chainlet names changed. "
-                "Try to fix the issue and save the file. Error:\n"
-                f"{textwrap.indent(str(exception_raised), ' ' * 4)}"
-            )
-            if self._show_stack_trace:
-                self._error_console.print(stack_trace)
-
-            self._console.print(
-                "The watcher will continue and if you can resolve the "
-                "issue, subsequent patches might succeed.",
-                style="blue",
+            _handle_import_error(
+                exception_raised,
+                self._console,
+                self._error_console,
+                stack_trace=stack_trace if self._show_stack_trace else None,
             )
             return
 
@@ -773,5 +850,22 @@ def watch(
         error_console,
         show_stack_trace,
         included_chainlets,
+    )
+    patcher.watch()
+
+
+def watch_model(
+    source: pathlib.Path,
+    model_name: str,
+    remote_provider: b10_remote.TrussRemote,
+    console: "rich_console.Console",
+    error_console: "rich_console.Console",
+):
+    patcher = _ModelWatcher(
+        source=source,
+        model_name=model_name,
+        remote_provider=cast(b10_remote.BasetenRemote, remote_provider),
+        console=console,
+        error_console=error_console,
     )
     patcher.watch()

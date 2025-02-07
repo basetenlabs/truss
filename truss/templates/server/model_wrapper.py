@@ -12,12 +12,11 @@ import sys
 import time
 import weakref
 from contextlib import asynccontextmanager
-from enum import Enum
 from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
 import pydantic
@@ -49,6 +48,17 @@ EXTENSION_FILE_NAME = "extension"
 TRT_LLM_EXTENSION_NAME = "trt_llm"
 POLL_FOR_ENVIRONMENT_UPDATES_TIMEOUT_SECS = 30
 
+
+class MethodName(str, enum.Enum):
+    CHAT_COMPLETIONS = "chat_completions"
+    COMPLETIONS = "completions"
+    IS_HEALTHY = "is_healthy"
+    POSTPROCESS = "postprocess"
+    PREDICT = "predict"
+    PREPROCESS = "preprocess"
+    SETUP_ENVIRONMENT = "setup_environment"
+
+
 InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
 OutputType = Union[
     serialization.JSONType,
@@ -58,6 +68,7 @@ OutputType = Union[
     "starlette.responses.Response",
     pydantic.BaseModel,
 ]
+ModelFn = Callable[..., Union[OutputType, Awaitable[OutputType]]]
 
 
 @asynccontextmanager
@@ -157,9 +168,9 @@ class ArgConfig(enum.Enum):
     @classmethod
     def prepare_args(
         cls,
-        descriptor: "MethodDescriptor",
         inputs: Any,
         request: starlette.requests.Request,
+        descriptor: "MethodDescriptor",
     ) -> _ArgsType:
         args: _ArgsType
         if descriptor.arg_config == ArgConfig.INPUTS_ONLY:
@@ -178,16 +189,29 @@ class MethodDescriptor:
     is_async: bool
     is_generator: bool
     arg_config: ArgConfig
+    method_name: MethodName
+    method: ModelFn
 
     @classmethod
-    def from_method(cls, method, method_name: str) -> "MethodDescriptor":
+    def from_method(cls, method: Any, method_name: MethodName) -> "MethodDescriptor":
         return cls(
-            is_async=inspect.iscoroutinefunction(method)
-            or inspect.isasyncgenfunction(method),
-            is_generator=inspect.isgeneratorfunction(method)
-            or inspect.isasyncgenfunction(method),
+            is_async=cls._is_async(method),
+            is_generator=cls._is_generator(method),
             arg_config=ArgConfig.from_signature(inspect.signature(method), method_name),
+            method_name=method_name,
+            # ArgConfig ensures that the Callable has an appropriate signature.
+            method=cast(ModelFn, method),
         )
+
+    @classmethod
+    def _is_async(cls, method: Any):
+        # We intentionally do not check inspect.isasyncgenfunction(method) because you cannot
+        # `await` an async generator, you must use `async for` syntax.
+        return inspect.iscoroutinefunction(method)
+
+    @classmethod
+    def _is_generator(cls, method: Any):
+        return inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method)
 
 
 @dataclasses.dataclass
@@ -198,6 +222,8 @@ class ModelDescriptor:
     truss_schema: Optional[TrussSchema]
     setup_environment: Optional[MethodDescriptor]
     is_healthy: Optional[MethodDescriptor]
+    completions: Optional[MethodDescriptor]
+    chat_completions: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -206,70 +232,82 @@ class ModelDescriptor:
         )
 
     @classmethod
-    def from_model(cls, model) -> "ModelDescriptor":
-        if hasattr(model, "preprocess"):
-            preprocess = MethodDescriptor.from_method(
-                model.preprocess, method_name="preprocess"
-            )
-        else:
-            preprocess = None
-
-        if hasattr(model, "predict"):
-            predict = MethodDescriptor.from_method(model.predict, method_name="predict")
-            if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
-                raise errors.ModelDefinitionError(
-                    "When using preprocessing, the predict method cannot only have the "
-                    "request argument (because the result of preprocessing would be "
-                    "discarded)."
-                )
-        else:
-            raise errors.ModelDefinitionError(
-                "Truss model must have a `predict` method."
-            )
-
-        if hasattr(model, "postprocess"):
-            postprocess = MethodDescriptor.from_method(model.postprocess, "postprocess")
-            if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
-                raise errors.ModelDefinitionError(
-                    "The postprocessing method cannot only have the request "
-                    "argument (because the result of predict would be discarded)."
-                )
-        else:
-            postprocess = None
-
+    def _gen_truss_schema(
+        cls,
+        model_cls: Any,
+        predict: MethodDescriptor,
+        preprocess: Optional[MethodDescriptor],
+        postprocess: Optional[MethodDescriptor],
+    ) -> TrussSchema:
         if preprocess:
-            parameters = inspect.signature(model.preprocess).parameters
+            parameters = inspect.signature(model_cls.preprocess).parameters
         else:
-            parameters = inspect.signature(model.predict).parameters
+            parameters = inspect.signature(model_cls.predict).parameters
 
         if postprocess:
-            return_annotation = inspect.signature(model.postprocess).return_annotation
+            return_annotation = inspect.signature(
+                model_cls.postprocess
+            ).return_annotation
         else:
-            return_annotation = inspect.signature(model.predict).return_annotation
+            return_annotation = inspect.signature(model_cls.predict).return_annotation
 
-        if hasattr(model, "setup_environment"):
-            setup_environment = MethodDescriptor.from_method(
-                model.setup_environment, "setup_environment"
+        return TrussSchema.from_signature(parameters, return_annotation)
+
+    @classmethod
+    def _safe_extract_descriptor(
+        cls, model_cls: Any, method_name: MethodName
+    ) -> Union[MethodDescriptor, None]:
+        if hasattr(model_cls, method_name):
+            return MethodDescriptor.from_method(
+                method=getattr(model_cls, method_name), method_name=method_name
             )
-        else:
-            setup_environment = None
+        return None
 
-        if hasattr(model, "is_healthy"):
-            is_healthy = MethodDescriptor.from_method(model.is_healthy, "is_healthy")
-            if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
-                raise errors.ModelDefinitionError(
-                    "`is_healthy` must have only one argument: `self`."
-                )
-        else:
-            is_healthy = None
+    @classmethod
+    def from_model(cls, model_cls) -> "ModelDescriptor":
+        preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
+        predict = cls._safe_extract_descriptor(model_cls, MethodName.PREDICT)
+        if predict is None:
+            raise errors.ModelDefinitionError(
+                f"Truss model must have a `{MethodName.PREDICT}` method."
+            )
+        elif preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
+            raise errors.ModelDefinitionError(
+                f"When using `{MethodName.PREPROCESS}`, the {MethodName.PREDICT} method "
+                f"cannot only have the request argument (because the result of `{MethodName.PREPROCESS}` "
+                "would be  discarded)."
+            )
 
+        postprocess = cls._safe_extract_descriptor(model_cls, MethodName.POSTPROCESS)
+        if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
+            raise errors.ModelDefinitionError(
+                f"The `{MethodName.POSTPROCESS}` method cannot only have the request "
+                f"argument (because the result of `{MethodName.PREDICT}` would be discarded)."
+            )
+        setup = cls._safe_extract_descriptor(model_cls, MethodName.SETUP_ENVIRONMENT)
+        completions = cls._safe_extract_descriptor(model_cls, MethodName.COMPLETIONS)
+        chats = cls._safe_extract_descriptor(model_cls, MethodName.CHAT_COMPLETIONS)
+        is_healthy = cls._safe_extract_descriptor(model_cls, MethodName.IS_HEALTHY)
+        if is_healthy and is_healthy.arg_config != ArgConfig.NONE:
+            raise errors.ModelDefinitionError(
+                f"`{MethodName.IS_HEALTHY}` must have only one argument: `self`."
+            )
+
+        truss_schema = cls._gen_truss_schema(
+            model_cls=model_cls,
+            predict=predict,
+            preprocess=preprocess,
+            postprocess=postprocess,
+        )
         return cls(
             preprocess=preprocess,
             predict=predict,
             postprocess=postprocess,
-            truss_schema=TrussSchema.from_signature(parameters, return_annotation),
-            setup_environment=setup_environment,
+            truss_schema=truss_schema,
+            setup_environment=setup,
             is_healthy=is_healthy,
+            completions=completions,
+            chat_completions=chats,
         )
 
 
@@ -284,7 +322,7 @@ class ModelWrapper:
     _poll_for_environment_updates_task: Optional[asyncio.Task]
     _environment: Optional[dict]
 
-    class Status(Enum):
+    class Status(enum.Enum):
         NOT_READY = 0
         LOADING = 1
         READY = 2
@@ -298,9 +336,9 @@ class ModelWrapper:
         # We need a logger that has all our server JSON logging setup applied in its
         # handlers and where this also hold in the loading thread. Creating a new
         # instance does not carry over the setup into the thread and using unspecified
-        # `getLogger` may return non-compliant loggers if depdencies override the root
+        # `getLogger` may return non-compliant loggers if dependencies override the root
         # logger (c.g. https://github.com/numpy/numpy/issues/24213). We chose to get
-        # the uvicorn logger that is setup in `truss_server`.
+        # the uvicorn logger that is set up in `truss_server`.
         self._logger = logging.getLogger("uvicorn")
         self.name = MODEL_BASENAME
         self._load_lock = Lock()
@@ -553,13 +591,10 @@ class ModelWrapper:
         self, inputs: InputType, request: starlette.requests.Request
     ) -> Any:
         descriptor = self.model_descriptor.preprocess
-        assert descriptor, "`preprocess` must only be called if model has it."
-        args = ArgConfig.prepare_args(descriptor, inputs, request)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.is_async:
-                return await self._model.preprocess(*args)
-            else:
-                return await to_thread.run_sync(self._model.preprocess, *args)
+        assert descriptor, (
+            f"`{MethodName.PREPROCESS}` must only be called if model has it."
+        )
+        return await self._execute_async_model_fn(inputs, request, descriptor)
 
     async def predict(
         self, inputs: Any, request: starlette.requests.Request
@@ -568,15 +603,7 @@ class ModelWrapper:
         # or, if `postprocessing` is used, anything. In the last case postprocessing
         # must convert the result to something serializable.
         descriptor = self.model_descriptor.predict
-        args = ArgConfig.prepare_args(descriptor, inputs, request)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.is_generator:
-                # Even for async generators, don't await here.
-                return self._model.predict(*args)
-            if descriptor.is_async:
-                return await self._model.predict(*args)
-            # Offload sync functions to thread, to not block event loop.
-            return await to_thread.run_sync(self._model.predict, *args)
+        return await self._execute_async_model_fn(inputs, request, descriptor)
 
     async def postprocess(
         self, result: Union[InputType, Any], request: starlette.requests.Request
@@ -586,13 +613,10 @@ class ModelWrapper:
         # and postprocess is skipped.
         # The result type can be the same as for predict.
         descriptor = self.model_descriptor.postprocess
-        assert descriptor, "`postprocess` must only be called if model has it."
-        args = ArgConfig.prepare_args(descriptor, result, request)
-        with errors.intercept_exceptions(self._logger, self._model_file_name):
-            if descriptor.is_async:
-                return await self._model.postprocess(*args)
-            # Offload sync functions to thread, to not block event loop.
-            return await to_thread.run_sync(self._model.postprocess, *args)
+        assert descriptor, (
+            f"`{MethodName.POSTPROCESS}` must only be called if model has it."
+        )
+        return await self._execute_async_model_fn(result, request, descriptor)
 
     async def _write_response_to_queue(
         self,
@@ -617,7 +641,7 @@ class ModelWrapper:
         generator: Union[Generator[bytes, None, None], AsyncGenerator[bytes, None]],
         span: trace.Span,
         trace_ctx: trace.Context,
-        release_and_end: Callable[[], None],
+        cleanup_fn: Callable[[], None],
     ) -> AsyncGenerator[bytes, None]:
         # The streaming read timeout is the amount of time in between streamed chunk
         # before a timeout is triggered.
@@ -637,7 +661,7 @@ class ModelWrapper:
             self._write_response_to_queue(response_queue, async_generator, span)
         )
         # Defer the release of the semaphore until the write_response_to_queue task.
-        gen_task.add_done_callback(lambda _: release_and_end())
+        gen_task.add_done_callback(lambda _: cleanup_fn())
 
         # The gap between responses in a stream must be < streaming_read_timeout
         # TODO: this whole buffering might be superfluous and sufficiently done by
@@ -660,6 +684,89 @@ class ModelWrapper:
 
         return _buffered_response_generator()
 
+    async def _execute_async_model_fn(
+        self,
+        inputs: Union[InputType, Any],
+        request: starlette.requests.Request,
+        descriptor: MethodDescriptor,
+    ) -> OutputType:
+        args = ArgConfig.prepare_args(inputs, request, descriptor)
+        with errors.intercept_exceptions(self._logger, self._model_file_name):
+            if descriptor.is_generator:
+                # Even for async generators, don't await here.
+                return descriptor.method(*args)
+            if descriptor.is_async:
+                return await cast(Awaitable[OutputType], descriptor.method(*args))
+            return await to_thread.run_sync(descriptor.method, *args)
+
+    async def _process_model_fn(
+        self,
+        inputs: InputType,
+        request: starlette.requests.Request,
+        descriptor: MethodDescriptor,
+    ) -> OutputType:
+        """
+        Wraps the execution of any model code other than `predict`.
+        """
+        fn_span = self._tracer.start_span(f"call-{descriptor.method_name}")
+        # TODO(nikhil): Make it easier to start a section with detached context.
+        with tracing.section_as_event(
+            fn_span, descriptor.method_name
+        ), tracing.detach_context() as detached_ctx:
+            result = await self._execute_async_model_fn(inputs, request, descriptor)
+
+        if inspect.isgenerator(result) or inspect.isasyncgen(result):
+            return await self._handle_generator_response(
+                request, result, fn_span, detached_ctx
+            )
+
+        return result
+
+    def _should_gather_generator(self, request: starlette.requests.Request) -> bool:
+        # The OpenAI SDK sends an accept header for JSON even in a streaming context,
+        # but we need to stream results back for client compatibility. Luckily,
+        # we can differentiate by looking at the user agent (e.g. OpenAI/Python 1.61.0)
+        user_agent = request.headers.get("user-agent", "")
+        if "openai" in user_agent.lower():
+            return False
+        # TODO(nikhil): determine if we can safely deprecate this behavior.
+        return request.headers.get("accept") == "application/json"
+
+    async def _handle_generator_response(
+        self,
+        request: starlette.requests.Request,
+        generator: Union[Generator[bytes, None, None], AsyncGenerator[bytes, None]],
+        span: trace.Span,
+        trace_ctx: trace.Context,
+        get_cleanup_fn: Callable[[], Callable[[], None]] = lambda: lambda: None,
+    ):
+        if self._should_gather_generator(request):
+            return await _gather_generator(generator)
+        else:
+            return await self._stream_with_background_task(
+                generator, span, trace_ctx, cleanup_fn=get_cleanup_fn()
+            )
+
+    async def completions(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self.model_descriptor.completions
+        assert descriptor, (
+            f"`{MethodName.COMPLETIONS}` must only be called if model has it."
+        )
+
+        return await self._process_model_fn(inputs, request, descriptor)
+
+    async def chat_completions(
+        self, inputs: InputType, request: starlette.requests.Request
+    ) -> OutputType:
+        descriptor = self.model_descriptor.chat_completions
+        assert descriptor, (
+            f"`{MethodName.CHAT_COMPLETIONS}` must only be called if model has it."
+        )
+
+        return await self._process_model_fn(inputs, request, descriptor)
+
     async def __call__(
         self, inputs: Optional[InputType], request: starlette.requests.Request
     ) -> OutputType:
@@ -668,6 +775,7 @@ class ModelWrapper:
         """
         if self.model_descriptor.preprocess:
             with self._tracer.start_as_current_span("call-pre") as span_pre:
+                # TODO(nikhil): Make it easier to start a section with detached context.
                 with tracing.section_as_event(
                     span_pre, "preprocess"
                 ), tracing.detach_context():
@@ -679,6 +787,7 @@ class ModelWrapper:
         async with deferred_semaphore_and_span(
             self._predict_semaphore, span_predict
         ) as get_defer_fn:
+            # TODO(nikhil): Make it easier to start a section with detached context.
             with tracing.section_as_event(
                 span_predict, "predict"
             ), tracing.detach_context() as detached_ctx:
@@ -710,17 +819,13 @@ class ModelWrapper:
                             "the predict method."
                         )
 
-                if request.headers.get("accept") == "application/json":
-                    # In the case of a streaming response, consume stream
-                    # if the http accept header is set, and json is requested.
-                    return await _gather_generator(predict_result)
-                else:
-                    return await self._stream_with_background_task(
-                        predict_result,
-                        span_predict,
-                        detached_ctx,
-                        release_and_end=get_defer_fn(),
-                    )
+                return await self._handle_generator_response(
+                    request,
+                    predict_result,
+                    span_predict,
+                    detached_ctx,
+                    get_cleanup_fn=get_defer_fn,
+                )
 
             if isinstance(predict_result, starlette.responses.Response):
                 if self.model_descriptor.postprocess:
@@ -743,6 +848,7 @@ class ModelWrapper:
 
         if self.model_descriptor.postprocess:
             with self._tracer.start_as_current_span("call-post") as span_post:
+                # TODO(nikhil): Make it easier to start a section with detached context.
                 with tracing.section_as_event(
                     span_post, "postprocess"
                 ), tracing.detach_context():

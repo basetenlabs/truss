@@ -249,7 +249,7 @@ class BasetenApi:
                     is_draft: {str(is_draft).lower()}
                     entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
-                    client_version: "truss=={truss.version()}"
+                    client_version: "{truss.version()}"
                 ) {{
                     chain_id
                     chain_deployment_id
