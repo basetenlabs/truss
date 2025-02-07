@@ -27,6 +27,7 @@ from common import errors, tracing
 from common.patches import apply_patches
 from common.retry import retry
 from common.schema import TrussSchema
+from fastapi import WebSocket
 from opentelemetry import trace
 from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolver
@@ -57,6 +58,7 @@ class MethodName(str, enum.Enum):
     PREDICT = "predict"
     PREPROCESS = "preprocess"
     SETUP_ENVIRONMENT = "setup_environment"
+    WEBSOCKET = "websocket"
 
 
 InputType = Union[serialization.JSONType, serialization.MsgPackType, pydantic.BaseModel]
@@ -225,6 +227,7 @@ class ModelDescriptor:
     is_healthy: Optional[MethodDescriptor]
     completions: Optional[MethodDescriptor]
     chat_completions: Optional[MethodDescriptor]
+    websocket: Optional[MethodDescriptor]
 
     @cached_property
     def skip_input_parsing(self) -> bool:
@@ -291,6 +294,12 @@ class ModelDescriptor:
                 f"`{MethodName.IS_HEALTHY}` must have only one argument: `self`."
             )
 
+        websocket = cls._safe_extract_descriptor(model_cls, MethodName.WEBSOCKET)
+        if websocket and websocket.arg_config != ArgConfig.INPUTS_ONLY:
+            raise errors.ModelDefinitionError(
+                f"`{MethodName.WEBSOCKET}` must have only one argument: `websocket`."
+            )
+
         truss_schema = cls._gen_truss_schema(
             predict=predict, preprocess=preprocess, postprocess=postprocess
         )
@@ -304,6 +313,7 @@ class ModelDescriptor:
             is_healthy=is_healthy,
             completions=completions,
             chat_completions=chats,
+            websocket=websocket,
         )
 
 
@@ -515,7 +525,7 @@ class ModelWrapper:
             self._model.setup_environment(environment_json)
             self._environment = environment_json
 
-    async def setup_environment(self, environment: Optional[dict]):
+    async def setup_environment(self, environment: Optional[dict]) -> None:
         descriptor = self.model_descriptor.setup_environment
         if not descriptor:
             return
@@ -523,9 +533,9 @@ class ModelWrapper:
             f"Executing model.setup_environment with environment: {environment}"
         )
         if descriptor.is_async:
-            return await self._model.setup_environment(environment)
+            await self._model.setup_environment(environment)
         else:
-            return await to_thread.run_sync(self._model.setup_environment, environment)
+            await to_thread.run_sync(self._model.setup_environment, environment)
 
     async def poll_for_environment_updates(self) -> None:
         last_modified_time = None
@@ -776,6 +786,20 @@ class ModelWrapper:
             self.model_descriptor.chat_completions, MethodName.CHAT_COMPLETIONS
         )
         return await self._execute_model_endpoint(inputs, request, descriptor)
+
+    async def websocket(self, ws: WebSocket) -> None:
+        # FastAPI automatically completes the upgrade request for websockets, so we can't
+        # return a helpful HTTP error to the client. Sending an error message before we
+        # explicitly close the connection is the better option.
+        descriptor = self.model_descriptor.websocket
+        if not descriptor:
+            await ws.send_text(f"{MethodName.WEBSOCKET} not implemented.")
+            await ws.close(code=1003)  # 1003 = Unsupported
+            return
+
+        if descriptor.is_async:
+            await self._model.websocket(ws)
+        await to_thread.run_sync(self._model.websocket, ws)
 
     async def predict(
         self, inputs: Optional[InputType], request: starlette.requests.Request

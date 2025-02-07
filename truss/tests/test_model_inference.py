@@ -6,6 +6,7 @@ import inspect
 import json
 import logging
 import pathlib
+import re
 import sys
 import tempfile
 import textwrap
@@ -19,6 +20,7 @@ import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
 import pytest
 import requests
+import websockets
 from opentelemetry import context, trace
 from python_on_whales import Container
 from requests.exceptions import RequestException
@@ -35,6 +37,7 @@ DEFAULT_LOG_ERROR = "Internal Server Error"
 PREDICT_URL = "http://localhost:8090/v1/models/model:predict"
 COMPLETIONS_URL = "http://localhost:8090/v1/completions"
 CHAT_COMPLETIONS_URL = "http://localhost:8090/v1/chat/completions"
+WEBSOCKETS_URL = "ws://localhost:8090/v1/websocket"
 
 
 @pytest.fixture
@@ -1859,3 +1862,67 @@ def test_openai_client_streaming():
         assert [
             byte_string.decode() for byte_string in list(response.iter_content())
         ] == ["1", "2"]
+
+
+@pytest.mark.anyio
+@pytest.mark.integration
+async def test_websocket_endpoint():
+    model = """
+    import fastapi
+    from typing import Dict, AsyncGenerator
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def websocket(self, websocket: fastapi.WebSocket):
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    await websocket.send_text(text + " pong")
+            except WebSocketDisconnect:
+                pass
+
+        async def predict(self, inputs: Dict):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        async with websockets.connect(WEBSOCKETS_URL) as websocket:
+            # Send "hello" and verify response
+            await websocket.send("hello")
+            response = await websocket.recv()
+            assert response == "hello pong"
+
+            # Send "world" and verify response
+            await websocket.send("world")
+            response = await websocket.recv()
+            assert response == "world pong"
+
+
+@pytest.mark.anyio
+@pytest.mark.integration
+async def test_nonexistent_websocket_endpoint():
+    model = """
+    from typing import Dict
+    class Model:
+        def __init__(self):
+            pass
+
+        def load(self):
+            pass
+
+        async def predict(self, inputs: Dict):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        try:
+            async with websockets.connect(WEBSOCKETS_URL) as ws:
+                response = await ws.recv()
+                assert re.search(r"not implemented", response, re.IGNORECASE)
+        except websockets.exceptions.ConnectionClosed as e:
+            assert e.code == 1003

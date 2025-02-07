@@ -14,9 +14,17 @@ import uvicorn
 import yaml
 from common import errors, tracing
 from common.schema import TrussSchema
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from fastapi.routing import APIRoute as FastAPIRoute
+from fastapi.routing import APIWebSocketRoute as FastAPIWebSocketRoute
 from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
@@ -199,6 +207,25 @@ class BasetenEndpoints:
             method=self._model.completions, request=request, body_raw=body_raw
         )
 
+    async def websocket(self, ws: WebSocket):
+        self.check_healthy()
+        trace_ctx = otel_propagate.extract(ws.headers) or None
+        # We don't go through the typical execute_request path, since we don't need
+        # to parse request body or attempt to serialize results.
+        with self._tracer.start_as_current_span("websocket", context=trace_ctx):
+            try:
+                await ws.accept()
+                await self._model.websocket(ws)
+            except WebSocketDisconnect as ws_error:
+                logging.info(f"Client terminated websocket connection: `{ws_error}`.")
+            finally:
+                # It's possible that user code explicitly closes the websocket connection before exiting,
+                # so we need to be graceful because duplicate closes cause errors.
+                try:
+                    await ws.close()
+                except RuntimeError as close_error:
+                    logging.info(f"Duplicate close of websocket: `{close_error}`.")
+
     async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)
     ) -> Response:
@@ -366,6 +393,8 @@ class TrussServer:
                     methods=["POST"],
                     tags=["V1"],
                 ),
+                # Websocket endpoint
+                FastAPIWebSocketRoute(r"/v1/websocket", self._endpoints.websocket),
                 # Endpoint aliases for Sagemaker hosting
                 FastAPIRoute(r"/ping", self._endpoints.invocations_ready),
                 FastAPIRoute(
