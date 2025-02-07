@@ -84,21 +84,21 @@ async def deferred_semaphore_and_span(
     """
     await semaphore.acquire()
     trace.use_span(span, end_on_exit=False)
-    deferred = False
+    released = False
 
     def release_and_end() -> None:
+        nonlocal released
+        released = True
         semaphore.release()
         span.end()
 
     def defer() -> Callable[[], None]:
-        nonlocal deferred
-        deferred = True
         return release_and_end
 
     try:
         yield defer
     finally:
-        if not deferred:
+        if not released:
             release_and_end()
 
 
@@ -738,13 +738,13 @@ class ModelWrapper:
         generator: Union[Generator[bytes, None, None], AsyncGenerator[bytes, None]],
         span: trace.Span,
         trace_ctx: trace.Context,
-        get_cleanup_fn: Callable[[], Callable[[], None]] = lambda: lambda: None,
+        cleanup_fn: Callable[[], None] = lambda: None,
     ):
         if self._should_gather_generator(request):
             return await _gather_generator(generator)
         else:
             return await self._stream_with_background_task(
-                generator, span, trace_ctx, cleanup_fn=get_cleanup_fn()
+                generator, span, trace_ctx, cleanup_fn=cleanup_fn
             )
 
     async def completions(
@@ -824,7 +824,7 @@ class ModelWrapper:
                     predict_result,
                     span_predict,
                     detached_ctx,
-                    get_cleanup_fn=get_defer_fn,
+                    cleanup_fn=get_defer_fn(),
                 )
 
             if isinstance(predict_result, starlette.responses.Response):
