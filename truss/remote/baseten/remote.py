@@ -30,7 +30,7 @@ from truss.remote.baseten.core import (
     exists_model,
     get_dev_version,
     get_dev_version_from_versions,
-    get_model_versions,
+    get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_truss,
@@ -341,12 +341,13 @@ class BasetenRemote(TrussRemote):
             )
 
         if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions(api, model_identifier)
+            model, model_versions = get_model_and_versions(api, model_identifier)
             model_version = BasetenRemote._get_matching_version(
                 model_versions, published
             )
+            model_id = model["id"]
             model_version_id = model_version["id"]
-            hostname = model_version["oracle"]["hostname"]
+            hostname = model["hostname"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
             # TODO(helen): consider making this consistent with getting the

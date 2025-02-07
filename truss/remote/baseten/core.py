@@ -197,9 +197,9 @@ def exists_model(api: BasetenApi, model_name: str) -> Optional[str]:
     return model["model"]["id"]
 
 
-def get_model_versions(api: BasetenApi, model_name: ModelName) -> Tuple[str, List]:
+def get_model_and_versions(api: BasetenApi, model_name: ModelName) -> Tuple[dict, List]:
     query_result = api.get_model(model_name.value)["model"]
-    return query_result["id"], query_result["versions"]
+    return query_result, query_result["versions"]
 
 
 def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:

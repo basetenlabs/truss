@@ -407,7 +407,7 @@ class BasetenApi:
                 id
                 name
                 hostname
-                versions{{
+                versions {{
                     id
                     semver
                     truss_hash
