@@ -56,28 +56,18 @@ def test_get_service_by_model_name():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
     versions = [
-        {
-            "id": "1",
-            "is_draft": False,
-            "is_primary": False,
-            "oracle": {"hostname": "hostname"},
-        },
-        {
-            "id": "2",
-            "is_draft": False,
-            "is_primary": True,
-            "oracle": {"hostname": "hostname"},
-        },
-        {
-            "id": "3",
-            "is_draft": True,
-            "is_primary": False,
-            "oracle": {"hostname": "hostname"},
-        },
+        {"id": "1", "is_draft": False, "is_primary": False},
+        {"id": "2", "is_draft": False, "is_primary": True},
+        {"id": "3", "is_draft": True, "is_primary": False},
     ]
     model_response = {
         "data": {
-            "model": {"name": "model_name", "id": "model_id", "versions": versions}
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
         }
     }
 
@@ -102,17 +92,15 @@ def test_get_service_by_model_name():
 def test_get_service_by_model_name_no_dev_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [
-        {
-            "id": "1",
-            "is_draft": False,
-            "is_primary": True,
-            "oracle": {"hostname": "hostname"},
-        }
-    ]
+    versions = [{"id": "1", "is_draft": False, "is_primary": True}]
     model_response = {
         "data": {
-            "model": {"name": "model_name", "id": "model_id", "versions": versions}
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
         }
     }
 
@@ -137,17 +125,15 @@ def test_get_service_by_model_name_no_dev_version():
 def test_get_service_by_model_name_no_prod_version():
     remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
 
-    versions = [
-        {
-            "id": "1",
-            "is_draft": True,
-            "is_primary": False,
-            "oracle": {"hostname": "hostname"},
-        }
-    ]
+    versions = [{"id": "1", "is_draft": True, "is_primary": False}]
     model_response = {
         "data": {
-            "model": {"name": "model_name", "id": "model_id", "versions": versions}
+            "model": {
+                "name": "model_name",
+                "id": "model_id",
+                "hostname": "hostname",
+                "versions": versions,
+            }
         }
     }
 
