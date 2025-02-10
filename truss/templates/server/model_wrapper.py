@@ -133,7 +133,7 @@ class ArgConfig(enum.Enum):
     INPUTS_AND_REQUEST = enum.auto()
 
     @classmethod
-    def from_signature(cls, method: Any, method_name: MethodName) -> "ArgConfig":
+    def from_method(cls, method: Any, method_name: MethodName) -> "ArgConfig":
         signature = inspect.signature(method)
         parameters = list(signature.parameters.values())
         if len(parameters) == 0:
@@ -198,7 +198,7 @@ class MethodDescriptor:
         return cls(
             is_async=cls._is_async(method),
             is_generator=cls._is_generator(method),
-            arg_config=ArgConfig.from_signature(method, method_name),
+            arg_config=ArgConfig.from_method(method, method_name),
             method_name=method_name,
             # ArgConfig ensures that the Callable has an appropriate signature.
             method=cast(ModelFn, method),
@@ -598,7 +598,7 @@ class ModelWrapper:
         assert descriptor, (
             f"`{MethodName.PREPROCESS}` must only be called if model has it."
         )
-        return await self._execute_async_model_fn(inputs, request, descriptor)
+        return await self._execute_user_model_fn(inputs, request, descriptor)
 
     async def _predict(
         self, inputs: Any, request: starlette.requests.Request
@@ -607,7 +607,7 @@ class ModelWrapper:
         # or, if `postprocessing` is used, anything. In the last case postprocessing
         # must convert the result to something serializable.
         descriptor = self.model_descriptor.predict
-        return await self._execute_async_model_fn(inputs, request, descriptor)
+        return await self._execute_user_model_fn(inputs, request, descriptor)
 
     async def postprocess(
         self, result: Union[InputType, Any], request: starlette.requests.Request
@@ -620,7 +620,7 @@ class ModelWrapper:
         assert descriptor, (
             f"`{MethodName.POSTPROCESS}` must only be called if model has it."
         )
-        return await self._execute_async_model_fn(result, request, descriptor)
+        return await self._execute_user_model_fn(result, request, descriptor)
 
     async def _write_response_to_queue(
         self,
@@ -688,7 +688,7 @@ class ModelWrapper:
 
         return _buffered_response_generator()
 
-    async def _execute_async_model_fn(
+    async def _execute_user_model_fn(
         self,
         inputs: Union[InputType, Any],
         request: starlette.requests.Request,
@@ -703,7 +703,7 @@ class ModelWrapper:
                 return await cast(Awaitable[OutputType], descriptor.method(*args))
             return await to_thread.run_sync(descriptor.method, *args)
 
-    async def _process_model_fn(
+    async def _execute_model_endpoint(
         self,
         inputs: InputType,
         request: starlette.requests.Request,
@@ -717,7 +717,7 @@ class ModelWrapper:
         with tracing.section_as_event(
             fn_span, descriptor.method_name
         ), tracing.detach_context() as detached_ctx:
-            result = await self._execute_async_model_fn(inputs, request, descriptor)
+            result = await self._execute_user_model_fn(inputs, request, descriptor)
 
         if inspect.isgenerator(result) or inspect.isasyncgen(result):
             return await self._handle_generator_response(
@@ -751,7 +751,7 @@ class ModelWrapper:
                 generator, span, trace_ctx, cleanup_fn=get_cleanup_fn()
             )
 
-    def _must_get_descriptor(
+    def _get_descriptor_or_raise(
         self, descriptor: Optional[MethodDescriptor], method_name: MethodName
     ) -> MethodDescriptor:
         if not descriptor:
@@ -764,18 +764,18 @@ class ModelWrapper:
     async def completions(
         self, inputs: InputType, request: starlette.requests.Request
     ) -> OutputType:
-        descriptor = self._must_get_descriptor(
+        descriptor = self._get_descriptor_or_raise(
             self.model_descriptor.completions, MethodName.COMPLETIONS
         )
-        return await self._process_model_fn(inputs, request, descriptor=descriptor)
+        return await self._execute_model_endpoint(inputs, request, descriptor)
 
     async def chat_completions(
         self, inputs: InputType, request: starlette.requests.Request
     ) -> OutputType:
-        descriptor = self._must_get_descriptor(
+        descriptor = self._get_descriptor_or_raise(
             self.model_descriptor.chat_completions, MethodName.CHAT_COMPLETIONS
         )
-        return await self._process_model_fn(inputs, request, descriptor=descriptor)
+        return await self._execute_model_endpoint(inputs, request, descriptor)
 
     async def predict(
         self, inputs: Optional[InputType], request: starlette.requests.Request
