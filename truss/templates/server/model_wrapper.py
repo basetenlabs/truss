@@ -793,7 +793,7 @@ class ModelWrapper:
         # explicitly close the connection is the better option.
         descriptor = self.model_descriptor.websocket
         if not descriptor:
-            await ws.send_text(f"{MethodName.WEBSOCKET} not implemented.")
+            await ws.send_bytes(f"{MethodName.WEBSOCKET} not implemented.".encode())
             await ws.close(code=1003)  # 1003 = Unsupported
             return
 

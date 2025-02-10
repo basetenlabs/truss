@@ -1,6 +1,7 @@
 -i https://pypi.org/simple
 
 aiocontextvars==0.2.2
+aiofiles==24.1.0
 argparse==1.4.0
 cython==3.0.5
 fastapi==0.114.1
@@ -10,13 +11,12 @@ msgpack-numpy==0.4.8
 msgpack==1.1.0  # Numpy/msgpack versions are finniky (1.0.2 breaks), double check when changing.
 numpy>=1.23.5
 opentelemetry-api>=1.25.0
-opentelemetry-sdk>=1.25.0
 opentelemetry-exporter-otlp>=1.25.0
+opentelemetry-sdk>=1.25.0
 psutil==5.9.4
 python-json-logger==2.0.2
 pyyaml==6.0.0
 requests==2.31.0
 uvicorn==0.24.0
 uvloop==0.19.0
-aiofiles==24.1.0
-websockets==13.1
+websockets<=14.0

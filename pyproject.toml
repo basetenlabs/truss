@@ -169,7 +169,7 @@ opentelemetry-sdk = ">=1.25.0"
 truss_transfer="0.0.1"
 uvicorn = ">=0.24.0"
 uvloop = ">=0.17.0"
-websockets = ">=13.0"
+websockets = "<=14.0"
 
 
 [build-system]

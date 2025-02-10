@@ -224,7 +224,7 @@ class BasetenEndpoints:
                 try:
                     await ws.close()
                 except RuntimeError as close_error:
-                    logging.info(f"Duplicate close of websocket: `{close_error}`.")
+                    logging.debug(f"Duplicate close of websocket: `{close_error}`.")
 
     async def predict(
         self, model_name: str, request: Request, body_raw: bytes = Depends(parse_body)

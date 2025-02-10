@@ -24,6 +24,7 @@ import websockets
 from opentelemetry import context, trace
 from python_on_whales import Container
 from requests.exceptions import RequestException
+from websockets.exceptions import ConnectionClosed
 
 from truss.base.truss_config import map_to_supported_python_version
 from truss.local.local_config_handler import LocalConfigHandler
@@ -1187,7 +1188,7 @@ def _patch_termination_timeout(container: Container, seconds: int, truss_contain
         container.copy_to(patched_file.name, container_server_source)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.integration
 async def test_graceful_shutdown(truss_container_fs):
     model = """
@@ -1864,7 +1865,7 @@ def test_openai_client_streaming():
         ] == ["1", "2"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.integration
 async def test_websocket_endpoint():
     model = """
@@ -1903,7 +1904,7 @@ async def test_websocket_endpoint():
             assert response == "world pong"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.integration
 async def test_nonexistent_websocket_endpoint():
     model = """
@@ -1920,9 +1921,12 @@ async def test_nonexistent_websocket_endpoint():
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
-        try:
+        response = None
+        with pytest.raises(ConnectionClosed) as exc_info:
             async with websockets.connect(WEBSOCKETS_URL) as ws:
-                response = await ws.recv()
-                assert re.search(r"not implemented", response, re.IGNORECASE)
-        except websockets.exceptions.ConnectionClosed as e:
-            assert e.code == 1003
+                response_bytes = await ws.recv()
+                response = response_bytes.decode()
+                await ws.recv()  # Triggers exception, recv after expected closure
+
+        assert exc_info.value.rcvd.code == 1003
+        assert re.search(r"not implemented", response, re.IGNORECASE)
