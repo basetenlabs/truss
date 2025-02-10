@@ -364,12 +364,14 @@ class BasetenChainService(ChainService):
     @property
     def run_remote_url(self) -> str:
         """URL to invoke the entrypoint."""
-        return b10_service.URLConfig.invocation_url(
-            self._remote.api.rest_api_url,
-            b10_service.URLConfig.CHAIN,
-            self._chain_deployment_handle.chain_id,
-            self._chain_deployment_handle.chain_deployment_id,
-            self._chain_deployment_handle.is_draft,
+
+        handle = self._chain_deployment_handle
+
+        return b10_service.URLConfig.invoke_url(
+            hostname=handle.hostname,
+            config=b10_service.URLConfig.CHAIN,
+            entity_version_id=handle.chain_deployment_id,
+            is_draft=handle.is_draft,
         )
 
     def run_remote(self, json_data: Dict) -> Any:

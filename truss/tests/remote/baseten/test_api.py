@@ -40,7 +40,11 @@ def mock_create_model_version_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
-        return_value={"data": {"create_model_version_from_truss": {"id": "12345"}}}
+        return_value={
+            "data": {
+                "create_model_version_from_truss": {"model_version": {"id": "12345"}}
+            }
+        }
     )
     return response
 
@@ -49,7 +53,9 @@ def mock_create_model_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
-        return_value={"data": {"create_model_from_truss": {"id": "12345"}}}
+        return_value={
+            "data": {"create_model_from_truss": {"model_version": {"id": "12345"}}}
+        }
     )
     return response
 
@@ -58,7 +64,9 @@ def mock_create_development_model_response():
     response = Response()
     response.status_code = 200
     response.json = mock.Mock(
-        return_value={"data": {"deploy_draft_truss": {"id": "12345"}}}
+        return_value={
+            "data": {"deploy_draft_truss": {"model_version": {"id": "12345"}}}
+        }
     )
     return response
 
@@ -70,10 +78,7 @@ def mock_deploy_chain_deployment_response():
         return_value={
             "data": {
                 "deploy_chain_atomic": {
-                    "chain_id": "12345",
-                    "chain_deployment_id": "54321",
-                    "entrypoint_model_id": "67890",
-                    "entrypoint_model_version_id": "09876",
+                    "chain_deployment": {"id": "54321", "chain": {"id": "12345"}}
                 }
             }
         }
