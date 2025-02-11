@@ -3,9 +3,15 @@ name: Create Release PR
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to bump to'
+      release_type:
+        description: 'Select release type (patch, minor, or major)'
         required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   bump_version:
@@ -20,11 +26,7 @@ jobs:
         curl -sSL https://install.python-poetry.org | python3 -
 
     - name: Bump version in pyproject.toml
-      run: |
-        poetry version $INPUT_VERSION
-      env:
-        INPUT_VERSION: ${{ github.event.inputs.version }}
-
+      run: ./bin/bump_truss_version.sh ${{ github.event.inputs.release_type }}
 
     - name: Commit changes
       run: |
