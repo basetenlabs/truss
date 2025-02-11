@@ -276,9 +276,17 @@ async fn download_file_with_cache(
             download_to_path(client, url, &destination, size).await?;
         } else {
             // success in caching => symlink to final dest
-            println!("[INFO] Download to b10cache successful, creating symlink to final destination.");
+            println!(
+                "[INFO] Download to b10cache successful, creating symlink to final destination."
+            );
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
-                println!("[DEBUG] Symlink to data dir failed: {e}");
+                println!("[WARN] Symlink failed: {e}. Falling back to direct download.");
+                if let Err(download_err) = download_to_path(client, url, &destination, size).await {
+                    println!("[ERROR] Direct download failed: {download_err}");
+                    return Err(anyhow!(
+                        "Failed to create symlink and direct download also failed"
+                    ));
+                }
             }
         }
     } else {
@@ -316,6 +324,9 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
         file.write_all(&chunk).await?;
     }
 
+    // Ensure data is flushed to disk.
+    file.sync_all().await?;
+
     // Optional size check
     if size > 0 {
         let written = file.metadata().await?.len();
@@ -324,8 +335,12 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
                 "Warning: downloaded file size mismatch (expected {}, got {}) at {:?}",
                 size, written, path
             );
+            // TODO: fail if size has large discrepancy, e.g. > 10%
         } else {
-            println!("[INFO] Download size matches expected size: {size} bytes.");
+            println!(
+                "[INFO] Download size of {:?} matches expected size of {}",
+                path, size
+            );
         }
     }
 
