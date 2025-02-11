@@ -1,6 +1,6 @@
 [package]
 name = "truss_transfer"
-version = "0.0.1"
+version = "0.0.2-rc0"
 edition = "2021"
 
 [lib]
@@ -20,6 +20,10 @@ tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
 reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls"] }
 # static linking of openssl, as rustls-tls is failing to build on aaarch64
 openssl = { version = "0.10", features = ["vendored"] }
+
+# Logging dependencies
+log = "0.4"
+env_logger = "0.10"
 
 [features]
 cli = []
