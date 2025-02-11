@@ -1,6 +1,8 @@
+use std::io::Write;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Once;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
@@ -16,7 +18,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 
 // For logging
-use log::{debug, error, info, warn};
+use log::{debug, error, info, warn, LevelFilter};
+use env_logger::Builder;
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
@@ -33,6 +36,27 @@ static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
 /// Initialize the global lock if it hasn't been initialized yet.
 fn get_global_lock() -> &'static Arc<Mutex<()>> {
     GLOBAL_DOWNLOAD_LOCK.get_or_init(|| Arc::new(Mutex::new(())))
+}
+
+static INIT_LOGGER: Once = Once::new();
+
+fn init_logger_once() {
+    // Initialize the logger with a default level of `info`
+    INIT_LOGGER.call_once(|| {
+        // Check if the environment variable "RUST_LOG" is set.
+        // If not, default to "info".
+        let rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+        // Parse the log level from the environment variable.
+        let level = rust_log.parse::<LevelFilter>().unwrap_or(LevelFilter::Info);
+        
+        // Build and initialize the logger with the determined level.
+        let _ = Builder::new()
+            .filter_level(level)
+            .format(|buf, record| {
+                writeln!(buf, "[{}] {}", record.level(), record.args())
+            })
+            .try_init();
+    });
 }
 
 fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) -> String {
@@ -88,6 +112,7 @@ fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
 
 /// Shared entrypoint for both Python and CLI
 fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
+    init_logger_once();
     let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
 
     let download_dir = resolve_truss_transfer_download_dir(download_dir);
@@ -97,7 +122,9 @@ fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> 
 
     // Acquire the global lock with error handling for poisoned locks.
     info!("Acquiring global download lock...");
-    let _guard = lock.lock().map_err(|_| anyhow!("Global lock was poisoned"))?;
+    let _guard = lock
+        .lock()
+        .map_err(|_| anyhow!("Global lock was poisoned"))?;
     info!("Starting downloading to: {}", download_dir);
 
     // Build the runtime after acquiring the lock.
@@ -146,7 +173,10 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     // 4. Check if b10cache is enabled
     let uses_b10_cache =
         env::var(BASETEN_FS_ENABLED_ENV_VAR).unwrap_or_else(|_| "False".into()) == "True";
-    info!("b10cache enabled: {}", if uses_b10_cache { "True" } else { "False" });
+    info!(
+        "b10cache enabled: {}",
+        if uses_b10_cache { "True" } else { "False" }
+    );
 
     // 5. Build concurrency limit
     info!("Using {} concurrent workers.", num_workers);
@@ -236,12 +266,20 @@ async fn download_file_with_cache(
     let destination = download_dir.join(file_name);
 
     // If the file already exists, check if it's the correct size, and skip download if so
-    if let Ok(metadata) = fs::metadata(&destination).await {
-        if metadata.len() as i64 == size {
-            info!("File {} already exists with correct size. Skipping download.", file_name);
-            return Ok(());
-        } else {
-            info!("File {} exists but size mismatch. Redownloading.", file_name);
+    if destination.exists() {
+        if let Ok(metadata) = fs::metadata(&destination).await {
+            if metadata.len() as i64 == size {
+                info!(
+                    "File {} already exists with correct size. Skipping download.",
+                    file_name
+                );
+                return Ok(());
+            } else {
+                info!(
+                    "File {} exists but size mismatch. Redownloading.",
+                    file_name
+                );
+            }
         }
     }
 
@@ -264,7 +302,10 @@ async fn download_file_with_cache(
         let cache_path = Path::new(CACHE_DIR).join(hash);
         info!("Downloading file to b10cache path: {:?}", cache_path);
         if let Err(e) = download_to_path(client, url, &cache_path, size).await {
-            debug!("Download to b10cache failed ({}). Falling back to direct path.", e);
+            info!(
+                "Download to b10cache failed ({}). Falling back to direct path.",
+                e
+            );
             // fallback
             download_to_path(client, url, &destination, size).await?;
         } else {
@@ -280,7 +321,10 @@ async fn download_file_with_cache(
             }
         }
     } else {
-        info!("No b10cache enabled. Downloading file directly: {:?}", destination);
+        info!(
+            "No b10cache enabled. Downloading file directly: {:?}",
+            destination
+        );
         download_to_path(client, url, &destination, size).await?;
     }
 
@@ -319,7 +363,7 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
             );
             // TODO: fail if size has large discrepancy, e.g. > 10%
         } else {
-            println!("[INFO] Download size matches expected size: {size} bytes.");
+            info!("[INFO] Download size matches expected size: {size} bytes.");
         }
     }
 
@@ -351,10 +395,7 @@ fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
 /// Running the CLI directly.
 #[cfg(feature = "cli")]
 fn main() -> anyhow::Result<()> {
-    // Initialize the logger with a default level of `info`
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    init_logger_once();
 
     info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
 
