@@ -1,20 +1,24 @@
 use std::env;
-use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Once;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use chrono::Utc;
-use futures_util::stream::{FuturesUnordered, StreamExt}; // <-- from futures-util
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use reqwest::Client;
 use serde::Deserialize;
-use tokio::fs as async_fs;
+use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
+
+// For logging
+use env_logger::Builder;
+use log::{debug, error, info, warn, LevelFilter};
 
 // Constants
 static LAZY_DATA_RESOLVER_PATH: &str = "/bptr/bptr-manifest";
@@ -25,7 +29,9 @@ static TRUSS_TRANSFER_NUM_WORKERS_DEFAULT: usize = 64;
 static TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR: &str = "TRUSS_TRANSFER_DOWNLOAD_DIR";
 static TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK: &str = "/tmp/bptr-resolved";
 
-// Global lock to serialize downloads
+// Global lock to serialize downloads (NOTE: this is process-local only)
+// For multi-process synchronization (e.g. in a “double start” scenario),
+// consider using a file-based lock instead.
 static GLOBAL_DOWNLOAD_LOCK: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
 
 /// Initialize the global lock if it hasn't been initialized yet.
@@ -33,16 +39,42 @@ fn get_global_lock() -> &'static Arc<Mutex<()>> {
     GLOBAL_DOWNLOAD_LOCK.get_or_init(|| Arc::new(Mutex::new(())))
 }
 
+static INIT_LOGGER: Once = Once::new();
+
+fn init_logger_once() {
+    // Initialize the logger with a default level of `info`
+    INIT_LOGGER.call_once(|| {
+        // Check if the environment variable "RUST_LOG" is set.
+        // If not, default to "info".
+        let rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+        let level = rust_log.parse::<LevelFilter>().unwrap_or(LevelFilter::Info);
+
+        let _ = Builder::new()
+            .filter_level(level)
+            .format(|buf, record| {
+                // Prettier log format: [timestamp] [LEVEL] [module] message
+                writeln!(
+                    buf,
+                    "[{}] [{:<5}] {}",
+                    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                    record.level(),
+                    record.args()
+                )
+            })
+            .try_init();
+    });
+}
+
 fn resolve_truss_transfer_download_dir(optional_download_dir: Option<String>) -> String {
     // Order:
     // 1. optional_download_dir, if provided
-    // 2. TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR
-    // 3. TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK and print a warning
+    // 2. TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR environment variable
+    // 3. TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK (with a warning)
     optional_download_dir
         .or_else(|| env::var(TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR).ok())
         .unwrap_or_else(|| {
-            println!(
-                "[WARN] No download directory provided. Please set `export {}=/path/to/dir` or pass it as an argument. Using fallback: {}",
+            warn!(
+                "No download directory provided. Please set `export {}=/path/to/dir` or pass it as an argument. Using fallback: {}",
                 TRUSS_TRANSFER_DOWNLOAD_DIR_ENV_VAR, TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK
             );
             TRUSS_TRANSFER_DOWNLOAD_DIR_FALLBACK.into()
@@ -79,39 +111,39 @@ struct BasetenPointerManifest {
 #[pyfunction]
 #[pyo3(signature = (download_dir=None))]
 fn lazy_data_resolve(download_dir: Option<String>) -> PyResult<String> {
-    lazy_data_resolve_entrypoint(download_dir)
-        .map(|resolved_dir| resolved_dir)
-        .map_err(|err| PyException::new_err(err.to_string()))
+    lazy_data_resolve_entrypoint(download_dir).map_err(|err| PyException::new_err(err.to_string()))
 }
 
 /// Shared entrypoint for both Python and CLI
 fn lazy_data_resolve_entrypoint(download_dir: Option<String>) -> Result<String> {
+    init_logger_once();
     let num_workers = TRUSS_TRANSFER_NUM_WORKERS_DEFAULT;
-
     let download_dir = resolve_truss_transfer_download_dir(download_dir);
 
     // Ensure the global lock is initialized
     let lock = get_global_lock();
 
-    // Acquire the global lock, will be dropped when guard goes out of scope (also in case of errors)
-    println!("[INFO] Acquiring global download lock...");
-    let _guard = lock.lock().unwrap();
-    println!("[INFO] Starting downloading to: {}", download_dir);
-    // Build the runtime after acquiring the lock
+    info!("Acquiring global download lock...");
+    let _guard = lock
+        .lock()
+        .map_err(|_| anyhow!("Global lock was poisoned"))?;
+    info!("Starting downloads to: {}", download_dir);
+
+    // Build the Tokio runtime after acquiring the lock.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("Failed to build Tokio runtime")?;
 
-    // Run the async logic within the runtime
+    // Run the asynchronous logic.
     rt.block_on(async { lazy_data_resolve_async(download_dir.clone().into(), num_workers).await })?;
     Ok(download_dir)
 }
 
 /// Asynchronous implementation of the lazy data resolver logic.
 async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> Result<()> {
-    println!(
-        "[INFO] Checking if manifest file at `{}` exists...",
+    info!(
+        "Checking if manifest file exists at `{}`...",
         LAZY_DATA_RESOLVER_PATH
     );
 
@@ -124,31 +156,33 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         ));
     }
 
-    // 2. Parse YAML
-    println!("[INFO] Found manifest file. Reading YAML...");
-    let yaml_data =
-        fs::read_to_string(manifest_path).context("Unable to read YAML from bptr-manifest")?;
+    // 2. Parse YAML asynchronously
+    info!("Manifest file found. Reading YAML...");
+    let yaml_data = fs::read_to_string(manifest_path)
+        .await
+        .context("Unable to read YAML from bptr-manifest")?;
     let bptr_manifest: BasetenPointerManifest =
         serde_yaml::from_str(&yaml_data).context("Failed to parse Baseten pointer manifest")?;
-    println!(
-        "[INFO] Successfully read manifest. Number of pointers: {}",
+    info!(
+        "Successfully read manifest. Number of pointers: {}",
         bptr_manifest.pointers.len()
     );
 
     // 3. Validate expiration and build the resolution map
     let resolution_map = build_resolution_map(&bptr_manifest)?;
-    println!("[INFO] All pointers validated OK.");
+    info!("All pointers validated successfully.");
 
     // 4. Check if b10cache is enabled
     let uses_b10_cache =
         env::var(BASETEN_FS_ENABLED_ENV_VAR).unwrap_or_else(|_| "False".into()) == "True";
-    println!(
-        "[INFO] b10cache enabled: {}",
+    info!(
+        "b10cache enabled: {}",
         if uses_b10_cache { "True" } else { "False" }
     );
 
     // 5. Build concurrency limit
-    println!("[INFO] Using {num_workers} concurrent workers.");
+    info!("Using {} concurrent workers.", num_workers);
+
     let semaphore = Arc::new(Semaphore::new(num_workers));
     let client = Client::builder()
         // https://github.com/hyperium/hyper/issues/2136#issuecomment-589488526
@@ -157,18 +191,16 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
         .timeout(std::time::Duration::from_secs(BLOB_DOWNLOAD_TIMEOUT_SECS))
         .build()?;
 
-    // 6. Spawn tasks
-    println!("[INFO] Spawning download tasks...");
+    // 6. Spawn download tasks
+    info!("Spawning download tasks...");
     let mut tasks = FuturesUnordered::new();
     for (file_name, (resolved_url, hash, size)) in resolution_map {
         let download_dir = download_dir.clone();
         let client = client.clone();
         let sem_clone = semaphore.clone();
-        let uses_b10_cache = uses_b10_cache;
         tasks.push(tokio::spawn(async move {
             let _permit = sem_clone.acquire_owned().await;
-            // Log which file is being downloaded
-            println!("[INFO] Now handling file: {file_name}");
+            info!("Handling file: {}", file_name);
             download_file_with_cache(
                 &client,
                 &resolved_url,
@@ -183,33 +215,31 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     }
 
     // 7. Await all tasks
-    println!("[INFO] Waiting for all download tasks to complete...");
+    info!("Awaiting completion of all download tasks...");
     while let Some(join_result) = tasks.next().await {
         match join_result {
-            Ok(Ok(())) => {
-                // success
-            }
+            Ok(Ok(())) => {} // task succeeded
             Ok(Err(e)) => {
-                println!("[ERROR] A download failed: {e}");
-                return Err(anyhow!("Download failure: {e}"));
+                error!("A download task failed: {}", e);
+                return Err(anyhow!("Download failure: {}", e));
             }
             Err(e) => {
-                println!("[ERROR] A Tokio task panicked: {e}");
-                return Err(anyhow!("Tokio task panicked: {e}"));
+                error!("A Tokio task panicked: {}", e);
+                return Err(anyhow!("Tokio task panicked: {}", e));
             }
         }
     }
 
-    println!("[INFO] All downloads completed successfully!");
+    info!("All downloads completed successfully!");
     Ok(())
 }
 
-/// Validate expiration and build vector of (file_name -> (URL, hash, size))
+/// Validate expiration and build a vector of (file_name, (URL, hash, size)).
 fn build_resolution_map(
     bptr_manifest: &BasetenPointerManifest,
 ) -> Result<Vec<(String, (String, String, i64))>> {
-    let now = Utc::now().timestamp();
-    let mut out = vec![];
+    let now = chrono::Utc::now().timestamp();
+    let mut out = Vec::new();
 
     for bptr in &bptr_manifest.pointers {
         if bptr.resolution.expiration_timestamp < now {
@@ -224,8 +254,7 @@ fn build_resolution_map(
     Ok(out)
 }
 
-/// Attempts to find file in b10cache (if enabled), symlink it, or else downloads it.
-/// Fallback to direct download if caching fails.
+/// Attempts to use b10cache (if enabled) to symlink the file; falls back to downloading.
 async fn download_file_with_cache(
     client: &Client,
     url: &str,
@@ -237,62 +266,70 @@ async fn download_file_with_cache(
 ) -> Result<()> {
     let destination = download_dir.join(file_name);
 
-    // If the file already exists, check if it's the correct size, and skip download if so
+    // Skip download if file exists with the expected size.
     if destination.exists() {
-        let metadata = fs::metadata(&destination)?;
-        if metadata.len() as i64 == size {
-            println!(
-                "[INFO] File {file_name} already exists with correct size. Skipping download."
-            );
-            return Ok(());
-        } else {
-            println!("[INFO] File {file_name} exists but size mismatch. Redownloading.");
+        if let Ok(metadata) = fs::metadata(&destination).await {
+            if metadata.len() as i64 == size {
+                info!(
+                    "File {} already exists with correct size. Skipping download.",
+                    file_name
+                );
+                return Ok(());
+            } else {
+                info!(
+                    "File {} exists but size mismatch. Redownloading.",
+                    file_name
+                );
+            }
         }
     }
 
     // If b10cache is enabled, try symlinking from the cache
+
     if uses_b10_cache {
         let cache_path = Path::new(CACHE_DIR).join(hash);
-        if cache_path.exists() {
-            println!("[INFO] Found {hash} in b10cache. Attempting to symlink...");
+        if fs::metadata(&cache_path).await.is_ok() {
+            info!(
+                "Found {} in b10cache. Attempting to create symlink...",
+                hash
+            );
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
-                println!("[DEBUG] Symlink from b10cache failed: {e}");
+                debug!(
+                    "Symlink creation failed: {}. Proceeding with direct download.",
+                    e
+                );
             } else {
-                println!("[INFO] Symlink successful, skipping download.");
-                // If we succeeded in symlinking, we can stop here
+                info!(
+                    "Symlink created successfully. Skipping download for {}.",
+                    file_name
+                );
                 return Ok(());
             }
         }
     }
 
-    // If we reach here, we must actually download
     if uses_b10_cache {
-        // Attempt to download to the cache, then symlink
         let cache_path = Path::new(CACHE_DIR).join(hash);
-        println!("[INFO] Downloading file to b10cache path: {:?}", cache_path);
+        info!("Downloading file to cache path: {:?}", cache_path);
         if let Err(e) = download_to_path(client, url, &cache_path, size).await {
-            println!("[DEBUG] Download to b10cache failed ({e}). Falling back to direct path.");
-            // fallback
+            info!(
+                "Download to b10cache failed ({}). Falling back to direct download.",
+                e
+            );
             download_to_path(client, url, &destination, size).await?;
         } else {
-            // success in caching => symlink to final dest
-            println!(
-                "[INFO] Download to b10cache successful, creating symlink to final destination."
-            );
+            info!("Download to b10cache succeeded. Creating symlink to final destination.");
             if let Err(e) = create_symlink_or_skip(&cache_path, &destination) {
-                println!("[WARN] Symlink failed: {e}. Falling back to direct download.");
-                if let Err(download_err) = download_to_path(client, url, &destination, size).await {
-                    println!("[ERROR] Direct download failed: {download_err}");
-                    return Err(anyhow!(
-                        "Failed to create symlink and direct download also failed"
-                    ));
-                }
+                warn!(
+                    "Symlink creation failed: {}. Falling back to direct download.",
+                    e
+                );
+                download_to_path(client, url, &destination, size).await?;
             }
         }
     } else {
-        // No caching => direct download
-        println!(
-            "[INFO] No b10cache enabled. Downloading file directly: {:?}",
+        info!(
+            "b10cache not enabled. Downloading file directly to {:?}",
             destination
         );
         download_to_path(client, url, &destination, size).await?;
@@ -301,59 +338,49 @@ async fn download_file_with_cache(
     Ok(())
 }
 
-/// Streaming download from `url` → `path`
+/// Stream a download from `url` into the specified `path`.
 async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) -> Result<()> {
-    // Create parent dirs
     if let Some(parent) = path.parent() {
-        async_fs::create_dir_all(parent).await?;
+        fs::create_dir_all(parent)
+            .await
+            .context("Failed to create parent directory for download path")?;
     }
 
-    println!("[INFO] Starting download to {:?}", path);
-
-    // Start the request
+    info!("Starting download to {:?}", path);
     let resp = client.get(url).send().await?.error_for_status()?;
-    // resp.bytes_stream() => Stream of Result<Bytes, reqwest::Error>
     let mut stream = resp.bytes_stream();
 
-    let mut file = async_fs::File::create(path).await?;
-
+    let mut file = fs::File::create(path).await?;
     while let Some(chunk_result) = stream.next().await {
-        // chunk_result is Result<Bytes, reqwest::Error>
         let chunk: Bytes = chunk_result?;
-        // Write to disk
         file.write_all(&chunk).await?;
     }
 
-    // Ensure data is flushed to disk.
-    file.sync_all().await?;
-
-    // Optional size check
     if size > 0 {
-        let written = file.metadata().await?.len();
+        let metadata = fs::metadata(path).await?;
+        let written = metadata.len();
         if written as i64 != size {
-            eprintln!(
-                "Warning: downloaded file size mismatch (expected {}, got {}) at {:?}",
-                size, written, path
+            warn!(
+                "Downloaded file size mismatch for {:?} (expected {}, got {})",
+                path, size, written
             );
-            // TODO: fail if size has large discrepancy, e.g. > 10%
         } else {
-            println!(
-                "[INFO] Download size of {:?} matches expected size of {}",
-                path, size
-            );
+            info!("Download size verified: {} bytes", size);
         }
     }
 
-    println!("[INFO] Completed download to {:?}", path);
+    info!("Completed download to {:?}", path);
     Ok(())
 }
 
+/// Create a symlink from `src` to `dst` if `dst` does not exist.
+/// Returns Ok(()) if `dst` already exists.
 fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
     if dst.exists() {
         return Ok(());
     }
     if let Some(parent) = dst.parent() {
-        fs::create_dir_all(parent)
+        std::fs::create_dir_all(parent)
             .context("Failed to create parent directory for symlink destination")?;
     }
     #[cfg(unix)]
@@ -367,17 +394,18 @@ fn create_symlink_or_skip(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-/// running the CLI directly.
+/// Running the CLI directly.
 #[cfg(feature = "cli")]
 fn main() -> anyhow::Result<()> {
-    println!(
-        "[INFO] truss_transfer_cli, version: {}",
-        env!("CARGO_PKG_VERSION")
-    );
+    init_logger_once();
+    info!("truss_transfer_cli, version: {}", env!("CARGO_PKG_VERSION"));
 
+    // Pass the first CLI argument as the download directory, if provided.
     let download_dir = std::env::args().nth(1);
-
-    let _ = lazy_data_resolve_entrypoint(download_dir.into());
+    if let Err(e) = lazy_data_resolve_entrypoint(download_dir) {
+        error!("Error during execution: {}", e);
+        std::process::exit(1);
+    }
     Ok(())
 }
 
