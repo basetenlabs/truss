@@ -3,7 +3,7 @@ name: Test truss-transfer
 on:
   push:
     tags:
-      - '*'
+      - "*"
   pull_request:
   workflow_dispatch:
 
@@ -12,7 +12,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: truss-transfer  # Keeps default for run commands
+    working-directory: truss-transfer # Keeps default for run commands
 
 jobs:
   test-truss-transfer:
@@ -21,15 +21,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
       - name: Create venv
         run: python3 -m venv .venv
-      - name: Build wheels
+      - name: Build wheels for python
         uses: PyO3/maturin-action@v1
         with:
           working-directory: truss-transfer
           command: develop
-          sccache: 'true'
+          sccache: "true"
       - name: Try import truss-transfer-maturin-publish
         run: |
           source .venv/bin/activate

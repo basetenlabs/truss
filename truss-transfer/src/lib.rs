@@ -324,6 +324,9 @@ async fn download_to_path(client: &Client, url: &str, path: &Path, size: i64) ->
         file.write_all(&chunk).await?;
     }
 
+    // Ensure data is flushed to disk.
+    file.sync_all().await?;
+
     // Optional size check
     if size > 0 {
         let written = file.metadata().await?.len();
