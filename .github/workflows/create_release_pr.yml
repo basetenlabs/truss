@@ -3,9 +3,15 @@ name: Create Release PR
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to bump to'
+      release_type:
+        description: 'Select release type (patch, minor, or major)'
         required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   bump_version:
@@ -20,33 +26,31 @@ jobs:
         curl -sSL https://install.python-poetry.org | python3 -
 
     - name: Bump version in pyproject.toml
-      run: |
-        poetry version $INPUT_VERSION
-      env:
-        INPUT_VERSION: ${{ github.event.inputs.version }}
-
+      id: bump-version
+      run: ./bin/bump_truss_version.sh ${{ github.event.inputs.release_type }}
 
     - name: Commit changes
       run: |
         git config --local user.email "96544894+basetenbot@users.noreply.github.com"
         git config --local user.name "basetenbot"
         git add pyproject.toml
-        git commit -m "Bump version to $INPUT_VERSION"
+        git commit -m "Bump version to $TARGET_VERSION"
       env:
-        INPUT_VERSION: ${{ github.event.inputs.version }}
+        TARGET_VERSION: ${{ steps.bump-version.outputs.version }}
 
     # TODO: Also push changes to main
     - name: Push changes to new branch
       run: |
-        git push origin HEAD:refs/heads/bump-version-${{ github.event.inputs.version }}
+        git push origin HEAD:refs/heads/bump-version-$TARGET_VERSION
       env:
+        TARGET_VERSION: ${{ steps.bump-version.outputs.version }}
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
 
     - name: Make PR
       run: |
-        CURR_VERSION=$(curl https://pypi.org/pypi/truss/json | jq ".info.version")
-        PR_BODY="Updating Truss from [$CURR_VERSION](https://pypi.org/pypi/truss/json) to $INPUT_VERSION. **PLEASE ENSURE YOU MERGE, NOT SQUASH**"
-        PR_URL=$(gh pr create --base release --head refs/heads/bump-version-$INPUT_VERSION --title "Release $INPUT_VERSION" --body "$PR_BODY")
+        CURR_VERSION=$(curl -s https://pypi.org/pypi/truss/json | jq -r ".info.version")
+        PR_BODY="Updating Truss from [$CURR_VERSION](https://pypi.org/pypi/truss/json) to $TARGET_VERSION. **PLEASE ENSURE YOU MERGE, NOT SQUASH**"
+        gh pr create --base release --head bump-version-$TARGET_VERSION --title "Release $TARGET_VERSION" --body "$PR_BODY"
       env:
-        INPUT_VERSION: ${{ github.event.inputs.version }}
+        TARGET_VERSION: ${{ steps.bump-version.outputs.version }}
         GH_TOKEN: ${{ secrets.BASETENBOT_GITHUB_TOKEN }}
