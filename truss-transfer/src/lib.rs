@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use chrono::Utc;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
