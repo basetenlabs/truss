@@ -77,7 +77,7 @@ def test_trt_llm_lookahead_decoding(trtllm_config):
 
     with pytest.raises(ValueError):
         trt_llm_config.build.speculator = TrussSpeculatorConfiguration(
-            speculative_decoding_mode=TrussSpecDecMode.DRAFT_EXTERNAL,
+            speculative_decoding_mode=TrussSpecDecMode.LOOKAHEAD_DECODING,
             num_draft_tokens=None,
             lookahead_windows_size=None,
             lookahead_ngram_size=None,
@@ -88,7 +88,7 @@ def test_trt_llm_lookahead_decoding(trtllm_config):
 
     trt_llm_config.build.speculator = TrussSpeculatorConfiguration(
         speculative_decoding_mode=TrussSpecDecMode.LOOKAHEAD_DECODING,
-        num_draft_tokens=4,  # will be overwriten
+        num_draft_tokens=None,  # will be overwriten
         lookahead_windows_size=10,
         lookahead_ngram_size=10,
         lookahead_verification_set_size=10,

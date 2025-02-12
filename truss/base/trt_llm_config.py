@@ -265,11 +265,17 @@ class TrussSpeculatorConfiguration(BaseModel):
                     "Lookahead decoding mode requires lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size to be set."
                 )
             if not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                self.num_draft_tokens = self.lade_max_draft_len(
+                num_draft_tokens = self.lade_max_draft_len(
                     self.lookahead_windows_size,
                     self.lookahead_ngram_size,
                     self.lookahead_verification_set_size,
                 )
+                if self.num_draft_tokens and self.num_draft_tokens != num_draft_tokens:
+                    raise ValueError(
+                        f"num_draft_tokens is automatically calculated based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size. "
+                        f"Please remove num_draft_tokens or set it to exactly {num_draft_tokens}. You set it to {self.num_draft_tokens}."
+                    )
+                self.num_draft_tokens = num_draft_tokens
             else:
                 # server side on engine-builder
                 if not self.num_draft_tokens:
