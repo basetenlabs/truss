@@ -11,8 +11,6 @@ from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
 from pydantic import BaseModel, PydanticDeprecatedSince20, model_validator, validator
 
-from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
-
 logger = logging.getLogger(__name__)
 # Suppress Pydantic V1 warnings, because we have to use it for backwards compat.
 warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
@@ -145,6 +143,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
                 "automatically inferred from the model repo config.json -> `max_position_embeddings`"
             )
+            from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
                 logger.warning(
