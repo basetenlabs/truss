@@ -24,6 +24,10 @@ def lazy_data_loader(download_dir: str):
 
 Compiling the libary as musl-linux target for cross-platform usage.
 ```
+# Add one-time installations
+# apt-get install -y musl-tools libssl-dev libatomic-ops-dev
+# rustup target add x86_64-unknown-linux-musl
+
 # To build with cargo:
 cargo build --release --target x86_64-unknown-linux-musl --features cli --bin truss_transfer_cli
 ```

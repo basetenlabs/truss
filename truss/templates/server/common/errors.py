@@ -45,6 +45,10 @@ class UserCodeError(Exception):
     pass
 
 
+class ModelMethodNotImplemented(Exception):
+    pass
+
+
 class ModelDefinitionError(TypeError):
     """When the user-defined truss model does not meet the contract."""
 
@@ -96,6 +100,10 @@ async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Respo
             "Internal Server Error",
             _BASETEN_DOWNSTREAM_ERROR_CODE,
         )
+    if isinstance(exc, ModelMethodNotImplemented):
+        return _make_baseten_response(
+            HTTPStatus.NOT_FOUND.value, exc, _BASETEN_CLIENT_ERROR_CODE
+        )
     if isinstance(exc, fastapi.HTTPException):
         # This is a pass through, but additionally adds our custom error headers.
         return _make_baseten_response(
@@ -117,6 +125,7 @@ HANDLED_EXCEPTIONS = {
     UserCodeError,
     ModelDefinitionError,
     fastapi.HTTPException,
+    ModelMethodNotImplemented,
 }
 
 

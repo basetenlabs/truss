@@ -109,6 +109,9 @@ def error_handling(f: Callable[..., object]):
             else:
                 console.print_exception(show_locals=True)
 
+            ctx = click.get_current_context()
+            ctx.exit(1)
+
     return wrapper
 
 
