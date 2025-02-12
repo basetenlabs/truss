@@ -39,12 +39,10 @@ RUN apt-get update && apt-get install --yes --no-install-recommends $(cat {{syst
 {% block install_requirements %}
     {%- if should_install_user_requirements_file %}
 COPY ./{{user_supplied_requirements_filename}} {{user_supplied_requirements_filename}}
-RUN cat {{user_supplied_requirements_filename}}
 RUN pip install -r {{user_supplied_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
     {%- if should_install_requirements %}
 COPY ./{{config_requirements_filename}} {{config_requirements_filename}}
-RUN cat {{config_requirements_filename}}
 RUN pip install -r {{config_requirements_filename}} --no-cache-dir && rm -rf /root/.cache/pip
     {%- endif %}
 {% endblock %}
