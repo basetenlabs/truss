@@ -84,6 +84,7 @@ class TrussTRTLLMBatchSchedulerPolicy(str, Enum):
 
 class TrussSpecDecMode(str, Enum):
     DRAFT_EXTERNAL = "DRAFT_TOKENS_EXTERNAL"
+    LOOKAHEAD_DECODING = "LOOKAHEAD_DECODING"
 
 
 class TrussTRTLLMRuntimeConfiguration(BaseModel):
@@ -210,17 +211,86 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
 class TrussSpeculatorConfiguration(BaseModel):
     speculative_decoding_mode: TrussSpecDecMode = TrussSpecDecMode.DRAFT_EXTERNAL
-    num_draft_tokens: int
+    num_draft_tokens: Optional[int] = None
     checkpoint_repository: Optional[CheckpointRepository] = None
     runtime: TrussTRTLLMRuntimeConfiguration = TrussTRTLLMRuntimeConfiguration()
     build: Optional[TrussTRTLLMBuildConfiguration] = None
+    lookahead_windows_size: Optional[int] = None
+    lookahead_ngram_size: Optional[int] = None
+    lookahead_verification_set_size: Optional[int] = None
 
     def __init__(self, **data):
         super().__init__(**data)
         self._validate_checkpoint()
+        self._validate_spec_dec_mode()
+
+    def _assert_draft_tokens(self):
+        if self.num_draft_tokens > 512 or self.num_draft_tokens < 0:
+            if self.speculative_decoding_mode == TrussSpecDecMode.LOOKAHEAD_DECODING:
+                reason = (
+                    f"This is automatically calculated value of lookahead_windows_size={self.lookahead_windows_size}, "
+                    f" lookahead_ngram_size={self.lookahead_ngram_size}, lookahead_verification_set_size={self.lookahead_verification_set_size}. "
+                    f"Please any of them."
+                )
+            else:
+                reason = "You set this value under speculator.num_draft_tokens"
+            raise ValueError(
+                f"num_draft_tokens must be less than or equal to 512. But you requested num_draft_tokens={self.num_draft_tokens}. {reason}"
+            )
+
+    @staticmethod
+    def lade_max_draft_len(
+        windows_size: int, ngram_size: int, verification_set_size: int
+    ) -> int:
+        """calculate the maximum number of tokens with baseten lookahead algorithm"""
+        return (0 if (ngram_size == 1) else ngram_size - 2) + (
+            windows_size - 1 + verification_set_size
+        ) * (ngram_size - 1)
+
+    def _validate_spec_dec_mode(self):
+        if self.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL:
+            if not self.num_draft_tokens:
+                raise ValueError(
+                    "Draft external mode requires num_draft_tokens to be set."
+                )
+        elif self.speculative_decoding_mode == TrussSpecDecMode.LOOKAHEAD_DECODING:
+            if not all(
+                [
+                    self.lookahead_windows_size,
+                    self.lookahead_ngram_size,
+                    self.lookahead_verification_set_size,
+                ]
+            ):
+                raise ValueError(
+                    "Lookahead decoding mode requires lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size to be set."
+                )
+            if not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
+                self.num_draft_tokens = self.lade_max_draft_len(
+                    self.lookahead_windows_size,
+                    self.lookahead_ngram_size,
+                    self.lookahead_verification_set_size,
+                )
+            else:
+                # server side on engine-builder
+                if not self.num_draft_tokens:
+                    raise ValueError(
+                        "num_draft_tokens is required in lookahead decoding mode but not set"
+                    )
+                if self.num_draft_tokens < self.lade_max_draft_len(
+                    self.lookahead_windows_size,
+                    self.lookahead_ngram_size,
+                    self.lookahead_verification_set_size,
+                ):
+                    raise ValueError(
+                        "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
+                    )
+
+        self._assert_draft_tokens()
 
     def _validate_checkpoint(self):
-        if not (bool(self.checkpoint_repository) ^ bool(self.build)):
+        if self.speculative_decoding_mode == TrussSpecDecMode.DRAFT_EXTERNAL and not (
+            bool(self.checkpoint_repository) ^ bool(self.build)
+        ):
             raise ValueError(
                 "Speculative decoding requires exactly one of checkpoint_repository or build to be configured."
             )
