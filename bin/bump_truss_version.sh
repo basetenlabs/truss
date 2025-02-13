@@ -4,9 +4,9 @@
 # and increments the major, minor, or patch version as specified.
 #
 # Usage:
-#   ./bump_version.sh 0.9.60         # bumps the patch (micro) version by default
-#   ./bump_version.sh 0.9.60 major   # bumps the major version (resets minor and patch to 0)
-#   ./bump_version.sh 0.9.60 minor   # bumps the minor version (resets patch to 0)
+#   ./bump_version.sh 0.9.60         # bumps the patch (micro) version by default -> 0.9.61
+#   ./bump_version.sh 0.9.60 major   # bumps the major version (resets minor and patch to 0) -> 1.0.0
+#   ./bump_version.sh 0.9.60 minor   # bumps the minor version (resets patch to 0) -> 0.10.0
 
 set -euo pipefail
 
