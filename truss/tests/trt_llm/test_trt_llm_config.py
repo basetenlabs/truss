@@ -102,3 +102,15 @@ def test_trt_llm_lookahead_decoding(trtllm_config):
         == TrussSpecDecMode.LOOKAHEAD_DECODING
     )
     assert with_spec.build.speculator.num_draft_tokens == 179
+
+    with pytest.raises(ValueError):
+        trt_llm_config.build.speculator = TrussSpeculatorConfiguration(
+            speculative_decoding_mode=TrussSpecDecMode.LOOKAHEAD_DECODING,
+            num_draft_tokens=None,
+            lookahead_windows_size=100,
+            lookahead_ngram_size=100,
+            lookahead_verification_set_size=100,
+        )
+        # need to specify num_draft_tokens
+        TRTLLMConfiguration(**trt_llm_config.model_dump())
+        # will lead to ValueError -> too many draft tokens are generated with 100 lookahead windows
