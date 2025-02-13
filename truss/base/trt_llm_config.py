@@ -275,6 +275,11 @@ class TrussSpeculatorConfiguration(BaseModel):
                         f"Please remove num_draft_tokens or set it to exactly {num_draft_tokens}. You set it to {self.num_draft_tokens}."
                     )
                 self.num_draft_tokens = num_draft_tokens
+                if self.num_draft_tokens > 128:
+                    logger.warning(
+                        f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
+                        "We recommend a simpler config, e.g. lookahead_windows_size=7, lookahead_ngram_size=5, lookahead_verification_set_size=3."
+                    )
             else:
                 # server side on engine-builder
                 if not self.num_draft_tokens:
