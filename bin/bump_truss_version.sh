@@ -22,21 +22,21 @@ BUMP_TYPE="${2:-patch}"  # Default bump type is "patch" (micro)
 semver=$(echo "$CURRENT_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
 
 # Split the semver into major, minor, and patch
-IFS='.' read -r major minor path <<< "$semver"
+IFS='.' read -r major minor patch <<< "$semver"
 
 # Bump the version based on the bump type argument
 case "$BUMP_TYPE" in
   major)
     major=$((major + 1))
     minor=0
-    path=0
+    patch=0
     ;;
   minor)
     minor=$((minor + 1))
-    path=0
+    patch=0
     ;;
   patch)
-    path=$((path + 1))
+    patch=$((patch + 1))
     ;;
   *)
     echo "Invalid bump type: $BUMP_TYPE. Use 'major', 'minor', or 'patch'."
@@ -45,7 +45,7 @@ case "$BUMP_TYPE" in
 esac
 
 # Construct the new version string
-new_version="${major}.${minor}.${path}"
+new_version="${major}.${minor}.${patch}"
 
 # Set the new version using Poetry
 poetry version "$new_version"
