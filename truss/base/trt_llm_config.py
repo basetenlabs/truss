@@ -290,7 +290,7 @@ class TrussSpeculatorConfiguration(BaseModel):
                         "num_draft_tokens is required in lookahead decoding mode but not set"
                     )
                 if (
-                    self.num_draft_tokens >= lade_num_draft_tokens
+                    self.num_draft_tokens < lade_num_draft_tokens
                 ):  # check that it has at least the required tokens. That way, it could have even higher at request time.
                     raise ValueError(
                         "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
