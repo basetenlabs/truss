@@ -263,18 +263,21 @@ class TrussSpeculatorConfiguration(BaseModel):
                 raise ValueError(
                     "Lookahead decoding mode requires lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size to be set."
                 )
+            lade_num_draft_tokens = self.lade_max_draft_len(
+                self.lookahead_windows_size,
+                self.lookahead_ngram_size,
+                self.lookahead_verification_set_size,
+            )
             if not ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION:
-                num_draft_tokens = self.lade_max_draft_len(
-                    self.lookahead_windows_size,
-                    self.lookahead_ngram_size,
-                    self.lookahead_verification_set_size,
-                )
-                if self.num_draft_tokens and self.num_draft_tokens != num_draft_tokens:
+                if (
+                    self.num_draft_tokens
+                    and self.num_draft_tokens != lade_num_draft_tokens
+                ):
                     raise ValueError(
                         f"num_draft_tokens is automatically calculated based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size. "
-                        f"Please remove num_draft_tokens or set it to exactly {num_draft_tokens}. You set it to {self.num_draft_tokens}."
+                        f"Please remove num_draft_tokens or set it to exactly {lade_num_draft_tokens}. You set it to {self.num_draft_tokens}."
                     )
-                self.num_draft_tokens = num_draft_tokens
+                self.num_draft_tokens = lade_num_draft_tokens
                 if self.num_draft_tokens > 128:
                     logger.warning(
                         f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
@@ -286,11 +289,7 @@ class TrussSpeculatorConfiguration(BaseModel):
                     raise ValueError(
                         "num_draft_tokens is required in lookahead decoding mode but not set"
                     )
-                if self.num_draft_tokens < self.lade_max_draft_len(
-                    self.lookahead_windows_size,
-                    self.lookahead_ngram_size,
-                    self.lookahead_verification_set_size,
-                ):
+                if self.num_draft_tokens < lade_num_draft_tokens:
                     raise ValueError(
                         "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
                     )
