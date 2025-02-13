@@ -224,24 +224,24 @@ class TrussSpeculatorConfiguration(BaseModel):
         self._validate_spec_dec_mode()
 
     def _assert_draft_tokens(self):
-        if self.num_draft_tokens > 512 or self.num_draft_tokens < 0:
+        if self.num_draft_tokens > 2048 or self.num_draft_tokens < 0:
             if self.speculative_decoding_mode == TrussSpecDecMode.LOOKAHEAD_DECODING:
                 reason = (
                     f"This is automatically calculated value of lookahead_windows_size={self.lookahead_windows_size}, "
                     f" lookahead_ngram_size={self.lookahead_ngram_size}, lookahead_verification_set_size={self.lookahead_verification_set_size}. "
-                    f"Please any of them."
+                    f"Please lower any of them."
                 )
             else:
                 reason = "You set this value under speculator.num_draft_tokens"
             raise ValueError(
-                f"num_draft_tokens must be less than or equal to 512. But you requested num_draft_tokens={self.num_draft_tokens}. {reason}"
+                f"num_draft_tokens must be less than or equal to 2048. But you requested num_draft_tokens={self.num_draft_tokens}. {reason}"
             )
 
     @staticmethod
     def lade_max_draft_len(
         windows_size: int, ngram_size: int, verification_set_size: int
     ) -> int:
-        """calculate the maximum number of tokens with baseten lookahead algorithm"""
+        """calculate the maximum number of tokens with baseten lookahead algorithm:  https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/lookahead#overview"""
         return (0 if (ngram_size == 1) else ngram_size - 2) + (
             windows_size - 1 + verification_set_size
         ) * (ngram_size - 1)
@@ -278,7 +278,7 @@ class TrussSpeculatorConfiguration(BaseModel):
                         f"Please remove num_draft_tokens or set it to exactly {lade_num_draft_tokens}. You set it to {self.num_draft_tokens}."
                     )
                 self.num_draft_tokens = lade_num_draft_tokens
-                if self.num_draft_tokens > 128:
+                if self.num_draft_tokens > 512:
                     logger.warning(
                         f"Lookahead decoding mode generates up to {self.num_draft_tokens} speculative tokens per step and may have performance implications. "
                         "We recommend a simpler config, e.g. lookahead_windows_size=7, lookahead_ngram_size=5, lookahead_verification_set_size=3."
@@ -289,7 +289,9 @@ class TrussSpeculatorConfiguration(BaseModel):
                     raise ValueError(
                         "num_draft_tokens is required in lookahead decoding mode but not set"
                     )
-                if self.num_draft_tokens < lade_num_draft_tokens:
+                if (
+                    self.num_draft_tokens >= lade_num_draft_tokens
+                ):  # check that it has at least the required tokens. That way, it could have even higher at request time.
                     raise ValueError(
                         "num_draft_tokens is less than the calculated value based on lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size"
                     )
