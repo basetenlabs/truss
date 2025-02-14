@@ -858,6 +858,8 @@ def jobs():
 
 @jobs.command(name="build_image")
 @click.argument("config_file", type=click.Path(exists=True))
+@log_level_option
+@error_handling
 def build_image(config_file: Path) -> None:
     """Build a docker image for a job"""
     print("building image")
