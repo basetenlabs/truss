@@ -848,6 +848,24 @@ def _load_example_chainlet_code() -> str:
 
 # End Chains Stuff #####################################################################
 
+# Start Jobs Stuff #######################################################################
+
+
+@click.group()
+def jobs():
+    """Subcommands for truss jobs"""
+
+
+@jobs.command(name="build_image")
+@click.argument("config_file", type=click.Path(exists=True))
+def build_image(config_file: Path) -> None:
+    """Build a docker image for a job"""
+    print("building image")
+    pass
+
+
+# End Jobs Stuff #########################################################################
+
 
 def _extract_and_validate_model_identifier(
     target_directory: str,
