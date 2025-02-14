@@ -261,7 +261,7 @@ class TrussSpeculatorConfiguration(BaseModel):
                 ]
             ):
                 raise ValueError(
-                    "Lookahead decoding mode requires lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size to be set."
+                    f"Lookahead decoding mode requires lookahead_windows_size, lookahead_ngram_size, lookahead_verification_set_size to be set. you set: {self}"
                 )
             lade_num_draft_tokens = self.lade_max_draft_len(
                 self.lookahead_windows_size,
