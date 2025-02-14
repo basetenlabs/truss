@@ -1378,6 +1378,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 truss_cli.add_command(container)
 truss_cli.add_command(image)
 truss_cli.add_command(chains)
+truss_cli.add_command(jobs)
 
 if __name__ == "__main__":
     truss_cli()
