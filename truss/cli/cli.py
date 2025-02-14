@@ -862,7 +862,7 @@ def jobs():
 @error_handling
 def build_image(config_file: Path) -> None:
     """Build a docker image for a job"""
-    print("building image")
+
     pass
 
 
