@@ -861,8 +861,30 @@ def jobs():
 @log_level_option
 @error_handling
 def build_image(config_file: Path) -> None:
-    """Build a docker image for a job"""
+    """Build a docker image for a job. config_file is a python file containing a jobs.ImageSpec object"""
+    import importlib.util
 
+    from truss.truss_jobs import ImageSpec
+
+    # Convert file path to module
+    spec = importlib.util.spec_from_file_location("config_module", config_file)
+    if not spec or not spec.loader:
+        raise click.UsageError(f"Could not load {config_file}")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # Find ImageSpec in module
+    image_spec = None
+    for name, obj in module.__dict__.items():
+        if isinstance(obj, ImageSpec):
+            image_spec = obj
+            break
+
+    if not image_spec:
+        raise click.UsageError(f"No ImageSpec found in {config_file}")
+
+    print(image_spec)
     pass
 
 
