@@ -556,3 +556,14 @@ class BasetenApi:
 
         secrets_info = resp.json()
         return secrets_info
+
+    def create_image(self, data: dict) -> Any:
+        headers = self._auth_token.header()
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/jobs/images", headers=headers, json=data
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        image_info = resp.json()
+        return image_info

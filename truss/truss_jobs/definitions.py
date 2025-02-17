@@ -7,6 +7,8 @@ import pydantic
 
 from truss.base import truss_config
 
+# NOTE: The types here should be moved to truss base
+
 
 class TrussUsageError(TypeError):
     """Raised when user-defined Chainlets do not adhere to API constraints."""
@@ -56,6 +58,10 @@ class AbsPath:
         self._raise_if_not_exists(abs_path)
         return abs_path
 
+    @property
+    def as_pathlib_path(self) -> pathlib.Path:
+        return pathlib.Path(self.abs_path)
+
 
 class SafeModelNonSerializable(pydantic.BaseModel):
     """Pydantic base model with reasonable config - allowing arbitrary types."""
@@ -86,6 +92,13 @@ class CustomImage(SafeModel):
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
 
 
+class FileBundle(SafeModel):
+    """A bundle of files to be copied into the docker image."""
+
+    source_path: AbsPath
+    remote_path: str
+
+
 class DockerImage(SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
@@ -108,7 +121,7 @@ class DockerImage(SafeModelNonSerializable):
         apt_requirements: A list of apt requirements to install.
         data_dir: Data from this directory is copied into the docker image and
           accessible to the remote chainlet at runtime.
-        external_package_dirs: A list of directories containing additional python
+        file_bundles: A list of directories containing additional python
           packages outside the chain's workspace dir, e.g. a shared library. This code
           is copied into the docker image and importable at runtime.
     """
@@ -118,7 +131,7 @@ class DockerImage(SafeModelNonSerializable):
     pip_requirements: List[str] = []
     apt_requirements: List[str] = []
     data_dir: Optional[AbsPath] = None
-    external_package_dirs: Optional[List[AbsPath]] = None
+    file_bundles: Optional[List[FileBundle]] = None
 
     @pydantic.root_validator(pre=True)
     def migrate_fields(cls, values):
@@ -139,5 +152,7 @@ class Secret(SafeModel):
 
 class ImageSpec(SafeModel):
     name: str
+    # TODO: add build_commands
     docker_image: DockerImage
     build_secrets: List[Secret]
+    image_tag: Optional[str] = None

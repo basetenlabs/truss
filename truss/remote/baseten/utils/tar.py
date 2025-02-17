@@ -32,6 +32,25 @@ def create_tar_with_progress_bar(
     delete=True,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ):
+    try:
+        temp_file = _create_tar_with_progress_bar(
+            source_dir, ignore_patterns, delete, progress_bar
+        )
+    except PermissionError:
+        # workaround for Windows bug with Tempfile that causes PermissionErrors
+        temp_file = _create_tar_with_progress_bar(
+            source_dir, ignore_patterns, delete=False, progress_bar=progress_bar
+        )
+    temp_file.file.seek(0)
+    return temp_file
+
+
+def _create_tar_with_progress_bar(
+    source_dir: Path,
+    ignore_patterns: Optional[List[str]] = None,
+    delete=True,
+    progress_bar: Optional[Type["progress.Progress"]] = None,
+):
     files_to_include = [
         f
         for f in source_dir.rglob("*")

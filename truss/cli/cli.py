@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, cast
 
 import rich
 import rich.live
@@ -40,6 +40,7 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionId,
 )
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
@@ -51,6 +52,7 @@ from truss.trt_llm.config_checks import (
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
+from truss.truss_jobs.image import build_image_request
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
@@ -858,9 +860,15 @@ def jobs():
 
 @jobs.command(name="build_image")
 @click.argument("config_file", type=click.Path(exists=True))
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
 @log_level_option
 @error_handling
-def build_image(config_file: Path) -> None:
+def build_image(config_file: Path, remote: Optional[str]) -> None:
     """Build a docker image for a job. config_file is a python file containing a jobs.ImageSpec object"""
     import importlib.util
 
@@ -884,7 +892,17 @@ def build_image(config_file: Path) -> None:
     if not image_spec:
         raise click.UsageError(f"No ImageSpec found in {config_file}")
 
-    print(image_spec)
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    # TODO: get organization id from remote provider
+    request = build_image_request(remote_provider.api, "", image_spec)
+    print(request)
+    resp = remote_provider.api.create_image(request)
+    print(resp)
+
     pass
 
 

@@ -286,18 +286,9 @@ def archive_truss(
 
     # check for a truss_ignore file and read the ignore patterns if it exists
     ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
-
-    try:
-        temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, progress_bar=progress_bar
-        )
-    except PermissionError:
-        # workaround for Windows bug with Tempfile that causes PermissionErrors
-        temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, delete=False, progress_bar=progress_bar
-        )
-    temp_file.file.seek(0)
-    return temp_file
+    return create_tar_with_progress_bar(
+        truss_dir, ignore_patterns, progress_bar=progress_bar
+    )
 
 
 def upload_truss(
