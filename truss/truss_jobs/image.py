@@ -98,6 +98,7 @@ def build_image_request(
             "image": image_spec.docker_image.base_image.image,
             "docker_auth": docker_auth,
         }
+        print(image_details)
     elif isinstance(image_spec.docker_image.base_image, BasetenImage):
         image_details = image_spec.docker_image.base_image.value
 

@@ -898,6 +898,8 @@ def build_image(config_file: Path, remote: Optional[str]) -> None:
     remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
 
     # TODO: get organization id from remote provider
+    print("image spec")
+    print(image_spec)
     request = build_image_request(remote_provider.api, "", image_spec)
     print(request)
     resp = remote_provider.api.create_image(request)
