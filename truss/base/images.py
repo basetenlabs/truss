@@ -121,3 +121,4 @@ class ImageSpec(SafeModel):
     build_secrets: List[str] = []
     image_tag: Optional[str] = None
     build_commands: List[str] = []
+    truss_version: Optional[str] = None
