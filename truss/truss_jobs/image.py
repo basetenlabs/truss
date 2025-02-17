@@ -89,11 +89,10 @@ def build_image_request(
 
     docker_auth = None
     image_details: Union[str, dict] = ""
-    if (
-        isinstance(image_spec.docker_image.base_image, CustomImage)
-        and image_spec.docker_image.base_image.docker_auth is not None
-    ):
-        docker_auth = image_spec.docker_image.base_image.docker_auth.to_dict()
+    if isinstance(image_spec.docker_image.base_image, CustomImage):
+        docker_auth = {}
+        if image_spec.docker_image.base_image.docker_auth is not None:
+            docker_auth = image_spec.docker_image.base_image.docker_auth.to_dict()
         image_details = {
             "image": image_spec.docker_image.base_image.image,
             "docker_auth": docker_auth,
