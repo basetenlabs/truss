@@ -58,10 +58,6 @@ class AbsPath:
         self._raise_if_not_exists(abs_path)
         return abs_path
 
-    @property
-    def as_pathlib_path(self) -> pathlib.Path:
-        return pathlib.Path(self.abs_path)
-
 
 class SafeModelNonSerializable(pydantic.BaseModel):
     """Pydantic base model with reasonable config - allowing arbitrary types."""

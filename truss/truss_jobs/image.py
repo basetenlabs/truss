@@ -1,4 +1,5 @@
 import datetime
+import pathlib
 import uuid
 from typing import TYPE_CHECKING, Optional, Type, Union
 
@@ -61,7 +62,8 @@ def build_image_request(
         for file_bundle in image_spec.docker_image.file_bundles:
             # upload bundle to s3
             temp_file = create_tar_with_progress_bar(
-                file_bundle.source_path.as_pathlib_path, progress_bar=progress_bar
+                pathlib.Path(file_bundle.source_path.abs_path),
+                progress_bar=progress_bar,
             )
             # TODO: use organization ID
             s3_key = f"images/{image_spec.name}/{image_tag}/bundles/{timestamp}/{uuid.uuid4()}"
