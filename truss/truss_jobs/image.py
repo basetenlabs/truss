@@ -101,6 +101,10 @@ def build_image_request(
         print(image_details)
     elif isinstance(image_spec.docker_image.base_image, BasetenImage):
         image_details = image_spec.docker_image.base_image.value
+    else:
+        raise ValueError(
+            f"Invalid base image type: {type(image_spec.docker_image.base_image)}"
+        )
 
     return {
         "image_name": image_spec.name,
