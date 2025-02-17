@@ -3,10 +3,10 @@ import pathlib
 import uuid
 from typing import TYPE_CHECKING, Optional, Type, Union
 
+from truss.base.images import BasetenImage, CustomImage, ImageSpec
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
-from truss.truss_jobs.definitions import BasetenImage, CustomImage, ImageSpec
 
 if TYPE_CHECKING:
     from rich import progress

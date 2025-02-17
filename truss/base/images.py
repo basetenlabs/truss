@@ -6,24 +6,8 @@ from typing import List, Optional, Union
 import pydantic
 
 from truss.base import truss_config
-
-# NOTE: The types here should be moved to truss base
-
-
-class TrussUsageError(TypeError):
-    """Raised when user-defined Chainlets do not adhere to API constraints."""
-
-
-class MissingDependencyError(TypeError):
-    """Raised when a needed resource could not be found or is not defined."""
-
-
-class SafeModel(pydantic.BaseModel):
-    """Pydantic base model with reasonable config."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False, strict=True, validate_assignment=True
-    )
+from truss.base.errors import MissingDependencyError, TrussUsageError
+from truss.base.pydantic_models import SafeModel, SafeModelNonSerializable
 
 
 class AbsPath:
@@ -57,17 +41,6 @@ class AbsPath:
         abs_path = self._abs_file_path
         self._raise_if_not_exists(abs_path)
         return abs_path
-
-
-class SafeModelNonSerializable(pydantic.BaseModel):
-    """Pydantic base model with reasonable config - allowing arbitrary types."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=True,
-        strict=True,
-        validate_assignment=True,
-        extra="forbid",
-    )
 
 
 class BasetenImage(enum.Enum):

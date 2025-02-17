@@ -1,3 +1,4 @@
+import importlib.util
 import inspect
 import json
 import logging
@@ -25,6 +26,7 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.errors import RemoteNetworkError
+from truss.base.images import ImageSpec
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli.remote_cli import (
@@ -870,9 +872,6 @@ def jobs():
 @error_handling
 def build_image(config_file: Path, remote: Optional[str]) -> None:
     """Build a docker image for a job. config_file is a python file containing a jobs.ImageSpec object"""
-    import importlib.util
-
-    from truss.truss_jobs import ImageSpec
 
     # Convert file path to module
     spec = importlib.util.spec_from_file_location("config_module", config_file)

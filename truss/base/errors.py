@@ -42,3 +42,11 @@ class ContainerAPINoResponseError(Error):
 
 class RemoteNetworkError(Exception):
     pass
+
+
+class TrussUsageError(TypeError):
+    """Raised when user-defined Chainlets do not adhere to API constraints."""
+
+
+class MissingDependencyError(TypeError):
+    """Raised when a needed resource could not be found or is not defined."""
