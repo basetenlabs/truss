@@ -114,5 +114,5 @@ def build_image_request(
             "pip_requirements": pip_requirements,
             "file_bundles": file_bundles,
         },
-        "build_secrets": [image_spec.build_secrets],
+        "build_secrets": image_spec.build_secrets,
     }
