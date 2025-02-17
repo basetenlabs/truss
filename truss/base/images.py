@@ -117,7 +117,7 @@ class DockerImage(SafeModelNonSerializable):
 
 class ImageSpec(SafeModel):
     name: str
-    # TODO: add build_commands
     docker_image: DockerImage
-    build_secrets: List[str]
+    build_secrets: List[str] = []
     image_tag: Optional[str] = None
+    build_commands: List[str] = []

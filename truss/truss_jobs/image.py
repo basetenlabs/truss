@@ -115,4 +115,5 @@ def build_image_request(
             "file_bundles": file_bundles,
         },
         "build_secrets": image_spec.build_secrets,
+        "build_commands": image_spec.build_commands,
     }
