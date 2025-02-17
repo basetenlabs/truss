@@ -88,7 +88,7 @@ class CustomImage(SafeModel):
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
 
 
-class FileBundle(SafeModel):
+class FileBundle(SafeModelNonSerializable):
     """A bundle of files to be copied into the docker image."""
 
     source_path: AbsPath
