@@ -87,7 +87,7 @@ def build_image_request(
             "pip_requirements": pip_requirements,
             "file_bundles": file_bundles,
         },
-        "build_envvars": image_spec.build_envvars,
+        "build_envvars": [envvar.dict() for envvar in image_spec.build_envvars],
         "build_commands": image_spec.build_commands,
         "truss_version": truss.version(),
     }

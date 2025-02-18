@@ -118,10 +118,18 @@ class DockerImage(SafeModelNonSerializable):
 class SecretReference(SafeModel):
     name: str
 
+    def dict(self, **kwargs):
+        return {"name": self.name, "type": "secret"}
+
 
 class EnvironmentVariable(SafeModel):
     name: str
     value: Union[str, SecretReference]
+
+    def dict(self, **kwargs):
+        if isinstance(self.value, SecretReference):
+            return {"name": self.name, "value": self.value.dict()}
+        return {"name": self.name, "value": self.value}
 
 
 class ImageSpec(SafeModel):
