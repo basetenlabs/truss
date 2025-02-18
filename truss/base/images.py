@@ -1,46 +1,14 @@
 import enum
-import logging
 import pathlib
 from typing import List, Optional, Union
 
 import pydantic
 
 from truss.base import truss_config
-from truss.base.errors import MissingDependencyError, TrussUsageError
+from truss.base.errors import TrussUsageError
 from truss.base.pydantic_models import SafeModel, SafeModelNonSerializable
 
-
-class AbsPath:
-    _abs_file_path: str
-    _creating_module: str
-    _original_path: str
-
-    def __init__(
-        self, abs_file_path: str, creating_module: str, original_path: str
-    ) -> None:
-        self._abs_file_path = abs_file_path
-        self._creating_module = creating_module
-        self._original_path = original_path
-
-    def _raise_if_not_exists(self, abs_path: str) -> None:
-        path = pathlib.Path(abs_path)
-        if not (path.is_file() or (path.is_dir() and any(path.iterdir()))):
-            raise MissingDependencyError(
-                f"With the file path `{self._original_path}` an absolute path relative "
-                f"to the calling module `{self._creating_module}` was created, "
-                f"resulting `{self._abs_file_path}` - but no file was found."
-            )
-
-    @property
-    def abs_path(self) -> str:
-        if self._abs_file_path != self._original_path:
-            logging.debug(
-                f"Using abs path `{self._abs_file_path}` for path specified as "
-                f"`{self._original_path}` (in `{self._creating_module}`)."
-            )
-        abs_path = self._abs_file_path
-        self._raise_if_not_exists(abs_path)
-        return abs_path
+LocalPath = Union[str, pathlib.Path]
 
 
 class BasetenImage(enum.Enum):
@@ -64,7 +32,7 @@ class CustomImage(SafeModel):
 class FileBundle(SafeModelNonSerializable):
     """A bundle of files to be copied into the docker image."""
 
-    source_path: AbsPath
+    source_path: LocalPath
     remote_path: str
 
 
@@ -96,10 +64,10 @@ class DockerImage(SafeModelNonSerializable):
     """
 
     base_image: Union[BasetenImage, CustomImage] = BasetenImage.PY311
-    pip_requirements_file: Optional[AbsPath] = None
+    pip_requirements_file: Optional[LocalPath] = None
     pip_requirements: List[str] = []
     apt_requirements: List[str] = []
-    data_dir: Optional[AbsPath] = None
+    data_dir: Optional[LocalPath] = None
     file_bundles: Optional[List[FileBundle]] = None
 
     @pydantic.root_validator(pre=True)

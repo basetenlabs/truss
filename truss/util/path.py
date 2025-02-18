@@ -171,3 +171,15 @@ def get_unignored_relative_paths_from_root(
         get_ignored_relative_paths(root_relative_paths, ignore_patterns)
     )
     return root_relative_paths - ignored_paths  # type: ignore
+
+
+def handle_path_or_str(path: Union[Path, str]) -> Path:
+    if isinstance(path, str):
+        return Path(path)
+    return path
+
+
+def build_absolute_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return Path.cwd() / path

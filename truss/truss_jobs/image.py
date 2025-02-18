@@ -8,12 +8,14 @@ from truss.base.images import BasetenImage, CustomImage, ImageSpec
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
+from truss.util.path import build_absolute_path, handle_path_or_str
 
 if TYPE_CHECKING:
     from rich import progress
 
 
 def build_image_request(
+    cwd: pathlib.Path,
     api: BasetenApi,
     organization_id: str,
     image_spec: ImageSpec,
@@ -34,10 +36,13 @@ def build_image_request(
         for file_bundle in image_spec.docker_image.file_bundles:
             # upload bundle to s3
             temp_file = create_tar_with_progress_bar(
-                pathlib.Path(file_bundle.source_path.abs_path),
+                build_absolute_path(handle_path_or_str(file_bundle.source_path)),
                 progress_bar=progress_bar,
             )
             # TODO: use organization ID
+            # TODO: need to do some validation on the image name and tag before hand
+            # - ensure overwriting is intentional
+            # - ensure the image name is valid
             s3_key = f"images/{image_spec.name}/{image_tag}/bundles/{timestamp}/{uuid.uuid4()}"
             temp_credentials_s3_upload = api.model_s3_upload_credentials()
             s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
@@ -50,14 +55,25 @@ def build_image_request(
             )
 
             file_bundles.append(
-                {"remote_path": file_bundle.remote_path, "s3_key": s3_key}
+                {
+                    "remote_path": build_absolute_path(
+                        handle_path_or_str(file_bundle.remote_path)
+                    ),
+                    "s3_key": s3_key,
+                }
             )
     # get pip requirements from the file or from the listed pip requirements
     pip_requirements = []
     if image_spec.docker_image.pip_requirements_file is not None:
-        with open(image_spec.docker_image.pip_requirements_file.abs_path, "r") as f:
+        with open(
+            build_absolute_path(
+                handle_path_or_str(image_spec.docker_image.pip_requirements_file)
+            ),
+            "r",
+        ) as f:
             pip_requirements.extend(f.readlines())
-    pip_requirements = image_spec.docker_image.pip_requirements
+    else:
+        pip_requirements = image_spec.docker_image.pip_requirements
 
     docker_auth = None
     image_details: Union[str, dict] = ""
