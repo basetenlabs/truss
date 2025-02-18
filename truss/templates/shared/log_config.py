@@ -33,8 +33,7 @@ class _AccessJsonFormatter(jsonlogger.JsonFormatter):
             client_addr, method, raw_path, version, status = record.args
             path_decoded = urllib.parse.unquote(str(raw_path))
             new_message = (
-                f"Handled request from {client_addr} - {method} "
-                f"{path_decoded} HTTP/{version} {status}"
+                f"Handled request: {method} {path_decoded} HTTP/{version} {status}"
             )
             record.msg = new_message
             record.args = ()  # Ensure Python doesn't reapply the old format string
