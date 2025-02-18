@@ -36,10 +36,11 @@ async def handle_model_load_failed(_, error):
 
 def create_app(base_config: Dict):
     app_state = State()
+    # TODO(BT-13721): better log setup: app_logger isn't captured and access log
+    #   is redundant.
+    logging.config.dictConfig(log_config.make_log_config("INFO"))
     app_logger = logging.getLogger(__name__)
     app_state.logger = app_logger
-
-    logging.config.dictConfig(log_config.make_log_config("INFO"))
 
     for k, v in base_config.items():
         setattr(app_state, k, v)
