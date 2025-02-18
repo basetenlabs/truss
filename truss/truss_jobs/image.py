@@ -45,6 +45,7 @@ def build_image_request(
             # - ensure the image name is valid
             s3_key = f"images/{image_spec.name}/{image_tag}/bundles/{timestamp}/{uuid.uuid4()}"
             temp_credentials_s3_upload = api.model_s3_upload_credentials()
+            temp_credentials_s3_upload.pop("s3_key")
             s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
             multipart_upload_boto3(
                 temp_file.name,
