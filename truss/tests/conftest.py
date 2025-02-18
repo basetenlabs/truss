@@ -825,7 +825,6 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "plugin_configuration": {
                 "paged_kv_cache": True,
-                "gemm_plugin": "auto",
                 "use_paged_context_fmha": True,
             },
             "speculator": {
@@ -841,7 +840,8 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
                     },
                 },
             },
-        }
+        },
+        "runtime": {"enabled_chunked_context": True},
     }
     return spec_dec_config
 
@@ -857,7 +857,6 @@ def trtllm_spec_dec_config(trtllm_config) -> Dict[str, Any]:
             "checkpoint_repository": {"source": "HF", "repo": "meta/llama4-500B"},
             "plugin_configuration": {
                 "paged_kv_cache": True,
-                "gemm_plugin": "auto",
                 "use_paged_context_fmha": True,
             },
             "speculator": {
