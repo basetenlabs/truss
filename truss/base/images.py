@@ -115,13 +115,13 @@ class DockerImage(SafeModelNonSerializable):
         return values
 
 
-class Secret(SafeModel):
+class SecretReference(SafeModel):
     name: str
 
 
 class EnvironmentVariable(SafeModel):
     name: str
-    value: Union[str, Secret]
+    value: Union[str, SecretReference]
 
 
 class ImageSpec(SafeModel):

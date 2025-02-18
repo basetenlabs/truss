@@ -20,8 +20,10 @@ from truss.base.images import (
     BasetenImage,
     CustomImage,
     DockerImage,
+    EnvironmentVariable,
     FileBundle,
     ImageSpec,
+    SecretReference,
 )
 from truss.truss_handle.build import load  # TODO: Refactor all usages and remove.
 
@@ -36,5 +38,6 @@ __all__ = [
     "DockerImage",
     "FileBundle",
     "ImageSpec",
-    "Secret",
+    "EnvironmentVariable",
+    "SecretReference",
 ]
