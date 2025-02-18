@@ -1,6 +1,5 @@
 import datetime
 import pathlib
-import uuid
 from typing import TYPE_CHECKING, Optional, Type, Union
 
 import truss
@@ -31,7 +30,7 @@ def build_image_request(
     # TODO: we should clear out bundles for the supplied image tag
     # upload assets to s3
     file_bundles = []
-    timestamp = datetime.datetime.now().isoformat()
+    # timestamp = datetime.datetime.now().isoformat()
     if image_spec.docker_image.file_bundles:
         for file_bundle in image_spec.docker_image.file_bundles:
             # upload bundle to s3
@@ -43,9 +42,9 @@ def build_image_request(
             # TODO: need to do some validation on the image name and tag before hand
             # - ensure overwriting is intentional
             # - ensure the image name is valid
-            s3_key = f"images/{image_spec.name}/{image_tag}/bundles/{timestamp}/{uuid.uuid4()}"
+            # s3_key = f"images/{image_spec.name}/{image_tag}/bundles/{timestamp}/{uuid.uuid4()}"
             temp_credentials_s3_upload = api.model_s3_upload_credentials()
-            temp_credentials_s3_upload.pop("s3_key")
+            s3_key = temp_credentials_s3_upload.pop("s3_key")
             s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
             multipart_upload_boto3(
                 temp_file.name,
