@@ -840,8 +840,7 @@ def trtllm_spec_dec_config_full(trtllm_config) -> Dict[str, Any]:
                     },
                 },
             },
-        },
-        "runtime": {"enabled_chunked_context": True},
+        }
     }
     return spec_dec_config
 
