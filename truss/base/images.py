@@ -115,10 +115,19 @@ class DockerImage(SafeModelNonSerializable):
         return values
 
 
+class Secret(SafeModel):
+    name: str
+
+
+class EnvironmentVariable(SafeModel):
+    name: str
+    value: Union[str, Secret]
+
+
 class ImageSpec(SafeModel):
     name: str
     docker_image: DockerImage
-    build_secrets: List[str] = []
+    build_envvars: List[EnvironmentVariable] = []
     image_tag: Optional[str] = None
     build_commands: List[str] = []
     truss_version: Optional[str] = None

@@ -77,6 +77,7 @@ def build_image_request(
             f"Invalid base image type: {type(image_spec.docker_image.base_image)}"
         )
 
+    # TODO: validate envvars that are secrets
     return {
         "image_name": image_spec.name,
         "image_tag": image_tag,
@@ -86,7 +87,7 @@ def build_image_request(
             "pip_requirements": pip_requirements,
             "file_bundles": file_bundles,
         },
-        "build_secrets": image_spec.build_secrets,
+        "build_envvars": image_spec.build_envvars,
         "build_commands": image_spec.build_commands,
         "truss_version": truss.version(),
     }
