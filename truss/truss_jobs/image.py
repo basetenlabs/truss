@@ -24,13 +24,14 @@ def build_image_request(
     a JSON request.
     """
     # generate an image tag if none exists
-    image_tag = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.datetime.now()
+    image_tag = ts.strftime("%Y%m%d-%H%M%S")
     if image_spec.image_tag is not None:
         image_tag = image_spec.image_tag
     # TODO: we should clear out bundles for the supplied image tag
     # upload assets to s3
     file_bundles = []
-    # timestamp = datetime.datetime.now().isoformat()
+    # timestamp = ts.isoformat()
     if image_spec.docker_image.file_bundles:
         for file_bundle in image_spec.docker_image.file_bundles:
             # upload bundle to s3
