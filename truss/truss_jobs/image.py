@@ -57,9 +57,8 @@ def build_image_request(
 
             file_bundles.append(
                 {
-                    "remote_path": build_absolute_path(
-                        handle_path_or_str(file_bundle.remote_path)
-                    ),
+                    # convert to string
+                    "remote_path": str(handle_path_or_str(file_bundle.remote_path)),
                     "s3_key": s3_key,
                 }
             )
