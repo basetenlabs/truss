@@ -43,7 +43,6 @@ class TrussTRTLLMQuantizationType(str, Enum):
 
 class TrussTRTLLMPluginConfiguration(BaseModel):
     paged_kv_cache: bool = True
-    gemm_plugin: str = "auto"
     use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
 
