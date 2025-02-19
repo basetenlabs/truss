@@ -25,6 +25,7 @@ from truss.base.constants import (
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
 from truss.base.errors import RemoteNetworkError
+from truss.base.pydantic_models import get_spec_from_file
 from truss.base.trt_llm_config import TrussTRTLLMQuantizationType
 from truss.base.truss_config import Build, ModelServer
 from truss.cli.remote_cli import (
@@ -51,6 +52,7 @@ from truss.trt_llm.config_checks import (
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
+from truss.truss_train.definitions import TrainingJobSpec
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
 
@@ -878,6 +880,7 @@ def build_training_job(config: Path, remote: Optional[str]) -> None:
 @error_handling
 def run_training_job(config: str, remote: Optional[str]):
     """Run a training job"""
+    get_spec_from_file(config, TrainingJobSpec)
     pass
     # Convert file path to module
 
