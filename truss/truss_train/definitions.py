@@ -2,6 +2,8 @@
 import pathlib
 from typing import Dict, Union
 
+from pydantic import RootModel
+
 from truss.base.pydantic_models import SafeModel, SafeModelNonSerializable
 
 LocalPath = Union[str, pathlib.Path]
@@ -21,10 +23,10 @@ class SecretReference(SafeModel):
         return {"name": self.name, "type": "secret"}
 
 
-class EnvironmentVariables(SafeModelNonSerializable):
+class EnvironmentVariables(RootModel, SafeModelNonSerializable):
     """A dictionary for environment variables that can contain strings or secret references."""
 
-    __root__: Dict[str, Union[str, SecretReference]]
+    root: Dict[str, Union[str, SecretReference]]
 
     def dict(self):
         return {
