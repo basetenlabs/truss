@@ -848,6 +848,39 @@ def _load_example_chainlet_code() -> str:
 
 # End Chains Stuff #####################################################################
 
+# Start Training Stuff ####################################################################
+
+
+@click.group(name="train")
+def train():
+    """Subcommands for truss train"""
+
+
+@train.command(name="build")
+@click.argument("config", type=click.Path(exists=True))
+@click.option(
+    "--remote",
+    type=str,
+    required=False,
+    help="Name of the remote in .trussrc to push to",
+)
+@log_level_option
+@error_handling
+def build_training_job(config: Path, remote: Optional[str]) -> None:
+    """Build a training job"""
+    pass
+
+
+@train.command(name="run")
+@click.argument("config", type=str, required=True)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def run_training_job(config: str, remote: Optional[str]):
+    """Run a training job"""
+    pass
+    # Convert file path to module
+
 
 def _extract_and_validate_model_identifier(
     target_directory: str,
@@ -1358,6 +1391,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 truss_cli.add_command(container)
 truss_cli.add_command(image)
 truss_cli.add_command(chains)
+truss_cli.add_command(train)
 
 if __name__ == "__main__":
     truss_cli()
