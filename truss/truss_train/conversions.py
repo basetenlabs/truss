@@ -1,3 +1,4 @@
+import base64
 import pathlib
 
 from truss.remote.baseten.api import BasetenApi
@@ -24,10 +25,10 @@ def build_create_training_job_request(
                 f"Training framework config file not found: {training_framework_config_path}"
             )
         with open(training_framework_config_path, "rb") as f:
-            config_file = f.read()
+            config_contents = f.read()
         framework_config_details = {
-            "content": config_file,
-            "filename": training_job_spec.training_config.framework_config_file.source_path,
+            "content": base64.b64encode(config_contents).decode("utf-8"),
+            "remote_path": training_job_spec.training_config.framework_config_file.remote_path,
         }
 
     request = {
