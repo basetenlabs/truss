@@ -38,7 +38,7 @@ class Extension:
         self._config = kwargs["config"]
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
-        if config.build.speculator:
+        if config.build.uses_draft_external:
             self._model = SpecDecModel(*args, **kwargs)
         else:
             self._model = Model(*args, **kwargs)
