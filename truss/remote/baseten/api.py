@@ -561,11 +561,11 @@ class BasetenApi:
         headers = self._auth_token.header()
         # the post request will handle get or create and return the project ID
         data = {"name": name}
-        print(data)
         resp = requests.post(
             f"{self._rest_api_url}/v1/training", headers=headers, json=data
         )
         if not resp.ok:
+            print(resp.text)
             resp.raise_for_status()
         """
         {
