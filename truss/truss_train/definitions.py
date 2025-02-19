@@ -22,18 +22,6 @@ class SecretReference(SafeModel):
         return {"name": self.name, "type": "secret"}
 
 
-class EnvironmentVariables(SafeModelNonSerializable):
-    """A dictionary for environment variables that can contain strings or secret references."""
-
-    __root__: Dict[str, Union[str, SecretReference]]
-
-    def dict(self):
-        return {
-            k: v.dict() if isinstance(v, SecretReference) else v
-            for k, v in self.__root__.items()
-        }
-
-
 class InstanceType(SafeModel):
     """Parsed and validated instance type."""
 
@@ -62,7 +50,7 @@ class TrainingConfig(SafeModel):
 
 class RuntimeConfig(SafeModel):
     image_name: str
-    environment_variables: str  # Envvar
+    environment_variables: Dict[str, Union[str, SecretReference]]
     start_commands: List[str]
 
 
