@@ -39,7 +39,7 @@ class HardwareConfig(SafeModel):
 
 class TrainingConfig(SafeModel):
     name: str
-    training_configuration: FileBundle
+    training_configuration_file: FileBundle
     # relative to the BasetenOutputStorage "remote_mount_path"
     cloud_backed_volume_checkpoint_directory: str
 
