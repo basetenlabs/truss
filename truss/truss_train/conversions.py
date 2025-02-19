@@ -1,14 +1,11 @@
 import base64
 import pathlib
 
-from truss.remote.baseten.api import BasetenApi
 from truss.truss_train.definitions import SecretReference, TrainingJobSpec
 
 
 def build_create_training_job_request(
-    training_config_dir: pathlib.Path,
-    api: BasetenApi,
-    training_job_spec: TrainingJobSpec,
+    training_config_dir: pathlib.Path, training_job_spec: TrainingJobSpec
 ) -> dict:
     # serialize the file bundle for the framework_config_file
     framework_config_details = None

@@ -896,12 +896,15 @@ def run_training_job(config: str, remote: Optional[str]):
     training_job_spec = cast(
         TrainingJobSpec, get_spec_from_file(config_path, TrainingJobSpec)
     )
-    request = build_create_training_job_request(
-        config_path.parent, remote_provider.api, training_job_spec
+    # get or create the training project
+    training_project = remote_provider.api.get_or_create_training_project(
+        training_job_spec.training_config.name
     )
 
+    request = build_create_training_job_request(config_path.parent, training_job_spec)
+
     print(request)
-    response = remote_provider.api.create_training_job(request)
+    response = remote_provider.api.create_training_job(training_project["id"], request)
     print(response)
 
     pass
