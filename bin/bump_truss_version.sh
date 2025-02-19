@@ -1,27 +1,25 @@
 #!/bin/bash
-# This script bumps the project version using Poetry.
-# It extracts the current version from `poetry version`, strips any non-semver suffix,
-# and then increments the major, minor, or patch version as specified.
+# This script bumps the project version based on an input version number.
+# It takes an existing version number as an argument instead of extracting it via Poetry
+# and increments the major, minor, or patch version as specified.
 #
 # Usage:
-#   ./bump_version.sh         # bumps the patch (micro) version by default
-#   ./bump_version.sh major   # bumps the major version (resets minor and patch to 0)
-#   ./bump_version.sh minor   # bumps the minor version (resets patch to 0)
+#   ./bump_version.sh 0.9.60         # bumps the patch (micro) version by default -> 0.9.61
+#   ./bump_version.sh 0.9.60 major   # bumps the major version (resets minor and patch to 0) -> 1.0.0
+#   ./bump_version.sh 0.9.60 minor   # bumps the minor version (resets patch to 0) -> 0.10.0
 
 set -euo pipefail
 
-# Default bump type is "patch" (micro)
-BUMP_TYPE="${1:-patch}"
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <current_version> [major|minor|patch]"
+  exit 1
+fi
 
-# Get the current version using Poetry.
-# Expected output format: "truss 0.9.60rc006"
-version_output=$(poetry version)
-
-# Extract the version (second field)
-current_version=$(echo "$version_output" | awk '{print $2}')
+CURRENT_VERSION="$1"
+BUMP_TYPE="${2:-patch}"  # Default bump type is "patch" (micro)
 
 # Strip any suffix beyond the semver (retain only X.Y.Z)
-semver=$(echo "$current_version" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+semver=$(echo "$CURRENT_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
 
 # Split the semver into major, minor, and patch
 IFS='.' read -r major minor patch <<< "$semver"

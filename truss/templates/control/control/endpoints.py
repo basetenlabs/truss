@@ -58,6 +58,7 @@ async def proxy(request: Request):
         ),
         stop=_custom_stop_strategy,
         wait=wait_fixed(1),
+        reraise=False,
     ):
         with attempt:
             try:
