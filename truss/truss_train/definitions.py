@@ -22,13 +22,9 @@ class SecretReference(SafeModel):
         return {"name": self.name, "type": "secret"}
 
 
-class InstanceType(SafeModel):
+class InstanceType(truss_config.ComputeSpec):
     """Parsed and validated instance type."""
 
-    cpu_count: int = 1
-    predict_concurrency: int = 1
-    memory: str = "2Gi"
-    accelerator: truss_config.AcceleratorSpec = truss_config.AcceleratorSpec()
     ephemeral_storage: str = "512Gi"
 
 

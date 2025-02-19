@@ -6,6 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
+import pydantic
 import yaml
 
 from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
@@ -174,6 +175,16 @@ class HealthChecks:
             "restart_threshold_seconds": self.restart_threshold_seconds,
             "stop_traffic_threshold_seconds": self.stop_traffic_threshold_seconds,
         }
+
+
+class ComputeSpec(pydantic.BaseModel):
+    """Parsed and validated compute.  See ``Compute`` for more information."""
+
+    # TODO[rcano] add node count
+    cpu_count: int = 1
+    predict_concurrency: int = 1
+    memory: str = "2Gi"
+    accelerator: AcceleratorSpec = AcceleratorSpec()
 
 
 @dataclass
