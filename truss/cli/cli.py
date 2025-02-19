@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, cast
 
 import rich
 import rich.live
@@ -41,6 +41,7 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionId,
 )
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
@@ -52,6 +53,7 @@ from truss.trt_llm.config_checks import (
 from truss.truss_handle.build import cleanup as _cleanup
 from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
+from truss.truss_train.conversions import build_create_training_job_request
 from truss.truss_train.definitions import TrainingJobSpec
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
@@ -880,7 +882,28 @@ def build_training_job(config: Path, remote: Optional[str]) -> None:
 @error_handling
 def run_training_job(config: str, remote: Optional[str]):
     """Run a training job"""
-    get_spec_from_file(config, TrainingJobSpec)
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider = cast(BasetenRemote, RemoteFactory.create(remote=remote))
+
+    config_path = Path(config)
+    if not config_path.exists():
+        raise click.UsageError(f"Training config file not found: {config_path}")
+    if not config_path.is_file():
+        raise click.UsageError(f"Training config file is not a file: {config_path}")
+
+    training_job_spec = cast(
+        TrainingJobSpec, get_spec_from_file(config_path, TrainingJobSpec)
+    )
+    request = build_create_training_job_request(
+        config_path.parent, remote_provider.api, training_job_spec
+    )
+
+    print(request)
+    response = remote_provider.api.create_training_job(request)
+    print(response)
+
     pass
     # Convert file path to module
 

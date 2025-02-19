@@ -1,4 +1,5 @@
 import importlib
+import pathlib
 from typing import Type
 
 import pydantic
@@ -23,7 +24,7 @@ class SafeModelNonSerializable(pydantic.BaseModel):
     )
 
 
-def get_spec_from_file(config: str, cls: Type) -> Type:
+def get_spec_from_file(config: pathlib.Path, cls: Type) -> Type:
     """Get a spec from a file."""
     spec = importlib.util.spec_from_file_location("config_module", config)
     if not spec or not spec.loader:

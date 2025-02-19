@@ -556,3 +556,12 @@ class BasetenApi:
 
         secrets_info = resp.json()
         return secrets_info
+
+    def create_training_job(self, request: dict) -> Any:
+        headers = self._auth_token.header()
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/train/jobs", headers=headers, json=request
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+        return resp.json()

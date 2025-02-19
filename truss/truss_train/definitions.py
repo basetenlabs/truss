@@ -1,6 +1,6 @@
 # Training types here
 import pathlib
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from truss.base import truss_config
 from truss.base.pydantic_models import SafeModel, SafeModelNonSerializable
@@ -39,9 +39,9 @@ class HardwareConfig(SafeModel):
 
 class TrainingConfig(SafeModel):
     name: str
-    training_configuration_file: FileBundle
+    framework_config_file: Optional[FileBundle] = None
     # relative to the BasetenOutputStorage "remote_mount_path"
-    cloud_backed_volume_checkpoint_directory: str
+    cloud_backed_volume_checkpoint_directory: Optional[str] = None
 
 
 class RuntimeConfig(SafeModel):
