@@ -186,6 +186,14 @@ class ComputeSpec(pydantic.BaseModel):
     memory: str = "2Gi"
     accelerator: AcceleratorSpec = AcceleratorSpec()
 
+    def dict(self, **kwargs):
+        return {
+            "cpu_count": self.cpu_count,
+            "predict_concurrency": self.predict_concurrency,
+            "memory": self.memory,
+            "accelerator": self.accelerator.to_str(),
+        }
+
 
 @dataclass
 class Runtime:

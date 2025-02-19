@@ -27,14 +27,26 @@ class InstanceType(truss_config.ComputeSpec):
 
     ephemeral_storage: str = "512Gi"
 
+    def dict(self, **kwargs):
+        return {"ephemeral_storage": self.ephemeral_storage, **super().dict(**kwargs)}
+
 
 class BasetenOutputStorage(SafeModel):
     remote_mount_path: str
+
+    def dict(self, **kwargs):
+        return {"remote_mount_path": self.remote_mount_path}
 
 
 class HardwareConfig(SafeModel):
     instance_type: InstanceType
     cloud_backed_volume: BasetenOutputStorage
+
+    def dict(self, **kwargs):
+        return {
+            "instance_type": self.instance_type.dict(),
+            "cloud_backed_volume": self.cloud_backed_volume.dict(),
+        }
 
 
 class TrainingConfig(SafeModel):
