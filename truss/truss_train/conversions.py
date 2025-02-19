@@ -28,6 +28,9 @@ def build_create_training_job_request(
             "remote_path": training_job_spec.training_config.framework_config_file.remote_path,
         }
 
+    hardware_config = training_job_spec.hardware_config.dict()
+    if hardware_config.get("instance_type", {}).get("predict_concurrency", None):
+        hardware_config["instance_type"].pop("predict_concurrency")
     request = {
         "hardware_config": training_job_spec.hardware_config.dict(),
         "runtime_config": {
