@@ -560,8 +560,10 @@ class BasetenApi:
     def get_or_create_training_project(self, name: str) -> Any:
         headers = self._auth_token.header()
         # the post request will handle get or create and return the project ID
+        data = {"name": name}
+        print(data)
         resp = requests.post(
-            f"{self._rest_api_url}/v1/training", headers=headers, json={"name": name}
+            f"{self._rest_api_url}/v1/training", headers=headers, json=data
         )
         if not resp.ok:
             resp.raise_for_status()
