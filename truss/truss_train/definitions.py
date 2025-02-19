@@ -1,6 +1,6 @@
 # Training types here
 import pathlib
-from typing import List, Union
+from typing import Dict, List, Union
 
 from truss.base import truss_config
 from truss.base.pydantic_models import SafeModel, SafeModelNonSerializable
@@ -13,6 +13,25 @@ class FileBundle(SafeModelNonSerializable):
 
     source_path: LocalPath
     remote_path: str
+
+
+class SecretReference(SafeModel):
+    name: str
+
+    def dict(self, **kwargs):
+        return {"name": self.name, "type": "secret"}
+
+
+class EnvironmentVariables(SafeModelNonSerializable):
+    """A dictionary for environment variables that can contain strings or secret references."""
+
+    __root__: Dict[str, Union[str, SecretReference]]
+
+    def dict(self):
+        return {
+            k: v.dict() if isinstance(v, SecretReference) else v
+            for k, v in self.__root__.items()
+        }
 
 
 class InstanceType(SafeModel):
