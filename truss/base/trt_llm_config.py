@@ -135,6 +135,22 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
                 )
         return v
 
+    @property
+    def uses_lookahead_decoding(self) -> bool:
+        return (
+            self.speculator is not None
+            and self.speculator.speculative_decoding_mode
+            == TrussSpecDecMode.LOOKAHEAD_DECODING
+        )
+
+    @property
+    def uses_draft_external(self) -> bool:
+        return (
+            self.speculator is not None
+            and self.speculator.speculative_decoding_mode
+            == TrussSpecDecMode.DRAFT_EXTERNAL
+        )
+
     def _bei_specfic_migration(self):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
         if self.base_model == TrussTRTLLMModel.ENCODER:
