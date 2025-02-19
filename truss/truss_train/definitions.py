@@ -1,8 +1,6 @@
 # Training types here
 import pathlib
-from typing import Dict, Union
-
-from pydantic import RootModel
+from typing import Union
 
 from truss.base.pydantic_models import SafeModel, SafeModelNonSerializable
 
@@ -23,13 +21,4 @@ class SecretReference(SafeModel):
         return {"name": self.name, "type": "secret"}
 
 
-class EnvironmentVariables(RootModel, SafeModelNonSerializable):
-    """A dictionary for environment variables that can contain strings or secret references."""
-
-    root: Dict[str, Union[str, SecretReference]]
-
-    def dict(self):
-        return {
-            k: v.dict() if isinstance(v, SecretReference) else v
-            for k, v in self.__root__.items()
-        }
+# TODO: Can we do something nice with EnvironmentVariables?
