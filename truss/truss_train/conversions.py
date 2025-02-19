@@ -29,10 +29,7 @@ def build_create_training_job_request(
         }
 
     request = {
-        "hardware_config": {
-            "instance_type": training_job_spec.hardware_config.dict(),
-            "cloud_backed_volume": training_job_spec.hardware_config.cloud_backed_volume.dict(),
-        },
+        "hardware_config": training_job_spec.hardware_config.dict(),
         "runtime_config": {
             "image_name": training_job_spec.runtime_config.image_name,
             "environment_variables": {
