@@ -799,7 +799,8 @@ class ModelWrapper:
 
         if descriptor.is_async:
             await self._model.websocket(ws)
-        await to_thread.run_sync(self._model.websocket, ws)
+        else:
+            await to_thread.run_sync(self._model.websocket, ws)
 
     async def predict(
         self, inputs: Optional[InputType], request: starlette.requests.Request
