@@ -71,7 +71,7 @@ truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup
 [tool.poetry.dependencies]
 # "base" dependencies.
 # "When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
-python = ">=3.8,<3.13"
+python = ">=3.9,<3.13"
 huggingface_hub = ">=0.25.0"
 pydantic = ">=1.10.0"  # We cannot upgrade to v2, due to customer constraints.
 PyYAML = ">=6.0"
@@ -178,7 +178,7 @@ requires = ["poetry-core>=1.2.1"]
 
 [tool.mypy]
 ignore_missing_imports = true
-python_version = "3.8"
+python_version = "3.9"
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
@@ -190,7 +190,7 @@ addopts = "--ignore=smoketests"
 
 [tool.ruff]
 src = ["truss", "truss-chains"]
-target-version = "py38"
+target-version = "py39"
 line-length = 88
 lint.extend-select = [
     "I", # isort
