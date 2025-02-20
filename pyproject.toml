@@ -189,7 +189,7 @@ markers = [
 addopts = "--ignore=smoketests"
 
 [tool.ruff]
-src = ["truss", "truss-chains", "truss-utils"]
+src = ["truss", "truss-chains"]
 target-version = "py38"
 line-length = 88
 lint.extend-select = [
