@@ -10,8 +10,8 @@ warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 __version__ = get_version(__name__, Path(__file__).parent.parent)
 
 
-def version():
-    return __version__
+def version() -> str:
+    return __version__ or ""
 
 
 from truss.api import login, push, whoami

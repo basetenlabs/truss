@@ -211,7 +211,6 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
                 th,
                 "model_name",
                 publish=False,
-                trusted=False,
                 promote=False,
                 preserve_previous_prod_deployment=False,
                 deployment_name="dep_name",
@@ -243,7 +242,6 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
                 th,
                 "model_name",
                 publish=True,
-                trusted=False,
                 promote=False,
                 preserve_previous_prod_deployment=False,
                 deployment_name="dep//name",
@@ -275,7 +273,6 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
                 th,
                 "model_name",
                 publish=False,
-                trusted=False,
                 promote=False,
                 preserve_previous_prod_deployment=True,
             )
@@ -316,7 +313,6 @@ def test_create_chain_with_no_publish():
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -347,7 +343,6 @@ def test_create_chain_with_no_publish():
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
@@ -418,7 +413,6 @@ def test_create_chain_no_existing_chain():
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -449,7 +443,6 @@ def test_create_chain_no_existing_chain():
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
@@ -524,7 +517,6 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -557,7 +549,6 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }
@@ -633,7 +624,6 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     model_name="model-1",
                     s3_key="s3-key-1",
                     encoded_config_str="encoded-config-str-1",
-                    is_trusted=True,
                 ),
             ),
             dependencies=[],
@@ -664,7 +654,6 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                     model_name: "model-1",
                     s3_key: "s3-key-1",
                     encoded_config_str: "encoded-config-str-1",
-                    is_trusted: true,
                     semver_bump: "MINOR"
                 }
             }

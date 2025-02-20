@@ -1130,7 +1130,7 @@ def push(
     remote: str,
     model_name: str,
     publish: bool = False,
-    trusted: bool = False,
+    trusted: Optional[bool] = None,
     disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
@@ -1167,7 +1167,7 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # Log a warning if using --trusted.
-    if trusted:
+    if trusted is not None:
         trusted_deprecation_notice = (
             "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
         )
@@ -1208,7 +1208,6 @@ def push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,

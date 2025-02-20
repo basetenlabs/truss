@@ -249,8 +249,9 @@ async def test_retries(client, app):
         ]
     )
 
-    with patch("endpoints.INFERENCE_SERVER_START_WAIT_SECS", new=4), pytest.raises(
-        RetryError
+    with (
+        patch("endpoints.INFERENCE_SERVER_START_WAIT_SECS", new=4),
+        pytest.raises(RetryError),
     ):
         await client.get("/v1/models/model")
 

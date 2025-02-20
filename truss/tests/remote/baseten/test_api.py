@@ -121,7 +121,6 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
         "semver_bump",
         "client_version",
         False,
-        False,
         "deployment_name",
         "production",
     )
@@ -132,7 +131,6 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: false" in gql_mutation
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
@@ -148,7 +146,6 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
         "config_str",
         "semver_bump",
         "client_version",
-        True,
         False,
         deployment_name=None,
     )
@@ -159,7 +156,6 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
     assert "environment_name: " not in gql_mutation
@@ -176,7 +172,6 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
         "semver_bump",
         "client_version",
         True,
-        True,
         deployment_name=None,
         environment="staging",
     )
@@ -187,7 +182,6 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
     assert 'environment_name: "staging"' in gql_mutation
@@ -201,7 +195,6 @@ def test_create_model_from_truss(mock_post, baseten_api):
         "config_str",
         "semver_bump",
         "client_version",
-        is_trusted=False,
         deployment_name="deployment_name",
     )
 
@@ -211,7 +204,6 @@ def test_create_model_from_truss(mock_post, baseten_api):
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: false" in gql_mutation
     assert 'version_name: "deployment_name"' in gql_mutation
 
 
@@ -225,7 +217,6 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
         "config_str",
         "semver_bump",
         "client_version",
-        is_trusted=True,
         deployment_name=None,
     )
 
@@ -235,7 +226,6 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
     assert "version_name: " not in gql_mutation
 
 
@@ -247,7 +237,6 @@ def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_ap
         "config_str",
         "semver_bump",
         "client_version",
-        is_trusted=True,
         allow_truss_download=False,
     )
 
@@ -257,7 +246,6 @@ def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_ap
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
     assert "allow_truss_download: false" in gql_mutation
 
 
@@ -270,7 +258,6 @@ def test_create_development_model_from_truss_with_allow_truss_download(
         "s3key",
         "config_str",
         "client_version",
-        is_trusted=True,
         allow_truss_download=False,
     )
 
@@ -279,7 +266,6 @@ def test_create_development_model_from_truss_with_allow_truss_download(
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
     assert "allow_truss_download: false" in gql_mutation
 
 
@@ -295,7 +281,6 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
                 model_name="model-1",
                 s3_key="s3-key-1",
                 encoded_config_str="encoded-config-str-1",
-                is_trusted=True,
             ),
         ),
     )
@@ -319,7 +304,6 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
                 model_name="model-1",
                 s3_key="s3-key-1",
                 encoded_config_str="encoded-config-str-1",
-                is_trusted=True,
             ),
         ),
     )
