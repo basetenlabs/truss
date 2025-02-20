@@ -29,7 +29,6 @@ def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
         f'model_name: "{oracle.model_name}"',
         f's3_key: "{oracle.s3_key}"',
         f'encoded_config_str: "{oracle.encoded_config_str}"',
-        f"is_trusted: {str(oracle.is_trusted).lower()}",
     ]
 
     if oracle.semver_bump:
@@ -132,7 +131,6 @@ class BasetenApi:
         config: str,
         semver_bump: str,
         client_version: str,
-        is_trusted: bool,
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
@@ -145,7 +143,6 @@ class BasetenApi:
                     config: "{config}"
                     semver_bump: "{semver_bump}"
                     client_version: "{client_version}"
-                    is_trusted: {"true" if is_trusted else "false"}
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f'version_name: "{deployment_name}"' if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
@@ -172,7 +169,6 @@ class BasetenApi:
         config: str,
         semver_bump: str,
         client_version: str,
-        is_trusted: bool,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
@@ -185,7 +181,6 @@ class BasetenApi:
                     config: "{config}"
                     semver_bump: "{semver_bump}"
                     client_version: "{client_version}"
-                    is_trusted: {"true" if is_trusted else "false"}
                     scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
@@ -209,7 +204,6 @@ class BasetenApi:
         s3_key,
         config,
         client_version,
-        is_trusted=False,
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
@@ -219,7 +213,6 @@ class BasetenApi:
                     s3_key: "{s3_key}"
                     config: "{config}"
                     client_version: "{client_version}"
-                    is_trusted: {"true" if is_trusted else "false"}
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
                 ) {{
@@ -470,17 +463,18 @@ class BasetenApi:
         patch = base64_encoded_json_str(patch_request.to_dict())
         query_string = f"""
         mutation {{
-        stage_patch_for_draft_truss(name: "{model_name}",
-                    client_version: "{truss.version()}",
-                    patch: "{patch}",
-    ) {{
-            id,
-            name,
-            version_id
-            succeeded
-            needs_full_deploy
-            error
-        }}
+            stage_patch_for_draft_truss(
+                name: "{model_name}"
+                client_version: "{truss.version()}",
+                patch: "{patch}"
+            ) {{
+                id
+                name
+                version_id
+                succeeded
+                needs_full_deploy
+                error
+            }}
         }}
         """
         resp = self._post_graphql_query(query_string)
@@ -495,16 +489,17 @@ class BasetenApi:
     def sync_draft_truss(self, model_name):
         query_string = f"""
         mutation {{
-        sync_draft_truss(name: "{model_name}",
-                    client_version: "{truss.version()}",
-    ) {{
-            id,
-            name,
-            version_id
-            succeeded
-            needs_full_deploy
-            error
-        }}
+            sync_draft_truss(
+                name: "{model_name}"
+                client_version: "{truss.version()}",
+            ) {{
+                id
+                name
+                version_id
+                succeeded
+                needs_full_deploy
+                error
+            }}
         }}
         """
         resp = self._post_graphql_query(query_string)

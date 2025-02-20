@@ -707,9 +707,10 @@ def test_handle_if_container_dne(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"
 
-    with patch.object(
-        TrussHandle, "_try_patch", new=return_container_dne
-    ), pytest.raises(ContainerNotFoundError):
+    with (
+        patch.object(TrussHandle, "_try_patch", new=return_container_dne),
+        pytest.raises(ContainerNotFoundError),
+    ):
         truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
         truss_handle.docker_run(local_port=3000)
     kill_all_with_retries()
@@ -719,9 +720,10 @@ def test_docker_predict_container_does_not_exist(custom_model_truss_dir):
     def return_container_dne(self):
         return "DNE"
 
-    with patch.object(
-        TrussHandle, "_try_patch", new=return_container_dne
-    ), pytest.raises(ContainerNotFoundError):
+    with (
+        patch.object(TrussHandle, "_try_patch", new=return_container_dne),
+        pytest.raises(ContainerNotFoundError),
+    ):
         truss_handle = TrussHandle(truss_dir=custom_model_truss_dir)
         truss_handle.docker_predict([1], local_port=3000)
     kill_all_with_retries()

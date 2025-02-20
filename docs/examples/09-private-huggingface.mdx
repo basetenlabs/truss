@@ -87,12 +87,8 @@ system_packages: []
 ```
 # Deploying the model
 
-An important note for deploying models with secrets is that
-you must use the `--trusted` flag to give the model access to
-secrets stored on the remote secrets manager.
-
 ```bash
-$ truss push --trusted
+$ truss push
 ```
 
 After the model finishes deploying, you can invoke it with:

@@ -33,7 +33,6 @@ class OracleData(pydantic.BaseModel):
     s3_key: str
     encoded_config_str: str
     semver_bump: Optional[str] = "MINOR"
-    is_trusted: bool
     version_name: Optional[str] = None
 
 
