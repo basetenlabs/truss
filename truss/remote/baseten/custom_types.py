@@ -1,8 +1,10 @@
 import pathlib
+import sys
 from enum import Enum
 from typing import Optional
 
 import pydantic
+import truss
 
 
 class DeployedChainlet(pydantic.BaseModel):
@@ -40,3 +42,27 @@ class OracleData(pydantic.BaseModel):
 class ChainletDataAtomic(pydantic.BaseModel):
     name: str
     oracle: OracleData
+
+
+class TrussUserEnv(pydantic.BaseModel):
+    truss_client_version: str
+    python_version: str
+    pydantic_version: str
+    mypy_version: Optional[str]
+
+    @classmethod
+    def collect(cls):
+        py_version = sys.version_info
+        try:
+            import mypy.version
+
+            mypy_version = mypy.version.__version__
+        except ImportError:
+            mypy_version = None
+
+        return cls(
+            truss_client_version=truss.version(),
+            python_version=f"{py_version.major}.{py_version.minor}.{py_version.micro}",
+            pydantic_version=pydantic.version.version_short(),
+            mypy_version=mypy_version,
+        )

@@ -9,7 +9,6 @@ from truss.base.errors import ValidationError
 if TYPE_CHECKING:
     from rich import progress
 
-import truss
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
@@ -361,7 +360,6 @@ def create_truss_service(
             model_name,
             s3_key,
             config,
-            client_version=truss.version(),
             allow_truss_download=allow_truss_download,
             origin=origin,
         )
@@ -381,7 +379,6 @@ def create_truss_service(
             s3_key=s3_key,
             config=config,
             semver_bump=semver_bump,
-            client_version=truss.version(),
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
@@ -399,7 +396,6 @@ def create_truss_service(
             s3_key=s3_key,
             config=config,
             semver_bump=semver_bump,
-            client_version=truss.version(),
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
             environment=environment,
@@ -433,7 +429,7 @@ def validate_truss_config(api: BasetenApi, config: str):
     Returns:
         None if the config is valid, otherwise raises an error message
     """
-    valid_config = api.validate_truss(truss.version(), config)
+    valid_config = api.validate_truss(config)
     if not valid_config.get("success"):
         details = json.loads(valid_config.get("details"))
         errors = details.get("errors", [])

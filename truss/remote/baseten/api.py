@@ -1,9 +1,8 @@
 import logging
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
-import truss
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
@@ -22,6 +21,8 @@ API_URL_MAPPING = {
 # If a non-standard domain is used with the baseten remote, default to
 # using the production api routes
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
+
+TRUSS_USER_ENV = b10_types.TrussUserEnv.collect().json()
 
 
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
@@ -85,14 +86,14 @@ class BasetenApi:
     def auth_token(self) -> ApiKey:
         return self._auth_token
 
-    def _post_graphql_query(self, query_string: str) -> dict:
+    def _post_graphql_query(self, query: str, variables: Optional[dict] = None) -> dict:
         headers = self._auth_token.header()
+        payload: Dict[str, Any] = {"query": query}
+        if variables is not None:
+            payload["variables"] = variables
 
         resp = requests.post(
-            self._graphql_api_url,
-            data={"query": query_string},
-            headers=headers,
-            timeout=120,
+            self._graphql_api_url, json=payload, headers=headers, timeout=120
         )
 
         if not resp.ok:
@@ -105,8 +106,8 @@ class BasetenApi:
         if errors:
             message = errors[0]["message"]
             error_code = errors[0].get("extensions", {}).get("code")
-
             raise ApiError(message, error_code)
+
         return resp_dict
 
     def model_s3_upload_credentials(self):
@@ -130,19 +131,18 @@ class BasetenApi:
         s3_key: str,
         config: str,
         semver_bump: str,
-        client_version: str,
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 create_model_from_truss(
                     name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
                     semver_bump: "{semver_bump}"
-                    client_version: "{client_version}"
+                    truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f'version_name: "{deployment_name}"' if deployment_name else ""}
                     {f"model_origin: {origin.value}" if origin else ""}
@@ -158,8 +158,9 @@ class BasetenApi:
                 }}
             }}
         """
-
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
         return resp["data"]["create_model_from_truss"]["model_version"]
 
     def create_model_version_from_truss(
@@ -168,19 +169,18 @@ class BasetenApi:
         s3_key: str,
         config: str,
         semver_bump: str,
-        client_version: str,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
     ):
         query_string = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 create_model_version_from_truss(
                     model_id: "{model_id}"
                     s3_key: "{s3_key}"
                     config: "{config}"
                     semver_bump: "{semver_bump}"
-                    client_version: "{client_version}"
+                    truss_user_env: $trussUserEnv
                     scale_down_old_production: {"false" if preserve_previous_prod_deployment else "true"}
                     {f'name: "{deployment_name}"' if deployment_name else ""}
                     {f'environment_name: "{environment}"' if environment else ""}
@@ -195,7 +195,9 @@ class BasetenApi:
             }}
         """
 
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
 
     def create_development_model_from_truss(
@@ -203,16 +205,15 @@ class BasetenApi:
         model_name,
         s3_key,
         config,
-        client_version,
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
         query_string = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 deploy_draft_truss(name: "{model_name}"
                     s3_key: "{s3_key}"
                     config: "{config}"
-                    client_version: "{client_version}"
+                    truss_user_env: $trussUserEnv
                     allow_truss_download: {"true" if allow_truss_download else "false"}
                     {f"model_origin: {origin.value}" if origin else ""}
                 ) {{
@@ -228,7 +229,9 @@ class BasetenApi:
             }}
         """
 
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
         return resp["data"]["deploy_draft_truss"]["model_version"]
 
     def deploy_chain_atomic(
@@ -250,7 +253,7 @@ class BasetenApi:
         )
 
         query_string = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
                     {f'chain_id: "{chain_id}"' if chain_id else ""}
                     {f'chain_name: "{chain_name}"' if chain_name else ""}
@@ -258,7 +261,7 @@ class BasetenApi:
                     is_draft: {str(is_draft).lower()}
                     entrypoint: {entrypoint_str}
                     dependencies: [{dependencies_str}]
-                    client_version: "{truss.version()}"
+                    truss_user_env: $trussUserEnv
                 ) {{
                     chain_deployment {{
                         id
@@ -271,7 +274,9 @@ class BasetenApi:
             }}
         """
 
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
 
         return resp["data"]["deploy_chain_atomic"]
 
@@ -462,10 +467,10 @@ class BasetenApi:
     def patch_draft_truss_two_step(self, model_name, patch_request):
         patch = base64_encoded_json_str(patch_request.to_dict())
         query_string = f"""
-        mutation {{
+        mutation ($trussUserEnv: String) {{
             stage_patch_for_draft_truss(
                 name: "{model_name}"
-                client_version: "{truss.version()}",
+                truss_user_env: $trussUserEnv
                 patch: "{patch}"
             ) {{
                 id
@@ -477,7 +482,9 @@ class BasetenApi:
             }}
         }}
         """
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
         result = resp["data"]["stage_patch_for_draft_truss"]
         if not result["succeeded"]:
             logging.debug(f"Failed to stage patch: {result}")
@@ -488,10 +495,10 @@ class BasetenApi:
 
     def sync_draft_truss(self, model_name):
         query_string = f"""
-        mutation {{
+        mutation ($trussUserEnv: String) {{
             sync_draft_truss(
                 name: "{model_name}"
-                client_version: "{truss.version()}",
+                truss_user_env: $trussUserEnv
             ) {{
                 id
                 name
@@ -502,21 +509,29 @@ class BasetenApi:
             }}
         }}
         """
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
         result = resp["data"]["sync_draft_truss"]
         if not result["succeeded"]:
             logging.debug(f"Failed to sync patch: {result}")
         return result
 
-    def validate_truss(self, client_version: str, config: str):
-        query_string = f"""{{
-            truss_validation(client_version: "{client_version}", config: "{config}") {{
+    def validate_truss(self, config: str):
+        query_string = f"""
+        query ($trussUserEnv: String) {{
+            truss_validation(
+                truss_user_env: $trussUserEnv
+                config: "{config}"
+            ) {{
                 success
                 details
             }}
         }}
         """
-        resp = self._post_graphql_query(query_string)
+        resp = self._post_graphql_query(
+            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+        )
         return resp["data"]["truss_validation"]
 
     def get_deployment(self, model_id: str, deployment_id: str) -> Any:
