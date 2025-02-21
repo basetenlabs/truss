@@ -213,7 +213,7 @@ def test_create_truss_service_handles_allow_truss_download_for_new_models(
 
 
 def test_validate_truss_config():
-    def mock_validate_truss(client_version, config):
+    def mock_validate_truss(config):
         if config == {}:
             return {"success": True, "details": json.dumps({})}
         elif "hi" in config:
