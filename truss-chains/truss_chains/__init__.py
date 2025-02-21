@@ -1,11 +1,3 @@
-import sys
-
-if (sys.version_info.major, sys.version_info.minor) <= (3, 8):
-    raise RuntimeError(
-        "Python version 3.8 or older is not supported for `Truss-Chains`. Please"
-        "upgrade to Python 3.9 or newer. You can still use other Truss functionality."
-    )
-del sys
 import pydantic
 
 pydantic_major_version = int(pydantic.VERSION.split(".")[0])

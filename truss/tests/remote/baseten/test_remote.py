@@ -1,8 +1,5 @@
-from urllib import parse
-
 import pytest
 import requests_mock
-import truss
 from truss.remote.baseten.core import (
     ModelId,
     ModelName,
@@ -19,11 +16,9 @@ _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
 
 
 def assert_request_matches_expected_query(request, expected_query) -> None:
-    unescaped_content = parse.unquote_plus(request.text)
+    query = request.json()["query"]
     actual_lines = tuple(
-        line.strip()
-        for line in unescaped_content.replace("query=", "").strip().split("\n")
-        if line.strip()
+        line.strip() for line in query.strip().split("\n") if line.strip()
     )
     expected_lines = tuple(
         line.strip() for line in expected_query.split("\n") if line.strip()
@@ -351,13 +346,13 @@ def test_create_chain_with_no_publish():
         # Note that if publish=False and promote=True, we set publish to True and create
         # a non-draft deployment
         expected_create_chain_mutation = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
                     chain_name: "draft_chain"
                     is_draft: true
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: $trussUserEnv
                 ) {{
                     chain_deployment {{
                         id
@@ -373,7 +368,6 @@ def test_create_chain_with_no_publish():
         assert_request_matches_expected_query(
             create_chain_graphql_request, expected_create_chain_mutation
         )
-
         assert deployment_handle.chain_id == "new-chain-id"
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
@@ -449,13 +443,13 @@ def test_create_chain_no_existing_chain():
         """.strip()
 
         expected_create_chain_mutation = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
                     chain_name: "new_chain"
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: $trussUserEnv
                 ) {{
                     chain_deployment {{
                         id
@@ -555,14 +549,14 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
         """.strip()
 
         expected_create_chain_mutation = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
                     chain_id: "old-chain-id"
                     environment: "production"
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: $trussUserEnv
                 ) {{
                     chain_deployment {{
                         id
@@ -660,13 +654,13 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
         """.strip()
 
         expected_create_chain_mutation = f"""
-            mutation {{
+            mutation ($trussUserEnv: String) {{
                 deploy_chain_atomic(
                     chain_id: "old-chain-id"
                     is_draft: false
                     entrypoint: {chainlets_string}
                     dependencies: []
-                    client_version: "{truss.version()}"
+                    truss_user_env: $trussUserEnv
                 ) {{
                     chain_deployment {{
                         id
