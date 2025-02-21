@@ -147,7 +147,9 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     quantization_type: TrussTRTLLMQuantizationType = (
         TrussTRTLLMQuantizationType.NO_QUANT
     )
-    quantization_config: Optional[TrussTRTQuantizationConfiguration] = None
+    quantization_config: TrussTRTQuantizationConfiguration = (
+        TrussTRTQuantizationConfiguration()
+    )
     tensor_parallel_count: int = 1
     pipeline_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
