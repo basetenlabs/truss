@@ -30,6 +30,17 @@ class TrussTRTLLMModel(str, Enum):
     DECODER = "decoder"
     PALMYRA = "palmyra"
 
+    def __init__(self):
+        super().__init__()
+        if self in [
+            TrussTRTLLMModel.LLAMA,
+            TrussTRTLLMModel.MISTRAL,
+            TrussTRTLLMModel.DEEPSEEK,
+            TrussTRTLLMModel.QWEN,
+            TrussTRTLLMModel.PALMYRA,
+        ]:
+            self = TrussTRTLLMModel.DECODER
+
 
 class TrussTRTLLMQuantizationType(str, Enum):
     NO_QUANT = "no_quant"
@@ -46,6 +57,33 @@ class TrussTRTLLMPluginConfiguration(BaseModel):
     paged_kv_cache: bool = True
     use_paged_context_fmha: bool = True
     use_fp8_context_fmha: bool = False
+
+
+class TrussTRTQuantizationConfiguration(BaseModel):
+    """Configuration for quantization of TRT models
+
+    Args:
+        calib_size (int, optional): Size of calibration dataset. Defaults to 1024.
+            recommended to increase for production runs (e.g. 1536), or decrease e.g. to 256 for quick testing.
+        calib_dataset (str, optional): Hugginface dataset to use for calibration. Defaults to 'cnn_dailymail'.
+            uses split='train' and  quantized based on 'text' column.
+        calib_max_seq_length (int, optional): Maximum sequence length for calibration. Defaults to 2048.
+    """
+
+    calib_size: int = 1024
+    calib_dataset: str = "cnn_dailymail"
+    calib_max_seq_length: int = 2048
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.validate_cuda_compatible()
+
+    def validate_cuda_compatible(self, key):
+        value = getattr(self, key)
+        if value < 64 or value > 16384:
+            raise ValueError(f"{key} must be between 64 and 16384, but got {value}")
+        elif value % 64 != 0:
+            raise ValueError(f"{key} must be a multiple of 64, but got {value}")
 
 
 class CheckpointSource(str, Enum):
@@ -109,6 +147,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
     quantization_type: TrussTRTLLMQuantizationType = (
         TrussTRTLLMQuantizationType.NO_QUANT
     )
+    quantization_config: Optional[TrussTRTQuantizationConfiguration] = None
     tensor_parallel_count: int = 1
     pipeline_parallel_count: int = 1
     plugin_configuration: TrussTRTLLMPluginConfiguration = (
