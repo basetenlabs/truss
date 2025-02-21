@@ -1087,8 +1087,8 @@ def run_python(script, target_directory):
     type=bool,
     is_flag=True,
     required=False,
-    default=False,
-    help="[DEPRECATED]Trust truss with hosted secrets.",
+    default=None,
+    help="[DEPRECATED] All models are trusted by default.",
 )
 @click.option(
     "--disable-truss-download",
@@ -1169,9 +1169,7 @@ def push(
 
     # Log a warning if using --trusted.
     if trusted is not None:
-        trusted_deprecation_notice = (
-            "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
-        )
+        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
