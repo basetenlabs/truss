@@ -118,7 +118,6 @@ class BasetenRemote(TrussRemote):
         truss_handle: TrussHandle,
         model_name: str,
         publish: bool = True,
-        trusted: bool = False,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         disable_truss_download: bool = False,
@@ -182,7 +181,6 @@ class BasetenRemote(TrussRemote):
             encoded_config_str=encoded_config_str,
             is_draft=not publish,
             model_id=model_id,
-            is_trusted=trusted,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             version_name=deployment_name,
             origin=origin,
@@ -195,7 +193,6 @@ class BasetenRemote(TrussRemote):
         truss_handle: TrussHandle,
         model_name: str,
         publish: bool = True,
-        trusted: bool = False,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         disable_truss_download: bool = False,
@@ -208,7 +205,6 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
             model_name=model_name,
             publish=publish,
-            trusted=trusted,
             promote=promote,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             disable_truss_download=disable_truss_download,
@@ -229,7 +225,6 @@ class BasetenRemote(TrussRemote):
             config=push_data.encoded_config_str,
             is_draft=push_data.is_draft,
             model_id=push_data.model_id,
-            is_trusted=push_data.is_trusted,
             preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
             allow_truss_download=push_data.allow_truss_download,
             deployment_name=push_data.version_name,
@@ -271,8 +266,6 @@ class BasetenRemote(TrussRemote):
             push_data = self._prepare_push(
                 truss_handle=truss_handle,
                 model_name=model_name,
-                # Models must be trusted to use the API KEY secret.
-                trusted=True,
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
                 progress_bar=progress_bar,
@@ -283,7 +276,6 @@ class BasetenRemote(TrussRemote):
                 encoded_config_str=push_data.encoded_config_str,
                 is_draft=push_data.is_draft,
                 model_id=push_data.model_id,
-                is_trusted=push_data.is_trusted,
                 version_name=push_data.version_name,
             )
             chainlet_data.append(
