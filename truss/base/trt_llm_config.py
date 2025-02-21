@@ -32,12 +32,6 @@ class TrussTRTLLMModel(str, Enum):
     # deprecated workflow
     WHISPER = "whisper"
 
-    def __new__(cls, value):
-        # If value is in a causal lm set, return DECODER instead
-        if value in ["llama", "mistral", "deepseek", "whisper", "qwen"]:
-            return super().__new__(cls, "decoder")
-        return super().__new__(cls, value)
-
 
 class TrussTRTLLMQuantizationType(str, Enum):
     NO_QUANT = "no_quant"
