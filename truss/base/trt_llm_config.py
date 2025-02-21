@@ -21,25 +21,22 @@ ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
 
 
 class TrussTRTLLMModel(str, Enum):
+    ENCODER = "encoder"
+    DECODER = "decoder"
+    # auto migrated settings
+    PALMYRA = "palmyra"
+    QWEN = "qwen"
     LLAMA = "llama"
     MISTRAL = "mistral"
     DEEPSEEK = "deepseek"
+    # deprecated workflow
     WHISPER = "whisper"
-    QWEN = "qwen"
-    ENCODER = "encoder"
-    DECODER = "decoder"
-    PALMYRA = "palmyra"
 
-    def __init__(self):
-        super().__init__()
-        if self in [
-            TrussTRTLLMModel.LLAMA,
-            TrussTRTLLMModel.MISTRAL,
-            TrussTRTLLMModel.DEEPSEEK,
-            TrussTRTLLMModel.QWEN,
-            TrussTRTLLMModel.PALMYRA,
-        ]:
-            self = TrussTRTLLMModel.DECODER
+    def __new__(cls, value):
+        # If value is in a causal lm set, return DECODER instead
+        if value in ["llama", "mistral", "deepseek", "whisper", "qwen"]:
+            return super().__new__(cls, "decoder")
+        return super().__new__(cls, value)
 
 
 class TrussTRTLLMQuantizationType(str, Enum):
@@ -76,9 +73,10 @@ class TrussTRTQuantizationConfiguration(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        self.validate_cuda_compatible()
+        self.validate_cuda_friendly("calib_size")
+        self.validate_cuda_friendly("calib_max_seq_length")
 
-    def validate_cuda_compatible(self, key):
+    def validate_cuda_friendly(self, key):
         value = getattr(self, key)
         if value < 64 or value > 16384:
             raise ValueError(f"{key} must be between 64 and 16384, but got {value}")
