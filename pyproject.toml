@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.63"
+version = "0.9.64rc001"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -189,7 +189,7 @@ markers = [
 addopts = "--ignore=smoketests"
 
 [tool.ruff]
-src = ["truss", "truss-chains"]
+src = ["truss", "truss-chains", "truss-utils"]
 target-version = "py38"
 line-length = 88
 lint.extend-select = [
