@@ -724,10 +724,9 @@ class ModelWrapper:
         """
         fn_span = self._tracer.start_span(f"call-{descriptor.method_name}")
         # TODO(nikhil): Make it easier to start a section with detached context.
-        with (
-            tracing.section_as_event(fn_span, descriptor.method_name),
-            tracing.detach_context() as detached_ctx,
-        ):
+        with tracing.section_as_event(
+            fn_span, descriptor.method_name
+        ), tracing.detach_context() as detached_ctx:
             result = await self._execute_user_model_fn(inputs, request, descriptor)
 
         if inspect.isgenerator(result) or inspect.isasyncgen(result):
@@ -812,10 +811,9 @@ class ModelWrapper:
         if self.model_descriptor.preprocess:
             with self._tracer.start_as_current_span("call-pre") as span_pre:
                 # TODO(nikhil): Make it easier to start a section with detached context.
-                with (
-                    tracing.section_as_event(span_pre, "preprocess"),
-                    tracing.detach_context(),
-                ):
+                with tracing.section_as_event(
+                    span_pre, "preprocess"
+                ), tracing.detach_context():
                     preprocess_result = await self.preprocess(inputs, request)
         else:
             preprocess_result = inputs
@@ -825,10 +823,9 @@ class ModelWrapper:
             self._predict_semaphore, span_predict
         ) as get_defer_fn:
             # TODO(nikhil): Make it easier to start a section with detached context.
-            with (
-                tracing.section_as_event(span_predict, "predict"),
-                tracing.detach_context() as detached_ctx,
-            ):
+            with tracing.section_as_event(
+                span_predict, "predict"
+            ), tracing.detach_context() as detached_ctx:
                 # To prevent span pollution, we need to make sure spans created by user
                 # code don't inherit context from our spans (which happens even if
                 # different tracer instances are used).
@@ -887,10 +884,9 @@ class ModelWrapper:
         if self.model_descriptor.postprocess:
             with self._tracer.start_as_current_span("call-post") as span_post:
                 # TODO(nikhil): Make it easier to start a section with detached context.
-                with (
-                    tracing.section_as_event(span_post, "postprocess"),
-                    tracing.detach_context(),
-                ):
+                with tracing.section_as_event(
+                    span_post, "postprocess"
+                ), tracing.detach_context():
                     postprocess_result = await self.postprocess(predict_result, request)
                 return postprocess_result
         else:
