@@ -127,7 +127,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
-    base_model: TrussTRTLLMModel
+    base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
     max_seq_len: int
     max_batch_size: int = 256
     max_num_tokens: int = 8192
