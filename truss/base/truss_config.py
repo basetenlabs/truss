@@ -871,16 +871,15 @@ def obj_to_dict(obj, verbose: bool = False):
     return d
 
 
-# TODO(marius): consolidate this with config/validation:
 def _infer_python_version() -> str:
     return f"py{sys.version_info.major}{sys.version_info.minor}"
 
 
 def map_local_to_supported_python_version() -> str:
-    return map_to_supported_python_version(_infer_python_version())
+    return _map_to_supported_python_version(_infer_python_version())
 
 
-def map_to_supported_python_version(python_version: str) -> str:
+def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
 
     Currently, it maps any versions greater than 3.11 to 3.11.
