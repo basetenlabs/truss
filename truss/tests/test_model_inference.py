@@ -1715,21 +1715,16 @@ def test_custom_openai_endpoints():
     Test a Truss that exposes an OpenAI compatible endpoint.
     """
     model = """
-    from typing import Dict
-
     class Model:
-        def __init__(self):
-            pass
-
         def load(self):
             self._predict_count = 0
             self._completions_count = 0
 
-        async def predict(self, inputs: Dict) -> int:
+        async def predict(self, inputs) -> int:
             self._predict_count += inputs["increment"]
             return self._predict_count
 
-        async def completions(self, inputs: Dict) -> int:
+        async def completions(self, inputs) -> int:
             self._completions_count += inputs["increment"]
             return self._completions_count
     """
@@ -1754,16 +1749,10 @@ def test_postprocess_async_generator_streaming():
     Test a Truss that exposes an OpenAI compatible endpoint.
     """
     model = """
-    from typing import Dict, List, Generator
+    from typing import List, Generator
 
     class Model:
-        def __init__(self):
-            pass
-
-        def load(self):
-            pass
-
-        async def predict(self, inputs: Dict) -> List[str]:
+        async def predict(self, inputs) -> List[str]:
             nums: List[int] = inputs["nums"]
             return nums
 
@@ -1787,16 +1776,10 @@ def test_preprocess_async_generator():
     Test a Truss that exposes an OpenAI compatible endpoint.
     """
     model = """
-    from typing import Dict, List, AsyncGenerator
+    from typing import List, AsyncGenerator
 
     class Model:
-        def __init__(self):
-            pass
-
-        def load(self):
-            pass
-
-        async def preprocess(self, inputs: Dict) -> AsyncGenerator[str, None]:
+        async def preprocess(self, inputs) -> AsyncGenerator[str, None]:
             for num in inputs["nums"]:
                 yield num
 
@@ -1817,20 +1800,14 @@ def test_openai_client_streaming():
     Test a Truss that exposes an OpenAI compatible endpoint.
     """
     model = """
-    from typing import Dict, AsyncGenerator
+    from typing import AsyncGenerator
 
     class Model:
-        def __init__(self):
-            pass
-
-        def load(self):
-            pass
-
-        async def chat_completions(self, inputs: Dict) -> AsyncGenerator[str, None]:
+        async def chat_completions(self, inputs) -> AsyncGenerator[str, None]:
             for num in inputs["nums"]:
                 yield num
 
-        async def predict(self, inputs: Dict):
+        async def predict(self, inputs):
             pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
@@ -1854,28 +1831,60 @@ def test_openai_client_streaming():
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_raise_predict_and_websocket_endpoint():
+    model = """
+    class Model:
+        async def websocket(self, websocket):
+            pass
+
+        async def predict(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="cannot have both `predict` and `websocket` method",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_raise_no_endpoint():
+    model = """
+    class Model:
+       pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="must have a `predict` or `websocket` method",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_websocket_endpoint():
     model = """
     import fastapi
-    from typing import Dict, AsyncGenerator
 
     class Model:
-        def __init__(self):
-            pass
-
-        def load(self):
-            pass
-
         async def websocket(self, websocket: fastapi.WebSocket):
             try:
                 while True:
                     text = await websocket.receive_text()
                     await websocket.send_text(text + " pong")
-            except WebSocketDisconnect:
+            except fastapi.WebSocketDisconnect:
                 pass
-
-        async def predict(self, inputs: Dict):
-            pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
         tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
@@ -1895,15 +1904,9 @@ async def test_websocket_endpoint():
 @pytest.mark.integration
 async def test_nonexistent_websocket_endpoint():
     model = """
-    from typing import Dict
     class Model:
-        def __init__(self):
-            pass
 
-        def load(self):
-            pass
-
-        async def predict(self, inputs: Dict):
+        async def predict(self, inputs):
             pass
     """
     with ensure_kill_all(), _temp_truss(model) as tr:
