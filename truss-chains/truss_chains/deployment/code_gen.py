@@ -430,7 +430,6 @@ class _SpecifyChainletTypeAnnotation(libcst.CSTTransformer):
 
 
 def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
-    """Generates AST for the `load` method of the truss model."""
     imports = {"from truss_chains.remote_chainlet import stub", "import logging"}
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
@@ -460,7 +459,6 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
 def _gen_health_check_src(
     health_check: definitions.HealthCheckAPIDescriptor,
 ) -> _Source:
-    """Generates AST for the `is_healthy` method of the truss model."""
     def_str = "async def" if health_check.is_async else "def"
     maybe_await = "await " if health_check.is_async else ""
     src = (
@@ -472,7 +470,6 @@ def _gen_health_check_src(
 
 
 def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
-    """Generates AST for the `predict` method of the truss model."""
     imports: set[str] = {
         "from truss_chains.remote_chainlet import stub",
         "from truss_chains.remote_chainlet import utils",
@@ -495,7 +492,7 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
         f"request: starlette.requests.Request) -> {output_type_name}:"
     )
     # Add error handling context manager:
-    parts.append(_indent("with utils.predict_context(request):"))
+    parts.append(_indent("with utils.predict_context(request.headers):"))
     # Invoke Chainlet.
     if (
         chainlet_descriptor.endpoint.is_async
@@ -521,6 +518,18 @@ def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> 
     return _Source(src="\n".join(parts), imports=imports)
 
 
+def _gen_websocket_src() -> _Source:
+    src = """
+async def websocket(self, websocket: fastapi.WebSocket) -> None:
+    with utils.predict_context(websocket.headers):
+        await self._chainlet.run_remote(websocket)
+"""
+    return _Source(
+        src=src,
+        imports={"import fastapi", "from truss_chains.remote_chainlet import utils "},
+    )
+
+
 def _gen_truss_chainlet_model(
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
 ) -> _Source:
@@ -542,12 +551,16 @@ def _gen_truss_chainlet_model(
 
     load_src = _gen_load_src(chainlet_descriptor)
     imports.update(load_src.imports)
-    predict_src = _gen_predict_src(chainlet_descriptor)
-    imports.update(predict_src.imports)
+    if chainlet_descriptor.endpoint.is_websocket:
+        endpoint_src = _gen_websocket_src()
+        imports.update(endpoint_src.imports)
+    else:
+        endpoint_src = _gen_predict_src(chainlet_descriptor)
+        imports.update(endpoint_src.imports)
 
     new_body: list[Any] = list(class_definition.body.body) + [
         libcst.parse_statement(load_src.src),
-        libcst.parse_statement(predict_src.src),
+        libcst.parse_statement(endpoint_src.src),
     ]
 
     if chainlet_descriptor.health_check is not None:
@@ -581,11 +594,17 @@ def _gen_truss_chainlet_file(
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
         _update_src(maybe_stub_src, src_parts, imports)
 
-    input_src = _gen_truss_input_pydantic(chainlet_descriptor)
-    _update_src(input_src, src_parts, imports)
-    if not chainlet_descriptor.endpoint.is_streaming:
+    if not chainlet_descriptor.endpoint.is_websocket:
+        input_src = _gen_truss_input_pydantic(chainlet_descriptor)
+        _update_src(input_src, src_parts, imports)
+
+    if (
+        not chainlet_descriptor.endpoint.is_streaming
+        and not chainlet_descriptor.endpoint.is_websocket
+    ):
         output_src = _gen_truss_output_pydantic(chainlet_descriptor)
         _update_src(output_src, src_parts, imports)
+
     model_src = _gen_truss_chainlet_model(chainlet_descriptor)
     _update_src(model_src, src_parts, imports)
 
@@ -670,6 +689,7 @@ def _write_truss_config_yaml(
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
     use_local_chains_src: bool,
+    is_websocket_endpoint: bool,
 ):
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
@@ -686,6 +706,7 @@ def _write_truss_config_yaml(
     config.resources.accelerator = compute.accelerator
     config.resources.use_gpu = bool(compute.accelerator.count)
     config.runtime.predict_concurrency = compute.predict_concurrency
+    config.runtime.is_websocket_endpoint = is_websocket_endpoint
     # Image.
     _inplace_fill_base_image(chains_config.docker_image, config)
     pip_requirements = _make_requirements(chains_config.docker_image)
@@ -780,6 +801,7 @@ def gen_truss_chainlet(
         model_name=model_name or chain_name,
         chainlet_to_service=dep_services,
         use_local_chains_src=use_local_chains_src,
+        is_websocket_endpoint=chainlet_descriptor.endpoint.is_websocket,
     )
     # This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(

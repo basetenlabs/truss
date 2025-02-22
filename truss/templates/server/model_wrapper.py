@@ -220,7 +220,7 @@ class MethodDescriptor:
 @dataclasses.dataclass
 class ModelDescriptor:
     preprocess: Optional[MethodDescriptor]
-    predict: MethodDescriptor
+    predict: Optional[MethodDescriptor]  # Websocket may replace predict.
     postprocess: Optional[MethodDescriptor]
     truss_schema: Optional[TrussSchema]
     setup_environment: Optional[MethodDescriptor]
@@ -231,8 +231,13 @@ class ModelDescriptor:
 
     @cached_property
     def skip_input_parsing(self) -> bool:
-        return self.predict.arg_config == ArgConfig.REQUEST_ONLY and (
-            not self.preprocess or self.preprocess.arg_config == ArgConfig.REQUEST_ONLY
+        return bool(
+            self.predict
+            and self.predict.arg_config == ArgConfig.REQUEST_ONLY
+            and (
+                not self.preprocess
+                or self.preprocess.arg_config == ArgConfig.REQUEST_ONLY
+            )
         )
 
     @classmethod
@@ -266,25 +271,6 @@ class ModelDescriptor:
 
     @classmethod
     def from_model(cls, model_cls) -> "ModelDescriptor":
-        preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
-        predict = cls._safe_extract_descriptor(model_cls, MethodName.PREDICT)
-        if not predict:
-            raise errors.ModelDefinitionError(
-                f"Truss model must have a `{MethodName.PREDICT}` method."
-            )
-        elif preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
-            raise errors.ModelDefinitionError(
-                f"When using `{MethodName.PREPROCESS}`, the {MethodName.PREDICT} method "
-                f"cannot only have the request argument (because the result of `{MethodName.PREPROCESS}` "
-                "would be  discarded)."
-            )
-
-        postprocess = cls._safe_extract_descriptor(model_cls, MethodName.POSTPROCESS)
-        if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
-            raise errors.ModelDefinitionError(
-                f"The `{MethodName.POSTPROCESS}` method cannot only have the request "
-                f"argument (because the result of `{MethodName.PREDICT}` would be discarded)."
-            )
         setup = cls._safe_extract_descriptor(model_cls, MethodName.SETUP_ENVIRONMENT)
         completions = cls._safe_extract_descriptor(model_cls, MethodName.COMPLETIONS)
         chats = cls._safe_extract_descriptor(model_cls, MethodName.CHAT_COMPLETIONS)
@@ -293,16 +279,53 @@ class ModelDescriptor:
             raise errors.ModelDefinitionError(
                 f"`{MethodName.IS_HEALTHY}` must have only one argument: `self`."
             )
-
         websocket = cls._safe_extract_descriptor(model_cls, MethodName.WEBSOCKET)
-        if websocket and websocket.arg_config != ArgConfig.INPUTS_ONLY:
+        predict = cls._safe_extract_descriptor(model_cls, MethodName.PREDICT)
+        truss_schema, preprocess, postprocess = None, None, None
+
+        if websocket and predict:
             raise errors.ModelDefinitionError(
-                f"`{MethodName.WEBSOCKET}` must have only one argument: `websocket`."
+                f"Truss model cannot have both `{MethodName.PREDICT}` and "
+                f"`{MethodName.WEBSOCKET}` method."
             )
 
-        truss_schema = cls._gen_truss_schema(
-            predict=predict, preprocess=preprocess, postprocess=postprocess
-        )
+        if websocket:
+            assert predict is None
+            if websocket.arg_config != ArgConfig.INPUTS_ONLY:
+                raise errors.ModelDefinitionError(
+                    f"`{MethodName.WEBSOCKET}` must have only one argument: `websocket`."
+                )
+        elif predict:
+            assert websocket is None
+            preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
+            if not predict:
+                raise errors.ModelDefinitionError(
+                    f"Truss model must have a `{MethodName.PREDICT}` method."
+                )
+            if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
+                raise errors.ModelDefinitionError(
+                    f"When using `{MethodName.PREPROCESS}`, the {MethodName.PREDICT} method "
+                    f"cannot only have the request argument (because the result of "
+                    f"`{MethodName.PREPROCESS}` would be  discarded)."
+                )
+
+            postprocess = cls._safe_extract_descriptor(
+                model_cls, MethodName.POSTPROCESS
+            )
+            if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
+                raise errors.ModelDefinitionError(
+                    f"The `{MethodName.POSTPROCESS}` method cannot only have the request "
+                    f"argument (because the result of `{MethodName.PREDICT}` would be discarded)."
+                )
+
+            truss_schema = cls._gen_truss_schema(
+                predict=predict, preprocess=preprocess, postprocess=postprocess
+            )
+
+        else:
+            raise errors.ModelDefinitionError(
+                f"Truss model must have a `{MethodName.PREDICT}` or `{MethodName.WEBSOCKET}` method."
+            )
 
         return cls(
             preprocess=preprocess,
@@ -617,6 +640,9 @@ class ModelWrapper:
         # or, if `postprocessing` is used, anything. In the last case postprocessing
         # must convert the result to something serializable.
         descriptor = self.model_descriptor.predict
+        assert descriptor, (
+            f"`{MethodName.PREDICT}` must only be called if model has it."
+        )
         return await self._execute_user_model_fn(inputs, request, descriptor)
 
     async def postprocess(
@@ -723,10 +749,9 @@ class ModelWrapper:
         Wraps the execution of any model code other than `predict`.
         """
         fn_span = self._tracer.start_span(f"call-{descriptor.method_name}")
-        # TODO(nikhil): Make it easier to start a section with detached context.
         with tracing.section_as_event(
-            fn_span, descriptor.method_name
-        ), tracing.detach_context() as detached_ctx:
+            fn_span, descriptor.method_name, detach=True
+        ) as detached_ctx:
             result = await self._execute_user_model_fn(inputs, request, descriptor)
 
         if inspect.isgenerator(result) or inspect.isasyncgen(result):
@@ -810,10 +835,7 @@ class ModelWrapper:
         """
         if self.model_descriptor.preprocess:
             with self._tracer.start_as_current_span("call-pre") as span_pre:
-                # TODO(nikhil): Make it easier to start a section with detached context.
-                with tracing.section_as_event(
-                    span_pre, "preprocess"
-                ), tracing.detach_context():
+                with tracing.section_as_event(span_pre, "preprocess", detach=True):
                     preprocess_result = await self.preprocess(inputs, request)
         else:
             preprocess_result = inputs
@@ -822,10 +844,9 @@ class ModelWrapper:
         async with deferred_semaphore_and_span(
             self._predict_semaphore, span_predict
         ) as get_defer_fn:
-            # TODO(nikhil): Make it easier to start a section with detached context.
             with tracing.section_as_event(
-                span_predict, "predict"
-            ), tracing.detach_context() as detached_ctx:
+                span_predict, "predict", detach=True
+            ) as detached_ctx:
                 # To prevent span pollution, we need to make sure spans created by user
                 # code don't inherit context from our spans (which happens even if
                 # different tracer instances are used).
@@ -883,10 +904,7 @@ class ModelWrapper:
 
         if self.model_descriptor.postprocess:
             with self._tracer.start_as_current_span("call-post") as span_post:
-                # TODO(nikhil): Make it easier to start a section with detached context.
-                with tracing.section_as_event(
-                    span_post, "postprocess"
-                ), tracing.detach_context():
+                with tracing.section_as_event(span_post, "postprocess", detach=True):
                     postprocess_result = await self.postprocess(predict_result, request)
                 return postprocess_result
         else:
