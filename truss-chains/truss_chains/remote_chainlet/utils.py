@@ -14,7 +14,6 @@ import aiohttp
 import fastapi
 import httpx
 import pydantic
-import starlette.requests
 from truss.templates.shared import dynamic_config_resolver
 
 from truss_chains import definitions
@@ -119,9 +118,9 @@ _trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
 
 
 @contextlib.contextmanager
-def _trace_parent(request: starlette.requests.Request) -> Iterator[None]:
+def _trace_parent(headers: Mapping[str, str]) -> Iterator[None]:
     token = _trace_parent_context.set(
-        request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
+        headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
     )
     try:
         yield
@@ -327,6 +326,6 @@ async def async_response_raise_errors(
 
 
 @contextlib.contextmanager
-def predict_context(request: starlette.requests.Request) -> Iterator[None]:
-    with _trace_parent(request), _exception_to_http_error():
+def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
+    with _trace_parent(headers), _exception_to_http_error():
         yield

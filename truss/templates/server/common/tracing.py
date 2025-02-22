@@ -118,8 +118,15 @@ def get_truss_tracer(secrets: secrets_resolver.Secrets, config) -> trace.Tracer:
 
 
 @contextlib.contextmanager
-def detach_context() -> Iterator[trace.Context]:
-    """Breaks opentelemetry's context propagation.
+def section_as_event(
+    span: sdk_trace.Span, section_name: str, detach: bool = False
+) -> Iterator[Optional[trace.Context]]:
+    """Helper to record the start and end of a sections as events and the duration.
+
+    Note that events are much cheaper to create than dedicated spans.
+
+    Optionally detaches the OpenTelemetry context to isolate tracing.
+    This intentionally breaks opentelemetry's context propagation.
 
     The goal is to separate truss-internal tracing instrumentation
     completely from potential user-defined tracing. Opentelemetry has a global state
@@ -128,30 +135,23 @@ def detach_context() -> Iterator[trace.Context]:
     internal contexts. Therefore, all user code (predict and pre/post-processing) should
     be wrapped in this context for isolation.
     """
-    current_context = context.get_current()
-    # Create an invalid tracing context. This forces that tracing code inside this
-    # context manager creates a new root tracing context.
-    transient_token = context.attach(trace.set_span_in_context(trace.INVALID_SPAN))
-    try:
-        yield current_context
-    finally:
-        # Reattach original context.
-        context.detach(transient_token)
-        context.attach(current_context)
-
-
-@contextlib.contextmanager
-def section_as_event(span: sdk_trace.Span, section_name: str) -> Iterator[None]:
-    """Helper to record the start and end of a sections as events and the duration.
-
-    Note that events are much cheaper to create than dedicated spans.
-    """
     t0 = time.time()
     span.add_event(f"start: {section_name}")
+    detached_ctx = None
+    transient_token = None
+
+    if detach:
+        detached_ctx = context.get_current()
+        transient_token = context.attach(trace.set_span_in_context(trace.INVALID_SPAN))
+
     try:
-        yield
+        yield detached_ctx
     finally:
         t1 = time.time()
         span.add_event(
             f"done: {section_name}", attributes={ATTR_NAME_DURATION: t1 - t0}
         )
+        if detach:
+            assert detached_ctx is not None
+            context.detach(transient_token)
+            context.attach(detached_ctx)
