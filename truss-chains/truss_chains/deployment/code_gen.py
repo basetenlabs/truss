@@ -33,7 +33,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
+from typing import Any, Iterable, Mapping, Optional, cast, get_args, get_origin
 
 import libcst
 
@@ -281,11 +281,19 @@ def _stub_endpoint_body_src(
     ```
     """
     imports: set[str] = set()
-    args = [f"{arg.name}={arg.name}" for arg in endpoint.input_args]
-    if args:
-        inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)})"
+    if endpoint.has_engine_builder_llm_input:
+        assert len(endpoint.input_args) == 1
+        arg = endpoint.input_args[0]
+        assert arg.name == "llm_input"
+        # Since the deployed model is not a chainlet with generated top-level pydantic
+        # input type, we pass values directly.
+        inputs = "inputs=llm_input"
     else:
-        inputs = "{}"
+        args = [f"{arg.name}={arg.name}" for arg in endpoint.input_args]
+        if args:
+            inputs = f"{_get_input_model_name(chainlet_name)}({', '.join(args)})"
+        else:
+            inputs = "{}"
 
     parts = []
     # Invoke remote.
@@ -339,11 +347,14 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
     """
     imports = {"from truss_chains.remote_chainlet import stub"}
     src_parts: list[str] = []
-    input_src = _gen_truss_input_pydantic(chainlet)
-    _update_src(input_src, src_parts, imports)
+    if not framework.is_engine_builder_chainlet(chainlet.chainlet_cls):
+        input_src = _gen_truss_input_pydantic(chainlet)
+        _update_src(input_src, src_parts, imports)
+
     if not chainlet.endpoint.is_streaming:
         output_src = _gen_truss_output_pydantic(chainlet)
         _update_src(output_src, src_parts, imports)
+
     signature = _stub_endpoint_signature_src(chainlet.endpoint)
     imports.update(signature.imports)
     body = _stub_endpoint_body_src(chainlet.endpoint, chainlet.name)
@@ -681,33 +692,44 @@ def _inplace_fill_base_image(
         )
 
 
-def _write_truss_config_yaml(
+def _gen_truss_config(
     chainlet_dir: pathlib.Path,
-    chains_config: definitions.RemoteConfig,
+    chainlet_descriptor: definitions.ChainletAPIDescriptor,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
     use_local_src: bool,
-    is_websocket_endpoint: bool,
-):
+) -> truss_config.TrussConfig:
     """Generate a truss config for a Chainlet."""
     config = truss_config.TrussConfig()
     config.model_name = model_name
-    config.model_class_filename = _MODEL_FILENAME
-    config.model_class_name = _MODEL_CLS_NAME
-    config.runtime.enable_tracing_data = chains_config.options.enable_b10_tracing
-    config.environment_variables = dict(chains_config.options.env_variables)
-    config.runtime.health_checks = chains_config.options.health_checks
+    remote_config = chainlet_descriptor.chainlet_cls.remote_config
+
     # Compute.
-    compute = chains_config.get_compute_spec()
+    compute = remote_config.get_compute_spec()
     config.resources.cpu = str(compute.cpu_count)
     config.resources.memory = str(compute.memory)
     config.resources.accelerator = compute.accelerator
     config.resources.use_gpu = bool(compute.accelerator.count)
     config.runtime.predict_concurrency = compute.predict_concurrency
-    config.runtime.is_websocket_endpoint = is_websocket_endpoint
+    config.runtime.is_websocket_endpoint = chainlet_descriptor.endpoint.is_websocket
+
+    assets = remote_config.get_asset_spec()
+    config.secrets = assets.secrets
+    config.runtime.enable_tracing_data = remote_config.options.enable_b10_tracing
+    config.environment_variables = dict(remote_config.options.env_variables)
+
+    if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
+        config.trt_llm = chainlet_descriptor.chainlet_cls.engine_builder_config
+        truss_config.TrussConfig.validate(config)
+        return config
+
+    config.model_class_filename = _MODEL_FILENAME
+    config.model_class_name = _MODEL_CLS_NAME
+
+    config.runtime.health_checks = remote_config.options.health_checks
     # Image.
-    _inplace_fill_base_image(chains_config.docker_image, config)
-    pip_requirements = _make_requirements(chains_config.docker_image)
+    _inplace_fill_base_image(remote_config.docker_image, config)
+    pip_requirements = _make_requirements(remote_config.docker_image)
     # TODO: `pip_requirements` will add server requirements which give version
     #  conflicts. Check if that's still the case after relaxing versions.
     # config.requirements = pip_requirements
@@ -715,14 +737,12 @@ def _write_truss_config_yaml(
     pip_requirements_file_path.write_text("\n".join(pip_requirements))
     # Absolute paths don't work with remote build.
     config.requirements_file = _REQUIREMENTS_FILENAME
-    config.system_packages = chains_config.docker_image.apt_requirements
-    if chains_config.docker_image.external_package_dirs:
-        for ext_dir in chains_config.docker_image.external_package_dirs:
+    config.system_packages = remote_config.docker_image.apt_requirements
+    if remote_config.docker_image.external_package_dirs:
+        for ext_dir in remote_config.docker_image.external_package_dirs:
             config.external_package_dirs.append(ext_dir.abs_path)
     config.use_local_src = use_local_src
-    # Assets.
-    assets = chains_config.get_asset_spec()
-    config.secrets = assets.secrets
+
     if definitions.BASETEN_API_SECRET_NAME not in config.secrets:
         config.secrets[definitions.BASETEN_API_SECRET_NAME] = definitions.SECRET_DUMMY
     else:
@@ -732,16 +752,10 @@ def _write_truss_config_yaml(
         )
     config.model_cache.models = assets.cached
     config.external_data = truss_config.ExternalData(items=assets.external_data)
-    # Metadata.
-    chains_metadata: definitions.TrussMetadata = definitions.TrussMetadata(
-        chainlet_to_service=chainlet_to_service
-    )
     config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
-        chains_metadata.model_dump()
+        definitions.TrussMetadata(chainlet_to_service=chainlet_to_service).model_dump()
     )
-    config.write_to_yaml_file(
-        chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
-    )
+    return config
 
 
 def gen_truss_model_from_source(
@@ -793,14 +807,26 @@ def gen_truss_chainlet(
         f"Code generation for {chainlet_descriptor.chainlet_cls.entity_type} `{chainlet_descriptor.name}` "
         f"in `{chainlet_dir}`."
     )
-    _write_truss_config_yaml(
-        chainlet_dir=chainlet_dir,
-        chains_config=chainlet_descriptor.chainlet_cls.remote_config,
+    if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
+        engine_builder_config = cast(
+            framework.EngineBuilderChainlet, chainlet_descriptor.chainlet_cls
+        ).engine_builder_config
+    else:
+        engine_builder_config = None
+
+    config = _gen_truss_config(
+        chainlet_dir,
+        chainlet_descriptor,
+        dep_services,
         model_name=model_name or chain_name,
-        chainlet_to_service=dep_services,
         use_local_src=use_local_src,
-        is_websocket_endpoint=chainlet_descriptor.endpoint.is_websocket,
     )
+    config.write_to_yaml_file(
+        chainlet_dir / serving_image_builder.CONFIG_FILE, verbose=True
+    )
+    if engine_builder_config:
+        return chainlet_dir
+
     # This assumes all imports are absolute w.r.t chain root (or site-packages).
     truss_path.copy_tree_path(
         chain_root, chainlet_dir / truss_config.DEFAULT_BUNDLED_PACKAGES_DIR

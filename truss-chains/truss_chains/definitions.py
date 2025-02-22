@@ -30,6 +30,7 @@ import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.shared import types
+from truss_chains import utils
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -44,6 +45,8 @@ HEALTH_CHECK_METHOD_NAME = "is_healthy"
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
+ENGINE_BUILDER_CONFIG_NAME = "engine_builder_config"
+
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
@@ -351,8 +354,14 @@ class ChainletMetadata(types.SafeModelNonSerializable):
     init_is_patched: bool = False
 
 
+class EntityType(utils.StrEnum):
+    CHAINLET = enum.auto()
+    MODEL = enum.auto()
+    ENGINE_BUILDER_MODEL = enum.auto()
+
+
 class FrameworkConfig(types.SafeModelNonSerializable):
-    entity_type: Literal["Chainlet", "Model"]
+    entity_type: EntityType
     supports_dependencies: bool
     endpoint_method_name: str
 
@@ -521,7 +530,7 @@ class ABCChainlet(abc.ABC):
 
     @classproperty
     @classmethod
-    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+    def entity_type(cls) -> EntityType:
         return cls._framework_config.entity_type
 
     @classproperty
@@ -612,6 +621,10 @@ class EndpointAPIDescriptor(types.SafeModelNonSerializable):
     @property
     def has_pydantic_output(self) -> bool:
         return not (self.is_streaming or self.is_websocket)
+
+    @property
+    def has_engine_builder_llm_input(self) -> bool:
+        return any(arg.type.raw == EngineBuilderLLMInput for arg in self.input_args)
 
 
 class DependencyDescriptor(types.SafeModelNonSerializable):
@@ -774,3 +787,174 @@ class WebSocketProtocol(Protocol):
     def iter_text(self) -> AsyncIterator[str]: ...
     def iter_bytes(self) -> AsyncIterator[bytes]: ...
     def iter_json(self) -> AsyncIterator[Any]: ...
+
+
+class EngineBuilderLLMInput(pydantic.BaseModel):
+    # TODO: This is mainly a copy from `briton/python/briton/briton/schema.py`.
+    #  Find a better way to code share this (potentially in TaT).
+    """This class mirrors the `CompletionCreateParamsBase` in the `openai-python` repository.
+
+    However, that class is a Typeddict rather than a pydantic model, so we redefine it here
+    to take advantage of pydantic's validation features. In addition, we define helper methods
+    to get the formatted prompt, tools to use, and response format to adhere to.
+
+    Unsupported parameters:
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-store
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-metadata
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-frequency_penalty
+      - Frequency penalty is not currently passed through to briton
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-logit_bias
+      - User provided logit biasing is not implemented
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-logprobs
+      - Returning log probabilities is not implemented
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-top_logprobs
+      - Returning log probabilities is not implemented
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-function_call
+      - Deprecated
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-functions
+      - Deprecated
+    """
+
+    class Tool(pydantic.BaseModel):
+        """An element in the top level `tools` field."""
+
+        class Function(pydantic.BaseModel):
+            name: str
+            description: Optional[str] = None
+            parameters_: Optional[dict[str, Any]] = pydantic.Field(
+                None, alias="parameters"
+            )
+            return_: Optional[dict[str, Any]] = pydantic.Field(None, alias="return")
+
+            @pydantic.model_validator(mode="after")
+            def definitions_valid(cls, values):
+                if "definitions" in values.parameters and "$defs" in values.parameters:
+                    raise ValueError(
+                        "Both pydantic v1 and v2 definitions found; please check schema."
+                    )
+                return values
+
+            @property
+            def parameters(self) -> dict[str, Any]:
+                if self.parameters_ is None:
+                    return {"properties": {}}
+                elif "properties" not in self.parameters_:
+                    return {"properties": {}, **self.parameters_}
+                else:
+                    return self.parameters_
+
+            @property
+            def parameters_without_definitions(self) -> dict[str, Any]:
+                parameters = self.parameters.copy()
+                for keyword in ["definitions", "$defs"]:
+                    parameters.pop(keyword, None)
+                return parameters
+
+            @property
+            def definitions(self) -> Optional[tuple[dict[str, Any], str]]:
+                for keyword in ["definitions", "$defs"]:
+                    if keyword in self.parameters:
+                        return self.parameters[keyword], keyword
+                return None
+
+            @property
+            def json_schema(self) -> dict[str, Any]:
+                return {
+                    "type": "object",
+                    "properties": {
+                        "name": {"const": self.name},
+                        "parameters": self.parameters_without_definitions,
+                    },
+                    "required": ["name", "parameters"],
+                }
+
+        type: Literal["function"]
+        function: Function
+
+    class ToolChoice(pydantic.BaseModel):
+        """The top level `tool_choice` field."""
+
+        class FunctionChoice(pydantic.BaseModel):
+            name: str
+
+        type: Literal["function"]
+        function: FunctionChoice
+
+    class SchemaResponseFormat(pydantic.BaseModel):
+        """The top level `response_format` field."""
+
+        class JsonSchema(pydantic.BaseModel):
+            """`schema_` holds the actual json schema"""
+
+            schema_: dict[str, Any] = pydantic.Field(..., alias="schema")
+
+        type: Literal["json_schema"]
+        json_schema: JsonSchema
+
+    class JsonResponseFormat(pydantic.BaseModel):
+        type: Literal["json_object"]
+
+    class TextResponseFormat(pydantic.BaseModel):
+        type: Literal["text"]
+
+    class StreamOptions(pydantic.BaseModel):
+        """The top level `stream_options` field."""
+
+        include_usage: bool
+
+    class LookaheadDecodingConfig(pydantic.BaseModel):
+        window_size: int
+        ngram_size: int
+        verification_set_size: int
+
+    model: Optional[str] = ""
+
+    messages: Optional[list[dict[str, Any]]] = None
+    prompt: Optional[str] = pydantic.Field(None, min_length=1)
+
+    max_tokens: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
+
+    stream: Optional[bool] = None
+    stream_options: Optional[StreamOptions] = None
+
+    seed: Optional[int] = None
+    random_seed: Optional[int] = None
+    frequency_penalty: Optional[float] = 0
+    presence_penalty: Optional[float] = 0
+    length_penalty: Optional[float] = None
+
+    # Not part of openai spec but supported by briton
+    repetition_penalty: Optional[float] = None
+    temperature: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    runtime_top_p: Optional[float] = None
+    top_k: Optional[int] = 50
+    runtime_top_k: Optional[int] = None
+    stop: Optional[Union[str, list[str]]] = None
+    bad_words_: Optional[Union[str, list[str]]] = None
+    skip_special_tokens: Optional[list[str]] = None
+    response_format: Optional[
+        Union[SchemaResponseFormat, JsonResponseFormat, TextResponseFormat]
+    ] = None
+    tools: Optional[list[Tool]] = None
+    tool_choice: Optional[Union[Literal["none", "required", "auto"], ToolChoice]] = None
+    parallel_tool_calls: Optional[bool] = True
+    beam_width: Optional[Literal[1]] = None
+    n: Optional[int] = 1
+    end_id: Optional[int] = None
+    pad_id: Optional[int] = None
+    # WiM fields
+    margins_prompt: Optional[str] = None
+    margins_stop_sequences: Optional[list[str]] = pydantic.Field(
+        default_factory=lambda: ["NO#"]
+    )
+    max_chunk_size: Optional[int] = 4096
+    # Lookahead Decoding
+    lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None
