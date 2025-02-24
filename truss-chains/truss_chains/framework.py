@@ -292,7 +292,7 @@ def _validate_io_type(
             location,
         )
         return
-    if annotation in _SIMPLE_TYPES:
+    if annotation in _SIMPLE_TYPES or annotation == definitions.WebSocketProtocol:
         return
 
     error_msg = (
@@ -445,6 +445,27 @@ def _validate_endpoint_output_types(
     return output_types
 
 
+def _validate_websocket_endpoint(
+    descriptor: definitions.EndpointAPIDescriptor, location: _ErrorLocation
+):
+    if any(arg.is_websocket for arg in descriptor.output_types):
+        _collect_error(
+            "Websockets cannot be used as output type.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+    if not any(arg.type.is_websocket for arg in descriptor.input_args):
+        return
+
+    if len(descriptor.input_args) > 1:
+        _collect_error(
+            "When using a websocket as input, no other arguments are allowed.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+    # TODO: add more validations here..
+
+
 def _validate_and_describe_endpoint(
     cls: Type[definitions.ABCChainlet], location: _ErrorLocation
 ) -> definitions.EndpointAPIDescriptor:
@@ -529,14 +550,15 @@ def _validate_and_describe_endpoint(
             DeprecationWarning,
             stacklevel=1,
         )
-
-    return definitions.EndpointAPIDescriptor(
+    descriptor = definitions.EndpointAPIDescriptor(
         name=cls.endpoint_method_name,
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
         is_streaming=is_streaming,
     )
+    _validate_websocket_endpoint(descriptor, location)
+    return descriptor
 
 
 def _get_generic_class_type(var):
@@ -678,7 +700,16 @@ class _ChainletInitValidator:
                 _collect_error(
                     f"The same Chainlet class cannot be used multiple times for "
                     f"different arguments. Got previously used "
-                    f"`{marker.chainlet_cls}` for `{param.name}`.",
+                    f"`{marker.chainlet_cls.__name__}` for `{param.name}`.",
+                    _ErrorKind.TYPE_ERROR,
+                    self._location,
+                )
+
+            if get_descriptor(marker.chainlet_cls).endpoint.is_websocket:
+                _collect_error(
+                    f"The dependency chainlet `{marker.chainlet_cls.__name__}` for "
+                    f"`{param.name}` uses a websocket. But websockets can only be used "
+                    "in the entrypoint, not in 'inner' chainlets.",
                     _ErrorKind.TYPE_ERROR,
                     self._location,
                 )

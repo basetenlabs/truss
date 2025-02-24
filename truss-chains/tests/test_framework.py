@@ -583,7 +583,7 @@ def test_raises_iterator_no_arg():
                 yield "123"
 
 
-def test_raises_is_healthy_not_a_method():
+def test_raises_is_healthy_not_a_method() -> None:
     match = rf"{TEST_FILE}:\d+ \(IsHealthyNotMethod\) \[kind: TYPE_ERROR\].* `is_healthy` must be a method."
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -686,3 +686,50 @@ def test_import_model_requires_single_entrypoint():
     with pytest.raises(ValueError, match=match), _raise_errors():
         with framework.ModelImporter.import_target(model_src):
             pass
+
+
+def test_raises_websocket_with_other_args():
+    match = (
+        rf"{TEST_FILE}:\d+ \(WebsocketWithOtherArgs\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"When using a websocket as input, no other arguments are allowed"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class WebsocketWithOtherArgs(chains.ChainletBase):
+            def run_remote(
+                self, websocket: chains.WebSocketProtocol, name: str
+            ) -> None:
+                pass
+
+
+def test_raises_websocket_as_output():
+    match = (
+        rf"{TEST_FILE}:\d+ \(WebsocketOutput\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"Websockets cannot be used as output type"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class WebsocketOutput(chains.ChainletBase):
+            def run_remote(self) -> chains.WebSocketProtocol: ...  # type: ignore[empty-body]
+
+
+def test_raises_websocket_as_dependency():
+    match = (
+        rf"{TEST_FILE}:\d+ \(WebsocketAsDependency\.__init__\) \[kind: TYPE_ERROR\].*"
+        r"websockets can only be used in the entrypoint.*"
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class Dependency(chains.ChainletBase):
+            def run_remote(self, websocket: chains.WebSocketProtocol) -> None:
+                pass
+
+        class WebsocketAsDependency(chains.ChainletBase):
+            def __init__(self, dependency=chains.depends(Dependency)):
+                self._dependency = dependency
+
+            def run_remote(self) -> None:
+                pass
