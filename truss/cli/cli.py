@@ -668,9 +668,10 @@ def push_chain(
         num_failed = 0
         # Logging inferences with live display (even when using richHandler)
         # -> capture logs and print later.
-        with LogInterceptor() as log_interceptor, rich.live.Live(
-            table, console=console, refresh_per_second=4
-        ) as live:
+        with (
+            LogInterceptor() as log_interceptor,
+            rich.live.Live(table, console=console, refresh_per_second=4) as live,
+        ):
             while True:
                 table, statuses = _create_chains_table(service)
                 live.update(table)
@@ -1086,8 +1087,8 @@ def run_python(script, target_directory):
     type=bool,
     is_flag=True,
     required=False,
-    default=False,
-    help="[DEPRECATED]Trust truss with hosted secrets.",
+    default=None,
+    help="[DEPRECATED] All models are trusted by default.",
 )
 @click.option(
     "--disable-truss-download",
@@ -1130,7 +1131,7 @@ def push(
     remote: str,
     model_name: str,
     publish: bool = False,
-    trusted: bool = False,
+    trusted: Optional[bool] = None,
     disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
@@ -1167,10 +1168,8 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # Log a warning if using --trusted.
-    if trusted:
-        trusted_deprecation_notice = (
-            "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
-        )
+    if trusted is not None:
+        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
@@ -1208,7 +1207,6 @@ def push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,

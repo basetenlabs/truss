@@ -41,6 +41,8 @@ DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
 DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
+DEFAULT_ENABLE_DEBUG_LOGS = False
+DEFAULT_IS_WEBSOCKET_ENDPOINT = False
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
@@ -181,8 +183,9 @@ class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
-    enable_debug_logs: bool = False
+    enable_debug_logs: bool = DEFAULT_ENABLE_DEBUG_LOGS
     health_checks: HealthChecks = field(default_factory=HealthChecks)
+    is_websocket_endpoint: bool = DEFAULT_IS_WEBSOCKET_ENDPOINT
 
     @staticmethod
     def from_dict(d):
@@ -199,13 +202,19 @@ class Runtime:
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
         enable_tracing_data = d.get("enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA)
+        enable_debug_logs = d.get("enable_debug_logs", DEFAULT_ENABLE_DEBUG_LOGS)
         health_checks = HealthChecks.from_dict(d.get("health_checks", {}))
+        is_websocket_endpoint = d.get(
+            "is_websocket_endpoint", DEFAULT_IS_WEBSOCKET_ENDPOINT
+        )
 
         return Runtime(
             predict_concurrency=predict_concurrency,
             streaming_read_timeout=streaming_read_timeout,
             enable_tracing_data=enable_tracing_data,
+            enable_debug_logs=enable_debug_logs,
             health_checks=health_checks,
+            is_websocket_endpoint=is_websocket_endpoint,
         )
 
     def to_dict(self):
@@ -862,16 +871,15 @@ def obj_to_dict(obj, verbose: bool = False):
     return d
 
 
-# TODO(marius): consolidate this with config/validation:
 def _infer_python_version() -> str:
     return f"py{sys.version_info.major}{sys.version_info.minor}"
 
 
 def map_local_to_supported_python_version() -> str:
-    return map_to_supported_python_version(_infer_python_version())
+    return _map_to_supported_python_version(_infer_python_version())
 
 
-def map_to_supported_python_version(python_version: str) -> str:
+def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
 
     Currently, it maps any versions greater than 3.11 to 3.11.

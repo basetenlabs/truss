@@ -154,10 +154,8 @@ You'll need a [Baseten API key](https://app.baseten.co/settings/account/api_keys
 
 We have successfully packaged a gated model as a Truss. Let's deploy!
 
-Use `--trusted` with `truss push` to give the model server access to secrets stored on the remote host.
-
 ```sh
-truss push --trusted
+truss push
 ```
 
 Wait for the model to finish deployment before invoking.

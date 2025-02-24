@@ -3,6 +3,7 @@ from unittest import mock
 import pytest
 import requests
 from requests import Response
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
@@ -119,20 +120,19 @@ def test_create_model_version_from_truss(mock_post, baseten_api):
         "s3key",
         "config_str",
         "semver_bump",
-        "client_version",
-        False,
         False,
         "deployment_name",
         "production",
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'model_id: "model_id"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: false" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert 'name: "deployment_name"' in gql_mutation
     assert 'environment_name: "production"' in gql_mutation
@@ -143,23 +143,17 @@ def test_create_model_version_from_truss_does_not_send_deployment_name_if_not_sp
     mock_post, baseten_api
 ):
     baseten_api.create_model_version_from_truss(
-        "model_id",
-        "s3key",
-        "config_str",
-        "semver_bump",
-        "client_version",
-        True,
-        False,
-        deployment_name=None,
+        "model_id", "s3key", "config_str", "semver_bump", False, deployment_name=None
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'model_id: "model_id"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: true" in gql_mutation
     assert " name: " not in gql_mutation
     assert "environment_name: " not in gql_mutation
@@ -174,20 +168,19 @@ def test_create_model_version_from_truss_does_not_scale_old_prod_to_zero_if_keep
         "s3key",
         "config_str",
         "semver_bump",
-        "client_version",
-        True,
         True,
         deployment_name=None,
         environment="staging",
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'model_id: "model_id"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert "scale_down_old_production: false" in gql_mutation
     assert " name: " not in gql_mutation
     assert 'environment_name: "staging"' in gql_mutation
@@ -200,18 +193,17 @@ def test_create_model_from_truss(mock_post, baseten_api):
         "s3key",
         "config_str",
         "semver_bump",
-        "client_version",
-        is_trusted=False,
         deployment_name="deployment_name",
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'name: "model_name"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: false" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert 'version_name: "deployment_name"' in gql_mutation
 
 
@@ -220,44 +212,34 @@ def test_create_model_from_truss_does_not_send_deployment_name_if_not_specified(
     mock_post, baseten_api
 ):
     baseten_api.create_model_from_truss(
-        "model_name",
-        "s3key",
-        "config_str",
-        "semver_bump",
-        "client_version",
-        is_trusted=True,
-        deployment_name=None,
+        "model_name", "s3key", "config_str", "semver_bump", deployment_name=None
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'name: "model_name"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert "version_name: " not in gql_mutation
 
 
 @mock.patch("requests.post", return_value=mock_create_model_response())
 def test_create_model_from_truss_with_allow_truss_download(mock_post, baseten_api):
     baseten_api.create_model_from_truss(
-        "model_name",
-        "s3key",
-        "config_str",
-        "semver_bump",
-        "client_version",
-        is_trusted=True,
-        allow_truss_download=False,
+        "model_name", "s3key", "config_str", "semver_bump", allow_truss_download=False
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'name: "model_name"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
     assert 'semver_bump: "semver_bump"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
 
 
@@ -266,20 +248,16 @@ def test_create_development_model_from_truss_with_allow_truss_download(
     mock_post, baseten_api
 ):
     baseten_api.create_development_model_from_truss(
-        "model_name",
-        "s3key",
-        "config_str",
-        "client_version",
-        is_trusted=True,
-        allow_truss_download=False,
+        "model_name", "s3key", "config_str", allow_truss_download=False
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
     assert 'name: "model_name"' in gql_mutation
     assert 's3_key: "s3key"' in gql_mutation
     assert 'config: "config_str"' in gql_mutation
-    assert 'client_version: "client_version"' in gql_mutation
-    assert "is_trusted: true" in gql_mutation
+    assert {
+        "trussUserEnv": b10_types.TrussUserEnv.collect().model_dump_json()
+    } == mock_post.call_args[1]["json"]["variables"]
     assert "allow_truss_download: false" in gql_mutation
 
 
@@ -295,12 +273,11 @@ def test_deploy_chain_deployment(mock_post, baseten_api):
                 model_name="model-1",
                 s3_key="s3-key-1",
                 encoded_config_str="encoded-config-str-1",
-                is_trusted=True,
             ),
         ),
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
 
     assert 'environment: "production"' in gql_mutation
     assert 'chain_id: "chain_id"' in gql_mutation
@@ -319,12 +296,11 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
                 model_name="model-1",
                 s3_key="s3-key-1",
                 encoded_config_str="encoded-config-str-1",
-                is_trusted=True,
             ),
         ),
     )
 
-    gql_mutation = mock_post.call_args[1]["data"]["query"]
+    gql_mutation = mock_post.call_args[1]["json"]["query"]
 
     assert 'chain_id: "chain_id"' in gql_mutation
     assert "environment" not in gql_mutation

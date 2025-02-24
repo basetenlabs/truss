@@ -161,12 +161,13 @@ def test_lazy_data_fetch_to_cache_non_200_status(
     cache_dir = tmp_path / "cache" / "org" / "artifacts"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.touch()
-    with patch(
-        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
-        manifest_path,
-    ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
-    ) as _:
+    with (
+        patch(
+            "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+            manifest_path,
+        ) as _,
+        patch("truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir) as _,
+    ):
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
@@ -204,12 +205,15 @@ def test_lazy_data_fetch_to_cache(
     cache_dir = tmp_path / "cache" / "org" / "artifacts"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.touch()
-    with patch(
-        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
-        manifest_path,
-    ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
-    ) as CACHE_DIR:
+    with (
+        patch(
+            "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+            manifest_path,
+        ) as _,
+        patch(
+            "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
+        ) as CACHE_DIR,
+    ):
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
@@ -253,14 +257,16 @@ def test_lazy_data_fetch_to_cache_fallback_if_no_space(
     cache_dir = tmp_path / "cache" / "org" / "artifacts"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.touch()
-    with patch(
-        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
-        manifest_path,
-    ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
-    ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.shutil.disk_usage"
-    ) as mock_disk_usage:
+    with (
+        patch(
+            "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+            manifest_path,
+        ) as _,
+        patch("truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir) as _,
+        patch(
+            "truss.templates.shared.lazy_data_resolver.shutil.disk_usage"
+        ) as mock_disk_usage,
+    ):
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache
@@ -305,12 +311,15 @@ def test_lazy_data_fetch_cached(
     cache_dir = tmp_path / "cache" / "org" / "artifacts"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_dir.touch()
-    with patch(
-        "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
-        manifest_path,
-    ) as _, patch(
-        "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
-    ) as CACHE_DIR:
+    with (
+        patch(
+            "truss.templates.shared.lazy_data_resolver.LAZY_DATA_RESOLVER_PATH",
+            manifest_path,
+        ) as _,
+        patch(
+            "truss.templates.shared.lazy_data_resolver.CACHE_DIR", cache_dir
+        ) as CACHE_DIR,
+    ):
         data_dir = Path(tmp_path)
         ldr = LazyDataResolver(data_dir)
         assert ldr._uses_b10_cache

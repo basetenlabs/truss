@@ -557,8 +557,9 @@ class _ModelWatcher:
 
     def _patch(self) -> None:
         exception_raised = None
-        with log_utils.LogInterceptor() as log_interceptor, self._console.status(
-            " Live Patching Model.\n", spinner="arrow3"
+        with (
+            log_utils.LogInterceptor() as log_interceptor,
+            self._console.status(" Live Patching Model.\n", spinner="arrow3"),
         ):
             try:
                 gen_truss_path = code_gen.gen_truss_model_from_source(self._source)
@@ -717,8 +718,9 @@ class _Watcher:
     def _patch(self, executor: concurrent.futures.Executor) -> None:
         exception_raised = None
         stack_trace = ""
-        with log_utils.LogInterceptor() as log_interceptor, self._console.status(
-            " Live Patching Chain.\n", spinner="arrow3"
+        with (
+            log_utils.LogInterceptor() as log_interceptor,
+            self._console.status(" Live Patching Chain.\n", spinner="arrow3"),
         ):
             # Handle import errors gracefully (e.g. if user saved file, but there
             # are syntax errors, undefined symbols etc.).
