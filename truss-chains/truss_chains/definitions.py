@@ -622,6 +622,14 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
     def is_websocket(self):
         return any(arg.type.is_websocket for arg in self.input_args)
 
+    @property
+    def has_pydantic_input(self) -> bool:
+        return not self.is_websocket
+
+    @property
+    def has_pydantic_output(self) -> bool:
+        return not (self.is_streaming or self.is_websocket)
+
 
 class DependencyDescriptor(SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
@@ -770,7 +778,6 @@ class WebSocketProtocol(Protocol):
 
     headers: Mapping[str, str]
 
-    async def accept(self) -> None: ...
     async def close(self, code: int = 1000, reason: Optional[str] = None) -> None: ...
 
     async def receive_text(self) -> str: ...

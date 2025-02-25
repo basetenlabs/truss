@@ -289,7 +289,12 @@ class ModelDescriptor:
                 f"`{MethodName.WEBSOCKET}` method."
             )
 
-        if websocket:
+        elif not (websocket or predict):
+            raise errors.ModelDefinitionError(
+                f"Truss model must have a `{MethodName.PREDICT}` or `{MethodName.WEBSOCKET}` method."
+            )
+
+        elif websocket:
             assert predict is None
             if websocket.arg_config != ArgConfig.INPUTS_ONLY:
                 raise errors.ModelDefinitionError(
@@ -298,10 +303,6 @@ class ModelDescriptor:
         elif predict:
             assert websocket is None
             preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
-            if not predict:
-                raise errors.ModelDefinitionError(
-                    f"Truss model must have a `{MethodName.PREDICT}` method."
-                )
             if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
                 raise errors.ModelDefinitionError(
                     f"When using `{MethodName.PREPROCESS}`, the {MethodName.PREDICT} method "
@@ -321,10 +322,11 @@ class ModelDescriptor:
             truss_schema = cls._gen_truss_schema(
                 predict=predict, preprocess=preprocess, postprocess=postprocess
             )
-
         else:
+            # This case should never happen, since above conditions should
+            # be exhaustive.
             raise errors.ModelDefinitionError(
-                f"Truss model must have a `{MethodName.PREDICT}` or `{MethodName.WEBSOCKET}` method."
+                "Unsupported method combination on truss model."
             )
 
         return cls(

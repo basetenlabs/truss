@@ -522,11 +522,12 @@ def _gen_websocket_src() -> _Source:
     src = """
 async def websocket(self, websocket: fastapi.WebSocket) -> None:
     with utils.predict_context(websocket.headers):
-        await self._chainlet.run_remote(websocket)
-"""
+        await self._chainlet.run_remote(
+            utils.WebsocketWrapperFastAPI(websocket)
+        )"""
     return _Source(
         src=src,
-        imports={"import fastapi", "from truss_chains.remote_chainlet import utils "},
+        imports={"import fastapi", "from truss_chains.remote_chainlet import utils"},
     )
 
 
@@ -553,11 +554,10 @@ def _gen_truss_chainlet_model(
     imports.update(load_src.imports)
     if chainlet_descriptor.endpoint.is_websocket:
         endpoint_src = _gen_websocket_src()
-        imports.update(endpoint_src.imports)
     else:
         endpoint_src = _gen_predict_src(chainlet_descriptor)
-        imports.update(endpoint_src.imports)
 
+    imports.update(endpoint_src.imports)
     new_body: list[Any] = list(class_definition.body.body) + [
         libcst.parse_statement(load_src.src),
         libcst.parse_statement(endpoint_src.src),
@@ -594,14 +594,11 @@ def _gen_truss_chainlet_file(
     if maybe_stub_src := _gen_stub_src_for_deps(dependencies):
         _update_src(maybe_stub_src, src_parts, imports)
 
-    if not chainlet_descriptor.endpoint.is_websocket:
+    if chainlet_descriptor.endpoint.has_pydantic_input:
         input_src = _gen_truss_input_pydantic(chainlet_descriptor)
         _update_src(input_src, src_parts, imports)
 
-    if (
-        not chainlet_descriptor.endpoint.is_streaming
-        and not chainlet_descriptor.endpoint.is_websocket
-    ):
+    if chainlet_descriptor.endpoint.has_pydantic_output:
         output_src = _gen_truss_output_pydantic(chainlet_descriptor)
         _update_src(output_src, src_parts, imports)
 
