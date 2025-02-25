@@ -25,7 +25,7 @@ def multipart_upload_boto3(
 ) -> None:
     # In the CLI flow, ignore any local ~/.aws/config files,
     # which can interfere with uploading the Truss to S3.
-    with override_env_vars({"AWS_CONFIG_FILE": ""}):
+    with override_env_vars({"AWS_CONFIG_FILE": "", "AWS_PROFILE": None}):
         s3_resource = boto3.resource("s3", **credentials)
         filesize = os.stat(file_path).st_size
 
