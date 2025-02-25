@@ -2,7 +2,7 @@ import truss_chains as chains
 
 
 class PassthroughModel(chains.ModelBase):
-    remote_config: chains.RemoteConfig = chains.RemoteConfig(  # type: ignore
+    remote_config = chains.RemoteConfig(
         compute=chains.Compute(4, "1Gi"), name="OverridePassthroughModelName"
     )
 

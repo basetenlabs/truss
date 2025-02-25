@@ -28,7 +28,6 @@ from typing import (
     Type,
     TypeVar,
     Union,
-    cast,
     get_args,
     get_origin,
 )
@@ -447,13 +446,14 @@ def _validate_endpoint_output_types(
 
 def _validate_websocket_endpoint(
     descriptor: definitions.EndpointAPIDescriptor, location: _ErrorLocation
-):
+) -> None:
     if any(arg.is_websocket for arg in descriptor.output_types):
         _collect_error(
             "Websockets cannot be used as output type.",
             _ErrorKind.IO_TYPE_ERROR,
             location,
         )
+
     if not any(arg.type.is_websocket for arg in descriptor.input_args):
         return
 
@@ -463,7 +463,26 @@ def _validate_websocket_endpoint(
             _ErrorKind.IO_TYPE_ERROR,
             location,
         )
-    # TODO: add more validations here..
+
+    if len(descriptor.output_types) != 1 or descriptor.output_types[0].raw != None:  # noqa: E711
+        _collect_error(
+            "Websocket endpoints must have `None` as return type.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if descriptor.is_streaming:
+        # Redundant since output type None is required.
+        _collect_error(
+            "Websocket endpoints cannot reurn itesators. Use the websocket itself to stream data.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if not descriptor.is_async:
+        _collect_error(
+            "Websocket endpoints must be async.", _ErrorKind.IO_TYPE_ERROR, location
+        )
 
 
 def _validate_and_describe_endpoint(
@@ -1284,13 +1303,16 @@ class _ABCImporter(abc.ABC):
         pass
 
     @classmethod
-    def _get_entrypoint_chainlets(cls, symbols) -> set[Type[definitions.ABCChainlet]]:
-        return {
-            sym
-            for sym in symbols
-            if utils.issubclass_safe(sym, cls._target_cls_type())
-            and cast(definitions.ABCChainlet, sym).meta_data.is_entrypoint
+    def _get_chainlets(
+        cls, symbols
+    ) -> tuple[set[Type[definitions.ABCChainlet]], set[Type[definitions.ABCChainlet]]]:
+        chainlets: set[Type[definitions.ABCChainlet]] = {
+            sym for sym in symbols if utils.issubclass_safe(sym, cls._target_cls_type())
         }
+        entrypoints: set[Type[definitions.ABCChainlet]] = {
+            chainlet for chainlet in chainlets if chainlet.meta_data.is_entrypoint
+        }
+        return chainlets, entrypoints
 
     @classmethod
     def _load_module(cls, module_path: pathlib.Path) -> tuple[types.ModuleType, Loader]:
@@ -1395,12 +1417,16 @@ class _ABCImporter(abc.ABC):
                     )
             else:
                 module_vars = (getattr(module, name) for name in dir(module))
-                entrypoints = cls._get_entrypoint_chainlets(module_vars)
+                chainlets, entrypoints = cls._get_chainlets(module_vars)
+                if len(chainlets) == 1:
+                    entrypoints = chainlets
+
                 if len(entrypoints) == 0:
                     raise cls._no_entrypoint_error(module_path)
                 elif len(entrypoints) > 1:
                     raise cls._multiple_entrypoints_error(module_path, entrypoints)
                 target_cls = utils.expect_one(entrypoints)
+
             yield target_cls
         finally:
             cls._cleanup_module_imports(

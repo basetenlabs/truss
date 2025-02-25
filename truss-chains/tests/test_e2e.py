@@ -354,9 +354,7 @@ async def test_websocket_chain(anyio_backend):
             url = service.run_remote_url.replace("http", "ws").replace(
                 "v1/models/model:predict", "v1/websocket"
             )
-            print(url)
-            logging.warning(url)
-            time.sleep(1)
+            time.sleep(0.3)  # Wait for server to be up.
             async with websockets.connect(url) as websocket:
                 await websocket.send("Test")
                 response = await websocket.recv()

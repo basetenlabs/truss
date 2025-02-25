@@ -733,3 +733,16 @@ def test_raises_websocket_as_dependency():
 
             def run_remote(self) -> None:
                 pass
+
+
+def test_raises_websocket_with_return():
+    match = (
+        rf"{TEST_FILE}:\d+ \(WebsocketOutput\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"Websocket endpoints must have `None` as return type."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class WebsocketOutput(chains.ChainletBase):
+            async def run_remote(self, websocket: chains.WebSocketProtocol) -> int:
+                return 1

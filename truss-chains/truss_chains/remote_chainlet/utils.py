@@ -8,7 +8,8 @@ import sys
 import textwrap
 import threading
 import traceback
-from typing import Dict, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
+from collections.abc import AsyncIterator
+from typing import Any, Dict, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
 
 import aiohttp
 import fastapi
@@ -329,3 +330,48 @@ async def async_response_raise_errors(
 def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
     with _trace_parent(headers), _exception_to_http_error():
         yield
+
+
+class WebsocketWrapperFastAPI:
+    """Implements `definitions.WebSocketProtocol` around fastAPI object."""
+
+    # TODO: consider if we want to wrap/translate exceptions thrown as well. Currently
+    #  this is somewhat loopy, as `fastapi.WebSocketDisconnect` just passes through,
+    #  but we have not documented either, so it's not directly a contradiction.
+
+    def __init__(self, websocket: fastapi.WebSocket) -> None:
+        self._websocket = websocket
+        self.headers: Mapping[str, str] = websocket.headers
+
+    async def close(self, code: int = 1000, reason: Optional[str] = None) -> None:
+        await self._websocket.close(code=code, reason=reason)
+
+    async def receive_text(self) -> str:
+        return await self._websocket.receive_text()
+
+    async def receive_bytes(self) -> bytes:
+        return await self._websocket.receive_bytes()
+
+    async def receive_json(self) -> Any:
+        return await self._websocket.receive_json()
+
+    async def send_text(self, data: str) -> None:
+        await self._websocket.send_text(data)
+
+    async def send_bytes(self, data: bytes) -> None:
+        await self._websocket.send_bytes(data)
+
+    async def send_json(self, data: Any) -> None:
+        await self._websocket.send_json(data)
+
+    async def iter_text(self) -> AsyncIterator[str]:
+        while True:
+            yield await self.receive_text()
+
+    async def iter_bytes(self) -> AsyncIterator[bytes]:
+        while True:
+            yield await self.receive_bytes()
+
+    async def iter_json(self) -> AsyncIterator[Any]:
+        while True:
+            yield await self.receive_json()

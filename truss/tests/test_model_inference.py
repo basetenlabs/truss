@@ -1539,7 +1539,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "Truss model must have a `predict` method.",
+            "Truss model must have a `predict` or `websocket` method",
             "Exception while loading model",
         )
 
