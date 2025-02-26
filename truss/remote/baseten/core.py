@@ -211,9 +211,9 @@ def get_dev_version_from_versions(versions: List[dict]) -> Optional[dict]:
         The version in versions corresponding to the development model, or None
         if no development model exists
     """
-    for version in versions:
-        if version["is_draft"] is True:
-            return version
+    for model_version in versions:
+        if model_version["is_draft"] is True:
+            return model_version
     return None
 
 
@@ -267,9 +267,9 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     # Loop over versions instead of using the primary_version field because
     # primary_version is set to the development version ID if no published
     # models exist.
-    for version in versions:
-        if version["is_primary"]:
-            return version
+    for model_version in versions:
+        if model_version["is_primary"]:
+            return model_version
     return None
 
 

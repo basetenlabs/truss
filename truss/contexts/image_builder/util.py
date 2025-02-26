@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from truss import __version__
+from truss.version import VERSION
 
 # This needs to be updated whenever we want to update
 # base images on a merge. Updating this version will cause
@@ -39,7 +39,7 @@ def truss_base_image_tag(
     python_version: str, use_gpu: bool, version_tag: Optional[str] = None
 ) -> str:
     if version_tag is None:
-        version_tag = f"v{__version__}"
+        version_tag = f"v{VERSION}"
 
     base_tag = python_version
     if use_gpu:

@@ -14,7 +14,7 @@ def version() -> str:
     return __version__ or ""
 
 
-from truss.api import login, push, whoami
+from truss.api.api import login, push, whoami
 from truss.base import truss_config
 from truss.truss_handle.build import load  # TODO: Refactor all usages and remove.
 

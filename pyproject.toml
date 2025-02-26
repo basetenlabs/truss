@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "truss"
-version = "0.9.64"
+name = "truss-lib"
+version = "0.10.0rc000"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -53,7 +53,7 @@ truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup
 #   use the following installation command `poetry install --with=dev,dev-server --extras=all`.
 # * All other dependencies are in the main group `tool.poetry.dependencies`. Base dependencies are
 #   at the top and non-optional.
-# * Dependencies from other compoents are listed after, and marked with `optional = false`. If a
+# * Dependencies from other compoents are listed after, and marked with `optional = true`. If a
 #   dependency is needed by mutlipe extras, only add it once, but see next step. This also ensures
 #   that poetry resolves *all* dependencies from all extras to be globally consistent.
 # * Since poetry groups don't work with extras, we need to make the association between a dependency
@@ -70,66 +70,63 @@ truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup
 #  isolated.
 [tool.poetry.dependencies]
 # "base" dependencies.
-# "When using chains, 3.9 will be required at runtime, but other truss functionality works with 3.8.
 python = ">=3.9,<3.13"
 huggingface_hub = ">=0.25.0"
 pydantic = ">=1.10.0"  # We cannot upgrade to v2, due to customer constraints.
 PyYAML = ">=6.0"
 single-source = "^0.3.0"
 # "non-base" dependencies.
-# TODO: until we have resolved the question on how users can install the local tools frictionless
-#  (extras cannot be marked to be included by default), all below packages are non-optional.
-#  This also means that so far extras defined in `[tool.poetry.extras]` don't have any meaning,
-#  since everything is globally included anyway.
-Jinja2 = { version = "^3.1.2", optional = false }
-aiofiles = { version = "^24.1.0", optional = false }
-aiohttp = { version = "^3.10.10", optional = false }
-blake3 = { version = "^0.3.3", optional = false }
-boto3 = { version = "^1.34.85", optional = false }
-click = { version = "^8.0.3", optional = false }
-fastapi = { version =">=0.109.1", optional = false }
-google-cloud-storage = { version = "2.10.0", optional = false }
-httpx = { version = ">=0.24.1", optional = false }
-inquirerpy = { version = "^0.3.4", optional = false }
-libcst = { version = "<1.2.0", optional = false }
-loguru = { version = ">=0.7.2", optional = false }
-packaging = { version = ">=20.9", optional = false }
-pathspec = { version = ">=0.9.0", optional = false }
-psutil = { version = ">=5.9.4", optional = false }
-python-json-logger = { version = ">=2.0.2", optional = false }
-python-on-whales = { version = "^0.68.0", optional = false }
-requests = { version = ">=2.31", optional = false }
-rich = { version = "^13.4.2", optional = false }
-rich-click = { version = "^1.6.1", optional = false }
-ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
-tenacity = { version = "^8.0.1", optional = false }
-watchfiles = { version = "^0.19.0", optional = false }
+Jinja2 = { version = "^3.1.2", optional = true }
+aiofiles = { version = "^24.1.0", optional = true }
+aiohttp = { version = "^3.10.10", optional = true }
+blake3 = { version = "^0.3.3", optional = true }
+boto3 = { version = "^1.34.85", optional = true }
+click = { version = "^8.0.3", optional = true }
+fastapi = { version =">=0.109.1", optional = true }
+google-cloud-storage = { version = "2.10.0", optional = true }
+httpx = { version = ">=0.24.1", optional = true }
+inquirerpy = { version = "^0.3.4", optional = true }
+libcst = { version = "<1.2.0", optional = true }
+loguru = { version = ">=0.7.2", optional = true }
+packaging = { version = ">=20.9", optional = true }
+pathspec = { version = ">=0.9.0", optional = true }
+psutil = { version = ">=5.9.4", optional = true }
+python-json-logger = { version = ">=2.0.2", optional = true }
+python-on-whales = { version = "^0.68.0", optional = true }
+requests = { version = ">=2.31", optional = true }
+rich = { version = "^13.4.2", optional = true }
+rich-click = { version = "^1.6.1", optional = true }
+ruff = { version = ">=0.4.8", optional = true }  # Not a dev dep, needed for chains code gen.
+tenacity = { version = "^8.0.1", optional = true }
+watchfiles = { version = "^0.19.0", optional = true }
 
 
 [tool.dependency_metadata]
 # `base` / `main` deps which are non-optional are always included and don't need to be added here.
-Jinja2 = { components = "other" }
-aiofiles = { components = "other" }
-aiohttp = { components = "other" }
-blake3 = { components = "other" }
-boto3 = { components = "other" }
-click = { components = "other" }
-google-cloud-storage = { components = "other" }
-httpx = { components = "other" }
-inquirerpy = { components = "other" }
-libcst = { components = "other" }
-loguru = { components = "other" }
-packaging = { components = "other" }
-pathspec = { components = "other" }
-psutil = { components = "other" }
-python-json-logger = { components = "other" }
-python-on-whales = { components = "other" }
-requests = { components = "other" }
-rich = { components = "other" }
-rich-click = { components = "other" }
-ruff = { components = "other" }
-tenacity = { components = "other" }
-watchfiles = { components = "other" }
+Jinja2 = { components = "other,cli" }
+aiofiles = { components = "other,cli" }
+aiohttp = { components = "other,cli" }
+blake3 = { components = "other,cli" }
+boto3 = { components = "other,cli" }
+click = { components = "other,cli" }
+fastapi = { components = "other,cli" }
+google-cloud-storage = { components = "other,cli" }
+httpx = { components = "other,cli" }
+inquirerpy = { components = "other,cli" }
+libcst = { components = "other,cli" }
+loguru = { components = "other,cli" }
+packaging = { components = "other,cli" }
+pathspec = { components = "other,cli" }
+psutil = { components = "other,cli" }
+python-json-logger = { components = "other,cli" }
+python-on-whales = { components = "other,cli" }
+requests = { components = "other,cli" }
+ruff = { components = "other,cli" }
+tenacity = { components = "other,cli" }
+watchfiles = { components = "other,cli" }
+# CLI only
+rich = { components = "cli" }
+rich-click = { components = "cli" }
 
 [tool.poetry.group.dev.dependencies]
 # These packages are needed as the dev/testing tooling
@@ -180,6 +177,7 @@ requires = ["poetry-core>=1.2.1"]
 ignore_missing_imports = true
 python_version = "3.9"
 plugins = ["pydantic.mypy"]
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 markers = [
@@ -231,4 +229,6 @@ max-line-length = 120
 
 # Note: `tool.poetry.extras` was autogenerated by `pyproject_toml_linter.py`, do not edit manually.
 [tool.poetry.extras]
-all = []
+other = ["Jinja2", "aiofiles", "aiohttp", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "ruff", "tenacity", "watchfiles"]
+cli = ["Jinja2", "aiofiles", "aiohttp", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "tenacity", "watchfiles"]
+all = ["Jinja2", "aiofiles", "aiohttp", "blake3", "boto3", "click", "fastapi", "google-cloud-storage", "httpx", "inquirerpy", "libcst", "loguru", "packaging", "pathspec", "psutil", "python-json-logger", "python-on-whales", "requests", "rich", "rich-click", "ruff", "tenacity", "watchfiles"]
