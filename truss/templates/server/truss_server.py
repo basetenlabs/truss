@@ -335,6 +335,21 @@ class TrussServer:
         asyncio.create_task(self._shutdown_if_load_fails())
         self._model.setup_polling_for_environment_updates()
 
+    def on_shutdown(self):
+        logging.info("Shutting down.")
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        # remove worker from router
+        # curl -X POST http://localhost:30000/remove_worker?url=http://worker_url_1
+        url = f"http://{ip_address}:8080"
+        router_remove = "http://lb.hawaii.svc.cluster.local/remove_worker?url=" + url
+        try:
+            logging.info(f"Will call {router_remove}")
+            response = requests.post(router_remove)
+            logging.info(f"Response: {response.text}, status: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Failed to remove worker from router: {e}")
+
     async def _shutdown_if_load_fails(self):
         while not self._model.ready:
             await asyncio.sleep(0.5)
@@ -351,6 +366,7 @@ class TrussServer:
             redoc_url=None,
             default_response_class=ORJSONResponse,
             on_startup=[self.on_startup],
+            on_shutdown=[self.on_shutdown],
             routes=[
                 # liveness endpoint
                 FastAPIRoute(r"/", lambda: True),
@@ -410,24 +426,6 @@ class TrussServer:
         # Above `exception_handlers` only triggers on exact exception classes.
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
-
-        @app.on_event("shutdown")
-        def on_shutdown():
-            logging.info("Term signal received, shutting down.")
-            hostname = socket.gethostname()
-            ip_address = socket.gethostbyname(hostname)
-            # remove worker from router
-            # curl -X POST http://localhost:30000/remove_worker?url=http://worker_url_1
-            url = f"http://{ip_address}:8080"
-            router_remove = (
-                "http://lb.hawaii.svc.cluster.local/remove_worker?url=" + url
-            )
-            try:
-                print(f"Will call {router_remove}")
-                response = requests.post(router_remove)
-                print(f"Response: {response.text}, status: {response.status_code}")
-            except requests.exceptions.RequestException as e:
-                logging.error(f"Failed to remove worker from router: {e}")
 
         return app
 
