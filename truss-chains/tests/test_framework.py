@@ -99,7 +99,7 @@ def test_raises_model_requires_predict_method():
         def run_remote(self) -> str:
             return self.__class__.name
 
-    match = "Models must have a `predict` method."
+    match = "models must have a `predict` method."
     with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
         with chains.run_local():
             ModelWithRunRemote()
@@ -113,7 +113,7 @@ def test_raises_model_dependencies_not_allowed():
         def run_remote(self) -> str:
             return self.__class__.name
 
-    match = "The only supported argument to `__init__` for Models"
+    match = "The only supported argument to `__init__` for models"
     with pytest.raises(definitions.ChainsUsageError, match=re.escape(match)):
         with chains.run_local():
             ModelWithDependencies()
@@ -376,7 +376,7 @@ def test_raises_endpoint_return_not_supported():
 def test_raises_no_endpoint():
     match = (
         rf"{TEST_FILE}:\d+ \(NoEndpoint\) \[kind: MISSING_API_ERROR\].*"
-        r"Chainlets must have a `run_remote` method."
+        r"chainlets must have a `run_remote` method."
     )
 
     with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
@@ -460,7 +460,7 @@ def test_raises_dep_not_chainlet_annot():
 def test_raises_context_missing_default():
     match = (
         rf"{TEST_FILE}:\d+ \(ContextMissingDefault\.__init__\) \[kind: TYPE_ERROR\].*"
-        r"If `Chainlet` uses context for initialization, it must have "
+        r"If `chainlet` uses context for initialization, it must have "
         r"`context` argument of type `<class 'truss_chains.definitions.DeploymentContext'>`"
     )
 
@@ -473,7 +473,7 @@ def test_raises_context_missing_default():
 def test_raises_context_wrong_annot():
     match = (
         rf"{TEST_FILE}:\d+ \(ConextWrongAnnot\.__init__\) \[kind: TYPE_ERROR\].*"
-        r"If `Chainlet` uses context for initialization, it must have "
+        r"If `chainlet` uses context for initialization, it must have "
         r"`context` argument of type `<class 'truss_chains.definitions.DeploymentContext'>`"
     )
 
@@ -733,3 +733,16 @@ def test_raises_websocket_as_dependency():
 
             def run_remote(self) -> None:
                 pass
+
+
+def test_raises_websocket_with_return():
+    match = (
+        rf"{TEST_FILE}:\d+ \(WebsocketOutput\.run_remote\) \[kind: IO_TYPE_ERROR\].*"
+        r"Websocket endpoints must have `None` as return type."
+    )
+
+    with pytest.raises(definitions.ChainsUsageError, match=match), _raise_errors():
+
+        class WebsocketOutput(chains.ChainletBase):
+            async def run_remote(self, websocket: chains.WebSocketProtocol) -> int:
+                return 1

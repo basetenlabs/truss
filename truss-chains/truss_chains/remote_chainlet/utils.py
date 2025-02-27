@@ -335,6 +335,10 @@ def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
 class WebsocketWrapperFastAPI:
     """Implements `definitions.WebSocketProtocol` around fastAPI object."""
 
+    # TODO: consider if we want to wrap/translate exceptions thrown as well. Currently
+    #  this is somewhat loopy, as `fastapi.WebSocketDisconnect` just passes through,
+    #  but we have not documented either, so it's not directly a contradiction.
+
     def __init__(self, websocket: fastapi.WebSocket) -> None:
         self._websocket = websocket
         self.headers: Mapping[str, str] = websocket.headers

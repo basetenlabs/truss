@@ -10,7 +10,7 @@ class Dependency(chains.ChainletBase):
         return msg
 
 
-@chains.mark_entrypoint  # ("My Chain Name")
+@chains.mark_entrypoint
 class Head(chains.ChainletBase):
     def __init__(self, dependency=chains.depends(Dependency)):
         self._dependency = dependency

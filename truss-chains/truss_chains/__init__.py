@@ -26,7 +26,7 @@ from truss_chains.definitions import (
     RPCOptions,
     WebSocketProtocol,
 )
-from truss_chains.framework import ChainletBase, ModelBase
+from truss_chains.framework import BasetenLLMChainlet, ChainletBase, ModelBase
 from truss_chains.public_api import (
     depends,
     depends_context,
@@ -42,6 +42,7 @@ from truss_chains.utils import make_abs_path_here
 __all__ = [
     "Assets",
     "BasetenImage",
+    "BasetenLLMChainlet",
     "ChainletBase",
     "ChainletOptions",
     "Compute",
