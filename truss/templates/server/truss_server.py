@@ -416,16 +416,18 @@ class TrussServer:
             logging.info("Term signal received, shutting down.")
             hostname = socket.gethostname()
             ip_address = socket.gethostbyname(hostname)
-            print("Received SIGTERM.")
             # remove worker from router
             # curl -X POST http://localhost:30000/remove_worker?url=http://worker_url_1
             url = f"http://{ip_address}:8080"
             router_remove = (
                 "http://lb.hawaii.svc.cluster.local/remove_worker?url=" + url
             )
-            print(f"Will call {router_remove}")
-            response = requests.post(router_remove)
-            print(f"Response: {response.text}, status: {response.status_code}")
+            try:
+                print(f"Will call {router_remove}")
+                response = requests.post(router_remove)
+                print(f"Response: {response.text}, status: {response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Failed to remove worker from router: {e}")
 
         return app
 
