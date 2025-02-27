@@ -18,7 +18,9 @@ import warnings
 from importlib.abc import Loader
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
+    ClassVar,
     Iterable,
     Iterator,
     Mapping,
@@ -34,9 +36,10 @@ from typing import (
 )
 
 import pydantic
+from truss.base import truss_config
 from typing_extensions import ParamSpec
 
-from truss_chains import definitions, utils
+from truss_chains import baseten_llm, definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
@@ -780,7 +783,7 @@ class _ChainletInitValidator:
 
     @functools.cache
     def _example_code(self) -> str:
-        if self._cls.entity_type == "Model":
+        if self._cls.entity_type == definitions.EntityType.MODEL:
             return _example_model_code()
         return _example_chainlet_code()
 
@@ -1471,7 +1474,7 @@ class ChainletBase(definitions.ABCChainlet):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         cls._framework_config = definitions.FrameworkConfig(
-            entity_type="Chainlet",
+            entity_type=definitions.EntityType.CHAINLET,
             supports_dependencies=True,
             endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
         )
@@ -1503,9 +1506,25 @@ class ModelBase(definitions.ABCChainlet):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         cls._framework_config = definitions.FrameworkConfig(
-            entity_type="Model",
+            entity_type=definitions.EntityType.MODEL,
             supports_dependencies=False,
             endpoint_method_name=definitions.MODEL_ENDPOINT_METHOD_NAME,
         )
         cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
         validate_and_register_cls(cls)
+
+
+class BasetenLLMChainlet(definitions.ABCChainlet):
+    llm_config: ClassVar[truss_config.TRTLLMConfiguration]
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type=definitions.EntityType.BASETEN_LLM,
+            supports_dependencies=False,
+            endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
+        )
+        validate_and_register_cls(cls)
+
+    async def run_remote(self, llm_input: baseten_llm.ModelInput) -> AsyncIterator[str]:
+        yield "Dummy"
