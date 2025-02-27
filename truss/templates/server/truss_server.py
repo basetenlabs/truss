@@ -4,12 +4,14 @@ import logging
 import logging.config
 import os
 import signal
+import socket
 import sys
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional, Union
 
 import pydantic
+import requests
 import uvicorn
 import yaml
 from common import errors, tracing
@@ -408,6 +410,22 @@ class TrussServer:
         # Above `exception_handlers` only triggers on exact exception classes.
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
+
+        @app.on_event("shutdown")
+        def on_shutdown():
+            logging.info("Term signal received, shutting down.")
+            hostname = socket.gethostname()
+            ip_address = socket.gethostbyname(hostname)
+            print("Received SIGTERM.")
+            # remove worker from router
+            # curl -X POST http://localhost:30000/remove_worker?url=http://worker_url_1
+            url = f"http://{ip_address}:8080"
+            router_remove = (
+                "http://lb.hawaii.svc.cluster.local/remove_worker?url=" + url
+            )
+            print(f"Will call {router_remove}")
+            response = requests.post(router_remove)
+            print(f"Response: {response.text}, status: {response.status_code}")
 
         return app
 
