@@ -29,6 +29,8 @@ import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 
+from truss_chains import baseten_llm
+
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
 TRUSS_CONFIG_CHAINS_KEY = "chains_metadata"
@@ -368,8 +370,14 @@ class ChainletMetadata(SafeModelNonSerializable):
     init_is_patched: bool = False
 
 
+class EntityType(str, enum.Enum):
+    CHAINLET = enum.auto()
+    MODEL = enum.auto()
+    BASETEN_LLM = enum.auto()
+
+
 class FrameworkConfig(SafeModelNonSerializable):
-    entity_type: Literal["Chainlet", "Model"]
+    entity_type: EntityType
     supports_dependencies: bool
     endpoint_method_name: str
 
@@ -538,7 +546,7 @@ class ABCChainlet(abc.ABC):
 
     @classproperty
     @classmethod
-    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+    def entity_type(cls) -> EntityType:
         return cls._framework_config.entity_type
 
     @classproperty
@@ -629,6 +637,10 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
     @property
     def has_pydantic_output(self) -> bool:
         return not (self.is_streaming or self.is_websocket)
+
+    @property
+    def is_baseten_llm(self) -> bool:
+        return any(arg.type.raw == baseten_llm.ModelInput for arg in self.input_args)
 
 
 class DependencyDescriptor(SafeModelNonSerializable):
