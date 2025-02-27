@@ -1,6 +1,11 @@
+import socket
+
+import requests
 from briton.spec_dec_truss_model import Model as SpecDecModel
 from briton.trtllm_config import TRTLLMConfiguration, TrussSpecDecMode
 from briton.truss_model import Model
+
+ROUTER = "http://lb.hawaii.svc.cluster.local"
 
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in
 # a new, smaller truss sub-library, perhaps called `truss-runtime`` for inclusion
@@ -46,6 +51,13 @@ class Extension:
             self._model = SpecDecModel(*args, **kwargs)
         else:
             self._model = Model(*args, **kwargs)
+        self._ip_addr = self._get_my_ip()
+
+    def _get_my_ip(self):
+        # Get my IP address
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        return ip_address
 
     def model_override(self):
         """Return a model object.
@@ -66,3 +78,10 @@ class Extension:
 
     def load(self):
         self._model.load()
+        # after load completes, add worker to router
+        # curl -X POST http://localhost:30000/add_worker?url=http://127.0.0.1:30001
+        url = f"http://{self._ip_addr}:8080"
+        add_route = ROUTER + "/add_worker?url=" + url
+        print(f"Model loaded, will call {add_route}")
+        response = requests.post(add_route)
+        print(f"Response: {response.text}, status: {response.status_code}")
