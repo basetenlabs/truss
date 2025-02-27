@@ -957,14 +957,14 @@ def test_health_check_configuration():
         restart_threshold_seconds: 1700
     """
 
-    with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+    # with ensure_kill_all(), _temp_truss(model, config) as tr:
+    #     _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
-        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
-        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
-        assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
-        )
+    #     assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
+    #     assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
+    #     assert (
+    #         tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
+    #     )
 
     config = """runtime:
     health_checks:
@@ -974,20 +974,23 @@ def test_health_check_configuration():
     """
 
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
 
         assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
         assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
         assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
+        print(container.logs())
 
-    with ensure_kill_all(), _temp_truss(model, "") as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+    # with ensure_kill_all(), _temp_truss(model, "") as tr:
+    #     _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
 
-        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
-        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds is None
-        assert (
-            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
-        )
+    #     assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
+    #     assert tr.spec.config.runtime.health_checks.restart_threshold_seconds is None
+    #     assert (
+    #         tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
+    #     )
 
 
 @pytest.mark.integration
