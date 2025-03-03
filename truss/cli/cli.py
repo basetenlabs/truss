@@ -860,15 +860,7 @@ def train():
     """Subcommands for truss train"""
 
 
-@train.command(name="build")
-@click.argument("config", type=click.Path(exists=True))
-@click.option(
-    "--remote",
-    type=str,
-    required=False,
-    help="Name of the remote in .trussrc to push to",
-)
-@train.command(name="run")
+@train.command(name="push")
 @click.argument("config", type=str, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
