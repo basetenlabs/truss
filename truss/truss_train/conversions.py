@@ -37,6 +37,12 @@ def build_create_training_job_request(
                 "s3_key": s3_key,
             }
         )
+    cloud_backed_mount_path = None
+    if training_job_spec.training_config.cloud_backed_volume_checkpoint_directory:
+        # TODO: add fallback on the hardware path
+        cloud_backed_mount_path = (
+            training_job_spec.training_config.cloud_backed_volume_checkpoint_directory
+        )
     request = {
         "hardware_config": training_job_spec.hardware_config.dict(),
         "runtime_config": {
@@ -50,8 +56,7 @@ def build_create_training_job_request(
         },
         "training_config": {
             "name": training_job_spec.training_config.name,
-            "cloud_backed_volume_checkpoint_directory": training_job_spec.training_config.cloud_backed_volume_checkpoint_directory
-            or training_job_spec.hardware_config.cloud_backed_volume.remote_mount_path,
+            "cloud_backed_volume_checkpoint_directory": cloud_backed_mount_path,
         },
     }
     return request

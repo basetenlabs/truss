@@ -40,12 +40,14 @@ class BasetenOutputStorage(SafeModel):
 
 class HardwareConfig(SafeModel):
     instance_type: InstanceType
-    cloud_backed_volume: BasetenOutputStorage
+    cloud_backed_volume: Optional[BasetenOutputStorage] = None
 
     def dict(self, **kwargs):
         return {
             "instance_type": self.instance_type.dict(),
-            "cloud_backed_volume": self.cloud_backed_volume.dict(),
+            "cloud_backed_volume": self.cloud_backed_volume.dict()
+            if self.cloud_backed_volume
+            else None,
         }
 
 
