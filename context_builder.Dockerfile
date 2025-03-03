@@ -22,6 +22,19 @@ COPY ./pyproject.toml ./pyproject.toml
 COPY ./poetry.lock ./poetry.lock
 COPY ./README.md ./README.md
 
+# Declare the build argument; Docker sets TARGETARCH automatically.
+ARG TARGETARCH
+
+# Add rustup's cargo to the PATH unconditionally.
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Conditionally install rustup, update stable, and install golang for arm64
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    rustup update stable && \
+    apt-get update && apt-get install -y golang; \
+fi
+
 # https://python-poetry.org/docs/configuration/#virtualenvsin-project
 # to write to project root .venv file to be used for context builder test
 RUN poetry config virtualenvs.in-project true && poetry install --extras=all
