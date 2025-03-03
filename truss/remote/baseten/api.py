@@ -575,6 +575,13 @@ class BasetenApi:
         """
         return resp.json()
 
+    def create_blob_credentials(self):
+        headers = self._auth_token.header()
+        resp = requests.post(f"{self._rest_api_url}/blobs", headers=headers)
+        if not resp.ok:
+            resp.raise_for_status()
+        return resp.json()
+
     def create_training_job(self, project_id: str, request: dict) -> Any:
         headers = self._auth_token.header()
         resp = requests.post(

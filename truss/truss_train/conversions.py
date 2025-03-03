@@ -23,7 +23,11 @@ def build_create_training_job_request(
         if not source_path.is_absolute():
             source_path = training_config_dir / source_path
         temp_file = create_tar_with_progress_bar(source_path)
-        temp_credentials_s3_upload = api.model_s3_upload_credentials()
+        import ipdb
+
+        ipdb.set_trace()
+        temp_credentials_s3_upload = api.create_blob_credentials()
+        # temp_credentials_s3_upload = api.model_s3_upload_credentials()
         s3_key = temp_credentials_s3_upload.pop("s3_key")
         s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
         multipart_upload_boto3(
@@ -32,16 +36,10 @@ def build_create_training_job_request(
 
         file_bundles.append(
             {
-                # convert to string
-                "remote_path": str(handle_path_or_str(fb.remote_path)),
+                # We convert to a Path to validate, and back to a string for JSON serialization
+                "remote_path": str(pathlib.Path(fb.remote_path)),
                 "s3_key": s3_key,
             }
-        )
-    cloud_backed_mount_path = None
-    if training_job_spec.training_config.cloud_backed_volume_checkpoint_directory:
-        # TODO: add fallback on the hardware path
-        cloud_backed_mount_path = (
-            training_job_spec.training_config.cloud_backed_volume_checkpoint_directory
         )
     request = {
         "hardware_config": training_job_spec.hardware_config.dict(),
@@ -54,9 +52,6 @@ def build_create_training_job_request(
             "start_commands": training_job_spec.runtime_config.start_commands,
             "file_bundles": file_bundles,
         },
-        "training_config": {
-            "name": training_job_spec.training_config.name,
-            "cloud_backed_volume_checkpoint_directory": cloud_backed_mount_path,
-        },
+        "training_config": {"name": training_job_spec.training_config.name},
     }
     return request

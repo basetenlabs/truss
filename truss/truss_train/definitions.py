@@ -53,8 +53,6 @@ class HardwareConfig(SafeModel):
 
 class TrainingConfig(SafeModel):
     name: str
-    # relative to the BasetenOutputStorage "remote_mount_path"
-    cloud_backed_volume_checkpoint_directory: Optional[str] = None
 
 
 class RuntimeConfig(SafeModel):
