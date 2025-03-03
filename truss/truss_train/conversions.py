@@ -11,6 +11,7 @@ def build_create_training_job_request(
     training_config_dir: pathlib.Path,
     api: BasetenApi,
     training_job_spec: TrainingJobSpec,
+    training_project_id: str,
 ) -> dict:
     hardware_config = training_job_spec.hardware_config.dict()
     # remove predict_concurrency from the instance type, as it is not expected by the jobs definition
@@ -18,15 +19,13 @@ def build_create_training_job_request(
         hardware_config["instance_type"].pop("predict_concurrency")
 
     file_bundles = []
+    subpath = f"training_project/{training_project_id}/blobs"
     for fb in training_job_spec.runtime_config.file_bundles:
         source_path = handle_path_or_str(fb.source_path)
         if not source_path.is_absolute():
             source_path = training_config_dir / source_path
         temp_file = create_tar_with_progress_bar(source_path)
-        import ipdb
-
-        ipdb.set_trace()
-        temp_credentials_s3_upload = api.create_blob_credentials()
+        temp_credentials_s3_upload = api.create_blob_credentials(subpath)
         # temp_credentials_s3_upload = api.model_s3_upload_credentials()
         s3_key = temp_credentials_s3_upload.pop("s3_key")
         s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")

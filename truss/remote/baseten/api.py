@@ -575,9 +575,12 @@ class BasetenApi:
         """
         return resp.json()
 
-    def create_blob_credentials(self):
+    def create_blob_credentials(self, subpath: str):
         headers = self._auth_token.header()
-        resp = requests.post(f"{self._rest_api_url}/blobs", headers=headers, json={})
+        request = {"subpath": subpath}
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/blobs", headers=headers, json=request
+        )
         if not resp.ok:
             resp.raise_for_status()
         return resp.json()

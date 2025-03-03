@@ -887,7 +887,10 @@ def run_training_job(config: str, remote: Optional[str]):
     )
 
     request = build_create_training_job_request(
-        config_path.parent, remote_provider.api, training_job_spec
+        config_path.parent,
+        remote_provider.api,
+        training_job_spec,
+        training_project["id"],
     )
 
     print(request)
