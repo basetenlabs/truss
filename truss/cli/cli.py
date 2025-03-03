@@ -868,13 +868,6 @@ def train():
     required=False,
     help="Name of the remote in .trussrc to push to",
 )
-@log_level_option
-@error_handling
-def build_training_job(config: Path, remote: Optional[str]) -> None:
-    """Build a training job"""
-    pass
-
-
 @train.command(name="run")
 @click.argument("config", type=str, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
@@ -901,7 +894,9 @@ def run_training_job(config: str, remote: Optional[str]):
         training_job_spec.training_config.name
     )
 
-    request = build_create_training_job_request(config_path.parent, training_job_spec)
+    request = build_create_training_job_request(
+        config_path.parent, remote_provider.api, training_job_spec
+    )
 
     print(request)
     response = remote_provider.api.create_training_job(training_project["id"], request)

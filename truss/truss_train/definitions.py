@@ -51,15 +51,15 @@ class HardwareConfig(SafeModel):
 
 class TrainingConfig(SafeModel):
     name: str
-    framework_config_file: Optional[FileBundle] = None
     # relative to the BasetenOutputStorage "remote_mount_path"
     cloud_backed_volume_checkpoint_directory: Optional[str] = None
 
 
 class RuntimeConfig(SafeModel):
     image_name: str
-    environment_variables: Dict[str, Union[str, SecretReference]]
     start_commands: List[str]
+    environment_variables: Dict[str, Union[str, SecretReference]] = {}
+    file_bundles: List[FileBundle] = []
 
 
 class TrainingJobSpec(SafeModel):

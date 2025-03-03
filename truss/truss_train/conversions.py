@@ -1,36 +1,42 @@
-import base64
 import pathlib
 
+from truss.remote.baseten.api import BasetenApi
+from truss.remote.baseten.core import create_tar_with_progress_bar
+from truss.remote.baseten.utils.transfer import multipart_upload_boto3
 from truss.truss_train.definitions import SecretReference, TrainingJobSpec
+from truss.util.path import handle_path_or_str
 
 
 def build_create_training_job_request(
-    training_config_dir: pathlib.Path, training_job_spec: TrainingJobSpec
+    training_config_dir: pathlib.Path,
+    api: BasetenApi,
+    training_job_spec: TrainingJobSpec,
 ) -> dict:
-    # serialize the file bundle for the framework_config_file
-    framework_config_details = None
-    if training_job_spec.training_config.framework_config_file:
-        training_framework_config_path = pathlib.Path(
-            training_job_spec.training_config.framework_config_file.source_path
-        )
-        if not training_framework_config_path.is_absolute():
-            training_framework_config_path = (
-                training_config_dir / training_framework_config_path
-            )
-        if not training_framework_config_path.exists():
-            raise FileNotFoundError(
-                f"Training framework config file not found: {training_framework_config_path}"
-            )
-        with open(training_framework_config_path, "rb") as f:
-            config_contents = f.read()
-        framework_config_details = {
-            "content": base64.b64encode(config_contents).decode("utf-8"),
-            "remote_path": training_job_spec.training_config.framework_config_file.remote_path,
-        }
-
     hardware_config = training_job_spec.hardware_config.dict()
+    # remove predict_concurrency from the instance type, as it is not expected by the jobs definition
     if hardware_config.get("instance_type", {}).get("predict_concurrency", None):
         hardware_config["instance_type"].pop("predict_concurrency")
+
+    file_bundles = []
+    for fb in training_job_spec.runtime_config.file_bundles:
+        source_path = handle_path_or_str(fb.source_path)
+        if not source_path.is_absolute():
+            source_path = training_config_dir / source_path
+        temp_file = create_tar_with_progress_bar(source_path)
+        temp_credentials_s3_upload = api.model_s3_upload_credentials()
+        s3_key = temp_credentials_s3_upload.pop("s3_key")
+        s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
+        multipart_upload_boto3(
+            temp_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, None
+        )
+
+        file_bundles.append(
+            {
+                # convert to string
+                "remote_path": str(handle_path_or_str(fb.remote_path)),
+                "s3_key": s3_key,
+            }
+        )
     request = {
         "hardware_config": training_job_spec.hardware_config.dict(),
         "runtime_config": {
@@ -40,11 +46,10 @@ def build_create_training_job_request(
                 for k, v in training_job_spec.runtime_config.environment_variables.items()
             },
             "start_commands": training_job_spec.runtime_config.start_commands,
+            "file_bundles": file_bundles,
         },
         "training_config": {
             "name": training_job_spec.training_config.name,
-            # TODO: should we be uploading this to S3 and fetching it later?
-            "framework_config_file": framework_config_details,
             "cloud_backed_volume_checkpoint_directory": training_job_spec.training_config.cloud_backed_volume_checkpoint_directory
             or training_job_spec.hardware_config.cloud_backed_volume.remote_mount_path,
         },
