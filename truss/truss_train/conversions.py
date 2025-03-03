@@ -26,11 +26,11 @@ def build_create_training_job_request(
             source_path = training_config_dir / source_path
         temp_file = create_tar_with_progress_bar(source_path)
         temp_credentials_s3_upload = api.create_blob_credentials(subpath)
-        # temp_credentials_s3_upload = api.model_s3_upload_credentials()
+        temp_credentials_s3_upload = api.model_s3_upload_credentials()
         s3_key = temp_credentials_s3_upload.pop("s3_key")
         s3_bucket = temp_credentials_s3_upload.pop("s3_bucket")
         multipart_upload_boto3(
-            temp_file.name, s3_bucket, s3_key, temp_credentials_s3_upload, None
+            temp_file.name, s3_bucket, s3_key, temp_credentials_s3_upload["creds"], None
         )
 
         file_bundles.append(
