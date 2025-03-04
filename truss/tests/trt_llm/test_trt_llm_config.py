@@ -9,6 +9,7 @@ from truss.base.trt_llm_config import (
     TrussTRTLLMBuildConfiguration,
     TrussTRTLLMRuntimeConfiguration,
 )
+from truss.base.truss_config import Resources
 
 
 def test_trt_llm_config_init_from_pydantic_models(trtllm_config):
@@ -70,6 +71,14 @@ def test_trt_llm_chunked_prefill_fix(trtllm_config):
     trt_llm2.runtime.enable_chunked_context = False
     trt_llm2.build.plugin_configuration.use_paged_context_fmha = False
     TRTLLMConfiguration(**trt_llm2.model_dump())
+
+
+def test_trt_llm_builder_gpus(trtllm_config):
+    trt_llm_config = TRTLLMConfiguration(**trtllm_config["trt_llm"])
+    trt_llm_config.build.build_resources = Resources(
+        cpu=1, accelerator="A10G:2", memory="1G"
+    )
+    assert trt_llm_config.build.build_resources.accelerator == "A10G:2"
 
 
 def test_trt_llm_lookahead_decoding(trtllm_config):
