@@ -27,6 +27,7 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.base.custom_types import SafeModel, SafeModelNonSerializable
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -68,25 +69,6 @@ class MappingNoIter(Protocol[K, V]):
     def __len__(self) -> int: ...
 
     def __contains__(self, key: K) -> bool: ...
-
-
-class SafeModel(pydantic.BaseModel):
-    """Pydantic base model with reasonable config."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False, strict=True, validate_assignment=True
-    )
-
-
-class SafeModelNonSerializable(pydantic.BaseModel):
-    """Pydantic base model with reasonable config - allowing arbitrary types."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=True,
-        strict=True,
-        validate_assignment=True,
-        extra="forbid",
-    )
 
 
 class ChainsUsageError(TypeError):
