@@ -19,6 +19,14 @@ ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION = (
     os.environ.get("ENGINE_BUILDER_TRUSS_RUNTIME_MIGRATION", "False") == "True"
 )
 
+# Workaround for briton import without truss installed.
+try:
+    from truss.base.truss_config import Resources
+except ImportError:
+
+    class Resources(BaseModel):  # type: ignore
+        pass
+
 
 class TrussTRTLLMModel(str, Enum):
     ENCODER = "encoder"
@@ -148,6 +156,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         TrussTRTLLMPluginConfiguration()
     )
     num_builder_gpus: Optional[int] = None
+    build_resources: Optional[Resources] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
 
     class Config:
@@ -158,6 +167,17 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
         self._bei_specfic_migration()
+        self._depreacate_num_builder_gpus()
+
+    def _depreacate_num_builder_gpus(self):
+        if self.num_builder_gpus:
+            logger.warning(
+                "num_builder_gpus is deprecated and will be removed in the future. Please use build_resources instead."
+            )
+        if self.num_builder_gpus and self.build_resources:
+            raise ValueError(
+                "num_builder_gpus and build_resources are mutually exclusive. Please use build_resources instead."
+            )
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
