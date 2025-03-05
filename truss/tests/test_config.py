@@ -15,6 +15,7 @@ from truss.base.truss_config import (
     Accelerator,
     AcceleratorSpec,
     BaseImage,
+    CacheInternal,
     DockerAuthSettings,
     DockerAuthType,
     ModelCache,
@@ -207,6 +208,14 @@ def test_model_framework(model_framework, default_config):
         assert new_config == config.to_dict(verbose=False)
 
 
+def test_null_cache_internal_key():
+    config_yaml_dict = {"cache_internal": None}
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
+        yaml.safe_dump(config_yaml_dict, tmp_file)
+    config = TrussConfig.from_yaml(Path(tmp_file.name))
+    assert config.cache_internal == CacheInternal.from_list([])
+
+
 def test_null_model_cache_key():
     config_yaml_dict = {"model_cache": None}
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp_file:
@@ -221,6 +230,22 @@ def test_null_hf_cache_key():
         yaml.safe_dump(config_yaml_dict, tmp_file)
     config = TrussConfig.from_yaml(Path(tmp_file.name))
     assert config.model_cache == ModelCache.from_list([])
+
+
+def test_cache_internal_with_models(default_config):
+    config = TrussConfig(
+        python_version="py39",
+        requirements=[],
+        cache_internal=CacheInternal(
+            models=[ModelRepo("test/model"), ModelRepo("test/model2")]
+        ),
+    )
+    new_config = default_config
+    new_config["cache_internal"] = [
+        {"repo_id": "test/model"},
+        {"repo_id": "test/model2"},
+    ]
+    assert new_config == config.to_dict(verbose=False)
 
 
 def test_huggingface_cache_single_model_default_revision(default_config):
