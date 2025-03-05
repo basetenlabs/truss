@@ -29,6 +29,7 @@ from common.retry import retry
 from common.schema import TrussSchema
 from fastapi import WebSocket
 from opentelemetry import trace
+
 from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver

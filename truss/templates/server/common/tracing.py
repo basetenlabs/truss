@@ -11,6 +11,7 @@ import opentelemetry.sdk.resources as resources
 import opentelemetry.sdk.trace as sdk_trace
 import opentelemetry.sdk.trace.export as trace_export
 from opentelemetry import context, trace
+
 from shared import secrets_resolver
 
 logger = logging.getLogger(__name__)
