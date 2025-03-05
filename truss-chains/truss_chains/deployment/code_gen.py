@@ -40,6 +40,7 @@ import libcst
 import truss
 from truss.base import truss_config
 from truss.contexts.image_builder import serving_image_builder
+from truss.shared import types
 from truss.util import path as truss_path
 from truss_chains import definitions, framework, utils
 
@@ -90,7 +91,7 @@ def _format_python_file(file_path: pathlib.Path) -> None:
     _run_simple_subprocess(f"ruff format {file_path}")
 
 
-class _Source(definitions.SafeModelNonSerializable):
+class _Source(types.SafeModelNonSerializable):
     src: str
     imports: set[str] = set()
 
