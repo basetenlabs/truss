@@ -1,4 +1,5 @@
 import pytest
+
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import AuthorizationError
 

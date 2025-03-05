@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, Type
 
 import boto3
 from boto3.s3.transfer import TransferConfig
+
 from truss.util.env_vars import override_env_vars
 
 if TYPE_CHECKING:

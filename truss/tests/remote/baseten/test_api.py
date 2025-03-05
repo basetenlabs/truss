@@ -3,12 +3,12 @@ from unittest import mock
 import pytest
 import requests
 from requests import Response
+
+import truss_train.definitions as train_definitions
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
-
-import truss_train.definitions as train_definitions
 
 
 @pytest.fixture

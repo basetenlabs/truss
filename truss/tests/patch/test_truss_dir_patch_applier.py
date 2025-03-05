@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import yaml
+
 from truss.base.truss_config import TrussConfig
 from truss.templates.control.control.helpers.custom_types import (
     Action,

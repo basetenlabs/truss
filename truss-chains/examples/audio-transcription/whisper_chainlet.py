@@ -2,9 +2,9 @@ import base64
 import tempfile
 
 import data_types
-from truss.base import truss_config
 
 import truss_chains as chains
+from truss.base import truss_config
 
 
 def base64_to_wav(base64_string, output_file_path):

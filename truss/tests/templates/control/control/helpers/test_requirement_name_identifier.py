@@ -1,4 +1,5 @@
 import pytest
+
 from truss.templates.control.control.helpers.truss_patch.requirement_name_identifier import (
     RequirementMeta,
     identify_requirement_name,

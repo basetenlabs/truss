@@ -1,9 +1,8 @@
 import asyncio
 from typing import Protocol
 
-from truss.base import truss_config
-
 import truss_chains as chains
+from truss.base import truss_config
 
 MISTRAL_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 

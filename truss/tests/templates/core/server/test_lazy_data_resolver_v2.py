@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import pytest
+
 from truss.templates.shared.lazy_data_resolver import (
     TRUSS_TRANSFER_AVAILABLE,
     LazyDataResolverV2,

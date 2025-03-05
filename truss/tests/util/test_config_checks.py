@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+
 from truss.base.constants import TRTLLM_MIN_MEMORY_REQUEST_GI
 from truss.trt_llm.config_checks import (
     is_missing_secrets_for_trt_llm_builder,
