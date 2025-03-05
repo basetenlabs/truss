@@ -148,16 +148,42 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         TrussTRTLLMPluginConfiguration()
     )
     num_builder_gpus: Optional[int] = None
+    build_resources: Optional[Any] = None
     speculator: Optional[TrussSpeculatorConfiguration] = None
 
     class Config:
         extra = "forbid"
 
     def __init__(self, **data):
+        data = self.parse_build_resources(data)
         super().__init__(**data)
         self._validate_kv_cache_flags()
         self._validate_speculator_config()
         self._bei_specfic_migration()
+        self._depreacate_num_builder_gpus()
+
+    @staticmethod
+    def parse_build_resources(data):
+        build_resources = data.get("build_resources")
+        if build_resources:
+            try:
+                from truss.base.truss_config import Resources
+
+                print("build_resources", build_resources)
+                data["build_resources"] = Resources.from_dict(build_resources)
+            except (ImportError, Exception):
+                pass
+        return data
+
+    def _depreacate_num_builder_gpus(self):
+        if self.num_builder_gpus:
+            logger.warning(
+                "num_builder_gpus is deprecated and will be removed in the future. Please use build_resources instead."
+            )
+        if self.num_builder_gpus and self.build_resources:
+            raise ValueError(
+                "num_builder_gpus and build_resources are mutually exclusive. Please use build_resources instead."
+            )
 
     @validator("max_beam_width")
     def check_max_beam_width(cls, v: int):
