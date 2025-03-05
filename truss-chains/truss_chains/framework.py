@@ -33,6 +33,7 @@ from typing import (
 )
 
 import pydantic
+from truss.shared import types as shared_types
 from typing_extensions import ParamSpec
 
 from truss_chains import definitions, utils
@@ -68,7 +69,7 @@ class _ErrorKind(str, enum.Enum):
     MISSING_API_ERROR = enum.auto()
 
 
-class _ErrorLocation(definitions.SafeModel):
+class _ErrorLocation(shared_types.SafeModel):
     src_path: str
     line: Optional[int] = None
     chainlet_name: Optional[str] = None
@@ -85,7 +86,7 @@ class _ErrorLocation(definitions.SafeModel):
         return value
 
 
-class _ValidationError(definitions.SafeModel):
+class _ValidationError(shared_types.SafeModel):
     msg: str
     kind: _ErrorKind
     location: _ErrorLocation

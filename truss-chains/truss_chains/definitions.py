@@ -28,6 +28,7 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 import pydantic
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.shared import types
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -69,25 +70,6 @@ class MappingNoIter(Protocol[K, V]):
     def __len__(self) -> int: ...
 
     def __contains__(self, key: K) -> bool: ...
-
-
-class SafeModel(pydantic.BaseModel):
-    """Pydantic base model with reasonable config."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False, strict=True, validate_assignment=True
-    )
-
-
-class SafeModelNonSerializable(pydantic.BaseModel):
-    """Pydantic base model with reasonable config - allowing arbitrary types."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=True,
-        strict=True,
-        validate_assignment=True,
-        extra="forbid",
-    )
 
 
 class ChainsUsageError(TypeError):
@@ -149,7 +131,7 @@ class BasetenImage(enum.Enum):
     PY311 = "py311"
 
 
-class CustomImage(SafeModel):
+class CustomImage(types.SafeModel):
     """Configures the usage of a custom image hosted on dockerhub."""
 
     image: str
@@ -157,7 +139,7 @@ class CustomImage(SafeModel):
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
 
 
-class DockerImage(SafeModelNonSerializable):
+class DockerImage(types.SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
     Note:
@@ -288,7 +270,7 @@ class Compute:
         return self._spec.model_copy(deep=True)
 
 
-class AssetSpec(SafeModel):
+class AssetSpec(types.SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
     secrets: dict[str, str] = pydantic.Field({})
@@ -346,7 +328,7 @@ class Assets:
         return self._spec.model_copy(deep=True)
 
 
-class ChainletOptions(SafeModelNonSerializable):
+class ChainletOptions(types.SafeModelNonSerializable):
     """
     Args:
         enable_b10_tracing: enables baseten-internal trace data collection. This
@@ -362,19 +344,19 @@ class ChainletOptions(SafeModelNonSerializable):
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
-class ChainletMetadata(SafeModelNonSerializable):
+class ChainletMetadata(types.SafeModelNonSerializable):
     is_entrypoint: bool = False
     chain_name: Optional[str] = None
     init_is_patched: bool = False
 
 
-class FrameworkConfig(SafeModelNonSerializable):
+class FrameworkConfig(types.SafeModelNonSerializable):
     entity_type: Literal["Chainlet", "Model"]
     supports_dependencies: bool
     endpoint_method_name: str
 
 
-class RemoteConfig(SafeModelNonSerializable):
+class RemoteConfig(types.SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
     This is specified as a class variable for each chainlet class, e.g.::
@@ -409,7 +391,7 @@ class RemoteConfig(SafeModelNonSerializable):
 DEFAULT_TIMEOUT_SEC = 600.0
 
 
-class RPCOptions(SafeModel):
+class RPCOptions(types.SafeModel):
     """Options to customize RPCs to dependency chainlets.
 
     Args:
@@ -429,7 +411,7 @@ class RPCOptions(SafeModel):
     use_binary: bool = False
 
 
-class ServiceDescriptor(SafeModel):
+class ServiceDescriptor(types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
 
@@ -442,7 +424,7 @@ class DeployedServiceDescriptor(ServiceDescriptor):
     predict_url: str
 
 
-class Environment(SafeModel):
+class Environment(types.SafeModel):
     """The environment the chainlet is deployed in.
 
     Args:
@@ -453,7 +435,7 @@ class Environment(SafeModel):
     # can add more fields here as we add them to dynamic_config configmap
 
 
-class DeploymentContext(SafeModelNonSerializable):
+class DeploymentContext(types.SafeModelNonSerializable):
     """Bundles config values and resources needed to instantiate Chainlets.
 
     The context can optionally added as a trailing argument in a Chainlet's
@@ -505,7 +487,7 @@ class DeploymentContext(SafeModelNonSerializable):
         return api_key
 
 
-class TrussMetadata(SafeModel):
+class TrussMetadata(types.SafeModel):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     chainlet_to_service: Mapping[str, ServiceDescriptor]
@@ -553,7 +535,7 @@ class ABCChainlet(abc.ABC):
     #     ...
 
 
-class TypeDescriptor(SafeModelNonSerializable):
+class TypeDescriptor(types.SafeModelNonSerializable):
     """For describing I/O types of Chainlets."""
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
@@ -595,13 +577,13 @@ class StreamingTypeDescriptor(TypeDescriptor):
         return False
 
 
-class InputArg(SafeModelNonSerializable):
+class InputArg(types.SafeModelNonSerializable):
     name: str
     type: TypeDescriptor
     is_optional: bool
 
 
-class EndpointAPIDescriptor(SafeModelNonSerializable):
+class EndpointAPIDescriptor(types.SafeModelNonSerializable):
     name: str = RUN_REMOTE_METHOD_NAME
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
@@ -631,7 +613,7 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
         return not (self.is_streaming or self.is_websocket)
 
 
-class DependencyDescriptor(SafeModelNonSerializable):
+class DependencyDescriptor(types.SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     options: RPCOptions
 
@@ -644,12 +626,12 @@ class DependencyDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
-class HealthCheckAPIDescriptor(SafeModelNonSerializable):
+class HealthCheckAPIDescriptor(types.SafeModelNonSerializable):
     name: str = HEALTH_CHECK_METHOD_NAME
     is_async: bool
 
 
-class ChainletAPIDescriptor(SafeModelNonSerializable):
+class ChainletAPIDescriptor(types.SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     has_context: bool
@@ -669,7 +651,7 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
-class StackFrame(SafeModel):
+class StackFrame(types.SafeModel):
     filename: str
     lineno: Optional[int]
     name: str
@@ -690,7 +672,7 @@ class StackFrame(SafeModel):
         )
 
 
-class RemoteErrorDetail(SafeModel):
+class RemoteErrorDetail(types.SafeModel):
     """When a remote chainlet raises an exception, this pydantic model contains
     information about the error and stack trace and is included in JSON form in the
     error response.
@@ -728,7 +710,7 @@ class GenericRemoteException(Exception): ...
 ########################################################################################
 
 
-class PushOptions(SafeModelNonSerializable):
+class PushOptions(types.SafeModelNonSerializable):
     chain_name: str
     only_generate_trusses: bool = False
 
