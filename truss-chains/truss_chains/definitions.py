@@ -6,6 +6,7 @@ import pathlib
 import traceback
 from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     Any,
+    AsyncIterator,
     Callable,
     ClassVar,
     Generic,
@@ -576,6 +577,10 @@ class TypeDescriptor(SafeModelNonSerializable):
             for arg in args
         )
 
+    @property
+    def is_websocket(self) -> bool:
+        return self.raw == WebSocketProtocol
+
 
 class StreamingTypeDescriptor(TypeDescriptor):
     origin_type: type
@@ -612,6 +617,18 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
         ):
             raise ValueError(f"{self} is not a streaming endpoint.")
         return cast(StreamingTypeDescriptor, self.output_types[0])
+
+    @property
+    def is_websocket(self):
+        return any(arg.type.is_websocket for arg in self.input_args)
+
+    @property
+    def has_pydantic_input(self) -> bool:
+        return not self.is_websocket
+
+    @property
+    def has_pydantic_output(self) -> bool:
+        return not (self.is_streaming or self.is_websocket)
 
 
 class DependencyDescriptor(SafeModelNonSerializable):
@@ -754,3 +771,23 @@ class PushOptionsLocalDocker(PushOptions):
     # in the docker image (which takes precedence over potential pip/site-packages).
     # This should be used for integration tests or quick local dev loops.
     use_local_chains_src: bool = False
+
+
+class WebSocketProtocol(Protocol):
+    """Describes subset of starlette/fastAPIs websocket interface that we expose."""
+
+    headers: Mapping[str, str]
+
+    async def close(self, code: int = 1000, reason: Optional[str] = None) -> None: ...
+
+    async def receive_text(self) -> str: ...
+    async def receive_bytes(self) -> bytes: ...
+    async def receive_json(self) -> Any: ...
+
+    async def send_text(self, data: str) -> None: ...
+    async def send_bytes(self, data: bytes) -> None: ...
+    async def send_json(self, data: Any) -> None: ...
+
+    def iter_text(self) -> AsyncIterator[str]: ...
+    def iter_bytes(self) -> AsyncIterator[bytes]: ...
+    def iter_json(self) -> AsyncIterator[Any]: ...

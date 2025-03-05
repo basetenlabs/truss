@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import requests
+import websockets
 from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     get_container_logs_from_prefix,
@@ -18,6 +19,11 @@ from truss_chains.deployment.code_gen import gen_truss_model_from_source
 utils.setup_dev_logging(logging.DEBUG)
 
 TEST_ROOT = Path(__file__).parent.resolve()
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
 
 
 @pytest.mark.integration
@@ -319,7 +325,7 @@ def test_custom_health_checks_chain():
             assert "Health check failed." not in container_logs
 
             # Start failing health checks
-            response = service.run_remote({"fail": True})
+            _ = service.run_remote({"fail": True})
             response = requests.get(health_check_url)
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
@@ -328,3 +334,32 @@ def test_custom_health_checks_chain():
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
             assert container_logs.count("Health check failed.") == 2
+
+
+@pytest.mark.integration
+async def test_websocket_chain(anyio_backend):
+    with ensure_kill_all():
+        chain_name = "websocket_chain"
+        chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
+        with framework.ChainletImporter.import_target(chain_root) as entrypoint:
+            service = deployment_client.push(
+                entrypoint,
+                options=definitions.PushOptionsLocalDocker(
+                    chain_name=chain_name,
+                    only_generate_trusses=False,
+                    use_local_chains_src=True,
+                ),
+            )
+            # Get something like `ws://localhost:38605/v1/websocket`.
+            url = service.run_remote_url.replace("http", "ws").replace(
+                "v1/models/model:predict", "v1/websocket"
+            )
+            time.sleep(0.3)  # Wait for server to be up.
+            async with websockets.connect(url) as websocket:
+                await websocket.send("Test")
+                response = await websocket.recv()
+                assert response == "You said: Test."
+
+                await websocket.send("dep")
+                response = await websocket.recv()
+                assert response == "Hello from dependency, Head."
