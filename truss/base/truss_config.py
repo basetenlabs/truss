@@ -4,7 +4,7 @@ import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import yaml
 
@@ -89,10 +89,18 @@ class AcceleratorSpec:
         return self.accelerator.value
 
     @staticmethod
-    def from_str(acc_spec: Optional[str]):
+    def from_str(acc_spec: Optional[Union[str, dict]]):
         if acc_spec is None:
             return AcceleratorSpec()
-        parts = acc_spec.split(":")
+        # if pre-initialized
+        if isinstance(acc_spec, dict):
+            accelerator, count = acc_spec.get("accelerator"), acc_spec.get("count", 1)
+            assert isinstance(accelerator, Accelerator), (
+                f"accelerator must be an Accelerator Enum, got {accelerator}"
+            )
+            parts = [accelerator.value, str(count)]
+        else:
+            parts = acc_spec.split(":")
         count = 1
         if len(parts) not in [1, 2]:
             raise ValidationError("`accelerator` does not match parsing requirements.")
