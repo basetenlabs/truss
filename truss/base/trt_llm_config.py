@@ -171,7 +171,7 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
 
                 print("build_resources", build_resources)
                 data["build_resources"] = Resources.from_dict(build_resources)
-            except ImportError:
+            except (ImportError, Exception):
                 pass
         return data
 
