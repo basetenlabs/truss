@@ -1,8 +1,15 @@
 from typing import Dict, List, Optional, Union
 
-from pydantic import Field
+import pydantic
 from truss.base import truss_config
-from truss.base.custom_types import SafeModel
+
+
+class SafeModel(pydantic.BaseModel):
+    """Pydantic base model with reasonable config."""
+
+    model_config = pydantic.ConfigDict(
+        arbitrary_types_allowed=False, strict=True, validate_assignment=True
+    )
 
 
 class SecretReference(SafeModel):
@@ -35,4 +42,4 @@ class TrainingProject(SafeModel):
     name: str
     # TrainingProject is the wrapper around project config and job config. However, we exclude job
     # in serialization so just TrainingProject metadata is included in API requests.
-    job: TrainingJob = Field(exclude=True)
+    job: TrainingJob = pydantic.Field(exclude=True)

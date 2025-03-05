@@ -2,8 +2,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-import pydantic
-
 
 # TODO(marius/TaT): kill this.
 class ModelFrameworkType(Enum):
@@ -29,22 +27,3 @@ class Example:
 
     def to_dict(self) -> dict:
         return {"name": self.name, "input": self.input}
-
-
-class SafeModel(pydantic.BaseModel):
-    """Pydantic base model with reasonable config."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False, strict=True, validate_assignment=True
-    )
-
-
-class SafeModelNonSerializable(pydantic.BaseModel):
-    """Pydantic base model with reasonable config - allowing arbitrary types."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=True,
-        strict=True,
-        validate_assignment=True,
-        extra="forbid",
-    )
