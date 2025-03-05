@@ -18,6 +18,7 @@ keywords = [
 packages = [
     { include = "truss", from = "." },
     { include = "truss_chains", from = "./truss-chains" },
+    { include = "truss_train", from = "./truss-train" },
 ]
 
 requires-poetry = ">=2.0"
@@ -189,7 +190,7 @@ markers = [
 addopts = "--ignore=smoketests"
 
 [tool.ruff]
-src = ["truss", "truss-chains"]
+src = ["truss", "truss-chains", "truss-train"]
 # Parenthesized context managers are not supported in 3.8 but appear in the `templates` dir
 # which still supports 3.8. Therefore use 3.8 for formatting.
 target-version = "py38"

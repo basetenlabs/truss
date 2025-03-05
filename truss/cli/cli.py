@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, cast
 
 import rich
 import rich.live
@@ -40,6 +40,7 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionId,
 )
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
@@ -81,6 +82,13 @@ click.rich_click.COMMAND_GROUPS = {
             "commands": ["chains"],
             "table_styles": {  # type: ignore
                 "row_styles": ["red"]
+            },
+        },
+        {
+            "name": "Train",
+            "commands": ["train"],
+            "table_styles": {  # type: ignore
+                "row_styles": ["magenta"]
             },
         },
     ]
@@ -850,6 +858,40 @@ def _load_example_chainlet_code() -> str:
 # End Chains Stuff #####################################################################
 
 
+# Start Training Stuff ####################################################################
+@click.group()
+def train():
+    """Subcommands for truss train"""
+
+
+@train.command(name="push")
+@click.argument("config", type=Path, required=True)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def push_training_job(config: Path, remote: Optional[str]):
+    """Run a training job"""
+    from truss_train import loader
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    with loader.import_target(config) as training_project:
+        training_resp = remote_provider.api.upsert_training_project(
+            training_project=training_project
+        )
+
+        remote_provider.api.create_training_job(
+            project_id=training_resp["id"], job=training_project.job
+        )
+
+
+# End Training Stuff #####################################################################
+
+
 def _extract_and_validate_model_identifier(
     target_directory: str,
     model_id: Optional[str],
@@ -1356,6 +1398,7 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
 truss_cli.add_command(container)
 truss_cli.add_command(image)
 truss_cli.add_command(chains)
+truss_cli.add_command(train)
 
 if __name__ == "__main__":
     truss_cli()

@@ -8,6 +8,8 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.custom_types import ChainletDataAtomic, OracleData
 from truss.remote.baseten.error import ApiError
 
+import truss_train.definitions as train_definitions
+
 
 @pytest.fixture
 def mock_auth_service():
@@ -57,6 +59,15 @@ def mock_create_model_response():
         return_value={
             "data": {"create_model_from_truss": {"model_version": {"id": "12345"}}}
         }
+    )
+    return response
+
+
+def mock_upsert_training_project_response():
+    response = Response()
+    response.status_code = 200
+    response.json = mock.Mock(
+        return_value={"training_project": {"id": "12345", "name": "training-project"}}
     )
     return response
 
@@ -306,3 +317,22 @@ def test_deploy_chain_deployment_no_environment(mock_post, baseten_api):
     assert "environment" not in gql_mutation
     assert "dependencies:" in gql_mutation
     assert "entrypoint:" in gql_mutation
+
+
+@mock.patch("requests.post", return_value=mock_upsert_training_project_response())
+def test_upsert_training_project(mock_post, baseten_api):
+    baseten_api.upsert_training_project(
+        training_project=train_definitions.TrainingProject(
+            name="training-project",
+            job=train_definitions.TrainingJob(
+                image=train_definitions.Image(base_image="base-image"),
+                runtime_config=train_definitions.Runtime(
+                    start_commands=["/bin/bash entrypoint.sh"]
+                ),
+            ),
+        )
+    )
+
+    upsert_body = mock_post.call_args[1]["json"]["training_project"]
+    assert "job" not in upsert_body
+    assert "training-project" == upsert_body["name"]
