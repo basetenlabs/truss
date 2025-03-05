@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pytest
+
 from truss.base.constants import (
     BASE_TRTLLM_REQUIREMENTS,
     TRTLLM_BASE_IMAGE,

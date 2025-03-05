@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 import requests
 import websockets
+
 from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     get_container_logs_from_prefix,
 )
 from truss.truss_handle.build import load
-
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
 from truss_chains.deployment.code_gen import gen_truss_model_from_source

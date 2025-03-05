@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+
 from truss.base.truss_config import ExternalData
 
 B10CP_EXECUTABLE_NAME = "b10cp"

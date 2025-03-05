@@ -16,10 +16,11 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
-import truss
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+
+import truss
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,

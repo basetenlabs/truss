@@ -2,7 +2,6 @@ import pathlib
 from typing import Optional
 
 from truss.templates.shared import secrets_resolver
-
 from truss_chains import definitions
 from truss_chains.remote_chainlet import utils
 

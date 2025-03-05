@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Union
 
 import pydantic
+
 from truss.base import truss_config
 
 

@@ -24,8 +24,8 @@ import aiohttp
 import httpx
 import pydantic
 import tenacity
-from truss.templates.shared import serialization
 
+from truss.templates.shared import serialization
 from truss_chains import definitions
 from truss_chains.remote_chainlet import utils
 

@@ -5,6 +5,7 @@ import pathlib
 import sys
 
 import click
+
 from truss.patch.hash import directory_content_hash
 from truss.patch.truss_dir_patch_applier import TrussDirPatchApplier
 from truss.templates.control.control.helpers.custom_types import Patch

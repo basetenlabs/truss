@@ -9,10 +9,10 @@ import uuid
 
 import pytest
 import pytest_check
+
 from truss.remote.baseten import core
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten.utils import status as status_utils
-
 from truss_chains import definitions
 from truss_chains.remote_chainlet import stub, utils
 

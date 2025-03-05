@@ -1,4 +1,5 @@
 import requests
+
 from truss.base.constants import (
     HF_ACCESS_TOKEN_KEY,
     HF_MODELS_API_URL,

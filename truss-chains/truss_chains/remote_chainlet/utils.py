@@ -15,8 +15,8 @@ import aiohttp
 import fastapi
 import httpx
 import pydantic
-from truss.templates.shared import dynamic_config_resolver
 
+from truss.templates.shared import dynamic_config_resolver
 from truss_chains import definitions
 
 T = TypeVar("T")

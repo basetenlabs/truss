@@ -2,6 +2,7 @@ import inspect
 from typing import AsyncGenerator, Awaitable, Generator, Union
 
 from pydantic import BaseModel
+
 from truss.templates.server.common.schema import TrussSchema
 
 

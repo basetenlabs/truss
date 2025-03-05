@@ -4,6 +4,7 @@ from typing import Any, Callable, List, Optional
 
 import pytest
 import yaml
+
 from truss.base.truss_config import TrussConfig
 from truss.templates.control.control.helpers.custom_types import (
     Action,
