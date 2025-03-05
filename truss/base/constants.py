@@ -25,6 +25,7 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
 )
 CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
+TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
 
 SUPPORTED_PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
 MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.12"

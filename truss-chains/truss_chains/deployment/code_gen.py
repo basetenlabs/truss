@@ -685,7 +685,7 @@ def _write_truss_config_yaml(
     chains_config: definitions.RemoteConfig,
     chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
     model_name: str,
-    use_local_chains_src: bool,
+    use_local_src: bool,
     is_websocket_endpoint: bool,
 ):
     """Generate a truss config for a Chainlet."""
@@ -718,7 +718,7 @@ def _write_truss_config_yaml(
     if chains_config.docker_image.external_package_dirs:
         for ext_dir in chains_config.docker_image.external_package_dirs:
             config.external_package_dirs.append(ext_dir.abs_path)
-    config.use_local_chains_src = use_local_chains_src
+    config.use_local_src = use_local_src
     # Assets.
     assets = chains_config.get_asset_spec()
     config.secrets = assets.secrets
@@ -744,7 +744,7 @@ def _write_truss_config_yaml(
 
 
 def gen_truss_model_from_source(
-    model_src: pathlib.Path, use_local_chains_src: bool = False
+    model_src: pathlib.Path, use_local_src: bool = False
 ) -> pathlib.Path:
     # TODO(nikhil): Improve detection of directory structure, since right now
     # we assume a flat structure
@@ -755,7 +755,7 @@ def gen_truss_model_from_source(
             model_root=root_dir,
             model_name=entrypoint_cls.display_name,
             model_descriptor=descriptor,
-            use_local_chains_src=use_local_chains_src,
+            use_local_src=use_local_src,
         )
 
 
@@ -763,13 +763,13 @@ def gen_truss_model(
     model_root: pathlib.Path,
     model_name: str,
     model_descriptor: definitions.ChainletAPIDescriptor,
-    use_local_chains_src: bool = False,
+    use_local_src: bool = False,
 ) -> pathlib.Path:
     return gen_truss_chainlet(
         chain_root=model_root,
         chain_name=model_name,
         chainlet_descriptor=model_descriptor,
-        use_local_chains_src=use_local_chains_src,
+        use_local_src=use_local_src,
     )
 
 
@@ -778,7 +778,7 @@ def gen_truss_chainlet(
     chain_name: str,
     chainlet_descriptor: definitions.ChainletAPIDescriptor,
     model_name: Optional[str] = None,
-    use_local_chains_src: bool = False,
+    use_local_src: bool = False,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
@@ -797,7 +797,7 @@ def gen_truss_chainlet(
         chains_config=chainlet_descriptor.chainlet_cls.remote_config,
         model_name=model_name or chain_name,
         chainlet_to_service=dep_services,
-        use_local_chains_src=use_local_chains_src,
+        use_local_src=use_local_src,
         is_websocket_endpoint=chainlet_descriptor.endpoint.is_websocket,
     )
     # This assumes all imports are absolute w.r.t chain root (or site-packages).
