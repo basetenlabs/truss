@@ -865,11 +865,11 @@ def train():
 
 
 @train.command(name="push")
-@click.argument("source", type=Path, required=True)
+@click.argument("config", type=Path, required=True)
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @log_level_option
 @error_handling
-def push_training_job(source: Path, remote: Optional[str]):
+def push_training_job(config: Path, remote: Optional[str]):
     """Run a training job"""
     from truss_train import loader
 
@@ -879,7 +879,7 @@ def push_training_job(source: Path, remote: Optional[str]):
     remote_provider: BasetenRemote = cast(
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
-    with loader.import_target(source) as training_project:
+    with loader.import_target(config) as training_project:
         training_resp = remote_provider.api.upsert_training_project(
             training_project=training_project
         )
