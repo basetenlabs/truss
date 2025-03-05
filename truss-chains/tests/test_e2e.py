@@ -34,7 +34,7 @@ def test_chain():
             chain_root, "ItestChain"
         ) as entrypoint:
             options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test", use_local_chains_src=True
+                chain_name="integration-test", use_local_src=True
             )
             service = deployment_client.push(entrypoint, options)
 
@@ -161,7 +161,7 @@ def test_streaming_chain():
                 options=definitions.PushOptionsLocalDocker(
                     chain_name="integration-test-stream",
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
             assert service is not None
@@ -219,7 +219,7 @@ def test_numpy_chain(mode):
                 options=definitions.PushOptionsLocalDocker(
                     chain_name=f"integration-test-numpy-{mode}",
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
             assert service is not None
@@ -237,7 +237,7 @@ async def test_timeout():
             chain_root, "TimeoutChain"
         ) as entrypoint:
             options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test", use_local_chains_src=True
+                chain_name="integration-test", use_local_src=True
             )
             service = deployment_client.push(entrypoint, options)
 
@@ -281,7 +281,7 @@ TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds lim
 def test_traditional_truss():
     with ensure_kill_all():
         chain_root = TEST_ROOT / "traditional_truss" / "truss_model.py"
-        truss_dir = gen_truss_model_from_source(chain_root, use_local_chains_src=True)
+        truss_dir = gen_truss_model_from_source(chain_root, use_local_src=True)
         truss_handle = load(truss_dir)
 
         assert truss_handle.spec.config.resources.cpu == "4"
@@ -310,7 +310,7 @@ def test_custom_health_checks_chain():
                 options=definitions.PushOptionsLocalDocker(
                     chain_name="integration-test-custom-health-checks",
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
 
@@ -347,7 +347,7 @@ async def test_websocket_chain(anyio_backend):
                 options=definitions.PushOptionsLocalDocker(
                     chain_name=chain_name,
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
             # Get something like `ws://localhost:38605/v1/websocket`.

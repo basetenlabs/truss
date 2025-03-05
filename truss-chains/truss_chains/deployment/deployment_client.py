@@ -139,9 +139,9 @@ class _ChainSourceGenerator:
         self._options = options
 
     @property
-    def _use_local_chains_src(self) -> bool:
+    def _use_local_src(self) -> bool:
         if isinstance(self._options, definitions.PushOptionsLocalDocker):
-            return self._options.use_local_chains_src
+            return self._options.use_local_src
         return False
 
     def generate_chainlet_artifacts(
@@ -172,7 +172,7 @@ class _ChainSourceGenerator:
                 self._options.chain_name,
                 chainlet_descriptor,
                 model_name,
-                self._use_local_chains_src,
+                self._use_local_src,
             )
             artifact = b10_types.ChainletArtifact(
                 truss_dir=chainlet_dir,
@@ -707,7 +707,7 @@ class _Watcher:
                 self._deployed_chain_name,
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
-                use_local_chains_src=False,
+                use_local_src=False,
             )
             patch_result = self._remote_provider.patch_for_chainlet(
                 chainlet_dir, self._ignore_patterns

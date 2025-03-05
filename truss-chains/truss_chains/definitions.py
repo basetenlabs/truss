@@ -771,7 +771,7 @@ class PushOptionsLocalDocker(PushOptions):
     # If enabled, chains code is copied from the local package into `/app/truss_chains`
     # in the docker image (which takes precedence over potential pip/site-packages).
     # This should be used for integration tests or quick local dev loops.
-    use_local_chains_src: bool = False
+    use_local_src: bool = False
 
 
 class WebSocketProtocol(Protocol):
