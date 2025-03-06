@@ -1,6 +1,7 @@
 import copy
 
 import pytest
+
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TrussSpecDecMode,

@@ -23,6 +23,7 @@ from typing import (
 import requests
 import tenacity
 import watchfiles
+
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -33,7 +34,6 @@ from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
-
 from truss_chains import definitions, framework, utils
 from truss_chains.deployment import code_gen
 

@@ -26,6 +26,7 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 )
 
 import pydantic
+
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 

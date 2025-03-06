@@ -36,11 +36,11 @@ import textwrap
 from typing import Any, Iterable, Mapping, Optional, get_args, get_origin
 
 import libcst
+
 import truss
 from truss.base import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss.util import path as truss_path
-
 from truss_chains import definitions, framework, utils
 
 _INDENT = " " * 4

@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+
 from truss.base.truss_config import TrussConfig
 
 # Needed to simulate the set up on the model docker container

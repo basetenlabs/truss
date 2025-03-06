@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterator, NamedTuple, Optional
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
+
 from truss.base.errors import RemoteNetworkError
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
