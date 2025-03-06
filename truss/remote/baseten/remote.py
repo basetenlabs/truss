@@ -6,15 +6,10 @@ from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
 import yaml
 from requests import ReadTimeout
-
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
-
-if TYPE_CHECKING:
-    from rich import console as rich_console
-    from rich import progress
 from watchfiles import watch
 
 from truss.base import validation
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
@@ -46,6 +41,10 @@ from truss.remote.truss_remote import RemoteUser, TrussRemote
 from truss.truss_handle import build as truss_build
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
+    from rich import progress
 
 
 class PatchStatus(enum.Enum):
