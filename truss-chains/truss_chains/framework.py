@@ -33,9 +33,9 @@ from typing import (
 )
 
 import pydantic
-from truss.shared import types as shared_types
 from typing_extensions import ParamSpec
 
+from truss.shared import types as shared_types
 from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
