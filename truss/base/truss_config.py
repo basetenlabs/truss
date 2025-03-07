@@ -8,12 +8,17 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
-from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
+from truss.base.constants import (
+    HTTP_PUBLIC_BLOB_BACKEND,
+    OPENAI_COMPATIBLE_TAG,
+    OPENAI_NON_COMPATIBLE_TAG,
+)
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TrussTRTLLMBuildConfiguration,
+    TrussTRTLLMModel,
     TrussTRTLLMQuantizationType,
 )
 from truss.base.validation import (
@@ -778,6 +783,29 @@ class TrussConfig:
                 raise ValueError(
                     "Tensor parallelism and GPU count must be the same for TRT-LLM"
                 )
+
+            if (
+                self.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+                and not self.model_metadata.get("tags", [])
+                or not any(
+                    tag in self.model_metadata["tags"]
+                    for tag in (OPENAI_COMPATIBLE_TAG, OPENAI_NON_COMPATIBLE_TAG)
+                )
+            ):
+                # inserting new tag server-side (Briton) and client side on truss push
+                # transitioning in three phases:
+                # 1. set OPENAI_NON_COMPATIBLE_TAG as default
+                # 2. set OPENAI_COMPATIBLE_TAG as default (June 2025)
+                # 3. keep the tag as is (July 2025)
+                logger.error(
+                    f"TRT-LLM models should have the model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
+                    "As you have not set any tags, we are assuming that the model is not OpenAI compatible."
+                    f"As temporary measure, we are injecting the tag ['{OPENAI_NON_COMPATIBLE_TAG}']"
+                    f"We recommend setting the model_metadata['tags']=['{OPENAI_COMPATIBLE_TAG}']"
+                )
+                self.model_metadata["tags"] = [
+                    OPENAI_NON_COMPATIBLE_TAG
+                ] + self.model_metadata.get("tags", [])
 
     def validate(self):
         if self.python_version not in VALID_PYTHON_VERSIONS:
