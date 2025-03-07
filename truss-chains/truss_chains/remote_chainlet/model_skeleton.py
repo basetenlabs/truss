@@ -2,7 +2,6 @@ import pathlib
 from typing import Optional
 
 from truss.templates.shared import secrets_resolver
-
 from truss_chains import definitions
 from truss_chains.remote_chainlet import utils
 
@@ -55,6 +54,6 @@ class TrussChainletModel:
     # def predict(
     #     self, inputs: TextToNumInput, request: starlette.requests.Request
     # ) -> TextToNumOutput:
-    #     with utils.predict_context(request):
+    #     with utils.predict_context(request.headers):
     #         result = self._chainlet.run_remote(**utils.pydantic_set_field_dict(inputs))
     #     return TextToNumOutput(result)

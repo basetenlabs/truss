@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 import requests_mock
+
 from truss.templates.shared.lazy_data_resolver import (
     BASETEN_FS_ENABLED_ENV_VAR,
     LAZY_DATA_RESOLVER_PATH,

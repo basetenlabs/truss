@@ -5,12 +5,13 @@ from pathlib import Path
 
 import pytest
 import requests
+import websockets
+
 from truss.tests.test_testing_utilities_for_other_tests import (
     ensure_kill_all,
     get_container_logs_from_prefix,
 )
 from truss.truss_handle.build import load
-
 from truss_chains import definitions, framework, public_api, utils
 from truss_chains.deployment import deployment_client
 from truss_chains.deployment.code_gen import gen_truss_model_from_source
@@ -18,6 +19,11 @@ from truss_chains.deployment.code_gen import gen_truss_model_from_source
 utils.setup_dev_logging(logging.DEBUG)
 
 TEST_ROOT = Path(__file__).parent.resolve()
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
 
 
 @pytest.mark.integration
@@ -28,7 +34,7 @@ def test_chain():
             chain_root, "ItestChain"
         ) as entrypoint:
             options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test", use_local_chains_src=True
+                chain_name="integration-test", use_local_src=True
             )
             service = deployment_client.push(entrypoint, options)
 
@@ -155,7 +161,7 @@ def test_streaming_chain():
                 options=definitions.PushOptionsLocalDocker(
                     chain_name="integration-test-stream",
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
             assert service is not None
@@ -213,7 +219,7 @@ def test_numpy_chain(mode):
                 options=definitions.PushOptionsLocalDocker(
                     chain_name=f"integration-test-numpy-{mode}",
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
             assert service is not None
@@ -231,7 +237,7 @@ async def test_timeout():
             chain_root, "TimeoutChain"
         ) as entrypoint:
             options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test", use_local_chains_src=True
+                chain_name="integration-test", use_local_src=True
             )
             service = deployment_client.push(entrypoint, options)
 
@@ -275,7 +281,7 @@ TimeoutError: Timeout calling remote Chainlet `DependencySync` \(0.5 seconds lim
 def test_traditional_truss():
     with ensure_kill_all():
         chain_root = TEST_ROOT / "traditional_truss" / "truss_model.py"
-        truss_dir = gen_truss_model_from_source(chain_root, use_local_chains_src=True)
+        truss_dir = gen_truss_model_from_source(chain_root, use_local_src=True)
         truss_handle = load(truss_dir)
 
         assert truss_handle.spec.config.resources.cpu == "4"
@@ -304,7 +310,7 @@ def test_custom_health_checks_chain():
                 options=definitions.PushOptionsLocalDocker(
                     chain_name="integration-test-custom-health-checks",
                     only_generate_trusses=False,
-                    use_local_chains_src=True,
+                    use_local_src=True,
                 ),
             )
 
@@ -319,7 +325,7 @@ def test_custom_health_checks_chain():
             assert "Health check failed." not in container_logs
 
             # Start failing health checks
-            response = service.run_remote({"fail": True})
+            _ = service.run_remote({"fail": True})
             response = requests.get(health_check_url)
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
@@ -328,3 +334,32 @@ def test_custom_health_checks_chain():
             assert response.status_code == 503
             container_logs = get_container_logs_from_prefix(entrypoint.name)
             assert container_logs.count("Health check failed.") == 2
+
+
+@pytest.mark.integration
+async def test_websocket_chain(anyio_backend):
+    with ensure_kill_all():
+        chain_name = "websocket_chain"
+        chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
+        with framework.ChainletImporter.import_target(chain_root) as entrypoint:
+            service = deployment_client.push(
+                entrypoint,
+                options=definitions.PushOptionsLocalDocker(
+                    chain_name=chain_name,
+                    only_generate_trusses=False,
+                    use_local_src=True,
+                ),
+            )
+            # Get something like `ws://localhost:38605/v1/websocket`.
+            url = service.run_remote_url.replace("http", "ws").replace(
+                "v1/models/model:predict", "v1/websocket"
+            )
+            time.sleep(0.3)  # Wait for server to be up.
+            async with websockets.connect(url) as websocket:
+                await websocket.send("Test")
+                response = await websocket.recv()
+                assert response == "You said: Test."
+
+                await websocket.send("dep")
+                response = await websocket.recv()
+                assert response == "Hello from dependency, Head."

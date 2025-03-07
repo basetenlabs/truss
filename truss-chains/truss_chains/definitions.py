@@ -6,6 +6,7 @@ import pathlib
 import traceback
 from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     Any,
+    AsyncIterator,
     Callable,
     ClassVar,
     Generic,
@@ -25,8 +26,11 @@ from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
 )
 
 import pydantic
+
 from truss.base import truss_config
 from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from truss.shared import types
+from truss_chains import utils
 
 BASETEN_API_SECRET_NAME = "baseten_chain_api_key"
 SECRET_DUMMY = "***"
@@ -41,6 +45,8 @@ HEALTH_CHECK_METHOD_NAME = "is_healthy"
 CONTEXT_ARG_NAME = "context"  # Referring to Chainlets `__init__` signature.
 SELF_ARG_NAME = "self"
 REMOTE_CONFIG_NAME = "remote_config"
+ENGINE_BUILDER_CONFIG_NAME = "engine_builder_config"
+
 
 K = TypeVar("K", contravariant=True)
 V = TypeVar("V", covariant=True)
@@ -68,25 +74,6 @@ class MappingNoIter(Protocol[K, V]):
     def __len__(self) -> int: ...
 
     def __contains__(self, key: K) -> bool: ...
-
-
-class SafeModel(pydantic.BaseModel):
-    """Pydantic base model with reasonable config."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=False, strict=True, validate_assignment=True
-    )
-
-
-class SafeModelNonSerializable(pydantic.BaseModel):
-    """Pydantic base model with reasonable config - allowing arbitrary types."""
-
-    model_config = pydantic.ConfigDict(
-        arbitrary_types_allowed=True,
-        strict=True,
-        validate_assignment=True,
-        extra="forbid",
-    )
 
 
 class ChainsUsageError(TypeError):
@@ -148,7 +135,7 @@ class BasetenImage(enum.Enum):
     PY311 = "py311"
 
 
-class CustomImage(SafeModel):
+class CustomImage(types.SafeModel):
     """Configures the usage of a custom image hosted on dockerhub."""
 
     image: str
@@ -156,7 +143,7 @@ class CustomImage(SafeModel):
     docker_auth: Optional[truss_config.DockerAuthSettings] = None
 
 
-class DockerImage(SafeModelNonSerializable):
+class DockerImage(types.SafeModelNonSerializable):
     """Configures the docker image in which a remoted chainlet is deployed.
 
     Note:
@@ -287,7 +274,7 @@ class Compute:
         return self._spec.model_copy(deep=True)
 
 
-class AssetSpec(SafeModel):
+class AssetSpec(types.SafeModel):
     """Parsed and validated assets. See ``Assets`` for more information."""
 
     secrets: dict[str, str] = pydantic.Field({})
@@ -345,7 +332,7 @@ class Assets:
         return self._spec.model_copy(deep=True)
 
 
-class ChainletOptions(SafeModelNonSerializable):
+class ChainletOptions(types.SafeModelNonSerializable):
     """
     Args:
         enable_b10_tracing: enables baseten-internal trace data collection. This
@@ -361,19 +348,25 @@ class ChainletOptions(SafeModelNonSerializable):
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
 
 
-class ChainletMetadata(SafeModelNonSerializable):
+class ChainletMetadata(types.SafeModelNonSerializable):
     is_entrypoint: bool = False
     chain_name: Optional[str] = None
     init_is_patched: bool = False
 
 
-class FrameworkConfig(SafeModelNonSerializable):
-    entity_type: Literal["Chainlet", "Model"]
+class EntityType(utils.StrEnum):
+    CHAINLET = enum.auto()
+    MODEL = enum.auto()
+    ENGINE_BUILDER_MODEL = enum.auto()
+
+
+class FrameworkConfig(types.SafeModelNonSerializable):
+    entity_type: EntityType
     supports_dependencies: bool
     endpoint_method_name: str
 
 
-class RemoteConfig(SafeModelNonSerializable):
+class RemoteConfig(types.SafeModelNonSerializable):
     """Bundles config values needed to deploy a chainlet remotely.
 
     This is specified as a class variable for each chainlet class, e.g.::
@@ -408,7 +401,7 @@ class RemoteConfig(SafeModelNonSerializable):
 DEFAULT_TIMEOUT_SEC = 600.0
 
 
-class RPCOptions(SafeModel):
+class RPCOptions(types.SafeModel):
     """Options to customize RPCs to dependency chainlets.
 
     Args:
@@ -428,7 +421,7 @@ class RPCOptions(SafeModel):
     use_binary: bool = False
 
 
-class ServiceDescriptor(SafeModel):
+class ServiceDescriptor(types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
 
@@ -441,7 +434,7 @@ class DeployedServiceDescriptor(ServiceDescriptor):
     predict_url: str
 
 
-class Environment(SafeModel):
+class Environment(types.SafeModel):
     """The environment the chainlet is deployed in.
 
     Args:
@@ -452,7 +445,7 @@ class Environment(SafeModel):
     # can add more fields here as we add them to dynamic_config configmap
 
 
-class DeploymentContext(SafeModelNonSerializable):
+class DeploymentContext(types.SafeModelNonSerializable):
     """Bundles config values and resources needed to instantiate Chainlets.
 
     The context can optionally added as a trailing argument in a Chainlet's
@@ -504,7 +497,7 @@ class DeploymentContext(SafeModelNonSerializable):
         return api_key
 
 
-class TrussMetadata(SafeModel):
+class TrussMetadata(types.SafeModel):
     """Plugin for the truss config (in config["model_metadata"]["chains_metadata"])."""
 
     chainlet_to_service: Mapping[str, ServiceDescriptor]
@@ -537,7 +530,7 @@ class ABCChainlet(abc.ABC):
 
     @classproperty
     @classmethod
-    def entity_type(cls) -> Literal["Chainlet", "Model"]:
+    def entity_type(cls) -> EntityType:
         return cls._framework_config.entity_type
 
     @classproperty
@@ -552,7 +545,7 @@ class ABCChainlet(abc.ABC):
     #     ...
 
 
-class TypeDescriptor(SafeModelNonSerializable):
+class TypeDescriptor(types.SafeModelNonSerializable):
     """For describing I/O types of Chainlets."""
 
     raw: Any  # The raw type annotation object (could be a type or GenericAlias).
@@ -576,6 +569,10 @@ class TypeDescriptor(SafeModelNonSerializable):
             for arg in args
         )
 
+    @property
+    def is_websocket(self) -> bool:
+        return self.raw == WebSocketProtocol
+
 
 class StreamingTypeDescriptor(TypeDescriptor):
     origin_type: type
@@ -590,13 +587,13 @@ class StreamingTypeDescriptor(TypeDescriptor):
         return False
 
 
-class InputArg(SafeModelNonSerializable):
+class InputArg(types.SafeModelNonSerializable):
     name: str
     type: TypeDescriptor
     is_optional: bool
 
 
-class EndpointAPIDescriptor(SafeModelNonSerializable):
+class EndpointAPIDescriptor(types.SafeModelNonSerializable):
     name: str = RUN_REMOTE_METHOD_NAME
     input_args: list[InputArg]
     output_types: list[TypeDescriptor]
@@ -613,8 +610,24 @@ class EndpointAPIDescriptor(SafeModelNonSerializable):
             raise ValueError(f"{self} is not a streaming endpoint.")
         return cast(StreamingTypeDescriptor, self.output_types[0])
 
+    @property
+    def is_websocket(self):
+        return any(arg.type.is_websocket for arg in self.input_args)
 
-class DependencyDescriptor(SafeModelNonSerializable):
+    @property
+    def has_pydantic_input(self) -> bool:
+        return not self.is_websocket
+
+    @property
+    def has_pydantic_output(self) -> bool:
+        return not (self.is_streaming or self.is_websocket)
+
+    @property
+    def has_engine_builder_llm_input(self) -> bool:
+        return any(arg.type.raw == EngineBuilderLLMInput for arg in self.input_args)
+
+
+class DependencyDescriptor(types.SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     options: RPCOptions
 
@@ -627,12 +640,12 @@ class DependencyDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
-class HealthCheckAPIDescriptor(SafeModelNonSerializable):
+class HealthCheckAPIDescriptor(types.SafeModelNonSerializable):
     name: str = HEALTH_CHECK_METHOD_NAME
     is_async: bool
 
 
-class ChainletAPIDescriptor(SafeModelNonSerializable):
+class ChainletAPIDescriptor(types.SafeModelNonSerializable):
     chainlet_cls: Type[ABCChainlet]
     src_path: str
     has_context: bool
@@ -652,7 +665,7 @@ class ChainletAPIDescriptor(SafeModelNonSerializable):
         return self.chainlet_cls.display_name
 
 
-class StackFrame(SafeModel):
+class StackFrame(types.SafeModel):
     filename: str
     lineno: Optional[int]
     name: str
@@ -673,7 +686,7 @@ class StackFrame(SafeModel):
         )
 
 
-class RemoteErrorDetail(SafeModel):
+class RemoteErrorDetail(types.SafeModel):
     """When a remote chainlet raises an exception, this pydantic model contains
     information about the error and stack trace and is included in JSON form in the
     error response.
@@ -711,7 +724,7 @@ class GenericRemoteException(Exception): ...
 ########################################################################################
 
 
-class PushOptions(SafeModelNonSerializable):
+class PushOptions(types.SafeModelNonSerializable):
     chain_name: str
     only_generate_trusses: bool = False
 
@@ -753,4 +766,195 @@ class PushOptionsLocalDocker(PushOptions):
     # If enabled, chains code is copied from the local package into `/app/truss_chains`
     # in the docker image (which takes precedence over potential pip/site-packages).
     # This should be used for integration tests or quick local dev loops.
-    use_local_chains_src: bool = False
+    use_local_src: bool = False
+
+
+class WebSocketProtocol(Protocol):
+    """Describes subset of starlette/fastAPIs websocket interface that we expose."""
+
+    headers: Mapping[str, str]
+
+    async def close(self, code: int = 1000, reason: Optional[str] = None) -> None: ...
+
+    async def receive_text(self) -> str: ...
+    async def receive_bytes(self) -> bytes: ...
+    async def receive_json(self) -> Any: ...
+
+    async def send_text(self, data: str) -> None: ...
+    async def send_bytes(self, data: bytes) -> None: ...
+    async def send_json(self, data: Any) -> None: ...
+
+    def iter_text(self) -> AsyncIterator[str]: ...
+    def iter_bytes(self) -> AsyncIterator[bytes]: ...
+    def iter_json(self) -> AsyncIterator[Any]: ...
+
+
+class EngineBuilderLLMInput(pydantic.BaseModel):
+    # TODO: This is mainly a copy from `briton/python/briton/briton/schema.py`.
+    #  Find a better way to code share this (potentially in TaT).
+    """This class mirrors the `CompletionCreateParamsBase` in the `openai-python` repository.
+
+    However, that class is a Typeddict rather than a pydantic model, so we redefine it here
+    to take advantage of pydantic's validation features. In addition, we define helper methods
+    to get the formatted prompt, tools to use, and response format to adhere to.
+
+    Unsupported parameters:
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-store
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-metadata
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-frequency_penalty
+      - Frequency penalty is not currently passed through to briton
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-logit_bias
+      - User provided logit biasing is not implemented
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-logprobs
+      - Returning log probabilities is not implemented
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-top_logprobs
+      - Returning log probabilities is not implemented
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
+      - OpenAI platform specific
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-function_call
+      - Deprecated
+    - https://platform.openai.com/docs/api-reference/chat/create#chat-create-functions
+      - Deprecated
+    """
+
+    class Tool(pydantic.BaseModel):
+        """An element in the top level `tools` field."""
+
+        class Function(pydantic.BaseModel):
+            name: str
+            description: Optional[str] = None
+            parameters_: Optional[dict[str, Any]] = pydantic.Field(
+                None, alias="parameters"
+            )
+            return_: Optional[dict[str, Any]] = pydantic.Field(None, alias="return")
+
+            @pydantic.model_validator(mode="after")
+            def definitions_valid(cls, values):
+                if "definitions" in values.parameters and "$defs" in values.parameters:
+                    raise ValueError(
+                        "Both pydantic v1 and v2 definitions found; please check schema."
+                    )
+                return values
+
+            @property
+            def parameters(self) -> dict[str, Any]:
+                if self.parameters_ is None:
+                    return {"properties": {}}
+                elif "properties" not in self.parameters_:
+                    return {"properties": {}, **self.parameters_}
+                else:
+                    return self.parameters_
+
+            @property
+            def parameters_without_definitions(self) -> dict[str, Any]:
+                parameters = self.parameters.copy()
+                for keyword in ["definitions", "$defs"]:
+                    parameters.pop(keyword, None)
+                return parameters
+
+            @property
+            def definitions(self) -> Optional[tuple[dict[str, Any], str]]:
+                for keyword in ["definitions", "$defs"]:
+                    if keyword in self.parameters:
+                        return self.parameters[keyword], keyword
+                return None
+
+            @property
+            def json_schema(self) -> dict[str, Any]:
+                return {
+                    "type": "object",
+                    "properties": {
+                        "name": {"const": self.name},
+                        "parameters": self.parameters_without_definitions,
+                    },
+                    "required": ["name", "parameters"],
+                }
+
+        type: Literal["function"]
+        function: Function
+
+    class ToolChoice(pydantic.BaseModel):
+        """The top level `tool_choice` field."""
+
+        class FunctionChoice(pydantic.BaseModel):
+            name: str
+
+        type: Literal["function"]
+        function: FunctionChoice
+
+    class SchemaResponseFormat(pydantic.BaseModel):
+        """The top level `response_format` field."""
+
+        class JsonSchema(pydantic.BaseModel):
+            """`schema_` holds the actual json schema"""
+
+            schema_: dict[str, Any] = pydantic.Field(..., alias="schema")
+
+        type: Literal["json_schema"]
+        json_schema: JsonSchema
+
+    class JsonResponseFormat(pydantic.BaseModel):
+        type: Literal["json_object"]
+
+    class TextResponseFormat(pydantic.BaseModel):
+        type: Literal["text"]
+
+    class StreamOptions(pydantic.BaseModel):
+        """The top level `stream_options` field."""
+
+        include_usage: bool
+
+    class LookaheadDecodingConfig(pydantic.BaseModel):
+        window_size: int
+        ngram_size: int
+        verification_set_size: int
+
+    model: Optional[str] = ""
+
+    messages: Optional[list[dict[str, Any]]] = None
+    prompt: Optional[str] = pydantic.Field(None, min_length=1)
+
+    max_tokens: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
+
+    stream: Optional[bool] = None
+    stream_options: Optional[StreamOptions] = None
+
+    seed: Optional[int] = None
+    random_seed: Optional[int] = None
+    frequency_penalty: Optional[float] = 0
+    presence_penalty: Optional[float] = 0
+    length_penalty: Optional[float] = None
+
+    # Not part of openai spec but supported by briton
+    repetition_penalty: Optional[float] = None
+    temperature: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    runtime_top_p: Optional[float] = None
+    top_k: Optional[int] = 50
+    runtime_top_k: Optional[int] = None
+    stop: Optional[Union[str, list[str]]] = None
+    bad_words_: Optional[Union[str, list[str]]] = None
+    skip_special_tokens: Optional[list[str]] = None
+    response_format: Optional[
+        Union[SchemaResponseFormat, JsonResponseFormat, TextResponseFormat]
+    ] = None
+    tools: Optional[list[Tool]] = None
+    tool_choice: Optional[Union[Literal["none", "required", "auto"], ToolChoice]] = None
+    parallel_tool_calls: Optional[bool] = True
+    beam_width: Optional[Literal[1]] = None
+    n: Optional[int] = 1
+    end_id: Optional[int] = None
+    pad_id: Optional[int] = None
+    # WiM fields
+    margins_prompt: Optional[str] = None
+    margins_stop_sequences: Optional[list[str]] = pydantic.Field(
+        default_factory=lambda: ["NO#"]
+    )
+    max_chunk_size: Optional[int] = 4096
+    # Lookahead Decoding
+    lookahead_decoding_config: Optional[LookaheadDecodingConfig] = None

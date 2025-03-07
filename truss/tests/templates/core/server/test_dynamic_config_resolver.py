@@ -2,8 +2,8 @@ import json
 
 import aiofiles
 import pytest
-from truss.templates.shared import dynamic_config_resolver
 
+from truss.templates.shared import dynamic_config_resolver
 from truss_chains import definitions
 
 

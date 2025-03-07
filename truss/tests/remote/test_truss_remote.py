@@ -3,6 +3,7 @@ from unittest import mock
 
 import pytest
 from requests import Response
+
 from truss.remote.truss_remote import TrussService
 
 TEST_SERVICE_URL = "http://test.com"

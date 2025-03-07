@@ -3,12 +3,14 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import requests
+
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.auth import ApiKey, AuthService
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.transfer import base64_encoded_json_str
 
 logger = logging.getLogger(__name__)
+
 
 API_URL_MAPPING = {
     "https://app.baseten.co": "https://api.baseten.co",
@@ -566,3 +568,27 @@ class BasetenApi:
 
         secrets_info = resp.json()
         return secrets_info
+
+    def upsert_training_project(self, training_project):
+        headers = self._auth_token.header()
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/training-projects",
+            headers=headers,
+            json={"training_project": training_project.model_dump()},
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        return resp.json()
+
+    def create_training_job(self, project_id: str, job):
+        headers = self._auth_token.header()
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/training-projects/{project_id}/jobs",
+            headers=headers,
+            json={"training_job": job.model_dump()},
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        return resp.json()

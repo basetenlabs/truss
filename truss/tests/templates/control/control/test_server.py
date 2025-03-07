@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from tenacity import RetryError
+
 from truss.truss_handle.patch.custom_types import PatchRequest
 
 # Needed to simulate the set up on the model docker container

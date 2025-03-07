@@ -23,6 +23,7 @@ from typing import (
 import requests
 import tenacity
 import watchfiles
+
 from truss.local import local_config_handler
 from truss.remote import remote_factory
 from truss.remote.baseten import core as b10_core
@@ -33,7 +34,6 @@ from truss.remote.baseten import service as b10_service
 from truss.truss_handle import truss_handle
 from truss.util import log_utils
 from truss.util import path as truss_path
-
 from truss_chains import definitions, framework, utils
 from truss_chains.deployment import code_gen
 
@@ -134,64 +134,63 @@ class ChainService(abc.ABC):
         self._entrypoint_fake_json_data = fake_data
 
 
-class _ChainSourceGenerator:
-    def __init__(self, options: definitions.PushOptions) -> None:
-        self._options = options
+def _generate_chainlet_artifacts(
+    options: definitions.PushOptions, entrypoint: Type[definitions.ABCChainlet]
+) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact], bool]:
+    chain_root = _get_chain_root(entrypoint)
+    entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
+    dependency_artifacts: list[b10_types.ChainletArtifact] = []
+    chainlet_display_names: set[str] = set()
 
-    @property
-    def _use_local_chains_src(self) -> bool:
-        if isinstance(self._options, definitions.PushOptionsLocalDocker):
-            return self._options.use_local_chains_src
-        return False
+    use_local_src = False
+    if isinstance(options, definitions.PushOptionsLocalDocker):
+        use_local_src = options.use_local_src
 
-    def generate_chainlet_artifacts(
-        self, entrypoint: Type[definitions.ABCChainlet]
-    ) -> tuple[b10_types.ChainletArtifact, list[b10_types.ChainletArtifact]]:
-        chain_root = _get_chain_root(entrypoint)
-        entrypoint_artifact: Optional[b10_types.ChainletArtifact] = None
-        dependency_artifacts: list[b10_types.ChainletArtifact] = []
-        chainlet_display_names: set[str] = set()
+    has_engine_builder_chainlets = False
 
-        for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
-            chainlet_display_name = chainlet_descriptor.display_name
+    for chainlet_descriptor in _get_ordered_dependencies([entrypoint]):
+        if framework.is_engine_builder_chainlet(chainlet_descriptor.chainlet_cls):
+            has_engine_builder_chainlets = True
 
-            if chainlet_display_name in chainlet_display_names:
-                raise definitions.ChainsUsageError(
-                    f"Chainlet names must be unique. Found multiple Chainlets with the name: '{chainlet_display_name}'."
-                )
+        chainlet_display_name = chainlet_descriptor.display_name
 
-            chainlet_display_names.add(chainlet_display_name)
-
-            # Since we are creating a distinct model for each deployment of the chain,
-            # we add a random suffix.
-            model_suffix = str(uuid.uuid4()).split("-")[0]
-            model_name = f"{chainlet_display_name}-{model_suffix}"
-
-            chainlet_dir = code_gen.gen_truss_chainlet(
-                chain_root,
-                self._options.chain_name,
-                chainlet_descriptor,
-                model_name,
-                self._use_local_chains_src,
-            )
-            artifact = b10_types.ChainletArtifact(
-                truss_dir=chainlet_dir,
-                name=chainlet_descriptor.name,
-                display_name=chainlet_display_name,
+        if chainlet_display_name in chainlet_display_names:
+            raise definitions.ChainsUsageError(
+                f"Chainlet names must be unique. Found multiple Chainlets with the name: '{chainlet_display_name}'."
             )
 
-            is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint
+        chainlet_display_names.add(chainlet_display_name)
 
-            if is_entrypoint:
-                assert entrypoint_artifact is None
+        # Since we are creating a distinct model for each deployment of the chain,
+        # we add a random suffix.
+        model_suffix = str(uuid.uuid4()).split("-")[0]
+        model_name = f"{chainlet_display_name}-{model_suffix}"
 
-                entrypoint_artifact = artifact
-            else:
-                dependency_artifacts.append(artifact)
+        chainlet_dir = code_gen.gen_truss_chainlet(
+            chain_root,
+            options.chain_name,
+            chainlet_descriptor,
+            model_name,
+            use_local_src,
+        )
+        artifact = b10_types.ChainletArtifact(
+            truss_dir=chainlet_dir,
+            name=chainlet_descriptor.name,
+            display_name=chainlet_display_name,
+        )
 
-        assert entrypoint_artifact is not None
+        is_entrypoint = chainlet_descriptor.chainlet_cls == entrypoint
 
-        return entrypoint_artifact, dependency_artifacts
+        if is_entrypoint:
+            assert entrypoint_artifact is None
+
+            entrypoint_artifact = artifact
+        else:
+            dependency_artifacts.append(artifact)
+
+    assert entrypoint_artifact is not None
+
+    return entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets
 
 
 @framework.raise_validation_errors_before
@@ -200,16 +199,26 @@ def push(
     options: definitions.PushOptions,
     progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> Optional[ChainService]:
-    entrypoint_artifact, dependency_artifacts = _ChainSourceGenerator(
-        options
-    ).generate_chainlet_artifacts(entrypoint)
+    entrypoint_artifact, dependency_artifacts, has_engine_builder_chainlets = (
+        _generate_chainlet_artifacts(options, entrypoint)
+    )
     if options.only_generate_trusses:
         return None
     if isinstance(options, definitions.PushOptionsBaseten):
+        if has_engine_builder_chainlets and not options.publish:
+            raise definitions.ChainsDeploymentError(
+                "This chain contains engine builder chainlets. Development models are "
+                "not supportd, push with `--publish`."
+            )
         return _create_baseten_chain(
             options, entrypoint_artifact, dependency_artifacts, progress_bar
         )
     elif isinstance(options, definitions.PushOptionsLocalDocker):
+        if has_engine_builder_chainlets:
+            raise definitions.ChainsDeploymentError(
+                "This chain contains engine builder chainlets. Running in local docker "
+                "is not supported."
+            )
         return _create_docker_chain(options, entrypoint_artifact, dependency_artifacts)
     else:
         raise NotImplementedError(options)
@@ -707,7 +716,7 @@ class _Watcher:
                 self._deployed_chain_name,
                 descr,
                 self._chainlet_data[descr.display_name].oracle_name,
-                use_local_chains_src=False,
+                use_local_src=False,
             )
             patch_result = self._remote_provider.patch_for_chainlet(
                 chainlet_dir, self._ignore_patterns

@@ -12,6 +12,7 @@ from botocore.client import Config
 from google.cloud import storage
 from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
 from huggingface_hub.utils import filter_repo_objects
+
 from truss.base import constants
 from truss.base.constants import (
     BASE_SERVER_REQUIREMENTS_TXT_FILENAME,
@@ -40,6 +41,7 @@ from truss.base.constants import (
     TRTLLM_PREDICT_CONCURRENCY,
     TRTLLM_PYTHON_EXECUTABLE,
     TRTLLM_TRUSS_DIR,
+    TRUSS_CODE_DIR,
     TRUSSLESS_MAX_PAYLOAD_SIZE,
     USER_SUPPLIED_REQUIREMENTS_TXT_FILENAME,
 )
@@ -77,6 +79,7 @@ BUILD_SERVER_DIR_NAME = "server"
 BUILD_CONTROL_SERVER_DIR_NAME = "control"
 BUILD_SERVER_EXTENSIONS_PATH = "extensions"
 BUILD_CHAINS_DIR_NAME = "truss_chains"
+BUILD_TRUSS_DIR_NAME = "truss"
 
 CONFIG_FILE = "config.yaml"
 USER_TRUSS_IGNORE_FILE = ".truss_ignore"
@@ -542,8 +545,9 @@ class ServingImageBuilder(ImageBuilder):
                 + SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME,
             )
 
-        if config.use_local_chains_src:
+        if config.use_local_src:
             self._copy_into_build_dir(CHAINS_CODE_DIR, build_dir, BUILD_CHAINS_DIR_NAME)
+            self._copy_into_build_dir(TRUSS_CODE_DIR, build_dir, BUILD_TRUSS_DIR_NAME)
 
         # Copy base TrussServer requirements if supplied custom base image
         base_truss_server_reqs_filepath = SERVER_CODE_DIR / REQUIREMENTS_TXT_FILENAME
@@ -690,7 +694,7 @@ class ServingImageBuilder(ImageBuilder):
             hf_access_token_file_name=HF_ACCESS_TOKEN_FILE_NAME,
             external_data_files=external_data_files,
             build_commands=build_commands,
-            use_local_chains_src=config.use_local_chains_src,
+            use_local_src=config.use_local_src,
             **FILENAME_CONSTANTS_MAP,
         )
         docker_file_path = build_dir / MODEL_DOCKERFILE_NAME

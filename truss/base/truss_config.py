@@ -157,6 +157,21 @@ class ModelCache:
 
 
 @dataclass
+class CacheInternal:
+    models: List[ModelRepo] = field(default_factory=list)
+
+    @staticmethod
+    def from_list(items: List[Dict[str, str]]) -> "CacheInternal":
+        return CacheInternal([ModelRepo.from_dict(item) for item in items])
+
+    def to_list(self) -> List[Dict[str, str]]:
+        models = []
+        for model in self.models:
+            models.append({"repo_id": model.to_dict()["repo_id"]})
+        return models
+
+
+@dataclass
 class HealthChecks:
     restart_check_delay_seconds: Optional[int] = None
     restart_threshold_seconds: Optional[int] = None
@@ -606,7 +621,9 @@ class TrussConfig:
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
-    use_local_chains_src: bool = False
+    use_local_src: bool = False
+    # internal
+    cache_internal: CacheInternal = field(default_factory=CacheInternal)
 
     @property
     def canonical_python_version(self) -> str:
@@ -667,11 +684,15 @@ class TrussConfig:
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
             ),
+            cache_internal=transform_optional(
+                d.get("cache_internal") or [],  # type: ignore
+                CacheInternal.from_list,
+            ),
             trt_llm=transform_optional(
                 d.get("trt_llm"), lambda x: (TRTLLMConfiguration(**x))
             ),
             build_commands=d.get("build_commands", []),
-            use_local_chains_src=d.get("use_local_chains_src", False),
+            use_local_src=d.get("use_local_src", False),
         )
         config.validate()
         return config
@@ -844,6 +865,10 @@ def obj_to_dict(obj, verbose: bool = False):
             elif isinstance(field_curr_value, ModelCache):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
+                )
+            elif isinstance(field_curr_value, CacheInternal):
+                d["cache_internal"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list()
                 )
             elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(

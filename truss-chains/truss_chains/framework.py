@@ -18,7 +18,9 @@ import warnings
 from importlib.abc import Loader
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
+    ClassVar,
     Iterable,
     Iterator,
     Mapping,
@@ -28,7 +30,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
-    cast,
+    final,
     get_args,
     get_origin,
 )
@@ -36,6 +38,8 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
+from truss.base import truss_config
+from truss.shared import types as shared_types
 from truss_chains import definitions, utils
 
 _SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
@@ -67,9 +71,10 @@ class _ErrorKind(str, enum.Enum):
     TYPE_ERROR = enum.auto()
     IO_TYPE_ERROR = enum.auto()
     MISSING_API_ERROR = enum.auto()
+    INVALID_CONFIG_ERROR = enum.auto()
 
 
-class _ErrorLocation(definitions.SafeModel):
+class _ErrorLocation(shared_types.SafeModel):
     src_path: str
     line: Optional[int] = None
     chainlet_name: Optional[str] = None
@@ -86,7 +91,7 @@ class _ErrorLocation(definitions.SafeModel):
         return value
 
 
-class _ValidationError(definitions.SafeModel):
+class _ValidationError(shared_types.SafeModel):
     msg: str
     kind: _ErrorKind
     location: _ErrorLocation
@@ -292,7 +297,7 @@ def _validate_io_type(
             location,
         )
         return
-    if annotation in _SIMPLE_TYPES:
+    if annotation in _SIMPLE_TYPES or annotation == definitions.WebSocketProtocol:
         return
 
     error_msg = (
@@ -445,6 +450,47 @@ def _validate_endpoint_output_types(
     return output_types
 
 
+def _validate_websocket_endpoint(
+    descriptor: definitions.EndpointAPIDescriptor, location: _ErrorLocation
+) -> None:
+    if any(arg.is_websocket for arg in descriptor.output_types):
+        _collect_error(
+            "Websockets cannot be used as output type.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if not any(arg.type.is_websocket for arg in descriptor.input_args):
+        return
+
+    if len(descriptor.input_args) > 1:
+        _collect_error(
+            "When using a websocket as input, no other arguments are allowed.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if len(descriptor.output_types) != 1 or descriptor.output_types[0].raw != None:  # noqa: E711
+        _collect_error(
+            "Websocket endpoints must have `None` as return type.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if descriptor.is_streaming:
+        # Redundant since output type None is required.
+        _collect_error(
+            "Websocket endpoints cannot reurn itesators. Use the websocket itself to stream data.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if not descriptor.is_async:
+        _collect_error(
+            "Websocket endpoints must be async.", _ErrorKind.IO_TYPE_ERROR, location
+        )
+
+
 def _validate_and_describe_endpoint(
     cls: Type[definitions.ABCChainlet], location: _ErrorLocation
 ) -> definitions.EndpointAPIDescriptor:
@@ -529,14 +575,15 @@ def _validate_and_describe_endpoint(
             DeprecationWarning,
             stacklevel=1,
         )
-
-    return definitions.EndpointAPIDescriptor(
+    descriptor = definitions.EndpointAPIDescriptor(
         name=cls.endpoint_method_name,
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
         is_streaming=is_streaming,
     )
+    _validate_websocket_endpoint(descriptor, location)
+    return descriptor
 
 
 def _get_generic_class_type(var):
@@ -678,7 +725,16 @@ class _ChainletInitValidator:
                 _collect_error(
                     f"The same Chainlet class cannot be used multiple times for "
                     f"different arguments. Got previously used "
-                    f"`{marker.chainlet_cls}` for `{param.name}`.",
+                    f"`{marker.chainlet_cls.__name__}` for `{param.name}`.",
+                    _ErrorKind.TYPE_ERROR,
+                    self._location,
+                )
+
+            if get_descriptor(marker.chainlet_cls).endpoint.is_websocket:
+                _collect_error(
+                    f"The dependency chainlet `{marker.chainlet_cls.__name__}` for "
+                    f"`{param.name}` uses a websocket. But websockets can only be used "
+                    "in the entrypoint, not in 'inner' chainlets.",
                     _ErrorKind.TYPE_ERROR,
                     self._location,
                 )
@@ -749,23 +805,59 @@ class _ChainletInitValidator:
 
     @functools.cache
     def _example_code(self) -> str:
-        if self._cls.entity_type == "Model":
+        if self._cls.entity_type == definitions.EntityType.MODEL:
             return _example_model_code()
         return _example_chainlet_code()
 
 
-def _validate_remote_config(
-    cls: Type[definitions.ABCChainlet], location: _ErrorLocation
-):
-    if not isinstance(
-        remote_config := getattr(cls, definitions.REMOTE_CONFIG_NAME),
-        definitions.RemoteConfig,
-    ):
+def _validate_config_class_variable(
+    cls: Type[definitions.ABCChainlet],
+    location: _ErrorLocation,
+    var_name: str,
+    expected_type: Type[pydantic.BaseModel],
+) -> None:
+    if not isinstance(var_value := getattr(cls, var_name), expected_type):
         _collect_error(
-            f"{cls.entity_type}s must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
-            f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
-            f"for `{cls}`.",
+            f"{cls.entity_type}s must have a `{var_name}` class variable of type "
+            f"`{expected_type}`. Got `{type(var_value)}`.",
             _ErrorKind.TYPE_ERROR,
+            location,
+        )
+
+
+def _validate_engine_builder_fields(
+    remote_config: definitions.RemoteConfig, location: _ErrorLocation
+) -> None:
+    # TODO: these checks are not very tightly coupled to `_gen_truss_config` - find
+    #  a better way to do this.
+    violations = []
+    # `model_fields_set` does not work reliably here, so we compare against defaults.
+    if (
+        remote_config.docker_image
+        != definitions.RemoteConfig.model_fields["docker_image"].default
+    ):
+        violations.append("docker_image")
+    if (
+        remote_config.assets.get_spec().cached
+        != definitions.AssetSpec.model_fields["cached"].default
+    ):
+        violations.append("assets.cached")
+    if (
+        remote_config.assets.get_spec().external_data
+        != definitions.AssetSpec.model_fields["external_data"].default
+    ):
+        violations.append("assets.external_data")
+    if (
+        remote_config.options.health_checks
+        != definitions.ChainletOptions.model_fields["health_checks"].default
+    ):
+        violations.append("options.health_checks")
+    if violations:
+        _collect_error(
+            f"{definitions.EntityType.ENGINE_BUILDER_MODEL}s don't support these "
+            f"`remote_config` fields: {violations}. Leave them unset "
+            f"(at their defaults) for this chainlet.",
+            _ErrorKind.INVALID_CONFIG_ERROR,
             location,
         )
 
@@ -832,11 +924,34 @@ def validate_and_register_cls(cls: Type[definitions.ABCChainlet]) -> None:
     with issues, are still added to the registry.  Use `raise_validation_errors` to
     assert all Chainlets are valid and before performing operations that depend on
     these constraints."""
+    # Skip "abstract" base classes. There's no good way to determine these classes
+    # automatically, so we use a list names. It would be good to improve this.
+    _skip_class_name = [
+        "ChainletBase",
+        "ModelBase",
+        "EngineBuilderChainlet",
+        "EngineBuilderLLMChainlet",
+    ]
+    if cls.__name__ in _skip_class_name:
+        print(f"Skipping {cls}")
+        return
+
     src_path = os.path.abspath(inspect.getfile(cls))
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
 
-    _validate_remote_config(cls, location)
+    _validate_config_class_variable(
+        cls, location, definitions.REMOTE_CONFIG_NAME, definitions.RemoteConfig
+    )
+    if is_engine_builder_chainlet(cls):
+        _validate_config_class_variable(
+            cls,
+            location,
+            definitions.ENGINE_BUILDER_CONFIG_NAME,
+            truss_config.TRTLLMConfiguration,
+        )
+        _validate_engine_builder_fields(cls.remote_config, location)
+
     init_validator = _ChainletInitValidator(cls, location)
     chainlet_descriptor = definitions.ChainletAPIDescriptor(
         chainlet_cls=cls,
@@ -1253,13 +1368,16 @@ class _ABCImporter(abc.ABC):
         pass
 
     @classmethod
-    def _get_entrypoint_chainlets(cls, symbols) -> set[Type[definitions.ABCChainlet]]:
-        return {
-            sym
-            for sym in symbols
-            if utils.issubclass_safe(sym, cls._target_cls_type())
-            and cast(definitions.ABCChainlet, sym).meta_data.is_entrypoint
+    def _get_chainlets(
+        cls, symbols
+    ) -> tuple[set[Type[definitions.ABCChainlet]], set[Type[definitions.ABCChainlet]]]:
+        chainlets: set[Type[definitions.ABCChainlet]] = {
+            sym for sym in symbols if utils.issubclass_safe(sym, cls._target_cls_type())
         }
+        entrypoints: set[Type[definitions.ABCChainlet]] = {
+            chainlet for chainlet in chainlets if chainlet.meta_data.is_entrypoint
+        }
+        return chainlets, entrypoints
 
     @classmethod
     def _load_module(cls, module_path: pathlib.Path) -> tuple[types.ModuleType, Loader]:
@@ -1364,12 +1482,16 @@ class _ABCImporter(abc.ABC):
                     )
             else:
                 module_vars = (getattr(module, name) for name in dir(module))
-                entrypoints = cls._get_entrypoint_chainlets(module_vars)
+                chainlets, entrypoints = cls._get_chainlets(module_vars)
+                if len(chainlets) == 1:
+                    entrypoints = chainlets
+
                 if len(entrypoints) == 0:
                     raise cls._no_entrypoint_error(module_path)
                 elif len(entrypoints) > 1:
                     raise cls._multiple_entrypoints_error(module_path, entrypoints)
                 target_cls = utils.expect_one(entrypoints)
+
             yield target_cls
         finally:
             cls._cleanup_module_imports(
@@ -1426,7 +1548,7 @@ class ModelImporter(_ABCImporter):
         return ModelBase
 
 
-class ChainletBase(definitions.ABCChainlet):
+class ChainletBase(definitions.ABCChainlet, metaclass=abc.ABCMeta):
     """Base class for all chainlets.
 
     Inheriting from this class adds validations to make sure subclasses adhere to the
@@ -1440,7 +1562,7 @@ class ChainletBase(definitions.ABCChainlet):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         cls._framework_config = definitions.FrameworkConfig(
-            entity_type="Chainlet",
+            entity_type=definitions.EntityType.CHAINLET,
             supports_dependencies=True,
             endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
         )
@@ -1462,7 +1584,7 @@ class ChainletBase(definitions.ABCChainlet):
             cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
 
 
-class ModelBase(definitions.ABCChainlet):
+class ModelBase(definitions.ABCChainlet, metaclass=abc.ABCMeta):
     """Base class for all standalone models.
 
     Inheriting from this class adds validations to make sure subclasses adhere to the
@@ -1472,9 +1594,40 @@ class ModelBase(definitions.ABCChainlet):
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         cls._framework_config = definitions.FrameworkConfig(
-            entity_type="Model",
+            entity_type=definitions.EntityType.MODEL,
             supports_dependencies=False,
             endpoint_method_name=definitions.MODEL_ENDPOINT_METHOD_NAME,
         )
         cls.meta_data = definitions.ChainletMetadata(is_entrypoint=True)
         validate_and_register_cls(cls)
+
+
+class EngineBuilderChainlet(definitions.ABCChainlet, metaclass=abc.ABCMeta):
+    """For engine builders, model.py is generated during deployment, so there is only
+    dummy `run_remote` and we do not generate `model.py` wrapping the chainlet.
+    We do not support customization, because that should be done caller-side for chains.
+    """
+
+    engine_builder_config: ClassVar[truss_config.TRTLLMConfiguration]
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = definitions.FrameworkConfig(
+            entity_type=definitions.EntityType.ENGINE_BUILDER_MODEL,
+            supports_dependencies=False,
+            endpoint_method_name=definitions.RUN_REMOTE_METHOD_NAME,
+        )
+        validate_and_register_cls(cls)
+
+
+class EngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
+    @final
+    async def run_remote(
+        self, llm_input: definitions.EngineBuilderLLMInput
+    ) -> AsyncIterator[str]:
+        raise NotImplementedError("Only deployed models generate output.")
+        yield
+
+
+def is_engine_builder_chainlet(cls: Type[definitions.ABCChainlet]):
+    return issubclass(cls, EngineBuilderChainlet)
