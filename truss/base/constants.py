@@ -113,5 +113,7 @@ BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.18"
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 
 OPENAI_COMPATIBLE_TAG = "openai-compatible"
+OPENAI_NON_COMPATIBLE_TAG = "non-openai-compatible"
+
 
 PRODUCTION_ENVIRONMENT_NAME = "production"
