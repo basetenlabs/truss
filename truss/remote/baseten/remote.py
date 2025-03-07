@@ -22,7 +22,7 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionHandle,
     ModelVersionId,
-    archive_truss,
+    archive_dir,
     create_chain_atomic,
     create_truss_service,
     exists_model,
@@ -168,7 +168,7 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        temp_file = archive_truss(truss_handle, progress_bar)
+        temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
         encoded_config_str = base64_encoded_json_str(
             truss_handle._spec._config.to_dict()
