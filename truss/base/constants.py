@@ -115,7 +115,7 @@ BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 OPENAI_COMPATIBLE_TAG = (
     "openai-compatible"  # deprecated - openai-compatible is now the default
 )
-OPENAI_NON_COMPATIBLE_TAG = "non-openai-compatible"
+OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"
 
 
 PRODUCTION_ENVIRONMENT_NAME = "production"
