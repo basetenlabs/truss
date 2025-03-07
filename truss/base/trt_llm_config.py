@@ -128,7 +128,7 @@ class TrussTRTLLMRuntimeConfiguration(BaseModel):
 
 class TrussTRTLLMBuildConfiguration(BaseModel):
     base_model: TrussTRTLLMModel = TrussTRTLLMModel.DECODER
-    max_seq_len: int
+    max_seq_len: Optional[int] = None
     max_batch_size: int = 256
     max_num_tokens: int = 8192
     max_beam_width: int = 1
@@ -188,10 +188,12 @@ class TrussTRTLLMBuildConfiguration(BaseModel):
         """performs embedding specfic optimizations (no kv-cache, high batch size)"""
         if self.base_model == TrussTRTLLMModel.ENCODER:
             # Encoder specific settings
-            logger.info(
-                f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
-                "automatically inferred from the model repo config.json -> `max_position_embeddings`"
-            )
+            if self.max_seq_len:
+                logger.info(
+                    f"Your setting of `build.max_seq_len={self.max_seq_len}` is not used and "
+                    "automatically inferred from the model repo config.json -> `max_position_embeddings`"
+                )
+            # delayed import, as it is not available in all environments [Briton]
             from truss.base.constants import BEI_REQUIRED_MAX_NUM_TOKENS
 
             if self.max_num_tokens < BEI_REQUIRED_MAX_NUM_TOKENS:
