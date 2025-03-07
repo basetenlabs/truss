@@ -17,26 +17,26 @@ import httpx
 import pydantic
 
 from truss.templates.shared import dynamic_config_resolver
-from truss_chains import definitions
+from truss_chains import private_types, public_types
 
 T = TypeVar("T")
 
 
 def populate_chainlet_service_predict_urls(
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-) -> Mapping[str, definitions.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
+) -> Mapping[str, public_types.DeployedServiceDescriptor]:
+    chainlet_to_deployed_service: Dict[str, public_types.DeployedServiceDescriptor] = {}
     # If there are no dependencies of this chainlet, no need to derive dynamic URLs
     if len(chainlet_to_service) == 0:
         return chainlet_to_deployed_service
 
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
     )
 
     if not dynamic_chainlet_config_str:
-        raise definitions.MissingDependencyError(
-            f"No '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}' "
+        raise public_types.MissingDependencyError(
+            f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
             "found. Cannot override Chainlet configs."
         )
 
@@ -51,14 +51,14 @@ def populate_chainlet_service_predict_urls(
         # Chainlet name, we have to look up config values by
         # using the `display_name` in the service descriptor.
         if display_name not in dynamic_chainlet_config:
-            raise definitions.MissingDependencyError(
+            raise public_types.MissingDependencyError(
                 f"Chainlet '{display_name}' not found in "
-                f"'{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. "
+                f"'{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}'. "
                 f"Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
         chainlet_to_deployed_service[chainlet_name] = (
-            definitions.DeployedServiceDescriptor(
+            public_types.DeployedServiceDescriptor(
                 display_name=display_name,
                 name=service_descriptor.name,
                 options=service_descriptor.options,
@@ -121,7 +121,7 @@ _trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
 @contextlib.contextmanager
 def _trace_parent(headers: Mapping[str, str]) -> Iterator[None]:
     token = _trace_parent_context.set(
-        headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
+        headers.get(private_types.OTEL_TRACE_PARENT_HEADER_KEY, "")
     )
     try:
         yield
@@ -186,8 +186,11 @@ def _handle_exception(exception: Exception) -> NoReturn:
             break
 
     final_tb = error_stack[model_predict_index:first_stub_index]
-    stack = [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
-    error = definitions.RemoteErrorDetail(
+    stack = [
+        public_types.RemoteErrorDetail.StackFrame.from_frame_summary(frame)
+        for frame in final_tb
+    ]
+    error = public_types.RemoteErrorDetail(
         exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
@@ -206,9 +209,9 @@ def _exception_to_http_error() -> Iterator[None]:
         _handle_exception(e)
 
 
-def _resolve_exception_class(error: definitions.RemoteErrorDetail) -> Type[Exception]:
+def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exception]:
     """Tries to find the exception class in builtins or imported libs,
-    falls back to `definitions.GenericRemoteError` if not found."""
+    falls back to `public_types.GenericRemoteError` if not found."""
     exception_cls = None
     if error.exception_module_name is None:
         exception_cls = getattr(builtins, error.exception_cls_name, None)
@@ -220,14 +223,14 @@ def _resolve_exception_class(error: definitions.RemoteErrorDetail) -> Type[Excep
         logging.warning(
             f"Could not resolve exception with name `{error.exception_cls_name}` "
             f"and module `{error.exception_module_name}` - fall back to "
-            f"`{definitions.GenericRemoteException.__name__}`."
+            f"`{public_types.GenericRemoteException.__name__}`."
         )
-        exception_cls = definitions.GenericRemoteException
+        exception_cls = public_types.GenericRemoteException
 
     if issubclass(exception_cls, pydantic.ValidationError):
         # Cannot re-raise naively.
         # https://github.com/pydantic/pydantic/issues/6734.
-        exception_cls = definitions.GenericRemoteException
+        exception_cls = public_types.GenericRemoteException
 
     return exception_cls
 
@@ -242,15 +245,15 @@ def _handle_response_error(response_json: dict, base_msg: str):
         ) from e
 
     try:
-        error = definitions.RemoteErrorDetail.model_validate(error_json)
+        error = public_types.RemoteErrorDetail.model_validate(error_json)
     except pydantic.ValidationError as e:
         if isinstance(error_json, str):
             msg = f"{base_msg}: '{error_json}'"
-            raise definitions.GenericRemoteException(msg) from None
+            raise public_types.GenericRemoteException(msg) from None
         raise ValueError(
             f"{base_msg}: Could not parse chainlet error. Error details are expected "
             "to be either a plain string (old truss models) or a serialized "
-            f"`{definitions.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
+            f"`{public_types.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
         ) from e
 
     exception_cls = _resolve_exception_class(error)
@@ -333,7 +336,7 @@ def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
 
 
 class WebsocketWrapperFastAPI:
-    """Implements `definitions.WebSocketProtocol` around fastAPI object."""
+    """Implements `private_types.WebSocketProtocol` around fastAPI object."""
 
     # TODO: consider if we want to wrap/translate exceptions thrown as well. Currently
     #  this is somewhat loopy, as `fastapi.WebSocketDisconnect` just passes through,

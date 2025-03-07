@@ -11,7 +11,15 @@ if pydantic_major_version < 2:
 del pydantic, pydantic_major_version
 
 
-from truss_chains.definitions import (
+from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
+from truss_chains.public_api import (
+    depends,
+    depends_context,
+    mark_entrypoint,
+    push,
+    run_local,
+)
+from truss_chains.public_types import (
     Assets,
     BasetenImage,
     ChainletOptions,
@@ -21,19 +29,12 @@ from truss_chains.definitions import (
     DeploymentContext,
     DockerImage,
     EngineBuilderLLMInput,
+    Environment,
     GenericRemoteException,
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
     WebSocketProtocol,
-)
-from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
-from truss_chains.public_api import (
-    depends,
-    depends_context,
-    mark_entrypoint,
-    push,
-    run_local,
 )
 
 # TODO: make this optional (remove aiohttp, httpx and starlette deps).
@@ -51,6 +52,7 @@ __all__ = [
     "DeployedServiceDescriptor",
     "DeploymentContext",
     "DockerImage",
+    "Environment",
     "GenericRemoteException",
     "ModelBase",
     "EngineBuilderLLMInput",

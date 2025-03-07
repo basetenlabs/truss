@@ -5,15 +5,14 @@ import logging
 import os
 import random
 import socket
-from typing import TYPE_CHECKING, Any, Iterable, Iterator, TypeVar, Union
+from typing import Any, Iterable, Iterator, TypeVar, Union
 
-if TYPE_CHECKING:
-    from truss_chains import definitions
+from truss_chains import public_types
 
 T = TypeVar("T")
 
 
-def make_abs_path_here(file_path: str) -> "definitions.AbsPath":
+def make_abs_path_here(file_path: str) -> "public_types.AbsPath":
     """Helper to specify file paths relative to the *immediately calling* module.
 
     E.g. in you have a project structure like this::
@@ -66,10 +65,7 @@ def make_abs_path_here(file_path: str) -> "definitions.AbsPath":
     else:
         abs_file_path = file_path
 
-    # TODO: remove this circular import, once `definitions` is split up.
-    from truss_chains import definitions
-
-    return definitions.AbsPath(abs_file_path, module_path, file_path)
+    return public_types.AbsPath(abs_file_path, module_path, file_path)
 
 
 def setup_dev_logging(level: Union[int, str] = logging.INFO) -> None:

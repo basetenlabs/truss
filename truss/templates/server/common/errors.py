@@ -11,6 +11,8 @@ import pydantic
 import starlette.responses
 from fastapi.responses import JSONResponse
 
+from truss_chains import public_types
+
 # See https://github.com/basetenlabs/baseten/blob/master/docs/Error-Propagation.md
 _TRUSS_SERVER_SERVICE_ID = 4
 _BASETEN_UNEXPECTED_ERROR = 500
@@ -170,9 +172,7 @@ def intercept_exceptions(
         #  we have to add a special-case here.
         if "user_stack_trace" in e.detail:
             try:
-                from truss_chains import definitions
-
-                chains_error = definitions.RemoteErrorDetail.model_validate(e.detail)
+                chains_error = public_types.RemoteErrorDetail.model_validate(e.detail)
                 # The formatted error contains a (potentially chained) stack trace
                 # with all framework code removed, see
                 # truss_chains/remote_chainlet/utils.py::response_raise_errors.

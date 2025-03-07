@@ -26,7 +26,7 @@ import pydantic
 import tenacity
 
 from truss.templates.shared import serialization
-from truss_chains import definitions
+from truss_chains import private_types, public_types
 from truss_chains.remote_chainlet import utils
 
 DEFAULT_MAX_CONNECTIONS = 1000
@@ -47,12 +47,12 @@ class BasetenSession:
         max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
     )
     _auth_header: Mapping[str, str]
-    _service_descriptor: definitions.DeployedServiceDescriptor
+    _service_descriptor: public_types.DeployedServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
-        self, service_descriptor: definitions.DeployedServiceDescriptor, api_key: str
+        self, service_descriptor: public_types.DeployedServiceDescriptor, api_key: str
     ) -> None:
         logging.info(
             f"Creating BasetenSession (HTTP) for `{service_descriptor.name}`.\n"
@@ -199,7 +199,7 @@ class StubBase(BasetenSession, abc.ABC):
 
     @final
     def __init__(
-        self, service_descriptor: definitions.DeployedServiceDescriptor, api_key: str
+        self, service_descriptor: public_types.DeployedServiceDescriptor, api_key: str
     ) -> None:
         """
         Args:
@@ -212,8 +212,8 @@ class StubBase(BasetenSession, abc.ABC):
     def from_url(
         cls,
         predict_url: str,
-        context: definitions.DeploymentContext,
-        options: Optional[definitions.RPCOptions] = None,
+        context: public_types.DeploymentContext,
+        options: Optional[public_types.RPCOptions] = None,
     ):
         """Factory method, convenient to be used in chainlet's ``__init__``-method.
 
@@ -222,9 +222,9 @@ class StubBase(BasetenSession, abc.ABC):
             context: Deployment context object, obtained in the chainlet's ``__init__``.
             options: RPC options, e.g. retries.
         """
-        options = options or definitions.RPCOptions()
+        options = options or public_types.RPCOptions()
         return cls(
-            service_descriptor=definitions.DeployedServiceDescriptor(
+            service_descriptor=public_types.DeployedServiceDescriptor(
                 name=cls.__name__,
                 display_name=cls.__name__,
                 predict_url=predict_url,
@@ -237,7 +237,7 @@ class StubBase(BasetenSession, abc.ABC):
         self, inputs: InputT, for_httpx: bool = False
     ) -> Mapping[str, Any]:
         kwargs: Dict[str, Any] = {}
-        headers = {definitions.OTEL_TRACE_PARENT_HEADER_KEY: utils.get_trace_parent()}
+        headers = {private_types.OTEL_TRACE_PARENT_HEADER_KEY: utils.get_trace_parent()}
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:
                 data_dict = inputs.model_dump(mode="python")
@@ -372,7 +372,7 @@ class StubBase(BasetenSession, abc.ABC):
 StubT = TypeVar("StubT", bound=StubBase)
 
 
-def factory(stub_cls: Type[StubT], context: definitions.DeploymentContext) -> StubT:
+def factory(stub_cls: Type[StubT], context: public_types.DeploymentContext) -> StubT:
     # Assumes the stub_cls-name and the name of the service in ``context` match.
     return stub_cls(
         service_descriptor=context.get_service_descriptor(stub_cls.__name__),

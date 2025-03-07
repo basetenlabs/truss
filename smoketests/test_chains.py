@@ -13,7 +13,7 @@ import pytest_check
 from truss.remote.baseten import core
 from truss.remote.baseten import remote as b10_remote
 from truss.remote.baseten.utils import status as status_utils
-from truss_chains import definitions
+from truss_chains import public_types
 from truss_chains.remote_chainlet import stub, utils
 
 backend_env_domain = "staging.baseten.co"
@@ -29,10 +29,10 @@ URL_RE = re.compile(
 DEPLOY_TIMEOUT_SEC = 500
 
 
-def make_stub(url: str, options: definitions.RPCOptions) -> stub.StubBase:
-    context = definitions.DeploymentContext(
+def make_stub(url: str, options: public_types.RPCOptions) -> stub.StubBase:
+    context = public_types.DeploymentContext(
         chainlet_to_service={},
-        secrets={definitions.BASETEN_API_SECRET_NAME: BASETEN_API_KEY},
+        secrets={public_types._BASETEN_API_SECRET_NAME: BASETEN_API_KEY},
     )
     return stub.StubBase.from_url(url, context, options)
 
@@ -151,7 +151,7 @@ def test_itest_chain_publish(prepare) -> None:
     pytest_check.less(wait_time_sec, 220, "Deployment took too long.")
 
     # Test regular (JSON) invocation.
-    chain_stub = make_stub(url, definitions.RPCOptions(timeout_sec=10))
+    chain_stub = make_stub(url, public_types.RPCOptions(timeout_sec=10))
     trace_parent = generate_traceparent()
     with utils.trace_parent_raw(trace_parent):
         result = chain_stub.predict_sync({"length": 30, "num_partitions": 3})
@@ -179,7 +179,7 @@ def test_itest_chain_publish(prepare) -> None:
 
     # Test binary invocation.
     chain_stub_binary = make_stub(
-        url, definitions.RPCOptions(timeout_sec=10, use_binary=True)
+        url, public_types.RPCOptions(timeout_sec=10, use_binary=True)
     )
     trace_parent = generate_traceparent()
     with utils.trace_parent_raw(trace_parent):

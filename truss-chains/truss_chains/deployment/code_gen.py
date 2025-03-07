@@ -36,13 +36,14 @@ import textwrap
 from typing import Any, Iterable, Mapping, Optional, cast, get_args, get_origin
 
 import libcst
+import pydantic
 
 import truss
 from truss.base import truss_config
 from truss.contexts.image_builder import serving_image_builder
 from truss.shared import types
 from truss.util import path as truss_path
-from truss_chains import definitions, framework, utils
+from truss_chains import framework, private_types, public_types, utils
 
 _INDENT = " " * 4
 _REQUIREMENTS_FILENAME = "pip_requirements.txt"
@@ -93,7 +94,7 @@ def _format_python_file(file_path: pathlib.Path) -> None:
 
 class _Source(types.SafeModelNonSerializable):
     src: str
-    imports: set[str] = set()
+    imports: set[str] = pydantic.Field(default_factory=set)
 
 
 def _update_src(new_source: _Source, src_parts: list[str], imports: set[str]) -> None:
@@ -107,7 +108,7 @@ def _gen_pydantic_import_and_ref(raw_type: Any) -> _Source:
         # Assuming that main is copied into package dir and can be imported.
         module_obj = sys.modules[raw_type.__module__]
         if not module_obj.__file__:
-            raise definitions.ChainsUsageError(
+            raise public_types.ChainsUsageError(
                 f"File-based python code required. `{raw_type}` does not have a file."
             )
 
@@ -132,11 +133,11 @@ def _gen_nested_pydantic(raw_type: Any) -> _Source:
     of model args that might be defined in other files."""
     origin = get_origin(raw_type)
     assert origin in framework._SIMPLE_CONTAINERS
-    container = _gen_type_import_and_ref(definitions.TypeDescriptor(raw=origin))
+    container = _gen_type_import_and_ref(private_types.TypeDescriptor(raw=origin))
     args = get_args(raw_type)
     arg_parts = []
     for arg in args:
-        arg_src = _gen_type_import_and_ref(definitions.TypeDescriptor(raw=arg))
+        arg_src = _gen_type_import_and_ref(private_types.TypeDescriptor(raw=arg))
         arg_parts.append(arg_src.src)
         container.imports.update(arg_src.imports)
 
@@ -144,7 +145,7 @@ def _gen_nested_pydantic(raw_type: Any) -> _Source:
     return container
 
 
-def _gen_type_import_and_ref(type_descr: definitions.TypeDescriptor) -> _Source:
+def _gen_type_import_and_ref(type_descr: private_types.TypeDescriptor) -> _Source:
     """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     if type_descr.is_pydantic:
         return _gen_pydantic_import_and_ref(type_descr.raw)
@@ -161,7 +162,7 @@ def _gen_type_import_and_ref(type_descr: definitions.TypeDescriptor) -> _Source:
 
 
 def _gen_streaming_type_import_and_ref(
-    stream_type: definitions.StreamingTypeDescriptor,
+    stream_type: private_types.StreamingTypeDescriptor,
 ) -> _Source:
     """Unlike other `_gen`-helpers, this does not define a type, it creates a symbol."""
     mod = stream_type.origin_type.__module__
@@ -171,7 +172,7 @@ def _gen_streaming_type_import_and_ref(
 
 
 def _gen_chainlet_import_and_ref(
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
 ) -> _Source:
     """Returns e.g. ("from sub_package import module", "module.OutputType")."""
     return _gen_pydantic_import_and_ref(chainlet_descriptor.chainlet_cls)
@@ -189,7 +190,7 @@ def _get_output_model_name(chainlet_name: str) -> str:
 
 
 def _gen_truss_input_pydantic(
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
 ) -> _Source:
     imports = {"import pydantic", "from typing import Optional"}
     fields = []
@@ -212,7 +213,7 @@ def _gen_truss_input_pydantic(
 
 
 def _gen_truss_output_pydantic(
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
 ) -> _Source:
     imports = {"import pydantic"}
     fields: list[str] = []
@@ -232,7 +233,7 @@ def _gen_truss_output_pydantic(
 
 
 def _stub_endpoint_signature_src(
-    endpoint: definitions.EndpointAPIDescriptor,
+    endpoint: private_types.EndpointAPIDescriptor,
 ) -> _Source:
     """
     E.g.:
@@ -270,7 +271,7 @@ def _stub_endpoint_signature_src(
 
 
 def _stub_endpoint_body_src(
-    endpoint: definitions.EndpointAPIDescriptor, chainlet_name: str
+    endpoint: private_types.EndpointAPIDescriptor, chainlet_name: str
 ) -> _Source:
     """Generates source code for calling the stub and wrapping the I/O types.
 
@@ -324,7 +325,7 @@ def _stub_endpoint_body_src(
     return _Source(src="\n".join(parts), imports=imports)
 
 
-def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
+def _gen_stub_src(chainlet: private_types.ChainletAPIDescriptor) -> _Source:
     """Generates stub class source, e.g:
 
     ```
@@ -372,7 +373,7 @@ def _gen_stub_src(chainlet: definitions.ChainletAPIDescriptor) -> _Source:
 
 
 def _gen_stub_src_for_deps(
-    dependencies: Iterable[definitions.ChainletAPIDescriptor],
+    dependencies: Iterable[private_types.ChainletAPIDescriptor],
 ) -> Optional[_Source]:
     """Generates a source code and imports for stub classes."""
     imports: set[str] = set()
@@ -400,12 +401,15 @@ def _name_to_dirname(name: str) -> str:
 
 def _make_chainlet_dir(
     chain_name: str,
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
     root: pathlib.Path,
 ) -> pathlib.Path:
     dir_name = f"chainlet_{chainlet_descriptor.name}"
     chainlet_dir = (
-        root / definitions.GENERATED_CODE_DIR / _name_to_dirname(chain_name) / dir_name
+        root
+        / private_types.GENERATED_CODE_DIR
+        / _name_to_dirname(chain_name)
+        / dir_name
     )
     if chainlet_dir.exists():
         shutil.rmtree(chainlet_dir)
@@ -414,7 +418,7 @@ def _make_chainlet_dir(
 
 
 class _SpecifyChainletTypeAnnotation(libcst.CSTTransformer):
-    """Inserts the concrete chainlet class into `_chainlet: definitions.ABCChainlet`."""
+    """Inserts the concrete chainlet class into `_chainlet: private_types.ABCChainlet`."""
 
     def __init__(self, new_annotation: str) -> None:
         super().__init__()
@@ -441,7 +445,7 @@ class _SpecifyChainletTypeAnnotation(libcst.CSTTransformer):
         return updated_node.with_changes(body=tuple(new_body))
 
 
-def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
+def _gen_load_src(chainlet_descriptor: private_types.ChainletAPIDescriptor) -> _Source:
     imports = {"from truss_chains.remote_chainlet import stub", "import logging"}
     stub_args = []
     for name, dep in chainlet_descriptor.dependencies.items():
@@ -469,7 +473,7 @@ def _gen_load_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _So
 
 
 def _gen_health_check_src(
-    health_check: definitions.HealthCheckAPIDescriptor,
+    health_check: private_types.HealthCheckAPIDescriptor,
 ) -> _Source:
     def_str = "async def" if health_check.is_async else "def"
     maybe_await = "await " if health_check.is_async else ""
@@ -481,7 +485,9 @@ def _gen_health_check_src(
     return _Source(src=src)
 
 
-def _gen_predict_src(chainlet_descriptor: definitions.ChainletAPIDescriptor) -> _Source:
+def _gen_predict_src(
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
+) -> _Source:
     imports: set[str] = {
         "from truss_chains.remote_chainlet import stub",
         "from truss_chains.remote_chainlet import utils",
@@ -544,7 +550,7 @@ async def websocket(self, websocket: fastapi.WebSocket) -> None:
 
 
 def _gen_truss_chainlet_model(
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
 ) -> _Source:
     skeleton_tree = libcst.parse_module(_MODEL_SKELETON_FILE.read_text())
     imports: set[str] = set(
@@ -593,8 +599,8 @@ def _gen_truss_chainlet_model(
 
 def _gen_truss_chainlet_file(
     chainlet_dir: pathlib.Path,
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    dependencies: Iterable[definitions.ChainletAPIDescriptor],
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
+    dependencies: Iterable[private_types.ChainletAPIDescriptor],
 ) -> pathlib.Path:
     """Generates code that wraps a Chainlet as a truss-compatible model."""
     file_path = chainlet_dir / truss_config.DEFAULT_MODEL_MODULE_DIR / _MODEL_FILENAME
@@ -627,7 +633,7 @@ def _gen_truss_chainlet_file(
 # Truss Gen ############################################################################
 
 
-def _make_requirements(image: definitions.DockerImage) -> list[str]:
+def _make_requirements(image: public_types.DockerImage) -> list[str]:
     """Merges file- and list-based requirements and adds truss git if not present."""
     pip_requirements: set[str] = set()
     if image.pip_requirements_file:
@@ -674,11 +680,11 @@ def _make_requirements(image: definitions.DockerImage) -> list[str]:
 
 
 def _inplace_fill_base_image(
-    image: definitions.DockerImage, mutable_truss_config: truss_config.TrussConfig
+    image: public_types.DockerImage, mutable_truss_config: truss_config.TrussConfig
 ) -> None:
-    if isinstance(image.base_image, definitions.BasetenImage):
+    if isinstance(image.base_image, public_types.BasetenImage):
         mutable_truss_config.python_version = image.base_image.value
-    elif isinstance(image.base_image, definitions.CustomImage):
+    elif isinstance(image.base_image, public_types.CustomImage):
         mutable_truss_config.base_image = truss_config.BaseImage(
             image=image.base_image.image, docker_auth=image.base_image.docker_auth
         )
@@ -694,8 +700,8 @@ def _inplace_fill_base_image(
 
 def _gen_truss_config(
     chainlet_dir: pathlib.Path,
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
+    chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
     model_name: str,
     use_local_src: bool,
 ) -> truss_config.TrussConfig:
@@ -743,17 +749,21 @@ def _gen_truss_config(
             config.external_package_dirs.append(ext_dir.abs_path)
     config.use_local_src = use_local_src
 
-    if definitions.BASETEN_API_SECRET_NAME not in config.secrets:
-        config.secrets[definitions.BASETEN_API_SECRET_NAME] = definitions.SECRET_DUMMY
+    if public_types._BASETEN_API_SECRET_NAME not in config.secrets:
+        config.secrets[public_types._BASETEN_API_SECRET_NAME] = (
+            public_types.SECRET_DUMMY
+        )
     else:
         logging.info(
-            f"Chains automatically add {definitions.BASETEN_API_SECRET_NAME} "
+            f"Chains automatically add {public_types._BASETEN_API_SECRET_NAME} "
             "to secrets - no need to manually add it."
         )
     config.model_cache.models = assets.cached
     config.external_data = truss_config.ExternalData(items=assets.external_data)
-    config.model_metadata[definitions.TRUSS_CONFIG_CHAINS_KEY] = (
-        definitions.TrussMetadata(chainlet_to_service=chainlet_to_service).model_dump()
+    config.model_metadata[private_types.TRUSS_CONFIG_CHAINS_KEY] = (
+        private_types.TrussMetadata(
+            chainlet_to_service=chainlet_to_service
+        ).model_dump()
     )
     return config
 
@@ -777,7 +787,7 @@ def gen_truss_model_from_source(
 def gen_truss_model(
     model_root: pathlib.Path,
     model_name: str,
-    model_descriptor: definitions.ChainletAPIDescriptor,
+    model_descriptor: private_types.ChainletAPIDescriptor,
     use_local_src: bool = False,
 ) -> pathlib.Path:
     return gen_truss_chainlet(
@@ -791,14 +801,14 @@ def gen_truss_model(
 def gen_truss_chainlet(
     chain_root: pathlib.Path,
     chain_name: str,
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
     model_name: Optional[str] = None,
     use_local_src: bool = False,
 ) -> pathlib.Path:
     # Filter needed services and customize options.
     dep_services = {}
     for dep in chainlet_descriptor.dependencies.values():
-        dep_services[dep.name] = definitions.ServiceDescriptor(
+        dep_services[dep.name] = private_types.ServiceDescriptor(
             name=dep.name, display_name=dep.display_name, options=dep.options
         )
     gen_root = pathlib.Path(tempfile.gettempdir())
@@ -833,11 +843,11 @@ def gen_truss_chainlet(
     )
     for file in chain_root.glob("*.py"):
         if "-" in file.name:
-            raise definitions.ChainsUsageError(
+            raise public_types.ChainsUsageError(
                 f"Python file `{file}` contains `-`, use `_` instead."
             )
         if file.name == _MODEL_FILENAME:
-            raise definitions.ChainsUsageError(
+            raise public_types.ChainsUsageError(
                 f"Python file name `{_MODEL_FILENAME}` is reserved and cannot be used."
             )
     chainlet_file = _gen_truss_chainlet_file(
