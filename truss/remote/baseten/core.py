@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import pathlib
 import textwrap
 from typing import IO, TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
@@ -15,7 +16,6 @@ from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.error import ApiError
 from truss.remote.baseten.utils.tar import create_tar_with_progress_bar
 from truss.remote.baseten.utils.transfer import multipart_upload_boto3
-from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import load_trussignore_patterns_from_truss_dir
 
 logger = logging.getLogger(__name__)
@@ -273,27 +273,25 @@ def get_prod_version_from_versions(versions: List[dict]) -> Optional[dict]:
     return None
 
 
-def archive_truss(
-    truss_handle: TrussHandle, progress_bar: Optional[Type["progress.Progress"]]
+def archive_dir(
+    dir: pathlib.Path, progress_bar: Optional[Type["progress.Progress"]] = None
 ) -> IO:
     """Archive a TrussHandle into a tar file.
 
     Returns:
         A file-like object containing the tar file
     """
-    truss_dir = truss_handle._truss_dir
-
     # check for a truss_ignore file and read the ignore patterns if it exists
-    ignore_patterns = load_trussignore_patterns_from_truss_dir(truss_dir)
+    ignore_patterns = load_trussignore_patterns_from_truss_dir(dir)
 
     try:
         temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, progress_bar=progress_bar
+            dir, ignore_patterns, progress_bar=progress_bar
         )
     except PermissionError:
         # workaround for Windows bug with Tempfile that causes PermissionErrors
         temp_file = create_tar_with_progress_bar(
-            truss_dir, ignore_patterns, delete=False, progress_bar=progress_bar
+            dir, ignore_patterns, delete=False, progress_bar=progress_bar
         )
     temp_file.file.seek(0)
     return temp_file

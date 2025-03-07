@@ -872,7 +872,7 @@ def train():
 @error_handling
 def push_training_job(config: Path, remote: Optional[str]):
     """Run a training job"""
-    from truss_train import loader
+    from truss_train import deployment, loader
 
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
@@ -885,8 +885,11 @@ def push_training_job(config: Path, remote: Optional[str]):
             training_project=training_project
         )
 
+        prepared_job = deployment.prepare_push(
+            remote_provider.api, config, training_project.job
+        )
         remote_provider.api.create_training_job(
-            project_id=training_resp["id"], job=training_project.job
+            project_id=training_resp["id"], job=prepared_job
         )
 
 

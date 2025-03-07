@@ -67,3 +67,8 @@ class TrussUserEnv(pydantic.BaseModel):
             pydantic_version=pydantic.version.version_short(),
             mypy_version=mypy_version,
         )
+
+
+class BlobType(Enum):
+    MODEL = "model"
+    TRAIN = "train"
