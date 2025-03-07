@@ -786,6 +786,14 @@ class TrussConfig:
 
             current_tags = self.model_metadata.get("tags", [])
             if (
+                OPENAI_COMPATIBLE_TAG in current_tags
+                and OPENAI_NON_COMPATIBLE_TAG in current_tags
+            ):
+                raise ValueError(
+                    f"TRT-LLM models should have either model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
+                    f"Your current tags are {current_tags}."
+                )
+            if (
                 self.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
                 and not current_tags
                 or not any(
