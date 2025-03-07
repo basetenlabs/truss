@@ -576,8 +576,13 @@ def test_from_yaml_invalid_requirements_configuration():
         (TrussTRTLLMQuantizationType.FP8, Accelerator.H100, does_not_raise()),
         (TrussTRTLLMQuantizationType.FP8_KV, Accelerator.H100_40GB, does_not_raise()),
         (
-            TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8,
-            Accelerator.A100,
+            TrussTRTLLMQuantizationType.NO_QUANT,
+            Accelerator.T4,
+            pytest.raises(ValueError),
+        ),
+        (
+            TrussTRTLLMQuantizationType.NO_QUANT,
+            Accelerator.V100,
             pytest.raises(ValueError),
         ),
         (TrussTRTLLMQuantizationType.FP8, Accelerator.A100, pytest.raises(ValueError)),
