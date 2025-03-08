@@ -765,6 +765,7 @@ def _gen_truss_config(
             chainlet_to_service=chainlet_to_service
         ).model_dump()
     )
+    truss_config.TrussConfig.validate(config)
     return config
 
 
