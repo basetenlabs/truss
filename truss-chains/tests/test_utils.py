@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from truss_chains import definitions
+from truss_chains import private_types, public_types
 from truss_chains.remote_chainlet.utils import populate_chainlet_service_predict_urls
 
 DYNAMIC_CHAINLET_CONFIG_VALUE = {
@@ -22,14 +22,14 @@ def dynamic_config_mount_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_dir):
-    with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
+    with (tmp_path / private_types.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
         f.write(json.dumps(DYNAMIC_CHAINLET_CONFIG_VALUE))
 
     chainlet_to_service = {
-        "HelloWorld": definitions.ServiceDescriptor(
+        "HelloWorld": private_types.ServiceDescriptor(
             name="HelloWorld",
             display_name="Hello World!",
-            options=definitions.RPCOptions(),
+            options=public_types.RPCOptions(),
         )
     }
     new_chainlet_to_service = populate_chainlet_service_predict_urls(
@@ -46,16 +46,16 @@ def test_populate_chainlet_service_predict_urls(tmp_path, dynamic_config_mount_d
 def test_no_populate_chainlet_service_predict_urls(
     config, tmp_path, dynamic_config_mount_dir
 ):
-    with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
+    with (tmp_path / private_types.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
         f.write(json.dumps(config))
 
     chainlet_to_service = {
-        "RandInt": definitions.ServiceDescriptor(
-            name="RandInt", display_name="RandInt", options=definitions.RPCOptions()
+        "RandInt": private_types.ServiceDescriptor(
+            name="RandInt", display_name="RandInt", options=public_types.RPCOptions()
         )
     }
 
     with pytest.raises(
-        definitions.MissingDependencyError, match="Chainlet 'RandInt' not found"
+        public_types.MissingDependencyError, match="Chainlet 'RandInt' not found"
     ):
         populate_chainlet_service_predict_urls(chainlet_to_service)

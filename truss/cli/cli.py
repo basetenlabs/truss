@@ -617,8 +617,8 @@ def push_chain(
     if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import definitions as chains_def
     from truss_chains import framework
+    from truss_chains import private_types as chains_def
     from truss_chains.deployment import deployment_client
 
     if experimental_watch_chainlet_names:

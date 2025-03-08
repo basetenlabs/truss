@@ -10,14 +10,14 @@ from typing import (
     overload,
 )
 
-from truss_chains import definitions, framework
+from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import deployment_client
 
 if TYPE_CHECKING:
     from rich import progress
 
 
-def depends_context() -> definitions.DeploymentContext:
+def depends_context() -> public_types.DeploymentContext:
     """Sets a "symbolic marker" for injecting a context object at runtime.
 
     Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
@@ -45,7 +45,7 @@ def depends_context() -> definitions.DeploymentContext:
 def depends(
     chainlet_cls: Type[framework.ChainletT],
     retries: int = 1,
-    timeout_sec: float = definitions.DEFAULT_TIMEOUT_SEC,
+    timeout_sec: float = public_types._DEFAULT_TIMEOUT_SEC,
     use_binary: bool = False,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
@@ -80,7 +80,7 @@ def depends(
         A "symbolic marker" to be used as a default argument in a chainlet's
         initializer.
     """
-    options = definitions.RPCOptions(
+    options = public_types.RPCOptions(
         retries=retries, timeout_sec=timeout_sec, use_binary=use_binary
     )
     # The type error is silenced to because chains framework will at runtime inject
@@ -133,7 +133,7 @@ def mark_entrypoint(
 
 
 def push(
-    entrypoint: Type[definitions.ABCChainlet],
+    entrypoint: Type[framework.ChainletT],
     chain_name: str,
     publish: bool = True,
     promote: bool = True,
@@ -164,7 +164,7 @@ def push(
         A chain service handle to the deployed chain.
 
     """
-    options = definitions.PushOptionsBaseten.create(
+    options = private_types.PushOptionsBaseten.create(
         chain_name=chain_name,
         publish=publish,
         promote=promote,
@@ -183,7 +183,7 @@ def run_local(
     secrets: Optional[Mapping[str, str]] = None,
     data_dir: Optional[Union[pathlib.Path, str]] = None,
     chainlet_to_service: Optional[
-        Mapping[str, definitions.DeployedServiceDescriptor]
+        Mapping[str, public_types.DeployedServiceDescriptor]
     ] = None,
 ) -> ContextManager[None]:
     """Context manager local debug execution of a chain.

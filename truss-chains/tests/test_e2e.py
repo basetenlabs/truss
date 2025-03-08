@@ -12,7 +12,7 @@ from truss.tests.test_testing_utilities_for_other_tests import (
     get_container_logs_from_prefix,
 )
 from truss.truss_handle.build import load
-from truss_chains import definitions, framework, public_api, utils
+from truss_chains import framework, public_api, public_types, utils
 from truss_chains.deployment import deployment_client
 from truss_chains.deployment.code_gen import gen_truss_model_from_source
 
@@ -33,10 +33,9 @@ def test_chain():
         with framework.ChainletImporter.import_target(
             chain_root, "ItestChain"
         ) as entrypoint:
-            options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test", use_local_src=True
+            service = deployment_client.push_debug_docker(
+                entrypoint, "integration-test"
             )
-            service = deployment_client.push(entrypoint, options)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
         time.sleep(1.0)  # Wait for models to be ready.
@@ -86,7 +85,7 @@ def test_chain():
         print(response)
         assert response.status_code == 500
 
-        error = definitions.RemoteErrorDetail.model_validate(response.json()["error"])
+        error = public_types.RemoteErrorDetail.model_validate(response.json()["error"])
         error_str = error.format()
         print(error_str)
 
@@ -142,7 +141,7 @@ async def test_chain_local():
             assert result_dict == expected
 
         with pytest.raises(
-            definitions.ChainsRuntimeError,
+            public_types.ChainsRuntimeError,
             match="Chainlets cannot be naively instantiated",
         ):
             await entrypoint().run_remote(length=20, num_partitions=5)
@@ -156,13 +155,8 @@ def test_streaming_chain():
         with framework.ChainletImporter.import_target(
             chain_root, "Consumer"
         ) as entrypoint:
-            service = deployment_client.push(
-                entrypoint,
-                options=definitions.PushOptionsLocalDocker(
-                    chain_name="integration-test-stream",
-                    only_generate_trusses=False,
-                    use_local_src=True,
-                ),
+            service = deployment_client.push_debug_docker(
+                entrypoint, "integration-test-stream"
             )
             assert service is not None
 
@@ -214,13 +208,8 @@ def test_numpy_chain(mode):
     with ensure_kill_all():
         chain_root = TEST_ROOT / "numpy_and_binary" / "chain.py"
         with framework.ChainletImporter.import_target(chain_root, target) as entrypoint:
-            service = deployment_client.push(
-                entrypoint,
-                options=definitions.PushOptionsLocalDocker(
-                    chain_name=f"integration-test-numpy-{mode}",
-                    only_generate_trusses=False,
-                    use_local_src=True,
-                ),
+            service = deployment_client.push_debug_docker(
+                entrypoint, f"integration-test-numpy-{mode}"
             )
             assert service is not None
             response = service.run_remote({})
@@ -236,10 +225,9 @@ async def test_timeout():
         with framework.ChainletImporter.import_target(
             chain_root, "TimeoutChain"
         ) as entrypoint:
-            options = definitions.PushOptionsLocalDocker(
-                chain_name="integration-test", use_local_src=True
+            service = deployment_client.push_debug_docker(
+                entrypoint, "integration-test"
             )
-            service = deployment_client.push(entrypoint, options)
 
         url = service.run_remote_url.replace("host.docker.internal", "localhost")
         time.sleep(1.0)  # Wait for models to be ready.
@@ -249,7 +237,7 @@ async def test_timeout():
         # print(response.content)
 
         assert response.status_code == 500
-        error = definitions.RemoteErrorDetail.model_validate(response.json()["error"])
+        error = public_types.RemoteErrorDetail.model_validate(response.json()["error"])
         error_str = error.format()
         error_regex = r"""
 Chainlet-Traceback \(most recent call last\):
@@ -262,7 +250,7 @@ TimeoutError: Timeout calling remote Chainlet `Dependency` \(0.5 seconds limit\)
         # Sync:
         sync_response = requests.post(url, json={"use_sync": True})
         assert sync_response.status_code == 500
-        sync_error = definitions.RemoteErrorDetail.model_validate(
+        sync_error = public_types.RemoteErrorDetail.model_validate(
             sync_response.json()["error"]
         )
         sync_error_str = sync_error.format()
@@ -305,13 +293,8 @@ def test_custom_health_checks_chain():
         with framework.ChainletImporter.import_target(
             chain_root, "CustomHealthChecks"
         ) as entrypoint:
-            service = deployment_client.push(
-                entrypoint,
-                options=definitions.PushOptionsLocalDocker(
-                    chain_name="integration-test-custom-health-checks",
-                    only_generate_trusses=False,
-                    use_local_src=True,
-                ),
+            service = deployment_client.push_debug_docker(
+                entrypoint, "integration-test-custom-health-checks"
             )
 
             assert service is not None
@@ -342,14 +325,7 @@ async def test_websocket_chain(anyio_backend):
         chain_name = "websocket_chain"
         chain_root = TEST_ROOT / chain_name / f"{chain_name}.py"
         with framework.ChainletImporter.import_target(chain_root) as entrypoint:
-            service = deployment_client.push(
-                entrypoint,
-                options=definitions.PushOptionsLocalDocker(
-                    chain_name=chain_name,
-                    only_generate_trusses=False,
-                    use_local_src=True,
-                ),
-            )
+            service = deployment_client.push_debug_docker(entrypoint, chain_name)
             # Get something like `ws://localhost:38605/v1/websocket`.
             url = service.run_remote_url.replace("http", "ws").replace(
                 "v1/models/model:predict", "v1/websocket"

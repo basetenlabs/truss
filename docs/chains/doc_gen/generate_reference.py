@@ -27,12 +27,7 @@ Welcome to Truss Chains's documentation!
 
 
 BUILDER = "mdx_adapter"  # "html"
-NON_PUBLIC_SYMBOLS = [
-    # "truss_chains.definitions.AssetSpec",
-    # "truss_chains.definitions.ComputeSpec",
-    "truss_chains.deployment.deployment_client.ChainService",
-    "truss_chains.definitions.Environment",
-]
+NON_PUBLIC_SYMBOLS = ["truss_chains.deployment.deployment_client.ChainService"]
 
 
 SECTION_CHAINLET = (
@@ -40,10 +35,12 @@ SECTION_CHAINLET = (
     "APIs for creating user-defined Chainlets.",
     [
         "truss_chains.ChainletBase",
+        "truss_chains.ModelBase",
+        "truss_chains.EngineBuilderLLMChainlet",
         "truss_chains.depends",
         "truss_chains.depends_context",
         "truss_chains.DeploymentContext",
-        "truss_chains.definitions.Environment",
+        "truss_chains.Environment",
         "truss_chains.ChainletOptions",
         "truss_chains.RPCOptions",
         "truss_chains.mark_entrypoint",
@@ -75,9 +72,11 @@ SECTION_UTILITIES = (
         "truss_chains.DeployedServiceDescriptor",
         "truss_chains.StubBase",
         "truss_chains.RemoteErrorDetail",
-        # "truss_chains.ChainsRuntimeError",
+        "truss_chains.GenericRemoteException",
     ],
 )
+
+UNDOCUMENTED = ["truss_chains.WebSocketProtocol", "truss_chains.EngineBuilderLLMInput"]
 
 SECTIONS = [SECTION_CHAINLET, SECTION_CONFIG, SECTION_UTILITIES]
 
@@ -112,6 +111,9 @@ def _make_rst_structure(chains):
             kind = exported_symbols.pop(symbol)
             rst_parts.append(f".. {kind}:: {symbol}")
             rst_parts.append("\n")
+
+    for undoc in UNDOCUMENTED:
+        exported_symbols.pop(undoc)
 
     if exported_symbols:
         raise ValueError(
