@@ -48,12 +48,11 @@ def has_no_tags_trt_llm_builder(tr: TrussHandle) -> str:
             # spec-dec has no classic backend. OpenAI-mode is forced, regardless of tags.
             if OPENAI_NON_COMPATIBLE_TAG in current_tags:
                 raise ValueError(
-                    f"TRT-LLM models with speculator require the model_metadata/tags section to have ['{OPENAI_COMPATIBLE_TAG}'] tag. "
-                    f"Your current tags are {current_tags}."
+                    f"TRT-LLM models with speculator does not support {OPENAI_NON_COMPATIBLE_TAG} tag. "
                 )
             elif OPENAI_COMPATIBLE_TAG not in current_tags:
-                message = f"""TRT-LLM models with speculator should have model_metadata/tags section with ['openai-compatible'] tag.
-    Adding:
+                message = f"""TRT-LLM models with speculator require a model_metadata/tags section with ['openai-compatible'] tag.
+    Adding the following to your config.yaml file:
     ```yaml
     model_metadata:
     tags:
@@ -63,6 +62,7 @@ def has_no_tags_trt_llm_builder(tr: TrussHandle) -> str:
                 tr.spec.config.model_metadata["tags"] = [
                     OPENAI_COMPATIBLE_TAG
                 ] + tr.spec.config.model_metadata.get("tags", [])
+                tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
                 return message
         elif (
             tr.spec.config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
