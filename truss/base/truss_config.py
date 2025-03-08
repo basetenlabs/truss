@@ -8,17 +8,12 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
-from truss.base.constants import (
-    HTTP_PUBLIC_BLOB_BACKEND,
-    OPENAI_COMPATIBLE_TAG,
-    OPENAI_NON_COMPATIBLE_TAG,
-)
+from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
     TRTLLMConfiguration,
     TrussTRTLLMBuildConfiguration,
-    TrussTRTLLMModel,
     TrussTRTLLMQuantizationType,
 )
 from truss.base.validation import (
@@ -783,40 +778,6 @@ class TrussConfig:
                 raise ValueError(
                     "Tensor parallelism and GPU count must be the same for TRT-LLM"
                 )
-
-            current_tags = self.model_metadata.get("tags", [])
-            if (
-                OPENAI_COMPATIBLE_TAG in current_tags
-                and OPENAI_NON_COMPATIBLE_TAG in current_tags
-            ):
-                raise ValueError(
-                    f"TRT-LLM models should have either model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
-                    f"Your current tags are {current_tags}."
-                )
-            if (
-                self.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
-                and not current_tags
-                or not any(
-                    tag in current_tags
-                    for tag in (OPENAI_COMPATIBLE_TAG, OPENAI_NON_COMPATIBLE_TAG)
-                )
-            ):
-                # inserting new tag server-side (Briton) and client side on truss push
-                # transitioning in three phases:
-                # 1. set OPENAI_NON_COMPATIBLE_TAG as default
-                # 2. set OPENAI_COMPATIBLE_TAG as default (June 2025)
-                # 3. keep the tag as is (July 2025)
-                logger.error(
-                    f"TRT-LLM models should have the model_metadata['tags'] = ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
-                    f"Your current tags are {current_tags}.\n"
-                    "As you have not set any tags, we are assuming that the model is not OpenAI compatible. "
-                    f"As temporary measure, we are injecting the tags=['{OPENAI_NON_COMPATIBLE_TAG}'] "
-                    f"We strongly recommend migrating to model_metadata['tags']=['{OPENAI_COMPATIBLE_TAG}'] for openai compatibility."
-                    "Changing this tag will change the return format / API spec."
-                )
-                self.model_metadata["tags"] = [
-                    OPENAI_NON_COMPATIBLE_TAG
-                ] + self.model_metadata.get("tags", [])
 
     def validate(self):
         if self.python_version not in VALID_PYTHON_VERSIONS:
