@@ -46,6 +46,7 @@ from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.trt_llm.config_checks import (
+    has_no_tags_trt_llm_builder,
     is_missing_secrets_for_trt_llm_builder,
     memory_updated_for_trt_llm_builder,
     uses_trt_llm_builder,
@@ -1221,6 +1222,7 @@ def push(
             live_reload_disabled_text = "Development mode is currently not supported for trusses using TRT-LLM build flow, push as a published model using --publish"
             console.print(live_reload_disabled_text, style="red")
             sys.exit(1)
+
         if is_missing_secrets_for_trt_llm_builder(tr):
             missing_token_text = (
                 "`hf_access_token` must be provided in secrets to build a gated model. "
@@ -1232,6 +1234,9 @@ def push(
             console.print(
                 f"Automatically increasing memory for trt-llm builder to {TRTLLM_MIN_MEMORY_REQUEST_GI}Gi."
             )
+        message_oai = has_no_tags_trt_llm_builder(tr)
+        if message_oai:
+            console.print(message_oai, style="yellow")
         for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
             if (
                 trt_llm_build_config.quantization_type
