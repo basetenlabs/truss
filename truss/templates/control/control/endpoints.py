@@ -1,16 +1,26 @@
 import asyncio
-from typing import Any, Dict
+import logging
+from typing import Any, Callable, Dict
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
-from httpx import URL, ConnectError, RemoteProtocolError
+from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
 from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
+from wsproto.events import BytesMessage, TextMessage
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
+BASE_RETRY_EXCEPTIONS = (
+    retry_if_exception_type(httpx.ConnectError)
+    | retry_if_exception_type(httpx.RemoteProtocolError)
+    | retry_if_exception_type(httpx.ReadError)
+    | retry_if_exception_type(httpx.ReadTimeout)
+    | retry_if_exception_type(httpx.ConnectTimeout)
+    | retry_if_exception_type(ModelNotReady)
+)
 
 control_app = APIRouter()
 
@@ -27,7 +37,7 @@ async def proxy(request: Request):
     client: httpx.AsyncClient = request.app.state.proxy_client
 
     path = _reroute_if_health_check(request.url.path)
-    url = URL(path=path, query=request.url.query.encode("utf-8"))
+    url = httpx.URL(path=path, query=request.url.query.encode("utf-8"))
 
     # 2 min connect timeouts, no timeout for requests.
     # We don't want requests to fail due to timeout on the proxy
@@ -47,19 +57,7 @@ async def proxy(request: Request):
     )
 
     # Wait a bit for inference server to start
-    for attempt in Retrying(
-        retry=(
-            retry_if_exception_type(ConnectError)
-            | retry_if_exception_type(ModelNotReady)
-            | retry_if_exception_type(RemoteProtocolError)
-            | retry_if_exception_type(httpx.ReadError)
-            | retry_if_exception_type(httpx.ReadTimeout)
-            | retry_if_exception_type(httpx.ConnectTimeout)
-        ),
-        stop=_custom_stop_strategy,
-        wait=wait_fixed(1),
-        reraise=False,
-    ):
+    for attempt in inference_retries():
         with attempt:
             try:
                 if inference_server_process_controller.is_inference_server_intentionally_stopped():
@@ -68,7 +66,7 @@ async def proxy(request: Request):
 
                 if await _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
-            except (RemoteProtocolError, ConnectError) as exp:
+            except (httpx.RemoteProtocolError, httpx.ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
                 # process is running then we continue waiting for it to start (by retrying),
@@ -94,6 +92,59 @@ async def proxy(request: Request):
     return response
 
 
+def inference_retries(
+    retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
+):
+    for attempt in Retrying(
+        retry=retry_condition,
+        stop=_custom_stop_strategy,
+        wait=wait_fixed(1),
+        reraise=False,
+    ):
+        yield attempt
+
+
+async def _safe_close_ws(ws: WebSocket, logger: logging.Logger):
+    try:
+        await ws.close()
+    except RuntimeError as close_error:
+        logger.debug(f"Duplicate close of websocket: `{close_error}`.")
+
+
+async def proxy_ws(client_ws: WebSocket):
+    await client_ws.accept()
+    proxy_client: httpx.AsyncClient = client_ws.app.state.proxy_client
+    logger = client_ws.app.state.logger
+
+    for attempt in inference_retries():
+        with attempt:
+            async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
+                # Unfortunate, but FastAPI and httpx-ws have slightly different abstractions
+                # for sending data, so it's not easy to create a unified wrapper.
+                async def forward_to_server():
+                    while True:
+                        message = await client_ws.receive()
+                        if "text" in message:
+                            await server_ws.send_text(message["text"])
+                        elif "bytes" in message:
+                            await server_ws.send_bytes(message["bytes"])
+
+                async def forward_to_client():
+                    while True:
+                        message = await server_ws.receive()
+                        if isinstance(message, TextMessage):
+                            await client_ws.send_text(message.data)
+                        elif isinstance(message, BytesMessage):
+                            await client_ws.send_bytes(message.data)
+
+                try:
+                    await asyncio.gather(forward_to_client(), forward_to_server())
+                finally:
+                    await _safe_close_ws(client_ws, logger)
+                    await _safe_close_ws(server_ws, logger)
+
+
+control_app.add_websocket_route("/v1/websocket", proxy_ws)
 control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
 
 

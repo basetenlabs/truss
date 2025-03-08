@@ -94,7 +94,7 @@ def create_app(base_config: Dict):
     @app.on_event("shutdown")
     def on_shutdown():
         # FastApi handles the term signal to start the shutdown flow. Here we
-        # make sure that the inference server is stopeed when control server
+        # make sure that the inference server is stopped when control server
         # shuts down. Inference server has logic to wait until all requests are
         # finished before exiting. By waiting on that, we inherit the same
         # behavior for control server.
