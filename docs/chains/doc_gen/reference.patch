@@ -29,7 +29,7 @@
 +its place. In [`run_local`](#truss-chains-run-local) mode an instance of a local chainlet is injected.
 
  Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
- [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+ [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
  for more guidance on how make one chainlet depend on another chainlet.
 
 -#### WARNING
@@ -65,7 +65,7 @@
  ### `truss_chains.depends_context`
 
 @@ -80,16 +81,15 @@
- [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+ [example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
  for more guidance on the `__init__`-signature of chainlets.
 
 -#### WARNING

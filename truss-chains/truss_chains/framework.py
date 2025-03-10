@@ -1567,7 +1567,7 @@ class ChainletBase(private_types.ABCChainlet, metaclass=abc.ABCMeta):
     chainlet pattern and facilitates remote chainlet deployment.
 
     Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py>`_
     for more guidance on how to create subclasses.
     """
 

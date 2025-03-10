@@ -9,7 +9,7 @@ import textwrap
 import threading
 import traceback
 from collections.abc import AsyncIterator
-from typing import Any, Dict, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
+from typing import Any, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
 
 import aiohttp
 import fastapi
@@ -25,15 +25,13 @@ T = TypeVar("T")
 def populate_chainlet_service_predict_urls(
     chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
 ) -> Mapping[str, public_types.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: Dict[str, public_types.DeployedServiceDescriptor] = {}
-    # If there are no dependencies of this chainlet, no need to derive dynamic URLs
-    if len(chainlet_to_service) == 0:
-        return chainlet_to_deployed_service
+    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
+    if not chainlet_to_service:
+        return {}
 
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
         private_types.DYNAMIC_CHAINLET_CONFIG_KEY
     )
-
     if not dynamic_chainlet_config_str:
         raise public_types.MissingDependencyError(
             f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
@@ -57,12 +55,18 @@ def populate_chainlet_service_predict_urls(
                 f"Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
+        if internal_url := dynamic_chainlet_config[display_name].get("internal_url"):
+            url = {"internal_url": internal_url}
+        else:
+            predict_url = dynamic_chainlet_config[display_name].get("predict_url")
+            url = {"predict_url": predict_url}
+
         chainlet_to_deployed_service[chainlet_name] = (
             public_types.DeployedServiceDescriptor(
                 display_name=display_name,
                 name=service_descriptor.name,
                 options=service_descriptor.options,
-                predict_url=dynamic_chainlet_config[display_name]["predict_url"],
+                **url,
             )
         )
 
@@ -139,7 +143,7 @@ def trace_parent_raw(trace_parent: str) -> Iterator[None]:
 
 
 def get_trace_parent() -> Optional[str]:
-    return _trace_parent_context.get()
+    return " "  # _trace_parent_context.get()
 
 
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
