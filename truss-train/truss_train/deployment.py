@@ -4,7 +4,7 @@ from typing import List
 from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.core import archive_dir
-from truss.remote.baseten.utils.transfer import multipart_upload_boto3
+from truss.remote.baseten.utils import transfer
 from truss.shared.types import SafeModel
 from truss_train.definitions import TrainingJob
 
@@ -24,7 +24,7 @@ def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJo
     # Assume config is at the root of the directory.
     archive = archive_dir(config.absolute().parent)
     credentials = api.get_blob_credentials(b10_types.BlobType.TRAIN)
-    multipart_upload_boto3(
+    transfer.multipart_upload_boto3(
         archive.name,
         credentials["s3_bucket"],
         credentials["s3_key"],
