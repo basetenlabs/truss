@@ -91,6 +91,7 @@ click = { version = "^8.0.3", optional = false }
 fastapi = { version =">=0.109.1", optional = false }
 google-cloud-storage = { version = "2.10.0", optional = false }
 httpx = { version = ">=0.24.1", optional = false }
+httpx-ws = { version = "^0.7.1", optional = false }
 inquirerpy = { version = "^0.3.4", optional = false }
 libcst = { version = "<1.2.0", optional = false }
 loguru = { version = ">=0.7.2", optional = false }
@@ -105,7 +106,6 @@ rich-click = { version = "^1.6.1", optional = false }
 ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
 tenacity = { version = "^8.0.1", optional = false }
 watchfiles = { version = "^0.19.0", optional = false }
-httpx-ws = { version = "^0.7.1", optional = false }
 
 
 [tool.dependency_metadata]

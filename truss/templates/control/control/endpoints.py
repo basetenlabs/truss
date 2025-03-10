@@ -30,7 +30,7 @@ def index():
     return {}
 
 
-async def proxy(request: Request):
+async def proxy_http(request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
@@ -141,11 +141,10 @@ async def proxy_ws(client_ws: WebSocket):
                     await asyncio.gather(forward_to_client(), forward_to_server())
                 finally:
                     await _safe_close_ws(client_ws, logger)
-                    await _safe_close_ws(server_ws, logger)
 
 
 control_app.add_websocket_route("/v1/websocket", proxy_ws)
-control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
+control_app.add_route("/v1/{path:path}", proxy_http, ["GET", "POST"])
 
 
 @control_app.post("/control/patch")
