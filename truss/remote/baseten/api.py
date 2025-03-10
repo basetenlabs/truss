@@ -572,21 +572,32 @@ class BasetenApi:
     def upsert_training_project(self, training_project):
         headers = self._auth_token.header()
         resp = requests.post(
-            f"{self._rest_api_url}/v1/training-projects",
+            f"{self._rest_api_url}/v1/training_projects",
             headers=headers,
             json={"training_project": training_project.model_dump()},
         )
         if not resp.ok:
             resp.raise_for_status()
 
-        return resp.json()
+        return resp.json()["training_project"]
 
     def create_training_job(self, project_id: str, job):
         headers = self._auth_token.header()
         resp = requests.post(
-            f"{self._rest_api_url}/v1/training-projects/{project_id}/jobs",
+            f"{self._rest_api_url}/v1/training_projects/{project_id}/jobs",
             headers=headers,
             json={"training_job": job.model_dump()},
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        return resp.json()
+
+    def get_blob_credentials(self, blob_type: b10_types.BlobType):
+        headers = self._auth_token.header()
+        resp = requests.get(
+            f"{self._rest_api_url}/v1/blobs/credentials/{blob_type.value}",
+            headers=headers,
         )
         if not resp.ok:
             resp.raise_for_status()
