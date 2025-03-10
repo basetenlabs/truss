@@ -606,18 +606,18 @@ class MyChainlet(chains.ChainletBase):
 | `api_key`            | *str*                                                                         | A baseten API key to authorize requests.  |
 
 
-#### *classmethod* from_url(predict_url, context, options=None)
+#### *classmethod* from_url(predict_url, context_or_api_key, options=None)
 
 Factory method, convenient to be used in chainlet’s `__init__`-method.
 
 
 **Parameters:**
 
-| Name          | Type                                                         | Description                                                       |
-|---------------|--------------------------------------------------------------|-------------------------------------------------------------------|
-| `predict_url` | *str*                                                        | URL to predict endpoint of another chain / truss model.           |
-| `context`     | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__`. |
-| `options`     | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                        |
+| Name                 | Type                                                         | Description                                                                          |
+|----------------------|--------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| `predict_url`        | *str*                                                        | URL to predict endpoint of another chain / truss model.                              |
+| `context_or_api_key` | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__` or Baseten API key. |
+| `options`            | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                                           |
 
 #### Invocation Methods
 

@@ -258,7 +258,10 @@ class StubBase(BasetenSession, abc.ABC):
         self, inputs: InputT, for_httpx: bool = False
     ) -> Mapping[str, Any]:
         kwargs: Dict[str, Any] = {}
-        headers = {private_types.OTEL_TRACE_PARENT_HEADER_KEY: utils.get_trace_parent()}
+        headers = {}
+        if trace_parent := utils.get_trace_parent():
+            headers[private_types.OTEL_TRACE_PARENT_HEADER_KEY] = trace_parent
+
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:
                 data_dict = inputs.model_dump(mode="python")

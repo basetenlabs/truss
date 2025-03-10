@@ -117,8 +117,8 @@ class ThreadSafeCounter:
         self.decrement()
 
 
-_trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "trace_parent"
+_trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "trace_parent", default=None
 )
 
 
@@ -143,7 +143,7 @@ def trace_parent_raw(trace_parent: str) -> Iterator[None]:
 
 
 def get_trace_parent() -> Optional[str]:
-    return " "  # _trace_parent_context.get()
+    return _trace_parent_context.get()
 
 
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:

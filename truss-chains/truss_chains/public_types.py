@@ -639,8 +639,10 @@ class DeployedServiceDescriptor(types.SafeModel):
     name: str
     display_name: str
     options: RPCOptions
-    predict_url: Optional[str] = pydantic.Field(None, deprecated=True)
-    internal_url: Optional[InternalURL] = None
+    predict_url: Optional[str] = None
+    internal_url: Optional[InternalURL] = pydantic.Field(
+        None, description="If provided, takes precedence over `predict_url`."
+    )
 
     @pydantic.model_validator(mode="after")
     def check_at_least_one_url(

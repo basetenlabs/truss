@@ -564,7 +564,7 @@ foo("./somewhere")
 * **Parameters:**
   **file_path** (*str*)
 * **Return type:**
-  public_types.AbsPath
+  *AbsPath*
 
 ### `truss_chains.run_local`
 
@@ -632,16 +632,42 @@ specifically with `StubBase`.
 | `name` | *str* |  |
 | `display_name` | *str* |  |
 | `options` | *[RPCOptions](#truss_chains.RPCOptions* |  |
-| `predict_url` | *str* |  |
+| `predict_url` | *str\|None* |  |
+| `internal_url` | *[InternalURL](#truss_chains.DeployedServiceDescriptor.InternalURL* |  |
 
+
+#### *class* InternalURL(, gateway_run_remote_url, hostname)
+
+Bases: `pydantic.BaseModel`
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `gateway_run_remote_url` | *str* |  |
+| `hostname` | *str* |  |
+
+
+#### gateway_run_remote_url *: str*
+
+#### hostname *: str*
+
+#### check_at_least_one_url()
+
+* **Parameters:**
+  **self** ([*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor))
+* **Return type:**
+  [*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor)
 
 #### display_name *: str*
+
+#### internal_url *: [InternalURL](#truss_chains.DeployedServiceDescriptor.InternalURL) | None*
 
 #### name *: str*
 
 #### options *: [RPCOptions](#truss_chains.RPCOptions)*
 
-#### predict_url *: str*
+#### predict_url *: str | None*
 
 
 ### *class* `truss_chains.StubBase`
@@ -706,7 +732,7 @@ class MyChainlet(chains.ChainletBase):
 | `api_key` | *str* | A baseten API key to authorize requests. |
 
 
-#### *classmethod* from_url(predict_url, context, options=None)
+#### *classmethod* from_url(predict_url, context_or_api_key, options=None)
 
 Factory method, convenient to be used in chainlet’s `__init__`-method.
 
@@ -716,7 +742,7 @@ Factory method, convenient to be used in chainlet’s `__init__`-method.
 | Name | Type | Description |
 |------|------|-------------|
 | `predict_url` | *str* | URL to predict endpoint of another chain / truss model. |
-| `context` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__`. |
+| `context_or_api_key` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__` or Baseten API key. |
 | `options` | *[RPCOptions](#truss_chains.RPCOptions* | RPC options, e.g. retries. |
 
 

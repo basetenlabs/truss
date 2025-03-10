@@ -1,5 +1,5 @@
---- docs/chains/doc_gen/generated-reference.mdx	2025-03-07 14:07:59.058967543 -0800
-+++ docs/chains/doc_gen/API-reference.mdx	2025-03-07 14:06:58.765143669 -0800
+--- docs/chains/doc_gen/generated-reference.mdx	2025-03-11 11:50:41.420102369 -0700
++++ docs/chains/doc_gen/API-reference.mdx	2025-03-11 11:45:47.101215413 -0700
 @@ -30,13 +30,15 @@
 
  ### *class* `truss_chains.EngineBuilderLLMChainlet`
@@ -173,14 +173,14 @@
 -| `use_binary` | *bool* | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 -
 -#### retries *: int*
+-
+-#### timeout_sec *: float*
 +| Name          | Type    | Description                                                                                                                                                                                                                                                                               |
 +|---------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 +| `retries`     | *int*   | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). For streaming, retries are only made if the request fails before streaming any results back. Failures mid-stream not retried.                                                |
 +| `timeout_sec` | *float* | Timeout for the HTTP request to this chainlet.                                                                                                                                                                                                                                            |
 +| `use_binary`  | *bool*  | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 
--#### timeout_sec *: float*
--
 -#### use_binary *: bool*
 
  ### `truss_chains.mark_entrypoint`
@@ -582,7 +582,6 @@
 -* **Parameters:**
 -  **file_path** (*str*)
 -* **Return type:**
--  public_types.AbsPath
 +</Warning>
 +
 +**Parameters:**
@@ -593,9 +592,9 @@
 +
 +
 +* **Returns:**
-+  *AbsPath*
-+
+   *AbsPath*
 
++
  ### `truss_chains.run_local`
 
  Context manager local debug execution of a chain.
@@ -628,7 +627,7 @@
  import os
  import truss_chains as chains
 
-@@ -627,21 +536,12 @@
+@@ -627,47 +536,12 @@
 
  **Parameters:**
 
@@ -637,16 +636,42 @@
 -| `name` | *str* |  |
 -| `display_name` | *str* |  |
 -| `options` | *[RPCOptions](#truss_chains.RPCOptions* |  |
--| `predict_url` | *str* |  |
+-| `predict_url` | *str\|None* |  |
+-| `internal_url` | *[InternalURL](#truss_chains.DeployedServiceDescriptor.InternalURL* |  |
 -
+-
+-#### *class* InternalURL(, gateway_run_remote_url, hostname)
+-
+-Bases: `pydantic.BaseModel`
+-
+-**Parameters:**
+-
+-| Name | Type | Description |
+-|------|------|-------------|
+-| `gateway_run_remote_url` | *str* |  |
+-| `hostname` | *str* |  |
+-
+-
+-#### gateway_run_remote_url *: str*
+-
+-#### hostname *: str*
+-
+-#### check_at_least_one_url()
+-
+-* **Parameters:**
+-  **self** ([*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor))
+-* **Return type:**
+-  [*DeployedServiceDescriptor*](#truss_chains.DeployedServiceDescriptor)
 -
 -#### display_name *: str*
+-
+-#### internal_url *: [InternalURL](#truss_chains.DeployedServiceDescriptor.InternalURL) | None*
 -
 -#### name *: str*
 -
 -#### options *: [RPCOptions](#truss_chains.RPCOptions)*
 -
--#### predict_url *: str*
+-#### predict_url *: str | None*
 +| Name           | Type                                           | Description |
 +|----------------|------------------------------------------------|-------------|
 +| `name`         | *str*                                          |             |
@@ -656,7 +681,7 @@
 
 
  ### *class* `truss_chains.StubBase`
-@@ -657,7 +557,7 @@
+@@ -683,7 +557,7 @@
  in user-code for wrapping a deployed truss model into the Chains framework. It
  flexibly supports JSON and pydantic inputs and output. Example usage:
 
@@ -665,7 +690,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -668,18 +568,18 @@
+@@ -694,18 +568,18 @@
 
  class DeployedWhisper(chains.StubBase):
      # Input JSON, output JSON.
@@ -687,7 +712,7 @@
          return await self.predict_async(data, output_model=WhisperOutput)
 
 
-@@ -700,10 +600,10 @@
+@@ -726,10 +600,10 @@
 
  **Parameters:**
 
@@ -701,15 +726,15 @@
 +| `api_key`            | *str*                                                                         | A baseten API key to authorize requests.  |
 
 
- #### *classmethod* from_url(predict_url, context, options=None)
-@@ -713,27 +613,25 @@
+ #### *classmethod* from_url(predict_url, context_or_api_key, options=None)
+@@ -739,27 +613,25 @@
 
  **Parameters:**
 
 -| Name | Type | Description |
 -|------|------|-------------|
 -| `predict_url` | *str* | URL to predict endpoint of another chain / truss model. |
--| `context` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__`. |
+-| `context_or_api_key` | *[DeploymentContext](#truss_chains.DeploymentContext* | Deployment context object, obtained in the chainlet’s `__init__` or Baseten API key. |
 -| `options` | *[RPCOptions](#truss_chains.RPCOptions* | RPC options, e.g. retries. |
 -
 -
@@ -727,11 +752,11 @@
 -#### predict_sync(inputs: InputT, output_model: Type[OutputModelT]) → OutputModelT
 -
 -#### predict_sync(inputs: InputT, output_model: None = None) → Any
-+| Name          | Type                                                         | Description                                                       |
-+|---------------|--------------------------------------------------------------|-------------------------------------------------------------------|
-+| `predict_url` | *str*                                                        | URL to predict endpoint of another chain / truss model.           |
-+| `context`     | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__`. |
-+| `options`     | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                        |
++| Name                 | Type                                                         | Description                                                                          |
++|----------------------|--------------------------------------------------------------|--------------------------------------------------------------------------------------|
++| `predict_url`        | *str*                                                        | URL to predict endpoint of another chain / truss model.                              |
++| `context_or_api_key` | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__` or Baseten API key. |
++| `options`            | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                                           |
 +
 +#### Invocation Methods
 +
@@ -749,7 +774,7 @@
 
 
  ### *class* `truss_chains.RemoteErrorDetail`
-@@ -746,62 +644,21 @@
+@@ -772,62 +644,21 @@
 
  **Parameters:**
 
