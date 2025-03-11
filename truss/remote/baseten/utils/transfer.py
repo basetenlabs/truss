@@ -22,7 +22,7 @@ def multipart_upload_boto3(
     bucket_name: str,
     key: str,
     credentials: dict,
-    progress_bar: Optional[Type["progress.Progress"]],
+    progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> None:
     # In the CLI flow, ignore any local ~/.aws/config files,
     # which can interfere with uploading the Truss to S3.
