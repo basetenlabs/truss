@@ -21,7 +21,7 @@ def depends_context() -> public_types.DeploymentContext:
     """Sets a "symbolic marker" for injecting a context object at runtime.
 
     Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py>`_
     for more guidance on the ``__init__``-signature of chainlets.
 
     Warning:
@@ -55,7 +55,7 @@ def depends(
     its place. In ``run_local`` mode an instance of a local chainlet is injected.
 
     Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py>`_
     for more guidance on how make one chainlet depend on another chainlet.
 
     Warning:

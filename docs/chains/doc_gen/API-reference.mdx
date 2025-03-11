@@ -16,7 +16,7 @@ Inheriting from this class adds validations to make sure subclasses adhere to th
 chainlet pattern and facilitates remote chainlet deployment.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
-[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on how to create subclasses.
 
 
@@ -50,7 +50,7 @@ When deploying a chain remotely, a corresponding stub to the remote is injected 
 its place. In [`run_local`](#truss-chains-run-local) mode an instance of a local chainlet is injected.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
-[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on how make one chainlet depend on another chainlet.
 
 <Warning>
@@ -78,7 +78,7 @@ chainlet instance is provided.
 Sets a “symbolic marker” for injecting a context object at runtime.
 
 Refer to [the docs](https://docs.baseten.co/chains/getting-started) and this
-[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py)
+[example chainlet](https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py)
 for more guidance on the `__init__`-signature of chainlets.
 
 <Warning>
@@ -606,18 +606,18 @@ class MyChainlet(chains.ChainletBase):
 | `api_key`            | *str*                                                                         | A baseten API key to authorize requests.  |
 
 
-#### *classmethod* from_url(predict_url, context, options=None)
+#### *classmethod* from_url(predict_url, context_or_api_key, options=None)
 
 Factory method, convenient to be used in chainlet’s `__init__`-method.
 
 
 **Parameters:**
 
-| Name          | Type                                                         | Description                                                       |
-|---------------|--------------------------------------------------------------|-------------------------------------------------------------------|
-| `predict_url` | *str*                                                        | URL to predict endpoint of another chain / truss model.           |
-| `context`     | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__`. |
-| `options`     | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                        |
+| Name                 | Type                                                         | Description                                                                          |
+|----------------------|--------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| `predict_url`        | *str*                                                        | URL to predict endpoint of another chain / truss model.                              |
+| `context_or_api_key` | *[DeploymentContext](#class-truss-chains-deploymentcontext)* | Deployment context object, obtained in the chainlet’s `__init__` or Baseten API key. |
+| `options`            | *[RPCOptions](#class-truss-chains-rpcoptions)*               | RPC options, e.g. retries.                                                           |
 
 #### Invocation Methods
 

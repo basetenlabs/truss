@@ -629,10 +629,30 @@ class DeployedServiceDescriptor(types.SafeModel):
     """Bundles values to establish an RPC session to a dependency chainlet,
     specifically with ``StubBase``."""
 
+    class InternalURL(types.SafeModel):
+        gateway_run_remote_url: str  # Includes `https` and endpoint.
+        hostname: str  # Does not include `https`.
+
+        def __str__(self) -> str:
+            return f"{self.gateway_run_remote_url} (-> {self.hostname})"
+
     name: str
     display_name: str
     options: RPCOptions
-    predict_url: str
+    predict_url: Optional[str] = None
+    internal_url: Optional[InternalURL] = pydantic.Field(
+        None, description="If provided, takes precedence over `predict_url`."
+    )
+
+    @pydantic.model_validator(mode="after")
+    def check_at_least_one_url(
+        self: "DeployedServiceDescriptor",
+    ) -> "DeployedServiceDescriptor":
+        if not self.predict_url and not self.internal_url:
+            raise ValueError(
+                "At least one of 'predict_url' or 'internal_url' must be provided."
+            )
+        return self
 
 
 class Environment(types.SafeModel):
