@@ -106,7 +106,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         rm -rf /var/lib/apt/lists/*
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
 RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
-USER nim
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_log_dir = "/var/log/supervisor" %}
@@ -116,6 +115,7 @@ RUN mkdir -p {{ supervisor_log_dir }}
 COPY supervisord.conf {{ supervisor_config_path }}
 ENV SUPERVISOR_SERVER_URL="{{ supervisor_server_url }}"
 ENV SERVER_START_CMD="supervisord -c {{ supervisor_config_path }}"
+USER nim
 ENTRYPOINT ["supervisord", "-c", "{{ supervisor_config_path }}"]
     {%- elif config.live_reload %}
 ENV HASH_TRUSS="{{truss_hash}}"
