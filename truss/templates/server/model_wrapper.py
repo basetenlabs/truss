@@ -283,10 +283,14 @@ class ModelDescriptor:
         predict = cls._safe_extract_descriptor(model_cls, MethodName.PREDICT)
         truss_schema, preprocess, postprocess = None, None, None
 
-        if websocket and predict:
+        preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
+        postprocess = cls._safe_extract_descriptor(model_cls, MethodName.POSTPROCESS)
+
+        if websocket and (predict or preprocess or postprocess):
             raise errors.ModelDefinitionError(
-                f"Truss model cannot have both `{MethodName.PREDICT}` and "
-                f"`{MethodName.WEBSOCKET}` method."
+                f"Truss model cannot have both `{MethodName.WEBSOCKET}` and any of "
+                f"`{MethodName.PREDICT}`, `{MethodName.PREPROCESS}`, or "
+                f"`{MethodName.POSTPROCESS} methods."
             )
 
         elif not (websocket or predict):
@@ -302,7 +306,6 @@ class ModelDescriptor:
                 )
         elif predict:
             assert websocket is None
-            preprocess = cls._safe_extract_descriptor(model_cls, MethodName.PREPROCESS)
             if preprocess and predict.arg_config == ArgConfig.REQUEST_ONLY:
                 raise errors.ModelDefinitionError(
                     f"When using `{MethodName.PREPROCESS}`, the {MethodName.PREDICT} method "
@@ -310,9 +313,6 @@ class ModelDescriptor:
                     f"`{MethodName.PREPROCESS}` would be  discarded)."
                 )
 
-            postprocess = cls._safe_extract_descriptor(
-                model_cls, MethodName.POSTPROCESS
-            )
             if postprocess and postprocess.arg_config == ArgConfig.REQUEST_ONLY:
                 raise errors.ModelDefinitionError(
                     f"The `{MethodName.POSTPROCESS}` method cannot only have the request "
