@@ -100,11 +100,13 @@ COPY ./{{ config.model_module_dir }} /app/model
 
 {% block run %}
     {%- if config.docker_server %}
+USER root
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         curl nginx python3-pip && \
         rm -rf /var/lib/apt/lists/*
 COPY ./docker_server_requirements.txt /app/docker_server_requirements.txt
 RUN pip install -r /app/docker_server_requirements.txt --no-cache-dir && rm -rf /root/.cache/pip
+USER nim
 {% set proxy_config_path = "/etc/nginx/conf.d/proxy.conf" %}
 {% set supervisor_config_path = "/etc/supervisor/supervisord.conf" %}
 {% set supervisor_log_dir = "/var/log/supervisor" %}
