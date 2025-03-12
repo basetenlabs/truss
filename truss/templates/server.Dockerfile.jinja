@@ -72,6 +72,8 @@ RUN {% for secret,path in config.build.secret_to_path_mapping.items() %} --mount
 {% endfor %}
 {%- endif  %}
 
+ENV NGC_API_KEY=$NGC_API_KEY
+
 # Copy data before code for better caching
 {%- if data_dir_exists %}
 COPY ./{{config.data_dir}} /app/data
