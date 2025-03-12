@@ -9,8 +9,10 @@ RUN $PYTHON_EXECUTABLE -c "import sys; sys.exit(0) if sys.version_info.major == 
     || { echo "ERROR: Supplied base image does not have {{min_supported_python_version_in_custom_base_image}} <= python <= {{max_supported_python_version_in_custom_base_image}}"; exit 1; }
 {% endblock %}
 
+{% if not config.docker_server %}
 RUN pip install --upgrade pip --no-cache-dir \
     && rm -rf /root/.cache/pip
+{% endif %}
 
 {% block base_image_patch %}
 {% endblock %}
