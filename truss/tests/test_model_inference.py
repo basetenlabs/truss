@@ -1844,11 +1844,34 @@ async def test_raise_predict_and_websocket_endpoint():
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=False
         )
-        time.sleep(1)
+        time.sleep(3)
         _assert_logs_contain_error(
             container.logs(),
             message="Exception while loading model",
-            error="cannot have both `predict` and `websocket` method",
+            error="cannot have both",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_raise_preprocess_and_websocket_endpoint():
+    model = """
+    class Model:
+        async def websocket(self, websocket):
+            pass
+
+        async def preprocess(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(3)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="cannot have both",
         )
 
 
