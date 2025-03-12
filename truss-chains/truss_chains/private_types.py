@@ -1,6 +1,7 @@
 # TODO: this file contains too much implementation -> restructure.
 import abc
 import enum
+import pathlib
 from typing import (  # type: ignore[attr-defined]  # Chains uses Python >=3.9.
     Any,
     Callable,
@@ -262,6 +263,8 @@ class PushOptionsBaseten(PushOptions):
     remote: str
     publish: bool
     environment: Optional[str]
+    include_git_info: bool
+    working_dir: pathlib.Path
 
     @classmethod
     def create(
@@ -271,6 +274,8 @@ class PushOptionsBaseten(PushOptions):
         promote: Optional[bool],
         only_generate_trusses: bool,
         remote: str,
+        include_git_info: bool,
+        working_dir: pathlib.Path,
         environment: Optional[str] = None,
     ) -> "PushOptionsBaseten":
         if promote and not environment:
@@ -283,6 +288,8 @@ class PushOptionsBaseten(PushOptions):
             publish=publish,
             only_generate_trusses=only_generate_trusses,
             environment=environment,
+            include_git_info=include_git_info,
+            working_dir=working_dir,
         )
 
 

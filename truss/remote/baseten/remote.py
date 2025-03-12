@@ -13,6 +13,7 @@ from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
 from truss.remote.baseten.core import (
@@ -71,14 +72,19 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str):
+    def __init__(self, remote_url: str, api_key: str, include_git_info: bool = False):
         super().__init__(remote_url)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
+        self._include_git_info = include_git_info
 
     @property
     def api(self) -> BasetenApi:
         return self._api
+
+    @property
+    def include_git_info(self) -> bool:
+        return self._include_git_info
 
     def get_chainlets(
         self, chain_deployment_id: str
@@ -193,6 +199,7 @@ class BasetenRemote(TrussRemote):
         self,
         truss_handle: TrussHandle,
         model_name: str,
+        working_dir: Path,
         publish: bool = True,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
@@ -201,6 +208,7 @@ class BasetenRemote(TrussRemote):
         origin: Optional[custom_types.ModelOrigin] = None,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
+        include_git_info: bool = False,
     ) -> BasetenService:
         push_data = self._prepare_push(
             truss_handle=truss_handle,
@@ -214,6 +222,11 @@ class BasetenRemote(TrussRemote):
             environment=environment,
             progress_bar=progress_bar,
         )
+
+        if self._include_git_info or include_git_info:
+            truss_user_env = b10_types.TrussUserEnv.collect_with_git_info(working_dir)
+        else:
+            truss_user_env = b10_types.TrussUserEnv.collect()
 
         # TODO(Tyron): This set of args is duplicated across
         # many functions. We should consolidate them into a
@@ -231,6 +244,7 @@ class BasetenRemote(TrussRemote):
             deployment_name=push_data.version_name,
             origin=push_data.origin,
             environment=push_data.environment,
+            truss_user_env=truss_user_env,
         )
 
         return BasetenService(
@@ -247,6 +261,7 @@ class BasetenRemote(TrussRemote):
         chain_name: str,
         entrypoint_artifact: custom_types.ChainletArtifact,
         dependency_artifacts: List[custom_types.ChainletArtifact],
+        truss_user_env: b10_types.TrussUserEnv,
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
@@ -291,6 +306,7 @@ class BasetenRemote(TrussRemote):
             entrypoint=chainlet_data[0],
             dependencies=chainlet_data[1:],
             is_draft=not publish,
+            truss_user_env=truss_user_env,
             environment=environment,
         )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
