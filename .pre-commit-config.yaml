@@ -14,15 +14,18 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Ruff version.
-    rev: v0.4.8
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-      - id: ruff-format
   - repo: local
     hooks:
+      - id: ruff
+        name: ruff analyze and fix
+        entry: poetry run ruff check --force-exclude --fix --exit-non-zero-on-fix
+        language: python
+        files: \.(py|pyi)$
+      - id: ruff-format
+        name: ruff format
+        entry: poetry run ruff format --force-exclude
+        language: python
+        files: \.(py|pyi)$
       - id: pyproject.toml
         name: pyproject.toml
         entry: poetry run python bin/pyproject_toml_linter.py
@@ -33,14 +36,5 @@ repos:
         entry: poetry run mypy
         language: python
         types: [python]
-        exclude: ^examples/|^truss/test.+/|model.py$|^truss-chains/.*
-        pass_filenames: true
-      - id: mypy
-        name: mypy-local (3.9)
-        entry: poetry run mypy
-        language: python
-        types: [python]
-        files: ^truss-chains/.*
-        args:
-          - --python-version=3.9
+        exclude: ^examples/|^truss/test.+/|model.py$
         pass_filenames: true

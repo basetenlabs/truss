@@ -2,9 +2,9 @@ import json
 
 import aiofiles
 import pytest
-from truss.templates.shared import dynamic_config_resolver
 
-from truss_chains import definitions
+from truss.templates.shared import dynamic_config_resolver
+from truss_chains import private_types
 
 
 @pytest.mark.parametrize(
@@ -22,25 +22,16 @@ from truss_chains import definitions
 def test_get_dynamic_chainlet_config_value_sync(
     config, tmp_path, dynamic_config_mount_dir
 ):
-    with (tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
+    with (tmp_path / private_types.DYNAMIC_CHAINLET_CONFIG_KEY).open("w") as f:
         f.write(json.dumps(config))
     chainlet_service_config = dynamic_config_resolver.get_dynamic_config_value_sync(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
     )
     assert json.loads(chainlet_service_config) == config
 
 
 @pytest.mark.parametrize(
-    "config",
-    [
-        {
-            "environment_name": "production",
-            "foo": "bar",
-        },
-        {},
-        "",
-        None,
-    ],
+    "config", [{"environment_name": "production", "foo": "bar"}, {}, "", None]
 )
 def test_get_dynamic_config_environment_value_sync(
     config, tmp_path, dynamic_config_mount_dir
@@ -57,7 +48,7 @@ def test_get_dynamic_config_environment_value_sync(
 
 def test_get_missing_config_value_sync(dynamic_config_mount_dir):
     chainlet_service_config = dynamic_config_resolver.get_dynamic_config_value_sync(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
     )
     assert not chainlet_service_config
 
@@ -79,12 +70,12 @@ async def test_get_dynamic_chainlet_config_value_async(
     config, tmp_path, dynamic_config_mount_dir
 ):
     async with aiofiles.open(
-        tmp_path / definitions.DYNAMIC_CHAINLET_CONFIG_KEY, "w"
+        tmp_path / private_types.DYNAMIC_CHAINLET_CONFIG_KEY, "w"
     ) as f:
         await f.write(json.dumps(config))
     chainlet_service_config = (
         await dynamic_config_resolver.get_dynamic_config_value_async(
-            definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+            private_types.DYNAMIC_CHAINLET_CONFIG_KEY
         )
     )
     assert json.loads(chainlet_service_config) == config
@@ -92,16 +83,7 @@ async def test_get_dynamic_chainlet_config_value_async(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "config",
-    [
-        {
-            "environment_name": "production",
-            "foo": "bar",
-        },
-        {},
-        "",
-        None,
-    ],
+    "config", [{"environment_name": "production", "foo": "bar"}, {}, "", None]
 )
 async def test_get_dynamic_config_environment_value_async(
     config, tmp_path, dynamic_config_mount_dir
@@ -120,7 +102,7 @@ async def test_get_dynamic_config_environment_value_async(
 async def test_get_missing_config_value_async(dynamic_config_mount_dir):
     chainlet_service_config = (
         await dynamic_config_resolver.get_dynamic_config_value_async(
-            definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+            private_types.DYNAMIC_CHAINLET_CONFIG_KEY
         )
     )
     assert not chainlet_service_config

@@ -1,0 +1,34 @@
+[package]
+name = "truss_transfer"
+version = "0.0.2-rc0"
+edition = "2021"
+
+[lib]
+name = "truss_transfer"
+crate-type = ["cdylib"]  # For PyO3
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+bytes = "1.5"
+pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+tokio = { version = "1.24", features = ["rt-multi-thread", "macros", "fs"] }
+
+reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "stream", "http2", "default-tls"] }
+# static linking of openssl, as rustls-tls is failing to build on aaarch64
+openssl = { version = "0.10", features = ["vendored"] }
+
+# Logging dependencies
+log = "0.4"
+env_logger = "0.10"
+
+[features]
+cli = []
+
+[[bin]]
+name = "truss_transfer_cli"
+path = "src/lib.rs"  # Assuming this is the CLI entry point
+required-features = ["cli"]

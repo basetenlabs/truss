@@ -2,9 +2,9 @@ import base64
 import tempfile
 
 import data_types
-from truss.base import truss_config
 
 import truss_chains as chains
+from truss.base import truss_config
 
 
 def base64_to_wav(base64_string, output_file_path):
@@ -21,9 +21,7 @@ class WhisperModel(chains.ChainletBase):
             base_image=chains.CustomImage(
                 image="baseten/truss-server-base:3.10-gpu-v0.9.0"
             ),
-            apt_requirements=[
-                "ffmpeg",
-            ],
+            apt_requirements=["ffmpeg"],
             pip_requirements=["torch==2.0.1", "openai-whisper==20231106"],
         ),
         compute=chains.Compute(gpu="T4", cpu_count=2, memory="16Gi"),
@@ -38,8 +36,7 @@ class WhisperModel(chains.ChainletBase):
     )
 
     def __init__(
-        self,
-        context: chains.DeploymentContext = chains.depends_context(),
+        self, context: chains.DeploymentContext = chains.depends_context()
     ) -> None:
         import torch
         import whisper

@@ -1,48 +1,56 @@
 from truss.remote.baseten import service
 
 
-def test_model_invocation_url_prod():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.MODEL, "123", "789", is_draft=False
+def test_model_invoke_url_prod():
+    url = service.URLConfig.invoke_url(
+        "https://model-123.api.baseten.co",
+        service.URLConfig.MODEL,
+        "789",
+        is_draft=False,
     )
     assert url == "https://model-123.api.baseten.co/deployment/789/predict"
 
 
-def test_model_invocation_url_draft():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.MODEL, "123", "789", is_draft=True
+def test_model_invoke_url_draft():
+    url = service.URLConfig.invoke_url(
+        "https://model-123.api.baseten.co",
+        service.URLConfig.MODEL,
+        "789",
+        is_draft=True,
     )
     assert url == "https://model-123.api.baseten.co/development/predict"
 
 
-def test_chain_invocation_url_prod():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.CHAIN, "abc", "666", is_draft=False
+def test_chain_invoke_url_prod():
+    url = service.URLConfig.invoke_url(
+        "https://chain-abc.api.baseten.co",
+        service.URLConfig.CHAIN,
+        "666",
+        is_draft=False,
     )
     assert url == "https://chain-abc.api.baseten.co/deployment/666/run_remote"
 
 
-def test_chain_invocation_url_draft():
-    url = service.URLConfig.invocation_url(
-        "https://api.baseten.co", service.URLConfig.CHAIN, "abc", "666", is_draft=True
+def test_chain_invoke_url_draft():
+    url = service.URLConfig.invoke_url(
+        "https://chain-abc.api.baseten.co",
+        service.URLConfig.CHAIN,
+        "666",
+        is_draft=True,
     )
     assert url == "https://chain-abc.api.baseten.co/development/run_remote"
 
 
 def test_model_status_page_url():
     url = service.URLConfig.status_page_url(
-        "https://app.baseten.co",
-        service.URLConfig.MODEL,
-        "123",
+        "https://app.baseten.co", service.URLConfig.MODEL, "123"
     )
     assert url == "https://app.baseten.co/models/123/overview"
 
 
 def test_chain_status_page_url():
     url = service.URLConfig.status_page_url(
-        "https://app.baseten.co",
-        service.URLConfig.CHAIN,
-        "abc",
+        "https://app.baseten.co", service.URLConfig.CHAIN, "abc"
     )
     assert url == "https://app.baseten.co/chains/abc/overview"
 

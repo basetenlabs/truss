@@ -1,53 +1,46 @@
 import asyncio
 import builtins
 import contextlib
+import contextvars
 import json
 import logging
 import sys
 import textwrap
 import threading
 import traceback
-from typing import (
-    Dict,
-    Iterator,
-    Mapping,
-    NoReturn,
-    Type,
-    TypeVar,
-)
+from collections.abc import AsyncIterator
+from typing import Any, Iterator, Mapping, NoReturn, Optional, Type, TypeVar
 
 import aiohttp
 import fastapi
 import httpx
 import pydantic
-from truss.templates.shared import dynamic_config_resolver
 
-from truss_chains import definitions
+from truss.templates.shared import dynamic_config_resolver
+from truss_chains import private_types, public_types
 
 T = TypeVar("T")
 
 
 def populate_chainlet_service_predict_urls(
-    chainlet_to_service: Mapping[str, definitions.ServiceDescriptor],
-) -> Mapping[str, definitions.DeployedServiceDescriptor]:
-    chainlet_to_deployed_service: Dict[str, definitions.DeployedServiceDescriptor] = {}
+    chainlet_to_service: Mapping[str, private_types.ServiceDescriptor],
+) -> Mapping[str, public_types.DeployedServiceDescriptor]:
+    chainlet_to_deployed_service: dict[str, public_types.DeployedServiceDescriptor] = {}
+    if not chainlet_to_service:
+        return {}
 
     dynamic_chainlet_config_str = dynamic_config_resolver.get_dynamic_config_value_sync(
-        definitions.DYNAMIC_CHAINLET_CONFIG_KEY
+        private_types.DYNAMIC_CHAINLET_CONFIG_KEY
     )
-
     if not dynamic_chainlet_config_str:
-        raise definitions.MissingDependencyError(
-            f"No '{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}' "
+        raise public_types.MissingDependencyError(
+            f"No '{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}' "
             "found. Cannot override Chainlet configs."
         )
 
     dynamic_chainlet_config = json.loads(dynamic_chainlet_config_str)
 
-    for (
-        chainlet_name,
-        service_descriptor,
-    ) in chainlet_to_service.items():
+    for chainlet_name, service_descriptor in chainlet_to_service.items():
         display_name = service_descriptor.display_name
 
         # NOTE: The Chainlet `display_name` in the Truss CLI
@@ -56,18 +49,24 @@ def populate_chainlet_service_predict_urls(
         # Chainlet name, we have to look up config values by
         # using the `display_name` in the service descriptor.
         if display_name not in dynamic_chainlet_config:
-            raise definitions.MissingDependencyError(
+            raise public_types.MissingDependencyError(
                 f"Chainlet '{display_name}' not found in "
-                f"'{definitions.DYNAMIC_CHAINLET_CONFIG_KEY}'. "
+                f"'{private_types.DYNAMIC_CHAINLET_CONFIG_KEY}'. "
                 f"Dynamic Chainlet config keys: {list(dynamic_chainlet_config)}."
             )
 
+        if internal_url := dynamic_chainlet_config[display_name].get("internal_url"):
+            url = {"internal_url": internal_url}
+        else:
+            predict_url = dynamic_chainlet_config[display_name].get("predict_url")
+            url = {"predict_url": predict_url}
+
         chainlet_to_deployed_service[chainlet_name] = (
-            definitions.DeployedServiceDescriptor(
+            public_types.DeployedServiceDescriptor(
                 display_name=display_name,
                 name=service_descriptor.name,
                 options=service_descriptor.options,
-                predict_url=dynamic_chainlet_config[display_name]["predict_url"],
+                **url,
             )
         )
 
@@ -118,6 +117,35 @@ class ThreadSafeCounter:
         self.decrement()
 
 
+_trace_parent_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "trace_parent", default=None
+)
+
+
+@contextlib.contextmanager
+def _trace_parent(headers: Mapping[str, str]) -> Iterator[None]:
+    token = _trace_parent_context.set(
+        headers.get(private_types.OTEL_TRACE_PARENT_HEADER_KEY, "")
+    )
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
+
+
+@contextlib.contextmanager
+def trace_parent_raw(trace_parent: str) -> Iterator[None]:
+    token = _trace_parent_context.set(trace_parent)
+    try:
+        yield
+    finally:
+        _trace_parent_context.reset(token)
+
+
+def get_trace_parent() -> Optional[str]:
+    return _trace_parent_context.get()
+
+
 def pydantic_set_field_dict(obj: pydantic.BaseModel) -> dict[str, pydantic.BaseModel]:
     """Like `BaseModel.model_dump(exclude_unset=True), but only top-level.
 
@@ -162,8 +190,11 @@ def _handle_exception(exception: Exception) -> NoReturn:
             break
 
     final_tb = error_stack[model_predict_index:first_stub_index]
-    stack = [definitions.StackFrame.from_frame_summary(frame) for frame in final_tb]
-    error = definitions.RemoteErrorDetail(
+    stack = [
+        public_types.RemoteErrorDetail.StackFrame.from_frame_summary(frame)
+        for frame in final_tb
+    ]
+    error = public_types.RemoteErrorDetail(
         exception_cls_name=exception.__class__.__name__,
         exception_module_name=exception_module_name,
         exception_message=str(exception),
@@ -175,18 +206,16 @@ def _handle_exception(exception: Exception) -> NoReturn:
 
 
 @contextlib.contextmanager
-def exception_to_http_error() -> Iterator[None]:
+def _exception_to_http_error() -> Iterator[None]:
     try:
         yield
     except Exception as e:
         _handle_exception(e)
 
 
-def _resolve_exception_class(
-    error: definitions.RemoteErrorDetail,
-) -> Type[Exception]:
+def _resolve_exception_class(error: public_types.RemoteErrorDetail) -> Type[Exception]:
     """Tries to find the exception class in builtins or imported libs,
-    falls back to `definitions.GenericRemoteError` if not found."""
+    falls back to `public_types.GenericRemoteError` if not found."""
     exception_cls = None
     if error.exception_module_name is None:
         exception_cls = getattr(builtins, error.exception_cls_name, None)
@@ -198,37 +227,37 @@ def _resolve_exception_class(
         logging.warning(
             f"Could not resolve exception with name `{error.exception_cls_name}` "
             f"and module `{error.exception_module_name}` - fall back to "
-            f"`{definitions.GenericRemoteException.__name__}`."
+            f"`{public_types.GenericRemoteException.__name__}`."
         )
-        exception_cls = definitions.GenericRemoteException
+        exception_cls = public_types.GenericRemoteException
 
     if issubclass(exception_cls, pydantic.ValidationError):
         # Cannot re-raise naively.
         # https://github.com/pydantic/pydantic/issues/6734.
-        exception_cls = definitions.GenericRemoteException
+        exception_cls = public_types.GenericRemoteException
 
     return exception_cls
 
 
-def _handle_response_error(response_json: dict, remote_name: str):
+def _handle_response_error(response_json: dict, base_msg: str):
     try:
         error_json = response_json["error"]
     except KeyError as e:
         logging.error(f"response_json: {response_json}")
         raise ValueError(
-            "Could not get `error` field from JSON from chainlet error response"
+            f"{base_msg}. Could not get `error` field from JSON response."
         ) from e
 
     try:
-        error = definitions.RemoteErrorDetail.model_validate(error_json)
+        error = public_types.RemoteErrorDetail.model_validate(error_json)
     except pydantic.ValidationError as e:
         if isinstance(error_json, str):
-            msg = f"Remote error occurred in `{remote_name}`: '{error_json}'"
-            raise definitions.GenericRemoteException(msg) from None
+            msg = f"{base_msg}: '{error_json}'"
+            raise public_types.GenericRemoteException(msg) from None
         raise ValueError(
-            "Could not parse chainlet error. Error details are expected to be either a "
-            "plain string (old truss models) or a serialized "
-            f"`{definitions.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
+            f"{base_msg}: Could not parse chainlet error. Error details are expected "
+            "to be either a plain string (old truss models) or a serialized "
+            f"`{public_types.RemoteErrorDetail.__name__}`, got:\n{repr(error_json)}"
         ) from e
 
     exception_cls = _resolve_exception_class(error)
@@ -238,10 +267,17 @@ def _handle_response_error(response_json: dict, remote_name: str):
     error_format = "\n".join(lines + [last_line])
     msg = (
         f"(showing chained remote errors, root error at the bottom)\n"
-        f"├─ Error in dependency Chainlet `{remote_name}`:\n"
+        f"├─ {base_msg}\n"
         f"{error_format}"
     )
     raise exception_cls(msg)
+
+
+def _make_base_error_message(remote_name: str, http_status: int) -> str:
+    return (
+        f"Error calling dependency Chainlet `{remote_name}`, "
+        f"HTTP status={http_status}, trace ID=`{get_trace_parent()}`."
+    )
 
 
 def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
@@ -255,49 +291,33 @@ def response_raise_errors(response: httpx.Response, remote_name: str) -> None:
     Chainlet that raised an exception. E.g. the message might look like this:
 
     ```
-    RemoteChainletError in "Chain"
-    Traceback (most recent call last):
-      File "/app/model/Chainlet.py", line 112, in predict
-        result = await self._chainlet.run(
-      File "/app/model/Chainlet.py", line 79, in run
-        value += self._text_to_num.run(part)
-      File "/packages/remote_stubs.py", line 21, in run
-        json_result = self.predict_sync(json_args)
-      File "/packages/truss_chains/stub.py", line 37, in predict_sync
-        return utils.handle_response(
-    ValueError: (showing remote errors, root message at the bottom)
-    --> Preceding Remote Cause:
-        RemoteChainletError in "TextToNum"
-        Traceback (most recent call last):
-          File "/app/model/Chainlet.py", line 113, in predict
-            result = self._chainlet.run(data=payload["data"])
-          File "/app/model/Chainlet.py", line 54, in run
-            generated_text = self._replicator.run(data)
-          File "/packages/remote_stubs.py", line 7, in run
-            json_result = self.predict_sync(json_args)
-          File "/packages/truss_chains/stub.py", line 37, in predict_sync
-            return utils.handle_response(
-        ValueError: (showing remote errors, root message at the bottom)
-        --> Preceding Remote Cause:
-            RemoteChainletError in "TextReplicator"
-            Traceback (most recent call last):
-              File "/app/model/Chainlet.py", line 112, in predict
-                result = self._chainlet.run(data=payload["data"])
-              File "/app/model/Chainlet.py", line 36, in run
-                raise ValueError(f"This input is too long: {len(data)}.")
-            ValueError: This input is too long: 100.
-
+    Chainlet-Traceback (most recent call last):
+      File "/packages/itest_chain.py", line 132, in run_remote
+        value = self._accumulate_parts(text_parts.parts)
+      File "/packages/itest_chain.py", line 144, in _accumulate_parts
+        value += self._text_to_num.run_remote(part)
+    ValueError: (showing chained remote errors, root error at the bottom)
+    ├─ Error in dependency Chainlet `TextToNum` (HTTP status 500):
+    │   Chainlet-Traceback (most recent call last):
+    │     File "/packages/itest_chain.py", line 87, in run_remote
+    │       generated_text = self._replicator.run_remote(data)
+    │   ValueError: (showing chained remote errors, root error at the bottom)
+    │   ├─ Error in dependency Chainlet `TextReplicator` (HTTP status 500):
+    │   │   Chainlet-Traceback (most recent call last):
+    │   │     File "/packages/itest_chain.py", line 52, in run_remote
+    │   │       validate_data(data)
+    │   │     File "/packages/itest_chain.py", line 36, in validate_data
+    │   │       raise ValueError(f"This input is too long: {len(data)}.")
+    ╰   ╰   ValueError: This input is too long: 100.
     ```
     """
     if response.is_error:
+        base_msg = _make_base_error_message(remote_name, response.status_code)
         try:
             response_json = response.json()
         except Exception as e:
-            raise ValueError(
-                "Could not get JSON from error response. Status: "
-                f"`{response.status_code}`."
-            ) from e
-        _handle_response_error(response_json=response_json, remote_name=remote_name)
+            raise ValueError(base_msg) from e
+        _handle_response_error(response_json, base_msg)
 
 
 async def async_response_raise_errors(
@@ -305,11 +325,60 @@ async def async_response_raise_errors(
 ) -> None:
     """Async version of `async_response_raise_errors`."""
     if response.status >= 400:
+        base_msg = _make_base_error_message(remote_name, response.status)
         try:
             response_json = await response.json()
         except Exception as e:
-            raise ValueError(
-                "Could not get JSON from error response. Status: "
-                f"`{response.status}`."
-            ) from e
-        _handle_response_error(response_json=response_json, remote_name=remote_name)
+            raise ValueError(base_msg) from e
+        _handle_response_error(response_json, base_msg)
+
+
+@contextlib.contextmanager
+def predict_context(headers: Mapping[str, str]) -> Iterator[None]:
+    with _trace_parent(headers), _exception_to_http_error():
+        yield
+
+
+class WebsocketWrapperFastAPI:
+    """Implements `private_types.WebSocketProtocol` around fastAPI object."""
+
+    # TODO: consider if we want to wrap/translate exceptions thrown as well. Currently
+    #  this is somewhat loopy, as `fastapi.WebSocketDisconnect` just passes through,
+    #  but we have not documented either, so it's not directly a contradiction.
+
+    def __init__(self, websocket: fastapi.WebSocket) -> None:
+        self._websocket = websocket
+        self.headers: Mapping[str, str] = websocket.headers
+
+    async def close(self, code: int = 1000, reason: Optional[str] = None) -> None:
+        await self._websocket.close(code=code, reason=reason)
+
+    async def receive_text(self) -> str:
+        return await self._websocket.receive_text()
+
+    async def receive_bytes(self) -> bytes:
+        return await self._websocket.receive_bytes()
+
+    async def receive_json(self) -> Any:
+        return await self._websocket.receive_json()
+
+    async def send_text(self, data: str) -> None:
+        await self._websocket.send_text(data)
+
+    async def send_bytes(self, data: bytes) -> None:
+        await self._websocket.send_bytes(data)
+
+    async def send_json(self, data: Any) -> None:
+        await self._websocket.send_json(data)
+
+    async def iter_text(self) -> AsyncIterator[str]:
+        while True:
+            yield await self.receive_text()
+
+    async def iter_bytes(self) -> AsyncIterator[bytes]:
+        while True:
+            yield await self.receive_bytes()
+
+    async def iter_json(self) -> AsyncIterator[Any]:
+        while True:
+            yield await self.receive_json()

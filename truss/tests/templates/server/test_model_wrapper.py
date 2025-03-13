@@ -34,10 +34,12 @@ class Model:
     def predict(self, request):
         return request
     """
-    with helpers.file_content(
-        truss_container_app_path / "model" / "model.py",
-        model_file_content,
-    ), helpers.sys_path(truss_container_app_path):
+    with (
+        helpers.file_content(
+            truss_container_app_path / "model" / "model.py", model_file_content
+        ),
+        helpers.sys_path(truss_container_app_path),
+    ):
         yield truss_container_app_path
 
 
@@ -115,18 +117,20 @@ async def test_trt_llm_truss_init_extension(trt_llm_truss_container_fs, helpers)
                 call_args[0][0] == "trt_llm"
                 for call_args in mock_init_extension.call_args_list
             )
-            assert (
-                called_with_specific_extension
-            ), "Expected extension_name was not called"
+            assert called_with_specific_extension, (
+                "Expected extension_name was not called"
+            )
 
 
 @pytest.mark.anyio
 async def test_trt_llm_truss_predict(trt_llm_truss_container_fs, helpers):
     app_path = trt_llm_truss_container_fs / "app"
     packages_path = trt_llm_truss_container_fs / "packages"
-    with _clear_model_load_modules(), helpers.sys_paths(
-        app_path, packages_path
-    ), _change_directory(app_path):
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_paths(app_path, packages_path),
+        _change_directory(app_path),
+    ):
         model_wrapper_module = importlib.import_module("model_wrapper")
         model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
         config = yaml.safe_load((app_path / "config.yaml").read_text())
@@ -163,9 +167,11 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
     (app_path / "model" / "model.py").unlink()
 
     packages_path = trt_llm_truss_container_fs / "packages"
-    with _clear_model_load_modules(), helpers.sys_paths(
-        app_path, packages_path
-    ), _change_directory(app_path):
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_paths(app_path, packages_path),
+        _change_directory(app_path),
+    ):
         model_wrapper_module = importlib.import_module("model_wrapper")
         model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
         config = yaml.safe_load((app_path / "config.yaml").read_text())
@@ -194,6 +200,32 @@ async def test_trt_llm_truss_missing_model_py(trt_llm_truss_container_fs, helper
             mock_extension.model_override.assert_called()
             assert mock_predict_called
             assert resp == expected_predict_response
+
+
+@pytest.mark.anyio
+async def test_open_ai_completion_endpoints(open_ai_container_fs, helpers):
+    app_path = open_ai_container_fs / "app"
+    with (
+        _clear_model_load_modules(),
+        helpers.sys_paths(app_path),
+        _change_directory(app_path),
+    ):
+        model_wrapper_module = importlib.import_module("model_wrapper")
+        model_wrapper_class = getattr(model_wrapper_module, "ModelWrapper")
+        config = yaml.safe_load((app_path / "config.yaml").read_text())
+
+        model_wrapper = model_wrapper_class(config, sdk_trace.NoOpTracer())
+        model_wrapper.load()
+
+        mock_req = MagicMock(spec=Request)
+        predict_resp = await model_wrapper.predict({}, mock_req)
+        assert predict_resp == "predict"
+
+        completions_resp = await model_wrapper.completions({}, mock_req)
+        assert completions_resp == "completions"
+
+        chat_completions_resp = await model_wrapper.chat_completions({}, mock_req)
+        assert chat_completions_resp == "chat_completions"
 
 
 @contextmanager

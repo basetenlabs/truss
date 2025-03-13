@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, Type
 
 import boto3
 from boto3.s3.transfer import TransferConfig
+
 from truss.util.env_vars import override_env_vars
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ def multipart_upload_boto3(
     bucket_name: str,
     key: str,
     credentials: dict,
-    progress_bar: Optional[Type["progress.Progress"]],
+    progress_bar: Optional[Type["progress.Progress"]] = None,
 ) -> None:
     # In the CLI flow, ignore any local ~/.aws/config files,
     # which can interfere with uploading the Truss to S3.
@@ -45,9 +46,6 @@ def multipart_upload_boto3(
         with progress_context:
             s3_resource.Object(bucket_name, key).upload_file(
                 file_path,
-                Config=TransferConfig(
-                    max_concurrency=10,
-                    use_threads=True,
-                ),
+                Config=TransferConfig(max_concurrency=10, use_threads=True),
                 Callback=callback,
             )

@@ -1,17 +1,26 @@
 import asyncio
-from typing import Any, Dict
+import logging
+from typing import Any, Callable, Dict
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse, StreamingResponse
 from helpers.errors import ModelLoadFailed, ModelNotReady
-from httpx import URL, ConnectError, RemoteProtocolError
+from httpx_ws import aconnect_ws
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
-from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
+from tenacity import RetryCallState, Retrying, retry_if_exception_type, wait_fixed
+from wsproto.events import BytesMessage, TextMessage
 
 INFERENCE_SERVER_START_WAIT_SECS = 60
-
+BASE_RETRY_EXCEPTIONS = (
+    retry_if_exception_type(httpx.ConnectError)
+    | retry_if_exception_type(httpx.RemoteProtocolError)
+    | retry_if_exception_type(httpx.ReadError)
+    | retry_if_exception_type(httpx.ReadTimeout)
+    | retry_if_exception_type(httpx.ConnectTimeout)
+    | retry_if_exception_type(ModelNotReady)
+)
 
 control_app = APIRouter()
 
@@ -21,12 +30,14 @@ def index():
     return {}
 
 
-async def proxy(request: Request):
+async def proxy_http(request: Request):
     inference_server_process_controller = (
         request.app.state.inference_server_process_controller
     )
     client: httpx.AsyncClient = request.app.state.proxy_client
-    url = URL(path=request.url.path, query=request.url.query.encode("utf-8"))
+
+    path = _reroute_if_health_check(request.url.path)
+    url = httpx.URL(path=path, query=request.url.query.encode("utf-8"))
 
     # 2 min connect timeouts, no timeout for requests.
     # We don't want requests to fail due to timeout on the proxy
@@ -46,18 +57,7 @@ async def proxy(request: Request):
     )
 
     # Wait a bit for inference server to start
-    for attempt in Retrying(
-        retry=(
-            retry_if_exception_type(ConnectError)
-            | retry_if_exception_type(ModelNotReady)
-            | retry_if_exception_type(RemoteProtocolError)
-            | retry_if_exception_type(httpx.ReadError)
-            | retry_if_exception_type(httpx.ReadTimeout)
-            | retry_if_exception_type(httpx.ConnectTimeout)
-        ),
-        stop=stop_after_attempt(INFERENCE_SERVER_START_WAIT_SECS),
-        wait=wait_fixed(1),
-    ):
+    for attempt in inference_retries():
         with attempt:
             try:
                 if inference_server_process_controller.is_inference_server_intentionally_stopped():
@@ -66,7 +66,7 @@ async def proxy(request: Request):
 
                 if await _is_model_not_ready(resp):
                     raise ModelNotReady("Model has started running, but not ready yet.")
-            except (RemoteProtocolError, ConnectError) as exp:
+            except (httpx.RemoteProtocolError, httpx.ConnectError) as exp:
                 # This check is a bit expensive so we don't do it before every request, we
                 # do it only if request fails with connection error. If the inference server
                 # process is running then we continue waiting for it to start (by retrying),
@@ -92,7 +92,59 @@ async def proxy(request: Request):
     return response
 
 
-control_app.add_route("/v1/{path:path}", proxy, ["GET", "POST"])
+def inference_retries(
+    retry_condition: Callable[[RetryCallState], bool] = BASE_RETRY_EXCEPTIONS,
+):
+    for attempt in Retrying(
+        retry=retry_condition,
+        stop=_custom_stop_strategy,
+        wait=wait_fixed(1),
+        reraise=False,
+    ):
+        yield attempt
+
+
+async def _safe_close_ws(ws: WebSocket, logger: logging.Logger):
+    try:
+        await ws.close()
+    except RuntimeError as close_error:
+        logger.debug(f"Duplicate close of websocket: `{close_error}`.")
+
+
+async def proxy_ws(client_ws: WebSocket):
+    await client_ws.accept()
+    proxy_client: httpx.AsyncClient = client_ws.app.state.proxy_client
+    logger = client_ws.app.state.logger
+
+    for attempt in inference_retries():
+        with attempt:
+            async with aconnect_ws("/v1/websocket", proxy_client) as server_ws:  # type: ignore
+                # Unfortunate, but FastAPI and httpx-ws have slightly different abstractions
+                # for sending data, so it's not easy to create a unified wrapper.
+                async def forward_to_server():
+                    while True:
+                        message = await client_ws.receive()
+                        if "text" in message:
+                            await server_ws.send_text(message["text"])
+                        elif "bytes" in message:
+                            await server_ws.send_bytes(message["bytes"])
+
+                async def forward_to_client():
+                    while True:
+                        message = await server_ws.receive()
+                        if isinstance(message, TextMessage):
+                            await client_ws.send_text(message.data)
+                        elif isinstance(message, BytesMessage):
+                            await client_ws.send_bytes(message.data)
+
+                try:
+                    await asyncio.gather(forward_to_client(), forward_to_server())
+                finally:
+                    await _safe_close_ws(client_ws, logger)
+
+
+control_app.add_websocket_route("/v1/websocket", proxy_ws)
+control_app.add_route("/v1/{path:path}", proxy_http, ["GET", "POST"])
 
 
 @control_app.post("/control/patch")
@@ -151,3 +203,29 @@ def _is_streaming_response(resp) -> bool:
         if header_name.lower() == "transfer-encoding" and value.lower() == "chunked":
             return True
     return False
+
+
+def _reroute_if_health_check(path: str) -> str:
+    """
+    Reroutes calls from the Operator to the inference server's health check endpoint (/v1/models/model) to /v1/models/model/loaded instead.
+    This is done to avoid running custom health checks when the Operator is checking if the inference server is ready.
+    """
+    if path == "/v1/models/model":
+        path = "/v1/models/model/loaded"
+    return path
+
+
+def _custom_stop_strategy(retry_state: RetryCallState) -> bool:
+    # Stop after 10 attempts for ModelNotReady
+    if retry_state.outcome is not None and isinstance(
+        retry_state.outcome.exception(), ModelNotReady
+    ):
+        # Check if the retry limit for ModelNotReady has been reached
+        return retry_state.attempt_number >= 10
+    # For all other exceptions, stop after INFERENCE_SERVER_START_WAIT_SECS
+    seconds_since_start = (
+        retry_state.seconds_since_start
+        if retry_state.seconds_since_start is not None
+        else 0.0
+    )
+    return seconds_since_start >= INFERENCE_SERVER_START_WAIT_SECS

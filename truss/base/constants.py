@@ -13,10 +13,11 @@ LIGHTGBM = "lightgbm"
 _TRUSS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
 TEMPLATES_DIR = _TRUSS_ROOT / "templates"
+TRADITIONAL_CUSTOM_TEMPLATE_DIR = TEMPLATES_DIR / "custom"
+PYTHON_DX_CUSTOM_TEMPLATE_DIR = TEMPLATES_DIR / "custom_python_dx"
 DOCKER_SERVER_TEMPLATES_DIR = TEMPLATES_DIR / "docker_server"
 SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "server"
 TRITON_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "triton"
-AUDIO_MODEL_TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-audio"
 TRTLLM_TRUSS_DIR: pathlib.Path = TEMPLATES_DIR / "trtllm-briton"
 SHARED_SERVING_AND_TRAINING_CODE_DIR_NAME = "shared"
 SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
@@ -24,13 +25,18 @@ SHARED_SERVING_AND_TRAINING_CODE_DIR: pathlib.Path = (
 )
 CONTROL_SERVER_CODE_DIR: pathlib.Path = TEMPLATES_DIR / "control"
 CHAINS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss-chains" / "truss_chains"
+TRUSS_CODE_DIR: pathlib.Path = _TRUSS_ROOT.parent / "truss"
 
 SUPPORTED_PYTHON_VERSIONS = {"3.8", "3.9", "3.10", "3.11"}
 MAX_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.12"
 MIN_SUPPORTED_PYTHON_VERSION_IN_CUSTOM_BASE_IMAGE = "3.8"
 
 TRTLLM_PREDICT_CONCURRENCY = 512
-TRTLLM_MIN_MEMORY_REQUEST_GI = 24
+BEI_TRTLLM_CLIENT_BATCH_SIZE = 128
+BEI_MAX_CONCURRENCY_TARGET_REQUESTS = 2048
+BEI_REQUIRED_MAX_NUM_TOKENS = 16384
+
+TRTLLM_MIN_MEMORY_REQUEST_GI = 10
 HF_MODELS_API_URL = "https://huggingface.co/api/models"
 HF_ACCESS_TOKEN_KEY = "hf_access_token"
 TRUSSLESS_MAX_PAYLOAD_SIZE = "64M"
@@ -82,20 +88,12 @@ XGBOOST_REQ_MODULE_NAMES: Set[str] = {"xgboost"}
 
 # list from https://www.tensorflow.org/install/pip
 # if problematic, lets look to https://www.tensorflow.org/install/source
-TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {
-    "tensorflow",
-}
+TENSORFLOW_REQ_MODULE_NAMES: Set[str] = {"tensorflow"}
 
-LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {
-    "lightgbm",
-}
+LIGHTGBM_REQ_MODULE_NAMES: Set[str] = {"lightgbm"}
 
 # list from https://pytorch.org/get-started/locally/
-PYTORCH_REQ_MODULE_NAMES: Set[str] = {
-    "torch",
-    "torchvision",
-    "torchaudio",
-}
+PYTORCH_REQ_MODULE_NAMES: Set[str] = {"torch", "torchvision", "torchaudio"}
 
 MLFLOW_REQ_MODULE_NAMES: Set[str] = {"mlflow"}
 
@@ -107,32 +105,17 @@ REGISTRY_BUILD_SECRET_PREFIX = "DOCKER_REGISTRY_"
 
 TRTLLM_SPEC_DEC_TARGET_MODEL_NAME = "target"
 TRTLLM_SPEC_DEC_DRAFT_MODEL_NAME = "draft"
-TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.13.0-4fd8a10-5e5c3d7"
-TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
-BASE_TRTLLM_REQUIREMENTS = ["briton==0.3.12.dev8"]
-AUDIO_MODEL_TRTLLM_REQUIREMENTS = [
-    "--extra-index-url https://pypi.nvidia.com",
-    "tensorrt_cu12_bindings==10.2.0.post1",
-    "tensorrt_cu12_libs==10.2.0.post1",
-    "tensorrt-cu12==10.2.0.post1",
-    "tensorrt_llm==0.12.0.dev2024072301",
-    "hf_transfer",
-    "janus",
-    "kaldialign",
-    "librosa",
-    "mpi4py==3.1.4",
-    "safetensors",
-    "soundfile",
-    "tiktoken",
-    "torchaudio",
-    "async-batcher>=0.2.0",
-    "pydantic>=2.7.1",
-]
-AUDIO_MODEL_TRTLLM_SYSTEM_PACKAGES = [
-    "python3.10-venv",
-    "openmpi-bin",
-    "libopenmpi-dev",
-]
-OPENAI_COMPATIBLE_TAG = "openai-compatible"
+TRTLLM_BASE_IMAGE = "baseten/briton-server:v0.17.0_v0.0.24"
+TRTLLM_PYTHON_EXECUTABLE = "/usr/local/briton/venv/bin/python"
+BASE_TRTLLM_REQUIREMENTS = ["briton==0.4.8"]
+BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.18"
+
+BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
+
+OPENAI_COMPATIBLE_TAG = (
+    "openai-compatible"  # deprecated - openai-compatible is now the default
+)
+OPENAI_NON_COMPATIBLE_TAG = "non-openai-compatible"
+
 
 PRODUCTION_ENVIRONMENT_NAME = "production"

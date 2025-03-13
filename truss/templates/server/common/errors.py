@@ -4,14 +4,7 @@ import sys
 import textwrap
 from http import HTTPStatus
 from types import TracebackType
-from typing import (
-    Generator,
-    Mapping,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Generator, Mapping, Optional, Tuple, Type, Union
 
 import fastapi
 import pydantic
@@ -52,6 +45,10 @@ class UserCodeError(Exception):
     pass
 
 
+class ModelMethodNotImplemented(Exception):
+    pass
+
+
 class ModelDefinitionError(TypeError):
     """When the user-defined truss model does not meet the contract."""
 
@@ -68,9 +65,7 @@ def add_error_headers_to_user_response(response: starlette.responses.Response) -
 
 
 def _make_baseten_response(
-    http_status: int,
-    info: Union[str, Exception],
-    baseten_error_code: int,
+    http_status: int, info: Union[str, Exception], baseten_error_code: int
 ) -> fastapi.Response:
     msg = str(info) if isinstance(info, Exception) else info
     return JSONResponse(
@@ -91,9 +86,7 @@ async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Respo
         )
     if isinstance(exc, InputParsingError):
         return _make_baseten_response(
-            HTTPStatus.BAD_REQUEST.value,
-            exc,
-            _BASETEN_CLIENT_ERROR_CODE,
+            HTTPStatus.BAD_REQUEST.value, exc, _BASETEN_CLIENT_ERROR_CODE
         )
     if isinstance(exc, ModelDefinitionError):
         return _make_baseten_response(
@@ -106,6 +99,10 @@ async def exception_handler(_: fastapi.Request, exc: Exception) -> fastapi.Respo
             HTTPStatus.INTERNAL_SERVER_ERROR.value,
             "Internal Server Error",
             _BASETEN_DOWNSTREAM_ERROR_CODE,
+        )
+    if isinstance(exc, ModelMethodNotImplemented):
+        return _make_baseten_response(
+            HTTPStatus.NOT_FOUND.value, exc, _BASETEN_CLIENT_ERROR_CODE
         )
     if isinstance(exc, fastapi.HTTPException):
         # This is a pass through, but additionally adds our custom error headers.
@@ -128,14 +125,14 @@ HANDLED_EXCEPTIONS = {
     UserCodeError,
     ModelDefinitionError,
     fastapi.HTTPException,
+    ModelMethodNotImplemented,
 }
 
 
 def filter_traceback(
     model_file_name: str,
 ) -> Union[
-    Tuple[Type[BaseException], BaseException, TracebackType],
-    Tuple[None, None, None],
+    Tuple[Type[BaseException], BaseException, TracebackType], Tuple[None, None, None]
 ]:
     exc_type, exc_value, tb = sys.exc_info()
     if tb is None:
@@ -167,7 +164,30 @@ def intercept_exceptions(
         yield
     # Note that logger.error logs the stacktrace, such that the user can
     # debug this error from the logs.
-    except fastapi.HTTPException:
+    except fastapi.HTTPException as e:
+        # TODO: we try to avoid any dependency of the truss server on chains, but for
+        #  the purpose of getting readable chained-stack traces in the server logs,
+        #  we have to add a special-case here.
+        if "user_stack_trace" in e.detail:
+            try:
+                from truss_chains import public_types
+
+                chains_error = public_types.RemoteErrorDetail.model_validate(e.detail)
+                # The formatted error contains a (potentially chained) stack trace
+                # with all framework code removed, see
+                # truss_chains/remote_chainlet/utils.py::response_raise_errors.
+                logger.error(f"Chainlet raised Exception:\n{chains_error.format()}")
+            except:  # If we cannot import chains or parse the error.
+                logger.error(
+                    "Model raised HTTPException",
+                    exc_info=filter_traceback(model_file_name),
+                )
+                raise
+            # If error was extracted successfully, the customized stack trace is
+            # already printed above, so we raise with a clear traceback.
+            e.__traceback__ = None
+            raise e from None
+
         logger.error(
             "Model raised HTTPException", exc_info=filter_traceback(model_file_name)
         )

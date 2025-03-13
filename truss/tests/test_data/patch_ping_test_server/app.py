@@ -22,9 +22,7 @@ def _inc_fn_call_stat():
 @app.route("/hash_is_current", methods=["POST"])
 def hash_is_current():
     _inc_fn_call_stat()
-    return {
-        "is_current": True,
-    }
+    return {"is_current": True}
 
 
 @app.route("/hash_is_current_but_only_every_third_call_succeeds", methods=["POST"])
@@ -33,18 +31,14 @@ def hash_is_current_but_only_every_third_call_succeeds():
     global _stats
     fn_name = inspect.stack()[0][3]
     if _stats[f"{fn_name}_called_count"] % 3 == 0:
-        return {
-            "is_current": True,
-        }
+        return {"is_current": True}
     return "simulated failure", 503
 
 
 @app.route("/accepted", methods=["POST"])
 def accepted():
     _inc_fn_call_stat()
-    return {
-        "accepted": True,
-    }
+    return {"accepted": True}
 
 
 @app.route("/health")

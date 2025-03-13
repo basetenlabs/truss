@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import logging.config
 import re
 from pathlib import Path
 from typing import Dict
@@ -13,30 +14,18 @@ from helpers.inference_server_controller import InferenceServerController
 from helpers.inference_server_process_controller import InferenceServerProcessController
 from helpers.inference_server_starter import async_inference_server_startup_flow
 from helpers.truss_patch.model_container_patch_applier import ModelContainerPatchApplier
-from shared.logging import setup_logging
+from shared import log_config
 from starlette.datastructures import State
 
 
 async def handle_patch_error(_, exc):
     error_type = _camel_to_snake_case(type(exc).__name__)
-    return JSONResponse(
-        content={
-            "error": {
-                "type": error_type,
-                "msg": str(exc),
-            }
-        }
-    )
+    return JSONResponse(content={"error": {"type": error_type, "msg": str(exc)}})
 
 
 async def generic_error_handler(_, exc):
     return JSONResponse(
-        content={
-            "error": {
-                "type": "unknown",
-                "msg": f"{type(exc)}: {exc}",
-            }
-        }
+        content={"error": {"type": "unknown", "msg": f"{type(exc)}: {exc}"}}
     )
 
 
@@ -47,7 +36,9 @@ async def handle_model_load_failed(_, error):
 
 def create_app(base_config: Dict):
     app_state = State()
-    setup_logging()
+    # TODO(BT-13721): better log setup: app_logger isn't captured and access log
+    #   is redundant.
+    logging.config.dictConfig(log_config.make_log_config("INFO"))
     app_logger = logging.getLogger(__name__)
     app_state.logger = app_logger
 
@@ -69,9 +60,7 @@ def create_app(base_config: Dict):
     pip_path = getattr(app_state, "pip_path", None)
 
     patch_applier = ModelContainerPatchApplier(
-        Path(app_state.inference_server_home),
-        app_logger,
-        pip_path,
+        Path(app_state.inference_server_home), app_logger, pip_path
     )
 
     oversee_inference_server = getattr(app_state, "oversee_inference_server", True)
@@ -86,8 +75,7 @@ def create_app(base_config: Dict):
     async def start_background_inference_startup():
         asyncio.create_task(
             async_inference_server_startup_flow(
-                app_state.inference_server_controller,
-                app_logger,
+                app_state.inference_server_controller, app_logger
             )
         )
 
@@ -106,7 +94,7 @@ def create_app(base_config: Dict):
     @app.on_event("shutdown")
     def on_shutdown():
         # FastApi handles the term signal to start the shutdown flow. Here we
-        # make sure that the inference server is stopeed when control server
+        # make sure that the inference server is stopped when control server
         # shuts down. Inference server has logic to wait until all requests are
         # finished before exiting. By waiting on that, we inherit the same
         # behavior for control server.

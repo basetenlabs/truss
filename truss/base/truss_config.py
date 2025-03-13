@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from dataclasses import _MISSING_TYPE, dataclass, field, fields
 from enum import Enum
@@ -7,9 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import yaml
 
-from truss.base.constants import (
-    HTTP_PUBLIC_BLOB_BACKEND,
-)
+from truss.base.constants import HTTP_PUBLIC_BLOB_BACKEND
 from truss.base.custom_types import ModelFrameworkType
 from truss.base.errors import ValidationError
 from truss.base.trt_llm_config import (
@@ -20,6 +19,7 @@ from truss.base.trt_llm_config import (
 from truss.base.validation import (
     validate_cpu_spec,
     validate_memory_spec,
+    validate_node_count,
     validate_python_executable_path,
     validate_secret_name,
     validate_secret_to_path_mapping,
@@ -41,7 +41,8 @@ DEFAULT_SPEC_VERSION = "2.0"
 DEFAULT_PREDICT_CONCURRENCY = 1
 DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT = 60
 DEFAULT_ENABLE_TRACING_DATA = False  # This should be in sync with tracing.py.
-
+DEFAULT_ENABLE_DEBUG_LOGS = False
+DEFAULT_IS_WEBSOCKET_ENDPOINT = False
 DEFAULT_CPU = "1"
 DEFAULT_MEMORY = "2Gi"
 DEFAULT_USE_GPU = False
@@ -71,6 +72,7 @@ class Accelerator(Enum):
     V100 = "V100"
     A100 = "A100"
     H100 = "H100"
+    H200 = "H200"
     H100_40GB = "H100_40GB"
 
 
@@ -155,11 +157,50 @@ class ModelCache:
 
 
 @dataclass
+class CacheInternal:
+    models: List[ModelRepo] = field(default_factory=list)
+
+    @staticmethod
+    def from_list(items: List[Dict[str, str]]) -> "CacheInternal":
+        return CacheInternal([ModelRepo.from_dict(item) for item in items])
+
+    def to_list(self) -> List[Dict[str, str]]:
+        models = []
+        for model in self.models:
+            models.append({"repo_id": model.to_dict()["repo_id"]})
+        return models
+
+
+@dataclass
+class HealthChecks:
+    restart_check_delay_seconds: Optional[int] = None
+    restart_threshold_seconds: Optional[int] = None
+    stop_traffic_threshold_seconds: Optional[int] = None
+
+    @staticmethod
+    def from_dict(d):
+        return HealthChecks(
+            restart_check_delay_seconds=d.get("restart_check_delay_seconds"),
+            restart_threshold_seconds=d.get("restart_threshold_seconds"),
+            stop_traffic_threshold_seconds=d.get("stop_traffic_threshold_seconds"),
+        )
+
+    def to_dict(self):
+        return {
+            "restart_check_delay_seconds": self.restart_check_delay_seconds,
+            "restart_threshold_seconds": self.restart_threshold_seconds,
+            "stop_traffic_threshold_seconds": self.stop_traffic_threshold_seconds,
+        }
+
+
+@dataclass
 class Runtime:
     predict_concurrency: int = DEFAULT_PREDICT_CONCURRENCY
     streaming_read_timeout: int = DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
     enable_tracing_data: bool = DEFAULT_ENABLE_TRACING_DATA
-    enable_debug_logs: bool = False
+    enable_debug_logs: bool = DEFAULT_ENABLE_DEBUG_LOGS
+    health_checks: HealthChecks = field(default_factory=HealthChecks)
+    is_websocket_endpoint: bool = DEFAULT_IS_WEBSOCKET_ENDPOINT
 
     @staticmethod
     def from_dict(d):
@@ -176,11 +217,19 @@ class Runtime:
             "streaming_read_timeout", DEFAULT_STREAMING_RESPONSE_READ_TIMEOUT
         )
         enable_tracing_data = d.get("enable_tracing_data", DEFAULT_ENABLE_TRACING_DATA)
+        enable_debug_logs = d.get("enable_debug_logs", DEFAULT_ENABLE_DEBUG_LOGS)
+        health_checks = HealthChecks.from_dict(d.get("health_checks", {}))
+        is_websocket_endpoint = d.get(
+            "is_websocket_endpoint", DEFAULT_IS_WEBSOCKET_ENDPOINT
+        )
 
         return Runtime(
             predict_concurrency=predict_concurrency,
             streaming_read_timeout=streaming_read_timeout,
             enable_tracing_data=enable_tracing_data,
+            enable_debug_logs=enable_debug_logs,
+            health_checks=health_checks,
+            is_websocket_endpoint=is_websocket_endpoint,
         )
 
     def to_dict(self):
@@ -188,6 +237,7 @@ class Runtime:
             "predict_concurrency": self.predict_concurrency,
             "streaming_read_timeout": self.streaming_read_timeout,
             "enable_tracing_data": self.enable_tracing_data,
+            "health_checks": self.health_checks.to_dict(),
         }
 
 
@@ -235,6 +285,7 @@ class Resources:
     memory: str = DEFAULT_MEMORY
     use_gpu: bool = DEFAULT_USE_GPU
     accelerator: AcceleratorSpec = field(default_factory=AcceleratorSpec)
+    node_count: Optional[int] = None
 
     @staticmethod
     def from_dict(d):
@@ -247,20 +298,26 @@ class Resources:
         if accelerator.accelerator is not None:
             use_gpu = True
 
-        return Resources(
-            cpu=cpu,
-            memory=memory,
-            use_gpu=use_gpu,
-            accelerator=accelerator,
-        )
+        r = Resources(cpu=cpu, memory=memory, use_gpu=use_gpu, accelerator=accelerator)
+
+        # only add node_count if not None. This helps keep
+        # config generated by truss init concise.
+        node_count = d.get("node_count")
+        validate_node_count(node_count)
+        r.node_count = node_count
+
+        return r
 
     def to_dict(self):
-        return {
+        d = {
             "cpu": self.cpu,
             "memory": self.memory,
             "use_gpu": self.use_gpu,
             "accelerator": self.accelerator.to_str(),
         }
+        if self.node_count is not None:
+            d["node_count"] = self.node_count
+        return d
 
 
 @dataclass
@@ -500,6 +557,7 @@ class TrussConfig:
               memory: 14Gi
               use_gpu: true
               accelerator: A10G
+              node_count: 2
             ```
         secrets (Dict[str, str]):
             <Warning>
@@ -563,16 +621,15 @@ class TrussConfig:
     model_cache: ModelCache = field(default_factory=ModelCache)
     trt_llm: Optional[TRTLLMConfiguration] = None
     build_commands: List[str] = field(default_factory=list)
-    use_local_chains_src: bool = False
+    use_local_src: bool = False
+    # internal
+    cache_internal: CacheInternal = field(default_factory=CacheInternal)
 
     @property
     def canonical_python_version(self) -> str:
-        return {
-            "py311": "3.11",
-            "py310": "3.10",
-            "py39": "3.9",
-            "py38": "3.8",
-        }[self.python_version]
+        return {"py311": "3.11", "py310": "3.10", "py39": "3.9", "py38": "3.8"}[
+            self.python_version
+        ]
 
     @property
     def parsed_trt_llm_build_configs(self) -> List[TrussTRTLLMBuildConfiguration]:
@@ -627,11 +684,15 @@ class TrussConfig:
                 d.get("model_cache") or d.get("hf_cache") or [],  # type: ignore
                 ModelCache.from_list,
             ),
+            cache_internal=transform_optional(
+                d.get("cache_internal") or [],  # type: ignore
+                CacheInternal.from_list,
+            ),
             trt_llm=transform_optional(
                 d.get("trt_llm"), lambda x: (TRTLLMConfiguration(**x))
             ),
             build_commands=d.get("build_commands", []),
-            use_local_chains_src=d.get("use_local_chains_src", False),
+            use_local_src=d.get("use_local_src", False),
         )
         config.validate()
         return config
@@ -661,6 +722,8 @@ class TrussConfig:
 
     @staticmethod
     def from_yaml(yaml_path: Path):
+        if not os.path.isfile(yaml_path):
+            raise ValueError(f"Expected a truss configuration file at {yaml_path}")
         with yaml_path.open() as yaml_file:
             raw_data = yaml.safe_load(yaml_file) or {}
             if "hf_cache" in raw_data:
@@ -688,19 +751,26 @@ class TrussConfig:
                 is TrussTRTLLMQuantizationType.WEIGHTS_ONLY_INT8
                 and self.resources.accelerator.accelerator is Accelerator.A100
             ):
+                logger.warning(
+                    "Weight only int8 quantization on A100 accelerators is not recommended."
+                )
+            if self.resources.accelerator.accelerator in [
+                Accelerator.T4,
+                Accelerator.V100,
+            ]:
                 raise ValueError(
-                    "Weight only int8 quantization on A100 accelerators is not currently supported"
+                    "TRT-LLM is not supported on CUDA_COMPUTE_75 (T4) and CUDA_COMPUTE_70 (V100) GPUs"
+                    "the lowest supported CUDA compute capability is CUDA_COMPUTE_80 (A100) or A10G (CUDA_COMPUTE_86)"
                 )
             elif self.trt_llm.build.quantization_type in [
                 TrussTRTLLMQuantizationType.FP8,
                 TrussTRTLLMQuantizationType.FP8_KV,
-            ] and self.resources.accelerator.accelerator not in [
-                Accelerator.H100,
-                Accelerator.H100_40GB,
-                Accelerator.L4,
+            ] and self.resources.accelerator.accelerator in [
+                Accelerator.A10G,
+                Accelerator.A100,
             ]:
                 raise ValueError(
-                    "FP8 quantization is only supported on L4 and H100 accelerators"
+                    "FP8 quantization is only supported on L4, H100, H200 accelerators or newer (CUDA_COMPUTE>=89)"
                 )
             tensor_parallel_count = self.trt_llm.build.tensor_parallel_count
 
@@ -803,6 +873,10 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["model_cache"] = transform_optional(
                     field_curr_value, lambda data: data.to_list(verbose=verbose)
                 )
+            elif isinstance(field_curr_value, CacheInternal):
+                d["cache_internal"] = transform_optional(
+                    field_curr_value, lambda data: data.to_list()
+                )
             elif isinstance(field_curr_value, TRTLLMConfiguration):
                 d["trt_llm"] = transform_optional(
                     field_curr_value, lambda data: data.to_json_dict(verbose=verbose)
@@ -819,22 +893,25 @@ def obj_to_dict(obj, verbose: bool = False):
                 d["docker_auth"] = transform_optional(
                     field_curr_value, lambda data: data.to_dict()
                 )
+            elif isinstance(field_curr_value, HealthChecks):
+                d["health_checks"] = transform_optional(
+                    field_curr_value, lambda data: data.to_dict()
+                )
             else:
                 d[field_name] = field_curr_value
 
     return d
 
 
-# TODO(marius): consolidate this with config/validation:
 def _infer_python_version() -> str:
     return f"py{sys.version_info.major}{sys.version_info.minor}"
 
 
 def map_local_to_supported_python_version() -> str:
-    return map_to_supported_python_version(_infer_python_version())
+    return _map_to_supported_python_version(_infer_python_version())
 
 
-def map_to_supported_python_version(python_version: str) -> str:
+def _map_to_supported_python_version(python_version: str) -> str:
     """Map python version to truss supported python version.
 
     Currently, it maps any versions greater than 3.11 to 3.11.
@@ -857,11 +934,9 @@ def map_to_supported_python_version(python_version: str) -> str:
         return "py311"
 
     if python_minor_version < 8:
-        # TODO: consider raising an error instead - it doesn't' seem safe.
-        logger.info(
+        raise ValueError(
             f"Mapping python version {python_major_version}.{python_minor_version}"
             " to 3.8, the lowest version that Truss currently supports."
         )
-        return "py38"
 
     return python_version

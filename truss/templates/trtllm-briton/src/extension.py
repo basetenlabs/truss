@@ -1,7 +1,5 @@
 from briton.spec_dec_truss_model import Model as SpecDecModel
-from briton.trtllm_config import (
-    TRTLLMConfiguration,
-)
+from briton.trtllm_config import TRTLLMConfiguration, TrussSpecDecMode
 from briton.truss_model import Model
 
 # TODO(pankaj) Define an ABC base class for this. That baseclass should live in
@@ -40,7 +38,11 @@ class Extension:
         self._config = kwargs["config"]
         trt_llm_config = self._config.get("trt_llm")
         config = TRTLLMConfiguration(**trt_llm_config)
-        if config.build.speculator:
+        if (
+            config.build.speculator is not None
+            and config.build.speculator.speculative_decoding_mode
+            == TrussSpecDecMode.DRAFT_EXTERNAL
+        ):
             self._model = SpecDecModel(*args, **kwargs)
         else:
             self._model = Model(*args, **kwargs)

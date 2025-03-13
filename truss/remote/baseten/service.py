@@ -2,19 +2,15 @@ import enum
 import time
 import urllib.parse
 import warnings
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    NamedTuple,
-    Optional,
-)
+from typing import Any, Dict, Iterator, NamedTuple, Optional
 
 import requests
 from tenacity import retry, stop_after_delay, wait_fixed
+
 from truss.base.errors import RemoteNetworkError
 from truss.remote.baseten.api import BasetenApi
 from truss.remote.baseten.auth import AuthService
+from truss.remote.baseten.core import ModelVersionHandle
 from truss.remote.truss_remote import TrussService
 from truss.truss_handle.truss_handle import TrussHandle
 
@@ -42,23 +38,18 @@ class URLConfig(enum.Enum):
     CHAIN = Data("chain", "run_remote", "chains")
 
     @staticmethod
-    def invocation_url(
-        api_url: str,  # E.g. https://api.baseten.co
+    def invoke_url(
+        hostname: str,  # E.g. https://model-{model_id}.api.baseten.co
         config: "URLConfig",
-        entity_id: str,
         entity_version_id: str,
         is_draft,
     ) -> str:
         """Get the URL for the predict/run_remote endpoint."""
-        # E.g. `https://api.baseten.co` -> `https://model-{model_id}.api.baseten.co`
-        url = _add_model_subdomain(api_url, f"{config.value.prefix}-{entity_id}")
+
         if is_draft:
-            # "https://model-{model_id}.api.baseten.co/development".
-            url = f"{url}/development/{config.value.invoke_endpoint}"
+            return f"{hostname}/development/{config.value.invoke_endpoint}"
         else:
-            # "https://model-{model_id}.api.baseten.co/deployment/{deployment_id}".
-            url = f"{url}/deployment/{entity_version_id}/{config.value.invoke_endpoint}"
-        return url
+            return f"{hostname}/deployment/{entity_version_id}/{config.value.invoke_endpoint}"
 
     @staticmethod
     def status_page_url(
@@ -95,8 +86,7 @@ class URLConfig(enum.Enum):
 class BasetenService(TrussService):
     def __init__(
         self,
-        model_id: str,
-        model_version_id: str,
+        model_version_handle: ModelVersionHandle,
         is_draft: bool,
         api_key: str,
         service_url: str,
@@ -104,8 +94,7 @@ class BasetenService(TrussService):
         truss_handle: Optional[TrussHandle] = None,
     ):
         super().__init__(is_draft=is_draft, service_url=service_url)
-        self._model_id = model_id
-        self._model_version_id = model_version_id
+        self._model_version_handle = model_version_handle
         self._auth_service = AuthService(api_key=api_key)
         self._api = api
         self._truss_handle = truss_handle
@@ -118,20 +107,13 @@ class BasetenService(TrussService):
 
     @property
     def model_id(self) -> str:
-        return self._model_id
+        return self._model_version_handle.model_id
 
     @property
     def model_version_id(self) -> str:
-        return self._model_version_id
+        return self._model_version_handle.version_id
 
-    @property
-    def invocation_url(self) -> str:
-        return f"{self._service_url}/predict"
-
-    def predict(
-        self,
-        model_request_body: Dict,
-    ) -> Any:
+    def predict(self, model_request_body: Dict) -> Any:
         response = self._send_request(
             self.predict_url, "POST", data=model_request_body, stream=True
         )
@@ -173,17 +155,18 @@ class BasetenService(TrussService):
 
     @property
     def predict_url(self) -> str:
-        return URLConfig.invocation_url(
-            self._api.rest_api_url,
-            URLConfig.MODEL,
-            self.model_id,
-            self._model_version_id,
-            self.is_draft,
+        handle = self._model_version_handle
+
+        return URLConfig.invoke_url(
+            hostname=handle.hostname,
+            config=URLConfig.MODEL,
+            entity_version_id=handle.version_id,
+            is_draft=self.is_draft,
         )
 
     @retry(stop=stop_after_delay(60), wait=wait_fixed(1), reraise=True)
     def _fetch_deployment(self) -> Any:
-        return self._api.get_deployment(self._model_id, self._model_version_id)
+        return self._api.get_deployment(self.model_id, self.model_version_id)
 
     def poll_deployment_status(self, sleep_secs: int = 1) -> Iterator[str]:
         """

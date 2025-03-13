@@ -6,6 +6,7 @@ import inspect
 import json
 import logging
 import pathlib
+import re
 import sys
 import tempfile
 import textwrap
@@ -19,11 +20,12 @@ import httpx
 import opentelemetry.trace.propagation.tracecontext as tracecontext
 import pytest
 import requests
+import websockets
 from opentelemetry import context, trace
 from python_on_whales import Container
 from requests.exceptions import RequestException
+from websockets.exceptions import ConnectionClosed
 
-from truss.base.truss_config import map_to_supported_python_version
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.tests.helpers import create_truss
 from truss.tests.test_testing_utilities_for_other_tests import ensure_kill_all
@@ -33,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_ERROR = "Internal Server Error"
 PREDICT_URL = "http://localhost:8090/v1/models/model:predict"
+COMPLETIONS_URL = "http://localhost:8090/v1/completions"
+CHAT_COMPLETIONS_URL = "http://localhost:8090/v1/chat/completions"
+WEBSOCKETS_URL = "ws://localhost:8090/v1/websocket"
 
 
 @pytest.fixture
@@ -99,21 +104,26 @@ def _temp_truss(model_src: str, config_src: str = "") -> Iterator[TrussHandle]:
 # Test Cases ###########################################################################
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
-    "python_version, expected_python_version",
-    [
-        ("py37", "py38"),
-        ("py38", "py38"),
-        ("py39", "py39"),
-        ("py310", "py310"),
-        ("py311", "py311"),
-        ("py312", "py311"),
-        ("py36", "py38"),
-    ],
+    "config_python_version, inspected_python_version",
+    [("py38", "3.8"), ("py39", "3.9"), ("py310", "3.10"), ("py311", "3.11")],
 )
-def test_map_to_supported_python_version(python_version, expected_python_version):
-    out_python_version = map_to_supported_python_version(python_version)
-    assert out_python_version == expected_python_version
+def test_predict_python_versions(config_python_version, inspected_python_version):
+    model = """
+    import sys
+    class Model:
+        def predict(self, data):
+            version = sys.version_info
+            return f"{version.major}.{version.minor}"
+    """
+
+    config = f"python_version: {config_python_version}"
+
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        response = requests.post(PREDICT_URL, json={})
+        assert inspected_python_version == response.json()
 
 
 @pytest.mark.integration
@@ -134,22 +144,10 @@ def test_model_load_logs(test_data_path):
             local_port=8090, detach=True, wait_for_server_ready=True
         )
         logs = container.logs()
-        _assert_logs_contain(
-            logs,
-            message="Executing model.load()",
-        )
-        _assert_logs_contain(
-            logs,
-            message="Loading truss model from file",
-        )
-        _assert_logs_contain(
-            logs,
-            message="Completed model.load()",
-        )
-        _assert_logs_contain(
-            logs,
-            message="User Load Message",
-        )
+        _assert_logs_contain(logs, message="Executing model.load()")
+        _assert_logs_contain(logs, message="Loading truss model from file")
+        _assert_logs_contain(logs, message="Completed model.load()")
+        _assert_logs_contain(logs, message="User Load Message")
 
 
 @pytest.mark.integration
@@ -187,6 +185,12 @@ def test_model_load_failure_truss(test_data_path):
             return True
 
         @handle_request_exception
+        def _test_is_loaded(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model/loaded")
+            assert ready.status_code == expected_code
+            return True
+
+        @handle_request_exception
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
@@ -202,8 +206,9 @@ def test_model_load_failure_truss(test_data_path):
 
         # The server should be completely down so all requests should result in a RequestException.
         # The decorator handle_request_exception catches the RequestException and returns False.
-        assert not _test_readiness_probe(expected_code=200)
         assert not _test_liveness_probe(expected_code=200)
+        assert not _test_readiness_probe(expected_code=200)
+        assert not _test_is_loaded(expected_code=200)
         assert not _test_ping(expected_code=200)
         assert not _test_invocations(expected_code=200)
 
@@ -294,10 +299,7 @@ def test_async_streaming(test_data_path):
         ] == ["0", "1", "2", "3", "4"]
 
         predict_non_stream_response = requests.post(
-            PREDICT_URL,
-            json={},
-            stream=True,
-            headers={"accept": "application/json"},
+            PREDICT_URL, json={}, stream=True, headers={"accept": "application/json"}
         )
         assert "transfer-encoding" not in predict_non_stream_response.headers
         assert predict_non_stream_response.json() == "01234"
@@ -357,13 +359,7 @@ def test_streaming_with_error_and_stacktrace(test_data_path):
         assert [
             byte_string.decode()
             for byte_string in predict_non_error_response.iter_content()
-        ] == [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-        ]
+        ] == ["0", "1", "2", "3", "4"]
         expected_stack_trace = (
             "Traceback (most recent call last):\n"
             '  File "/app/model/model.py", line 12, in inner\n'
@@ -408,9 +404,10 @@ secrets:
         assert response.json() == "secret_value"
 
     # Case where the secret is not specified in the config
-    with ensure_kill_all(), _temp_truss(
-        inspect.getsource(Model), config_with_no_secret
-    ) as tr:
+    with (
+        ensure_kill_all(),
+        _temp_truss(inspect.getsource(Model), config_with_no_secret) as tr,
+    ):
         LocalConfigHandler.set_secret("secret", "secret_value")
         container = tr.docker_run(
             local_port=8090, detach=True, wait_for_server_ready=True
@@ -822,6 +819,10 @@ def test_slow_truss(test_data_path):
             ready = requests.get(f"{truss_server_addr}/v1/models/model")
             assert ready.status_code == expected_code
 
+        def _test_is_loaded(expected_code):
+            ready = requests.get(f"{truss_server_addr}/v1/models/model/loaded")
+            assert ready.status_code == expected_code
+
         def _test_ping(expected_code):
             ping = requests.get(f"{truss_server_addr}/ping")
             assert ping.status_code == expected_code
@@ -843,6 +844,7 @@ def test_slow_truss(test_data_path):
         for _ in range(LOAD_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(503)
+            _test_is_loaded(503)
             _test_ping(503)
             _test_invocations(503)
             time.sleep(1)
@@ -850,6 +852,7 @@ def test_slow_truss(test_data_path):
         time.sleep(LOAD_BUFFER_TIME)
         _test_liveness_probe(200)
         _test_readiness_probe(200)
+        _test_is_loaded(200)
         _test_ping(200)
 
         predict_call = Thread(
@@ -862,6 +865,7 @@ def test_slow_truss(test_data_path):
         for _ in range(PREDICT_TEST_TIME):
             _test_liveness_probe(200)
             _test_readiness_probe(200)
+            _test_is_loaded(200)
             _test_ping(200)
             time.sleep(1)
 
@@ -894,29 +898,19 @@ def test_init_environment_parameter():
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         assert "Executing model.load with environment: staging" in container.logs()
         response = requests.post(PREDICT_URL, json={})
         assert response.json() == "staging"
         assert response.status_code == 200
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
     # Test a truss deployment with no associated environment
     config = "model_name: init-no-environment-truss"
     with ensure_kill_all(), _temp_truss(model, config) as tr:
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         assert "Executing model.load with environment: None" in container.logs()
         response = requests.post(PREDICT_URL, json={})
@@ -940,9 +934,7 @@ def test_setup_environment():
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         # Mimic environment changing to beta
         beta_env = {"name": "beta"}
@@ -965,13 +957,7 @@ def test_setup_environment():
             in container.logs()
         )
         assert "in beta environment" in container.logs()
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
-        )
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
 
     # Test a truss that uses the environment in load()
     model = """
@@ -994,9 +980,7 @@ def test_setup_environment():
         staging_env_str = json.dumps(staging_env)
         LocalConfigHandler.set_dynamic_config("environment", staging_env_str)
         container = tr.docker_run(
-            local_port=8090,
-            detach=True,
-            wait_for_server_ready=True,
+            local_port=8090, detach=True, wait_for_server_ready=True
         )
         # Don't need to wait here because we explicitly grab the environment from dynamic_config_resolver before calling user's load()
         assert (
@@ -1014,11 +998,7 @@ def test_setup_environment():
         no_env = None
         no_env_str = json.dumps(no_env)
         container.execute(
-            [
-                "bash",
-                "-c",
-                f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment",
-            ]
+            ["bash", "-c", f"echo '{no_env_str}' > /etc/b10_dynamic_config/environment"]
         )
         time.sleep(30)
         assert (
@@ -1026,13 +1006,223 @@ def test_setup_environment():
             in container.logs()
         )
         assert "setup_environment called with None" in container.logs()
-        container.execute(
-            [
-                "bash",
-                "-c",
-                "rm -f /etc/b10_dynamic_config/environment",
-            ]
+        container.execute(["bash", "-c", "rm -f /etc/b10_dynamic_config/environment"])
+
+
+@pytest.mark.integration
+def test_health_check_configuration():
+    model = """
+    class Model:
+        def predict(self, model_input):
+            return model_input
+    """
+
+    config = """runtime:
+    health_checks:
+        restart_check_delay_seconds: 100
+        restart_threshold_seconds: 1700
+    """
+
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 100
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 1700
+        assert (
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
         )
+
+    config = """runtime:
+    health_checks:
+        restart_check_delay_seconds: 1200
+        restart_threshold_seconds: 90
+        stop_traffic_threshold_seconds: 50
+    """
+
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds == 1200
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds == 90
+        assert tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds == 50
+
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        assert tr.spec.config.runtime.health_checks.restart_check_delay_seconds is None
+        assert tr.spec.config.runtime.health_checks.restart_threshold_seconds is None
+        assert (
+            tr.spec.config.runtime.health_checks.stop_traffic_threshold_seconds is None
+        )
+
+
+@pytest.mark.integration
+def test_is_healthy():
+    model = """
+    class Model:
+        def load(self):
+            raise Exception("not loaded")
+
+        def is_healthy(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        truss_server_addr = "http://localhost:8090"
+        for _ in range(5):
+            time.sleep(1)
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            if healthy.status_code == 503:
+                break
+            assert healthy.status_code == 200
+        assert healthy.status_code == 503
+        diff = container.diff()
+        assert "/root/inference_server_crashed.txt" in diff
+        assert diff["/root/inference_server_crashed.txt"] == "A"
+
+    model = """
+    class Model:
+        def is_healthy(self, argument) -> bool:
+            pass
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="`is_healthy` must have only one argument: `self`",
+        )
+
+    model = """
+    class Model:
+        def is_healthy(self) -> bool:
+            raise Exception("not healthy")
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        truss_server_addr = "http://localhost:8090"
+
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert (
+            "Exception while checking if model is healthy: not healthy"
+            in container.logs()
+        )
+        assert "Health check failed." in container.logs()
+
+    model = """
+    import time
+
+    class Model:
+        def load(self):
+            time.sleep(10)
+
+        def is_healthy(self) -> bool:
+            return False
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        truss_server_addr = "http://localhost:8090"
+
+        time.sleep(5)
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        # Ensure we only log after model.load is complete
+        assert "Health check failed." not in container.logs()
+
+        # Sleep a few seconds to get the server some time to wake up
+        time.sleep(10)
+
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 1
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        assert container.logs().count("Health check failed.") == 2
+
+    model = """
+    import time
+
+    class Model:
+        def __init__(self, **kwargs):
+            self._healthy = False
+
+        def load(self):
+            time.sleep(10)
+            self._healthy = True
+
+        def is_healthy(self):
+            return self._healthy
+
+        def predict(self, model_input):
+            self._healthy = model_input["healthy"]
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=False)
+        time.sleep(5)
+        truss_server_addr = "http://localhost:8090"
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 503
+        time.sleep(10)
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 200
+
+        healthy_responses = [True, "yessss", 34, {"woo": "hoo"}]
+        for response in healthy_responses:
+            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
+            assert predict_response.status_code == 200
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert healthy.status_code == 200
+
+        not_healthy_responses = [False, "", 0, {}]
+        for response in not_healthy_responses:
+            predict_response = requests.post(PREDICT_URL, json={"healthy": response})
+            assert predict_response.status_code == 200
+            healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+            assert healthy.status_code == 503
+
+    model = """
+    class Model:
+        def is_healthy(self) -> bool:
+            return True
+
+        def predict(self, model_input):
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        truss_server_addr = "http://localhost:8090"
+
+        healthy = requests.get(f"{truss_server_addr}/v1/models/model")
+        assert healthy.status_code == 200
 
 
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
@@ -1051,7 +1241,7 @@ def _patch_termination_timeout(container: Container, seconds: int, truss_contain
         container.copy_to(patched_file.name, container_server_source)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.integration
 async def test_graceful_shutdown(truss_container_fs):
     model = """
@@ -1277,13 +1467,7 @@ class Model:
         )
 
         lines = predict_response.text.strip().split("\n")
-        assert lines == [
-            "data: 0",
-            "",
-            "data: 1",
-            "",
-            "data: 2",
-        ]
+        assert lines == ["data: 0", "", "data: 1", "", "data: 2"]
 
 
 # Using Request in Model ###############################################################
@@ -1385,7 +1569,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "When using preprocessing, the predict method cannot only have the request argument",
+            "When using `preprocess`, the predict method cannot only have the request argument",
             "Exception while loading model",
         )
 
@@ -1405,7 +1589,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "The postprocessing method cannot only have the request argument",
+            "The `postprocess` method cannot only have the request argument",
             "Exception while loading model",
         )
 
@@ -1421,7 +1605,7 @@ def test_truss_with_requests_and_invalid_argument_combinations():
         time.sleep(1.0)  # Wait for logs.
         _assert_logs_contain_error(
             container.logs(),
-            "Truss model must have a `predict` method.",
+            "Truss model must have a `predict` or `websocket` method",
             "Exception while loading model",
         )
 
@@ -1589,3 +1773,239 @@ def test_limit_concurrency_with_sse():
 
         result = make_request(True, timeout=0.55, task_id=4)
         print(f"Final chunks: {result}")
+
+
+@pytest.mark.integration
+def test_custom_openai_endpoints():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    class Model:
+        def load(self):
+            self._predict_count = 0
+            self._completions_count = 0
+
+        async def predict(self, inputs) -> int:
+            self._predict_count += inputs["increment"]
+            return self._predict_count
+
+        async def completions(self, inputs) -> int:
+            self._completions_count += inputs["increment"]
+            return self._completions_count
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"increment": 1})
+        assert response.status_code == 200
+        assert response.json() == 1
+
+        response = requests.post(COMPLETIONS_URL, json={"increment": 2})
+        assert response.status_code == 200
+        assert response.json() == 2
+
+        response = requests.post(CHAT_COMPLETIONS_URL, json={"increment": 3})
+        assert response.status_code == 404
+
+
+@pytest.mark.integration
+def test_postprocess_async_generator_streaming():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import List, Generator
+
+    class Model:
+        async def predict(self, inputs) -> List[str]:
+            nums: List[int] = inputs["nums"]
+            return nums
+
+        async def postprocess(self, nums: List[str]) -> Generator[str, None, None]:
+            for num in nums:
+                yield num
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]}, stream=True)
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_preprocess_async_generator():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import List, AsyncGenerator
+
+    class Model:
+        async def preprocess(self, inputs) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, nums: AsyncGenerator[str, None]) -> List[str]:
+            return [num async for num in nums]
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(PREDICT_URL, json={"nums": ["1", "2"]})
+        assert response.status_code == 200
+        assert response.json() == ["1", "2"]
+
+
+@pytest.mark.integration
+def test_openai_client_streaming():
+    """
+    Test a Truss that exposes an OpenAI compatible endpoint.
+    """
+    model = """
+    from typing import AsyncGenerator
+
+    class Model:
+        async def chat_completions(self, inputs) -> AsyncGenerator[str, None]:
+            for num in inputs["nums"]:
+                yield num
+
+        async def predict(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+
+        response = requests.post(
+            CHAT_COMPLETIONS_URL,
+            json={"nums": ["1", "2"]},
+            stream=True,
+            # Despite requesting json, we should still stream results back.
+            headers={
+                "accept": "application/json",
+                "user-agent": "OpenAI/Python 1.61.0",
+            },
+        )
+        assert response.headers.get("transfer-encoding") == "chunked"
+        assert [
+            byte_string.decode() for byte_string in list(response.iter_content())
+        ] == ["1", "2"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_raise_predict_and_websocket_endpoint():
+    model = """
+    class Model:
+        async def websocket(self, websocket):
+            pass
+
+        async def predict(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(3)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="cannot have both",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_raise_preprocess_and_websocket_endpoint():
+    model = """
+    class Model:
+        async def websocket(self, websocket):
+            pass
+
+        async def preprocess(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(3)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="cannot have both",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_raise_no_endpoint():
+    model = """
+    class Model:
+       pass
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=False
+        )
+        time.sleep(1)
+        _assert_logs_contain_error(
+            container.logs(),
+            message="Exception while loading model",
+            error="must have a `predict` or `websocket` method",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_websocket_endpoint():
+    model = """
+    import fastapi
+
+    class Model:
+        async def websocket(self, websocket: fastapi.WebSocket):
+            try:
+                while True:
+                    text = await websocket.receive_text()
+                    await websocket.send_text(text + " pong")
+            except fastapi.WebSocketDisconnect:
+                pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        async with websockets.connect(WEBSOCKETS_URL) as websocket:
+            # Send "hello" and verify response
+            await websocket.send("hello")
+            response = await websocket.recv()
+            assert response == "hello pong"
+
+            # Send "world" and verify response
+            await websocket.send("world")
+            response = await websocket.recv()
+            assert response == "world pong"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_nonexistent_websocket_endpoint():
+    model = """
+    class Model:
+
+        async def predict(self, inputs):
+            pass
+    """
+    with ensure_kill_all(), _temp_truss(model) as tr:
+        tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        response = None
+        with pytest.raises(ConnectionClosed) as exc_info:
+            async with websockets.connect(WEBSOCKETS_URL) as ws:
+                response_bytes = await ws.recv()
+                response = response_bytes.decode()
+                await ws.recv()  # Triggers exception, recv after expected closure
+
+        assert exc_info.value.rcvd.code == 1003
+        assert re.search(r"not implemented", response, re.IGNORECASE)

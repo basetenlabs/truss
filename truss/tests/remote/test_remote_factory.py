@@ -1,6 +1,7 @@
 from unittest import mock
 
 import pytest
+
 from truss.remote.remote_factory import RemoteFactory
 from truss.remote.truss_remote import RemoteConfig, RemoteUser, TrussRemote
 
@@ -47,8 +48,7 @@ class TrussTestRemote(TrussRemote):
 
 def mock_service_config():
     return RemoteConfig(
-        name="mock-service",
-        configs={"remote_provider": "test_remote", **SAMPLE_CONFIG},
+        name="mock-service", configs={"remote_provider": "test_remote", **SAMPLE_CONFIG}
     )
 
 

@@ -1,3 +1,4 @@
+import abc
 import ast
 import atexit
 import collections
@@ -14,9 +15,12 @@ import pprint
 import sys
 import types
 import warnings
+from importlib.abc import Loader
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
+    ClassVar,
     Iterable,
     Iterator,
     Mapping,
@@ -25,6 +29,8 @@ from typing import (
     Protocol,
     Type,
     TypeVar,
+    Union,
+    final,
     get_args,
     get_origin,
 )
@@ -32,11 +38,13 @@ from typing import (
 import pydantic
 from typing_extensions import ParamSpec
 
-from truss_chains import definitions, utils
+from truss.base import truss_config
+from truss.shared import types as shared_types
+from truss_chains import private_types, public_types, utils
 
-_SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None}
+_SIMPLE_TYPES = {int, float, complex, bool, str, bytes, None, pydantic.BaseModel}
 _SIMPLE_CONTAINERS = {list, dict}
-_STREAM_TYPES = {bytes, str}
+_STREAM_TYPES = {str, bytes}
 
 _DOCS_URL_CHAINING = (
     "https://docs.baseten.co/chains/concepts#depends-call-other-chainlets"
@@ -44,9 +52,14 @@ _DOCS_URL_CHAINING = (
 _DOCS_URL_LOCAL = "https://docs.baseten.co/chains/guide#local-development"
 _DOCS_URL_STREAMING = "https://docs.baseten.co/chains/guide#streaming"
 
-_ENTRYPOINT_ATTR_NAME = "_chains_entrypoint"
+# A "neutral dummy" endpoint descriptor if validation fails, this allows to safely
+# continue checking for more errors.
+_DUMMY_ENDPOINT_DESCRIPTOR = private_types.EndpointAPIDescriptor(
+    input_args=[], output_types=[], is_async=False, is_streaming=False
+)
 
-ChainletT = TypeVar("ChainletT", bound=definitions.ABCChainlet)
+
+ChainletT = TypeVar("ChainletT", bound=private_types.ABCChainlet)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
@@ -58,9 +71,10 @@ class _ErrorKind(str, enum.Enum):
     TYPE_ERROR = enum.auto()
     IO_TYPE_ERROR = enum.auto()
     MISSING_API_ERROR = enum.auto()
+    INVALID_CONFIG_ERROR = enum.auto()
 
 
-class _ErrorLocation(definitions.SafeModel):
+class _ErrorLocation(shared_types.SafeModel):
     src_path: str
     line: Optional[int] = None
     chainlet_name: Optional[str] = None
@@ -77,7 +91,7 @@ class _ErrorLocation(definitions.SafeModel):
         return value
 
 
-class _ValidationError(definitions.SafeModel):
+class _ValidationError(shared_types.SafeModel):
     msg: str
     kind: _ErrorKind
     location: _ErrorLocation
@@ -135,14 +149,10 @@ def raise_validation_errors() -> None:
     """Raises validation errors as combined ``ChainsUsageError``"""
     if _global_error_collector.has_errors:
         error_msg = _global_error_collector.format_errors()
-        errors_count = (
-            "an error"
-            if _global_error_collector.num_errors == 1
-            else f"{_global_error_collector.num_errors} errors"
-        )
         _global_error_collector.clear()  # Clear errors so `atexit` won't display them
-        raise definitions.ChainsUsageError(
-            f"The Chainlet definitions contain {errors_count}:\n{error_msg}"
+        raise public_types.ChainsUsageError(
+            "The user defined code does not comply with the required spec, "
+            f"please fix below:\n{error_msg}"
         )
 
 
@@ -167,7 +177,7 @@ class ContextDependencyMarker(_BaseProvisionMarker):
 
     def __getattr__(self, item: str) -> Any:
         logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
-        raise definitions.ChainsRuntimeError(
+        raise public_types.ChainsRuntimeError(
             "It seems `chains.depends_context()` was used, but not as an argument "
             "to the `__init__` method of a Chainlet - This is not supported."
             f"See {_DOCS_URL_CHAINING}.\n"
@@ -177,13 +187,13 @@ class ContextDependencyMarker(_BaseProvisionMarker):
 
 
 class ChainletDependencyMarker(_BaseProvisionMarker):
-    chainlet_cls: Type[definitions.ABCChainlet]
+    chainlet_cls: Type[private_types.ABCChainlet]
     retries: int
 
     def __init__(
         self,
-        chainlet_cls: Type[definitions.ABCChainlet],
-        options: definitions.RPCOptions,
+        chainlet_cls: Type[private_types.ABCChainlet],
+        options: public_types.RPCOptions,
     ) -> None:
         self.chainlet_cls = chainlet_cls
         self.options = options
@@ -193,7 +203,7 @@ class ChainletDependencyMarker(_BaseProvisionMarker):
 
     def __getattr__(self, item: str) -> Any:
         logging.error(f"Attempting to access attribute `{item}` on `{self}`.")
-        raise definitions.ChainsRuntimeError(
+        raise public_types.ChainsRuntimeError(
             f"It seems `chains.depends({self.chainlet_cls.name})` was used, but "
             "not as an argument to the `__init__` method of a Chainlet - This is not "
             "supported. Dependency Chainlets must be passed as init arguments.\n"
@@ -214,20 +224,36 @@ def _example_chainlet_code() -> str:
     # called on erroneous code branches (which will not be triggered if
     # `example_chainlet` is free of errors).
     try:
-        from truss_chains import example_chainlet
+        from truss_chains.reference_code import reference_chainlet
     # If `example_chainlet` fails validation and `_example_chainlet_code` is
     # called as a result of that, we have a circular import ("partially initialized
     # module 'truss_chains.example_chainlet' ...").
     except AttributeError:
-        logging.error("example_chainlet` is broken.", exc_info=True, stack_info=True)
+        logging.error("`reference_chainlet` is broken.", exc_info=True, stack_info=True)
         return "<EXAMPLE CODE MISSING/BROKEN>"
 
-    example_name = example_chainlet.HelloWorld.name
-    source = pathlib.Path(example_chainlet.__file__).read_text()
+    example_name = reference_chainlet.HelloWorld.name
+    return _get_cls_source(reference_chainlet.__file__, example_name)
+
+
+@functools.cache
+def _example_model_code() -> str:
+    try:
+        from truss_chains.reference_code import reference_model
+    except AttributeError:
+        logging.error("`reference_model` is broken.", exc_info=True, stack_info=True)
+        return "<EXAMPLE CODE MISSING/BROKEN>"
+
+    example_name = reference_model.HelloWorld.name
+    return _get_cls_source(reference_model.__file__, example_name)
+
+
+def _get_cls_source(src_path: str, target_class_name: str) -> str:
+    source = pathlib.Path(src_path).read_text()
     tree = ast.parse(source)
     class_code = ""
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == example_name:
+        if isinstance(node, ast.ClassDef) and node.name == target_class_name:
             # Extract the source code of the class definition
             lines = source.splitlines()
             class_code = "\n".join(lines[node.lineno - 1 : node.end_lineno])
@@ -271,7 +297,7 @@ def _validate_io_type(
             location,
         )
         return
-    if annotation in _SIMPLE_TYPES:
+    if annotation in _SIMPLE_TYPES or annotation == public_types.WebSocketProtocol:
         return
 
     error_msg = (
@@ -289,9 +315,12 @@ def _validate_io_type(
             return
         args = get_args(annotation)
         for arg in args:
-            if arg not in _SIMPLE_TYPES:
+            if not (
+                arg in _SIMPLE_TYPES or utils.issubclass_safe(arg, pydantic.BaseModel)
+            ):
                 _collect_error(error_msg, _ErrorKind.IO_TYPE_ERROR, location)
                 return
+            pass
         return
     if utils.issubclass_safe(annotation, pydantic.BaseModel):
         return
@@ -301,17 +330,18 @@ def _validate_io_type(
 
 def _validate_streaming_output_type(
     annotation: Any, location: _ErrorLocation
-) -> definitions.StreamingTypeDescriptor:
+) -> private_types.StreamingTypeDescriptor:
     origin = get_origin(annotation)
     assert origin in (collections.abc.AsyncIterator, collections.abc.Iterator)
     args = get_args(annotation)
     if len(args) < 1:
+        stream_types = sorted(list(x.__name__ for x in _STREAM_TYPES))
         _collect_error(
-            f"Iterators must be annotated with type (one of {list(x.__name__ for x in _STREAM_TYPES)}).",
+            f"Iterators must be annotated with type (one of {stream_types}).",
             _ErrorKind.IO_TYPE_ERROR,
             location,
         )
-        return definitions.StreamingTypeDescriptor(
+        return private_types.StreamingTypeDescriptor(
             raw=annotation, origin_type=origin, arg_type=bytes
         )
 
@@ -326,29 +356,34 @@ def _validate_streaming_output_type(
         )
         _collect_error(msg, _ErrorKind.IO_TYPE_ERROR, location)
 
-    return definitions.StreamingTypeDescriptor(
+    return private_types.StreamingTypeDescriptor(
         raw=annotation, origin_type=origin, arg_type=arg
     )
 
 
-def _validate_endpoint_params(
-    params: list[inspect.Parameter], location: _ErrorLocation
-) -> list[definitions.InputArg]:
+def _validate_method_signature(
+    method_name: str, location: _ErrorLocation, params: list[inspect.Parameter]
+) -> None:
     if len(params) == 0:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"`{method_name}` must be a method, i.e. with `{private_types.SELF_ARG_NAME}` as "
             "first argument. Got function with no arguments.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
-        return []
-    if params[0].name != definitions.SELF_ARG_NAME:
+    elif params[0].name != private_types.SELF_ARG_NAME:
         _collect_error(
-            f"`Endpoint must be a method, i.e. with `{definitions.SELF_ARG_NAME}` as "
+            f"`{method_name}` must be a method, i.e. with `{private_types.SELF_ARG_NAME}` as "
             f"first argument. Got `{params[0].name}` as first argument.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
+
+
+def _validate_endpoint_params(
+    params: list[inspect.Parameter], location: _ErrorLocation
+) -> list[private_types.InputArg]:
+    _validate_method_signature(private_types.RUN_REMOTE_METHOD_NAME, location, params)
     input_args = []
     for param in params[1:]:  # Skip self argument.
         if param.annotation == inspect.Parameter.empty:
@@ -360,10 +395,10 @@ def _validate_endpoint_params(
             )
         else:
             _validate_io_type(param.annotation, param.name, location)
-            type_descriptor = definitions.TypeDescriptor(raw=param.annotation)
+            type_descriptor = private_types.TypeDescriptor(raw=param.annotation)
             is_optional = param.default != inspect.Parameter.empty
             input_args.append(
-                definitions.InputArg(
+                private_types.InputArg(
                     name=param.name, type=type_descriptor, is_optional=is_optional
                 )
             )
@@ -372,7 +407,7 @@ def _validate_endpoint_params(
 
 def _validate_endpoint_output_types(
     annotation: Any, signature, location: _ErrorLocation, is_streaming: bool
-) -> list[definitions.TypeDescriptor]:
+) -> list[private_types.TypeDescriptor]:
     has_streaming_type = False
     if annotation == inspect.Parameter.empty:
         _collect_error(
@@ -387,7 +422,7 @@ def _validate_endpoint_output_types(
         output_types = []
         for i, arg in enumerate(get_args(annotation)):
             _validate_io_type(arg, f"return_type[{i}]", location)
-            output_types.append(definitions.TypeDescriptor(raw=arg))
+            output_types.append(private_types.TypeDescriptor(raw=arg))
 
     elif origin in (collections.abc.AsyncIterator, collections.abc.Iterator):
         output_types = [_validate_streaming_output_type(annotation, location)]
@@ -401,7 +436,7 @@ def _validate_endpoint_output_types(
             )
     else:
         _validate_io_type(annotation, "return_type", location)
-        output_types = [definitions.TypeDescriptor(raw=annotation)]
+        output_types = [private_types.TypeDescriptor(raw=annotation)]
 
     if is_streaming and not has_streaming_type:
         _collect_error(
@@ -415,9 +450,50 @@ def _validate_endpoint_output_types(
     return output_types
 
 
+def _validate_websocket_endpoint(
+    descriptor: private_types.EndpointAPIDescriptor, location: _ErrorLocation
+) -> None:
+    if any(arg.is_websocket for arg in descriptor.output_types):
+        _collect_error(
+            "Websockets cannot be used as output type.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if not any(arg.type.is_websocket for arg in descriptor.input_args):
+        return
+
+    if len(descriptor.input_args) > 1:
+        _collect_error(
+            "When using a websocket as input, no other arguments are allowed.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if len(descriptor.output_types) != 1 or descriptor.output_types[0].raw != None:  # noqa: E711
+        _collect_error(
+            "Websocket endpoints must have `None` as return type.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if descriptor.is_streaming:
+        # Redundant since output type None is required.
+        _collect_error(
+            "Websocket endpoints cannot reurn itesators. Use the websocket itself to stream data.",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    if not descriptor.is_async:
+        _collect_error(
+            "Websocket endpoints must be async.", _ErrorKind.IO_TYPE_ERROR, location
+        )
+
+
 def _validate_and_describe_endpoint(
-    cls: Type[definitions.ABCChainlet], location: _ErrorLocation
-) -> definitions.EndpointAPIDescriptor:
+    cls: Type[private_types.ABCChainlet], location: _ErrorLocation
+) -> private_types.EndpointAPIDescriptor:
     """The "endpoint method" of a Chainlet must have the following signature:
 
     ```
@@ -425,43 +501,34 @@ def _validate_and_describe_endpoint(
         self, [param_0: anno_0, param_1: anno_1 = default_1, ...]) -> ret_anno:
     ```
 
-    * The name must be `run`.
-    * It can be sync or async or def.
+    * The name must be `run_remote` for Chainlets, or `predict` for Models.
+    * It can be sync or async def.
     * The number and names of parameters are arbitrary, both positional and named
       parameters are ok.
     * All parameters and the return value must have type annotations. See
       `_validate_io_type` for valid types.
     * Generators are allowed, too (but not yet supported).
     """
-    if not hasattr(cls, definitions.ENDPOINT_METHOD_NAME):
+    if not hasattr(cls, cls.endpoint_method_name):
         _collect_error(
-            f"Chainlets must have a `{definitions.ENDPOINT_METHOD_NAME}` method.",
+            f"{cls.entity_type}s must have a `{cls.endpoint_method_name}` method.",
             _ErrorKind.MISSING_API_ERROR,
             location,
         )
-        # Return a "neutral dummy" if validation fails, this allows to safely
-        # continue checking for more errors.
-        return definitions.EndpointAPIDescriptor(
-            input_args=[], output_types=[], is_async=False, is_streaming=False
-        )
+        return _DUMMY_ENDPOINT_DESCRIPTOR
 
     # This is the unbound method.
-    endpoint_method = getattr(cls, definitions.ENDPOINT_METHOD_NAME)
-
+    endpoint_method = getattr(cls, cls.endpoint_method_name)
     line = inspect.getsourcelines(endpoint_method)[1]
     location = location.model_copy(
-        update={"line": line, "method_name": definitions.ENDPOINT_METHOD_NAME}
+        update={"line": line, "method_name": cls.endpoint_method_name}
     )
 
     if not inspect.isfunction(endpoint_method):
         _collect_error("`Endpoints must be a method.", _ErrorKind.TYPE_ERROR, location)
         # If it's not a function, it might be a class var and subsequent inspections
         # fail.
-        # Return a "neutral dummy" if validation fails, this allows to safely
-        # continue checking for more errors.
-        return definitions.EndpointAPIDescriptor(
-            input_args=[], output_types=[], is_async=False, is_streaming=False
-        )
+        return _DUMMY_ENDPOINT_DESCRIPTOR
     signature = inspect.signature(endpoint_method)
     input_args = _validate_endpoint_params(
         list(signature.parameters.values()), location
@@ -478,10 +545,7 @@ def _validate_and_describe_endpoint(
         is_streaming = inspect.isgeneratorfunction(endpoint_method)
 
     output_types = _validate_endpoint_output_types(
-        signature.return_annotation,
-        signature,
-        location,
-        is_streaming,
+        signature.return_annotation, signature, location, is_streaming
     )
 
     if is_streaming:
@@ -495,7 +559,7 @@ def _validate_and_describe_endpoint(
 
     if not is_async:
         warnings.warn(
-            "`run_remote` must be an async (coroutine) function in future releases. "
+            f"`{cls.endpoint_method_name}` must be an async (coroutine) function in future releases. "
             "Replace `def run_remote(...)` with `async def run_remote(...)`. "
             "Local testing and execution can be done with  "
             "`asyncio.run(my_chainlet.run_remote(...))`.\n"
@@ -511,75 +575,21 @@ def _validate_and_describe_endpoint(
             DeprecationWarning,
             stacklevel=1,
         )
-
-    return definitions.EndpointAPIDescriptor(
+    descriptor = private_types.EndpointAPIDescriptor(
+        name=cls.endpoint_method_name,
         input_args=input_args,
         output_types=output_types,
         is_async=is_async,
         is_streaming=is_streaming,
     )
+    _validate_websocket_endpoint(descriptor, location)
+    return descriptor
 
 
 def _get_generic_class_type(var):
     """Extracts `SomeGeneric` from `SomeGeneric` or `SomeGeneric[T]` uniformly."""
     origin = get_origin(var)
     return origin if origin is not None else var
-
-
-def _validate_dependency_arg(
-    param, location: _ErrorLocation
-) -> Optional[ChainletDependencyMarker]:
-    # Returns `None` if unvalidated.
-    # TODO: handle subclasses, unions, optionals, check default value etc.
-    if param.name == definitions.CONTEXT_ARG_NAME:
-        _collect_error(
-            f"The init argument name `{definitions.CONTEXT_ARG_NAME}` is reserved for "
-            "the optional context argument, which must be trailing if used. Example "
-            "of correct `__init__` with context:\n"
-            f"{_example_chainlet_code()}",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-
-    if not isinstance(param.default, ChainletDependencyMarker):
-        _collect_error(
-            f"Any arguments of a Chainlet's __init__ (besides `context`) must have "
-            "dependency Chainlets with default values from `chains.depends`-directive. "
-            f"Got `{param}`.\n"
-            f"Example of correct `__init__` with dependencies:\n"
-            f"{_example_chainlet_code()}",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return None
-
-    chainlet_cls = param.default.chainlet_cls
-    if not utils.issubclass_safe(chainlet_cls, definitions.ABCChainlet):
-        _collect_error(
-            f"`chains.depends` must be used with a Chainlet class as argument, got "
-            f"{chainlet_cls} instead.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-        return None
-    # Check type annotation.
-    # Also lenient with type annotation: since the RHS / default is asserted to be a
-    # chainlet class, proper type inference is possible even without annotation.
-    # TODO: `Protocol` is not a proper class and this might be version dependent.
-    # Find a better way to inspect this.
-    if not (
-        param.annotation == inspect.Parameter.empty
-        or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
-        or utils.issubclass_safe(chainlet_cls, param.annotation)
-    ):
-        _collect_error(
-            f"The type annotation for `{param.name}` must be a class/subclass of the "
-            "Chainlet type specified by `chains.provides` or a compatible "
-            f"typing.Protocol`. Got `{param.annotation}`.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-    return param.default  # The Marker.
 
 
 class _ChainletInitValidator:
@@ -608,29 +618,33 @@ class _ChainletInitValidator:
     """
 
     _location: _ErrorLocation
-    has_context: bool
-    validated_dependencies: Mapping[str, definitions.DependencyDescriptor]
+    _cls: Type[private_types.ABCChainlet]
+    has_context: bool = False
+    validated_dependencies: Mapping[str, private_types.DependencyDescriptor] = {}
 
     def __init__(
-        self, cls: Type[definitions.ABCChainlet], location: _ErrorLocation
+        self, cls: Type[private_types.ABCChainlet], location: _ErrorLocation
     ) -> None:
-        if not cls.has_custom_init():
+        self._cls = cls
+        if not self._cls.has_custom_init():
             self.has_context = False
             self.validated_dependencies = {}
             return
-        # Each validation pops of "processed" arguments from the list.
         line = inspect.getsourcelines(cls.__init__)[1]
         self._location = location.model_copy(
             update={"line": line, "method_name": "__init__"}
         )
-        params = list(inspect.signature(cls.__init__).parameters.values())
-        params = self._validate_self_arg(list(params))
-        params, self.has_context = self._validate_context_arg(params)
-        self.validated_dependencies = self._validate_dependencies(params)
 
-    def _validate_self_arg(
-        self, params: list[inspect.Parameter]
-    ) -> list[inspect.Parameter]:
+        params = list(inspect.signature(cls.__init__).parameters.values())
+        self._validate_args(params)
+
+    def _validate_args(self, params: list[inspect.Parameter]):
+        # Each validation pops of "processed" arguments from the list.
+        self._validate_self_arg(params)
+        self._validate_context_arg(params)
+        self._validate_dependencies(params)
+
+    def _validate_self_arg(self, params: list[inspect.Parameter]):
         if len(params) == 0:
             _collect_error(
                 "Methods must have first argument `self`, got no arguments.",
@@ -639,31 +653,28 @@ class _ChainletInitValidator:
             )
             return params
         param = params.pop(0)
-        if param.name != definitions.SELF_ARG_NAME:
+        if param.name != private_types.SELF_ARG_NAME:
             _collect_error(
                 f"Methods must have first argument `self`, got `{param.name}`.",
                 _ErrorKind.TYPE_ERROR,
                 self._location,
             )
-        return params
 
-    def _validate_context_arg(
-        self, params: list[inspect.Parameter]
-    ) -> tuple[list[inspect.Parameter], bool]:
+    def _validate_context_arg(self, params: list[inspect.Parameter]):
         def make_context_error_msg():
             return (
-                f"If `{definitions.ABCChainlet}` uses context for initialization, it "
-                f"must have `{definitions.CONTEXT_ARG_NAME}` argument of type "
-                f"`{definitions.DeploymentContext}` as the last argument.\n"
+                f"If `{self._cls.entity_type}` uses context for initialization, it "
+                f"must have `{private_types.CONTEXT_ARG_NAME}` argument of type "
+                f"`{public_types.DeploymentContext}` as the last argument.\n"
                 f"Got arguments: `{params}`.\n"
                 "Example of correct `__init__` with context:\n"
-                f"{_example_chainlet_code()}"
+                f"{self._example_code()}"
             )
 
         if not params:
-            return params, False
+            return
 
-        has_context = params[-1].name == definitions.CONTEXT_ARG_NAME
+        has_context = params[-1].name == private_types.CONTEXT_ARG_NAME
         has_context_marker = isinstance(params[-1].default, ContextDependencyMarker)
         if has_context ^ has_context_marker:
             _collect_error(
@@ -671,15 +682,16 @@ class _ChainletInitValidator:
             )
 
         if not has_context:
-            return params, has_context
+            return
 
+        self.has_context = True
         param = params.pop(-1)
         param_type = _get_generic_class_type(param.annotation)
         # We are lenient and allow omitting the type annotation for context.
         if (
             (param_type is not None)
             and (param_type != inspect.Parameter.empty)
-            and (not utils.issubclass_safe(param_type, definitions.DeploymentContext))
+            and (not utils.issubclass_safe(param_type, public_types.DeploymentContext))
         ):
             _collect_error(
                 make_context_error_msg(), _ErrorKind.TYPE_ERROR, self._location
@@ -688,82 +700,266 @@ class _ChainletInitValidator:
             _collect_error(
                 f"Incorrect default value `{param.default}` for `context` argument. "
                 "Example of correct `__init__` with dependencies:\n"
-                f"{_example_chainlet_code()}",
+                f"{self._example_code()}",
                 _ErrorKind.TYPE_ERROR,
                 self._location,
             )
 
-        return params, has_context
-
-    def _validate_dependencies(
-        self, params
-    ) -> Mapping[str, definitions.DependencyDescriptor]:
+    def _validate_dependencies(self, params: list[inspect.Parameter]):
         used = set()
         dependencies = {}
+
+        if params and not self._cls.supports_dependencies:
+            _collect_error(
+                f"The only supported argument to `__init__` for {self._cls.entity_type}s "
+                f"is the optional context argument.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return
         for param in params:
-            marker = _validate_dependency_arg(param, self._location)
+            marker = self._validate_dependency_param(param)
             if marker is None:
                 continue
             if marker.chainlet_cls in used:
                 _collect_error(
                     f"The same Chainlet class cannot be used multiple times for "
                     f"different arguments. Got previously used "
-                    f"`{marker.chainlet_cls}` for `{param.name}`.",
+                    f"`{marker.chainlet_cls.__name__}` for `{param.name}`.",
                     _ErrorKind.TYPE_ERROR,
                     self._location,
                 )
 
-            dependencies[param.name] = definitions.DependencyDescriptor(
+            if get_descriptor(marker.chainlet_cls).endpoint.is_websocket:
+                _collect_error(
+                    f"The dependency chainlet `{marker.chainlet_cls.__name__}` for "
+                    f"`{param.name}` uses a websocket. But websockets can only be used "
+                    "in the entrypoint, not in 'inner' chainlets.",
+                    _ErrorKind.TYPE_ERROR,
+                    self._location,
+                )
+
+            dependencies[param.name] = private_types.DependencyDescriptor(
                 chainlet_cls=marker.chainlet_cls, options=marker.options
             )
             used.add(marker.chainlet_cls)
-        return dependencies
+
+        self.validated_dependencies = dependencies
+
+    def _validate_dependency_param(
+        self, param: inspect.Parameter
+    ) -> Optional[ChainletDependencyMarker]:
+        """
+        Returns a valid ChainletDependencyMarker if found, None otherwise.
+        """
+        # TODO: handle subclasses, unions, optionals, check default value etc.
+        if param.name == private_types.CONTEXT_ARG_NAME:
+            _collect_error(
+                f"The init argument name `{private_types.CONTEXT_ARG_NAME}` is reserved for "
+                "the optional context argument, which must be trailing if used. Example "
+                "of correct `__init__` with context:\n"
+                f"{self._example_code()}",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+
+        if not isinstance(param.default, ChainletDependencyMarker):
+            _collect_error(
+                f"Any arguments of a Chainlet's __init__ (besides `context`) must have "
+                "dependency Chainlets with default values from `chains.depends`-directive. "
+                f"Got `{param}`.\n"
+                f"Example of correct `__init__` with dependencies:\n"
+                f"{self._example_code()}",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return None
+
+        chainlet_cls = param.default.chainlet_cls
+        if not utils.issubclass_safe(chainlet_cls, private_types.ABCChainlet):
+            _collect_error(
+                f"`chains.depends` must be used with a Chainlet class as argument, got "
+                f"{chainlet_cls} instead.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+            return None
+        # Check type annotation.
+        # Also lenient with type annotation: since the RHS / default is asserted to be a
+        # chainlet class, proper type inference is possible even without annotation.
+        # TODO: `Protocol` is not a proper class and this might be version dependent.
+        #   Find a better way to inspect this.
+        if not (
+            param.annotation == inspect.Parameter.empty
+            or utils.issubclass_safe(param.annotation, Protocol)  # type: ignore[arg-type]
+            or utils.issubclass_safe(chainlet_cls, param.annotation)
+        ):
+            _collect_error(
+                f"The type annotation for `{param.name}` must be a class/subclass of the "
+                "Chainlet type specified by `chains.provides` or a compatible "
+                f"typing.Protocol`. Got `{param.annotation}`.",
+                _ErrorKind.TYPE_ERROR,
+                self._location,
+            )
+        return param.default  # The Marker.
+
+    @functools.cache
+    def _example_code(self) -> str:
+        if self._cls.entity_type == private_types.EntityType.MODEL:
+            return _example_model_code()
+        return _example_chainlet_code()
 
 
-def _validate_chainlet_cls(
-    cls: Type[definitions.ABCChainlet], location: _ErrorLocation
+def _validate_config_class_variable(
+    cls: Type[private_types.ABCChainlet],
+    location: _ErrorLocation,
+    var_name: str,
+    expected_type: Type[pydantic.BaseModel],
 ) -> None:
-    if not hasattr(cls, definitions.REMOTE_CONFIG_NAME):
+    if not isinstance(var_value := getattr(cls, var_name), expected_type):
         _collect_error(
-            f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
-            f"`{definitions.REMOTE_CONFIG_NAME} = {definitions.RemoteConfig.__name__}"
-            f"(...)`. Missing for `{cls}`.",
-            _ErrorKind.MISSING_API_ERROR,
-            location,
-        )
-        return
-
-    if not isinstance(
-        remote_config := getattr(cls, definitions.REMOTE_CONFIG_NAME),
-        definitions.RemoteConfig,
-    ):
-        _collect_error(
-            f"Chainlets must have a `{definitions.REMOTE_CONFIG_NAME}` class variable "
-            f"of type `{definitions.RemoteConfig}`. Got `{type(remote_config)}` "
-            f"for `{cls}`.",
+            f"{cls.entity_type}s must have a `{var_name}` class variable of type "
+            f"`{expected_type}`. Got `{type(var_value)}`.",
             _ErrorKind.TYPE_ERROR,
             location,
         )
-        return
 
 
-def validate_and_register_class(cls: Type[definitions.ABCChainlet]) -> None:
+def _validate_engine_builder_fields(
+    remote_config: public_types.RemoteConfig, location: _ErrorLocation
+) -> None:
+    # TODO: these checks are not very tightly coupled to `_gen_truss_config` - find
+    #  a better way to do this.
+    violations = []
+    # `model_fields_set` does not work reliably here, so we compare against defaults.
+    if (
+        remote_config.docker_image
+        != public_types.RemoteConfig.model_fields["docker_image"].default
+    ):
+        violations.append("docker_image")
+    if (
+        remote_config.assets.get_spec().cached
+        != public_types.AssetSpec.model_fields["cached"].default
+    ):
+        violations.append("assets.cached")
+    if (
+        remote_config.assets.get_spec().external_data
+        != public_types.AssetSpec.model_fields["external_data"].default
+    ):
+        violations.append("assets.external_data")
+    if (
+        remote_config.options.health_checks
+        != public_types.ChainletOptions.model_fields["health_checks"].default
+    ):
+        violations.append("options.health_checks")
+    if violations:
+        _collect_error(
+            f"{private_types.EntityType.ENGINE_BUILDER_MODEL}s don't support these "
+            f"`remote_config` fields: {violations}. Leave them unset "
+            f"(at their defaults) for this chainlet.",
+            _ErrorKind.INVALID_CONFIG_ERROR,
+            location,
+        )
+
+
+def _validate_health_check(
+    cls: Type[private_types.ABCChainlet], location: _ErrorLocation
+) -> Optional[private_types.HealthCheckAPIDescriptor]:
+    """The `is_healthy` method of a Chainlet must have the following signature:
+    ```
+    [async] def is_healthy(self) -> bool:
+    ```
+    * The name must be `is_healthy`.
+    * It can be sync or async def.
+    * Must not define any parameters other than `self`.
+    * Must return a boolean.
+    """
+    if not hasattr(cls, private_types.HEALTH_CHECK_METHOD_NAME):
+        return None
+
+    health_check_method = getattr(cls, private_types.HEALTH_CHECK_METHOD_NAME)
+    if not inspect.isfunction(health_check_method):
+        _collect_error(
+            f"`{private_types.HEALTH_CHECK_METHOD_NAME}` must be a method.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+        return None
+
+    line = inspect.getsourcelines(health_check_method)[1]
+    location = location.model_copy(
+        update={"line": line, "method_name": private_types.HEALTH_CHECK_METHOD_NAME}
+    )
+    is_async = inspect.iscoroutinefunction(health_check_method)
+    signature = inspect.signature(health_check_method)
+    params = list(signature.parameters.values())
+    _validate_method_signature(private_types.HEALTH_CHECK_METHOD_NAME, location, params)
+    if len(params) > 1:
+        _collect_error(
+            f"`{private_types.HEALTH_CHECK_METHOD_NAME}` must have only one argument: `{private_types.SELF_ARG_NAME}`.",
+            _ErrorKind.TYPE_ERROR,
+            location,
+        )
+    if signature.return_annotation == inspect.Parameter.empty:
+        _collect_error(
+            "Return value of health check must be type annotated. Got:\n"
+            f"\t{location.method_name}{signature} -> !MISSING!",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+        return None
+    if signature.return_annotation is not bool:
+        _collect_error(
+            "Return value of health check must be a boolean. Got:\n"
+            f"\t{location.method_name}{signature} -> {signature.return_annotation}",
+            _ErrorKind.IO_TYPE_ERROR,
+            location,
+        )
+
+    return private_types.HealthCheckAPIDescriptor(is_async=is_async)
+
+
+def validate_and_register_cls(cls: Type[private_types.ABCChainlet]) -> None:
     """Note that validation errors will only be collected, not raised, and Chainlets.
     with issues, are still added to the registry.  Use `raise_validation_errors` to
     assert all Chainlets are valid and before performing operations that depend on
     these constraints."""
+    # Skip "abstract" base classes. There's no good way to determine these classes
+    # automatically, so we use a list names. It would be good to improve this.
+    _skip_class_name = [
+        "ChainletBase",
+        "ModelBase",
+        "EngineBuilderChainlet",
+        "EngineBuilderLLMChainlet",
+    ]
+    if cls.__name__ in _skip_class_name:
+        print(f"Skipping {cls}")
+        return
+
     src_path = os.path.abspath(inspect.getfile(cls))
     line = inspect.getsourcelines(cls)[1]
     location = _ErrorLocation(src_path=src_path, line=line, chainlet_name=cls.__name__)
 
-    _validate_chainlet_cls(cls, location)
+    _validate_config_class_variable(
+        cls, location, private_types.REMOTE_CONFIG_NAME, public_types.RemoteConfig
+    )
+    if is_engine_builder_chainlet(cls):
+        _validate_config_class_variable(
+            cls,
+            location,
+            private_types.ENGINE_BUILDER_CONFIG_NAME,
+            truss_config.TRTLLMConfiguration,
+        )
+        _validate_engine_builder_fields(cls.remote_config, location)
+
     init_validator = _ChainletInitValidator(cls, location)
-    chainlet_descriptor = definitions.ChainletAPIDescriptor(
+    chainlet_descriptor = private_types.ChainletAPIDescriptor(
         chainlet_cls=cls,
         dependencies=init_validator.validated_dependencies,
         has_context=init_validator.has_context,
         endpoint=_validate_and_describe_endpoint(cls, location),
         src_path=src_path,
+        health_check=_validate_health_check(cls, location),
     )
     logging.debug(
         f"Descriptor for {cls}:\n{pprint.pformat(chainlet_descriptor, indent=4)}\n"
@@ -778,9 +974,9 @@ class _ChainletRegistry:
     # Because dependencies are required to be present when registering a Chainlet,
     # this dict contains natively a topological sorting of the dependency graph.
     _chainlets: collections.OrderedDict[
-        Type[definitions.ABCChainlet], definitions.ChainletAPIDescriptor
+        Type[private_types.ABCChainlet], private_types.ChainletAPIDescriptor
     ]
-    _name_to_cls: MutableMapping[str, Type[definitions.ABCChainlet]]
+    _name_to_cls: MutableMapping[str, Type[private_types.ABCChainlet]]
 
     def __init__(self) -> None:
         self._chainlets = collections.OrderedDict()
@@ -790,7 +986,9 @@ class _ChainletRegistry:
         self._chainlets = collections.OrderedDict()
         self._name_to_cls = {}
 
-    def register_chainlet(self, chainlet_descriptor: definitions.ChainletAPIDescriptor):
+    def register_chainlet(
+        self, chainlet_descriptor: private_types.ChainletAPIDescriptor
+    ):
         for dep in chainlet_descriptor.dependencies.values():
             # To depend on a Chainlet, the class must be defined (module initialized)
             # which entails that is has already been added to the registry.
@@ -807,7 +1005,7 @@ class _ChainletRegistry:
         if chainlet_descriptor.name in self._name_to_cls:
             conflict = self._name_to_cls[chainlet_descriptor.name]
             existing_source_path = self._chainlets[conflict].src_path
-            raise definitions.ChainsUsageError(
+            raise public_types.ChainsUsageError(
                 f"A Chainlet with name `{chainlet_descriptor.name}` was already "
                 f"defined, Chainlet names must be globally unique.\n"
                 f"Pre-existing in: `{existing_source_path}`\n"
@@ -822,17 +1020,17 @@ class _ChainletRegistry:
         self._chainlets.pop(chainlet_cls)
 
     @property
-    def chainlet_descriptors(self) -> list[definitions.ChainletAPIDescriptor]:
+    def chainlet_descriptors(self) -> list[private_types.ChainletAPIDescriptor]:
         return list(self._chainlets.values())
 
     def get_descriptor(
-        self, chainlet_cls: Type[definitions.ABCChainlet]
-    ) -> definitions.ChainletAPIDescriptor:
+        self, chainlet_cls: Type[private_types.ABCChainlet]
+    ) -> private_types.ChainletAPIDescriptor:
         return self._chainlets[chainlet_cls]
 
     def get_dependencies(
-        self, chainlet: definitions.ChainletAPIDescriptor
-    ) -> Iterable[definitions.ChainletAPIDescriptor]:
+        self, chainlet: private_types.ChainletAPIDescriptor
+    ) -> Iterable[private_types.ChainletAPIDescriptor]:
         return [
             self._chainlets[dep.chainlet_cls]
             for dep in self._chainlets[chainlet.chainlet_cls].dependencies.values()
@@ -846,18 +1044,18 @@ _global_chainlet_registry = _ChainletRegistry()
 
 
 def get_dependencies(
-    chainlet: definitions.ChainletAPIDescriptor,
-) -> Iterable[definitions.ChainletAPIDescriptor]:
+    chainlet: private_types.ChainletAPIDescriptor,
+) -> Iterable[private_types.ChainletAPIDescriptor]:
     return _global_chainlet_registry.get_dependencies(chainlet)
 
 
 def get_descriptor(
-    chainlet_cls: Type[definitions.ABCChainlet],
-) -> definitions.ChainletAPIDescriptor:
+    chainlet_cls: Type[private_types.ABCChainlet],
+) -> private_types.ChainletAPIDescriptor:
     return _global_chainlet_registry.get_descriptor(chainlet_cls)
 
 
-def get_ordered_descriptors() -> list[definitions.ChainletAPIDescriptor]:
+def get_ordered_descriptors() -> list[private_types.ChainletAPIDescriptor]:
     return _global_chainlet_registry.chainlet_descriptors
 
 
@@ -876,20 +1074,22 @@ def ensure_args_are_injected(cls, original_init: Callable, kwargs) -> None:
     """Asserts all marker markers are replaced by actual objects."""
     final_args = _determine_arguments(original_init, **kwargs)
     for name, value in final_args.items():
-        if name == definitions.CONTEXT_ARG_NAME:
-            if not isinstance(value, definitions.DeploymentContext):
+        if name == private_types.CONTEXT_ARG_NAME:
+            if not isinstance(value, public_types.DeploymentContext):
                 logging.error(
-                    f"When initializing Chainlet `{cls.name}`, for context "
+                    f"When initializing {cls.entity_type} `{cls.name}`, for context "
                     f"argument an incompatible value was passed, value: `{value}`."
                 )
-                raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
+                raise public_types.ChainsRuntimeError(
+                    _instantiation_error_msg(cls.name)
+                )
         # The argument is a dependency chainlet.
         elif isinstance(value, _BaseProvisionMarker):
             logging.error(
-                f"When initializing Chainlet `{cls.name}`, for dependency Chainlet"
+                f"When initializing {cls.entity_type} `{cls.name}`, for dependency Chainlet"
                 f"argument `{name}` an incompatible value was passed, value: `{value}`."
             )
-            raise definitions.ChainsRuntimeError(_instantiation_error_msg(cls.name))
+            raise public_types.ChainsRuntimeError(_instantiation_error_msg(cls.name))
 
 
 # Local Execution ######################################################################
@@ -904,13 +1104,13 @@ _INIT_NAME = "__init__"
 
 
 def _create_modified_init_for_local(
-    chainlet_descriptor: definitions.ChainletAPIDescriptor,
+    chainlet_descriptor: private_types.ChainletAPIDescriptor,
     cls_to_instance: MutableMapping[
-        Type[definitions.ABCChainlet], definitions.ABCChainlet
+        Type[private_types.ABCChainlet], private_types.ABCChainlet
     ],
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
-    chainlet_to_service: Mapping[str, definitions.DeployedServiceDescriptor],
+    chainlet_to_service: Mapping[str, public_types.DeployedServiceDescriptor],
 ):
     """Replaces the default argument values with local Chainlet instantiations.
 
@@ -973,9 +1173,9 @@ def _create_modified_init_for_local(
                     if len(name_parts) > 1:
                         init_owner_class = name_parts[-2]
                 elif func_name == _INIT_LOCAL_NAME:
-                    assert (
-                        "init_owner_class" in local_vars
-                    ), f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
+                    assert "init_owner_class" in local_vars, (
+                        f"`{_INIT_LOCAL_NAME}` must capture `init_owner_class`"
+                    )
                     init_owner_class = local_vars["init_owner_class"].__name__
 
                 if init_owner_class:
@@ -1012,18 +1212,20 @@ def _create_modified_init_for_local(
                 continue  # OK, call to `super().__init__()`.
 
             # Everything else is invalid.
+            code_context = up_frame.code_context
+            assert code_context is not None
             location = (
                 f"{up_frame.filename}:{up_frame.lineno} ({up_frame.function})\n"
-                f"    {up_frame.code_context[0].strip()}"  # type: ignore[index]
+                f"    {code_context[0].strip()}"
             )
-            raise definitions.ChainsRuntimeError(
+            raise public_types.ChainsRuntimeError(
                 _instantiation_error_msg(chainlet_descriptor.name, location)
             )
 
     __original_init__ = chainlet_descriptor.chainlet_cls.__init__
 
     @functools.wraps(__original_init__)
-    def __init_local__(self: definitions.ABCChainlet, **kwargs) -> None:
+    def __init_local__(self: private_types.ABCChainlet, **kwargs) -> None:
         logging.debug(f"Patched `__init__` of `{chainlet_descriptor.name}`.")
         stack_depth = run_local_stack_depth.get(None)
         assert stack_depth is not None, "__init_local__ is only called in context."
@@ -1038,9 +1240,9 @@ def _create_modified_init_for_local(
         kwargs_mod = dict(kwargs)
         if (
             chainlet_descriptor.has_context
-            and definitions.CONTEXT_ARG_NAME not in kwargs_mod
+            and private_types.CONTEXT_ARG_NAME not in kwargs_mod
         ):
-            kwargs_mod[definitions.CONTEXT_ARG_NAME] = definitions.DeploymentContext(
+            kwargs_mod[private_types.CONTEXT_ARG_NAME] = public_types.DeploymentContext(
                 secrets=secrets,
                 data_dir=data_dir,
                 chainlet_to_service=chainlet_to_service,
@@ -1062,7 +1264,7 @@ def _create_modified_init_for_local(
                     f"Create new instance for `{arg_name}` of type `{dep.name}`. "
                     f"Calling patched __init__."
                 )
-                assert chainlet_cls._init_is_patched
+                assert chainlet_cls.meta_data.init_is_patched
                 # Dependency chainlets are instantiated here, using their __init__
                 # that is patched for local.
                 logging.info(f"Making first {dep.name}.")
@@ -1081,14 +1283,13 @@ def _create_modified_init_for_local(
 def run_local(
     secrets: Mapping[str, str],
     data_dir: Optional[pathlib.Path],
-    chainlet_to_service: Mapping[str, definitions.DeployedServiceDescriptor],
+    chainlet_to_service: Mapping[str, public_types.DeployedServiceDescriptor],
 ) -> Any:
     """Context to run Chainlets with dependency injection from local instances."""
-    # TODO: support retries in local mode.
     type_to_instance: MutableMapping[
-        Type[definitions.ABCChainlet], definitions.ABCChainlet
+        Type[private_types.ABCChainlet], private_types.ABCChainlet
     ] = {}
-    original_inits: MutableMapping[Type[definitions.ABCChainlet], Callable] = {}
+    original_inits: MutableMapping[Type[private_types.ABCChainlet], Callable] = {}
 
     # Capture the stack depth when entering the context manager. The stack is used
     # to check that chainlets' `__init__` methods are only called within this context
@@ -1106,7 +1307,7 @@ def run_local(
             chainlet_to_service,
         )
         chainlet_descriptor.chainlet_cls.__init__ = init_for_local  # type: ignore[method-assign]
-        chainlet_descriptor.chainlet_cls._init_is_patched = True
+        chainlet_descriptor.chainlet_cls.meta_data.init_is_patched = True
     # Subtract 2 levels: `run_local` (this) and `__enter__` (from @contextmanager).
     token = run_local_stack_depth.set(stack_depth - 2)
     try:
@@ -1115,7 +1316,7 @@ def run_local(
         # Restore original classes to unpatched state.
         for chainlet_cls, original_init in original_inits.items():
             chainlet_cls.__init__ = original_init  # type: ignore[method-assign]
-            chainlet_cls._init_is_patched = False
+            chainlet_cls.meta_data.init_is_patched = False
 
         run_local_stack_depth.reset(token)
 
@@ -1123,119 +1324,114 @@ def run_local(
 ########################################################################################
 
 
-def entrypoint(cls: Type[ChainletT]) -> Type[ChainletT]:
-    """Decorator to tag a Chainlet as an entrypoint."""
-    if not (utils.issubclass_safe(cls, definitions.ABCChainlet)):
-        src_path = os.path.abspath(inspect.getfile(cls))
-        line = inspect.getsourcelines(cls)[1]
-        location = _ErrorLocation(src_path=src_path, line=line)
-        _collect_error(
-            "Only Chainlet classes can be marked as entrypoint.",
-            _ErrorKind.TYPE_ERROR,
-            location,
-        )
-    setattr(cls, _ENTRYPOINT_ATTR_NAME, True)
-    return cls
+def entrypoint(
+    cls_or_chain_name: Optional[Union[Type[ChainletT], str]] = None,
+) -> Union[Callable[[Type[ChainletT]], Type[ChainletT]], Type[ChainletT]]:
+    """Decorator to tag a Chainlet as an entrypoint.
+    Can be used with or without chain name argument.
+    """
+
+    def decorator(cls: Type[ChainletT]) -> Type[ChainletT]:
+        if not (utils.issubclass_safe(cls, private_types.ABCChainlet)):
+            src_path = os.path.abspath(inspect.getfile(cls))
+            line = inspect.getsourcelines(cls)[1]
+            location = _ErrorLocation(src_path=src_path, line=line)
+            _collect_error(
+                "Only Chainlet classes can be marked as entrypoint.",
+                _ErrorKind.TYPE_ERROR,
+                location,
+            )
+        cls.meta_data.is_entrypoint = True
+        if isinstance(cls_or_chain_name, str):
+            cls.meta_data.chain_name = cls_or_chain_name
+        return cls
+
+    if isinstance(cls_or_chain_name, str):
+        return decorator
+
+    assert cls_or_chain_name is not None
+    return decorator(cls_or_chain_name)  # Decorator used without arguments
 
 
-def _get_entrypoint_chainlets(symbols) -> set[Type[definitions.ABCChainlet]]:
-    return {
-        sym
-        for sym in symbols
-        if utils.issubclass_safe(sym, definitions.ABCChainlet)
-        and getattr(sym, _ENTRYPOINT_ATTR_NAME, False)
-    }
+class _ABCImporter(abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    def _no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+        pass
 
+    @classmethod
+    @abc.abstractmethod
+    def _multiple_entrypoints_error(
+        cls,
+        module_path: pathlib.Path,
+        entrypoints: set[type[private_types.ABCChainlet]],
+    ) -> ValueError:
+        pass
 
-@contextlib.contextmanager
-def import_target(
-    module_path: pathlib.Path, target_name: Optional[str]
-) -> Iterator[Type[definitions.ABCChainlet]]:
-    """The context manager ensures that modules imported by the chain and
-    Chainlets registered in ``_global_chainlet_registry`` are removed upon exit.
+    @classmethod
+    @abc.abstractmethod
+    def _target_cls_type(cls) -> Type[private_types.ABCChainlet]:
+        pass
 
-    I.e. aiming at making the import idempotent for common usages, although there could
-    be additional side effects not accounted for by this implementation."""
-    module_path = pathlib.Path(module_path).resolve()
-    module_name = module_path.stem  # Use the file's name as the module name
-    if not os.path.isfile(module_path):
-        raise ImportError(
-            f"`{module_path}` is not a file. You must point to a python file where "
-            "the entrypoint Chainlet is defined."
-        )
+    @classmethod
+    def _get_chainlets(
+        cls, symbols
+    ) -> tuple[
+        set[Type[private_types.ABCChainlet]], set[Type[private_types.ABCChainlet]]
+    ]:
+        chainlets: set[Type[private_types.ABCChainlet]] = {
+            sym for sym in symbols if utils.issubclass_safe(sym, cls._target_cls_type())
+        }
+        entrypoints: set[Type[private_types.ABCChainlet]] = {
+            chainlet for chainlet in chainlets if chainlet.meta_data.is_entrypoint
+        }
+        return chainlets, entrypoints
 
-    import_error_msg = f"Could not import `{module_path}`. Check path."
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if not spec:
-        raise ImportError(import_error_msg)
-    if not spec.loader:
-        raise ImportError(import_error_msg)
+    @classmethod
+    def _load_module(cls, module_path: pathlib.Path) -> tuple[types.ModuleType, Loader]:
+        """The context manager ensures that modules imported by the Model/Chain
+         are removed upon exit.
 
-    module = importlib.util.module_from_spec(spec)
-    module.__file__ = str(module_path)
-    # Since the framework depends on tracking the source files via `inspect` and this
-    # depends on the modules bein properly registered in `sys.modules`, we have to
-    # manually do this here (because importlib does not do it automatically). This
-    # registration has to stay at least until the push command has finished.
-    if module_name in sys.modules:
-        raise ImportError(
-            f"{import_error_msg} There is already a module in `sys.modules` "
-            f"with name `{module_name}`. Overwriting that value is unsafe. "
-            "Try renaming your source file."
-        )
-    modules_before = set(sys.modules.keys())
-    sys.modules[module_name] = module
-    # Add path for making absolute imports relative to the source_module's dir.
-    sys.path.insert(0, str(module_path.parent))
-    chainlets_before = _global_chainlet_registry.get_chainlet_names()
-    chainlets_after = set()
-    modules_after = set()
-    try:
-        try:
-            spec.loader.exec_module(module)
-            raise_validation_errors()
-        finally:
-            modules_after = set(sys.modules.keys())
-            chainlets_after = _global_chainlet_registry.get_chainlet_names()
+        I.e. aiming at making the import idempotent for common usages, although there could
+        be additional side effects not accounted for by this implementation."""
+        module_name = module_path.stem  # Use the file's name as the module name
+        if not os.path.isfile(module_path):
+            raise ImportError(
+                f"`{module_path}` is not a file. You must point to a python file where "
+                f"the entrypoint is defined."
+            )
 
-        if target_name:
-            target_cls = getattr(module, target_name, None)
-            if not target_cls:
-                raise AttributeError(
-                    f"Target Chainlet class `{target_name}` not found "
-                    f"in `{module_path}`."
-                )
-            if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
-                raise TypeError(
-                    f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
-                )
-        else:
-            module_vars = (getattr(module, name) for name in dir(module))
-            entrypoints = _get_entrypoint_chainlets(module_vars)
-            if len(entrypoints) == 0:
-                raise ValueError(
-                    "No `target_name` was specified and no Chainlet in "
-                    "`{module_path}` was tagged with `@chains.mark_entrypoint`. Tag "
-                    "one Chainlet or provide the Chainlet class name."
-                )
-            elif len(entrypoints) > 1:
-                raise ValueError(
-                    "`target_name` was not specified and multiple Chainlets in "
-                    f"`{module_path}` were tagged with `@chains.mark_entrypoint`. Tag "
-                    "one Chainlet or provide the Chainlet class name. Found Chainlets: "
-                    f"\n{entrypoints}"
-                )
-            target_cls = utils.expect_one(entrypoints)
-            if not utils.issubclass_safe(target_cls, definitions.ABCChainlet):
-                raise TypeError(
-                    f"Target `{target_cls}` is not a {definitions.ABCChainlet}."
-                )
+        import_error_msg = f"Could not import `{module_path}`. Check path."
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if not spec or not spec.loader:
+            raise ImportError(import_error_msg)
 
-        yield target_cls
-    finally:
-        for chainlet_name in chainlets_after - chainlets_before:
-            _global_chainlet_registry.unregister_chainlet(chainlet_name)
+        module = importlib.util.module_from_spec(spec)
+        module.__file__ = str(module_path)
+        # Since the framework depends on tracking the source files via `inspect` and this
+        # depends on the modules bein properly registered in `sys.modules`, we have to
+        # manually do this here (because importlib does not do it automatically). This
+        # registration has to stay at least until the push command has finished.
+        if module_name in sys.modules:
+            raise ImportError(
+                f"{import_error_msg} There is already a module in `sys.modules` "
+                f"with name `{module_name}`. Overwriting that value is unsafe. "
+                "Try renaming your source file."
+            )
 
+        sys.modules[module_name] = module
+        # Add path for making absolute imports relative to the source_module's dir.
+        sys.path.insert(0, str(module_path.parent))
+
+        return module, spec.loader
+
+    @classmethod
+    def _cleanup_module_imports(
+        cls,
+        modules_before: set[str],
+        modules_after: set[str],
+        module_path: pathlib.Path,
+    ):
         modules_diff = modules_after - modules_before
         # Apparently torch import leaves some side effects that cannot be reverted
         # by deleting the modules and would lead to a crash when another import
@@ -1260,3 +1456,190 @@ def import_target(
             sys.path.remove(str(module_path.parent))
         except ValueError:  # In case the value was already removed for whatever reason.
             pass
+
+    @classmethod
+    @contextlib.contextmanager
+    def import_target(
+        cls, module_path: pathlib.Path, target_name: Optional[str] = None
+    ) -> Iterator[Type[private_types.ABCChainlet]]:
+        resolved_module_path = pathlib.Path(module_path).resolve()
+        modules_before = set(sys.modules.keys())
+        module, loader = cls._load_module(module_path)
+        modules_after = set()
+
+        chainlets_before = _global_chainlet_registry.get_chainlet_names()
+        chainlets_after = set()
+        try:
+            try:
+                loader.exec_module(module)
+                raise_validation_errors()
+            finally:
+                modules_after = set(sys.modules.keys())
+                chainlets_after = _global_chainlet_registry.get_chainlet_names()
+
+            if target_name:
+                target_cls = getattr(module, target_name, None)
+                if not target_cls:
+                    raise AttributeError(
+                        f"Target class `{target_name}` not found "
+                        f"in `{resolved_module_path}`."
+                    )
+                if not utils.issubclass_safe(target_cls, cls._target_cls_type()):
+                    raise TypeError(
+                        f"Target `{target_cls}` is not a {cls._target_cls_type()}."
+                    )
+            else:
+                module_vars = (getattr(module, name) for name in dir(module))
+                chainlets, entrypoints = cls._get_chainlets(module_vars)
+                if len(chainlets) == 1:
+                    entrypoints = chainlets
+
+                if len(entrypoints) == 0:
+                    raise cls._no_entrypoint_error(module_path)
+                elif len(entrypoints) > 1:
+                    raise cls._multiple_entrypoints_error(module_path, entrypoints)
+                target_cls = utils.expect_one(entrypoints)
+
+            yield target_cls
+        finally:
+            cls._cleanup_module_imports(
+                modules_before, modules_after, resolved_module_path
+            )
+            for chainlet_name in chainlets_after - chainlets_before:
+                _global_chainlet_registry.unregister_chainlet(chainlet_name)
+
+
+class ChainletImporter(_ABCImporter):
+    @classmethod
+    def _no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+        return ValueError(
+            "No `target_name` was specified and no Chainlet in "
+            f"`{module_path}` was tagged with `@chains.mark_entrypoint`. Tag "
+            "one Chainlet or provide the Chainlet class name."
+        )
+
+    @classmethod
+    def _multiple_entrypoints_error(
+        cls,
+        module_path: pathlib.Path,
+        entrypoints: set[type[private_types.ABCChainlet]],
+    ) -> ValueError:
+        return ValueError(
+            "`target_name` was not specified and multiple Chainlets in "
+            f"`{module_path}` were tagged with `@chains.mark_entrypoint`. Tag "
+            "one Chainlet or provide the Chainlet class name. Found Chainlets: "
+            f"\n{list(cls.name for cls in entrypoints)}"
+        )
+
+    @classmethod
+    def _target_cls_type(cls) -> Type[private_types.ABCChainlet]:
+        return ChainletBase
+
+
+class ModelImporter(_ABCImporter):
+    @classmethod
+    def _no_entrypoint_error(cls, module_path: pathlib.Path) -> ValueError:
+        return ValueError(
+            f"No Model class in `{module_path}` inherits from {cls._target_cls_type()}."
+        )
+
+    @classmethod
+    def _multiple_entrypoints_error(
+        cls,
+        module_path: pathlib.Path,
+        entrypoints: set[type[private_types.ABCChainlet]],
+    ) -> ValueError:
+        return ValueError(
+            f"Multiple Model classes in `{module_path}` inherit from {cls._target_cls_type()}, "
+            "but only one allowed. Found classes: "
+            f"\n{list(cls.name for cls in entrypoints)}"
+        )
+
+    @classmethod
+    def _target_cls_type(cls) -> Type[private_types.ABCChainlet]:
+        return ModelBase
+
+
+class ChainletBase(private_types.ABCChainlet, metaclass=abc.ABCMeta):
+    """Base class for all chainlets.
+
+    Inheriting from this class adds validations to make sure subclasses adhere to the
+    chainlet pattern and facilitates remote chainlet deployment.
+
+    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py>`_
+    for more guidance on how to create subclasses.
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = private_types.FrameworkConfig(
+            entity_type=private_types.EntityType.CHAINLET,
+            supports_dependencies=True,
+            endpoint_method_name=private_types.RUN_REMOTE_METHOD_NAME,
+        )
+        # Each sub-class has own, isolated metadata, e.g. we don't want
+        # `mark_entrypoint` to propagate to subclasses.
+        cls.meta_data = private_types.ChainletMetadata()
+        validate_and_register_cls(cls)  # Errors are collected, not raised!
+        # For default init (from `object`) we don't need to check anything.
+        if cls.has_custom_init():
+            original_init = cls.__init__
+
+            @functools.wraps(original_init)
+            def __init_with_arg_check__(self, *args, **kwargs):
+                if args:
+                    raise public_types.ChainsRuntimeError("Only kwargs are allowed.")
+                ensure_args_are_injected(cls, original_init, kwargs)
+                original_init(self, *args, **kwargs)
+
+            cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
+
+
+class ModelBase(private_types.ABCChainlet, metaclass=abc.ABCMeta):
+    """Base class for all standalone models.
+
+    Inheriting from this class adds validations to make sure subclasses adhere to the
+    truss model pattern.
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = private_types.FrameworkConfig(
+            entity_type=private_types.EntityType.MODEL,
+            supports_dependencies=False,
+            endpoint_method_name=private_types.MODEL_ENDPOINT_METHOD_NAME,
+        )
+        cls.meta_data = private_types.ChainletMetadata(is_entrypoint=True)
+        validate_and_register_cls(cls)
+
+
+class EngineBuilderChainlet(private_types.ABCChainlet, metaclass=abc.ABCMeta):
+    """For engine builders, model.py is generated during deployment, so there is only
+    dummy `run_remote` and we do not generate `model.py` wrapping the chainlet.
+    We do not support customization, because that should be done caller-side for chains.
+    """
+
+    engine_builder_config: ClassVar[truss_config.TRTLLMConfiguration]
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._framework_config = private_types.FrameworkConfig(
+            entity_type=private_types.EntityType.ENGINE_BUILDER_MODEL,
+            supports_dependencies=False,
+            endpoint_method_name=private_types.RUN_REMOTE_METHOD_NAME,
+        )
+        validate_and_register_cls(cls)
+
+
+class EngineBuilderLLMChainlet(EngineBuilderChainlet, metaclass=abc.ABCMeta):
+    @final
+    async def run_remote(
+        self, llm_input: public_types.EngineBuilderLLMInput
+    ) -> AsyncIterator[str]:
+        raise NotImplementedError("Only deployed models generate output.")
+        yield
+
+
+def is_engine_builder_chainlet(cls: Type[private_types.ABCChainlet]):
+    return issubclass(cls, EngineBuilderChainlet)

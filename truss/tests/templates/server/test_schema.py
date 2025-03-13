@@ -2,6 +2,7 @@ import inspect
 from typing import AsyncGenerator, Awaitable, Generator, Union
 
 from pydantic import BaseModel
+
 from truss.templates.server.common.schema import TrussSchema
 
 
@@ -181,8 +182,7 @@ def test_truss_schema_union_sync():
 def test_truss_schema_union_async():
     class Model:
         async def predict(
-            self,
-            request: ModelInput,
+            self, request: ModelInput
         ) -> Union[Awaitable[ModelOutput], AsyncGenerator[str, None]]:
             if request.stream:
 
@@ -208,8 +208,7 @@ def test_truss_schema_union_async():
 def test_truss_schema_union_async_non_pydantic():
     class Model:
         async def predict(
-            self,
-            request: ModelInput,
+            self, request: ModelInput
         ) -> Union[Awaitable[str], AsyncGenerator[str, None]]:
             return "hello"
 

@@ -106,7 +106,7 @@ class RunningContainer:
 class TrussHandle:
     def __init__(self, truss_dir: Path, validate: bool = True) -> None:
         self._truss_dir = truss_dir
-        self._spec = TrussSpec(truss_dir)
+        self._spec = TrussSpec(self._truss_dir)
         self._hash_for_mod_time: Optional[Tuple[float, str]] = None
         if validate:
             self.validate()
@@ -178,11 +178,7 @@ class TrussHandle:
         return _docker_image_from_labels(labels)
 
     @proxy_to_shadow_if_scattered
-    def run_python_script(
-        self,
-        script_path: Path,
-        build_dir: Optional[Path] = None,
-    ):
+    def run_python_script(self, script_path: Path, build_dir: Optional[Path] = None):
         from python_on_whales.exceptions import DockerException
 
         image = self.build_serving_docker_image(build_dir=build_dir)
@@ -244,6 +240,7 @@ class TrussHandle:
         network: Optional[str] = None,
         container_name_prefix: Optional[str] = None,
         model_server_stop_retry_override=None,
+        disable_json_logging: bool = False,
     ):
         """
         Builds a docker image and runs it as a container. For control trusses,
@@ -285,6 +282,8 @@ class TrussHandle:
             envs = {}
             if patch_ping_url is not None:
                 envs["PATCH_PING_URL_TRUSS"] = patch_ping_url
+            if disable_json_logging:
+                envs["DISABLE_JSON_LOGGING"] = "true"
 
             if container_name_prefix:
                 suffix = str(uuid.uuid4()).split("-")[0]
@@ -495,11 +494,7 @@ class TrussHandle:
         validate_secret_name(secret_name)
         self._update_config(
             lambda conf: replace(
-                conf,
-                secrets={
-                    **conf.secrets,
-                    secret_name: default_secret_value,
-                },
+                conf, secrets={**conf.secrets, secret_name: default_secret_value}
             )
         )
 
@@ -521,23 +516,12 @@ class TrussHandle:
             self._spec.config.external_data or ExternalData([])
         )
         new_external_data = replace(
-            current_external_data,
-            items=current_external_data.items + [item],
+            current_external_data, items=current_external_data.items + [item]
         )
-        self._update_config(
-            lambda conf: replace(
-                conf,
-                external_data=new_external_data,
-            )
-        )
+        self._update_config(lambda conf: replace(conf, external_data=new_external_data))
 
     def remove_all_external_data(self):
-        self._update_config(
-            lambda conf: replace(
-                conf,
-                external_data=None,
-            )
-        )
+        self._update_config(lambda conf: replace(conf, external_data=None))
 
     def update_requirements(self, requirements: List[str]):
         """Update requirements in truss model's config.
@@ -665,9 +649,7 @@ class TrussHandle:
 
     @proxy_to_shadow_if_scattered
     def get_serving_docker_containers_from_labels(
-        self,
-        all: bool = False,
-        labels: Optional[dict] = None,
+        self, all: bool = False, labels: Optional[dict] = None
     ) -> list:
         """Get serving docker containers, with given labels.
 
@@ -679,10 +661,7 @@ class TrussHandle:
             labels = self._get_serving_lookup_labels()
         else:
             # Make sure we're looking for serving container for this truss.
-            labels = {
-                TRUSS: True,
-                **labels,
-            }
+            labels = {TRUSS: True, **labels}
 
         return sorted(get_containers(labels, all=all), key=lambda c: c.created)
 
@@ -741,10 +720,7 @@ class TrussHandle:
                     python_executable_path=python_executable_path,
                 )
                 return replace(conf, base_image=new_base_image)
-            new_base_image = BaseImage(
-                image,
-                python_executable_path,
-            )
+            new_base_image = BaseImage(image, python_executable_path)
             return replace(conf, base_image=new_base_image)
 
         self._update_config(define_base_image_fn)
@@ -802,10 +778,7 @@ class TrussHandle:
             inferred_python_version = f"py{version_parts[0]}{version_parts[1]}"
 
         self._update_config(
-            lambda conf: replace(
-                conf,
-                python_version=inferred_python_version,
-            )
+            lambda conf: replace(conf, python_version=inferred_python_version)
         )
 
     def _control_serving_container_has_partially_applied_patch(self) -> Optional[bool]:
@@ -1027,7 +1000,7 @@ class TrussHandle:
         )
         resp = self.patch_container(patch_request)
         if "error" in resp:
-            raise RuntimeError(f'Failed to patch control truss {resp["error"]}')
+            raise RuntimeError(f"Failed to patch control truss {resp['error']}")
         self._store_signature()
         return container
 

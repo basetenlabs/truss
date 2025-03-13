@@ -8,8 +8,7 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 
 def inference_server_startup_flow(
-    inference_server_controller: InferenceServerController,
-    logger: Logger,
+    inference_server_controller: InferenceServerController, logger: Logger
 ) -> None:
     """
     Perform the inference server startup flow
@@ -39,8 +38,7 @@ def inference_server_startup_flow(
     payload = {"truss_hash": truss_hash}
 
     for attempt in Retrying(
-        stop=stop_after_attempt(15),
-        wait=wait_exponential(multiplier=2, min=1, max=4),
+        stop=stop_after_attempt(15), wait=wait_exponential(multiplier=2, min=1, max=4)
     ):
         with attempt:
             try:
@@ -62,8 +60,7 @@ def inference_server_startup_flow(
 
 
 async def async_inference_server_startup_flow(
-    inference_server_controller: InferenceServerController,
-    logger: Logger,
+    inference_server_controller: InferenceServerController, logger: Logger
 ) -> None:
     return await to_thread.run_sync(
         inference_server_startup_flow, inference_server_controller, logger

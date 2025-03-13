@@ -3,6 +3,7 @@ from typing import List
 import rich
 from InquirerPy import inquirer
 from InquirerPy.validator import ValidationError, Validator
+
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
 from truss.remote.truss_remote import RemoteConfig
 
@@ -23,9 +24,7 @@ def inquire_remote_config() -> RemoteConfig:
     # can do so manually in the .trussrc file.
     remote_url = "https://app.baseten.co"
     api_key = inquirer.secret(
-        message="🤫 Quietly paste your API_KEY:",
-        qmark="",
-        validate=NonEmptyValidator(),
+        message="🤫 Quietly paste your API_KEY:", qmark="", validate=NonEmptyValidator()
     ).execute()
 
     return RemoteConfig(
@@ -56,7 +55,4 @@ def inquire_remote_name(available_remotes: List[str]) -> str:
 
 
 def inquire_model_name() -> str:
-    return inquirer.text(
-        "📦 Name this model:",
-        qmark="",
-    ).execute()
+    return inquirer.text("📦 Name this model:", qmark="").execute()

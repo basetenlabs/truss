@@ -1,7 +1,6 @@
 import abc
 import asyncio
 import contextlib
-import contextvars
 import json
 import logging
 import threading
@@ -24,11 +23,10 @@ from typing import (
 import aiohttp
 import httpx
 import pydantic
-import starlette.requests
 import tenacity
-from truss.templates.shared import serialization
 
-from truss_chains import definitions
+from truss.templates.shared import serialization
+from truss_chains import private_types, public_types
 from truss_chains.remote_chainlet import utils
 
 DEFAULT_MAX_CONNECTIONS = 1000
@@ -40,22 +38,6 @@ InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
 OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
 
 
-_trace_parent_context: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "trace_parent"
-)
-
-
-@contextlib.contextmanager
-def trace_parent(request: starlette.requests.Request) -> Iterator[None]:
-    token = _trace_parent_context.set(
-        request.headers.get(definitions.OTEL_TRACE_PARENT_HEADER_KEY, "")
-    )
-    try:
-        yield
-    finally:
-        _trace_parent_context.reset(token)
-
-
 class BasetenSession:
     """Provides configured HTTP clients, retries rate limit warning etc."""
 
@@ -64,22 +46,36 @@ class BasetenSession:
         max_connections=DEFAULT_MAX_CONNECTIONS,
         max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
     )
-    _auth_header: Mapping[str, str]
-    _service_descriptor: definitions.DeployedServiceDescriptor
+    _target_url: str
+    _headers: Mapping[str, str]
+    _service_descriptor: public_types.DeployedServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
 
     def __init__(
-        self,
-        service_descriptor: definitions.DeployedServiceDescriptor,
-        api_key: str,
+        self, service_descriptor: public_types.DeployedServiceDescriptor, api_key: str
     ) -> None:
+        headers = {"Authorization": f"Api-Key {api_key}"}
+        # `internal_url`, if present, takes precedence!
+        if service_descriptor.internal_url:
+            target_msg = str(service_descriptor.internal_url)
+            headers["Host"] = service_descriptor.internal_url.hostname
+            target_url = service_descriptor.internal_url.gateway_run_remote_url
+        elif service_descriptor.predict_url:
+            target_msg = service_descriptor.predict_url
+            target_url = service_descriptor.predict_url
+        else:
+            assert False, (
+                "Per validation of `DeployedServiceDescriptor` either `predict_url` "
+                f"or `internal_url` must be present. Got {service_descriptor}"
+            )
+
         logging.info(
             f"Creating BasetenSession (HTTP) for `{service_descriptor.name}`.\n"
-            f"\tTarget: `{service_descriptor.predict_url}`\n"
-            f"\t`{service_descriptor.options}`."
+            f"\tTarget: `{target_msg}`\n\t`{service_descriptor.options}`."
         )
-        self._auth_header = {"Authorization": f"Api-Key {api_key}"}
+        self._target_url = target_url
+        self._headers = headers
         self._service_descriptor = service_descriptor
         self._cached_sync_client = None
         self._cached_async_client = None
@@ -129,7 +125,7 @@ class BasetenSession:
                 if self._client_cycle_needed(self._cached_sync_client):
                     self._cached_sync_client = (
                         httpx.Client(
-                            headers=self._auth_header,
+                            headers=self._headers,
                             timeout=self._service_descriptor.options.timeout_sec,
                             limits=self._client_limits,
                         ),
@@ -149,12 +145,10 @@ class BasetenSession:
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
-                    connector = aiohttp.TCPConnector(
-                        limit=DEFAULT_MAX_CONNECTIONS,
-                    )
+                    connector = aiohttp.TCPConnector(limit=DEFAULT_MAX_CONNECTIONS)
                     self._cached_async_client = (
                         aiohttp.ClientSession(
-                            headers=self._auth_header,
+                            headers=self._headers,
                             connector=connector,
                             timeout=aiohttp.ClientTimeout(
                                 total=self._service_descriptor.options.timeout_sec
@@ -221,9 +215,7 @@ class StubBase(BasetenSession, abc.ABC):
 
     @final
     def __init__(
-        self,
-        service_descriptor: definitions.DeployedServiceDescriptor,
-        api_key: str,
+        self, service_descriptor: public_types.DeployedServiceDescriptor, api_key: str
     ) -> None:
         """
         Args:
@@ -236,38 +228,45 @@ class StubBase(BasetenSession, abc.ABC):
     def from_url(
         cls,
         predict_url: str,
-        context: definitions.DeploymentContext,
-        options: Optional[definitions.RPCOptions] = None,
+        context_or_api_key: Union[public_types.DeploymentContext, str],
+        options: Optional[public_types.RPCOptions] = None,
     ):
         """Factory method, convenient to be used in chainlet's ``__init__``-method.
 
         Args:
             predict_url: URL to predict endpoint of another chain / truss model.
-            context: Deployment context object, obtained in the chainlet's ``__init__``.
+            context_or_api_key: Deployment context object, obtained in the
+               chainlet's ``__init__`` or Baseten API key.
             options: RPC options, e.g. retries.
         """
-        options = options or definitions.RPCOptions()
+        options = options or public_types.RPCOptions()
+        if isinstance(context_or_api_key, str):
+            api_key = context_or_api_key
+        else:
+            api_key = context_or_api_key.get_baseten_api_key()
         return cls(
-            service_descriptor=definitions.DeployedServiceDescriptor(
+            service_descriptor=public_types.DeployedServiceDescriptor(
                 name=cls.__name__,
                 display_name=cls.__name__,
                 predict_url=predict_url,
                 options=options,
             ),
-            api_key=context.get_baseten_api_key(),
+            api_key=api_key,
         )
 
     def _make_request_params(
         self, inputs: InputT, for_httpx: bool = False
     ) -> Mapping[str, Any]:
         kwargs: Dict[str, Any] = {}
-        headers = {
-            definitions.OTEL_TRACE_PARENT_HEADER_KEY: _trace_parent_context.get()
-        }
+        headers = {}
+        if trace_parent := utils.get_trace_parent():
+            headers[private_types.OTEL_TRACE_PARENT_HEADER_KEY] = trace_parent
+
         if isinstance(inputs, pydantic.BaseModel):
             if self._service_descriptor.options.use_binary:
                 data_dict = inputs.model_dump(mode="python")
-                kwargs["data"] = serialization.truss_msgpack_serialize(data_dict)
+                data_key = "content" if for_httpx else "data"
+                kwargs[data_key] = serialization.truss_msgpack_serialize(data_dict)
                 headers["Content-Type"] = "application/octet-stream"
             else:
                 data_key = "content" if for_httpx else "data"
@@ -275,7 +274,8 @@ class StubBase(BasetenSession, abc.ABC):
                 headers["Content-Type"] = "application/json"
         else:  # inputs is JSON dict.
             if self._service_descriptor.options.use_binary:
-                kwargs["data"] = serialization.truss_msgpack_serialize(inputs)
+                data_key = "content" if for_httpx else "data"
+                kwargs[data_key] = serialization.truss_msgpack_serialize(inputs)
                 headers["Content-Type"] = "application/octet-stream"
             else:
                 kwargs["json"] = inputs
@@ -314,11 +314,20 @@ class StubBase(BasetenSession, abc.ABC):
         def _rpc() -> bytes:
             client: httpx.Client
             with self._client_sync() as client:
-                response = client.post(self._service_descriptor.predict_url, **params)
+                response = client.post(self._target_url, **params)
             utils.response_raise_errors(response, self.name)
             return response.content
 
-        response_bytes = retry(_rpc)
+        try:
+            response_bytes = retry(_rpc)
+        except httpx.ReadTimeout:
+            msg = (
+                f"Timeout calling remote Chainlet `{self.name}` "
+                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+            )
+            logging.warning(msg)
+            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
+
         if output_model:
             return self._response_to_pydantic(response_bytes, output_model)
         return self._response_to_json(response_bytes)
@@ -340,13 +349,20 @@ class StubBase(BasetenSession, abc.ABC):
         async def _rpc() -> bytes:
             client: aiohttp.ClientSession
             async with self._client_async() as client:
-                async with client.post(
-                    self._service_descriptor.predict_url, **params
-                ) as response:
+                async with client.post(self._target_url, **params) as response:
                     await utils.async_response_raise_errors(response, self.name)
                     return await response.read()
 
-        response_bytes: bytes = await retry(_rpc)
+        try:
+            response_bytes: bytes = await retry(_rpc)
+        except asyncio.TimeoutError:
+            msg = (
+                f"Timeout calling remote Chainlet `{self.name}` "
+                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+            )
+            logging.warning(msg)
+            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
+
         if output_model:
             return self._response_to_pydantic(response_bytes, output_model)
         return self._response_to_json(response_bytes)
@@ -358,19 +374,25 @@ class StubBase(BasetenSession, abc.ABC):
         async def _rpc() -> AsyncIterator[bytes]:
             client: aiohttp.ClientSession
             async with self._client_async() as client:
-                response = await client.post(
-                    self._service_descriptor.predict_url, **params
-                )
+                response = await client.post(self._target_url, **params)
                 await utils.async_response_raise_errors(response, self.name)
                 return response.content.iter_any()
 
-        return await retry(_rpc)
+        try:
+            return await retry(_rpc)
+        except asyncio.TimeoutError:
+            msg = (
+                f"Timeout calling remote Chainlet `{self.name}` "
+                f"({self._service_descriptor.options.timeout_sec} seconds limit)."
+            )
+            logging.warning(msg)
+            raise TimeoutError(msg) from None  # Prune error stack trace (TMI).
 
 
 StubT = TypeVar("StubT", bound=StubBase)
 
 
-def factory(stub_cls: Type[StubT], context: definitions.DeploymentContext) -> StubT:
+def factory(stub_cls: Type[StubT], context: public_types.DeploymentContext) -> StubT:
     # Assumes the stub_cls-name and the name of the service in ``context` match.
     return stub_cls(
         service_descriptor=context.get_service_descriptor(stub_cls.__name__),

@@ -39,8 +39,7 @@ class InferenceServerProcessController:
         with current_directory(self._inference_server_home):
             inf_env["INFERENCE_SERVER_PORT"] = str(self._inference_server_port)
             self._inference_server_process = subprocess.Popen(
-                self._inference_server_process_args,
-                env=inf_env,
+                self._inference_server_process_args, env=inf_env
             )
 
             self._inference_server_started = True

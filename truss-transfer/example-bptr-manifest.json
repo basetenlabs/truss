@@ -1,0 +1,5 @@
+{
+    "pointers": [
+        {"resolution": {"url": "https://raw.githubusercontent.com/basetenlabs/truss/00e01b679afbe353b0b2fe4de6b138d912bb7167/.circleci/config.yml", "expiration_timestamp": 2683764059}, "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375", "file_name": "random_github_file.yml", "hashtype": "blake3", "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375", "size": 1482}
+    ]
+}

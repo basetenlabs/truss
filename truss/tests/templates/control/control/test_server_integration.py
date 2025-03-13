@@ -15,6 +15,7 @@ from typing import Callable
 import psutil
 import pytest
 import requests
+import websockets
 
 PATCH_PING_MAX_DELAY_SECS = 3
 
@@ -62,10 +63,7 @@ class Model:
 
     def predict(inp):
         time.sleep(random.uniform(0, 0.5))
-        resp = requests.post(
-            f"{ctrl_url}/v1/models/model:predict",
-            json=inp,
-        )
+        resp = requests.post(f"{ctrl_url}/v1/models/model:predict", json=inp)
         return resp.json()
 
     with ThreadPool(10) as p:
@@ -94,12 +92,81 @@ class Model:
     assert resp.content == "01234".encode("utf-8")
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_truss_control_server_text_websocket(
+    control_server: ControlServerDetails,
+):
+    ws_model_code = """
+import fastapi
+
+class Model:
+    async def websocket(self, websocket: fastapi.WebSocket):
+        try:
+            while True:
+                text = await websocket.receive_text()
+                await websocket.send_text(text + " pong")
+        except fastapi.WebSocketDisconnect:
+            pass
+"""
+
+    ctrl_url = f"ws://localhost:{control_server.control_server_port}"
+    _patch(ws_model_code, control_server)
+
+    async with websockets.connect(f"{ctrl_url}/v1/websocket") as websocket:
+        await websocket.send("hello")
+        response = await websocket.recv()
+        assert response == "hello pong"
+
+        await websocket.send("world")
+        response = await websocket.recv()
+        assert response == "world pong"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_truss_control_server_binary_websocket(
+    control_server: ControlServerDetails,
+):
+    ws_model_code = """
+import fastapi
+
+class Model:
+    async def websocket(self, websocket: fastapi.WebSocket):
+        try:
+            while True:
+                text = await websocket.receive_bytes()
+                await websocket.send_bytes(text + b" pong")
+        except fastapi.WebSocketDisconnect:
+            pass
+"""
+
+    ctrl_url = f"ws://localhost:{control_server.control_server_port}"
+    _patch(ws_model_code, control_server)
+
+    async with websockets.connect(f"{ctrl_url}/v1/websocket") as websocket:
+        await websocket.send(b"hello")
+        response = await websocket.recv()
+        assert response == b"hello pong"
+
+        await websocket.send(b"world")
+        response = await websocket.recv()
+        assert response == b"world pong"
+
+
+@pytest.mark.integration
+def test_truss_control_server_health_check(control_server: ControlServerDetails):
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    resp = requests.get(f"{ctrl_url}/v1/models/model")
+    assert resp.status_code == 200
+    assert resp.json() == {}
+
+
 @pytest.mark.integration
 def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path):
     for _ in range(10):
         with _configured_control_server(
-            truss_control_container_fs,
-            with_patch_ping_flow=True,
+            truss_control_container_fs, with_patch_ping_flow=True
         ) as control_server:
             # Account for patch ping delays
             time.sleep(PATCH_PING_MAX_DELAY_SECS)
@@ -171,8 +238,7 @@ def _process_tree_is_dead(pid: int):
 
 @contextmanager
 def _configured_control_server(
-    truss_control_container_fs: Path,
-    with_patch_ping_flow: bool = False,
+    truss_control_container_fs: Path, with_patch_ping_flow: bool = False
 ):
     # Pick random ports to reduce reuse, port release may take time
     # which can interfere with tests

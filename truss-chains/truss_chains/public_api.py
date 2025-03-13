@@ -1,19 +1,27 @@
-import functools
 import pathlib
-from typing import TYPE_CHECKING, ContextManager, Mapping, Optional, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    ContextManager,
+    Mapping,
+    Optional,
+    Type,
+    Union,
+    overload,
+)
 
-from truss_chains import definitions, framework
+from truss_chains import framework, private_types, public_types
 from truss_chains.deployment import deployment_client
 
 if TYPE_CHECKING:
     from rich import progress
 
 
-def depends_context() -> definitions.DeploymentContext:
+def depends_context() -> public_types.DeploymentContext:
     """Sets a "symbolic marker" for injecting a context object at runtime.
 
     Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py>`_
     for more guidance on the ``__init__``-signature of chainlets.
 
     Warning:
@@ -37,7 +45,7 @@ def depends_context() -> definitions.DeploymentContext:
 def depends(
     chainlet_cls: Type[framework.ChainletT],
     retries: int = 1,
-    timeout_sec: int = definitions.DEFAULT_TIMEOUT_SEC,
+    timeout_sec: float = public_types._DEFAULT_TIMEOUT_SEC,
     use_binary: bool = False,
 ) -> framework.ChainletT:
     """Sets a "symbolic marker" to indicate to the framework that a chainlet is a
@@ -47,7 +55,7 @@ def depends(
     its place. In ``run_local`` mode an instance of a local chainlet is injected.
 
     Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
+    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/reference_code/reference_chainlet.py>`_
     for more guidance on how make one chainlet depend on another chainlet.
 
     Warning:
@@ -72,7 +80,7 @@ def depends(
         A "symbolic marker" to be used as a default argument in a chainlet's
         initializer.
     """
-    options = definitions.RPCOptions(
+    options = public_types.RPCOptions(
         retries=retries, timeout_sec=timeout_sec, use_binary=use_binary
     )
     # The type error is silenced to because chains framework will at runtime inject
@@ -82,40 +90,31 @@ def depends(
     return framework.ChainletDependencyMarker(chainlet_cls, options)  # type: ignore
 
 
-class ChainletBase(definitions.ABCChainlet):
-    """Base class for all chainlets.
-
-    Inheriting from this class adds validations to make sure subclasses adhere to the
-    chainlet pattern and facilitates remote chainlet deployment.
-
-    Refer to `the docs <https://docs.baseten.co/chains/getting-started>`_ and this
-    `example chainlet <https://github.com/basetenlabs/truss/blob/main/truss-chains/truss_chains/example_chainlet.py>`_
-    for more guidance on how to create subclasses.
-    """
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        framework.validate_and_register_class(cls)  # Errors are collected, not raised!
-        # For default init (from `object`) we don't need to check anything.
-        if cls.has_custom_init():
-            original_init = cls.__init__
-
-            @functools.wraps(original_init)
-            def __init_with_arg_check__(self, *args, **kwargs):
-                if args:
-                    raise definitions.ChainsRuntimeError("Only kwargs are allowed.")
-                framework.ensure_args_are_injected(cls, original_init, kwargs)
-                original_init(self, *args, **kwargs)
-
-            cls.__init__ = __init_with_arg_check__  # type: ignore[method-assign]
+@overload
+def mark_entrypoint(
+    cls_or_chain_name: Type[framework.ChainletT],
+) -> Type[framework.ChainletT]: ...
 
 
-def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]:
+@overload
+def mark_entrypoint(
+    cls_or_chain_name: str,
+) -> Callable[[Type[framework.ChainletT]], Type[framework.ChainletT]]: ...
+
+
+def mark_entrypoint(
+    cls_or_chain_name: Union[str, Type[framework.ChainletT]],
+) -> Union[
+    Type[framework.ChainletT],
+    Callable[[Type[framework.ChainletT]], Type[framework.ChainletT]],
+]:
     """Decorator to mark a chainlet as the entrypoint of a chain.
 
     This decorator can be applied to *one* chainlet in a source file and then the
-    CLI push command simplifies because only the file, but not the chainlet class
-    in the file, needs to be specified.
+    CLI push command simplifies: only the file, not the class within, must be specified.
+
+    Optionally a display name for the Chain (not the Chainlet) can be set (effectively
+    giving a custom default value for the `--name` arg of the CLI push command).
 
     Example usage::
 
@@ -124,12 +123,17 @@ def mark_entrypoint(cls: Type[framework.ChainletT]) -> Type[framework.ChainletT]
         @chains.mark_entrypoint
         class MyChainlet(ChainletBase):
             ...
+
+        # OR with custom Chain name.
+        @chains.mark_entrypoint("My Chain Name")
+        class MyChainlet(ChainletBase):
+            ...
     """
-    return framework.entrypoint(cls)
+    return framework.entrypoint(cls_or_chain_name)
 
 
 def push(
-    entrypoint: Type[definitions.ABCChainlet],
+    entrypoint: Type[framework.ChainletT],
     chain_name: str,
     publish: bool = True,
     promote: bool = True,
@@ -160,7 +164,7 @@ def push(
         A chain service handle to the deployed chain.
 
     """
-    options = definitions.PushOptionsBaseten.create(
+    options = private_types.PushOptionsBaseten.create(
         chain_name=chain_name,
         publish=publish,
         promote=promote,
@@ -179,7 +183,7 @@ def run_local(
     secrets: Optional[Mapping[str, str]] = None,
     data_dir: Optional[Union[pathlib.Path, str]] = None,
     chainlet_to_service: Optional[
-        Mapping[str, definitions.DeployedServiceDescriptor]
+        Mapping[str, public_types.DeployedServiceDescriptor]
     ] = None,
 ) -> ContextManager[None]:
     """Context manager local debug execution of a chain.

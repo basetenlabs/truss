@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+
 from truss.base.truss_config import ExternalData
 
 B10CP_EXECUTABLE_NAME = "b10cp"
@@ -41,9 +42,7 @@ def _b10cp_path() -> Optional[str]:
 
 
 def _download_external_data_using_b10cp(
-    b10cp_path: str,
-    data_dir: Path,
-    external_data: ExternalData,
+    b10cp_path: str, data_dir: Path, external_data: ExternalData
 ):
     procs = []
     # TODO(pankaj) Limit concurrency here
@@ -56,11 +55,7 @@ def _download_external_data_using_b10cp(
         proc.wait()
 
 
-def _download_from_url_using_b10cp(
-    b10cp_path: str,
-    url: str,
-    download_to: Path,
-):
+def _download_from_url_using_b10cp(b10cp_path: str, url: str, download_to: Path):
     return subprocess.Popen(
         [
             b10cp_path,
@@ -82,10 +77,7 @@ def _download_external_data_using_requests(data_dir: Path, external_data: Extern
 def download_from_url_using_requests(URL: str, download_to: Path):
     # Streaming download to keep memory usage low
     resp = requests.get(
-        URL,
-        allow_redirects=True,
-        stream=True,
-        timeout=BLOB_DOWNLOAD_TIMEOUT_SECS,
+        URL, allow_redirects=True, stream=True, timeout=BLOB_DOWNLOAD_TIMEOUT_SECS
     )
     resp.raise_for_status()
     with download_to.open("wb") as file:

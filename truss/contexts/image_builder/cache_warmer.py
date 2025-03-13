@@ -25,11 +25,7 @@ def _b10cp_path() -> Optional[str]:
     return os.environ.get(B10CP_PATH_TRUSS_ENV_VAR_NAME)
 
 
-def _download_from_url_using_b10cp(
-    b10cp_path: str,
-    url: str,
-    download_to: Path,
-):
+def _download_from_url_using_b10cp(b10cp_path: str, url: str, download_to: Path):
     return subprocess.Popen(
         [
             b10cp_path,
@@ -157,9 +153,7 @@ class GCSFile(RepositoryFile):
 
         if is_private:
             url = blob.generate_signed_url(
-                version="v4",
-                expiration=datetime.timedelta(minutes=15),
-                method="GET",
+                version="v4", expiration=datetime.timedelta(minutes=15), method="GET"
             )
         else:
             base_url = "https://storage.googleapis.com"

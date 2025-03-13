@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, cast
 
 import rich
 import rich.live
@@ -16,10 +16,11 @@ import rich.spinner
 import rich.table
 import rich.traceback
 import rich_click as click
-import truss
 from InquirerPy import inquirer
 from rich import progress
 from rich.console import Console
+
+import truss
 from truss.base.constants import (
     PRODUCTION_ENVIRONMENT_NAME,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
@@ -40,6 +41,7 @@ from truss.remote.baseten.core import (
     ModelName,
     ModelVersionId,
 )
+from truss.remote.baseten.remote import BasetenRemote
 from truss.remote.baseten.service import BasetenService
 from truss.remote.baseten.utils.status import get_displayable_status
 from truss.remote.remote_factory import USER_TRUSSRC_PATH, RemoteFactory
@@ -49,7 +51,7 @@ from truss.trt_llm.config_checks import (
     uses_trt_llm_builder,
 )
 from truss.truss_handle.build import cleanup as _cleanup
-from truss.truss_handle.build import init as _init
+from truss.truss_handle.build import init_directory as _init
 from truss.truss_handle.build import load
 from truss.util import docker
 from truss.util.log_utils import LogInterceptor
@@ -66,21 +68,28 @@ click.rich_click.COMMAND_GROUPS = {
             "name": "Main usage",
             "commands": ["init", "push", "watch", "predict"],
             "table_styles": {  # type: ignore
-                "row_styles": ["green"],
+                "row_styles": ["green"]
             },
         },
         {
             "name": "Advanced Usage",
             "commands": ["image", "container", "cleanup"],
             "table_styles": {  # type: ignore
-                "row_styles": ["yellow"],
+                "row_styles": ["yellow"]
             },
         },
         {
             "name": "Chains",
             "commands": ["chains"],
             "table_styles": {  # type: ignore
-                "row_styles": ["red"],
+                "row_styles": ["red"]
+            },
+        },
+        {
+            "name": "Train",
+            "commands": ["train"],
+            "table_styles": {  # type: ignore
+                "row_styles": ["magenta"]
             },
         },
     ]
@@ -108,6 +117,9 @@ def error_handling(f: Callable[..., object]):
                 )
             else:
                 console.print_exception(show_locals=True)
+
+            ctx = click.get_current_context()
+            ctx.exit(1)
 
     return wrapper
 
@@ -204,9 +216,15 @@ def image():
     type=click.Choice([server.value for server in ModelServer]),
 )
 @click.option("-n", "--name", type=click.STRING)
+@click.option(
+    "--python-config/--no-python-config",
+    type=bool,
+    default=False,
+    help="Uses the code first tooling to build models.",
+)
 @log_level_option
 @error_handling
-def init(target_directory, backend, name) -> None:
+def init(target_directory, backend, name, python_config) -> None:
     """Create a new truss.
 
     TARGET_DIRECTORY: A Truss is created in this directory
@@ -226,6 +244,7 @@ def init(target_directory, backend, name) -> None:
         target_directory=target_directory,
         build_config=build_config,
         model_name=model_name,
+        python_config=python_config,
     )
     click.echo(f"Truss {model_name} was created in {tr_path.absolute()}")
 
@@ -372,10 +391,7 @@ def whoami(remote: Optional[str]):
 )
 @log_level_option
 @error_handling
-def watch(
-    target_directory: str,
-    remote: str,
-) -> None:
+def watch(target_directory: str, remote: str) -> None:
     """
     Seamless remote development with truss
 
@@ -400,9 +416,22 @@ def watch(
     console.print(
         f"🪵  View logs for your deployment at {_format_link(service.logs_url)}"
     )
-    remote_provider.sync_truss_to_dev_version_by_name(
-        model_name, target_directory, console, error_console
-    )
+
+    if not os.path.isfile(target_directory):
+        remote_provider.sync_truss_to_dev_version_by_name(
+            model_name, target_directory, console, error_console
+        )
+    else:
+        # These imports are delayed, to handle pydantic v1 envs gracefully.
+        from truss_chains.deployment import deployment_client
+
+        deployment_client.watch_model(
+            source=Path(target_directory),
+            model_name=model_name,
+            remote_provider=remote_provider,
+            console=console,
+            error_console=error_console,
+        )
 
 
 # Chains Stuff #########################################################################
@@ -588,8 +617,8 @@ def push_chain(
     if a chainlet definition in SOURCE is tagged with `@chains.mark_entrypoint`.
     """
     # These imports are delayed, to handle pydantic v1 envs gracefully.
-    from truss_chains import definitions as chains_def
     from truss_chains import framework
+    from truss_chains import private_types as chains_def
     from truss_chains.deployment import deployment_client
 
     if experimental_watch_chainlet_names:
@@ -616,8 +645,10 @@ def push_chain(
     if not remote:
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
-    with framework.import_target(source, entrypoint) as entrypoint_cls:
-        chain_name = name or entrypoint_cls.__name__
+    with framework.ChainletImporter.import_target(source, entrypoint) as entrypoint_cls:
+        chain_name = (
+            name or entrypoint_cls.meta_data.chain_name or entrypoint_cls.display_name
+        )
         options = chains_def.PushOptionsBaseten.create(
             chain_name=chain_name,
             promote=promote,
@@ -646,9 +677,10 @@ def push_chain(
         num_failed = 0
         # Logging inferences with live display (even when using richHandler)
         # -> capture logs and print later.
-        with LogInterceptor() as log_interceptor, rich.live.Live(
-            table, console=console, refresh_per_second=4
-        ) as live:
+        with (
+            LogInterceptor() as log_interceptor,
+            rich.live.Live(table, console=console, refresh_per_second=4) as live,
+        ):
             while True:
                 table, statuses = _create_chains_table(service)
                 live.update(table)
@@ -777,9 +809,7 @@ def watch_chains(
 @click.argument("directory", type=Path, required=False)
 @log_level_option
 @error_handling
-def init_chain(
-    directory: Optional[Path],
-) -> None:
+def init_chain(directory: Optional[Path]) -> None:
     """
     Initializes a chains project directory.
 
@@ -817,16 +847,53 @@ def init_chain(
 
 def _load_example_chainlet_code() -> str:
     try:
-        from truss_chains import example_chainlet
+        from truss_chains.reference_code import reference_chainlet
     # if the example is faulty, a validation error would be raised
     except Exception as e:
         raise Exception("Failed to load starter code. Please notify support.") from e
 
-    source = Path(example_chainlet.__file__).read_text()
+    source = Path(reference_chainlet.__file__).read_text()
     return source
 
 
 # End Chains Stuff #####################################################################
+
+
+# Start Training Stuff ####################################################################
+@click.group()
+def train():
+    """Subcommands for truss train"""
+
+
+@train.command(name="push")
+@click.argument("config", type=Path, required=True)
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@log_level_option
+@error_handling
+def push_training_job(config: Path, remote: Optional[str]):
+    """Run a training job"""
+    from truss_train import deployment, loader
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+    with loader.import_target(config) as training_project:
+        training_resp = remote_provider.api.upsert_training_project(
+            training_project=training_project
+        )
+
+        prepared_job = deployment.prepare_push(
+            remote_provider.api, config, training_project.job
+        )
+        remote_provider.api.create_training_job(
+            project_id=training_resp["id"], job=prepared_job
+        )
+
+
+# End Training Stuff #####################################################################
 
 
 def _extract_and_validate_model_identifier(
@@ -912,12 +979,7 @@ def _extract_request_data(data: Optional[str], file: Optional[Path]):
     required=False,
     help="ID of model deployment to call",
 )
-@click.option(
-    "--model",
-    type=str,
-    required=False,
-    help="ID of model to call",
-)
+@click.option("--model", type=str, required=False, help="ID of model to call")
 @log_level_option
 def predict(
     target_directory: str,
@@ -1071,8 +1133,8 @@ def run_python(script, target_directory):
     type=bool,
     is_flag=True,
     required=False,
-    default=False,
-    help="[DEPRECATED]Trust truss with hosted secrets.",
+    default=None,
+    help="[DEPRECATED] All models are trusted by default.",
 )
 @click.option(
     "--disable-truss-download",
@@ -1115,7 +1177,7 @@ def push(
     remote: str,
     model_name: str,
     publish: bool = False,
-    trusted: bool = False,
+    trusted: Optional[bool] = None,
     disable_truss_download: bool = False,
     promote: bool = False,
     preserve_previous_production_deployment: bool = False,
@@ -1134,7 +1196,6 @@ def push(
         remote = inquire_remote_name(RemoteFactory.get_available_config_names())
 
     remote_provider = RemoteFactory.create(remote=remote)
-
     tr = _get_truss_from_directory(target_directory=target_directory)
 
     model_name = model_name or tr.spec.config.model_name
@@ -1153,10 +1214,8 @@ def push(
         tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
 
     # Log a warning if using --trusted.
-    if trusted:
-        trusted_deprecation_notice = (
-            "[DEPRECATED] `--trusted` option is deprecated and no longer needed"
-        )
+    if trusted is not None:
+        trusted_deprecation_notice = "[DEPRECATED] `--trusted` option is deprecated and no longer needed. All models are trusted by default."
         console.print(trusted_deprecation_notice, style="yellow")
 
     # trt-llm engine builder checks
@@ -1187,17 +1246,13 @@ def push(
                     "GPU memory required at build time may be significantly more than that required at inference time due to FP8 quantization, which can result in OOM failures during the engine build phase."
                     "`num_builder_gpus` can be used to specify the number of GPUs to use at build time."
                 )
-                console.print(
-                    fp8_and_num_builder_gpus_text,
-                    style="yellow",
-                )
+                console.print(fp8_and_num_builder_gpus_text, style="yellow")
 
     # TODO(Abu): This needs to be refactored to be more generic
     service = remote_provider.push(
         tr,
         model_name=model_name,
         publish=publish,
-        trusted=True,
         promote=promote,
         preserve_previous_prod_deployment=preserve_previous_production_deployment,
         deployment_name=deployment_name,
@@ -1335,12 +1390,19 @@ def _get_truss_from_directory(target_directory: Optional[str] = None):
     """Gets Truss from directory. If none, use the current directory"""
     if target_directory is None:
         target_directory = os.getcwd()
-    return load(target_directory)
+    if not os.path.isfile(target_directory):
+        return load(target_directory)
+    # These imports are delayed, to handle pydantic v1 envs gracefully.
+    from truss_chains.deployment import code_gen
+
+    truss_dir = code_gen.gen_truss_model_from_source(Path(target_directory))
+    return load(truss_dir)
 
 
 truss_cli.add_command(container)
 truss_cli.add_command(image)
 truss_cli.add_command(chains)
+truss_cli.add_command(train)
 
 if __name__ == "__main__":
     truss_cli()

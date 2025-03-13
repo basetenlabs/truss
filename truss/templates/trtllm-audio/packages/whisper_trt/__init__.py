@@ -62,9 +62,7 @@ class WhisperModel(object):
         )[0]
 
         self.batch_processor = WhisperBatchProcessor(
-            self,
-            max_batch_size=self.batch_size,
-            max_queue_time=max_queue_time,
+            self, max_batch_size=self.batch_size, max_queue_time=max_queue_time
         )
 
     def preprocess_audio(self, binary_data) -> dict:
@@ -125,10 +123,7 @@ class WhisperModel(object):
         text.replace(text_prefix, "")
         return text
 
-    async def detect_audio_and_language(
-        self,
-        mel,
-    ) -> Optional[str]:
+    async def detect_audio_and_language(self, mel) -> Optional[str]:
         """
         Detects the audio and language from the given mel spectrogram.
 
@@ -141,16 +136,11 @@ class WhisperModel(object):
         text_prefix = "<|startoftranscript|>"
 
         prompt_ids = self.tokenizer.encode(
-            text_prefix,
-            allowed_special=self.tokenizer.special_tokens_set,
+            text_prefix, allowed_special=self.tokenizer.special_tokens_set
         )
 
         output_ids = await self.batch_processor.process(
-            item=BatchWhisperItem(
-                mel=mel,
-                prompt_ids=prompt_ids,
-                max_new_tokens=1,
-            )
+            item=BatchWhisperItem(mel=mel, prompt_ids=prompt_ids, max_new_tokens=1)
         )
         text = self.decode_output_ids(output_ids, text_prefix)
         if text == "<|nospeech|>":
@@ -189,15 +179,12 @@ class WhisperModel(object):
         )
 
         prompt_ids = self.tokenizer.encode(
-            text_prefix,
-            allowed_special=self.tokenizer.special_tokens_set,
+            text_prefix, allowed_special=self.tokenizer.special_tokens_set
         )
 
         output_ids: Tensor = await self.batch_processor.process(
             item=BatchWhisperItem(
-                mel=mel,
-                prompt_ids=prompt_ids,
-                max_new_tokens=max_new_tokens,
+                mel=mel, prompt_ids=prompt_ids, max_new_tokens=max_new_tokens
             )
         )
 

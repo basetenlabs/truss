@@ -7,7 +7,7 @@ runs:
   steps:
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.9.9'
+        python-version: '3.9.21'
 
     - name: Get full Python version
       id: full-python-version

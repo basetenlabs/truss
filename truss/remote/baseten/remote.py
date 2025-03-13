@@ -6,12 +6,10 @@ from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Type
 
 import yaml
 from requests import ReadTimeout
-from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
+from watchfiles import watch
 
-if TYPE_CHECKING:
-    from rich import console as rich_console
-    from rich import progress
 from truss.base import validation
+from truss.base.constants import PRODUCTION_ENVIRONMENT_NAME
 from truss.base.truss_config import ModelServer
 from truss.local.local_config_handler import LocalConfigHandler
 from truss.remote.baseten import custom_types
@@ -22,17 +20,19 @@ from truss.remote.baseten.core import (
     ModelId,
     ModelIdentifier,
     ModelName,
+    ModelVersionHandle,
     ModelVersionId,
-    archive_truss,
+    archive_dir,
     create_chain_atomic,
     create_truss_service,
     exists_model,
     get_dev_version,
     get_dev_version_from_versions,
-    get_model_versions,
+    get_model_and_versions,
     get_prod_version_from_versions,
     get_truss_watch_state,
     upload_truss,
+    validate_truss_config,
 )
 from truss.remote.baseten.error import ApiError, RemoteError
 from truss.remote.baseten.service import BasetenService, URLConfig
@@ -41,7 +41,10 @@ from truss.remote.truss_remote import RemoteUser, TrussRemote
 from truss.truss_handle import build as truss_build
 from truss.truss_handle.truss_handle import TrussHandle
 from truss.util.path import is_ignored, load_trussignore_patterns_from_truss_dir
-from watchfiles import watch
+
+if TYPE_CHECKING:
+    from rich import console as rich_console
+    from rich import progress
 
 
 class PatchStatus(enum.Enum):
@@ -68,8 +71,8 @@ class FinalPushData(custom_types.OracleData):
 
 
 class BasetenRemote(TrussRemote):
-    def __init__(self, remote_url: str, api_key: str, **kwargs):
-        super().__init__(remote_url, **kwargs)
+    def __init__(self, remote_url: str, api_key: str):
+        super().__init__(remote_url)
         self._auth_service = AuthService(api_key=api_key)
         self._api = BasetenApi(remote_url, self._auth_service)
 
@@ -94,13 +97,6 @@ class BasetenRemote(TrussRemote):
                     chain_deployment_id,
                     chainlet["id"],
                 ),
-                oracle_predict_url=URLConfig.invocation_url(
-                    self._api.rest_api_url,
-                    URLConfig.MODEL,
-                    chainlet["oracle"]["id"],
-                    chainlet["oracle_version"]["id"],
-                    chainlet["oracle_version"]["is_draft"],
-                ),
                 oracle_name=chainlet["oracle"]["name"],
             )
             for chainlet in self._api.get_chainlets_by_deployment_id(
@@ -114,10 +110,7 @@ class BasetenRemote(TrussRemote):
         )
         workspace_name = resp["data"]["organization"]["workspace_name"]
         user_email = resp["data"]["user"]["email"]
-        return RemoteUser(
-            workspace_name,
-            user_email,
-        )
+        return RemoteUser(workspace_name, user_email)
 
     # Validate and finalize options.
     # Upload Truss files to S3 and return S3 key.
@@ -126,7 +119,6 @@ class BasetenRemote(TrussRemote):
         truss_handle: TrussHandle,
         model_name: str,
         publish: bool = True,
-        trusted: bool = False,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         disable_truss_download: bool = False,
@@ -138,9 +130,10 @@ class BasetenRemote(TrussRemote):
         if model_name.isspace():
             raise ValueError("Model name cannot be empty")
 
-        gathered_truss = TrussHandle(truss_handle.gather())
+        if truss_handle.is_scattered():
+            truss_handle = TrussHandle(truss_handle.gather())
 
-        if gathered_truss.spec.model_server != ModelServer.TrussServer:
+        if truss_handle.spec.model_server != ModelServer.TrussServer:
             publish = True
 
         if promote:
@@ -175,11 +168,13 @@ class BasetenRemote(TrussRemote):
         if model_id is not None and disable_truss_download:
             raise ValueError("disable-truss-download can only be used for new models")
 
-        temp_file = archive_truss(gathered_truss, progress_bar)
+        temp_file = archive_dir(truss_handle._truss_dir, progress_bar)
         s3_key = upload_truss(self._api, temp_file, progress_bar)
         encoded_config_str = base64_encoded_json_str(
-            gathered_truss._spec._config.to_dict()
+            truss_handle._spec._config.to_dict()
         )
+
+        validate_truss_config(self._api, encoded_config_str)
 
         return FinalPushData(
             model_name=model_name,
@@ -187,7 +182,6 @@ class BasetenRemote(TrussRemote):
             encoded_config_str=encoded_config_str,
             is_draft=not publish,
             model_id=model_id,
-            is_trusted=trusted,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             version_name=deployment_name,
             origin=origin,
@@ -200,7 +194,6 @@ class BasetenRemote(TrussRemote):
         truss_handle: TrussHandle,
         model_name: str,
         publish: bool = True,
-        trusted: bool = False,
         promote: bool = False,
         preserve_previous_prod_deployment: bool = False,
         disable_truss_download: bool = False,
@@ -213,7 +206,6 @@ class BasetenRemote(TrussRemote):
             truss_handle=truss_handle,
             model_name=model_name,
             publish=publish,
-            trusted=trusted,
             promote=promote,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             disable_truss_download=disable_truss_download,
@@ -227,14 +219,13 @@ class BasetenRemote(TrussRemote):
         # many functions. We should consolidate them into a
         # data class with standardized default values so
         # we're not drilling these arguments everywhere.
-        model_id, model_version_id = create_truss_service(
+        model_version_handle = create_truss_service(
             api=self._api,
             model_name=push_data.model_name,
             s3_key=push_data.s3_key,
             config=push_data.encoded_config_str,
             is_draft=push_data.is_draft,
             model_id=push_data.model_id,
-            is_trusted=push_data.is_trusted,
             preserve_previous_prod_deployment=push_data.preserve_previous_prod_deployment,
             allow_truss_download=push_data.allow_truss_download,
             deployment_name=push_data.version_name,
@@ -243,11 +234,10 @@ class BasetenRemote(TrussRemote):
         )
 
         return BasetenService(
-            model_id=model_id,
-            model_version_id=model_version_id,
+            model_version_handle=model_version_handle,
             is_draft=push_data.is_draft,
             api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
+            service_url=f"{self._remote_url}/model_versions/{model_version_handle.version_id}",
             truss_handle=truss_handle,
             api=self._api,
         )
@@ -260,7 +250,7 @@ class BasetenRemote(TrussRemote):
         publish: bool = False,
         environment: Optional[str] = None,
         progress_bar: Optional[Type["progress.Progress"]] = None,
-    ) -> Tuple[ChainDeploymentHandleAtomic, BasetenService]:
+    ) -> ChainDeploymentHandleAtomic:
         # If we are promoting a model to an environment after deploy, it must be published.
         # Draft models cannot be promoted.
         if environment and not publish:
@@ -277,8 +267,6 @@ class BasetenRemote(TrussRemote):
             push_data = self._prepare_push(
                 truss_handle=truss_handle,
                 model_name=model_name,
-                # Models must be trusted to use the API KEY secret.
-                trusted=True,
                 publish=publish,
                 origin=custom_types.ModelOrigin.CHAINS,
                 progress_bar=progress_bar,
@@ -289,13 +277,11 @@ class BasetenRemote(TrussRemote):
                 encoded_config_str=push_data.encoded_config_str,
                 is_draft=push_data.is_draft,
                 model_id=push_data.model_id,
-                is_trusted=push_data.is_trusted,
                 version_name=push_data.version_name,
             )
             chainlet_data.append(
                 custom_types.ChainletDataAtomic(
-                    name=artifact.display_name,
-                    oracle=oracle_data,
+                    name=artifact.display_name, oracle=oracle_data
                 )
             )
 
@@ -307,24 +293,8 @@ class BasetenRemote(TrussRemote):
             is_draft=not publish,
             environment=environment,
         )
-
-        model_id = chain_deployment_handle.entrypoint_model_id
-        model_version_id = chain_deployment_handle.entrypoint_model_version_id
-
-        entrypoint_service = BasetenService(
-            model_id=model_id,
-            model_version_id=model_version_id,
-            is_draft=not publish,
-            api_key=self._auth_service.authenticate().value,
-            service_url=f"{self._remote_url}/model_versions/{model_version_id}",
-            truss_handle=truss_build.load(str(entrypoint_artifact.truss_dir)),
-            api=self._api,
-        )
         logging.info("Successfully pushed to baseten. Chain is building and deploying.")
-        return (
-            chain_deployment_handle,
-            entrypoint_service,
-        )
+        return chain_deployment_handle
 
     @staticmethod
     def _get_matching_version(model_versions: List[dict], published: bool) -> dict:
@@ -348,23 +318,29 @@ class BasetenRemote(TrussRemote):
     @staticmethod
     def _get_service_url_path_and_model_ids(
         api: BasetenApi, model_identifier: ModelIdentifier, published: bool
-    ) -> Tuple[str, str, str]:
+    ) -> Tuple[str, ModelVersionHandle]:
         if isinstance(model_identifier, ModelVersionId):
             try:
                 model_version = api.get_model_version_by_id(model_identifier.value)
             except ApiError:
                 raise RemoteError(f"Model version {model_identifier.value} not found.")
             model_version_id = model_version["model_version"]["id"]
+            hostname = model_version["model_version"]["oracle"]["hostname"]
             model_id = model_version["model_version"]["oracle"]["id"]
             service_url_path = f"/model_versions/{model_version_id}"
-            return service_url_path, model_id, model_version_id
+
+            return service_url_path, ModelVersionHandle(
+                version_id=model_version_id, model_id=model_id, hostname=hostname
+            )
 
         if isinstance(model_identifier, ModelName):
-            model_id, model_versions = get_model_versions(api, model_identifier)
+            model, model_versions = get_model_and_versions(api, model_identifier)
             model_version = BasetenRemote._get_matching_version(
                 model_versions, published
             )
+            model_id = model["id"]
             model_version_id = model_version["id"]
+            hostname = model["hostname"]
             service_url_path = f"/model_versions/{model_version_id}"
         elif isinstance(model_identifier, ModelId):
             # TODO(helen): consider making this consistent with getting the
@@ -375,6 +351,7 @@ class BasetenRemote(TrussRemote):
                 raise RemoteError(f"Model {model_identifier.value} not found.")
             model_id = model["model"]["id"]
             model_version_id = model["model"]["primary_version"]["id"]
+            hostname = model["model"]["hostname"]
             service_url_path = f"/models/{model_id}"
         else:
             # Model identifier is of invalid type.
@@ -383,7 +360,9 @@ class BasetenRemote(TrussRemote):
                 "--model-deployment or --model options."
             )
 
-        return service_url_path, model_id, model_version_id
+        return service_url_path, ModelVersionHandle(
+            version_id=model_version_id, model_id=model_id, hostname=hostname
+        )
 
     def get_service(self, **kwargs) -> BasetenService:
         try:
@@ -392,17 +371,14 @@ class BasetenRemote(TrussRemote):
             raise ValueError("Baseten Service requires a model_identifier")
 
         published = kwargs.get("published", False)
-        (
-            service_url_path,
-            model_id,
-            model_version_id,
-        ) = self._get_service_url_path_and_model_ids(
-            self._api, model_identifier, published
+        (service_url_path, model_version_handle) = (
+            self._get_service_url_path_and_model_ids(
+                self._api, model_identifier, published
+            )
         )
 
         return BasetenService(
-            model_id=model_id,
-            model_version_id=model_version_id,
+            model_version_handle=model_version_handle,
             is_draft=not published,
             api_key=self._auth_service.authenticate().value,
             service_url=f"{self._remote_url}{service_url_path}",
@@ -427,10 +403,7 @@ class BasetenRemote(TrussRemote):
         truss_ignore_patterns = load_trussignore_patterns_from_truss_dir(watch_path)
 
         def watch_filter(_, path):
-            return not is_ignored(
-                Path(path),
-                truss_ignore_patterns,
-            )
+            return not is_ignored(Path(path), truss_ignore_patterns)
 
         # disable watchfiles logger
         logging.getLogger("watchfiles.main").disabled = True
@@ -559,8 +532,7 @@ class BasetenRemote(TrussRemote):
             return PatchResult(
                 PatchStatus.SUCCESS,
                 resp.get(
-                    "success_message",
-                    f"Model {model_name} patched successfully.",
+                    "success_message", f"Model {model_name} patched successfully."
                 ),
             )
 
@@ -578,8 +550,9 @@ class BasetenRemote(TrussRemote):
             error_console.print(result.message)
 
     def patch_for_chainlet(
-        self,
-        watch_path: Path,
-        truss_ignore_patterns: List[str],
+        self, watch_path: Path, truss_ignore_patterns: List[str]
     ) -> PatchResult:
         return self._patch(watch_path, truss_ignore_patterns, console=None)
+
+    def upsert_training_project(self, training_project):
+        return self._api.upsert_training_project(training_project)

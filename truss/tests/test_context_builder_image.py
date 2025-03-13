@@ -42,11 +42,5 @@ def test_build_docker_image(test_data_path):
 
     # This will throw if building docker build context fails
     subprocess.run(
-        [
-            "docker",
-            "run",
-            "baseten/truss-context-builder-test",
-        ],
-        check=True,
-        cwd=root,
+        ["docker", "run", "baseten/truss-context-builder-test"], check=True, cwd=root
     )

@@ -1,11 +1,3 @@
-import sys
-
-if (sys.version_info.major, sys.version_info.minor) <= (3, 8):
-    raise RuntimeError(
-        "Python version 3.8 or older is not supported for `Truss-Chains`. Please"
-        "upgrade to Python 3.9 or newer. You can still use other Truss functionality."
-    )
-del sys
 import pydantic
 
 pydantic_major_version = int(pydantic.VERSION.split(".")[0])
@@ -19,7 +11,15 @@ if pydantic_major_version < 2:
 del pydantic, pydantic_major_version
 
 
-from truss_chains.definitions import (
+from truss_chains.framework import ChainletBase, EngineBuilderLLMChainlet, ModelBase
+from truss_chains.public_api import (
+    depends,
+    depends_context,
+    mark_entrypoint,
+    push,
+    run_local,
+)
+from truss_chains.public_types import (
     Assets,
     BasetenImage,
     ChainletOptions,
@@ -28,17 +28,13 @@ from truss_chains.definitions import (
     DeployedServiceDescriptor,
     DeploymentContext,
     DockerImage,
+    EngineBuilderLLMInput,
+    Environment,
+    GenericRemoteException,
     RemoteConfig,
     RemoteErrorDetail,
     RPCOptions,
-)
-from truss_chains.public_api import (
-    ChainletBase,
-    depends,
-    depends_context,
-    mark_entrypoint,
-    push,
-    run_local,
+    WebSocketProtocol,
 )
 
 # TODO: make this optional (remove aiohttp, httpx and starlette deps).
@@ -48,17 +44,23 @@ from truss_chains.utils import make_abs_path_here
 __all__ = [
     "Assets",
     "BasetenImage",
+    "EngineBuilderLLMChainlet",
     "ChainletBase",
     "ChainletOptions",
     "Compute",
     "CustomImage",
+    "DeployedServiceDescriptor",
     "DeploymentContext",
     "DockerImage",
+    "Environment",
+    "GenericRemoteException",
+    "ModelBase",
+    "EngineBuilderLLMInput",
     "RPCOptions",
     "RemoteConfig",
     "RemoteErrorDetail",
-    "DeployedServiceDescriptor",
     "StubBase",
+    "WebSocketProtocol",
     "depends",
     "depends_context",
     "make_abs_path_here",
