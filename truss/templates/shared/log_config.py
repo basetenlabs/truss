@@ -18,6 +18,7 @@ class _HealthCheckFilter(logging.Filter):
             "GET / ",
             "GET /v1/models/model ",
             "GET /v1/models/model/loaded ",
+            "GET /metrics",
         }
         msg = record.getMessage()
         return not any(path in msg for path in excluded_paths)

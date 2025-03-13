@@ -1171,14 +1171,16 @@ def test_instrument_metrics():
             return model_input
     """
     with ensure_kill_all(), _temp_truss(model, "") as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         metrics_url = "http://localhost:8090/metrics"
         requests.post(PREDICT_URL, json={})
         resp = requests.get(metrics_url)
         assert resp.status_code == 200
-        print(resp.text)
         assert "my_really_cool_metric_total 10.0" in resp.text
         assert "my_really_cool_metric_created" in resp.text
+        assert "/metrics" not in container.logs()
 
     # Test otel metrics
     model = """
@@ -1200,12 +1202,15 @@ def test_instrument_metrics():
     - opentelemetry-exporter-prometheus>=0.52b0
     """
     with ensure_kill_all(), _temp_truss(model, config) as tr:
-        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        container = tr.docker_run(
+            local_port=8090, detach=True, wait_for_server_ready=True
+        )
         metrics_url = "http://localhost:8090/metrics"
         requests.post(PREDICT_URL, json={})
         resp = requests.get(metrics_url)
         assert resp.status_code == 200
         assert "my_really_cool_metric_total 10.0" in resp.text
+        assert "/metrics" not in container.logs()
 
 
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
