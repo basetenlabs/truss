@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: mkdir -p /bptr/
+      - run: sudo mkdir -p /bptr/
       - run: poetry install --with=dev,dev-server --extras=all
       - run: |
           poetry run pytest truss/tests \
@@ -32,10 +32,12 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
+      matrix:
+        split_group: ["1"]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: mkdir -p /bptr/
+      - run: sudo mkdir -p /bptr/
       - run: poetry install --with=dev,dev-server --extras=all
       - run: |
           poetry run pytest truss-chains/tests \
