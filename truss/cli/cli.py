@@ -881,16 +881,43 @@ def push_training_job(config: Path, remote: Optional[str]):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
     with loader.import_target(config) as training_project:
-        training_resp = remote_provider.api.upsert_training_project(
+        project_resp = remote_provider.api.upsert_training_project(
             training_project=training_project
         )
 
         prepared_job = deployment.prepare_push(
             remote_provider.api, config, training_project.job
         )
-        remote_provider.api.create_training_job(
-            project_id=training_resp["id"], job=prepared_job
+        job_resp = remote_provider.api.create_training_job(
+            project_id=project_resp["id"], job=prepared_job
         )
+
+        console.print("✨ Training job successfully created!", style="green")
+        console.print(
+            f"🪵 View logs for your job via "
+            f"[cyan]`truss train logs --project-id {project_resp['id']} --job-id {job_resp['id']}`[/cyan]"
+        )
+
+
+@train.command(name="logs")
+@click.option("--remote", type=str, required=False, help="Remote to use")
+@click.option("--project-id", type=str, required=True, help="Project ID.")
+@click.option("--job-id", type=str, required=True, help="Job ID.")
+@log_level_option
+@error_handling
+def get_job_logs(remote: Optional[str], project_id: str, job_id: str):
+    """Fetch logs for a training job"""
+    from truss_train import log_utils
+
+    if not remote:
+        remote = inquire_remote_name(RemoteFactory.get_available_config_names())
+
+    remote_provider: BasetenRemote = cast(
+        BasetenRemote, RemoteFactory.create(remote=remote)
+    )
+
+    logs = remote_provider.api.get_training_job_logs(project_id, job_id)
+    log_utils.format_and_output_logs(logs, console)
 
 
 # End Training Stuff #####################################################################

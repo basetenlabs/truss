@@ -591,7 +591,7 @@ class BasetenApi:
         if not resp.ok:
             resp.raise_for_status()
 
-        return resp.json()
+        return resp.json()["training_job"]
 
     def get_blob_credentials(self, blob_type: b10_types.BlobType):
         headers = self._auth_token.header()
@@ -603,3 +603,14 @@ class BasetenApi:
             resp.raise_for_status()
 
         return resp.json()
+
+    def get_training_job_logs(self, project_id: str, job_id: str):
+        headers = self._auth_token.header()
+        resp = requests.post(
+            f"{self._rest_api_url}/v1/training_projects/{project_id}/jobs/{job_id}/logs",
+            headers=headers,
+        )
+        if not resp.ok:
+            resp.raise_for_status()
+
+        return resp.json()["logs"]
