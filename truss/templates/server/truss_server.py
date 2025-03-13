@@ -29,6 +29,7 @@ from model_wrapper import ModelWrapper
 from opentelemetry import propagate as otel_propagate
 from opentelemetry import trace
 from opentelemetry.sdk import trace as sdk_trace
+from prometheus_client import make_asgi_app
 from pydantic import BaseModel
 from shared import log_config, serialization
 from shared.secrets_resolver import SecretsResolver
@@ -435,6 +436,10 @@ class TrussServer:
         # Above `exception_handlers` only triggers on exact exception classes.
         # This here is a fallback to add our custom headers in all other cases.
         app.add_exception_handler(Exception, errors.exception_handler)
+
+        # Add prometheus asgi middleware to route /metrics requests
+        metrics_app = make_asgi_app()
+        app.mount("/metrics", metrics_app)
 
         return app
 
