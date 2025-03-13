@@ -19,6 +19,13 @@ class S3Artifact(SafeModel):
 class PreparedTrainingJob(TrainingJob):
     runtime_artifacts: List[S3Artifact] = []
 
+    def model_dump(self, *args, **kwargs):
+        data = super().model_dump(*args, **kwargs)
+
+        # NB(nikhil): nest our processed artifacts back under runtime
+        data["runtime"]["artifacts"] = data.pop("runtime_artifacts")
+        return data
+
 
 def prepare_push(api: BasetenApi, config: pathlib.Path, training_job: TrainingJob):
     # Assume config is at the root of the directory.
