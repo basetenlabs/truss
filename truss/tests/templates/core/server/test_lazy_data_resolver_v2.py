@@ -48,9 +48,10 @@ def test_lazy_data_resolver_v2():
     try:
         LAZY_DATA_RESOLVER_PATH.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        pytest.skip(
+        print(
             f"Unable to create {LAZY_DATA_RESOLVER_PATH} due to missing os permissions: {e}"
         )
+        raise e
 
     # without LAZY_DATA_RESOLVER_PATH -> does not create folder / file
     with tempfile.TemporaryDirectory() as tempdir:
