@@ -1159,6 +1159,55 @@ def test_is_healthy():
         assert healthy.status_code == 200
 
 
+@pytest.mark.integration
+def test_instrument_metrics():
+    model = """
+    from prometheus_client import Counter
+    class Model:
+        def __init__(self):
+            self.counter = Counter('my_really_cool_metric', 'my really cool metric description')
+        def predict(self, model_input):
+            self.counter.inc(10)
+            return model_input
+    """
+    with ensure_kill_all(), _temp_truss(model, "") as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        metrics_url = "http://localhost:8090/metrics"
+        requests.post(PREDICT_URL, json={})
+        resp = requests.get(metrics_url)
+        assert resp.status_code == 200
+        print(resp.text)
+        assert "my_really_cool_metric_total 10.0" in resp.text
+        assert "my_really_cool_metric_created" in resp.text
+
+    # Test otel metrics
+    model = """
+    from opentelemetry import metrics
+    from opentelemetry.exporter.prometheus import PrometheusMetricReader
+    from opentelemetry.sdk.metrics import MeterProvider
+    class Model:
+        def __init__(self):
+            meter_provider = MeterProvider(metric_readers=[PrometheusMetricReader()])
+            metrics.set_meter_provider(meter_provider)
+            meter = metrics.get_meter(__name__)
+            self.counter = meter.create_counter('my_really_cool_metric', description='my really cool metric description')
+        def predict(self, model_input):
+            self.counter.add(10)
+            return model_input
+    """
+    config = """
+    requirements:
+    - opentelemetry-exporter-prometheus>=0.52b0
+    """
+    with ensure_kill_all(), _temp_truss(model, config) as tr:
+        _ = tr.docker_run(local_port=8090, detach=True, wait_for_server_ready=True)
+        metrics_url = "http://localhost:8090/metrics"
+        requests.post(PREDICT_URL, json={})
+        resp = requests.get(metrics_url)
+        assert resp.status_code == 200
+        assert "my_really_cool_metric_total 10.0" in resp.text
+
+
 def _patch_termination_timeout(container: Container, seconds: int, truss_container_fs):
     app_path = truss_container_fs / "app"
     sys.path.append(str(app_path))

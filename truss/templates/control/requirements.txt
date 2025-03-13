@@ -9,3 +9,4 @@ httpx-ws>=0.6.0
 python-json-logger==2.0.2
 loguru==0.7.2
 websockets<=14.0
+prometheus-client>=0.21.1
