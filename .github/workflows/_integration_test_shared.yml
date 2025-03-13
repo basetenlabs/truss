@@ -9,10 +9,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        split_group: [ "1", "2", "3", "4", "5" ]
+        split_group: ["1", "2", "3", "4", "5"]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
+      - run: mkdir -p /bptr/
       - run: poetry install --with=dev,dev-server --extras=all
       - run: |
           poetry run pytest truss/tests \
@@ -34,12 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
+      - run: mkdir -p /bptr/
       - run: poetry install --with=dev,dev-server --extras=all
       - run: |
-         poetry run pytest truss-chains/tests \
-         --durations=0 -m 'integration' \
-         --junitxml=report.xml \
-         -s --log-cli-level=INFO \
+          poetry run pytest truss-chains/tests \
+          --durations=0 -m 'integration' \
+          --junitxml=report.xml \
+          -s --log-cli-level=INFO \
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
