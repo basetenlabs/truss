@@ -145,12 +145,13 @@ Bases: `pydantic.BaseModel`
 
 **Parameters:**
 
-| Name                   | Type               | Description                                                                                                                                                                                                                                                   |
-|------------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `enable_b10_tracing`   | *bool*             | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
-| `env_variables`        | *Mapping[str,str]* | static environment variables available to the deployed chainlet.                                                                                                                                                                                              |
-| `health_checks`        | *HealthChecks*     | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains) |
-
+| Name                 | Type               | Description                                                                                                                                                                                                                                                   |
+|----------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `enable_b10_tracing` | *bool*             | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
+| `enable_debug_logs`  | *bool*             | Sets log level to debug in deployed server.                                                                                                                                                                                                                   |
+| `env_variables`      | *Mapping[str,str]* | static environment variables available to the deployed chainlet.                                                                                                                                                                                              |
+| `health_checks`      | *HealthChecks*     | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains).                                                                                                                                     |
+| `metadata`           | *JsonValue\|None*  | Arbitrary JSON object to describe chainlet.                                                                                                                                                                                                                   |
 ### *class* `truss_chains.RPCOptions`
 
 Bases: `pydantic.BaseModel`

@@ -722,6 +722,8 @@ def _gen_truss_config(
     assets = remote_config.get_asset_spec()
     config.secrets = assets.secrets
     config.runtime.enable_tracing_data = remote_config.options.enable_b10_tracing
+    config.runtime.enable_debug_logs = remote_config.options.enable_debug_logs
+    config.model_metadata = cast(dict[str, Any], remote_config.options.metadata) or {}
     config.environment_variables = dict(remote_config.options.env_variables)
 
     if issubclass(chainlet_descriptor.chainlet_cls, framework.EngineBuilderChainlet):
