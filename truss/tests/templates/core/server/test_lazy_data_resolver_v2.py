@@ -57,7 +57,7 @@ def test_lazy_data_resolver_v2():
         LazyDataResolverV2(Path("/tmp")).fetch()
 
     try:
-        LAZY_DATA_RESOLVER_PATH.mkdir(parents=True, exist_ok=True)
+        LAZY_DATA_RESOLVER_PATH.parent.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         print(
             f"Unable to create {LAZY_DATA_RESOLVER_PATH} due to missing os permissions: {e}"
