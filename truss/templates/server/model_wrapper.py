@@ -15,7 +15,6 @@ from contextlib import asynccontextmanager
 from functools import cached_property
 from multiprocessing import Lock
 from pathlib import Path
-from threading import Thread
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union, cast
 
 import opentelemetry.sdk.trace as sdk_trace
@@ -32,6 +31,7 @@ from opentelemetry import trace
 from shared import dynamic_config_resolver, serialization
 from shared.lazy_data_resolver import LazyDataResolver
 from shared.secrets_resolver import SecretsResolver
+from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed
 
 if sys.version_info >= (3, 9):
     from typing import AsyncGenerator, Generator
@@ -416,15 +416,10 @@ class ModelWrapper:
     def truss_schema(self) -> Optional[TrussSchema]:
         return self.model_descriptor.truss_schema
 
-    def start_load_thread(self):
-        # Don't retry failed loads.
-        if self._status == ModelWrapper.Status.NOT_READY:
-            thread = Thread(target=self.load)
-            thread.start()
-
-    def load(self):
+    async def load(self):
         if self.ready:
             return
+
         # if we are already loading, block on acquiring the lock;
         # this worker will return 503 while the worker with the lock is loading
         with self._load_lock:
@@ -432,7 +427,8 @@ class ModelWrapper:
             self._logger.info("Executing model.load()...")
             try:
                 start_time = time.perf_counter()
-                self._load_impl()
+                await self.try_load()
+
                 self._status = ModelWrapper.Status.READY
                 self._logger.info(
                     f"Completed model.load() execution in {_elapsed_ms(start_time)} ms"
@@ -441,7 +437,15 @@ class ModelWrapper:
                 self._logger.exception("Exception while loading model")
                 self._status = ModelWrapper.Status.FAILED
 
-    def _load_impl(self):
+    async def start_load(self):
+        if self.should_load():
+            asyncio.create_task(self.load())
+
+    def should_load(self) -> bool:
+        # don't retry failed loads
+        return not self._status == ModelWrapper.Status.FAILED and not self.ready
+
+    def _initialize_model(self):
         data_dir = Path("data")
         data_dir.mkdir(exist_ok=True)
 
@@ -520,17 +524,33 @@ class ModelWrapper:
 
         self._maybe_model_descriptor = ModelDescriptor.from_model(self._model)
 
+    async def try_load(self):
+        await to_thread.run_sync(self._initialize_model)
+
         if self._maybe_model_descriptor.setup_environment:
             self._initialize_environment_before_load()
 
         if hasattr(self._model, "load"):
-            retry(
-                self._model.load,
-                NUM_LOAD_RETRIES,
-                self._logger.warning,
-                "Failed to load model.",
-                gap_seconds=1.0,
-            )
+            if inspect.iscoroutinefunction(self._model.load):
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(NUM_LOAD_RETRIES),
+                    wait=wait_fixed(1),
+                    before_sleep=lambda retry_state: self._logger.info(
+                        f"Model load failed (attempt {retry_state.attempt_number})...retrying"
+                    ),
+                ):
+                    with attempt:
+                        (await self._model.load(),)
+
+            else:
+                await to_thread.run_sync(
+                    retry,
+                    self._model.load,
+                    NUM_LOAD_RETRIES,
+                    self._logger.warn,
+                    "Failed to load model.",
+                    1.0,
+                )
 
     def setup_polling_for_environment_updates(self):
         self._poll_for_environment_updates_task = asyncio.create_task(
