@@ -28,17 +28,18 @@ def write_bptr_manifest_to_file(
                 "uid": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
                 "file_name": TARGET_FILE.as_posix()
                 if i == 0
-                else f"nested/config{i}.json",
+                else str(i) + TARGET_FILE.as_posix(),
                 "hashtype": "blake3",
                 "hash": "8c6b2f215f0333437cdc3fe7c79be0c802847d2f2a0ccdc0bb251814e63cf375",
                 "size": 1482,
             }
+            for i in range(num_files)
         ]
-        for i in range(num_files)
     }
     # write to LAZY_DATA_RESOLVER_PATH
     with open(LAZY_DATA_RESOLVER_PATH, "w") as f:
         json.dump(bptr_manifest, f)
+        print(bptr_manifest)
 
 
 def write_bptr_manifest_to_file_invalid_json():
@@ -46,8 +47,7 @@ def write_bptr_manifest_to_file_invalid_json():
         json.dump({"invalid": True}, f)
 
 
-@pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
-def test_lazy_data_resolver_v2():
+def setup_v2_bptr():
     # truss_transfer reads from LAZY_DATA_RESOLVER_PATH
     if LAZY_DATA_RESOLVER_PATH.exists():
         LAZY_DATA_RESOLVER_PATH.unlink()
@@ -67,6 +67,10 @@ def test_lazy_data_resolver_v2():
         else:
             raise e
 
+
+@pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
+def test_lazy_data_resolver_v2_invalid():
+    setup_v2_bptr()
     # with invalid data
     write_bptr_manifest_to_file_invalid_json()
 
@@ -77,6 +81,10 @@ def test_lazy_data_resolver_v2():
             resolver.fetch()
             assert not (data_dir / TARGET_FILE).exists()
 
+
+@pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
+def test_lazy_data_resolver_v2_regular():
+    setup_v2_bptr()
     # with LAZY_DATA_RESOLVER_PATH -> fetches data
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
@@ -86,6 +94,10 @@ def test_lazy_data_resolver_v2():
         assert (data_dir / TARGET_FILE).exists()
         assert (data_dir / TARGET_FILE).stat().st_size == 1482
 
+
+@pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
+def test_lazy_data_resolver_v2_multiple_files():
+    setup_v2_bptr()
     # with multiple files
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
@@ -95,6 +107,10 @@ def test_lazy_data_resolver_v2():
         assert (data_dir / TARGET_FILE).exists()
         assert (data_dir / TARGET_FILE).stat().st_size == 1482
 
+
+@pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
+def test_lazy_data_resolver_v2_expired():
+    setup_v2_bptr()
     # with expired LAZY_DATA_RESOLVER_PATH -> raises exception
     with tempfile.TemporaryDirectory() as tempdir:
         data_dir = Path(tempdir)
@@ -102,7 +118,3 @@ def test_lazy_data_resolver_v2():
         resolver = LazyDataResolverV2(data_dir)
         with pytest.raises(Exception):
             resolver.fetch()
-
-
-if __name__ == "__main__":
-    test_lazy_data_resolver_v2()
