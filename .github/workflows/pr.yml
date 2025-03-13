@@ -33,7 +33,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-python/
-      - run: sudo mkdir -p /bptr/
+      - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
       - run: poetry install --with=dev,dev-server --extras=all
       - name: run tests
         run: poetry run pytest --durations=0  -m 'not integration' --junitxml=report.xml

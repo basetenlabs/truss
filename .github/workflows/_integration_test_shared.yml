@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: sudo mkdir -p /bptr/
+      - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
       - run: poetry install --with=dev,dev-server --extras=all
       - run: |
           poetry run pytest truss/tests \
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python/
-      - run: sudo mkdir -p /bptr/
+      - run: sudo mkdir -p /bptr && sudo chown $(whoami):$(whoami) /bptr
       - run: poetry install --with=dev,dev-server --extras=all
       - run: |
           poetry run pytest truss-chains/tests \
