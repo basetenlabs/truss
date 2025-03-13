@@ -370,13 +370,17 @@ class ChainletOptions(types.SafeModelNonSerializable):
           helps baseten engineers better analyze chain performance in case of issues.
           It is independent of a potentially user-configured tracing instrumentation.
           Turning this on, could add performance overhead.
+        enable_debug_logs: Sets log level to debug in deployed server.
         env_variables: static environment variables available to the deployed chainlet.
         health_checks: Configures health checks for the chainlet. See `guide <https://docs.baseten.co/truss/guides/custom-health-checks#chains>`_.
+        metadata: Arbitrary JSON object to describe chainlet.
     """
 
     enable_b10_tracing: bool = False
+    enable_debug_logs: bool = False
     env_variables: Mapping[str, str] = pydantic.Field(default_factory=dict)
     health_checks: truss_config.HealthChecks = truss_config.HealthChecks()
+    metadata: Optional[pydantic.JsonValue] = None
 
 
 class RemoteConfig(types.SafeModelNonSerializable):

@@ -1,5 +1,5 @@
---- docs/chains/doc_gen/generated-reference.mdx	2025-03-11 11:50:41.420102369 -0700
-+++ docs/chains/doc_gen/API-reference.mdx	2025-03-11 11:45:47.101215413 -0700
+--- docs/chains/doc_gen/generated-reference.mdx	2025-03-12 17:11:04.044190583 -0700
++++ docs/chains/doc_gen/API-reference.mdx	2025-03-12 17:12:06.364051564 -0700
 @@ -30,13 +30,15 @@
 
  ### *class* `truss_chains.EngineBuilderLLMChainlet`
@@ -138,31 +138,40 @@
 
 
  ### *class* `truss_chains.ChainletOptions`
-@@ -151,18 +145,11 @@
+@@ -151,25 +145,13 @@
 
  **Parameters:**
 
 -| Name | Type | Description |
 -|------|------|-------------|
 -| `enable_b10_tracing` | *bool* | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
+-| `enable_debug_logs` | *bool* | Sets log level to debug in deployed server. |
 -| `env_variables` | *Mapping[str,str]* | static environment variables available to the deployed chainlet. |
 -| `health_checks` | *HealthChecks* | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains). |
+-| `metadata` | *JsonValue\|None* | Arbitrary JSON object to describe chainlet. |
 -
 -#### enable_b10_tracing *: bool*
+-
+-#### enable_debug_logs *: bool*
 -
 -#### env_variables *: Mapping[str, str]*
 -
 -#### health_checks *: HealthChecks*
 -
-+| Name                   | Type               | Description                                                                                                                                                                                                                                                   |
-+|------------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-+| `enable_b10_tracing`   | *bool*             | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
-+| `env_variables`        | *Mapping[str,str]* | static environment variables available to the deployed chainlet.                                                                                                                                                                                              |
-+| `health_checks`        | *HealthChecks*     | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains) |
-
+-#### metadata *: JsonValue | None*
+-
+-
++| Name                 | Type               | Description                                                                                                                                                                                                                                                   |
++|----------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
++| `enable_b10_tracing` | *bool*             | enables baseten-internal trace data collection. This helps baseten engineers better analyze chain performance in case of issues. It is independent of a potentially user-configured tracing instrumentation. Turning this on, could add performance overhead. |
++| `enable_debug_logs`  | *bool*             | Sets log level to debug in deployed server.                                                                                                                                                                                                                   |
++| `env_variables`      | *Mapping[str,str]* | static environment variables available to the deployed chainlet.                                                                                                                                                                                              |
++| `health_checks`      | *HealthChecks*     | Configures health checks for the chainlet. See [guide](https://docs.baseten.co/truss/guides/custom-health-checks#chains).                                                                                                                                     |
++| `metadata`           | *JsonValue\|None*  | Arbitrary JSON object to describe chainlet.                                                                                                                                                                                                                   |
  ### *class* `truss_chains.RPCOptions`
 
-@@ -173,21 +160,15 @@
+ Bases: `pydantic.BaseModel`
+@@ -179,21 +161,15 @@
 
  **Parameters:**
 
@@ -173,14 +182,14 @@
 -| `use_binary` | *bool* | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 -
 -#### retries *: int*
--
--#### timeout_sec *: float*
 +| Name          | Type    | Description                                                                                                                                                                                                                                                                               |
 +|---------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 +| `retries`     | *int*   | The number of times to retry the remote chainlet in case of failures (e.g. due to transient network issues). For streaming, retries are only made if the request fails before streaming any results back. Failures mid-stream not retried.                                                |
 +| `timeout_sec` | *float* | Timeout for the HTTP request to this chainlet.                                                                                                                                                                                                                                            |
 +| `use_binary`  | *bool*  | Whether to send data in binary format. This can give a parsing speedup and message size reduction (~25%) for numpy arrays. Use `NumpyArrayField` as a field type on pydantic models for integration and set this option to `True`. For simple text data, there is no significant benefit. |
 
+-#### timeout_sec *: float*
+-
 -#### use_binary *: bool*
 
  ### `truss_chains.mark_entrypoint`
@@ -189,7 +198,7 @@
 
  Decorator to mark a chainlet as the entrypoint of a chain.
 
-@@ -195,11 +176,11 @@
+@@ -201,11 +177,11 @@
  CLI push command simplifies: only the file, not the class within, must be specified.
 
  Optionally a display name for the Chain (not the Chainlet) can be set (effectively
@@ -203,7 +212,7 @@
  import truss_chains as chains
 
  @chains.mark_entrypoint
-@@ -225,7 +206,7 @@
+@@ -231,7 +207,7 @@
 
  This is specified as a class variable for each chainlet class, e.g.:
 
@@ -212,7 +221,7 @@
  import truss_chains as chains
 
 
-@@ -241,34 +222,13 @@
+@@ -247,34 +223,13 @@
 
  **Parameters:**
 
@@ -254,7 +263,7 @@
 
 
  ### *class* `truss_chains.DockerImage`
-@@ -277,42 +237,23 @@
+@@ -283,42 +238,23 @@
 
  Configures the docker image in which a remoted chainlet is deployed.
 
@@ -308,7 +317,7 @@
 
 
  ### *class* `truss_chains.BasetenImage`
-@@ -322,11 +263,11 @@
+@@ -328,11 +264,11 @@
  Default images, curated by baseten, for different python versions. If a Chainlet
  uses GPUs, drivers will be included in the image.
 
@@ -325,7 +334,7 @@
 
 
  ### *class* `truss_chains.CustomImage`
-@@ -337,43 +278,36 @@
+@@ -343,43 +279,36 @@
 
  **Parameters:**
 
@@ -384,7 +393,7 @@
  It is important to understand the difference between predict_concurrency and
  the concurrency target (used for autoscaling, i.e. adding or removing replicas).
  Furthermore, the `predict_concurrency` of a single instance is implemented in
-@@ -384,11 +318,6 @@
+@@ -390,11 +319,6 @@
  - With a threadpool if it’s a synchronous function. This requires
    that the threads don’t have significant CPU load (due to the GIL).
 
@@ -396,7 +405,7 @@
 
  ### *class* `truss_chains.Assets`
 
-@@ -396,7 +325,7 @@
+@@ -402,7 +326,7 @@
 
  For example, model weight caching can be used like this:
 
@@ -405,7 +414,7 @@
  import truss_chains as chains
  from truss.base import truss_config
 
-@@ -410,32 +339,19 @@
+@@ -416,32 +340,19 @@
  See [truss caching guide](https://docs.baseten.co/deploy/guides/model-cache#enabling-caching-for-a-model)
  for more details on caching.
 
@@ -444,7 +453,7 @@
  ### `truss_chains.push`
 
  Deploys a chain remotely (with all dependent chainlets).
-@@ -443,26 +359,24 @@
+@@ -449,26 +360,24 @@
 
  **Parameters:**
 
@@ -484,7 +493,7 @@
 
  Handle for a deployed chain.
 
-@@ -470,45 +384,36 @@
+@@ -476,45 +385,36 @@
  bundles the individual services for each chainlet in the chain, and provides
  utilities to query their status, invoke the entrypoint etc.
 
@@ -542,7 +551,7 @@
 
  Link to status page on Baseten.
 
-@@ -530,12 +435,12 @@
+@@ -536,12 +436,12 @@
  You can now in `root/sub_package/chainlet.py` point to the requirements
  file like this:
 
@@ -557,7 +566,7 @@
  This helper uses the directory of the immediately calling module as an
  absolute reference point for resolving the file location. Therefore,
  you MUST NOT wrap the instantiation of `make_abs_path_here` into a
-@@ -543,7 +448,7 @@
+@@ -549,7 +449,7 @@
 
  Ok:
 
@@ -566,7 +575,7 @@
  def foo(path: AbsPath):
      abs_path = path.abs_path
 
-@@ -553,7 +458,7 @@
+@@ -559,7 +459,7 @@
 
  Not Ok:
 
@@ -575,7 +584,7 @@
  def foo(path: str):
      dangerous_value = make_abs_path_here(path).abs_path
 
-@@ -561,33 +466,37 @@
+@@ -567,33 +467,37 @@
  foo("./somewhere")
  ```
 
@@ -627,7 +636,7 @@
  import os
  import truss_chains as chains
 
-@@ -627,47 +536,12 @@
+@@ -633,47 +537,12 @@
 
  **Parameters:**
 
@@ -681,7 +690,7 @@
 
 
  ### *class* `truss_chains.StubBase`
-@@ -683,7 +557,7 @@
+@@ -689,7 +558,7 @@
  in user-code for wrapping a deployed truss model into the Chains framework. It
  flexibly supports JSON and pydantic inputs and output. Example usage:
 
@@ -690,7 +699,7 @@
  import pydantic
  import truss_chains as chains
 
-@@ -694,18 +568,18 @@
+@@ -700,18 +569,18 @@
 
  class DeployedWhisper(chains.StubBase):
      # Input JSON, output JSON.
@@ -712,7 +721,7 @@
          return await self.predict_async(data, output_model=WhisperOutput)
 
 
-@@ -726,10 +600,10 @@
+@@ -732,10 +601,10 @@
 
  **Parameters:**
 
@@ -727,7 +736,7 @@
 
 
  #### *classmethod* from_url(predict_url, context_or_api_key, options=None)
-@@ -739,27 +613,25 @@
+@@ -745,27 +614,25 @@
 
  **Parameters:**
 
@@ -774,7 +783,7 @@
 
 
  ### *class* `truss_chains.RemoteErrorDetail`
-@@ -772,62 +644,21 @@
+@@ -778,62 +645,21 @@
 
  **Parameters:**
 
