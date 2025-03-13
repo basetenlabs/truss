@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import time
@@ -93,6 +94,27 @@ def test_lazy_data_resolver_v2_regular():
         resolver.fetch()
         assert (data_dir / TARGET_FILE).exists()
         assert (data_dir / TARGET_FILE).stat().st_size == 1482
+
+
+@pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
+def test_lazy_data_resolver_v2_regular_baseten_fs():
+    setup_v2_bptr()
+    old_os_setting = os.environ.get("BASETEN_FS_ENABLED")
+    # with LAZY_DATA_RESOLVER_PATH -> fetches data
+    try:
+        os.environ["BASETEN_FS_ENABLED"] = "True"
+        with tempfile.TemporaryDirectory() as tempdir:
+            data_dir = Path(tempdir)
+            write_bptr_manifest_to_file()
+            resolver = LazyDataResolverV2(data_dir)
+            resolver.fetch()
+            assert (data_dir / TARGET_FILE).exists()
+            assert (data_dir / TARGET_FILE).stat().st_size == 1482
+    finally:
+        if old_os_setting:
+            os.environ["BASETEN_FS_ENABLED"] = old_os_setting
+        else:
+            del os.environ["BASETEN_FS_ENABLED"]
 
 
 @pytest.mark.skipif(not TRUSS_TRANSFER_AVAILABLE, reason="Truss Transfer not available")
