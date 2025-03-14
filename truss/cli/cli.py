@@ -903,9 +903,10 @@ def push_training_job(config: Path, remote: Optional[str]):
 @click.option("--remote", type=str, required=False, help="Remote to use")
 @click.option("--project-id", type=str, required=True, help="Project ID.")
 @click.option("--job-id", type=str, required=True, help="Job ID.")
+@click.option("--watch", type=bool, is_flag=True, help="Tail for ongoing logs.")
 @log_level_option
 @error_handling
-def get_job_logs(remote: Optional[str], project_id: str, job_id: str):
+def get_job_logs(remote: Optional[str], project_id: str, job_id: str, watch: bool):
     """Fetch logs for a training job"""
     from truss_train import log_utils
 
@@ -916,8 +917,14 @@ def get_job_logs(remote: Optional[str], project_id: str, job_id: str):
         BasetenRemote, RemoteFactory.create(remote=remote)
     )
 
-    logs = remote_provider.api.get_training_job_logs(project_id, job_id)
-    log_utils.format_and_output_logs(logs, console)
+    if not watch:
+        logs = remote_provider.api.get_training_job_logs(project_id, job_id)
+        log_utils.format_and_output_logs(logs, console)
+    else:
+        log_watcher = log_utils.LogWatcher(
+            remote_provider.api, project_id, job_id, console
+        )
+        log_watcher.watch()
 
 
 # End Training Stuff #####################################################################

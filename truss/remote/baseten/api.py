@@ -604,11 +604,25 @@ class BasetenApi:
 
         return resp.json()
 
-    def get_training_job_logs(self, project_id: str, job_id: str):
+    def get_training_job_logs(
+        self,
+        project_id: str,
+        job_id: str,
+        start_epoch_millis: Optional[int] = None,
+        end_epoch_millis: Optional[int] = None,
+    ):
         headers = self._auth_token.header()
+
+        payload = {}
+        if start_epoch_millis:
+            payload["start_epoch_millis"] = start_epoch_millis
+        if end_epoch_millis:
+            payload["end_epoch_millis"] = end_epoch_millis
+
         resp = requests.post(
             f"{self._rest_api_url}/v1/training_projects/{project_id}/jobs/{job_id}/logs",
             headers=headers,
+            json=payload,
         )
         if not resp.ok:
             resp.raise_for_status()
