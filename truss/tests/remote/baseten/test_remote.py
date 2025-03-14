@@ -1,6 +1,7 @@
 import pytest
 import requests_mock
 
+from truss.remote.baseten import custom_types as b10_types
 from truss.remote.baseten.core import (
     ModelId,
     ModelName,
@@ -16,6 +17,11 @@ _TEST_REMOTE_URL = "http://test_remote.com"
 _TEST_REMOTE_GRAPHQL_PATH = "http://test_remote.com/graphql/"
 
 
+@pytest.fixture
+def remote():
+    return BasetenRemote(_TEST_REMOTE_URL, "api_key", include_git_info=True)
+
+
 def assert_request_matches_expected_query(request, expected_query) -> None:
     query = request.json()["query"]
     actual_lines = tuple(
@@ -27,9 +33,7 @@ def assert_request_matches_expected_query(request, expected_query) -> None:
     assert actual_lines == expected_lines
 
 
-def test_get_service_by_version_id():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_get_service_by_version_id(remote):
     version = {"id": "version_id", "oracle": {"id": "model_id", "hostname": "hostname"}}
     model_version_response = {"data": {"model_version": version}}
 
@@ -41,8 +45,7 @@ def test_get_service_by_version_id():
     assert service.model_version_id == "version_id"
 
 
-def test_get_service_by_version_id_no_version():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+def test_get_service_by_version_id_no_version(remote):
     model_version_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
         m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_version_response)
@@ -50,9 +53,7 @@ def test_get_service_by_version_id_no_version():
             remote.get_service(model_identifier=ModelVersionId("version_id"))
 
 
-def test_get_service_by_model_name():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_get_service_by_model_name(remote):
     versions = [
         {"id": "1", "is_draft": False, "is_primary": False},
         {"id": "2", "is_draft": False, "is_primary": True},
@@ -87,9 +88,7 @@ def test_get_service_by_model_name():
         assert service.model_version_id == "3"
 
 
-def test_get_service_by_model_name_no_dev_version():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_get_service_by_model_name_no_dev_version(remote):
     versions = [{"id": "1", "is_draft": False, "is_primary": True}]
     model_response = {
         "data": {
@@ -120,9 +119,7 @@ def test_get_service_by_model_name_no_dev_version():
             )
 
 
-def test_get_service_by_model_name_no_prod_version():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_get_service_by_model_name_no_prod_version(remote):
     versions = [{"id": "1", "is_draft": True, "is_primary": False}]
     model_response = {
         "data": {
@@ -151,9 +148,7 @@ def test_get_service_by_model_name_no_prod_version():
         assert service.model_version_id == "1"
 
 
-def test_get_service_by_model_id():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_get_service_by_model_id(remote):
     model_response = {
         "data": {
             "model": {
@@ -173,8 +168,7 @@ def test_get_service_by_model_id():
         assert service.model_version_id == "version_id"
 
 
-def test_get_service_by_model_id_no_model():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
+def test_get_service_by_model_id_no_model(remote):
     model_response = {"errors": [{"message": "error"}]}
     with requests_mock.Mocker() as m:
         m.post(_TEST_REMOTE_GRAPHQL_PATH, json=model_response)
@@ -183,9 +177,8 @@ def test_get_service_by_model_id_no_model():
 
 
 def test_push_raised_value_error_when_deployment_name_and_not_publish(
-    custom_model_truss_dir_with_pre_and_post,
+    custom_model_truss_dir_with_pre_and_post, remote
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_response = {
         "data": {
             "model": {
@@ -206,6 +199,7 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
             remote.push(
                 th,
                 "model_name",
+                th.truss_dir,
                 publish=False,
                 promote=False,
                 preserve_previous_prod_deployment=False,
@@ -214,9 +208,8 @@ def test_push_raised_value_error_when_deployment_name_and_not_publish(
 
 
 def test_push_raised_value_error_when_deployment_name_is_not_valid(
-    custom_model_truss_dir_with_pre_and_post,
+    custom_model_truss_dir_with_pre_and_post, remote
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_response = {
         "data": {
             "model": {
@@ -237,6 +230,7 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
             remote.push(
                 th,
                 "model_name",
+                th.truss_dir,
                 publish=True,
                 promote=False,
                 preserve_previous_prod_deployment=False,
@@ -245,9 +239,8 @@ def test_push_raised_value_error_when_deployment_name_is_not_valid(
 
 
 def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promote(
-    custom_model_truss_dir_with_pre_and_post,
+    custom_model_truss_dir_with_pre_and_post, remote
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_response = {
         "data": {
             "model": {
@@ -268,15 +261,14 @@ def test_push_raised_value_error_when_keep_previous_prod_settings_and_not_promot
             remote.push(
                 th,
                 "model_name",
+                th.truss_dir,
                 publish=False,
                 promote=False,
                 preserve_previous_prod_deployment=True,
             )
 
 
-def test_create_chain_with_no_publish():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_create_chain_with_no_publish(remote):
     with requests_mock.Mocker() as m:
         m.post(
             _TEST_REMOTE_GRAPHQL_PATH,
@@ -312,6 +304,7 @@ def test_create_chain_with_no_publish():
                 ),
             ),
             dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=True,
             environment=None,
         )
@@ -373,9 +366,7 @@ def test_create_chain_with_no_publish():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_no_existing_chain():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_create_chain_no_existing_chain(remote):
     with requests_mock.Mocker() as m:
         m.post(
             _TEST_REMOTE_GRAPHQL_PATH,
@@ -411,6 +402,7 @@ def test_create_chain_no_existing_chain():
                 ),
             ),
             dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=False,
             environment=None,
         )
@@ -471,9 +463,7 @@ def test_create_chain_no_existing_chain():
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_with_existing_chain_promote_to_environment_publish_false():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_create_chain_with_existing_chain_promote_to_environment_publish_false(remote):
     with requests_mock.Mocker() as m:
         m.post(
             _TEST_REMOTE_GRAPHQL_PATH,
@@ -515,6 +505,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
                 ),
             ),
             dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=True,
             environment="production",
         )
@@ -578,9 +569,7 @@ def test_create_chain_with_existing_chain_promote_to_environment_publish_false()
         assert deployment_handle.chain_deployment_id == "new-chain-deployment-id"
 
 
-def test_create_chain_existing_chain_publish_true_no_promotion():
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
-
+def test_create_chain_existing_chain_publish_true_no_promotion(remote):
     with requests_mock.Mocker() as m:
         m.post(
             _TEST_REMOTE_GRAPHQL_PATH,
@@ -622,6 +611,7 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
                 ),
             ),
             dependencies=[],
+            truss_user_env=b10_types.TrussUserEnv.collect(),
             is_draft=False,
             environment=None,
         )
@@ -684,9 +674,8 @@ def test_create_chain_existing_chain_publish_true_no_promotion():
 
 @pytest.mark.parametrize("publish", [True, False])
 def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
-    publish, custom_model_truss_dir_with_pre_and_post
+    publish, custom_model_truss_dir_with_pre_and_post, remote
 ):
-    remote = BasetenRemote(_TEST_REMOTE_URL, "api_key")
     model_response = {
         "data": {
             "model": {
@@ -703,4 +692,10 @@ def test_push_raised_value_error_when_disable_truss_download_for_existing_model(
         with pytest.raises(
             ValueError, match="disable-truss-download can only be used for new models"
         ):
-            remote.push(th, "model_name", publish=publish, disable_truss_download=True)
+            remote.push(
+                th,
+                "model_name",
+                th.truss_dir,
+                publish=publish,
+                disable_truss_download=True,
+            )

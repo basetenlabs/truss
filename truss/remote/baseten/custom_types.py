@@ -53,14 +53,22 @@ class GitInfo(pydantic.BaseModel):
     has_uncommitted_changes: bool
 
     @classmethod
-    def collect(cls) -> Optional["GitInfo"]:
+    def collect(cls, git_working_dir: pathlib.Path) -> Optional["GitInfo"]:
         def run_git_command(*args):
             try:
-                return subprocess.check_output(["git", *args], text=True).strip()
+                return subprocess.check_output(
+                    ["git", *args],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                    cwd=git_working_dir,
+                ).strip()
             except subprocess.CalledProcessError:
                 return None
 
         latest_commit_sha = run_git_command("rev-parse", "HEAD")
+        if not latest_commit_sha:
+            return None  # Not inside a git repo
+
         latest_tag = run_git_command("describe", "--tags", "--abbrev=0") or None
         commits_since_tag = (
             run_git_command("rev-list", f"{latest_tag}..HEAD", "--count")
@@ -68,9 +76,6 @@ class GitInfo(pydantic.BaseModel):
             else None
         )
         has_uncommitted_changes = bool(run_git_command("status", "--porcelain"))
-
-        if not latest_commit_sha:
-            return None  # Not inside a git repo
 
         return cls(
             latest_commit_sha=latest_commit_sha,
@@ -97,15 +102,19 @@ class TrussUserEnv(pydantic.BaseModel):
         except ImportError:
             mypy_version = None
 
-        git_info = GitInfo.collect()
-
         return cls(
             truss_client_version=truss.version(),
             python_version=f"{py_version.major}.{py_version.minor}.{py_version.micro}",
             pydantic_version=pydantic.version.version_short(),
             mypy_version=mypy_version,
-            git_info=git_info,
+            git_info=None,
         )
+
+    @classmethod
+    def collect_with_git_info(cls, git_working_dir: pathlib.Path) -> "TrussUserEnv":
+        instance = cls.collect()
+        instance.git_info = GitInfo.collect(git_working_dir)
+        return instance
 
 
 class BlobType(Enum):
