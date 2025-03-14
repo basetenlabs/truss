@@ -173,8 +173,14 @@ async fn lazy_data_resolve_async(download_dir: PathBuf, num_workers: usize) -> R
     info!("All pointers validated successfully.");
 
     // 4. Check if b10cache is enabled
-    let uses_b10_cache =
-        env::var(BASETEN_FS_ENABLED_ENV_VAR).unwrap_or_else(|_| "False".into()) == "True";
+    let uses_b10_cache = match env::var(BASETEN_FS_ENABLED_ENV_VAR)
+        .unwrap_or_else(|_| "false".into())
+        .to_lowercase()
+        .as_str()
+    {
+        "1" | "true" => true,
+        _ => false,
+    };
     info!(
         "b10cache enabled: {}",
         if uses_b10_cache { "True" } else { "False" }
