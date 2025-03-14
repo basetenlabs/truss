@@ -428,6 +428,9 @@ class TrussServer:
             workers=1,
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config=log_config.make_log_config(log_level),
+            # Websocket max size is configured to 100MB as a safe upper bound.
+            # TODO(bryanzhang) Make this a little less hardcoded.
+            ws_max_size=100 * (1<<20),
         )
         cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)
