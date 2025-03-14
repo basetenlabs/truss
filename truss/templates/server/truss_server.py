@@ -49,7 +49,7 @@ INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser
 # Hardcoded 100MiB message maximum on websocket connections.
 # TODO(bryanzhang) Align this with other websocket components so it's not so
 # difficult to change.
-WS_MAX_MSG_SZ_BYTES = 100 * (1<<20)
+WS_MAX_MSG_SZ_BYTES = 100 * (1 << 20)
 
 if TYPE_CHECKING:
     from model_wrapper import InputType, OutputType
