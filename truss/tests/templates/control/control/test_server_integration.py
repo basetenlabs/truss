@@ -163,6 +163,13 @@ def test_truss_control_server_health_check(control_server: ControlServerDetails)
 
 
 @pytest.mark.integration
+def test_metrics(control_server: ControlServerDetails):
+    ctrl_url = f"http://localhost:{control_server.control_server_port}"
+    resp = requests.get(f"{ctrl_url}/metrics")
+    assert resp.status_code == 200
+
+
+@pytest.mark.integration
 def test_truss_control_server_patch_ping_delays(truss_control_container_fs: Path):
     for _ in range(10):
         with _configured_control_server(

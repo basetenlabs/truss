@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "truss"
-version = "0.9.68rc004"
+version = "0.9.68rc012"
 description = "A seamless bridge from model development to model delivery"
 license = "MIT"
 readme = "README.md"
@@ -106,6 +106,7 @@ rich-click = { version = "^1.6.1", optional = false }
 ruff = { version = ">=0.4.8", optional = false }  # Not a dev dep, needed for chains code gen.
 tenacity = { version = "^8.0.1", optional = false }
 watchfiles = { version = "^0.19.0", optional = false }
+prometheus-client = "^0.21.1"
 
 
 [tool.dependency_metadata]
