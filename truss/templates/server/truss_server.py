@@ -46,6 +46,11 @@ PYDANTIC_MAJOR_VERSION = int(pydantic.VERSION.split(".")[0])
 TIMEOUT_GRACEFUL_SHUTDOWN = 120
 INFERENCE_SERVER_FAILED_FILE = Path("~/inference_server_crashed.txt").expanduser()
 
+# Hardcoded 100MiB message maximum on websocket connections.
+# TODO(bryanzhang) Align this with other websocket components so it's not so
+# difficult to change.
+WS_MAX_MSG_SZ_BYTES = 100 * (1<<20)
+
 if TYPE_CHECKING:
     from model_wrapper import InputType, OutputType
 
@@ -428,9 +433,7 @@ class TrussServer:
             workers=1,
             timeout_graceful_shutdown=TIMEOUT_GRACEFUL_SHUTDOWN,
             log_config=log_config.make_log_config(log_level),
-            # Websocket max size is configured to 100MB as a safe upper bound.
-            # TODO(bryanzhang) Make this a little less hardcoded.
-            ws_max_size=100 * (1 << 20),
+            ws_max_size=WS_MAX_MSG_SZ_BYTES,
         )
         cfg.setup_event_loop()  # Call this so uvloop gets used
         server = uvicorn.Server(config=cfg)
