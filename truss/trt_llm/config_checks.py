@@ -3,9 +3,11 @@ import requests
 from truss.base.constants import (
     HF_ACCESS_TOKEN_KEY,
     HF_MODELS_API_URL,
+    OPENAI_COMPATIBLE_TAG,
+    OPENAI_NON_COMPATIBLE_TAG,
     TRTLLM_MIN_MEMORY_REQUEST_GI,
 )
-from truss.base.trt_llm_config import CheckpointSource
+from truss.base.trt_llm_config import CheckpointSource, TrussTRTLLMModel
 from truss.truss_handle.truss_handle import TrussHandle
 
 
@@ -20,6 +22,68 @@ def is_missing_secrets_for_trt_llm_builder(tr: TrussHandle) -> bool:
         ):
             return True
     return False
+
+
+def has_no_tags_trt_llm_builder(tr: TrussHandle) -> str:
+    """
+    support transitioning to more openai-compatible schema.
+    # transitioning in three phases:
+    # 1. set OPENAI_NON_COMPATIBLE_TAG as default
+    # 2. set OPENAI_COMPATIBLE_TAG as default for new pushes. (June 2025)
+    # 3. Reject models without tag (July 2025)
+    # 4. disable new legacy-non-openai pushes server-side. (2026 eta)
+    """
+
+    def add_openai_tag(tr: TrussHandle) -> str:
+        tr.spec.config.model_metadata["tags"] = [
+            OPENAI_COMPATIBLE_TAG
+        ] + tr.spec.config.model_metadata.get("tags", [])
+        tr.spec.config.write_to_yaml_file(tr.spec.config_path, verbose=False)
+        message = f"""TRT-LLM model requires a openai-compatible tag.
+Adding the following to your config.yaml file:
+```yaml
+model_metadata:
+  tags:
+  - {OPENAI_COMPATIBLE_TAG} # for legacy behavior set to `  - {OPENAI_NON_COMPATIBLE_TAG}`
+```
+"""
+        return message
+
+    if uses_trt_llm_builder(tr):
+        assert tr.spec.config.trt_llm is not None
+        current_tags = tr.spec.config.model_metadata.get("tags", [])
+
+        if tr.spec.config.trt_llm.build.speculator is not None:
+            # spec-dec has no classic backend. OpenAI-mode is forced, regardless of tags.
+            if OPENAI_NON_COMPATIBLE_TAG in current_tags:
+                return (
+                    f"TRT-LLM models with speculator does not support {OPENAI_NON_COMPATIBLE_TAG} tag. "
+                    f"Please migrate to {OPENAI_COMPATIBLE_TAG} tag."
+                )
+            elif OPENAI_COMPATIBLE_TAG not in current_tags:
+                message = add_openai_tag(tr)
+                return (
+                    f"TRT-LLM models with speculator require have model_metadata/tags section with ['{OPENAI_COMPATIBLE_TAG}']. "
+                    f"{message}"
+                    f"We have adjusted your config.yaml file to include this tag. Please save the changes and push again."
+                )
+        elif (
+            tr.spec.config.trt_llm.build.base_model != TrussTRTLLMModel.ENCODER
+            and not current_tags
+            or not any(
+                tag in current_tags
+                for tag in (OPENAI_COMPATIBLE_TAG, OPENAI_NON_COMPATIBLE_TAG)
+            )
+        ):
+            # inserting new tag client side on truss push
+            message = add_openai_tag(tr)
+            return (
+                f"TRT-LLM models require a model_metadata/tags section with ['{OPENAI_COMPATIBLE_TAG}'] or ['{OPENAI_NON_COMPATIBLE_TAG}']. "
+                f"{message}"
+                f"We have adjusted your config.yaml file to include this tag. Please save the changes and push again."
+            )
+
+    return ""
 
 
 def memory_updated_for_trt_llm_builder(tr: TrussHandle) -> bool:
