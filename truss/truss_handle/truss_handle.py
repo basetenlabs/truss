@@ -111,6 +111,10 @@ class TrussHandle:
         if validate:
             self.validate()
 
+    @property
+    def truss_dir(self) -> Path:
+        return self._truss_dir
+
     def validate(self):
         self._validate_external_packages()
         self._validate_extensions()

@@ -24,8 +24,6 @@ API_URL_MAPPING = {
 # using the production api routes
 DEFAULT_API_DOMAIN = "https://api.baseten.co"
 
-TRUSS_USER_ENV = b10_types.TrussUserEnv.collect().json()
-
 
 def _oracle_data_to_graphql_mutation(oracle: b10_types.OracleData) -> str:
     args = [
@@ -51,11 +49,8 @@ def _chainlet_data_atomic_to_graphql_mutation(
     chainlet: b10_types.ChainletDataAtomic,
 ) -> str:
     oracle_data_string = _oracle_data_to_graphql_mutation(chainlet.oracle)
-
     args = [f'name: "{chainlet.name}"', f"oracle: {oracle_data_string}"]
-
     args_str = ",\n".join(args)
-
     return f"""{{
         {args_str}
     }}"""
@@ -133,6 +128,7 @@ class BasetenApi:
         s3_key: str,
         config: str,
         semver_bump: str,
+        truss_user_env: b10_types.TrussUserEnv,
         allow_truss_download: bool = True,
         deployment_name: Optional[str] = None,
         origin: Optional[b10_types.ModelOrigin] = None,
@@ -161,7 +157,7 @@ class BasetenApi:
             }}
         """
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
         return resp["data"]["create_model_from_truss"]["model_version"]
 
@@ -171,6 +167,7 @@ class BasetenApi:
         s3_key: str,
         config: str,
         semver_bump: str,
+        truss_user_env: b10_types.TrussUserEnv,
         preserve_previous_prod_deployment: bool = False,
         deployment_name: Optional[str] = None,
         environment: Optional[str] = None,
@@ -198,7 +195,7 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
         return resp["data"]["create_model_version_from_truss"]["model_version"]
 
@@ -207,6 +204,7 @@ class BasetenApi:
         model_name,
         s3_key,
         config,
+        truss_user_env: b10_types.TrussUserEnv,
         allow_truss_download=True,
         origin: Optional[b10_types.ModelOrigin] = None,
     ):
@@ -232,7 +230,7 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
         return resp["data"]["deploy_draft_truss"]["model_version"]
 
@@ -240,6 +238,7 @@ class BasetenApi:
         self,
         entrypoint: b10_types.ChainletDataAtomic,
         dependencies: List[b10_types.ChainletDataAtomic],
+        truss_user_env: b10_types.TrussUserEnv,
         chain_id: Optional[str] = None,
         chain_name: Optional[str] = None,
         environment: Optional[str] = None,
@@ -277,7 +276,7 @@ class BasetenApi:
         """
 
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env.json()}
         )
 
         return resp["data"]["deploy_chain_atomic"]
@@ -484,8 +483,9 @@ class BasetenApi:
             }}
         }}
         """
+        truss_user_env = b10_types.TrussUserEnv.collect().json()
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env}
         )
         result = resp["data"]["stage_patch_for_draft_truss"]
         if not result["succeeded"]:
@@ -511,8 +511,9 @@ class BasetenApi:
             }}
         }}
         """
+        truss_user_env = b10_types.TrussUserEnv.collect().json()
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env}
         )
         result = resp["data"]["sync_draft_truss"]
         if not result["succeeded"]:
@@ -531,8 +532,9 @@ class BasetenApi:
             }}
         }}
         """
+        truss_user_env = b10_types.TrussUserEnv.collect().json()
         resp = self._post_graphql_query(
-            query_string, variables={"trussUserEnv": TRUSS_USER_ENV}
+            query_string, variables={"trussUserEnv": truss_user_env}
         )
         return resp["data"]["truss_validation"]
 

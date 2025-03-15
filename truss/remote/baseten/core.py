@@ -111,6 +111,7 @@ def create_chain_atomic(
     entrypoint: b10_types.ChainletDataAtomic,
     dependencies: List[b10_types.ChainletDataAtomic],
     is_draft: bool,
+    truss_user_env: b10_types.TrussUserEnv,
     environment: Optional[str],
 ) -> ChainDeploymentHandleAtomic:
     if environment and is_draft:
@@ -126,12 +127,14 @@ def create_chain_atomic(
     # 1. Prepare all arguments for `deploy_chain_atomic`.
     # 2. Validate argument combinations.
     # 3. Make a single invocation to `deploy_chain_atomic`.
+
     if is_draft:
         res = api.deploy_chain_atomic(
-            chain_name=chain_name,
-            is_draft=True,
             entrypoint=entrypoint,
             dependencies=dependencies,
+            chain_name=chain_name,
+            is_draft=True,
+            truss_user_env=truss_user_env,
         )
     elif chain_id:
         # This is the only case where promote has relevance, since
@@ -140,10 +143,11 @@ def create_chain_atomic(
         # be promoted.
         try:
             res = api.deploy_chain_atomic(
-                chain_id=chain_id,
-                environment=environment,
                 entrypoint=entrypoint,
                 dependencies=dependencies,
+                chain_id=chain_id,
+                environment=environment,
+                truss_user_env=truss_user_env,
             )
         except ApiError as e:
             if (
@@ -160,7 +164,10 @@ def create_chain_atomic(
         raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
     else:
         res = api.deploy_chain_atomic(
-            chain_name=chain_name, entrypoint=entrypoint, dependencies=dependencies
+            entrypoint=entrypoint,
+            dependencies=dependencies,
+            chain_name=chain_name,
+            truss_user_env=truss_user_env,
         )
 
     return ChainDeploymentHandleAtomic(
@@ -326,6 +333,7 @@ def create_truss_service(
     model_name: str,
     s3_key: str,
     config: str,
+    truss_user_env: b10_types.TrussUserEnv,
     semver_bump: str = "MINOR",
     preserve_previous_prod_deployment: bool = False,
     allow_truss_download: bool = False,
@@ -358,6 +366,7 @@ def create_truss_service(
             model_name,
             s3_key,
             config,
+            truss_user_env,
             allow_truss_download=allow_truss_download,
             origin=origin,
         )
@@ -373,10 +382,11 @@ def create_truss_service(
             raise ValueError(NO_ENVIRONMENTS_EXIST_ERROR_MESSAGING)
 
         model_version_json = api.create_model_from_truss(
-            model_name=model_name,
-            s3_key=s3_key,
-            config=config,
-            semver_bump=semver_bump,
+            model_name,
+            s3_key,
+            config,
+            semver_bump,
+            truss_user_env,
             allow_truss_download=allow_truss_download,
             deployment_name=deployment_name,
             origin=origin,
@@ -390,10 +400,11 @@ def create_truss_service(
 
     try:
         model_version_json = api.create_model_version_from_truss(
-            model_id=model_id,
-            s3_key=s3_key,
-            config=config,
-            semver_bump=semver_bump,
+            model_id,
+            s3_key,
+            config,
+            semver_bump,
+            truss_user_env,
             preserve_previous_prod_deployment=preserve_previous_prod_deployment,
             deployment_name=deployment_name,
             environment=environment,
