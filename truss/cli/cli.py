@@ -1236,7 +1236,8 @@ def push(
             )
         message_oai = has_no_tags_trt_llm_builder(tr)
         if message_oai:
-            console.print(message_oai, style="yellow")
+            console.print(message_oai, style="red")
+            sys.exit(1)
         for trt_llm_build_config in tr.spec.config.parsed_trt_llm_build_configs:
             if (
                 trt_llm_build_config.quantization_type

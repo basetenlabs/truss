@@ -112,10 +112,8 @@ BEI_TRTLLM_BASE_IMAGE = "baseten/bei:0.0.18"
 
 BEI_TRTLLM_PYTHON_EXECUTABLE = "/usr/bin/python3"
 
-OPENAI_COMPATIBLE_TAG = (
-    "openai-compatible"  # deprecated - openai-compatible is now the default
-)
-OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"
+OPENAI_COMPATIBLE_TAG = "openai-compatible"
+OPENAI_NON_COMPATIBLE_TAG = "force-legacy-api-non-openai-compatible"  # deprecated - openai-compatible is now the default
 
 
 PRODUCTION_ENVIRONMENT_NAME = "production"
