@@ -38,6 +38,15 @@ InputT = TypeVar("InputT", pydantic.BaseModel, Any)  # Any signifies "JSON".
 OutputModelT = TypeVar("OutputModelT", bound=pydantic.BaseModel)
 
 
+async def _safe_close(session: aiohttp.ClientSession, timeout_sec: float) -> None:
+    try:
+        await asyncio.wait_for(session.close(), timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        logging.info("Timeout while closing cycled-out aiohttp session.")
+    except Exception as e:
+        logging.info(f"Unexpected error while closing cycled-out aiohttp session: {e}")
+
+
 class BasetenSession:
     """Provides configured HTTP clients, retries rate limit warning etc."""
 
@@ -51,6 +60,11 @@ class BasetenSession:
     _service_descriptor: public_types.DeployedServiceDescriptor
     _cached_sync_client: Optional[tuple[httpx.Client, int]]
     _cached_async_client: Optional[tuple[aiohttp.ClientSession, int]]
+    _sync_lock: threading.Lock
+    _async_lock: asyncio.Lock
+    _sync_num_requests: utils.ThreadSafeCounter
+    _async_num_requests: utils.AsyncSafeCounter
+    _close_tasks: list[asyncio.Task[None]]
 
     def __init__(
         self, service_descriptor: public_types.DeployedServiceDescriptor, api_key: str
@@ -83,10 +97,15 @@ class BasetenSession:
         self._async_lock = asyncio.Lock()
         self._sync_num_requests = utils.ThreadSafeCounter()
         self._async_num_requests = utils.AsyncSafeCounter()
+        self._close_tasks = []
 
     @property
     def name(self) -> str:
         return self._service_descriptor.name
+
+    async def shut_down(self) -> None:
+        # TODO: integrate this with the uvicorn server.
+        await asyncio.gather(*self._close_tasks)
 
     def _maybe_warn_for_overload(self, num_requests: int) -> None:
         if self._client_limits.max_connections is None:
@@ -145,6 +164,16 @@ class BasetenSession:
         if self._client_cycle_needed(self._cached_async_client):
             async with self._async_lock:
                 if self._client_cycle_needed(self._cached_async_client):
+                    if self._cached_async_client is not None:
+                        # Close with same timeout as connections, but add some buffer.
+                        self._close_tasks.append(
+                            asyncio.create_task(
+                                _safe_close(
+                                    self._cached_async_client[0],
+                                    self._service_descriptor.options.timeout_sec * 1.1,
+                                )
+                            )
+                        )
                     connector = aiohttp.TCPConnector(limit=DEFAULT_MAX_CONNECTIONS)
                     self._cached_async_client = (
                         aiohttp.ClientSession(
