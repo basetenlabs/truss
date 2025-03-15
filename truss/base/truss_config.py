@@ -778,6 +778,11 @@ class TrussConfig:
                     ```
                     """
                 )
+            elif OPENAI_NON_COMPATIBLE_TAG in current_tags:
+                logger.warning(
+                    f"Model is marked as {OPENAI_NON_COMPATIBLE_TAG}. This model will not be compatible with OpenAI."
+                    "This is the deprecated legacy behavior, please update the tag to {OPENAI_COMPATIBLE_TAG}."
+                )
 
             if (
                 self.trt_llm.build.quantization_type
